@@ -34,13 +34,8 @@ public struct PortAllocator: Equatable, Sendable {
     }
 
     public mutating func allocate() throws -> Int {
-        var base = rangeStart
-        while base <= rangeEnd {
-            if !used.contains(base) {
-                used.insert(base)
-                return base
-            }
-            base += blockSize
+        for base in stride(from: rangeStart, through: rangeEnd, by: blockSize) where used.insert(base).inserted {
+            return base
         }
         throw PortAllocationError(
             reason: "no free \(blockSize)-port block in \(rangeStart)...\(rangeEnd)"

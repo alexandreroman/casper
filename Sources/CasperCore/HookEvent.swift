@@ -15,10 +15,7 @@ public enum HookParseError: Error, Equatable {
 
 public enum HookEventParser {
     public static func parse(_ data: Data) throws -> HookEvent {
-        guard
-            let object = try? JSONSerialization.jsonObject(with: data),
-            let obj = object as? [String: Any]
-        else {
+        guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             throw HookParseError.invalidJSON
         }
         guard let name = obj["hook_event_name"] as? String else {
@@ -40,7 +37,7 @@ public enum HookEventParser {
             }
             let toolInput = obj["tool_input"] as? [String: Any] ?? [:]
             let rawTodos = toolInput["todos"] as? [[String: Any]] ?? []
-            let todos = rawTodos.map { item -> Todo in
+            let todos = rawTodos.map { item in
                 let content = item["content"] as? String ?? ""
                 let statusRaw = item["status"] as? String ?? "pending"
                 return Todo(content: content, status: TodoStatus(rawValue: statusRaw) ?? .pending)
