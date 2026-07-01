@@ -30,7 +30,7 @@ public enum ClaudeCodeAdapter {
     }
 
     /// Environment injected into every terminal surface of a workspace so that
-    /// `casper hook` can reach the app and the agent can bind its reserved
+    /// `casper hooks feed` can reach the app and the agent can bind its reserved
     /// ports. `CASPER_PORT` is the block base; `CASPER_PORT_0…9` expose the
     /// whole reserved block for convenience.
     public static func surfaceEnvironment(

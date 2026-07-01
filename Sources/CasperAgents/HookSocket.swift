@@ -2,7 +2,7 @@ import Foundation
 import Network
 import os
 
-/// Listens on a Unix-domain socket for `HookMessage`s sent by `casper hook`.
+/// Listens on a Unix-domain socket for `HookMessage`s sent by `casper hooks feed`.
 /// One connection carries one message (client writes JSON, then half-closes);
 /// the server reads to EOF, decodes, and invokes `onMessage`.
 ///
@@ -90,7 +90,7 @@ public struct HookSocketError: Error, Equatable {
 }
 
 /// Sends a single `HookMessage` to the app's Unix-domain socket and returns once
-/// the write completes. Synchronous by design: `casper hook` is short-lived.
+/// the write completes. Synchronous by design: `casper hooks feed` is short-lived.
 public enum HookSocketClient {
     public static func send(
         _ message: HookMessage, toSocketAt socketPath: String,
