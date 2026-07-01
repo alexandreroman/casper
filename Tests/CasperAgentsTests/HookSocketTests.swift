@@ -20,4 +20,31 @@ final class HookSocketTests: XCTestCase {
         try server2.start()
         server2.stop()
     }
+
+    func testClientToServerRoundTripDeliversMessage() throws {
+        let path = tempSocketPath()
+        let server = HookSocketServer(socketPath: path)
+        let received = XCTestExpectation(description: "message received")
+        let sentId = UUID()
+        server.onMessage = { message in
+            if message.workspaceId == sentId { received.fulfill() }
+        }
+        try server.start()
+        defer { server.stop() }
+
+        let payload = Data(#"{"hook_event_name":"SessionStart"}"#.utf8)
+        try HookSocketClient.send(
+            HookMessage(workspaceId: sentId, hookPayload: payload),
+            toSocketAt: path)
+
+        wait(for: [received], timeout: 5)
+    }
+
+    func testClientThrowsWhenSocketMissing() {
+        let message = HookMessage(workspaceId: UUID(), hookPayload: Data())
+        XCTAssertThrowsError(
+            try HookSocketClient.send(
+                message, toSocketAt: "/tmp/casper-nope-\(UUID().uuidString).sock",
+                timeout: 1))
+    }
 }

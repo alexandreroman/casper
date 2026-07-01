@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import os
 
 /// Listens on a Unix-domain socket for `HookMessage`s sent by `casper hook`.
 /// One connection carries one message (client writes JSON, then half-closes);
@@ -79,5 +80,60 @@ public final class HookSocketServer: @unchecked Sendable {
               let message = try? JSONDecoder().decode(HookMessage.self, from: buffer)
         else { return }
         onMessage?(message)
+    }
+}
+
+/// A transport failure sending a hook message.
+public struct HookSocketError: Error, Equatable {
+    public let reason: String
+    public init(reason: String) { self.reason = reason }
+}
+
+/// Sends a single `HookMessage` to the app's Unix-domain socket and returns once
+/// the write completes. Synchronous by design: `casper hook` is short-lived.
+public enum HookSocketClient {
+    public static func send(
+        _ message: HookMessage, toSocketAt socketPath: String,
+        timeout: TimeInterval = 2
+    ) throws {
+        let data = try JSONEncoder().encode(message)
+
+        let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
+        let connection = NWConnection(
+            to: NWEndpoint.unix(path: socketPath), using: params)
+        let queue = DispatchQueue(label: "casper.hook-socket.client")
+        let done = DispatchSemaphore(value: 0)
+        // The completion/state handlers below are `@Sendable`, so a plain
+        // `var sendError` can't be mutated across them. `OSAllocatedUnfairLock`
+        // is itself `Sendable`, so it threads the result out without resorting
+        // to `@unchecked Sendable` (see the CasperAgents Swift 6 concurrency
+        // convention: prefer restructuring over a second unchecked escape hatch).
+        let sendError = OSAllocatedUnfairLock<Error?>(initialState: nil)
+
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                connection.send(content: data, completion: .contentProcessed { error in
+                    sendError.withLock { $0 = error }
+                    connection.cancel()
+                    done.signal()
+                })
+            case .failed(let error):
+                sendError.withLock { $0 = error }
+                connection.cancel()
+                done.signal()
+            default:
+                break
+            }
+        }
+        connection.start(queue: queue)
+
+        if done.wait(timeout: .now() + timeout) == .timedOut {
+            connection.cancel()
+            throw HookSocketError(reason: "timed out sending to \(socketPath)")
+        }
+        if let error = sendError.withLock({ $0 }) {
+            throw HookSocketError(reason: "\(error)")
+        }
     }
 }
