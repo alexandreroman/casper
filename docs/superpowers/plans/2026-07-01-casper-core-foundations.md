@@ -17,7 +17,7 @@
 - **Todo status raw values** match Claude Code exactly: `pending`, `in_progress`, `completed`.
 - **Port policy:** block size 10; default range `40000…49990` inclusive of bases (base ≡ `rangeStart (mod 10)`).
 - All public types that carry only value data are `Sendable` and `Codable` where they belong to `Session`.
-- **Testing & CI:** tests use **XCTest** and are executed by **GitHub Actions CI on `macos-14`** (Xcode present), via `swift test`. The local dev machine has **Command Line Tools only** and **cannot run `swift test`** (XCTest/Swift Testing ship with Xcode). Therefore, in every task below, the `swift test --filter …` steps are the **CI gate**; the **local gate is `swift build`** confirming the `CasperCore` library target compiles. CI workflow lives at `.github/workflows/ci.yml`. Test-green evidence is produced by CI once the repo is pushed (deferred per user's "prepare without pushing" choice).
+- **Testing & CI:** tests use **XCTest**, run by **GitHub Actions CI on `macos-14`** (Xcode present) and **locally** (Xcode 26.6 now installed). Locally, select the Xcode toolchain — either globally with `sudo xcode-select -s /Applications/Xcode.app`, or per-command with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test`. **Do not run `swift test` with the Command Line Tools' `swift` binary** — it half-loads XCTest (`XCTestCase` resolves but `XCTAssert*` don't) and mixing toolchains corrupts `.build` (run `rm -rf .build` if it happens). Every XCTest test file that uses Foundation types (`URL`, `Data`, `FileManager`, `UUID`, `JSONEncoder`) **must `import Foundation` explicitly** — recent SDKs no longer re-export it through `import XCTest`. CI workflow lives at `.github/workflows/ci.yml`.
 
 ## Prerequisites
 
@@ -138,6 +138,7 @@ git commit -m "chore: scaffold CasperCore SwiftPM package"
 `Tests/CasperCoreTests/ModelsTests.swift`:
 
 ```swift
+import Foundation
 import XCTest
 @testable import CasperCore
 
@@ -551,6 +552,7 @@ Note: debouncing of saves is an app-level concern (later plan); the store itself
 `Tests/CasperCoreTests/SessionStoreTests.swift`:
 
 ```swift
+import Foundation
 import XCTest
 @testable import CasperCore
 
@@ -679,6 +681,7 @@ git commit -m "feat: add Codable SessionStore with atomic persistence"
 `Tests/CasperCoreTests/HookEventParserTests.swift`:
 
 ```swift
+import Foundation
 import XCTest
 @testable import CasperCore
 

@@ -155,6 +155,13 @@ AgentStateStore  (per-workspace state machine + todo list)
 
 - **State** derives from `SessionStart` (→ running/idle), `Notification`
   (→ waiting, carries a status message), `Stop` (→ done).
+- **`unknown` and `error` states are produced by the socket/heartbeat layer, not
+  the pure reducer.** The `AgentStateReducer` (Plan 1 / CasperCore) only maps the
+  four incoming hook events above; it cannot detect "no hooks ever arrived" (a
+  hookless agent stays `idle`) or a crashed hook pipe. Detecting those — emitting
+  `unknown` on a heartbeat timeout and `error` on a broken socket — is the
+  responsibility of the socket owner in **Plan 3 (CLI + Agents)**. This is a
+  deliberate, documented deferral, not a gap in the core.
 - **Progress** derives from `PostToolUse` filtered on `TodoWrite`: the payload's
   `todos[]` (each with `content` + `status`) is stored per workspace;
   progress = `completed / total`, current = the `in_progress` item.
