@@ -1,0 +1,14 @@
+## Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+## macOS
+.DS_Store
+
+## Xcode (later plans)
+*.xcodeproj/xcuserdata/
+DerivedData/
+
+## SDD scratch (controller-only, not part of the codebase)
+.superpowers/
