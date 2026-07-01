@@ -49,4 +49,38 @@ public final class Repository {
         guard let cString = git_repository_workdir(pointer) else { return nil }
         return String(cString: cString)
     }
+
+    /// Short name of the branch HEAD currently points to.
+    public func headBranchName() throws -> String {
+        var head: OpaquePointer?
+        try gitCheck(git_repository_head(&head, pointer))
+        defer { git_reference_free(head) }
+        var shorthand: UnsafePointer<CChar>?
+        shorthand = git_reference_shorthand(head)
+        guard let shorthand else {
+            throw GitError(code: -1, message: "HEAD has no shorthand name")
+        }
+        return String(cString: shorthand)
+    }
+
+    /// Whether a local branch named `name` exists.
+    public func branchExists(_ name: String) throws -> Bool {
+        var ref: OpaquePointer?
+        let code = git_branch_lookup(&ref, pointer, name, GIT_BRANCH_LOCAL)
+        defer { git_reference_free(ref) }
+        if code == GIT_ENOTFOUND.rawValue { return false }
+        try gitCheck(code)
+        return true
+    }
+
+    /// Whether local branch `name` is checked out in any working tree. Returns
+    /// false if the branch does not exist.
+    public func isBranchCheckedOut(_ name: String) throws -> Bool {
+        var ref: OpaquePointer?
+        let code = git_branch_lookup(&ref, pointer, name, GIT_BRANCH_LOCAL)
+        defer { git_reference_free(ref) }
+        if code == GIT_ENOTFOUND.rawValue { return false }
+        try gitCheck(code)
+        return git_branch_is_checked_out(ref) == 1
+    }
 }

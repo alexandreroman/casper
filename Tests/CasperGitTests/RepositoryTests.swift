@@ -47,4 +47,24 @@ final class RepositoryTests: XCTestCase {
             URL(fileURLWithPath: repo.workdirPath!).standardizedFileURL.path,
             tempDir.standardizedFileURL.path)
     }
+
+    func testHeadBranchNameAfterFixture() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+        let branch = try repo.headBranchName()
+        XCTAssertFalse(branch.isEmpty)
+    }
+
+    func testBranchExists() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+        let head = try repo.headBranchName()
+        XCTAssertTrue(try repo.branchExists(head))
+        XCTAssertFalse(try repo.branchExists("no-such-branch"))
+    }
+
+    func testHeadBranchIsCheckedOut() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+        let head = try repo.headBranchName()
+        XCTAssertTrue(try repo.isBranchCheckedOut(head))
+        XCTAssertFalse(try repo.isBranchCheckedOut("no-such-branch"))
+    }
 }
