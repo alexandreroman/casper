@@ -69,6 +69,35 @@ final class WorktreeManagerTests: XCTestCase {
                 (error as? WorktreeError)?.reason, .repositoryNotFound)
         }
     }
+
+    func testListReflectsCreatedWorktrees() throws {
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature",
+            worktreePath: wtPath, base: nil)
+
+        let listed = try WorktreeManager.list(repoPath: repoDir.path)
+        XCTAssertEqual(listed.map(\.name), ["feature"])
+    }
+
+    func testRemoveDeletesWorktree() throws {
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature",
+            worktreePath: wtPath, base: nil)
+
+        try WorktreeManager.remove(repoPath: repoDir.path, name: "feature")
+
+        XCTAssertEqual(try WorktreeManager.list(repoPath: repoDir.path).count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+    }
+
+    func testIsCleanReflectsWorkingTree() throws {
+        XCTAssertTrue(try WorktreeManager.isClean(repoPath: repoDir.path))
+        let extra = repoDir.appendingPathComponent("dirty.txt")
+        try "x".write(to: extra, atomically: true, encoding: .utf8)
+        XCTAssertFalse(try WorktreeManager.isClean(repoPath: repoDir.path))
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`

@@ -64,4 +64,41 @@ public enum WorktreeManager {
             name: info.name, path: info.path, branch: name,
             repoPath: repo.workdirPath ?? repoPath)
     }
+
+    /// List worktrees of the repository at `repoPath`.
+    public static func list(repoPath: String) throws -> [WorktreeInfo] {
+        let repo: Repository
+        do { repo = try Repository.open(atPath: repoPath) }
+        catch { throw WorktreeError(.repositoryNotFound) }
+
+        do {
+            return try repo.worktreeNames().map { try repo.worktreeInfo(name: $0) }
+        } catch let gitError as GitError {
+            throw WorktreeError(.gitFailure(gitError.message))
+        }
+    }
+
+    /// Remove the worktree named `name` from the repository at `repoPath`.
+    public static func remove(repoPath: String, name: String) throws {
+        let repo: Repository
+        do { repo = try Repository.open(atPath: repoPath) }
+        catch { throw WorktreeError(.repositoryNotFound) }
+
+        do { try repo.pruneWorktree(name: name) }
+        catch let gitError as GitError {
+            throw WorktreeError(.gitFailure(gitError.message))
+        }
+    }
+
+    /// Whether the working tree of the repository at `repoPath` is clean.
+    public static func isClean(repoPath: String) throws -> Bool {
+        let repo: Repository
+        do { repo = try Repository.open(atPath: repoPath) }
+        catch { throw WorktreeError(.repositoryNotFound) }
+
+        do { return try repo.isClean() }
+        catch let gitError as GitError {
+            throw WorktreeError(.gitFailure(gitError.message))
+        }
+    }
 }
