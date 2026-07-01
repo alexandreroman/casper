@@ -51,27 +51,15 @@ tasks:
 
 ## Memory
 
-Durable project context lives **in this repo** under [`docs/memory/`](docs/memory/),
-one Markdown file per fact. There is **no external memory store** — do not read
-or write `~/.claude/.../memory`; this section is the index and is loaded with
-these instructions every session. Read the relevant entry when it applies. When
-something durable emerges (a decision, a workflow preference, corrective
-feedback, a hard-won reference detail), add or update a file in `docs/memory/`
-and add a one-line pointer to the index below. Don't duplicate what the repo
-already records (code, git history, the design spec).
-
-Entries link each other with `[[slug]]` (the file's `name:`). Index:
-
-- [project](docs/memory/project.md) — what Casper is, architecture, 5-plan roadmap, current status
-- [dependency-policy](docs/memory/dependency-policy.md) — native-first, minimal deps; only GhosttyKit + swift-argument-parser + libgit2
-- [libgit2-swift-interop](docs/memory/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
-- [test-toolchain](docs/memory/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
-- [git-workflow](docs/memory/git-workflow.md) — get explicit authorization before git init/commit/push; commit identity
-- [commit-message-style](docs/memory/commit-message-style.md) — verb + action performed, always in English
-- [english-only](docs/memory/english-only.md) — all generated text (docs, code, UI) must be in English
-- [swift6-network-concurrency](docs/memory/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline
-- [hooks-install-once](docs/memory/hooks-install-once.md) — `casper hooks setup` per worktree, not per terminal; `hooks feed` relays
-- [casper-cli-availability](docs/memory/casper-cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
+The **single** project-memory store is [`.claude/memory/`](.claude/memory/), with
+its index at [`.claude/memory/MEMORY.md`](.claude/memory/MEMORY.md) — one Markdown
+file per fact, cross-linked with `[[slug]]`. There is **no memory anywhere else**
+(not in `docs/`, not in `~/.claude`). Read `MEMORY.md` at the start of work and
+the relevant entry when it applies. When something durable emerges (a decision,
+a workflow preference, corrective feedback, a hard-won reference detail), add or
+update a file in `.claude/memory/` and add a one-line pointer to `MEMORY.md`.
+Don't duplicate what the repo already records (code, git history, the design
+spec).
 
 ## Conventions
 
