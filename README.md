@@ -6,9 +6,10 @@ agents (Claude Code first). It tracks each agent's state and task progress,
 reserves network ports per workspace, and bundles a native browser and diff
 viewer.
 
-> **Status:** early development. Plan 1 (`CasperCore`, the pure-Swift core) is
-> implemented and tested; the terminal UI, Git layer, and agent integration are
-> on the roadmap. See [Project status](#project-status).
+> **Status:** early development. Plans 1–3 — `CasperCore`, `CasperGit`, and
+> the `CasperAgents`/`CasperCLI` hook pipeline — are implemented and tested;
+> the terminal UI and app shell are on the roadmap. See
+> [Project status](#project-status).
 
 ## Features
 
@@ -41,8 +42,8 @@ viewer.
 ```bash
 git clone <repo-url> casper
 cd casper
-make build   # compile the CasperCore library
-make test    # run the test suite (30 tests today)
+make build   # compile the library and CLI
+make test    # run the test suite (89 tests today)
 ```
 
 ## Usage
@@ -60,13 +61,17 @@ make clean    # remove build artifacts
 
 ## Configuration
 
-Casper injects the following environment variables into each terminal surface
-(agent integration, planned for the CLI + Agents milestone):
+Casper wires up Claude Code hooks like this: run
+`casper hooks setup [<worktree>]` once per worktree to install
+`.claude/settings.local.json`, which routes every hook event to
+`casper hooks feed` on stdin. Casper then injects the following environment
+variables into each terminal surface so `hooks feed` can relay events back to
+the app:
 
 | Variable              | Description                                      |
 | --------------------- | ------------------------------------------------ |
 | `CASPER_PORT`         | Base of the workspace's reserved 10-port block   |
-| `CASPER_SOCKET`       | Unix socket the `casper hook` command reports to |
+| `CASPER_SOCKET`       | Unix socket `casper hooks feed` relays events to |
 | `CASPER_WORKSPACE_ID` | Identifies the workspace emitting hook events    |
 
 ## Architecture
@@ -91,9 +96,9 @@ flowchart TD
 | `CasperCore`    | Models, session store, port allocator, hook parsing, agent-state reducer (pure Swift) |
 | `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status) |
 | `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout    |
-| `CasperAgents`  | Claude Code adapter + hook `settings.json` generation   |
+| `CasperAgents`  | Claude Code adapter (`settings.json` generation) + hook socket server |
 | `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views        |
-| `CasperCLI`     | `casper` subcommands (built on swift-argument-parser)   |
+| `CasperCLI`     | `casper` subcommands: `hooks setup` / `hooks feed` (swift-argument-parser) |
 
 The full design and per-milestone plans live in
 [`docs/superpowers/`](./docs/superpowers/) — start with the
@@ -101,13 +106,13 @@ The full design and per-milestone plans live in
 
 ## Project status
 
-| Milestone                      | State          |
-| ------------------------------ | -------------- |
-| **1. CasperCore** (pure core)  | ✅ implemented, 30 tests green |
-| 2. CasperGit (libgit2)         | planned        |
-| 3. CLI + Agents (socket/hooks) | planned        |
-| 4. CasperGhostty (embedding)   | planned        |
-| 5. CasperUI + app              | planned        |
+| Milestone                          | State                         |
+| ---------------------------------- | ----------------------------- |
+| **1. CasperCore** (pure core)      | ✅ implemented                 |
+| **2. CasperGit** (libgit2)         | ✅ implemented                 |
+| **3. CLI + Agents** (socket/hooks) | ✅ implemented, 89 tests green |
+| 4. CasperGhostty (embedding)       | planned                       |
+| 5. CasperUI + app                  | planned                       |
 
 Tests also run in CI via GitHub Actions on `macos-14`
 ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
