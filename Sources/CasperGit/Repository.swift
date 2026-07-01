@@ -83,4 +83,69 @@ public final class Repository {
         try gitCheck(code)
         return git_branch_is_checked_out(ref) == 1
     }
+
+    /// Working-tree status entries (index + worktree), untracked files included.
+    public func status() throws -> [FileStatus] {
+        var options = git_status_options()
+        git_status_options_init(&options, UInt32(GIT_STATUS_OPTIONS_VERSION))
+        options.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR
+        options.flags =
+            GIT_STATUS_OPT_INCLUDE_UNTRACKED.rawValue
+            | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS.rawValue
+
+        var list: OpaquePointer?
+        try gitCheck(git_status_list_new(&list, pointer, &options))
+        defer { git_status_list_free(list) }
+
+        let count = git_status_list_entrycount(list)
+        var result: [FileStatus] = []
+        result.reserveCapacity(count)
+        for index in 0..<count {
+            guard let entry = git_status_byindex(list, index) else { continue }
+            let bits = entry.pointee.status
+            let delta = entry.pointee.index_to_workdir ?? entry.pointee.head_to_index
+            let path: String
+            if let delta, let newPath = delta.pointee.new_file.path {
+                path = String(cString: newPath)
+            } else {
+                continue
+            }
+            result.append(FileStatus(
+                path: path,
+                isNew: bits.rawValue & GIT_STATUS_INDEX_NEW.rawValue != 0,
+                isModified: bits.rawValue
+                    & (GIT_STATUS_INDEX_MODIFIED.rawValue
+                       | GIT_STATUS_WT_MODIFIED.rawValue) != 0,
+                isDeleted: bits.rawValue
+                    & (GIT_STATUS_INDEX_DELETED.rawValue
+                       | GIT_STATUS_WT_DELETED.rawValue) != 0,
+                isUntracked: bits.rawValue & GIT_STATUS_WT_NEW.rawValue != 0))
+        }
+        return result
+    }
+
+    /// Whether the working tree and index are clean (no changes, no untracked).
+    public func isClean() throws -> Bool {
+        try status().isEmpty
+    }
+}
+
+/// Per-path working-tree status, reduced to the flags Casper needs.
+public struct FileStatus: Equatable, Sendable {
+    public let path: String
+    public let isNew: Bool
+    public let isModified: Bool
+    public let isDeleted: Bool
+    public let isUntracked: Bool
+
+    public init(
+        path: String, isNew: Bool, isModified: Bool,
+        isDeleted: Bool, isUntracked: Bool
+    ) {
+        self.path = path
+        self.isNew = isNew
+        self.isModified = isModified
+        self.isDeleted = isDeleted
+        self.isUntracked = isUntracked
+    }
 }

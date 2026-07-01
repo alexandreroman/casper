@@ -67,4 +67,22 @@ final class RepositoryTests: XCTestCase {
         XCTAssertTrue(try repo.isBranchCheckedOut(head))
         XCTAssertFalse(try repo.isBranchCheckedOut("no-such-branch"))
     }
+
+    func testCleanRepositoryHasNoStatusEntries() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+        XCTAssertTrue(try repo.isClean())
+        XCTAssertEqual(try repo.status(), [])
+    }
+
+    func testUntrackedFileMakesRepositoryDirty() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+        let extra = tempDir.appendingPathComponent("scratch.txt")
+        try "x".write(to: extra, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(try repo.isClean())
+        let status = try repo.status()
+        XCTAssertEqual(status.count, 1)
+        XCTAssertEqual(status.first?.path, "scratch.txt")
+        XCTAssertTrue(status.first?.isUntracked ?? false)
+    }
 }
