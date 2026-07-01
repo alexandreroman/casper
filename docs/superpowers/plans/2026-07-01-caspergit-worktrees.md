@@ -2,6 +2,46 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: ✅ COMPLETE — 2026-07-01.** All 12 tasks implemented (subagent-driven,
+> one `code-writer` per task), reviewed, and committed on `main`. **56 XCTest
+> tests pass** (`make all`, verified). Two per-cluster `code-reviewer` gates plus a
+> final whole-branch review (verdict: **ready to merge**, no Critical/Important
+> findings). Repo is **local-only — not pushed** to GitHub yet.
+>
+> **Plan-2 commits:** `6b275f8` (Clibgit2 system module) → `5fdf0af` (libgit2 build
+> prerequisite docs); the code range since Plan 1 is `c1a9e6f..5fdf0af`. Plan-doc
+> corrections: `0aa382f`, `a9362ff`.
+>
+> **Deviations from the plan as written (all applied, verified green):**
+> - **Variadic C functions:** Swift cannot import libgit2's `_v` variants, so the
+>   test fixtures use array-based `git_commit_create(..., tree, 0, nil)` instead of
+>   `git_commit_create_v`. Plan snippets were corrected to match. See
+>   [[libgit2-swift-interop]].
+> - **`gitStringArray` leak fix:** the `defer { git_strarray_dispose }` was moved
+>   before the throwing `body()` call (found by review, `1aa4b5f`); `GitError` was
+>   made `Sendable`.
+> - **Task 1 placeholder:** SwiftPM 6 rejects an empty product-referenced target,
+>   so a comment-only `Sources/CasperGit/CasperGit.swift` was added in Task 1 and
+>   deleted in Task 2 when the first real source landed.
+> - **Test commit helper:** `CasperCoreTests` cannot see CasperGit's internal
+>   `gitCheck`, so its copied `makeInitialCommit` uses a local check (documented
+>   intentional duplication — test targets can't share helpers).
+> - Added coverage from review: `addWorktree(basedOn:)` path and broken-worktree
+>   validation (`3ecb0e5`); `FileStatus` doc note that its flags are a reduced set.
+>
+> **Deferred v1 follow-ups (documented, non-blocking — candidates for a later plan):**
+> - `WorktreeManager.remove` prunes the worktree but not its branch, so recreating
+>   a same-named workspace surfaces an opaque `.gitFailure` (map to a clear reason
+>   or delete the branch on remove).
+> - `git_worktree_is_locked` negative (error) return is collapsed into
+>   `isLocked = false`; no v1 consumer branches on it.
+> - libgit2 is unpinned in brew/CI; `WorktreeManager` uses `Repository.open`
+>   (exact root) rather than `discover`; `CreatedWorktree.repoPath` may carry
+>   libgit2's trailing slash.
+>
+> **Next milestone:** Plan 3 — CLI + Agents (`casper` binary, `casper hook`, Unix
+> socket, Claude Code `settings.json` generation, `unknown`/`error` states).
+
 **Goal:** Build `CasperGit`, an in-house thin Swift wrapper over the libgit2 C
 API (repository open/init, branch queries, worktree add/list/lookup/prune,
 status), and `WorktreeManager` in `CasperCore` that orchestrates those
