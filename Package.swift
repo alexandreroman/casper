@@ -20,6 +20,9 @@ let package = Package(
             name: "CasperGitTests",
             dependencies: ["CasperGit", "Clibgit2"]
         ),
-        .testTarget(name: "CasperCoreTests", dependencies: ["CasperCore"]),
+        .testTarget(
+            name: "CasperCoreTests",
+            dependencies: ["CasperCore", "Clibgit2"]
+        ),
     ]
 )
