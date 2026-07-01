@@ -131,6 +131,12 @@ public final class Repository {
 }
 
 /// Per-path working-tree status, reduced to the flags Casper needs.
+///
+/// The four booleans are not exhaustive: merge-conflicted paths
+/// (`GIT_STATUS_CONFLICTED`), type changes, and renames are represented only by
+/// the entry being present with all four flags `false`. `status()`/`isClean()`
+/// still report such a tree as dirty; consumers must not assume these flags
+/// cover every change kind.
 public struct FileStatus: Equatable, Sendable {
     public let path: String
     public let isNew: Bool
