@@ -49,6 +49,26 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         XCTAssertNil(env["CASPER_PORT_10"])
     }
 
+    func testSurfaceEnvironmentPrependsCasperDirectoryToPath() {
+        let env = ClaudeCodeAdapter.surfaceEnvironment(
+            socketPath: "/tmp/casper.sock", workspaceId: UUID(), portBase: 40000,
+            casperDirectory: "/Apps/Casper.app/Contents/MacOS", basePath: "/usr/bin:/bin")
+        XCTAssertEqual(env["PATH"], "/Apps/Casper.app/Contents/MacOS:/usr/bin:/bin")
+    }
+
+    func testSurfaceEnvironmentPathIsJustDirectoryWhenNoBasePath() {
+        let env = ClaudeCodeAdapter.surfaceEnvironment(
+            socketPath: "/tmp/casper.sock", workspaceId: UUID(), portBase: 40000,
+            casperDirectory: "/Apps/Casper.app/Contents/MacOS")
+        XCTAssertEqual(env["PATH"], "/Apps/Casper.app/Contents/MacOS")
+    }
+
+    func testSurfaceEnvironmentOmitsPathWhenNoCasperDirectory() {
+        let env = ClaudeCodeAdapter.surfaceEnvironment(
+            socketPath: "/tmp/casper.sock", workspaceId: UUID(), portBase: 40000)
+        XCTAssertNil(env["PATH"])
+    }
+
     func testInstallWritesSettingsLocalJSON() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-install-\(UUID().uuidString)")

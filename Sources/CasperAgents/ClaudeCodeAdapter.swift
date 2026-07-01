@@ -33,8 +33,21 @@ public enum ClaudeCodeAdapter {
     /// `casper hooks feed` can reach the app and the agent can bind its reserved
     /// ports. `CASPER_PORT` is the block base; `CASPER_PORT_0…9` expose the
     /// whole reserved block for convenience.
+    ///
+    /// When `casperDirectory` is given, it is prepended to `PATH` so the
+    /// relative hook command `casper hooks feed` (written into
+    /// `settings.local.json`) resolves only inside terminals Casper opens —
+    /// the `casper` binary is deliberately not installed globally. Plan 5
+    /// passes the app bundle's executable directory as `casperDirectory` and
+    /// the terminal's inherited `PATH` as `basePath`. This function stays
+    /// pure: it never reads `ProcessInfo` itself, only the values passed in.
     public static func surfaceEnvironment(
-        socketPath: String, workspaceId: UUID, portBase: Int, blockSize: Int = 10
+        socketPath: String,
+        workspaceId: UUID,
+        portBase: Int,
+        blockSize: Int = 10,
+        casperDirectory: String? = nil,
+        basePath: String? = nil
     ) -> [String: String] {
         var env: [String: String] = [
             "CASPER_SOCKET": socketPath,
@@ -43,6 +56,13 @@ public enum ClaudeCodeAdapter {
         ]
         for offset in 0..<blockSize {
             env["CASPER_PORT_\(offset)"] = String(portBase + offset)
+        }
+        if let casperDirectory {
+            if let basePath, !basePath.isEmpty {
+                env["PATH"] = "\(casperDirectory):\(basePath)"
+            } else {
+                env["PATH"] = casperDirectory
+            }
         }
         return env
     }
