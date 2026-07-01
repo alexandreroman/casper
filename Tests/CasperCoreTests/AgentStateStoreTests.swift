@@ -49,4 +49,29 @@ final class AgentStateStoreTests: XCTestCase {
         store.handle(.sessionStart, workspaceId: ws.id, focused: true)
         XCTAssertEqual(changed?.agentState, .running)
     }
+
+    func testMarkUnknownSetsUnknownState() {
+        let ws = makeWorkspace()
+        let store = AgentStateStore(workspaces: [ws])
+        store.markUnknown(workspaceId: ws.id)
+        XCTAssertEqual(store.workspace(id: ws.id)?.agentState, .unknown)
+    }
+
+    func testMarkErrorSetsErrorStateAndFiresOnChange() {
+        let ws = makeWorkspace()
+        let store = AgentStateStore(workspaces: [ws])
+        var changed: Workspace?
+        store.onChange = { changed = $0 }
+        store.markError(workspaceId: ws.id)
+        XCTAssertEqual(store.workspace(id: ws.id)?.agentState, .error)
+        XCTAssertEqual(changed?.agentState, .error)
+    }
+
+    func testMarkUnknownForMissingWorkspaceIsNoOp() {
+        let store = AgentStateStore(workspaces: [makeWorkspace()])
+        var fired = false
+        store.onChange = { _ in fired = true }
+        store.markUnknown(workspaceId: UUID())
+        XCTAssertFalse(fired)
+    }
 }

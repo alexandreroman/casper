@@ -32,4 +32,22 @@ public final class AgentStateStore {
         onChange?(workspaces[index])
         return effect
     }
+
+    /// Transition to `unknown` — no hook activity within the heartbeat window.
+    /// Intended to be driven by `HeartbeatMonitor` from the app's timer (Plan 5).
+    public func markUnknown(workspaceId: UUID) {
+        setState(.unknown, workspaceId: workspaceId)
+    }
+
+    /// Transition to `error` — the socket owner detected a broken transport.
+    public func markError(workspaceId: UUID) {
+        setState(.error, workspaceId: workspaceId)
+    }
+
+    private func setState(_ state: AgentState, workspaceId: UUID) {
+        guard let index = workspaces.firstIndex(where: { $0.id == workspaceId })
+        else { return }
+        workspaces[index].agentState = state
+        onChange?(workspaces[index])
+    }
 }
