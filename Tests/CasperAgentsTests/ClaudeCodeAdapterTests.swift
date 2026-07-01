@@ -48,4 +48,23 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         XCTAssertEqual(env["CASPER_PORT_9"], "40019")
         XCTAssertNil(env["CASPER_PORT_10"])
     }
+
+    func testInstallWritesSettingsLocalJSON() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-install-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path)
+
+        let path = ClaudeCodeAdapter.settingsPath(inWorktreeAt: dir.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        XCTAssertTrue(path.hasSuffix(".claude/settings.local.json"))
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNotNil(root["hooks"])
+    }
 }

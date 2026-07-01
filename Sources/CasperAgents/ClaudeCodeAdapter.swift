@@ -46,4 +46,26 @@ public enum ClaudeCodeAdapter {
         }
         return env
     }
+
+    /// The path to the generated settings file inside a worktree.
+    public static func settingsPath(inWorktreeAt worktreePath: String) -> String {
+        URL(fileURLWithPath: worktreePath, isDirectory: true)
+            .appendingPathComponent(".claude/settings.local.json").path
+    }
+
+    /// Write `.claude/settings.local.json` into the worktree, creating the
+    /// `.claude` directory if needed. Uses the project-local (uncommitted)
+    /// settings file so the user's repo is never polluted.
+    public static func install(
+        intoWorktreeAt worktreePath: String, hookCommand: String = "casper hook"
+    ) throws {
+        let claudeDir = URL(fileURLWithPath: worktreePath, isDirectory: true)
+            .appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: claudeDir, withIntermediateDirectories: true)
+        let data = try settingsJSON(hookCommand: hookCommand)
+        try data.write(
+            to: claudeDir.appendingPathComponent("settings.local.json"),
+            options: .atomic)
+    }
 }
