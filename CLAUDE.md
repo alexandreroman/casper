@@ -60,13 +60,12 @@ handling — **never silently override a conflicting note; surface it and get
 explicit confirmation first**. Don't store what the repo already records (code,
 git history, the design spec).
 
-**Project override (takes precedence over the skill's defaults):** this project's
-**single** memory directory is [`.claude/memory/`](.claude/memory/) — *not* the
-skill's default `.claude/project-memory/`. Its index is
-[`.claude/memory/MEMORY.md`](.claude/memory/MEMORY.md) and fact files live under
-[`.claude/memory/references/`](.claude/memory/references/). Read `MEMORY.md` at
-the start of work. There is **no memory anywhere else** (not in `docs/`, not in
-`~/.claude`).
+Memory lives in the skill's default location: the index is
+[`.claude/project-memory/MEMORY.md`](.claude/project-memory/MEMORY.md) and fact
+files live under
+[`.claude/project-memory/references/`](.claude/project-memory/references/). Read
+`MEMORY.md` at the start of work. There is **no memory anywhere else** (not in
+`docs/`, not in `~/.claude`).
 
 ## Conventions
 
