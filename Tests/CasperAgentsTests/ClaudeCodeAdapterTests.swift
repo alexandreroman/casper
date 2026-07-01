@@ -31,4 +31,21 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         XCTAssertEqual(inner.first?["type"] as? String, "command")
         XCTAssertEqual(inner.first?["command"] as? String, "casper hook")
     }
+
+    func testSurfaceEnvironmentCoreVariables() {
+        let id = UUID()
+        let env = ClaudeCodeAdapter.surfaceEnvironment(
+            socketPath: "/tmp/casper.sock", workspaceId: id, portBase: 40010)
+        XCTAssertEqual(env["CASPER_SOCKET"], "/tmp/casper.sock")
+        XCTAssertEqual(env["CASPER_WORKSPACE_ID"], id.uuidString)
+        XCTAssertEqual(env["CASPER_PORT"], "40010")
+    }
+
+    func testSurfaceEnvironmentExposesTheWholeBlock() {
+        let env = ClaudeCodeAdapter.surfaceEnvironment(
+            socketPath: "/tmp/casper.sock", workspaceId: UUID(), portBase: 40010)
+        XCTAssertEqual(env["CASPER_PORT_0"], "40010")
+        XCTAssertEqual(env["CASPER_PORT_9"], "40019")
+        XCTAssertNil(env["CASPER_PORT_10"])
+    }
 }

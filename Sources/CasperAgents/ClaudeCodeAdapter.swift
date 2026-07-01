@@ -28,4 +28,22 @@ public enum ClaudeCodeAdapter {
         return try JSONSerialization.data(
             withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
     }
+
+    /// Environment injected into every terminal surface of a workspace so that
+    /// `casper hook` can reach the app and the agent can bind its reserved
+    /// ports. `CASPER_PORT` is the block base; `CASPER_PORT_0…9` expose the
+    /// whole reserved block for convenience.
+    public static func surfaceEnvironment(
+        socketPath: String, workspaceId: UUID, portBase: Int, blockSize: Int = 10
+    ) -> [String: String] {
+        var env: [String: String] = [
+            "CASPER_SOCKET": socketPath,
+            "CASPER_WORKSPACE_ID": workspaceId.uuidString,
+            "CASPER_PORT": String(portBase),
+        ]
+        for offset in 0..<blockSize {
+            env["CASPER_PORT_\(offset)"] = String(portBase + offset)
+        }
+        return env
+    }
 }
