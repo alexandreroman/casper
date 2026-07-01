@@ -29,7 +29,7 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         let stop = try XCTUnwrap(hooks["Stop"] as? [[String: Any]])
         let inner = try XCTUnwrap(stop.first?["hooks"] as? [[String: Any]])
         XCTAssertEqual(inner.first?["type"] as? String, "command")
-        XCTAssertEqual(inner.first?["command"] as? String, "casper hook")
+        XCTAssertEqual(inner.first?["command"] as? String, "casper hooks feed")
     }
 
     func testSurfaceEnvironmentCoreVariables() {

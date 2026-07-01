@@ -7,7 +7,7 @@ public enum ClaudeCodeAdapter {
     /// The `settings.local.json` body wiring Claude Code hooks to `hookCommand`.
     /// One command serves every event; Claude Code sends the hook JSON (with
     /// `hook_event_name`) on stdin. `PostToolUse` is filtered to `TodoWrite`.
-    public static func settingsJSON(hookCommand: String = "casper hook") throws -> Data {
+    public static func settingsJSON(hookCommand: String = "casper hooks feed") throws -> Data {
         func entry(matcher: String?) -> [String: Any] {
             var e: [String: Any] = [
                 "hooks": [["type": "command", "command": hookCommand]],
@@ -57,7 +57,7 @@ public enum ClaudeCodeAdapter {
     /// `.claude` directory if needed. Uses the project-local (uncommitted)
     /// settings file so the user's repo is never polluted.
     public static func install(
-        intoWorktreeAt worktreePath: String, hookCommand: String = "casper hook"
+        intoWorktreeAt worktreePath: String, hookCommand: String = "casper hooks feed"
     ) throws {
         let claudeDir = URL(fileURLWithPath: worktreePath, isDirectory: true)
             .appendingPathComponent(".claude", isDirectory: true)

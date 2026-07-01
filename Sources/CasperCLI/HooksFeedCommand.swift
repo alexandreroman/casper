@@ -2,13 +2,14 @@ import ArgumentParser
 import CasperAgents
 import Foundation
 
-/// `casper hook` — invoked by Claude Code hooks. Reads the hook JSON on stdin,
-/// wraps it with the surface's workspace id, and relays it to the app over the
+/// `casper hooks feed` — invoked by Claude Code hooks (the generated
+/// `settings.local.json` calls this). Reads the hook JSON on stdin, wraps it
+/// with the surface's workspace id, and relays it to the app over the
 /// `CASPER_SOCKET` Unix-domain socket. Never blocks the agent: missing env,
 /// a missing socket, or a transport failure all exit 0.
-public struct HookCommand: ParsableCommand {
+public struct HooksFeedCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "hook",
+        commandName: "feed",
         abstract: "Relay a Claude Code hook event to the Casper app.")
 
     public init() {}
