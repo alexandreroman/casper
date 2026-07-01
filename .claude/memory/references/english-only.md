@@ -4,6 +4,8 @@ description: All generated text in the Casper project must be in English
 type: feedback
 ---
 
+# english-only
+
 Every piece of text generated for the Casper project must be written in
 **English** — documentation, code (identifiers, comments, log/error strings),
 and UI/IHM elements (labels, menu titles, notification copy). No French in

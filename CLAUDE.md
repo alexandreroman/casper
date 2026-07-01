@@ -51,15 +51,22 @@ tasks:
 
 ## Memory
 
-The **single** project-memory store is [`.claude/memory/`](.claude/memory/), with
-its index at [`.claude/memory/MEMORY.md`](.claude/memory/MEMORY.md) — one Markdown
-file per fact, cross-linked with `[[slug]]`. There is **no memory anywhere else**
-(not in `docs/`, not in `~/.claude`). Read `MEMORY.md` at the start of work and
-the relevant entry when it applies. When something durable emerges (a decision,
-a workflow preference, corrective feedback, a hard-won reference detail), add or
-update a file in `.claude/memory/` and add a one-line pointer to `MEMORY.md`.
-Don't duplicate what the repo already records (code, git history, the design
-spec).
+**Always manage project memory with the `skillbox:project-memory` skill** — use
+it to save durable context (decisions and their rationale, workflow preferences,
+corrective feedback, external references, hard-won reference details) and to
+recall it. Follow the skill's rules: its `name`/`description`/`type` frontmatter
+plus a `# <name>` heading, English and present tense, and its contradiction
+handling — **never silently override a conflicting note; surface it and get
+explicit confirmation first**. Don't store what the repo already records (code,
+git history, the design spec).
+
+**Project override (takes precedence over the skill's defaults):** this project's
+**single** memory directory is [`.claude/memory/`](.claude/memory/) — *not* the
+skill's default `.claude/project-memory/`. Its index is
+[`.claude/memory/MEMORY.md`](.claude/memory/MEMORY.md) and fact files live under
+[`.claude/memory/references/`](.claude/memory/references/). Read `MEMORY.md` at
+the start of work. There is **no memory anywhere else** (not in `docs/`, not in
+`~/.claude`).
 
 ## Conventions
 

@@ -4,7 +4,7 @@ description: NWListener/NWConnection-based classes use @unchecked Sendable + que
 type: reference
 ---
 
-# Swift 6 Network.framework concurrency
+# swift6-network-concurrency
 
 Under Swift 6 strict concurrency, classes that own `NWListener` /
 `NWConnection` from Network.framework do not compile with plain `[weak self]`

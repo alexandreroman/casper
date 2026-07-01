@@ -4,6 +4,8 @@ description: libgit2 C-API gotchas when calling it from Swift in CasperGit (Clib
 type: reference
 ---
 
+# libgit2-swift-interop
+
 Gotchas hit while building `CasperGit` (the `Clibgit2` systemLibrary wrapper over
 libgit2 1.9.x). Relevant to any future CasperGit work (e.g. adding `git_diff`).
 

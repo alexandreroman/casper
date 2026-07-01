@@ -4,6 +4,8 @@ description: "Claude Code hooks are installed once per worktree via `casper hook
 type: feedback
 ---
 
+# hooks-install-once
+
 Casper's CLI groups hook integration under a plural **`hooks`** command with two
 plain subcommands: `casper hooks setup [<worktree>]` (install
 `.claude/settings.local.json`, defaults to cwd, idempotent) and

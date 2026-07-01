@@ -4,6 +4,8 @@ description: "No global `casper` install; the binary is reachable only inside Ca
 type: feedback
 ---
 
+# casper-cli-availability
+
 The `casper` CLI is **not** installed globally — the design spec's original
 `~/.local/bin/casper` shim (§4) is **dropped**. `casper` only needs to be
 reachable inside terminals Casper opens, so Casper **prepends its own binary's

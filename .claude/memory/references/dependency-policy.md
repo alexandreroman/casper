@@ -4,6 +4,8 @@ description: "Casper's strict dependency-minimalism stance and the only allowed 
 type: feedback
 ---
 
+# dependency-policy
+
 For Casper, the user requires a **native, performant macOS app** that **always
 prefers built-in macOS frameworks**, with the **smallest possible binary** and
 **minimum external dependencies**.

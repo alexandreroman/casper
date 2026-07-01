@@ -4,6 +4,8 @@ description: "What Casper is, its architecture, and the 5-plan roadmap with curr
 type: project
 ---
 
+# project
+
 **Casper** — a native macOS app (SwiftUI + targeted AppKit) that embeds
 **libghostty** (via GhosttyKit) to give each **Git worktree** a terminal
 workspace, specialized for code agents. Core features: per-workspace agent-state

@@ -4,6 +4,8 @@ description: "On Casper, get explicit authorization before git init/commit/push;
 type: feedback
 ---
 
+# git-workflow
+
 On the Casper project the user wants **explicit, per-step control over git**:
 during setup they repeatedly gated actions ("n'initialise rien", "git init
 seulement", "crée un commit vide", "prépare sans pousser").

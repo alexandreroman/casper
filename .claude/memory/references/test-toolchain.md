@@ -4,6 +4,8 @@ description: "How to build/test Casper locally — XCTest needs the Xcode toolch
 type: reference
 ---
 
+# test-toolchain
+
 Casper's tests use **XCTest** and require the **full Xcode toolchain** — the
 Command Line Tools' `swift` cannot link XCTest (symptom: `XCTestCase` resolves
 but `XCTAssert*` are "cannot find in scope"; Swift Testing's `import Testing`

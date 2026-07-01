@@ -4,6 +4,8 @@ description: Casper commit message format — verb + action performed
 type: feedback
 ---
 
+# commit-message-style
+
 Commit messages for the Casper project must follow the format **verb + action
 performed**, and must **always be written in English** (subject AND body), e.g.
 "Simplify hook parsing", "Add the port allocator".
