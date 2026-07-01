@@ -18,6 +18,8 @@ implementation plans (the authoritative source of truth).
 
 ## Build & run
 
+Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via pkg-config).
+
 ```bash
 make build   # compile
 make test    # run the test suite

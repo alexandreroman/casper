@@ -24,6 +24,9 @@ jobs:
       - name: Print toolchain
         run: swift --version
 
+      - name: Install libgit2
+        run: brew install libgit2 pkgconf
+
       - name: Build
         run: swift build
 

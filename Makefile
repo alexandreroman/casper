@@ -1,6 +1,7 @@
 # Casper — developer tasks
 # Requires the Xcode toolchain selected (sudo xcode-select -s /Applications/Xcode.app)
-# so that `swift test` can link XCTest.
+# so that `swift test` can link XCTest, and libgit2 + pkgconf installed
+# (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
 .PHONY: all build test release clean help
