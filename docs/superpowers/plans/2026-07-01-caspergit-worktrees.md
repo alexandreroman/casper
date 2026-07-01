@@ -253,7 +253,7 @@ public enum Libgit2 {
 }
 
 /// A libgit2 error: the raw negative return code plus the thread-local message.
-public struct GitError: Error, Equatable {
+public struct GitError: Error, Equatable, Sendable {
     public let code: Int32
     public let message: String
 
@@ -282,8 +282,8 @@ func gitCheck(_ code: Int32) throws -> Int32 {
 /// `*_list` call.
 func gitStringArray(_ body: (inout git_strarray) throws -> Void) rethrows -> [String] {
     var array = git_strarray()
+    defer { git_strarray_dispose(&array) }  // before body(): dispose on the throw path too
     try body(&array)
-    defer { git_strarray_dispose(&array) }
     var result: [String] = []
     result.reserveCapacity(array.count)
     for index in 0..<array.count {
@@ -846,13 +846,9 @@ Append to the `extension Repository` in `Sources/CasperGit/Worktree.swift`:
 ```swift
     /// Names of all worktrees linked to this repository.
     public func worktreeNames() throws -> [String] {
-        var thrown: Error?
-        let names = gitStringArray { array in
-            do { try gitCheck(git_worktree_list(&array, pointer)) }
-            catch { thrown = error }
+        try gitStringArray { array in
+            try gitCheck(git_worktree_list(&array, pointer))
         }
-        if let thrown { throw thrown }
-        return names
     }
 
     /// Look up a single worktree by name.
