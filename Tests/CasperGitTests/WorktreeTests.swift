@@ -50,4 +50,22 @@ final class WorktreeTests: XCTestCase {
         let repo = try GitFixture.repository(at: repoDir.path)
         XCTAssertThrowsError(try repo.worktreeInfo(name: "ghost"))
     }
+
+    func testValidateWorktree() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try repo.addWorktree(name: "feature", atPath: wtPath, basedOn: nil)
+        XCTAssertTrue(try repo.isWorktreeValid(name: "feature"))
+    }
+
+    func testPruneRemovesWorktree() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try repo.addWorktree(name: "feature", atPath: wtPath, basedOn: nil)
+
+        try repo.pruneWorktree(name: "feature")
+
+        XCTAssertEqual(try repo.worktreeNames(), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+    }
 }

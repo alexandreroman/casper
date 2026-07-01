@@ -73,4 +73,30 @@ extension Repository {
         defer { git_worktree_free(worktree) }
         return worktreeInfo(fromPointer: worktree!, name: name)
     }
+
+    /// Whether the worktree named `name` is structurally valid (its gitdir and
+    /// working directory still exist and agree).
+    public func isWorktreeValid(name: String) throws -> Bool {
+        var worktree: OpaquePointer?
+        try gitCheck(git_worktree_lookup(&worktree, pointer, name))
+        defer { git_worktree_free(worktree) }
+        return git_worktree_validate(worktree) == 0
+    }
+
+    /// Prune the worktree named `name`, removing both its admin entry and its
+    /// working-tree directory.
+    public func pruneWorktree(name: String) throws {
+        var worktree: OpaquePointer?
+        try gitCheck(git_worktree_lookup(&worktree, pointer, name))
+        defer { git_worktree_free(worktree) }
+
+        var options = git_worktree_prune_options()
+        git_worktree_prune_options_init(
+            &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION))
+        options.flags =
+            GIT_WORKTREE_PRUNE_VALID.rawValue
+            | GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue
+
+        try gitCheck(git_worktree_prune(worktree, &options))
+    }
 }
