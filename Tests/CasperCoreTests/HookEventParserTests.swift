@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import CasperCore
 
@@ -57,6 +58,21 @@ final class HookEventParserTests: XCTestCase {
     func testMissingEventNameThrows() {
         XCTAssertThrowsError(try parse(#"{"foo":"bar"}"#)) { error in
             XCTAssertEqual(error as? HookParseError, .missingField("hook_event_name"))
+        }
+    }
+
+    func testUnknownTodoStatusFallsBackToPending() throws {
+        let json = #"""
+        {"hook_event_name":"PostToolUse","tool_name":"TodoWrite",
+         "tool_input":{"todos":[{"content":"x","status":"frozen"}]}}
+        """#
+        let event = try parse(json)
+        XCTAssertEqual(event, .todoUpdate(todos: [Todo(content: "x", status: .pending)]))
+    }
+
+    func testPostToolUseMissingToolNameIsUnsupported() {
+        XCTAssertThrowsError(try parse(#"{"hook_event_name":"PostToolUse"}"#)) { error in
+            XCTAssertEqual(error as? HookParseError, .unsupportedEvent("PostToolUse:?"))
         }
     }
 }

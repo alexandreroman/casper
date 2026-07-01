@@ -53,4 +53,16 @@ final class AgentStateReducerTests: XCTestCase {
         XCTAssertTrue(ws.pendingNotification)
         XCTAssertEqual(effect, .notify(title: "feat-x", body: "Agent finished"))
     }
+
+    func testTodoUpdateWithNoInProgressLeavesStateUnchanged() {
+        var ws = makeWorkspace() // starts .idle
+        let todos = [
+            Todo(content: "a", status: .completed),
+            Todo(content: "b", status: .pending),
+        ]
+        let effect = AgentStateReducer.apply(.todoUpdate(todos: todos), to: &ws, focused: true)
+        XCTAssertEqual(ws.todos, todos)
+        XCTAssertEqual(ws.agentState, .idle) // no in-progress item → state untouched
+        XCTAssertNil(effect)
+    }
 }

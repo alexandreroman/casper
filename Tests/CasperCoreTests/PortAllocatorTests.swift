@@ -38,4 +38,10 @@ final class PortAllocatorTests: XCTestCase {
             XCTAssertTrue(error is PortAllocationError)
         }
     }
+
+    func testDoubleReserveReturnsFalse() {
+        var a = PortAllocator()
+        XCTAssertTrue(a.reserve(40000))
+        XCTAssertFalse(a.reserve(40000)) // already reserved → not inserted again
+    }
 }
