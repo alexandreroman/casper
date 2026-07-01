@@ -11,12 +11,13 @@ public enum Libgit2 {
 
     /// Ensure libgit2 is initialized. Safe to call repeatedly.
     public static func ensureInit() {
+        // Accepted exception to the never-crash policy: libgit2 init failure is unrecoverable here.
         precondition(initialized, "git_libgit2_init failed")
     }
 }
 
 /// A libgit2 error: the raw negative return code plus the thread-local message.
-public struct GitError: Error, Equatable {
+public struct GitError: Error, Equatable, Sendable {
     public let code: Int32
     public let message: String
 
@@ -45,8 +46,8 @@ func gitCheck(_ code: Int32) throws -> Int32 {
 /// `*_list` call.
 func gitStringArray(_ body: (inout git_strarray) throws -> Void) rethrows -> [String] {
     var array = git_strarray()
+    defer { git_strarray_dispose(&array) }  // before body(): dispose on the throw path too
     try body(&array)
-    defer { git_strarray_dispose(&array) }
     var result: [String] = []
     result.reserveCapacity(array.count)
     for index in 0..<array.count {
