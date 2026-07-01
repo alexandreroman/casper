@@ -513,11 +513,13 @@ enum GitFixture {
         try gitCheck(git_signature_now(&signature, "Casper Test", "test@casper.local"))
         defer { git_signature_free(signature) }
 
-        // Commit onto HEAD (creates the default branch ref).
+        // Commit onto HEAD (creates the default branch ref). Swift cannot import
+        // the variadic `git_commit_create_v`, so use the array-based
+        // `git_commit_create` with zero parents (initial commit).
         var commitOid = git_oid()
-        try gitCheck(git_commit_create_v(
+        try gitCheck(git_commit_create(
             &commitOid, repo.pointer, "HEAD",
-            signature, signature, nil, "Initial commit", tree, 0))
+            signature, signature, nil, "Initial commit", tree, 0, nil))
 
         return repo
     }
@@ -1207,7 +1209,8 @@ final class WorktreeManagerTests: XCTestCase {
 > `Clibgit2`. Add `Clibgit2` to `CasperCoreTests` dependencies in `Package.swift`
 > in Step 3 (`.testTarget(name: "CasperCoreTests", dependencies: ["CasperCore",
 > "Clibgit2"])`). The body is the same libgit2 sequence: index add README.md →
-> write tree → signature → `git_commit_create_v(..., "HEAD", ...)`.
+> write tree → signature → commit. **Use the array-based `git_commit_create(...,
+> tree, 0, nil)`** — Swift cannot import the variadic `git_commit_create_v`.
 
 - [ ] **Step 2: Run to verify failure**
 
