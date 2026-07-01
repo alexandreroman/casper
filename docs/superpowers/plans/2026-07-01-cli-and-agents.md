@@ -2,6 +2,48 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: ✅ COMPLETE — 2026-07-01.** All 12 tasks implemented
+> (subagent-driven, one `code-writer` per task), reviewed in clusters
+> (`code-reviewer`), and committed on `main`. **89 XCTest tests pass**
+> (`make test`, verified). Repo is **local-only — not pushed** to GitHub yet.
+> Plan-3 code range: `fada198..29eabc5` (plan doc `143691d`).
+>
+> **Deviations from the plan as written (all applied, verified green):**
+> - **Swift 6 strict concurrency (Tasks 8–9):** the plan's literal socket code did
+>   not compile. `HookSocketServer` is `final class … : @unchecked Sendable` (an
+>   actor would force an async API and break the fixed synchronous interface) with
+>   the mutable-buffer recursion replaced by a by-value `receiveChunk(on:accumulated:)`;
+>   `HookSocketClient` threads its error through `OSAllocatedUnfairLock<Error?>`
+>   (`import os`) instead of a bare `var` in a `@Sendable` closure (no `@unchecked`
+>   needed). Public interfaces and one-message-per-connection semantics unchanged.
+>   See [[swift6-network-concurrency]].
+> - **CLI hooks command family (Task 11):** instead of a top-level
+>   `casper hook` relay + separate install, Casper now provides a `hooks`
+>   family — a plural **`hooks`** group with plain subcommands `casper hooks setup`
+>   (install) and `casper hooks feed` (relay). The generated `settings.local.json`
+>   invokes `casper hooks feed` explicitly, so `feed` is a normal subcommand (no
+>   default-subcommand trick). `ClaudeCodeAdapter`'s embedded command string
+>   changed `"casper hook"` → `"casper hooks feed"`. Task 11's code blocks below
+>   reflect the final design; Task 10 built the relay as `HookCommand`, renamed to
+>   `HooksFeedCommand` in Task 11 (`git mv`).
+> - **Install once, not per terminal (design refinement):** installing the hooks
+>   file is a one-time `casper hooks setup` action per worktree, NOT run on every
+>   terminal open; only the surface *environment* is injected per surface. See
+>   [[hooks-install-once]]. This supersedes the design spec §7 wording ("installed
+>   when a terminal surface is created").
+> - **Doc-comment sweep (`05bb1aa`):** four stale `casper hook` doc comments in
+>   `CasperAgents` updated to `casper hooks feed`.
+>
+> **Deferred to Plan 5 / later (documented, non-blocking):** the real GUI + the
+> `~/.local/bin/casper` shim; the heartbeat *timer* that calls `HeartbeatMonitor` +
+> `markUnknown` (the pure logic and transitions ship here); `casper open` /
+> `casper worktree` subcommands; optional `--agent` / per-agent `hooks <agent>
+> install` (v1 is Claude-only). **Socket robustness follow-ups from the Task 8–9
+> review (address before Plan 5 wires `onMessage` → `AgentStateStore`):**
+> `stop()` does not cancel in-flight `NWConnection`s (post-stop `onMessage`
+> possible); no per-connection read timeout / receive-buffer cap; the
+> `onMessage`/`onFailure` "set before `start()`" contract is prose-only.
+
 **Goal:** Ship the `casper` single binary with a `casper hook` subcommand that
 relays Claude Code hook events over a Unix-domain socket into a per-workspace
 `AgentStateStore`, plus the Claude Code adapter that installs those hooks and the
@@ -1275,27 +1317,160 @@ git commit -m "Add the casper hook subcommand"
 
 ---
 
-## Task 11: Root command + GUI/CLI launch fork + executable
+## Task 11: `casper hooks` command group + launch fork + executable
 
 **Files:**
+- Modify: `Sources/CasperAgents/ClaudeCodeAdapter.swift` (default hook command
+  `"casper hook"` → `"casper hooks feed"`)
+- Rename+modify: `Sources/CasperCLI/HookCommand.swift` →
+  `Sources/CasperCLI/HooksFeedCommand.swift` (the relay, now `hooks feed`)
+- Create: `Sources/CasperCLI/HooksCommand.swift` (the `hooks` group)
+- Create: `Sources/CasperCLI/HooksSetupCommand.swift` (`casper hooks setup`)
 - Create: `Sources/CasperCLI/CasperCommand.swift`
 - Create: `Sources/CasperCLI/LaunchMode.swift`
 - Modify: `Sources/casper/main.swift`
 - Modify: `Sources/CasperCLI/CasperCLI.swift` (delete the placeholder body)
-- Test: `Tests/CasperCLITests/LaunchModeTests.swift`
+- Rename+modify test: `Tests/CasperCLITests/HookCommandTests.swift` →
+  `Tests/CasperCLITests/HooksFeedCommandTests.swift`
+- Modify test: `Tests/CasperAgentsTests/ClaudeCodeAdapterTests.swift` (embedded
+  command assertion → `"casper hooks feed"`)
+- Create: `Tests/CasperCLITests/HooksSetupCommandTests.swift`
+- Create: `Tests/CasperCLITests/HooksRoutingTests.swift`
+- Create: `Tests/CasperCLITests/LaunchModeTests.swift`
 
 **Interfaces:**
-- Consumes: `HookCommand` (Task 10), `ArgumentParser`.
+- Consumes: `ClaudeCodeAdapter` (Task 7), `HookMessage`/`HookSocketClient`
+  (CasperAgents), `ArgumentParser`.
 - Produces:
-  - `struct CasperCommand: ParsableCommand` (root; subcommands `[HookCommand]`)
-  - `enum LaunchMode: Equatable { case gui; case cli }`
-    - `static func detect(arguments: [String]) -> LaunchMode`
+  - `struct HooksCommand: ParsableCommand` — the `hooks` group:
+    `subcommands: [HooksFeedCommand.self, HooksSetupCommand.self]`, no `run()`.
+  - `struct HooksFeedCommand: ParsableCommand` — `commandName: "feed"`.
+    - `static func makeMessage(stdin: Data, environment: [String: String]) -> HookMessage?`
+    - `func run() throws`
+  - `struct HooksSetupCommand: ParsableCommand` — `commandName: "setup"`,
+    `@Argument var worktree: String?` (defaults to cwd), `func run() throws`.
+  - `struct CasperCommand: ParsableCommand` (root; subcommands `[HooksCommand]`).
+  - `enum LaunchMode: Equatable { case gui; case cli; static func detect(arguments:) -> LaunchMode }`.
 
-`LaunchMode.detect` implements the design's argv fork: an empty argument list
-(just the program path) means GUI mode; anything else is CLI. It lives in the
-library so it is unit-testable; the executable's `main.swift` is a thin shim.
+**Design note — `hooks` command family.** Casper's CLI
+shape: a plural **`hooks`** group with `setup` (install) and `feed` (relay),
+with `casper hooks setup` and `casper hooks feed`. Because Casper controls what the
+generated `settings.local.json` invokes, the installed hooks call
+**`casper hooks feed`** explicitly — so `feed` is a plain subcommand (no
+default-subcommand trickery). `casper hooks feed` reads the hook JSON on stdin
+(the event name is inside the payload; `HookEventParser` already extracts it), so
+it needs no arguments. `casper hooks setup [<worktree>]` installs the hooks
+**once** per worktree (defaults to cwd, idempotent, prints a one-line
+confirmation — intended user-facing output, not test noise). Casper (Plan 5) runs
+`hooks setup` once at workspace creation; it must **not** run on every terminal
+open — only the surface environment (`CASPER_SOCKET`, `CASPER_WORKSPACE_ID`,
+`CASPER_PORT…`) is injected per surface. (A `--agent` option and per-agent
+`hooks <agent> install` are deferred: Casper v1 is Claude-only.)
 
-- [ ] **Step 1: Write the failing tests**
+`LaunchMode.detect` implements the argv fork: empty argv (just the program path)
+means GUI; anything else is CLI. It lives in the library so it is unit-testable;
+`main.swift` is a thin shim.
+
+- [ ] **Step 1: Update the ClaudeCodeAdapter default and its test**
+
+In `Sources/CasperAgents/ClaudeCodeAdapter.swift`, change the default parameter
+value from `"casper hook"` to `"casper hooks feed"` in **both** `settingsJSON`
+and `install` (the two `hookCommand: String = "casper hook"` defaults).
+
+In `Tests/CasperAgentsTests/ClaudeCodeAdapterTests.swift`, update the embedded
+command assertion in `testHookCommandIsEmbedded`:
+
+```swift
+        XCTAssertEqual(inner.first?["command"] as? String, "casper hooks feed")
+```
+
+- [ ] **Step 2: Write / update the failing tests**
+
+Rename `Tests/CasperCLITests/HookCommandTests.swift` to
+`Tests/CasperCLITests/HooksFeedCommandTests.swift` (`git mv`) and change its body
+to target `HooksFeedCommand` (relay behavior unchanged):
+
+```swift
+import Foundation
+import XCTest
+@testable import CasperCLI
+import CasperAgents
+
+final class HooksFeedCommandTests: XCTestCase {
+    func testMakeMessageBuildsEnvelopeFromValidEnvironment() throws {
+        let id = UUID()
+        let stdin = Data(#"{"hook_event_name":"Stop"}"#.utf8)
+        let message = try XCTUnwrap(HooksFeedCommand.makeMessage(
+            stdin: stdin, environment: ["CASPER_WORKSPACE_ID": id.uuidString]))
+        XCTAssertEqual(message.workspaceId, id)
+        XCTAssertEqual(message.hookPayload, stdin)
+    }
+
+    func testMakeMessageReturnsNilWithoutWorkspaceId() {
+        let message = HooksFeedCommand.makeMessage(
+            stdin: Data("{}".utf8), environment: [:])
+        XCTAssertNil(message)
+    }
+
+    func testMakeMessageReturnsNilForInvalidWorkspaceId() {
+        let message = HooksFeedCommand.makeMessage(
+            stdin: Data("{}".utf8),
+            environment: ["CASPER_WORKSPACE_ID": "not-a-uuid"])
+        XCTAssertNil(message)
+    }
+}
+```
+
+`Tests/CasperCLITests/HooksSetupCommandTests.swift`:
+
+```swift
+import Foundation
+import XCTest
+import CasperAgents
+import CasperCLI
+
+final class HooksSetupCommandTests: XCTestCase {
+    func testSetupWritesSettingsIntoGivenWorktree() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-cli-setup-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var command = try HooksSetupCommand.parse([dir.path])
+        try command.run()
+
+        let settings = ClaudeCodeAdapter.settingsPath(inWorktreeAt: dir.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: settings))
+    }
+
+    func testSetupDefaultsToCurrentDirectoryWhenNoArgument() throws {
+        let command = try HooksSetupCommand.parse([])
+        XCTAssertNil(command.worktree)
+    }
+}
+```
+
+`Tests/CasperCLITests/HooksRoutingTests.swift` (proves the group routes to the
+right leaves — `casper hooks feed` reaches the relay, `casper hooks setup`
+reaches setup):
+
+```swift
+import XCTest
+import CasperCLI
+
+final class HooksRoutingTests: XCTestCase {
+    func testHooksFeedRoutesToFeed() throws {
+        let command = try CasperCommand.parseAsRoot(["hooks", "feed"])
+        XCTAssertTrue(command is HooksFeedCommand)
+    }
+
+    func testHooksSetupRoutesToSetup() throws {
+        let command = try CasperCommand.parseAsRoot(["hooks", "setup", "/tmp/x"])
+        XCTAssertTrue(command is HooksSetupCommand)
+    }
+}
+```
 
 `Tests/CasperCLITests/LaunchModeTests.swift`:
 
@@ -1314,17 +1489,112 @@ final class LaunchModeTests: XCTestCase {
 
     func testASubcommandMeansCLI() {
         XCTAssertEqual(
-            LaunchMode.detect(arguments: ["/path/to/casper", "hook"]), .cli)
+            LaunchMode.detect(arguments: ["/path/to/casper", "hooks"]), .cli)
     }
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `swift test --filter HooksSetupCommandTests`
+Expected: FAIL — `cannot find 'HooksSetupCommand' in scope`.
 
 Run: `swift test --filter LaunchModeTests`
 Expected: FAIL — `cannot find 'LaunchMode' in scope`.
 
-- [ ] **Step 3: Write the implementations**
+- [ ] **Step 4: Write the implementations**
+
+`Sources/CasperCLI/HooksFeedCommand.swift` (renamed from `HookCommand.swift`; the
+relay logic is identical to Task 10, only the type name / commandName change):
+
+```swift
+import ArgumentParser
+import CasperAgents
+import Foundation
+
+/// `casper hooks feed` — invoked by Claude Code hooks (the generated
+/// `settings.local.json` calls this). Reads the hook JSON on stdin, wraps it
+/// with the surface's workspace id, and relays it to the app over the
+/// `CASPER_SOCKET` Unix-domain socket. Never blocks the agent: missing env,
+/// a missing socket, or a transport failure all exit 0.
+public struct HooksFeedCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "feed",
+        abstract: "Relay a Claude Code hook event to the Casper app.")
+
+    public init() {}
+
+    /// Build the wire envelope from raw stdin and the process environment, or
+    /// `nil` when `CASPER_WORKSPACE_ID` is absent or not a UUID.
+    public static func makeMessage(
+        stdin: Data, environment: [String: String]
+    ) -> HookMessage? {
+        guard let raw = environment["CASPER_WORKSPACE_ID"],
+              let workspaceId = UUID(uuidString: raw)
+        else { return nil }
+        return HookMessage(workspaceId: workspaceId, hookPayload: stdin)
+    }
+
+    public func run() throws {
+        let environment = ProcessInfo.processInfo.environment
+        let stdin = FileHandle.standardInput.readDataToEndOfFile()
+        guard let message = Self.makeMessage(stdin: stdin, environment: environment),
+              let socketPath = environment["CASPER_SOCKET"]
+        else { return }
+        // Best-effort: a hook must never block or fail the agent.
+        try? HookSocketClient.send(message, toSocketAt: socketPath)
+    }
+}
+```
+
+`Sources/CasperCLI/HooksSetupCommand.swift`:
+
+```swift
+import ArgumentParser
+import CasperAgents
+import Foundation
+
+/// `casper hooks setup [<worktree>]` — write Casper's Claude Code hooks into a
+/// worktree's `.claude/settings.local.json`, ONCE. Casper runs this when a
+/// workspace is created; a user may also run it manually. Idempotent
+/// (overwrites the file); not meant to run on every terminal open — per-surface
+/// environment injection handles runtime identity separately.
+public struct HooksSetupCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "setup",
+        abstract: "Install Casper's Claude Code hooks into a worktree.")
+
+    @Argument(help: "Worktree directory (defaults to the current directory).")
+    public var worktree: String?
+
+    public init() {}
+
+    public func run() throws {
+        let path = worktree ?? FileManager.default.currentDirectoryPath
+        try ClaudeCodeAdapter.install(intoWorktreeAt: path)
+        print("Installed Casper hooks into "
+            + ClaudeCodeAdapter.settingsPath(inWorktreeAt: path))
+    }
+}
+```
+
+`Sources/CasperCLI/HooksCommand.swift`:
+
+```swift
+import ArgumentParser
+
+/// `casper hooks` — Claude Code hook integration, providing a `hooks`
+/// command family: `casper hooks setup` installs the hooks into a worktree,
+/// and `casper hooks feed` (invoked by those installed hooks) relays events.
+public struct HooksCommand: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+        commandName: "hooks",
+        abstract: "Set up and relay Casper's Claude Code hooks.",
+        subcommands: [HooksFeedCommand.self, HooksSetupCommand.self])
+
+    public init() {}
+}
+```
 
 `Sources/CasperCLI/LaunchMode.swift`:
 
@@ -1348,13 +1618,13 @@ public enum LaunchMode: Equatable {
 ```swift
 import ArgumentParser
 
-/// The root `casper` command. v1 ships `casper hook`; `open` and `worktree`
-/// land in a later plan.
+/// The root `casper` command. v1 ships the `casper hooks` family (`setup` +
+/// `feed`); `open` and `worktree` land in a later plan.
 public struct CasperCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "casper",
         abstract: "Casper — per-worktree agent terminal workspaces.",
-        subcommands: [HookCommand.self])
+        subcommands: [HooksCommand.self])
 
     public init() {}
 }
@@ -1380,23 +1650,40 @@ case .cli:
 }
 ```
 
-- [ ] **Step 4: Run tests and build**
+- [ ] **Step 5: Run tests, build, and manual checks**
 
-Run: `swift test --filter LaunchModeTests`
-Expected: PASS (3 tests).
+Run: `swift test --filter CasperCLITests`
+Expected: PASS — `HooksFeedCommandTests` (3), `HooksSetupCommandTests` (2),
+`HooksRoutingTests` (2), `LaunchModeTests` (3).
+
+Run: `swift test --filter ClaudeCodeAdapterTests`
+Expected: PASS (6) with the updated `"casper hooks feed"` assertion.
 
 Run: `swift build`
 Expected: PASS (the `casper` executable links).
 
-Run: `echo '{"hook_event_name":"Stop"}' | swift run casper hook`
+Run: `echo '{"hook_event_name":"Stop"}' | swift run casper hooks feed`
 Expected: exits 0 with no output (no `CASPER_SOCKET`/`CASPER_WORKSPACE_ID` set,
-so it is a silent no-op).
+so the relay is a silent no-op).
 
-- [ ] **Step 5: Commit**
+Run: `swift run casper hooks setup /tmp/casper-manual-check && cat /tmp/casper-manual-check/.claude/settings.local.json && rm -rf /tmp/casper-manual-check`
+Expected: prints the confirmation, then the generated hooks JSON whose command is
+`casper hooks feed`.
+
+Run: `swift run casper hooks --help`
+Expected: help lists the `feed` and `setup` subcommands.
+
+Then run the full suite once:
+
+Run: `swift test`
+Expected: PASS — expect ~88 tests (81 prior + 7 net new; the 3 relay tests are
+renamed, not added). Report the actual observed count.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Sources/CasperCLI/CasperCommand.swift Sources/CasperCLI/LaunchMode.swift Sources/CasperCLI/CasperCLI.swift Sources/casper/main.swift Tests/CasperCLITests/LaunchModeTests.swift
-git commit -m "Add root command and the GUI/CLI launch fork"
+git add Sources Tests
+git commit -m "Add casper hooks command family and the launch fork"
 ```
 
 ---
@@ -1409,11 +1696,11 @@ git commit -m "Add root command and the GUI/CLI launch fork"
 
 **Interfaces:**
 - Consumes: `ClaudeCodeAdapter`, `HookSocketServer`, `HookMessage`
-  (CasperAgents); `HookCommand` (CasperCLI); `HookEventParser`,
+  (CasperAgents); `HooksFeedCommand` (CasperCLI); `HookEventParser`,
   `AgentStateStore` (CasperCore).
 
 Proves the whole pipe: build the surface environment with `ClaudeCodeAdapter`,
-build a message with `HookCommand.makeMessage` from that environment, send it
+build a message with `HooksFeedCommand.makeMessage` from that environment, send it
 through `HookSocketClient` to a live `HookSocketServer`, decode it with
 `HookEventParser`, and drive an `AgentStateStore` — the spec's "end-to-end agent
 adapter driven by a fake agent" (the fake agent here is the test emitting a hook
@@ -1459,7 +1746,7 @@ final class EndToEndHookTests: XCTestCase {
         // The "fake agent": a Stop hook payload built through the CLI path.
         let stdin = Data(#"{"hook_event_name":"Stop"}"#.utf8)
         let message = try XCTUnwrap(
-            HookCommand.makeMessage(stdin: stdin, environment: env))
+            HooksFeedCommand.makeMessage(stdin: stdin, environment: env))
         try HookSocketClient.send(message, toSocketAt: socketPath)
 
         wait(for: [done], timeout: 5)
@@ -1483,9 +1770,10 @@ CasperAgents, and CasperCLI tests are green.
 - [ ] **Step 4: Update the README**
 
 In `README.md`, under the module/status section, mark **CasperAgents** and
-**CasperCLI** as implemented and note the `casper hook` command and the
-`CASPER_SOCKET` / `CASPER_WORKSPACE_ID` / `CASPER_PORT` surface environment.
-Match the surrounding style; keep lines ≤ 80 columns.
+**CasperCLI** as implemented and note the `casper hooks setup` /
+`casper hooks feed` commands and the `CASPER_SOCKET` / `CASPER_WORKSPACE_ID` /
+`CASPER_PORT` surface environment. Match the surrounding style; keep lines ≤ 80
+columns.
 
 - [ ] **Step 5: Commit**
 
@@ -1508,8 +1796,9 @@ git commit -m "Add end-to-end hook integration test and update the README"
   timer wiring → Plan 5; `casper open`/`casper worktree` → later plan. The
   `HeartbeatMonitor` logic and `markUnknown`/`markError` transitions ship here so
   Plan 5 only wires a timer.
-- **Type consistency:** `hookCommand:` default `"casper hook"` is used uniformly
-  (Tasks 5–7); `HookMessage(workspaceId:hookPayload:)`, `HookSocketClient.send(_:
+- **Type consistency:** `hookCommand:` default is `"casper hooks feed"` (updated
+  from `"casper hook"` in Task 11) uniformly across `ClaudeCodeAdapter`;
+  `HookMessage(workspaceId:hookPayload:)`, `HookSocketClient.send(_:
   toSocketAt:timeout:)`, `AgentStateStore.handle(_:workspaceId:focused:)` names
   match across their consumers.
 - **Risk to verify during execution:** the Network.framework Unix-endpoint bind
