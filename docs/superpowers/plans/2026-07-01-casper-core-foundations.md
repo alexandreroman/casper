@@ -2,6 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: ✅ COMPLETE — 2026-07-01.** All 7 tasks implemented, reviewed, and committed on `main`; every checkbox below is ticked. **30 XCTest tests pass** locally (Xcode 26.6 toolchain) and are wired for CI. Repo is **local-only — not pushed** to GitHub yet (CI ready but unrun).
+>
+> **Plan-1 commits:** `6f40c09` (scaffold) → `beb9a71` (test hardening); plus `d9014e1` (CI + gitignore).
+>
+> **Deviations from the plan as written (all applied, verified green):**
+> - Added `import Foundation` to `ModelsTests` / `SessionStoreTests` / `HookEventParserTests` — recent SDKs no longer re-export Foundation via `import XCTest` (see Global Constraints).
+> - Added 4 hardening tests from the final review (`.todoUpdate` with no in-progress item, unknown todo-status fallback, missing `tool_name`, double-`reserve`). Suite is now **30 tests**.
+> - `AgentState.unknown` / `.error` are intentionally **not produced** by the pure reducer; emitting them (heartbeat timeout / broken socket) is deferred to **Plan 3 (CLI + Agents)** — documented in the design spec §7.
+>
+> **Next milestone:** Plan 2 — CasperGit (libgit2 wrapper + `WorktreeManager`). libgit2 1.9.4 is already installed via Homebrew.
+
 **Goal:** Build `CasperCore`, the pure-Swift, fully unit-tested backbone of Casper: domain models, session persistence, port-block allocation, Claude Code hook-event parsing, and the agent-state reducer.
 
 **Architecture:** A SwiftPM package `Casper` with one library target `CasperCore` and its test target `CasperCoreTests`. No UI, no libgit2, no libghostty — this layer is 100% deterministic and testable via `swift test`. Later plans (CasperGit, CLI+Agents, CasperGhostty, CasperUI) depend on the types produced here.
@@ -60,7 +71,7 @@ Each file has one responsibility. `Models.swift` holds the persisted data shapes
 
 This is a scaffolding task; setup is folded in and the smoke test guards that the package builds and tests run.
 
-- [ ] **Step 1: Create `Package.swift`**
+- [x] **Step 1: Create `Package.swift`**
 
 ```swift
 // swift-tools-version: 6.0
@@ -79,7 +90,7 @@ let package = Package(
 )
 ```
 
-- [ ] **Step 2: Create the module source**
+- [x] **Step 2: Create the module source**
 
 `Sources/CasperCore/CasperCore.swift`:
 
@@ -87,7 +98,7 @@ let package = Package(
 public let casperCoreVersion = "0.1.0"
 ```
 
-- [ ] **Step 3: Write the smoke test**
+- [x] **Step 3: Write the smoke test**
 
 `Tests/CasperCoreTests/SmokeTests.swift`:
 
@@ -102,12 +113,12 @@ final class SmokeTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 4: Build and run**
+- [x] **Step 4: Build and run**
 
 Run: `swift test --filter SmokeTests`
 Expected: builds, `1 test passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Package.swift Sources/CasperCore/CasperCore.swift Tests/CasperCoreTests/SmokeTests.swift
@@ -133,7 +144,7 @@ git commit -m "chore: scaffold CasperCore SwiftPM package"
   - `struct Workspace` — `id, name, repoPath, worktreePath, branch, agentState, todos, pendingNotification, portBase, layout`
   - `struct Session` — `workspaces: [Workspace]`
 
-- [ ] **Step 1: Write the failing round-trip test**
+- [x] **Step 1: Write the failing round-trip test**
 
 `Tests/CasperCoreTests/ModelsTests.swift`:
 
@@ -184,12 +195,12 @@ final class ModelsTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `swift test --filter ModelsTests`
 Expected: FAIL — `cannot find 'Session' in scope` (types not defined yet).
 
-- [ ] **Step 3: Implement the models**
+- [x] **Step 3: Implement the models**
 
 `Sources/CasperCore/Models.swift`:
 
@@ -285,12 +296,12 @@ public struct Session: Codable, Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `swift test --filter ModelsTests`
 Expected: PASS — `2 tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/CasperCore/Models.swift Tests/CasperCoreTests/ModelsTests.swift
@@ -309,7 +320,7 @@ git commit -m "feat: add CasperCore domain models with Codable round-trip"
 - Consumes: `Workspace`, `Todo`, `TodoStatus` (Task 2).
 - Produces: `Workspace.progress -> (completed: Int, total: Int)` and `Workspace.currentTask -> String?`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `Tests/CasperCoreTests/ProgressTests.swift`:
 
@@ -352,12 +363,12 @@ final class ProgressTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `swift test --filter ProgressTests`
 Expected: FAIL — `value of type 'Workspace' has no member 'progress'`.
 
-- [ ] **Step 3: Implement the helpers**
+- [x] **Step 3: Implement the helpers**
 
 `Sources/CasperCore/Progress.swift`:
 
@@ -376,12 +387,12 @@ public extension Workspace {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `swift test --filter ProgressTests`
 Expected: PASS — `3 tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/CasperCore/Progress.swift Tests/CasperCoreTests/ProgressTests.swift
@@ -407,7 +418,7 @@ git commit -m "feat: add workspace progress and current-task helpers"
     - `@discardableResult mutating func reserve(_ base: Int) -> Bool` — mark a persisted base used
     - `mutating func release(_ base: Int)`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `Tests/CasperCoreTests/PortAllocatorTests.swift`:
 
@@ -455,12 +466,12 @@ final class PortAllocatorTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `swift test --filter PortAllocatorTests`
 Expected: FAIL — `cannot find 'PortAllocator' in scope`.
 
-- [ ] **Step 3: Implement the allocator**
+- [x] **Step 3: Implement the allocator**
 
 `Sources/CasperCore/PortAllocator.swift`:
 
@@ -516,12 +527,12 @@ public struct PortAllocator: Equatable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `swift test --filter PortAllocatorTests`
 Expected: PASS — `5 tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/CasperCore/PortAllocator.swift Tests/CasperCoreTests/PortAllocatorTests.swift
@@ -547,7 +558,7 @@ git commit -m "feat: add per-workspace port-block allocator"
 
 Note: debouncing of saves is an app-level concern (later plan); the store itself does a synchronous atomic write and stays trivially testable.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `Tests/CasperCoreTests/SessionStoreTests.swift`:
 
@@ -591,12 +602,12 @@ final class SessionStoreTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `swift test --filter SessionStoreTests`
 Expected: FAIL — `cannot find 'SessionStore' in scope`.
 
-- [ ] **Step 3: Implement the store**
+- [x] **Step 3: Implement the store**
 
 `Sources/CasperCore/SessionStore.swift`:
 
@@ -647,12 +658,12 @@ public final class SessionStore {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `swift test --filter SessionStoreTests`
 Expected: PASS — `3 tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/CasperCore/SessionStore.swift Tests/CasperCoreTests/SessionStoreTests.swift
@@ -676,7 +687,7 @@ git commit -m "feat: add Codable SessionStore with atomic persistence"
 
 > **Verify against installed Claude Code:** the JSON keys below (`hook_event_name`, `tool_name`, `tool_input.todos[].content/status`, `message`) reflect the documented hook payload. Before relying on them, confirm with a live hook dump from the installed Claude Code version (see plan §Open Questions in the spec). If a key differs, adjust the string literals here only.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `Tests/CasperCoreTests/HookEventParserTests.swift`:
 
@@ -746,12 +757,12 @@ final class HookEventParserTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `swift test --filter HookEventParserTests`
 Expected: FAIL — `cannot find 'HookEventParser' in scope`.
 
-- [ ] **Step 3: Implement the parser**
+- [x] **Step 3: Implement the parser**
 
 `Sources/CasperCore/HookEvent.swift`:
 
@@ -811,12 +822,12 @@ public enum HookEventParser {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `swift test --filter HookEventParserTests`
 Expected: PASS — `7 tests passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/CasperCore/HookEvent.swift Tests/CasperCoreTests/HookEventParserTests.swift
@@ -843,7 +854,7 @@ Reducer rules:
 - `.notification(message)` → `agentState = .waiting`; if `!focused`, set `pendingNotification = true` and return `.notify(title: name, body: message)`.
 - `.stop` → `agentState = .done`; if `!focused`, set `pendingNotification = true` and return `.notify(title: name, body: "Agent finished")`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `Tests/CasperCoreTests/AgentStateReducerTests.swift`:
 
@@ -906,12 +917,12 @@ final class AgentStateReducerTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `swift test --filter AgentStateReducerTests`
 Expected: FAIL — `cannot find 'AgentStateReducer' in scope`.
 
-- [ ] **Step 3: Implement the reducer**
+- [x] **Step 3: Implement the reducer**
 
 `Sources/CasperCore/AgentState.swift`:
 
@@ -958,17 +969,17 @@ public enum AgentStateReducer {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `swift test --filter AgentStateReducerTests`
 Expected: PASS — `5 tests passed`.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `swift test`
 Expected: PASS — all tests across the 6 suites green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Sources/CasperCore/AgentState.swift Tests/CasperCoreTests/AgentStateReducerTests.swift
