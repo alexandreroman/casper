@@ -68,11 +68,12 @@ Casper wires up Claude Code hooks like this: run
 variables into each terminal surface so `hooks feed` can relay events back to
 the app:
 
-| Variable              | Description                                      |
-| --------------------- | ------------------------------------------------ |
-| `CASPER_PORT`         | Base of the workspace's reserved 10-port block   |
-| `CASPER_SOCKET`       | Unix socket `casper hooks feed` relays events to |
-| `CASPER_WORKSPACE_ID` | Identifies the workspace emitting hook events    |
+| Variable                          | Description                                      |
+| --------------------------------- | ------------------------------------------------ |
+| `CASPER_PORT`                     | Base of the workspace's reserved 10-port block   |
+| `CASPER_SOCKET`                   | Unix socket `casper hooks feed` relays events to |
+| `CASPER_WORKSPACE_ID`             | Identifies the workspace emitting hook events    |
+| `CASPER_PORT_0` … `CASPER_PORT_9` | Per-port aliases for the whole reserved block    |
 
 ## Architecture
 
@@ -91,14 +92,14 @@ flowchart TD
     Git --> LG[libgit2]
 ```
 
-| Module          | Description                                             |
-| --------------- | ------------------------------------------------------- |
+| Module          | Description                                                                            |
+| --------------- | ------------------------------------------------------------------------------------- |
 | `CasperCore`    | Models, session store, port allocator, hook parsing, agent-state reducer (pure Swift) |
-| `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status) |
-| `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout    |
-| `CasperAgents`  | Claude Code adapter (`settings.json` generation) + hook socket server |
-| `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views        |
-| `CasperCLI`     | `casper` subcommands: `hooks setup` / `hooks feed` (swift-argument-parser) |
+| `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                               |
+| `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                  |
+| `CasperAgents`  | Claude Code adapter (`settings.local.json` generation) + hook socket server           |
+| `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
+| `CasperCLI`     | `casper` subcommands: `hooks setup` / `hooks feed` (swift-argument-parser)            |
 
 The full design and per-milestone plans live in
 [`docs/superpowers/`](./docs/superpowers/) — start with the

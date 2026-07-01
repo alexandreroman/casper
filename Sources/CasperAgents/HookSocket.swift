@@ -33,9 +33,23 @@ public final class HookSocketServer: @unchecked Sendable {
         params.requiredLocalEndpoint = NWEndpoint.unix(path: socketPath)
 
         let listener = try NWListener(using: params)
+
+        // Block until the listener has actually bound (its socket file exists)
+        // or failed, so callers — and any client checking for the socket right
+        // after `start()` returns — see a fully live endpoint. `OSAllocatedUnfairLock`
+        // threads the bind error out of the `@Sendable` handler.
+        let bound = DispatchSemaphore(value: 0)
+        let bindError = OSAllocatedUnfairLock<Error?>(initialState: nil)
         listener.stateUpdateHandler = { [weak self] state in
-            if case .failed(let error) = state {
+            switch state {
+            case .ready:
+                bound.signal()
+            case .failed(let error):
+                bindError.withLock { $0 = error }
                 self?.onFailure?(error)
+                bound.signal()
+            default:
+                break
             }
         }
         listener.newConnectionHandler = { [weak self] connection in
@@ -43,6 +57,12 @@ public final class HookSocketServer: @unchecked Sendable {
         }
         self.listener = listener
         listener.start(queue: queue)
+
+        bound.wait()
+        if let error = bindError.withLock({ $0 }) {
+            self.listener = nil
+            throw error
+        }
     }
 
     public func stop() {
@@ -96,6 +116,14 @@ public enum HookSocketClient {
         _ message: HookMessage, toSocketAt socketPath: String,
         timeout: TimeInterval = 2
     ) throws {
+        // Fast path: if the socket file is gone (app crashed/quit but the
+        // surface env still carries CASPER_SOCKET), fail immediately instead
+        // of letting NWConnection sit in `.waiting` for the full timeout — a
+        // hook must never block the agent.
+        guard FileManager.default.fileExists(atPath: socketPath) else {
+            throw HookSocketError(reason: "no socket at \(socketPath)")
+        }
+
         let data = try JSONEncoder().encode(message)
 
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
