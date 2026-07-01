@@ -33,13 +33,21 @@
 >   when a terminal surface is created").
 > - **Doc-comment sweep (`05bb1aa`):** four stale `casper hook` doc comments in
 >   `CasperAgents` updated to `casper hooks feed`.
+> - **No global `casper` install (design refinement):** the design spec's
+>   `~/.local/bin/casper` shim (§4) is dropped. `casper` need only be reachable
+>   inside terminals Casper opens, so `ClaudeCodeAdapter.surfaceEnvironment` gains
+>   optional `casperDirectory`/`basePath` params and prepends the binary's dir to
+>   `PATH`; the hook command stays the relative `casper hooks feed`. Plan 5 passes
+>   the app bundle's executable dir. See [[casper-cli-availability]].
 >
-> **Deferred to Plan 5 / later (documented, non-blocking):** the real GUI + the
-> `~/.local/bin/casper` shim; the heartbeat *timer* that calls `HeartbeatMonitor` +
+> **Deferred to Plan 5 / later (documented, non-blocking):** the real GUI; the
+> heartbeat *timer* that calls `HeartbeatMonitor` +
 > `markUnknown` (the pure logic and transitions ship here); `casper open` /
 > `casper worktree` subcommands; optional `--agent` / per-agent `hooks <agent>
-> install` (v1 is Claude-only). **Socket robustness follow-ups from the Task 8–9
-> review (address before Plan 5 wires `onMessage` → `AgentStateStore`):**
+> install` (v1 is Claude-only); Plan 5 wiring the real bundle dir into
+> `surfaceEnvironment(casperDirectory:basePath:)`. **Socket robustness follow-ups
+> from the Task 8–9 review (address before Plan 5 wires `onMessage` →
+> `AgentStateStore`):**
 > `stop()` does not cancel in-flight `NWConnection`s (post-stop `onMessage`
 > possible); no per-connection read timeout / receive-buffer cap; the
 > `onMessage`/`onFailure` "set before `start()`" contract is prose-only.
@@ -121,11 +129,13 @@ New and modified files, by responsibility:
 - `Tests/CasperCLITests/HookCommandTests.swift` *(create)*
 - `Tests/CasperCLITests/EndToEndHookTests.swift` *(create)*
 
-**Scope boundaries (out of this plan):** the `~/.local/bin/casper` shim install
-(first-launch app behavior → Plan 5); the real GUI (Plan 5); the timer that
-periodically calls `HeartbeatMonitor` + `markUnknown` (wired in Plan 5 — this
-plan ships the pure logic and the transition). `casper open` / `casper worktree`
-subcommands are deferred to a later plan; only `casper hook` ships here.
+**Scope boundaries (out of this plan):** wiring the real app-bundle executable
+dir into `surfaceEnvironment(casperDirectory:basePath:)` (Plan 5 — this plan
+ships the capability + tests; there is **no** global `~/.local/bin/casper`
+shim); the real GUI (Plan 5); the timer that periodically calls
+`HeartbeatMonitor` + `markUnknown` (wired in Plan 5 — this plan ships the pure
+logic and the transition). `casper open` / `casper worktree` subcommands are
+deferred to a later plan; only the `casper hooks` family ships here.
 
 ---
 
@@ -1792,10 +1802,11 @@ git commit -m "Add end-to-end hook integration test and update the README"
   state machine + todo aggregation (Task 2); `unknown`/`error` deferral honored
   (Task 3); end-to-end fake-agent integration (Task 12). Port env exposes the full
   reserved block (Task 6).
-- **Out of scope (documented):** `~/.local/bin/casper` shim + real GUI + heartbeat
-  timer wiring → Plan 5; `casper open`/`casper worktree` → later plan. The
-  `HeartbeatMonitor` logic and `markUnknown`/`markError` transitions ship here so
-  Plan 5 only wires a timer.
+- **Out of scope (documented):** no global `casper` shim (dropped — `PATH`
+  injection via `surfaceEnvironment` instead; Plan 5 passes the real bundle dir);
+  real GUI + heartbeat timer wiring → Plan 5; `casper open`/`casper worktree` →
+  later plan. The `HeartbeatMonitor` logic and `markUnknown`/`markError`
+  transitions ship here so Plan 5 only wires a timer.
 - **Type consistency:** `hookCommand:` default is `"casper hooks feed"` (updated
   from `"casper hook"` in Task 11) uniformly across `ClaudeCodeAdapter`;
   `HookMessage(workspaceId:hookPayload:)`, `HookSocketClient.send(_:

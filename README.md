@@ -74,6 +74,12 @@ the app:
 | `CASPER_SOCKET`                   | Unix socket `casper hooks feed` relays events to |
 | `CASPER_WORKSPACE_ID`             | Identifies the workspace emitting hook events    |
 | `CASPER_PORT_0` … `CASPER_PORT_9` | Per-port aliases for the whole reserved block    |
+| `PATH`                            | Prefixed with the `casper` binary's directory    |
+
+`casper` is **not** installed on your system `PATH`. It is reachable only inside
+terminals Casper opens, because Casper prepends its own binary directory to
+`PATH` there — so the relative `casper hooks feed` in `settings.local.json`
+resolves within Casper's terminals and nowhere else.
 
 ## Architecture
 

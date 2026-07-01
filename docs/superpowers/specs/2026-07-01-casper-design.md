@@ -88,15 +88,19 @@ specificity (Claude Code) are each confined to one module, so churn stays local.
 The bundle executable inspects how it was invoked:
 
 - No subcommand → **GUI mode** (launches the app).
-- A recognized subcommand → **CLI mode** (`casper hook …`, `casper open …`,
+- A recognized subcommand → **CLI mode** (`casper hooks …`, `casper open …`,
   `casper worktree …`), runs, then exits.
 
 CLI parsing uses **swift-argument-parser**; the GUI/CLI fork happens before the
 `ParsableCommand` tree is engaged (empty argv → GUI).
 
-On first launch the app installs a shim at `~/.local/bin/casper` that `exec`s the
-bundle executable (`Casper.app/Contents/MacOS/Casper "$@"`). Claude Code hooks
-therefore invoke `casper hook …`. No separate hook binary is shipped.
+`casper` is **not installed globally** — no shim on the user's `PATH`. It only
+needs to be reachable inside terminals Casper opens, so the app **prepends its
+own executable directory to `PATH`** in every terminal surface's environment
+(alongside the hook env vars, see §7 and §9). Claude Code hooks therefore invoke
+the relative command `casper hooks feed`, which resolves only within Casper's
+terminals. No separate hook binary is shipped, and nothing pollutes the user's
+system.
 
 ## 5. Data Model
 
@@ -143,7 +147,7 @@ One row per workspace, grouped by repository. Each row shows:
 Claude Code (inside a Ghostty surface)
    │  hooks: Stop / Notification / SessionStart / PostToolUse:TodoWrite
    ▼
-`casper hook`  (reads hook JSON on stdin; reads $CASPER_SOCKET,
+`casper hooks feed`  (reads hook JSON on stdin; reads $CASPER_SOCKET,
                 $CASPER_WORKSPACE_ID from the surface env)
    │  JSON {workspace, event, payload}  →  Unix domain socket
    ▼
@@ -166,12 +170,14 @@ AgentStateStore  (per-workspace state machine + todo list)
   `todos[]` (each with `content` + `status`) is stored per workspace;
   progress = `completed / total`, current = the `in_progress` item.
 - Casper **never launches an agent itself**; the user runs Claude Code manually
-  in a terminal surface. The hook plumbing is installed **when a terminal surface
-  is created**, not when an agent starts: the Claude Code adapter writes a
-  `settings.json` in the worktree whose hooks call `casper hook`, and exports
-  `CASPER_SOCKET` + `CASPER_WORKSPACE_ID` + `CASPER_PORT` (see §9) into the
-  surface environment. So the moment the user runs Claude Code there, hooks fire
-  and state/progress flow.
+  in a terminal surface. The hook plumbing is installed **once per worktree**
+  (via `casper hooks setup`, run when the workspace is created — not on every
+  terminal open): the Claude Code adapter writes `.claude/settings.local.json` in
+  the worktree whose hooks call `casper hooks feed`. Separately, **every terminal
+  surface** exports `CASPER_SOCKET` + `CASPER_WORKSPACE_ID` + `CASPER_PORT`
+  (see §9) and prepends the `casper` binary's directory to `PATH` (see §4), so
+  the relative `casper hooks feed` resolves only inside Casper's terminals. So the
+  moment the user runs Claude Code there, hooks fire and state/progress flow.
 - Until an agent runs, the workspace state is simply `idle`.
 - **Fallback:** an agent with no hooks (or silent hooks) yields state `unknown`;
   never blocking.
