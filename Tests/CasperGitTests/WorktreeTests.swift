@@ -31,4 +31,23 @@ final class WorktreeTests: XCTestCase {
         XCTAssertTrue(try repo.branchExists("feature"))
         XCTAssertTrue(try repo.isBranchCheckedOut("feature"))
     }
+
+    func testListAndLookupWorktree() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try repo.addWorktree(name: "feature", atPath: wtPath, basedOn: nil)
+
+        XCTAssertEqual(try repo.worktreeNames(), ["feature"])
+
+        let info = try repo.worktreeInfo(name: "feature")
+        XCTAssertEqual(info.name, "feature")
+        XCTAssertEqual(
+            URL(fileURLWithPath: info.path).standardizedFileURL.path,
+            URL(fileURLWithPath: wtPath).standardizedFileURL.path)
+    }
+
+    func testLookupUnknownWorktreeThrows() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        XCTAssertThrowsError(try repo.worktreeInfo(name: "ghost"))
+    }
 }

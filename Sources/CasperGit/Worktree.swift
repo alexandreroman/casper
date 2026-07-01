@@ -58,4 +58,19 @@ extension Repository {
         git_buf_dispose(&reason)
         return WorktreeInfo(name: name, path: path, isLocked: locked)
     }
+
+    /// Names of all worktrees linked to this repository.
+    public func worktreeNames() throws -> [String] {
+        try gitStringArray { array in
+            try gitCheck(git_worktree_list(&array, pointer))
+        }
+    }
+
+    /// Look up a single worktree by name.
+    public func worktreeInfo(name: String) throws -> WorktreeInfo {
+        var worktree: OpaquePointer?
+        try gitCheck(git_worktree_lookup(&worktree, pointer, name))
+        defer { git_worktree_free(worktree) }
+        return worktreeInfo(fromPointer: worktree!, name: name)
+    }
 }
