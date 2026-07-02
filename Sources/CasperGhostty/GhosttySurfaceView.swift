@@ -101,13 +101,22 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // Inject `character` as a real key event (press + release) with the given
     // modifier names, through the bare-event path `performKeyEquivalent` uses.
     func debugSendKey(_ character: String, mods names: [String]) {
-        guard let surface, let ch = character.first,
-              let key = ghosttyInjectedKey(for: ch) else { return }
+        guard let surface, let ch = character.first else { return }
+        guard let key = ghosttyInjectedKey(for: ch) else {
+            CasperLog.debug.debug(
+                "send-key: skipping unmapped character \(character, privacy: .public)")
+            return
+        }
         let mods = ghosttyModsFromNames(names)
+        // Decide from the computed bitmask, not the raw name strings: `mods`
+        // already lowercases names, so checking the strings here could disagree
+        // with it (e.g. "CTRL" would set the CTRL bit but slip past a case-
+        // sensitive string check). Control/command combos must not carry text.
+        let carriesControl = (mods.rawValue & (GHOSTTY_MODS_CTRL.rawValue | GHOSTTY_MODS_SUPER.rawValue)) != 0
         _ = character.withCString { textPtr in
             surface.sendKey(ghosttyKeyEvent(
                 keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
-                text: names.contains(where: { ["ctrl", "cmd", "command", "super"].contains($0) }) ? nil : textPtr,
+                text: carriesControl ? nil : textPtr,
                 unshiftedCodepoint: key.unshiftedCodepoint))
         }
         _ = surface.sendKey(ghosttyKeyEvent(
