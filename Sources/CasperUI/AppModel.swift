@@ -1,6 +1,9 @@
+import AppKit
+import CasperAgents
 import CasperCore
 import Foundation
 import Observation
+import UserNotifications
 
 /// The single owner of runtime UI state and the bridge from the non-observable
 /// core types to SwiftUI. Membership changes (add/remove folder) persist
@@ -13,6 +16,25 @@ final class AppModel {
 
     @ObservationIgnored private let sessionStore: SessionStore
     @ObservationIgnored private var portAllocator: PortAllocator
+
+    /// Timestamp of the last hook message per workspace, for heartbeat staleness.
+    @ObservationIgnored private var lastSeen: [UUID: Date] = [:]
+    @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
+
+    /// Whether the app's window currently has key focus. Injectable for tests.
+    @ObservationIgnored var isWindowKey: () -> Bool = { NSApp.keyWindow != nil }
+
+    /// Delivers a local notification. Injectable for tests; the default posts a
+    /// best-effort `UserNotifications` request (a bare executable without a
+    /// bundle id may silently no-op, which is acceptable in dev builds).
+    @ObservationIgnored var deliverNotification: (String, String) -> Void = { title, body in
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
 
     init(
         sessionStore: SessionStore,
@@ -58,5 +80,33 @@ final class AppModel {
         } catch {
             CasperLog.app.error("failed to persist session: \(String(describing: error), privacy: .public)")
         }
+    }
+
+    func handleHookMessage(_ message: HookMessage, now: Date) {
+        guard let index = workspaces.firstIndex(where: { $0.id == message.workspaceId })
+        else { return }
+        guard let event = try? HookEventParser.parse(message.hookPayload) else { return }
+
+        lastSeen[message.workspaceId] = now
+        let focused = (message.workspaceId == selectedWorkspaceID) && isWindowKey()
+        let effect = AgentStateReducer.apply(event, to: &workspaces[index], focused: focused)
+        if case .notify(let title, let body)? = effect {
+            deliverNotification(title, body)
+        }
+        scheduleSave()
+    }
+
+    /// Debounced persistence for high-frequency agent-state changes.
+    private func scheduleSave() {
+        saveWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.persist() }
+        saveWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+    }
+
+    func flushPendingSave() {
+        saveWorkItem?.cancel()
+        saveWorkItem = nil
+        persist()
     }
 }
