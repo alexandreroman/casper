@@ -397,5 +397,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 extension GhosttySurfaceView: NSMenuItemValidation {
     // The Edit/View menu items built by `buildMainMenu()` all target this view
     // via the responder chain; enable them only while it hosts a live surface.
-    public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { surface != nil }
+    // Copy additionally requires a selection to copy.
+    public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard let surface else { return false }
+        if menuItem.action == #selector(copy(_:)) {
+            return surface.hasSelection()
+        }
+        return true
+    }
 }

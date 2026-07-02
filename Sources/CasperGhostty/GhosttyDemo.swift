@@ -45,6 +45,8 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
                     NSApp.windows.first?.title = title
                 case .quit:
                     NSApp.terminate(nil)
+                case .closeWindow, .closeTab:
+                    NSApp.keyWindow?.performClose(nil)
                 default:
                     break
                 }

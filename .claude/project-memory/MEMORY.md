@@ -23,3 +23,4 @@
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null in some sessions; verify via git-stash-to-baseline before blaming code
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — userdata is per-surface (the view), callbacks run on main thread, confirmed binding action names, Swift 6 pointer-sending fix
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring added; pinned binary's config effect on it is unconfirmed e2e
+- [e2e headless key-window limitation](references/e2e-headless-key-window-limitation.md) — this env can't grant real OS focus; `NSApp.keyWindow`-gated code is unverifiable e2e here
