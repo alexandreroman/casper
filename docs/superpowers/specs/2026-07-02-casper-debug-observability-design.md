@@ -139,3 +139,42 @@ channel, so the runbook only applies to debug builds.
   deliberate later extension.
 - Multi-window / multi-surface addressing beyond "the focused surface".
 - Any remote or non-local socket transport.
+
+## 6. As-Built Notes (deviations from the original design)
+
+Recorded during implementation and live end-to-end verification. These refine
+§2–§4; the code is the source of truth.
+
+- **Gating scope (extends §2 / §3.2).** The CasperCore transport and protocol
+  (`DebugSocket.swift`, `DebugProtocol.swift`) are themselves wrapped in
+  `#if DEBUG`, not merely the app/CLI that use them. A release build contains
+  none of these symbols (verified with `nm`/`strings` on `.build/release/casper`).
+  This matches the `debug-channel-gating` memory note's literal requirement.
+
+- **Framing (replaces the §3.2 half-close description).** The transport uses
+  symmetric 4-byte big-endian length-prefixed framing in **both** directions,
+  not the request half-close originally sketched. A plain `send(isComplete:true)`
+  does not emit a FIN over the default TCP options, and a half-closed client that
+  waits on a slow handler intermittently sees `NWConnection` fail with
+  `ENETDOWN`. With length framing, client success is determined by "received the
+  full framed response", independent of connection-teardown timing. A `> 8 MB`
+  length guard bounds memory on each read.
+
+- **Idempotent-verb retry.** `DebugSocketClient.send` takes `retriable:` and,
+  when true, retries transport-level `DebugSocketError`s up to 4 total attempts
+  (never a decoded `DebugResponse`). `dump-state` / `read-text` / `screenshot`
+  opt in; `send-text` does **not** (retrying would double-inject input). This
+  eliminated a residual ~30 % ack failure on the slow `screenshot` verb (the
+  PNG was always written; only the client ack raced).
+
+- **Logging event set (narrows §3.1).** v1 emits `debug server listening`,
+  `debug command: <verb>` (received), and `debug command failed: <verb> — …`
+  at `.debug` level, plus the always-compiled `.error` sites (surface/demo
+  failures, with `privacy: .public`). Runtime-init and surface attach/detach
+  events named in §3.1 are deferred.
+
+- **Reading the logs.** `.debug`-level events surface via
+  `/usr/bin/log stream … --level debug` (or `log show … --info --debug`). Use
+  the **absolute** `/usr/bin/log` path: in common zsh setups `log` is a shell
+  builtin/function that shadows the system tool. The `debug-casper` skill
+  runbook reflects this.
