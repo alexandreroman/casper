@@ -17,13 +17,18 @@ public func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods
 /// (required so libghostty can encode control characters such as Ctrl-C → U+0003
 /// from the base key) and only leaves `text` nil. Committed typed text instead
 /// rides on the key event via the `text`-carrying overload below.
+///
+/// `consumedMods` tells libghostty which modifiers Cocoa's text system already
+/// spent while composing the event (e.g. Option composing an accented character),
+/// so it does not also re-encode them as an escape sequence. Defaults to none.
 public func ghosttyKeyEvent(
-    _ event: NSEvent, action: ghostty_input_action_e
+    _ event: NSEvent, action: ghostty_input_action_e,
+    consumedMods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 ) -> ghostty_input_key_s {
     var key = ghostty_input_key_s()
     key.action = action
     key.mods = ghosttyMods(from: event.modifierFlags)
-    key.consumed_mods = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
+    key.consumed_mods = consumedMods
     key.keycode = UInt32(event.keyCode)
     key.composing = false
     key.text = nil
@@ -44,11 +49,45 @@ public func ghosttyKeyEvent(
 /// The bare overload this delegates to already sets `unshifted_codepoint`; this
 /// overload only attaches the committed `text`.
 public func ghosttyKeyEvent(
-    _ event: NSEvent, action: ghostty_input_action_e, text: UnsafePointer<CChar>?
+    _ event: NSEvent, action: ghostty_input_action_e, text: UnsafePointer<CChar>?,
+    consumedMods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 ) -> ghostty_input_key_s {
-    var key = ghosttyKeyEvent(event, action: action)
+    var key = ghosttyKeyEvent(event, action: action, consumedMods: consumedMods)
     key.text = text
     return key
+}
+
+/// Build the event AppKit's text composition system (`interpretKeyEvents`) should
+/// see, honoring libghostty's resolved `macos-option-as-alt` config. `translationMods`
+/// is libghostty's answer (via `ghostty_surface_key_translation_mods`) to "which
+/// modifiers should drive text composition for this event" — Casper never reads the
+/// config value itself, only this resolved answer.
+///
+/// macOS's default is Option composing accented/special characters (e.g. Option-e
+/// then e → é). When `macos-option-as-alt = true`, Option must instead reach the
+/// terminal as a bare Alt/Meta modifier (e.g. Meta-b → backward-word in bash), which
+/// requires Cocoa not to consume Option for composition at all — so this strips
+/// `.option` from the event before Cocoa sees it whenever libghostty's answer omits
+/// the Alt bit. Mirrors Ghostty's own AppKit key handling.
+public func ghosttyTranslationEvent(
+    for event: NSEvent, translationMods: ghostty_input_mods_e
+) -> NSEvent {
+    let optionDrivesComposition = translationMods.rawValue & GHOSTTY_MODS_ALT.rawValue != 0
+    guard event.modifierFlags.contains(.option), !optionDrivesComposition else { return event }
+
+    let strippedFlags = event.modifierFlags.subtracting(.option)
+    return NSEvent.keyEvent(
+        with: event.type,
+        location: event.locationInWindow,
+        modifierFlags: strippedFlags,
+        timestamp: event.timestamp,
+        windowNumber: event.windowNumber,
+        context: nil,
+        characters: event.characters(byApplyingModifiers: strippedFlags) ?? "",
+        charactersIgnoringModifiers: event.charactersIgnoringModifiers ?? "",
+        isARepeat: event.isARepeat,
+        keyCode: event.keyCode
+    ) ?? event
 }
 
 /// Whether committed text should ride on the key event's `text` field. libghostty

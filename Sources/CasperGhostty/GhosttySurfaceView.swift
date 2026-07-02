@@ -256,17 +256,31 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func keyDown(with event: NSEvent) {
         guard let surface else { return }
+        // Ask libghostty how Option should behave for this event, per the loaded
+        // `macos-option-as-alt` config, and build the event Cocoa's text system
+        // should see accordingly (see `ghosttyTranslationEvent`).
+        let rawMods = ghosttyMods(from: event.modifierFlags)
+        let translationMods = ghostty_surface_key_translation_mods(surface.surface, rawMods)
+        let translationEvent = ghosttyTranslationEvent(for: event, translationMods: translationMods)
+
         // Drive the input system first so `insertText` can accumulate any committed
         // text; libghostty wants that text attached to the key event, not sent via
         // the separate `ghostty_surface_text` path (which renders the cursor wrong).
         keyTextAccumulator = []
         defer { keyTextAccumulator = nil }
-        interpretKeyEvents([event])
+        interpretKeyEvents([translationEvent])
+
+        // Whether Option was left in place for the event Cocoa just composed from:
+        // if so, Option was "consumed" producing that text (e.g. an accented
+        // character) and libghostty must not also re-encode it as a Meta escape.
+        let consumedMods: ghostty_input_mods_e = translationEvent.modifierFlags.contains(.option)
+            ? ghostty_input_mods_e(GHOSTTY_MODS_ALT.rawValue)
+            : ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 
         guard let committed = keyTextAccumulator, !committed.isEmpty else {
             // No committed text (arrows, Return, Backspace, Ctrl-combos): send the
             // bare key event and let the keycode drive libghostty's own encoding.
-            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, consumedMods: consumedMods))
             return
         }
         for text in committed {
@@ -274,13 +288,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
                 // A bare control character (Ctrl-C, Ctrl-D): send the bare key event
                 // and let the keycode drive libghostty's own control-char encoding,
                 // exactly as the empty-accumulator fallback above does.
-                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, consumedMods: consumedMods))
                 continue
             }
             // `key.text` must outlive the send, so keep the C buffer alive across
             // `sendKey` with `withCString`.
             text.withCString { textPtr in
-                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: textPtr))
+                _ = surface.sendKey(
+                    ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: textPtr, consumedMods: consumedMods))
             }
         }
     }
