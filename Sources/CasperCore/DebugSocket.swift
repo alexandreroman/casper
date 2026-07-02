@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import Network
 import os
@@ -210,3 +211,4 @@ public enum DebugSocketClient {
         }
     }
 }
+#endif

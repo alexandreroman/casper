@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 
 /// A single debug command sent from `casper debug` to the running GUI.
@@ -78,3 +79,4 @@ public struct DebugResponse: Codable, Equatable, Sendable {
         DebugResponse(ok: false, error: message)
     }
 }
+#endif

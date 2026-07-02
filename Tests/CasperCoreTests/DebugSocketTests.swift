@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import XCTest
 @testable import CasperCore
@@ -36,3 +37,4 @@ final class DebugSocketTests: XCTestCase {
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
     }
 }
+#endif

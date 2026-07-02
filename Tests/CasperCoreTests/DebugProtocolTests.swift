@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import XCTest
 @testable import CasperCore
@@ -28,3 +29,4 @@ final class DebugProtocolTests: XCTestCase {
         XCTAssertEqual(response.error, "no surface")
     }
 }
+#endif
