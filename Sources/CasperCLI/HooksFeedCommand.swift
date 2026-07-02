@@ -2,8 +2,8 @@ import ArgumentParser
 import CasperAgents
 import Foundation
 
-/// `casper hooks feed` — invoked by Claude Code hooks (the generated
-/// `settings.local.json` calls this). Reads the hook JSON on stdin, wraps it
+/// `casper hooks feed` — invoked by Claude Code hooks (the generated hooks in
+/// `~/.claude/settings.json` call this). Reads the hook JSON on stdin, wraps it
 /// with the surface's workspace id, and relays it to the app over the
 /// `CASPER_SOCKET` Unix-domain socket. Never blocks the agent: missing env,
 /// a missing socket, or a transport failure all exit 0.

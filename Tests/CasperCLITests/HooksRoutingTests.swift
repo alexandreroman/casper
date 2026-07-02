@@ -8,7 +8,7 @@ final class HooksRoutingTests: XCTestCase {
     }
 
     func testHooksSetupRoutesToSetup() throws {
-        let command = try CasperCommand.parseAsRoot(["hooks", "setup", "/tmp/x"])
+        let command = try CasperCommand.parseAsRoot(["hooks", "setup", "--settings", "/tmp/x"])
         XCTAssertTrue(command is HooksSetupCommand)
     }
 }

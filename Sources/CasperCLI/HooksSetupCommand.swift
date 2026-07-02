@@ -2,31 +2,30 @@ import ArgumentParser
 import CasperAgents
 import Foundation
 
-/// `casper hooks setup [<worktree>]` — write Casper's Claude Code hooks into a
-/// worktree's `.claude/settings.local.json`, ONCE. Casper runs this when a
-/// workspace is created; a user may also run it manually. Idempotent: the hooks
-/// are merged into any existing file, preserving the user's permissions and
-/// custom hooks (a malformed existing file aborts without data loss). Not meant
-/// to run on every terminal open — per-surface environment injection handles
-/// runtime identity separately.
+/// `casper hooks setup` — install Casper's Claude Code hooks GLOBALLY into the
+/// user-level `~/.claude/settings.json`, ONCE. A user may run it manually; Plan
+/// 5 also runs it at app startup. Idempotent: the hooks are merged into any
+/// existing file, preserving the user's global permissions and custom hooks (a
+/// malformed existing file aborts without data loss). Not meant to run per
+/// worktree — a global user-level hook applies to every project, and
+/// `casper hooks feed` no-ops when the Casper environment is absent.
 public struct HooksSetupCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "setup",
-        abstract: "Install Casper's Claude Code hooks into a worktree.")
+        abstract: "Install Casper's Claude Code hooks globally (user-level).")
 
-    @Argument(help: "Worktree directory (defaults to the current directory).")
-    public var worktree: String?
+    @Option(name: .long, help: "Override the settings file path (defaults to ~/.claude/settings.json).")
+    public var settings: String?
 
     public init() {}
 
     public func run() throws {
-        let path = worktree ?? FileManager.default.currentDirectoryPath
+        let url = settings.map { URL(fileURLWithPath: $0) } ?? ClaudeCodeAdapter.userSettingsURL()
         do {
-            try ClaudeCodeAdapter.install(intoWorktreeAt: path)
+            try ClaudeCodeAdapter.install(intoUserSettingsAt: url)
         } catch {
             throw exitWithError(error.localizedDescription)
         }
-        print("Installed Casper hooks into "
-            + ClaudeCodeAdapter.settingsPath(inWorktreeAt: path))
+        print("Installed Casper hooks into \(url.path)")
     }
 }

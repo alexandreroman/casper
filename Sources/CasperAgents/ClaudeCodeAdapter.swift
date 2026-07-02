@@ -1,7 +1,7 @@
 import Foundation
 
-/// Thrown when `install` finds an existing `settings.local.json` that is not a
-/// JSON object. Casper refuses to overwrite it so the user's file is preserved.
+/// Thrown when `install` finds an existing `settings.json` that is not a JSON
+/// object. Casper refuses to overwrite it so the user's file is preserved.
 public struct ClaudeCodeAdapterError: Error, LocalizedError {
     public let reason: String
     public var errorDescription: String? { reason }
@@ -13,8 +13,8 @@ public struct ClaudeCodeAdapterError: Error, LocalizedError {
     }
 }
 
-/// Generates the Claude Code integration for a worktree: the hooks
-/// `settings.local.json` and the surface environment. Confines all Claude
+/// Generates the Claude Code integration: the global user-level hooks
+/// `settings.json` and the per-surface environment. Confines all Claude
 /// Code-specific knowledge to one place (v1 supports Claude Code only).
 public enum ClaudeCodeAdapter {
     /// Casper's four canonical hook events, each mapping to Casper's entry for
@@ -38,7 +38,7 @@ public enum ClaudeCodeAdapter {
         ]
     }
 
-    /// The `settings.local.json` body wiring Claude Code hooks to `hookCommand`.
+    /// The `~/.claude/settings.json` body wiring Claude Code hooks to `hookCommand`.
     /// One command serves every event; Claude Code sends the hook JSON (with
     /// `hook_event_name`) on stdin. `PostToolUse` is filtered to `TodoWrite`.
     /// This produces the body for a *fresh* file; `install` merges the same hook
@@ -56,7 +56,7 @@ public enum ClaudeCodeAdapter {
     ///
     /// When `casperDirectory` is given, it is prepended to `PATH` so the
     /// relative hook command `casper hooks feed` (written into
-    /// `settings.local.json`) resolves only inside terminals Casper opens —
+    /// `~/.claude/settings.json`) resolves only inside terminals Casper opens —
     /// the `casper` binary is deliberately not installed globally. Plan 5
     /// passes the app bundle's executable directory as `casperDirectory` and
     /// the terminal's inherited `PATH` as `basePath`. This function stays
@@ -93,17 +93,20 @@ public enum ClaudeCodeAdapter {
         return env
     }
 
-    /// The path to the generated settings file inside a worktree.
-    public static func settingsPath(inWorktreeAt worktreePath: String) -> String {
-        URL(fileURLWithPath: worktreePath, isDirectory: true)
-            .appendingPathComponent(".claude/settings.local.json").path
+    /// The user-level Claude Code settings file (~/.claude/settings.json), where
+    /// Casper installs its hooks globally. `home` is injectable for tests.
+    public static func userSettingsURL(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        home.appendingPathComponent(".claude/settings.json")
     }
 
-    /// Install Casper's Claude Code hooks into the worktree's project-local
-    /// (uncommitted) `.claude/settings.local.json`, so the user's repo is never
-    /// polluted. This is a read-merge-write, not a plain overwrite: that file is
-    /// where Claude Code persists the user's approved permissions and any custom
-    /// hooks, which must survive a re-install.
+    /// Install Casper's Claude Code hooks GLOBALLY into `settingsURL` (default
+    /// ~/.claude/settings.json), merging into any existing file. This is a
+    /// read-merge-write, not a plain overwrite: that file holds the user's own
+    /// global Claude Code config — approved permissions and custom hooks — which
+    /// must survive a re-install. Idempotent; refuses a malformed existing file
+    /// without writing.
     ///
     /// - If the file is absent, write Casper's settings and create `.claude/`.
     /// - If it exists but is not a JSON object (malformed or non-object
@@ -115,15 +118,13 @@ public enum ClaudeCodeAdapter {
     ///   (idempotent), while user-added entries on those events are preserved. A
     ///   non-array value for a Casper event is treated as malformed and replaced.
     public static func install(
-        intoWorktreeAt worktreePath: String, hookCommand: String = "casper hooks feed"
+        intoUserSettingsAt settingsURL: URL = userSettingsURL(),
+        hookCommand: String = "casper hooks feed"
     ) throws {
-        let claudeDir = URL(fileURLWithPath: worktreePath, isDirectory: true)
-            .appendingPathComponent(".claude", isDirectory: true)
-        let settingsURL = claudeDir.appendingPathComponent("settings.local.json")
-
         // Parse (and possibly reject) the existing file before touching disk.
         let merged = try mergedSettings(existingAt: settingsURL, hookCommand: hookCommand)
 
+        let claudeDir = settingsURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: claudeDir, withIntermediateDirectories: true)
         let data = try JSONSerialization.data(

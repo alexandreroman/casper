@@ -69,23 +69,21 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         XCTAssertNil(env["PATH"])
     }
 
-    func testInstallWritesSettingsLocalJSON() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-install-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(
-            at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
+    func testUserSettingsURLPointsAtGlobalClaudeSettings() {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-home-\(UUID().uuidString)")
+        let url = ClaudeCodeAdapter.userSettingsURL(home: home)
+        XCTAssertTrue(url.path.hasSuffix(".claude/settings.json"))
+    }
 
-        try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path)
+    func testInstallWritesSettingsJSON() throws {
+        let settingsURL = try makeSettingsURL()
+        defer { cleanUp(settingsURL) }
 
-        let path = ClaudeCodeAdapter.settingsPath(inWorktreeAt: dir.path)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
-        XCTAssertTrue(path.hasSuffix(".claude/settings.local.json"))
+        try ClaudeCodeAdapter.install(intoUserSettingsAt: settingsURL)
 
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        let root = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertNotNil(root["hooks"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: settingsURL.path))
+        XCTAssertNotNil(try readSettings(at: settingsURL)["hooks"])
     }
 
     // MARK: - Merge behavior
@@ -93,24 +91,32 @@ final class ClaudeCodeAdapterTests: XCTestCase {
     private let casperCommand = "casper hooks feed"
     private let casperEvents = ["SessionStart", "Stop", "Notification", "PostToolUse"]
 
-    private func makeWorktree() throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
+    /// A unique temp `~/.claude/settings.json` per test. Tests MUST always pass
+    /// this explicit path to `install` so the developer's real user settings are
+    /// never touched. Clean up with `cleanUp`.
+    private func makeSettingsURL() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-install-\(UUID().uuidString)")
+        let url = root.appendingPathComponent(".claude/settings.json")
         try FileManager.default.createDirectory(
-            at: dir, withIntermediateDirectories: true)
-        return dir
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return url
     }
 
-    private func seedSettings(_ contents: Data, atWorktree dir: URL) throws {
-        let claudeDir = dir.appendingPathComponent(".claude", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: claudeDir, withIntermediateDirectories: true)
-        try contents.write(to: claudeDir.appendingPathComponent("settings.local.json"))
+    private func cleanUp(_ settingsURL: URL) {
+        // Remove the temp root: …/<uuid>/.claude/settings.json → …/<uuid>.
+        let root = settingsURL.deletingLastPathComponent().deletingLastPathComponent()
+        try? FileManager.default.removeItem(at: root)
     }
 
-    private func readSettings(atWorktree path: String) throws -> [String: Any] {
-        let settingsPath = ClaudeCodeAdapter.settingsPath(inWorktreeAt: path)
-        let data = try Data(contentsOf: URL(fileURLWithPath: settingsPath))
+    private func seedSettings(_ contents: Data, at settingsURL: URL) throws {
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try contents.write(to: settingsURL)
+    }
+
+    private func readSettings(at settingsURL: URL) throws -> [String: Any] {
+        let data = try Data(contentsOf: settingsURL)
         return try XCTUnwrap(
             JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
@@ -129,8 +135,8 @@ final class ClaudeCodeAdapterTests: XCTestCase {
     }
 
     func testInstallPreservesForeignTopLevelKeys() throws {
-        let dir = try makeWorktree()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let settingsURL = try makeSettingsURL()
+        defer { cleanUp(settingsURL) }
 
         let seed: [String: Any] = [
             "permissions": ["allow": ["Bash"]],
@@ -139,11 +145,11 @@ final class ClaudeCodeAdapterTests: XCTestCase {
             ],
         ]
         try seedSettings(
-            try JSONSerialization.data(withJSONObject: seed), atWorktree: dir)
+            try JSONSerialization.data(withJSONObject: seed), at: settingsURL)
 
-        try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path)
+        try ClaudeCodeAdapter.install(intoUserSettingsAt: settingsURL)
 
-        let root = try readSettings(atWorktree: dir.path)
+        let root = try readSettings(at: settingsURL)
         let permissions = try XCTUnwrap(root["permissions"] as? [String: Any])
         XCTAssertEqual(permissions["allow"] as? [String], ["Bash"])
 
@@ -158,13 +164,13 @@ final class ClaudeCodeAdapterTests: XCTestCase {
     }
 
     func testInstallIsIdempotent() throws {
-        let dir = try makeWorktree()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let settingsURL = try makeSettingsURL()
+        defer { cleanUp(settingsURL) }
 
-        try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path)
-        try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path)
+        try ClaudeCodeAdapter.install(intoUserSettingsAt: settingsURL)
+        try ClaudeCodeAdapter.install(intoUserSettingsAt: settingsURL)
 
-        let hooks = try XCTUnwrap(readSettings(atWorktree: dir.path)["hooks"] as? [String: Any])
+        let hooks = try XCTUnwrap(readSettings(at: settingsURL)["hooks"] as? [String: Any])
         for event in casperEvents {
             let entries = try XCTUnwrap(hooks[event] as? [[String: Any]])
             XCTAssertEqual(
@@ -174,8 +180,8 @@ final class ClaudeCodeAdapterTests: XCTestCase {
     }
 
     func testInstallPreservesUserEntryOnCasperOwnedEvent() throws {
-        let dir = try makeWorktree()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let settingsURL = try makeSettingsURL()
+        defer { cleanUp(settingsURL) }
 
         let seed: [String: Any] = [
             "hooks": [
@@ -183,11 +189,11 @@ final class ClaudeCodeAdapterTests: XCTestCase {
             ],
         ]
         try seedSettings(
-            try JSONSerialization.data(withJSONObject: seed), atWorktree: dir)
+            try JSONSerialization.data(withJSONObject: seed), at: settingsURL)
 
-        try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path)
+        try ClaudeCodeAdapter.install(intoUserSettingsAt: settingsURL)
 
-        let hooks = try XCTUnwrap(readSettings(atWorktree: dir.path)["hooks"] as? [String: Any])
+        let hooks = try XCTUnwrap(readSettings(at: settingsURL)["hooks"] as? [String: Any])
         let sessionStart = try XCTUnwrap(hooks["SessionStart"] as? [[String: Any]])
         let commands = commands(inEvent: sessionStart)
         XCTAssertTrue(commands.contains("user-session"))
@@ -195,16 +201,15 @@ final class ClaudeCodeAdapterTests: XCTestCase {
     }
 
     func testInstallThrowsOnMalformedExistingJSONAndLeavesFileUnchanged() throws {
-        let dir = try makeWorktree()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let settingsURL = try makeSettingsURL()
+        defer { cleanUp(settingsURL) }
 
         let malformed = Data("not json{".utf8)
-        try seedSettings(malformed, atWorktree: dir)
-        let settingsPath = ClaudeCodeAdapter.settingsPath(inWorktreeAt: dir.path)
+        try seedSettings(malformed, at: settingsURL)
 
-        XCTAssertThrowsError(try ClaudeCodeAdapter.install(intoWorktreeAt: dir.path))
+        XCTAssertThrowsError(try ClaudeCodeAdapter.install(intoUserSettingsAt: settingsURL))
 
-        let after = try Data(contentsOf: URL(fileURLWithPath: settingsPath))
+        let after = try Data(contentsOf: settingsURL)
         XCTAssertEqual(after, malformed, "malformed file must be left byte-for-byte intact")
     }
 }
