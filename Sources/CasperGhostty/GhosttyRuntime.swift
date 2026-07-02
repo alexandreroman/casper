@@ -26,6 +26,12 @@ public final class GhosttyRuntime {
     /// Invoked on the main thread with each decoded runtime action.
     public var onAction: ((GhosttyAction) -> Void)?
 
+    /// Routes app-level actions (new tab/window/split, close) before `onAction`
+    /// sees them; a handler that claims an action (returns `true`) suppresses the
+    /// existing `onAction` fallback for it. Settable so future features (tabs,
+    /// splits, windows) can inject a real handler in place of the default no-op.
+    public var actionHandler: GhosttyActionHandler = LoggingActionHandler()
+
     /// Build a runtime and create the libghostty app with the runtime callbacks.
     /// Throws `GhosttyError` if config creation or app creation fails.
     public init() throws {
@@ -82,7 +88,17 @@ public final class GhosttyRuntime {
     /// libghostty the action was consumed.
     @discardableResult
     func handleAction(_ action: ghostty_action_s) -> Bool {
-        onAction?(GhosttyAction.decode(action))
+        let decoded = GhosttyAction.decode(action)
+        switch decoded {
+        case .newSplit, .newTab, .newWindow, .closeTab, .closeWindow:
+            // A handler that claims the action suppresses the onAction fallback;
+            // an unclaimed action (the LoggingActionHandler default) falls through
+            // to the existing onAction behavior below, unchanged.
+            if actionHandler.handle(decoded) { return true }
+        default:
+            break
+        }
+        onAction?(decoded)
         return true
     }
 
