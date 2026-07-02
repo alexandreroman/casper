@@ -1,4 +1,5 @@
 import AppKit
+import CasperCore
 
 /// Minimal end-to-end harness: a single window hosting one live terminal
 /// surface. This is Plan 4's deliverable and the manual-test entry point; Plan 5
@@ -51,7 +52,7 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
             window.makeFirstResponder(view)
             self.window = window
         } catch {
-            NSLog("Casper demo failed: \(error)")
+            CasperLog.ghostty.error("demo failed: \(String(describing: error))")
             NSApp.terminate(nil)
         }
     }

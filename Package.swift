@@ -34,6 +34,7 @@ let package = Package(
         .target(
             name: "CasperGhostty",
             dependencies: [
+                "CasperCore",
                 .product(name: "GhosttyKit", package: "libghostty-spm"),
             ],
             linkerSettings: [

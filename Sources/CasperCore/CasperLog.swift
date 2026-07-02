@@ -1,0 +1,16 @@
+import os
+
+/// Central `os.Logger` facade. The subsystem is the stable key the `debug-casper`
+/// skill filters on (`log show --predicate 'subsystem == "..."'`).
+///
+/// Gating discipline: `.error`/`.fault` calls stay compiled into release builds
+/// for field crash diagnosis; verbose `.debug`/`.info` call sites are wrapped in
+/// `#if DEBUG` at the call site.
+public enum CasperLog {
+    public static let subsystem = "com.github.alexandreroman.casper"
+
+    public static let app = Logger(subsystem: subsystem, category: "app")
+    public static let ghostty = Logger(subsystem: subsystem, category: "ghostty")
+    public static let hooks = Logger(subsystem: subsystem, category: "hooks")
+    public static let debug = Logger(subsystem: subsystem, category: "debug")
+}

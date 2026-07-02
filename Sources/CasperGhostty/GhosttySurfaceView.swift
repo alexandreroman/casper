@@ -1,4 +1,5 @@
 import AppKit
+import CasperCore
 import GhosttyKit
 
 /// An `NSView` that libghostty renders one terminal surface into. Forwards
@@ -38,7 +39,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             pushContentScale()
             pushSize()
         } catch {
-            NSLog("Casper: surface creation failed: \(error)")
+            CasperLog.ghostty.error("surface creation failed: \(String(describing: error))")
         }
     }
 
