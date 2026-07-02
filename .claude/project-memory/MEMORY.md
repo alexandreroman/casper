@@ -16,3 +16,4 @@
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline
 - [Hooks install once](references/hooks-install-once.md) — `casper hooks setup` per worktree, not per terminal; `hooks feed` relays
 - [casper CLI availability](references/casper-cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
+- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir

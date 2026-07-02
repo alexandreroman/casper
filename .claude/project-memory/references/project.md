@@ -21,9 +21,11 @@ implementation plans in `docs/superpowers/plans/`.
 wrapper + WorktreeManager) · 3. CLI + Agents (single binary, `casper hooks`,
 socket, Claude Code settings) · 4. CasperGhostty (embedding) · 5. CasperUI + app.
 
-**Status (2026-07-02):** Plans 1, 2 & 3 complete, committed on `main` (repo local
-only, **not pushed** to GitHub yet). **92 XCTest tests green** (`make test`). v1
-agent target: Claude Code only.
+**Status (2026-07-02):** Plans 1, 2, 3 & 4 complete, committed on `main` (repo
+local only, **not pushed** to GitHub yet). **119 XCTest tests green**
+(`make test`). v1 agent target: Claude Code only. Plan 4's GUI terminal is
+pending **manual** verification (design §13: run `casper`, confirm a live shell
+renders) — automated tests cover only the pure/marshaling/mapping layers.
 
 - **Plan 1 — CasperCore:** implemented, reviewed. Pure Swift core.
 - **Plan 2 — CasperGit + WorktreeManager:** implemented, reviewed (final
@@ -58,8 +60,22 @@ agent target: Claude Code only.
     start()" contract prose-only) — **must be closed before Plan 5 wires
     `onMessage` → `AgentStateStore`**.
 
-**Next milestone:** Plan 4 — CasperGhostty (embed GhosttyKit/libghostty; surface
-lifecycle, splits/tabs; the only module touching the unstable embedding API).
+- **Plan 4 — CasperGhostty:** implemented, reviewed (all 6 impl tasks approved).
+  Embeds libghostty via the pinned `GhosttyKit` xcframework — the only module
+  touching the unstable embedding API. Adds `GhosttyRuntime` (app + C runtime
+  callbacks + wakeup→tick pump), `GhosttyAction` (pure action decoder),
+  `GhosttySurface` (+ config marshaling), the AppKit `GhosttySurfaceView` host +
+  SwiftUI `GhosttySurfaceRepresentable`, and `GhosttyDemo` (one-terminal window
+  wired to `casper` GUI mode). See [[ghosttykit-pin]] for the exact version pin.
+  - **Scope:** one live terminal end-to-end. **Deferred to Plan 5** (documented):
+    splits/tabs *layout composition* (their actions are decoded but not acted on);
+    clipboard copy/paste fidelity (callbacks are stubs); the `flagsChanged`
+    press/release semantics and scroll precision/momentum bits.
+  - Manual GUI checklist (design §13) still to be run by a human.
+
+**Next milestone:** Plan 5 — CasperUI + the real app (SwiftUI sidebar, chrome,
+diff, browser; splits/tabs layout; wire `onMessage` → `AgentStateStore`). Before
+that wiring, close the Plan 3 socket-robustness Minors (see [[hooks-install-once]]).
 
 See [[dependency-policy]], [[test-toolchain]], [[git-workflow]],
-[[libgit2-swift-interop]].
+[[libgit2-swift-interop]], [[ghosttykit-pin]].

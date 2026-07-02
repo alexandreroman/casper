@@ -36,15 +36,33 @@ viewer.
   `sudo xcode-select -s /Applications/Xcode.app`.
 - **libgit2** (via Homebrew: `brew install libgit2`) — needed from the Git layer
   onward.
+- **vendir** (via Homebrew: `brew install vendir`) — Carvel's file-vendoring tool,
+  used to sync the pinned libghostty reference header (`make vendor`).
+
+The first build downloads the pinned `GhosttyKit.xcframework` (~53 MB) from the
+`libghostty-spm` release; subsequent builds reuse the extracted artifact.
 
 ## Getting Started
 
 ```bash
 git clone <repo-url> casper
 cd casper
+make vendor  # sync the pinned libghostty header (once)
 make build   # compile the library and CLI
-make test    # run the test suite (89 tests today)
+make test    # run the test suite (119 tests today)
 ```
+
+## Running the terminal
+
+`casper` with no arguments opens a minimal window with one live terminal surface
+(libghostty via GhosttyKit) rooted at the current directory:
+
+```bash
+casper       # opens a one-terminal Ghostty window
+```
+
+This is the Plan 4 deliverable; the full app (sidebar, worktrees, splits, browser,
+diff) arrives in Plan 5.
 
 ## Usage
 

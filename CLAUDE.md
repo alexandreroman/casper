@@ -18,12 +18,19 @@ implementation plans (the authoritative source of truth).
 
 ## Build & run
 
-Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via pkg-config).
+Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via pkg-config)
+and `brew install vendir` (Carvel vendir syncs the pinned libghostty reference
+header — run `make vendor` once, or whenever the pin changes). The first build
+downloads the ~53 MB `GhosttyKit.xcframework` from the pinned `libghostty-spm`
+release; afterwards `swift build --disable-automatic-resolution` reuses the
+extracted artifact instead of re-resolving.
 
 ```bash
+make vendor  # sync the pinned libghostty header (Vendor/ghostty/ghostty.h)
 make build   # compile
 make test    # run the test suite
 make release # size-optimized release build (arm64)
+casper       # (no args) open a one-terminal Ghostty window (Plan 4 demo)
 ```
 
 ## Modules
