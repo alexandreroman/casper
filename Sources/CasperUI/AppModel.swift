@@ -46,6 +46,27 @@ final class AppModel {
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var socketPath: String?
 
+    /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
+    /// AppKit lifecycle (`AppDelegate`). Loads the persisted session from its
+    /// default location, falling back to a fresh, temp-backed store if the
+    /// default location itself cannot be determined.
+    @MainActor static let shared = makeShared()
+
+    @MainActor
+    static func makeShared() -> AppModel {
+        do {
+            let url = try SessionStore.defaultURL()
+            let store = SessionStore(fileURL: url)
+            let session = try store.load()
+            return AppModel(sessionStore: store, session: session)
+        } catch {
+            CasperLog.app.error("failed to load session, starting fresh: \(String(describing: error), privacy: .public)")
+            let fallback = SessionStore(
+                fileURL: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("casper-session.json"))
+            return AppModel(sessionStore: fallback)
+        }
+    }
+
     init(
         sessionStore: SessionStore,
         portAllocator: PortAllocator = PortAllocator(),
