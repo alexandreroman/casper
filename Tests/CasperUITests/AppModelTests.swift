@@ -120,4 +120,41 @@ final class AppModelTests: XCTestCase {
         model.handleHookMessage(msg, now: Date(timeIntervalSince1970: 1000))
         XCTAssertEqual(model.workspaces[0], before)
     }
+
+    func testHeartbeatMarksSilentWorkspaceUnknown() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.isWindowKey = { false }
+        model.heartbeatTimeout = 30
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/a"), probe: { _ in nil })
+        let id = model.workspaces[0].id
+        // Activity at t=1000 puts it in running.
+        model.handleHookMessage(HookMessage(workspaceId: id, hookPayload: todoWritePayload()),
+                                now: Date(timeIntervalSince1970: 1000))
+        XCTAssertEqual(model.workspaces[0].agentState, .running)
+        // 31s later it is stale.
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1031))
+        XCTAssertEqual(model.workspaces[0].agentState, .unknown)
+    }
+
+    func testHeartbeatLeavesFreshWorkspaceUntouched() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.isWindowKey = { false }
+        model.heartbeatTimeout = 30
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/a"), probe: { _ in nil })
+        let id = model.workspaces[0].id
+        model.handleHookMessage(HookMessage(workspaceId: id, hookPayload: todoWritePayload()),
+                                now: Date(timeIntervalSince1970: 1000))
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1010))
+        XCTAssertEqual(model.workspaces[0].agentState, .running)
+    }
+
+    func testHeartbeatIgnoresWorkspaceWithNoActivity() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/a"), probe: { _ in nil })
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 9999))
+        XCTAssertEqual(model.workspaces[0].agentState, .idle)
+    }
 }

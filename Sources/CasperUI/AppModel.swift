@@ -21,6 +21,9 @@ final class AppModel {
     @ObservationIgnored private var lastSeen: [UUID: Date] = [:]
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
 
+    /// Seconds of silence before a workspace with prior activity goes `unknown`.
+    @ObservationIgnored var heartbeatTimeout: TimeInterval = 30
+
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp.keyWindow != nil }
 
@@ -94,6 +97,16 @@ final class AppModel {
             deliverNotification(title, body)
         }
         scheduleSave()
+    }
+
+    func tickHeartbeat(now: Date) {
+        let stale = HeartbeatMonitor.staleWorkspaces(
+            lastSeen: lastSeen, now: now, timeout: heartbeatTimeout)
+        for id in stale {
+            guard let index = workspaces.firstIndex(where: { $0.id == id }) else { continue }
+            workspaces[index].agentState = .unknown
+        }
+        if !stale.isEmpty { scheduleSave() }
     }
 
     /// Debounced persistence for high-frequency agent-state changes.
