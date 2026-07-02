@@ -38,4 +38,31 @@ final class GhosttyInputTests: XCTestCase {
     func testEmptyTextDoesNotRideOnKeyEvent() {
         XCTAssertFalse(ghosttyTextRidesOnKeyEvent(""))
     }
+
+    /// Guards the fix where the bare key event left `unshifted_codepoint` at 0, which silently
+    /// disabled libghostty's control encoding so Ctrl-C/Ctrl-D produced no output.
+    func testBareKeyEventCarriesUnshiftedCodepointForControlEncoding() {
+        let event = makeControlCKeyEvent()
+        let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
+        XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("c").value))
+        XCTAssertNil(key.text)
+    }
+}
+
+/// Build a synthetic Ctrl-C keyDown. A real Control press remaps `characters` to the control
+/// scalar (U+0003) while `charactersIgnoringModifiers` stays the base key ("c"), which is what
+/// `unshifted_codepoint` must be derived from.
+private func makeControlCKeyEvent() -> NSEvent {
+    NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [.control],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "\u{03}",
+        charactersIgnoringModifiers: "c",
+        isARepeat: false,
+        keyCode: 8  // kVK_ANSI_C
+    )!
 }
