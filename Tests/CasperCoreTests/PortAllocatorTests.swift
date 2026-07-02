@@ -44,4 +44,10 @@ final class PortAllocatorTests: XCTestCase {
         XCTAssertTrue(a.reserve(40000))
         XCTAssertFalse(a.reserve(40000)) // already reserved → not inserted again
     }
+
+    func testReserveAtRangeEndSucceedsAndBeyondFails() {
+        var a = PortAllocator(rangeStart: 40000, rangeEnd: 40010, blockSize: 10)
+        XCTAssertTrue(a.reserve(40010))  // exact last block base is in range
+        XCTAssertFalse(a.reserve(40020)) // one block past rangeEnd is out of range
+    }
 }

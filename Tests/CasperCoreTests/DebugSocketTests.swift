@@ -157,7 +157,12 @@ private final class FlakyDebugServer: @unchecked Sendable {
         let ready = DispatchSemaphore(value: 0)
         listener.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
         listener.start(queue: queue)
-        ready.wait()
+        // Bound the wait so a bind failure fails this test fast instead of
+        // hanging the whole suite on an unbounded semaphore.
+        guard ready.wait(timeout: .now() + 5) == .success else {
+            listener.cancel()
+            throw DebugSocketError(reason: "flaky debug server did not become ready within 5s")
+        }
     }
 
     func stop() { listener.cancel() }

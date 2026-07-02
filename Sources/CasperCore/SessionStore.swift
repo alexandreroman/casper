@@ -25,12 +25,36 @@ public final class SessionStore {
         return dir.appendingPathComponent("session.json", isDirectory: false)
     }
 
+    /// Load the persisted session, self-healing when the file is unreadable as a
+    /// `Session`. A missing file yields an empty `Session`. A genuine I/O read
+    /// failure still propagates, so a transient error never destroys the file.
+    /// A decode failure (truncated, hand-edited, or schema-incompatible file) is
+    /// recovered from: the offending file is moved aside to a sibling
+    /// `session.json.corrupt` backup for diagnostics and an empty `Session` is
+    /// returned, so a stale on-disk format never blocks startup.
     public func load() throws -> Session {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return Session()
         }
         let data = try Data(contentsOf: fileURL)
-        return try decoder.decode(Session.self, from: data)
+        do {
+            return try decoder.decode(Session.self, from: data)
+        } catch {
+            CasperLog.app.error(
+                "session.json is corrupt, backing it up and starting fresh: \(self.fileURL.path, privacy: .public)"
+            )
+            backUpCorruptFile()
+            return Session()
+        }
+    }
+
+    /// Move a corrupt session file aside so it is preserved for diagnostics.
+    /// Best-effort: a backup failure must not block startup, so any error is
+    /// swallowed and the caller still returns an empty `Session`.
+    private func backUpCorruptFile() {
+        let backupURL = fileURL.appendingPathExtension("corrupt")
+        try? FileManager.default.removeItem(at: backupURL)
+        try? FileManager.default.moveItem(at: fileURL, to: backupURL)
     }
 
     public func save(_ session: Session) throws {

@@ -74,4 +74,24 @@ final class AgentStateStoreTests: XCTestCase {
         store.markUnknown(workspaceId: UUID())
         XCTAssertFalse(fired)
     }
+
+    func testMarkErrorForMissingWorkspaceIsNoOp() {
+        let store = AgentStateStore(workspaces: [makeWorkspace()])
+        var fired = false
+        store.onChange = { _ in fired = true }
+        store.markError(workspaceId: UUID())
+        XCTAssertFalse(fired)
+    }
+
+    func testTodoUpdateWithEmptyArrayClearsPreviousTodos() {
+        let ws = makeWorkspace()
+        let store = AgentStateStore(workspaces: [ws])
+        store.handle(
+            .todoUpdate(todos: [Todo(content: "a", status: .inProgress)]),
+            workspaceId: ws.id, focused: true)
+        XCTAssertFalse(store.workspace(id: ws.id)?.todos.isEmpty ?? true)
+
+        store.handle(.todoUpdate(todos: []), workspaceId: ws.id, focused: true)
+        XCTAssertEqual(store.workspace(id: ws.id)?.todos, [])
+    }
 }

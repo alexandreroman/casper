@@ -34,4 +34,39 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(url.lastPathComponent, "session.json")
         XCTAssertTrue(url.deletingLastPathComponent().lastPathComponent == "Casper")
     }
+
+    func testLoadCorruptFileSelfHealsAndBacksItUp() throws {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let garbage = Data("{ this is not valid session json".utf8)
+        try garbage.write(to: url)
+
+        let store = SessionStore(fileURL: url)
+        // A decode failure must self-heal into an empty session rather than throw.
+        XCTAssertEqual(try store.load(), Session())
+
+        // The offending file is moved aside for diagnostics, not left in place.
+        let backupURL = url.appendingPathExtension("corrupt")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backupURL.path))
+        XCTAssertEqual(try Data(contentsOf: backupURL), garbage)
+    }
+
+    func testLoadCorruptFileReplacesPriorBackup() throws {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let backupURL = url.appendingPathExtension("corrupt")
+        try Data("stale backup".utf8).write(to: backupURL)
+        let garbage = Data("still not json".utf8)
+        try garbage.write(to: url)
+
+        let store = SessionStore(fileURL: url)
+        XCTAssertEqual(try store.load(), Session())
+        // The stale backup is replaced by the newly corrupt file.
+        XCTAssertEqual(try Data(contentsOf: backupURL), garbage)
+    }
 }
