@@ -3,6 +3,49 @@ import AppKit
 import CasperCore
 import CoreGraphics
 
+/// Full geometry snapshot of one surface: libghostty's pixel readback plus the
+/// hosting view's AppKit metrics. Carries the numbers `dumpState` reports without
+/// coupling this module's handle to `DebugState`.
+public struct DebugSurfaceGeometry: Sendable {
+    public let columns: Int
+    public let rows: Int
+    public let widthPixels: Int
+    public let heightPixels: Int
+    public let cellWidthPixels: Int
+    public let cellHeightPixels: Int
+    public let boundsWidth: Double
+    public let boundsHeight: Double
+    public let backingWidth: Double
+    public let backingHeight: Double
+    public let contentScaleX: Double
+    public let contentScaleY: Double
+    public let backingScaleFactor: Double
+
+    public init(
+        columns: Int, rows: Int,
+        widthPixels: Int, heightPixels: Int,
+        cellWidthPixels: Int, cellHeightPixels: Int,
+        boundsWidth: Double, boundsHeight: Double,
+        backingWidth: Double, backingHeight: Double,
+        contentScaleX: Double, contentScaleY: Double,
+        backingScaleFactor: Double
+    ) {
+        self.columns = columns
+        self.rows = rows
+        self.widthPixels = widthPixels
+        self.heightPixels = heightPixels
+        self.cellWidthPixels = cellWidthPixels
+        self.cellHeightPixels = cellHeightPixels
+        self.boundsWidth = boundsWidth
+        self.boundsHeight = boundsHeight
+        self.backingWidth = backingWidth
+        self.backingHeight = backingHeight
+        self.contentScaleX = contentScaleX
+        self.contentScaleY = contentScaleY
+        self.backingScaleFactor = backingScaleFactor
+    }
+}
+
 /// A snapshot description of one live surface, decoupling `DebugServer` from the
 /// concrete AppKit view. The provider builds these on the main thread.
 @MainActor
@@ -13,7 +56,7 @@ public struct DebugSurfaceHandle {
     public let focused: Bool
     public let readText: (_ scrollback: Bool) -> String?
     public let sendText: (_ text: String) -> Void
-    public let columnsRows: () -> (Int, Int)
+    public let geometry: () -> DebugSurfaceGeometry
     public let focus: () -> Void
     public let window: NSWindow?
 
@@ -21,7 +64,7 @@ public struct DebugSurfaceHandle {
         id: String, title: String, workingDirectory: String?, focused: Bool,
         readText: @escaping (_ scrollback: Bool) -> String?,
         sendText: @escaping (_ text: String) -> Void,
-        columnsRows: @escaping () -> (Int, Int),
+        geometry: @escaping () -> DebugSurfaceGeometry,
         focus: @escaping () -> Void,
         window: NSWindow?
     ) {
@@ -31,7 +74,7 @@ public struct DebugSurfaceHandle {
         self.focused = focused
         self.readText = readText
         self.sendText = sendText
-        self.columnsRows = columnsRows
+        self.geometry = geometry
         self.focus = focus
         self.window = window
     }
@@ -87,10 +130,16 @@ public final class DebugServer {
         switch command.verb {
         case .dumpState:
             let entries = surfaces.map { handle -> DebugState.Surface in
-                let (columns, rows) = handle.columnsRows()
+                let g = handle.geometry()
                 return DebugState.Surface(
                     id: handle.id, title: handle.title, workingDirectory: handle.workingDirectory,
-                    columns: columns, rows: rows, focused: handle.focused)
+                    columns: g.columns, rows: g.rows, focused: handle.focused,
+                    widthPixels: g.widthPixels, heightPixels: g.heightPixels,
+                    cellWidthPixels: g.cellWidthPixels, cellHeightPixels: g.cellHeightPixels,
+                    boundsWidth: g.boundsWidth, boundsHeight: g.boundsHeight,
+                    backingWidth: g.backingWidth, backingHeight: g.backingHeight,
+                    contentScaleX: g.contentScaleX, contentScaleY: g.contentScaleY,
+                    backingScaleFactor: g.backingScaleFactor)
             }
             return .success(state: DebugState(surfaces: entries))
 

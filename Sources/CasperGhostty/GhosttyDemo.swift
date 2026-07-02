@@ -97,7 +97,13 @@ extension DemoDelegate: DebugSurfaceProvider {
                 focused: focused,
                 readText: { [weak view] scrollback in view?.debugReadText(scrollback: scrollback) },
                 sendText: { [weak view] text in view?.debugSendText(text) },
-                columnsRows: { [weak view] in view?.debugColumnsRows() ?? (0, 0) },
+                geometry: { [weak view] in
+                    view?.debugGeometry() ?? DebugSurfaceGeometry(
+                        columns: 0, rows: 0, widthPixels: 0, heightPixels: 0,
+                        cellWidthPixels: 0, cellHeightPixels: 0,
+                        boundsWidth: 0, boundsHeight: 0, backingWidth: 0, backingHeight: 0,
+                        contentScaleX: 0, contentScaleY: 0, backingScaleFactor: 0)
+                },
                 focus: { [weak window, weak view] in window?.makeFirstResponder(view) },
                 window: window),
         ]

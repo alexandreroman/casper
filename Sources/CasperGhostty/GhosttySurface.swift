@@ -101,4 +101,27 @@ public final class GhosttySurface {
         let size = ghostty_surface_size(surface)
         return (Int(size.columns), Int(size.rows))
     }
+
+    /// Full readback of `ghostty_surface_size`: grid dimensions plus the pixel
+    /// geometry libghostty derives from them. Used for debug/diagnostics only.
+    public struct Geometry: Equatable, Sendable {
+        public let columns: Int
+        public let rows: Int
+        public let widthPixels: Int
+        public let heightPixels: Int
+        public let cellWidthPixels: Int
+        public let cellHeightPixels: Int
+    }
+
+    /// Read every field of `ghostty_surface_size_s` for the current surface.
+    public func geometry() -> Geometry {
+        let size = ghostty_surface_size(surface)
+        return Geometry(
+            columns: Int(size.columns),
+            rows: Int(size.rows),
+            widthPixels: Int(size.width_px),
+            heightPixels: Int(size.height_px),
+            cellWidthPixels: Int(size.cell_width_px),
+            cellHeightPixels: Int(size.cell_height_px))
+    }
 }

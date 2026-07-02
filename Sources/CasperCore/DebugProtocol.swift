@@ -42,10 +42,30 @@ public struct DebugState: Codable, Equatable, Sendable {
         public var columns: Int
         public var rows: Int
         public var focused: Bool
+        // Raw geometry, for diagnosing content-scale double-counting.
+        // libghostty's `ghostty_surface_size` readback (pixels):
+        public var widthPixels: Int
+        public var heightPixels: Int
+        public var cellWidthPixels: Int
+        public var cellHeightPixels: Int
+        // The hosting AppKit view's own metrics:
+        public var boundsWidth: Double        // view bounds, in points
+        public var boundsHeight: Double
+        public var backingWidth: Double       // view bounds, in backing pixels
+        public var backingHeight: Double
+        public var contentScaleX: Double      // points→pixels scale vector
+        public var contentScaleY: Double
+        public var backingScaleFactor: Double // window.backingScaleFactor
 
         public init(
             id: String, title: String, workingDirectory: String?,
-            columns: Int, rows: Int, focused: Bool
+            columns: Int, rows: Int, focused: Bool,
+            widthPixels: Int, heightPixels: Int,
+            cellWidthPixels: Int, cellHeightPixels: Int,
+            boundsWidth: Double, boundsHeight: Double,
+            backingWidth: Double, backingHeight: Double,
+            contentScaleX: Double, contentScaleY: Double,
+            backingScaleFactor: Double
         ) {
             self.id = id
             self.title = title
@@ -53,6 +73,17 @@ public struct DebugState: Codable, Equatable, Sendable {
             self.columns = columns
             self.rows = rows
             self.focused = focused
+            self.widthPixels = widthPixels
+            self.heightPixels = heightPixels
+            self.cellWidthPixels = cellWidthPixels
+            self.cellHeightPixels = cellHeightPixels
+            self.boundsWidth = boundsWidth
+            self.boundsHeight = boundsHeight
+            self.backingWidth = backingWidth
+            self.backingHeight = backingHeight
+            self.contentScaleX = contentScaleX
+            self.contentScaleY = contentScaleY
+            self.backingScaleFactor = backingScaleFactor
         }
     }
 

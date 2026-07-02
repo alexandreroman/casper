@@ -13,7 +13,11 @@ final class DebugProtocolTests: XCTestCase {
 
     func testResponseWithStateRoundTrip() throws {
         let state = DebugState(surfaces: [
-            .init(id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true),
+            .init(
+                id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,
+                widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
+                boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
+                contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2),
         ])
         let response = DebugResponse.success(state: state)
         let data = try JSONEncoder().encode(response)
@@ -40,7 +44,10 @@ final class DebugProtocolTests: XCTestCase {
 
     func testSurfaceRoundTripCarriesId() throws {
         let surface = DebugState.Surface(
-            id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true)
+            id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,
+            widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
+            boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
+            contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2)
         let data = try JSONEncoder().encode(surface)
         let decoded = try JSONDecoder().decode(DebugState.Surface.self, from: data)
         XCTAssertEqual(decoded.id, "0")
