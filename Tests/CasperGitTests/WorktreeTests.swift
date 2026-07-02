@@ -83,6 +83,26 @@ final class WorktreeTests: XCTestCase {
         XCTAssertFalse(try repo.isWorktreeValid(name: "feature"))
     }
 
+    func testAddWorktreeRollsBackBranchWhenAddFails() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let wtPath = root.appendingPathComponent("blocked").path
+
+        // Pre-create the target as a non-empty directory so git_worktree_add
+        // fails AFTER git_branch_create has already created the branch.
+        try FileManager.default.createDirectory(
+            atPath: wtPath, withIntermediateDirectories: true)
+        try "occupied".write(
+            to: URL(fileURLWithPath: wtPath).appendingPathComponent("blocker.txt"),
+            atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(
+            try repo.addWorktree(name: "blocked", atPath: wtPath, basedOn: nil))
+
+        // The branch created before the failed add must have been rolled back,
+        // so the operation stays idempotent and retryable.
+        XCTAssertFalse(try repo.branchExists("blocked"))
+    }
+
     func testPruneRemovesWorktree() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let wtPath = root.appendingPathComponent("feature").path

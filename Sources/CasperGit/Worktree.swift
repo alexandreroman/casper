@@ -39,23 +39,36 @@ extension Repository {
 
         // Add the worktree checked out to the new branch.
         var options = git_worktree_add_options()
-        git_worktree_add_options_init(
-            &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION))
+        try gitCheck(git_worktree_add_options_init(
+            &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
         options.ref = branchRef
 
         var worktree: OpaquePointer?
-        try gitCheck(git_worktree_add(&worktree, pointer, name, path, &options))
-        defer { git_worktree_free(worktree) }
-
-        return worktreeInfo(fromPointer: worktree!, name: name)
+        do {
+            try gitCheck(git_worktree_add(&worktree, pointer, name, path, &options))
+            defer { git_worktree_free(worktree) }
+            guard let worktree else {
+                throw GitError(
+                    code: -1, message: "libgit2 returned success but a null worktree")
+            }
+            return try worktreeInfo(fromPointer: worktree, name: name)
+        } catch {
+            // Roll back the branch created above so retrying the same name is
+            // idempotent instead of failing with GIT_EEXISTS. The `defer` above
+            // still frees `branchRef`; deleting first removes it from the refdb.
+            git_branch_delete(branchRef)
+            throw error
+        }
     }
 
     /// Build a `WorktreeInfo` from an open `git_worktree*`.
-    func worktreeInfo(fromPointer worktree: OpaquePointer, name: String) -> WorktreeInfo {
+    func worktreeInfo(fromPointer worktree: OpaquePointer, name: String) throws -> WorktreeInfo {
         let path = String(cString: git_worktree_path(worktree))
         var reason = git_buf()
-        let locked = git_worktree_is_locked(&reason, worktree) > 0
+        let rc = git_worktree_is_locked(&reason, worktree)
         git_buf_dispose(&reason)
+        if rc < 0 { try gitCheck(rc) }
+        let locked = rc > 0
         return WorktreeInfo(name: name, path: path, isLocked: locked)
     }
 
@@ -71,7 +84,11 @@ extension Repository {
         var worktree: OpaquePointer?
         try gitCheck(git_worktree_lookup(&worktree, pointer, name))
         defer { git_worktree_free(worktree) }
-        return worktreeInfo(fromPointer: worktree!, name: name)
+        guard let worktree else {
+            throw GitError(
+                code: -1, message: "libgit2 returned success but a null worktree")
+        }
+        return try worktreeInfo(fromPointer: worktree, name: name)
     }
 
     /// Whether the worktree named `name` is structurally valid (its gitdir and
@@ -85,14 +102,17 @@ extension Repository {
 
     /// Prune the worktree named `name`, removing both its admin entry and its
     /// working-tree directory.
+    ///
+    /// Does not set `GIT_WORKTREE_PRUNE_LOCKED`, so a locked worktree is not
+    /// pruned. Casper never locks its worktrees.
     public func pruneWorktree(name: String) throws {
         var worktree: OpaquePointer?
         try gitCheck(git_worktree_lookup(&worktree, pointer, name))
         defer { git_worktree_free(worktree) }
 
         var options = git_worktree_prune_options()
-        git_worktree_prune_options_init(
-            &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION))
+        try gitCheck(git_worktree_prune_options_init(
+            &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION)))
         options.flags =
             GIT_WORKTREE_PRUNE_VALID.rawValue
             | GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue

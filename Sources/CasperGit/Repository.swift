@@ -19,15 +19,24 @@ public final class Repository {
         Libgit2.ensureInit()
         var repo: OpaquePointer?
         try gitCheck(git_repository_init(&repo, path, 0))
-        return Repository(pointer: repo!)
+        guard let repo else {
+            throw GitError(
+                code: -1, message: "libgit2 returned success but a null repository")
+        }
+        return Repository(pointer: repo)
     }
 
-    /// Open an existing repository whose git dir is exactly at `path`.
+    /// Open the repository at `path` (either a working directory or a `.git`
+    /// directory). Does not search parent directories — use `discover` for that.
     public static func open(atPath path: String) throws -> Repository {
         Libgit2.ensureInit()
         var repo: OpaquePointer?
         try gitCheck(git_repository_open(&repo, path))
-        return Repository(pointer: repo!)
+        guard let repo else {
+            throw GitError(
+                code: -1, message: "libgit2 returned success but a null repository")
+        }
+        return Repository(pointer: repo)
     }
 
     /// Open the repository that owns `path`, searching upward through parents.
@@ -36,7 +45,11 @@ public final class Repository {
         var repo: OpaquePointer?
         // flags 0 → search parent directories; no ceiling dirs.
         try gitCheck(git_repository_open_ext(&repo, path, 0, nil))
-        return Repository(pointer: repo!)
+        guard let repo else {
+            throw GitError(
+                code: -1, message: "libgit2 returned success but a null repository")
+        }
+        return Repository(pointer: repo)
     }
 
     /// Absolute path to the `.git` directory (trailing slash, per libgit2).
@@ -81,13 +94,16 @@ public final class Repository {
         defer { git_reference_free(ref) }
         if code == GIT_ENOTFOUND.rawValue { return false }
         try gitCheck(code)
-        return git_branch_is_checked_out(ref) == 1
+        let rc = git_branch_is_checked_out(ref)
+        if rc < 0 { try gitCheck(rc) }
+        return rc == 1
     }
 
     /// Working-tree status entries (index + worktree), untracked files included.
     public func status() throws -> [FileStatus] {
         var options = git_status_options()
-        git_status_options_init(&options, UInt32(GIT_STATUS_OPTIONS_VERSION))
+        try gitCheck(git_status_options_init(
+            &options, UInt32(GIT_STATUS_OPTIONS_VERSION)))
         options.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR
         options.flags =
             GIT_STATUS_OPT_INCLUDE_UNTRACKED.rawValue
@@ -104,12 +120,12 @@ public final class Repository {
             guard let entry = git_status_byindex(list, index) else { continue }
             let bits = entry.pointee.status
             let delta = entry.pointee.index_to_workdir ?? entry.pointee.head_to_index
-            let path: String
-            if let delta, let newPath = delta.pointee.new_file.path {
-                path = String(cString: newPath)
-            } else {
-                continue
-            }
+            guard let delta else { continue }
+            // For a deleted entry `new_file.path` can be NULL; fall back to
+            // `old_file.path` so the deletion is not silently dropped.
+            let cPath = delta.pointee.new_file.path ?? delta.pointee.old_file.path
+            guard let cPath else { continue }
+            let path = String(cString: cPath)
             result.append(FileStatus(
                 path: path,
                 isNew: bits.rawValue & GIT_STATUS_INDEX_NEW.rawValue != 0,
