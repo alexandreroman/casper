@@ -51,11 +51,18 @@ executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,
-`GhosttySurfaceRepresentable`, `GhosttyDemo`. Rendering is display-link driven,
-so `GHOSTTY_ACTION_RENDER` needs no explicit `draw()` wiring.
+`GhosttySurfaceRepresentable`, `GhosttyDemo`, `GhosttyMenu`,
+`GhosttyActionDispatcher`. Rendering is display-link driven, so
+`GHOSTTY_ACTION_RENDER` needs no explicit `draw()` wiring.
+- **Keyboard & clipboard — ✅.** Control/Option/⌘ combos all work (Ctrl-C/D,
+  ⌘C/⌘V/⌘A via NSPasteboard, ⌘±/0 font size, ⌘Q, ⌘W); macOS menu bar
+  (App/Edit/View/Window); `macos-option-as-alt` wired (inert in the pinned
+  binary). ⌘-key/menu paths confirmed by structure + live keypress (the debug
+  channel bypasses `performKeyEquivalent`).
 - Remaining for CasperUI: splits/tabs layout composition (actions are decoded
-  but not acted on); clipboard copy/paste fidelity (callbacks are stubs);
-  `flagsChanged` press/release semantics and scroll precision/momentum.
+  and routed through `GhosttyActionDispatcher`, but not composed into a layout);
+  clipboard paste-confirmation UI (v1 auto-confirms); `flagsChanged`
+  press/release semantics and scroll precision/momentum.
 
 ### CasperUI — ❌ not started
 No module exists. Sidebar, chrome, splits/tabs layout composition, `WKWebView`
