@@ -24,12 +24,10 @@ private func run(_ command: DebugCommand, socket: String, retriable: Bool = fals
     do {
         response = try DebugSocketClient.send(command, toSocketAt: socket, retriable: retriable)
     } catch let error as DebugSocketError {
-        FileHandle.standardError.write(Data("error: \(error.reason)\n".utf8))
-        throw ExitCode.failure
+        throw exitWithError(error.reason)
     }
     guard response.ok else {
-        FileHandle.standardError.write(Data("error: \(response.error ?? "unknown")\n".utf8))
-        throw ExitCode.failure
+        throw exitWithError(response.error ?? "unknown")
     }
     return response
 }

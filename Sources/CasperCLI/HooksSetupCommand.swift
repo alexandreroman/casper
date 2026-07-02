@@ -21,7 +21,11 @@ public struct HooksSetupCommand: ParsableCommand {
 
     public func run() throws {
         let path = worktree ?? FileManager.default.currentDirectoryPath
-        try ClaudeCodeAdapter.install(intoWorktreeAt: path)
+        do {
+            try ClaudeCodeAdapter.install(intoWorktreeAt: path)
+        } catch {
+            throw exitWithError(error.localizedDescription)
+        }
         print("Installed Casper hooks into "
             + ClaudeCodeAdapter.settingsPath(inWorktreeAt: path))
     }

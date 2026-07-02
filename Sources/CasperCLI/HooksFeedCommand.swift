@@ -27,7 +27,9 @@ public struct HooksFeedCommand: ParsableCommand {
 
     public func run() throws {
         let environment = ProcessInfo.processInfo.environment
-        let stdin = FileHandle.standardInput.readDataToEndOfFile()
+        // Throwing read: an I/O failure must never crash the agent, so treat any
+        // failure as empty input (the guard below then exits 0).
+        let stdin = (try? FileHandle.standardInput.readToEnd()) ?? Data()
         guard let message = Self.makeMessage(stdin: stdin, environment: environment),
               let socketPath = environment["CASPER_SOCKET"]
         else { return }

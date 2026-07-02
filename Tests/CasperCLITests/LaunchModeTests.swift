@@ -14,4 +14,24 @@ final class LaunchModeTests: XCTestCase {
         XCTAssertEqual(
             LaunchMode.detect(arguments: ["/path/to/casper", "hooks"]), .cli)
     }
+
+    func testHooksSetupSubcommandMeansCLI() {
+        XCTAssertEqual(
+            LaunchMode.detect(arguments: ["casper", "hooks", "setup"]), .cli)
+    }
+
+    func testHelpAndVersionFlagsMeanCLI() {
+        XCTAssertEqual(LaunchMode.detect(arguments: ["casper", "--help"]), .cli)
+        XCTAssertEqual(LaunchMode.detect(arguments: ["casper", "-h"]), .cli)
+        XCTAssertEqual(LaunchMode.detect(arguments: ["casper", "--version"]), .cli)
+    }
+
+    func testInjectedSystemLaunchFlagsMeanGUI() {
+        XCTAssertEqual(
+            LaunchMode.detect(arguments: ["casper", "-NSDocumentRevisionsDebugMode", "YES"]), .gui)
+        XCTAssertEqual(
+            LaunchMode.detect(arguments: ["casper", "-psn_0_12345"]), .gui)
+        XCTAssertEqual(
+            LaunchMode.detect(arguments: ["casper", "-AppleLanguages", "(en)"]), .gui)
+    }
 }
