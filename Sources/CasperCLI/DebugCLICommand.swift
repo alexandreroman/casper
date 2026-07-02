@@ -8,7 +8,9 @@ struct DebugCLICommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "debug",
         abstract: "Drive and observe the running Casper GUI (debug builds only).",
-        subcommands: [DumpState.self, ReadText.self, SendText.self, Screenshot.self, Focus.self])
+        subcommands: [
+            DumpState.self, ReadText.self, SendText.self, SendKeys.self, Screenshot.self, Focus.self,
+        ])
 }
 
 /// Shared socket-path option.
@@ -80,6 +82,24 @@ extension DebugCLICommand {
             // retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendText, text: text, enter: enter, target: target),
+                socket: socket.path, retriable: false)
+        }
+    }
+
+    struct SendKeys: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "send-keys",
+            abstract: "Inject text as real per-character key events (press + release).")
+        @OptionGroup var socket: SocketOption
+        @Argument(help: "Text to type as key events.") var text: String
+        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
+        var target: String?
+
+        func run() throws {
+            // Mutating: retrying could type the text more than once, so never
+            // retry this verb.
+            _ = try CasperCLI.run(
+                DebugCommand(verb: .sendKeys, text: text, target: target),
                 socket: socket.path, retriable: false)
         }
     }

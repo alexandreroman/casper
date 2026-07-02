@@ -13,6 +13,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let configuration: GhosttySurfaceConfiguration
     private var surface: GhosttySurface?
 
+    // Collects the text the input system commits during a single `keyDown`, so
+    // that text can ride on the key event (`key.text`) instead of going through
+    // the separate `ghostty_surface_text` path. It is non-nil only for the span
+    // of a `keyDown`; `insertText` appends to it when set, else sends directly.
+    private var keyTextAccumulator: [String]?
+
     public init(runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration) {
         self.runtime = runtime
         self.configuration = configuration
@@ -59,6 +65,37 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         guard submit, let surface else { return }
         _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_PRESS))
         _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_RELEASE))
+    }
+
+    // Inject `text` as genuine per-character key events (press + release) through
+    // the key path, unlike `debugSendText` which uses the committed-text/paste
+    // path. Each character is sent as its physical key with the right modifiers,
+    // reproducing real keyboard typing. Unsupported characters are skipped.
+    func debugSendKeys(_ text: String) {
+        guard let surface else { return }
+        for character in text {
+            guard let key = ghosttyInjectedKey(for: character) else {
+                CasperLog.debug.debug(
+                    "send-keys: skipping unmapped character \(String(character), privacy: .public)")
+                continue
+            }
+            let mods = key.needsShift
+                ? ghostty_input_mods_e(GHOSTTY_MODS_SHIFT.rawValue)
+                : ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
+            // The press carries the committed text; the release carries none, as a
+            // real key-up does. `text` must outlive the send, so keep the C buffer
+            // alive across `sendKey` with `withCString`.
+            String(character).withCString { textPtr in
+                let press = ghosttyKeyEvent(
+                    keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
+                    text: textPtr, unshiftedCodepoint: key.unshiftedCodepoint)
+                _ = surface.sendKey(press)
+            }
+            let release = ghosttyKeyEvent(
+                keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
+                text: nil, unshiftedCodepoint: key.unshiftedCodepoint)
+            _ = surface.sendKey(release)
+        }
     }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
@@ -149,9 +186,26 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func keyDown(with event: NSEvent) {
         guard let surface else { return }
-        _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
-        // Let the input system produce committed text → insertText(_:).
+        // Drive the input system first so `insertText` can accumulate any committed
+        // text; libghostty wants that text attached to the key event, not sent via
+        // the separate `ghostty_surface_text` path (which renders the cursor wrong).
+        keyTextAccumulator = []
+        defer { keyTextAccumulator = nil }
         interpretKeyEvents([event])
+
+        guard let committed = keyTextAccumulator, !committed.isEmpty else {
+            // No committed text (arrows, Return, Backspace, Ctrl-combos): send the
+            // bare key event and let the keycode drive libghostty's own encoding.
+            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+            return
+        }
+        for text in committed {
+            // `key.text` must outlive the send, so keep the C buffer alive across
+            // `sendKey` with `withCString`.
+            text.withCString { textPtr in
+                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: textPtr))
+            }
+        }
     }
 
     public override func keyUp(with event: NSEvent) {
@@ -201,7 +255,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public func insertText(_ string: Any, replacementRange: NSRange) {
         let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-        surface?.sendText(text)
+        // Inside a `keyDown`, hand the text to the accumulator so it can ride on the
+        // key event. Outside one (paste, IME commit), send it as bulk text.
+        if keyTextAccumulator != nil {
+            keyTextAccumulator?.append(text)
+        } else {
+            surface?.sendText(text)
+        }
     }
 
     public func hasMarkedText() -> Bool { false }
