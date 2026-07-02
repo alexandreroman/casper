@@ -170,14 +170,17 @@ AgentStateStore  (per-workspace state machine + todo list)
   `todos[]` (each with `content` + `status`) is stored per workspace;
   progress = `completed / total`, current = the `in_progress` item.
 - Casper **never launches an agent itself**; the user runs Claude Code manually
-  in a terminal surface. The hook plumbing is installed **once per worktree**
-  (via `casper hooks setup`, run when the workspace is created — not on every
-  terminal open): the Claude Code adapter writes `.claude/settings.local.json` in
-  the worktree whose hooks call `casper hooks feed`. Separately, **every terminal
-  surface** exports `CASPER_SOCKET` + `CASPER_WORKSPACE_ID` + `CASPER_PORT`
-  (see §9) and prepends the `casper` binary's directory to `PATH` (see §4), so
-  the relative `casper hooks feed` resolves only inside Casper's terminals. So the
-  moment the user runs Claude Code there, hooks fire and state/progress flow.
+  in a terminal surface. The hook plumbing is installed **once, globally**,
+  into the user-level `~/.claude/settings.json` (via `casper hooks setup`, or
+  at app startup) — **not per worktree**. The Claude Code adapter merges
+  Casper's hooks (which call `casper hooks feed`) into that file, preserving
+  the user's other settings. User-level hooks apply to every project, and
+  `casper hooks feed` no-ops when the Casper environment is absent, so a single
+  global hook is safe in every terminal. Separately, **every terminal surface**
+  exports `CASPER_SOCKET` + `CASPER_WORKSPACE_ID` + `CASPER_PORT` (see §9) and
+  prepends the `casper` binary's directory to `PATH` (see §4), so the relative
+  `casper hooks feed` resolves only inside Casper's terminals. So the moment
+  the user runs Claude Code there, hooks fire and state/progress flow.
 - Until an agent runs, the workspace state is simply `idle`.
 - **Fallback:** an agent with no hooks (or silent hooks) yields state `unknown`;
   never blocking.
@@ -223,8 +226,9 @@ app can run once per worktree without collisions (a per-worktree port block).
 on each mutation. On relaunch:
 
 - workspaces, layout tree, and every surface descriptor are recreated;
-- **terminals** get a fresh PTY (plain shell in the worktree, hook plumbing
-  re-installed); no agent is auto-started;
+- **terminals** get a fresh PTY (plain shell in the worktree); no agent is
+  auto-started. Hooks are global (§7), installed once — not re-installed per
+  terminal or per relaunch;
 - **browser** surfaces reload their URL;
 - **diff** surfaces reload their target;
 - each workspace's reserved `portBase` is restored as-is (no reallocation).
