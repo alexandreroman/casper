@@ -91,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         heartbeatTimer?.invalidate()
         socketServer?.stop()  // stop BEFORE the final save (no post-save onMessage)
+        #if DEBUG
+        debugServer?.stop()
+        #endif
         AppModel.shared.flushPendingSave()
     }
 

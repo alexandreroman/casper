@@ -88,7 +88,8 @@ final class AppModel {
         do {
             portBase = try portAllocator.allocate()
         } catch {
-            CasperLog.app.error("cannot add workspace: no free port block: \(String(describing: error), privacy: .public)")
+            CasperLog.app.error(
+                "cannot add workspace: no free port block: \(String(describing: error), privacy: .public)")
             return
         }
         let ws = WorkspaceFactory.makeWorkspace(
@@ -102,6 +103,7 @@ final class AppModel {
         guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
         portAllocator.release(workspaces[index].portBase)
         workspaces.remove(at: index)
+        lastSeen[id] = nil
         if selectedWorkspaceID == id { selectedWorkspaceID = workspaces.first?.id }
         persist()
     }
@@ -131,11 +133,16 @@ final class AppModel {
     func tickHeartbeat(now: Date) {
         let stale = HeartbeatMonitor.staleWorkspaces(
             lastSeen: lastSeen, now: now, timeout: heartbeatTimeout)
+        var changed = false
         for id in stale {
+            lastSeen[id] = nil  // consumed; don't reprocess this silence every tick
             guard let index = workspaces.firstIndex(where: { $0.id == id }) else { continue }
-            workspaces[index].agentState = .unknown
+            if workspaces[index].agentState != .unknown {
+                workspaces[index].agentState = .unknown
+                changed = true
+            }
         }
-        if !stale.isEmpty { scheduleSave() }
+        if changed { scheduleSave() }
     }
 
     /// Debounced persistence for high-frequency agent-state changes.

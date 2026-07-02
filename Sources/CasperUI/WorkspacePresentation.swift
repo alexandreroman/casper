@@ -16,7 +16,7 @@ extension AgentState {
 extension Workspace {
     /// `"completed/total"`, or `nil` when the workspace has no todos.
     var progressLabel: String? {
-        let p = progress
-        return p.total == 0 ? nil : "\(p.completed)/\(p.total)"
+        let counts = progress
+        return counts.total == 0 ? nil : "\(counts.completed)/\(counts.total)"
     }
 }

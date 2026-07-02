@@ -157,4 +157,41 @@ final class AppModelTests: XCTestCase {
         model.tickHeartbeat(now: Date(timeIntervalSince1970: 9999))
         XCTAssertEqual(model.workspaces[0].agentState, .idle)
     }
+
+    func testHeartbeatAfterRemoveLeavesRemainingWorkspacesUnchanged() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.isWindowKey = { false }
+        model.heartbeatTimeout = 30
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/a"), probe: { _ in nil })
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/b"), probe: { _ in nil })
+        let removedID = model.workspaces[0].id
+        let remainingID = model.workspaces[1].id
+        model.handleHookMessage(
+            HookMessage(workspaceId: removedID, hookPayload: todoWritePayload()),
+            now: Date(timeIntervalSince1970: 1000))
+        model.handleHookMessage(
+            HookMessage(workspaceId: remainingID, hookPayload: todoWritePayload()),
+            now: Date(timeIntervalSince1970: 1000))
+        model.removeWorkspace(id: removedID)
+        // The stale activity entry for the removed workspace must not resurface
+        // on a later tick and must not crash despite the workspace being gone.
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1010))
+        XCTAssertEqual(model.workspaces.count, 1)
+        XCTAssertEqual(model.workspaces[0].agentState, .running)
+    }
+
+    func testSessionRoundTripsThroughRealSessionStore() throws {
+        let (store, url) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/roundtrip"), probe: { _ in nil })
+
+        let reloadedStore = SessionStore(fileURL: url)
+        let reloadedSession = try reloadedStore.load()
+        let reloadedModel = AppModel(sessionStore: reloadedStore, session: reloadedSession)
+
+        XCTAssertEqual(reloadedModel.workspaces.count, 1)
+        XCTAssertEqual(reloadedModel.workspaces[0].name, model.workspaces[0].name)
+        XCTAssertEqual(reloadedModel.workspaces[0].portBase, model.workspaces[0].portBase)
+    }
 }
