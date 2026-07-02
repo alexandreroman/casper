@@ -10,6 +10,7 @@ public struct DebugCommand: Codable, Equatable, Sendable {
         case readText
         case sendText
         case screenshot
+        case focus
     }
 
     public var verb: Verb
@@ -17,22 +18,25 @@ public struct DebugCommand: Codable, Equatable, Sendable {
     public var enter: Bool?         // sendText: append a trailing newline
     public var scrollback: Bool?    // readText: full screen vs. viewport
     public var path: String?        // screenshot: output file path
+    public var target: String?      // surface id to address (nil = focused/first)
 
     public init(
         verb: Verb, text: String? = nil, enter: Bool? = nil,
-        scrollback: Bool? = nil, path: String? = nil
+        scrollback: Bool? = nil, path: String? = nil, target: String? = nil
     ) {
         self.verb = verb
         self.text = text
         self.enter = enter
         self.scrollback = scrollback
         self.path = path
+        self.target = target
     }
 }
 
 /// Snapshot of the app's observable UI state, returned by `dumpState`.
 public struct DebugState: Codable, Equatable, Sendable {
     public struct Surface: Codable, Equatable, Sendable {
+        public var id: String
         public var title: String
         public var workingDirectory: String?
         public var columns: Int
@@ -40,8 +44,10 @@ public struct DebugState: Codable, Equatable, Sendable {
         public var focused: Bool
 
         public init(
-            title: String, workingDirectory: String?, columns: Int, rows: Int, focused: Bool
+            id: String, title: String, workingDirectory: String?,
+            columns: Int, rows: Int, focused: Bool
         ) {
+            self.id = id
             self.title = title
             self.workingDirectory = workingDirectory
             self.columns = columns
