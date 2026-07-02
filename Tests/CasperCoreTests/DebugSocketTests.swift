@@ -26,14 +26,21 @@ final class DebugSocketTests: XCTestCase {
 
     func testRoundTripWithSlowHandlerStillReplies() throws {
         let path = tempSocketPath()
+        // A large payload forces multi-chunk length-framed reads in both
+        // directions, so the exchange exercises the accumulating read helper
+        // rather than a single-receive fast path.
+        let largeText = String(repeating: "casper-debug-payload ", count: 10_000)
+        XCTAssertGreaterThan(largeText.utf8.count, 200_000)
+
         let server = DebugSocketServer(socketPath: path)
         server.onCommand = { command, reply in
             XCTAssertEqual(command.verb, .dumpState)
             // Defer the reply to exercise the slow-handler path that broke the
-            // `screenshot` verb: the client must not half-close early and see a
-            // spurious ENETDOWN while the server is still working.
+            // `screenshot` verb: the server cancels right after sending the
+            // framed reply, and the client must treat the fully received frame
+            // as success instead of seeing a spurious ENETDOWN from that cancel.
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
-                reply(.success(text: "delayed"))
+                reply(.success(text: largeText))
             }
         }
         try server.start()
@@ -42,7 +49,7 @@ final class DebugSocketTests: XCTestCase {
         let response = try DebugSocketClient.send(
             DebugCommand(verb: .dumpState), toSocketAt: path)
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.text, "delayed")
+        XCTAssertEqual(response.text, largeText)
     }
 
     func testClientThrowsWhenSocketMissing() {

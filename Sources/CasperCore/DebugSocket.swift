@@ -18,20 +18,50 @@ public struct DebugSocketError: Error, Equatable {
     public init(reason: String) { self.reason = reason }
 }
 
-/// Upper bound on a single debug request payload (8 MB). A length header
-/// claiming more than this is rejected so a malformed client cannot force an
-/// unbounded allocation on the server.
-private let maxDebugRequestBytes = 8 * 1024 * 1024
+/// Upper bound on a single debug frame payload (8 MB), applied symmetrically to
+/// both the request (client → server) and the response (server → client). A
+/// length header claiming more than this is rejected so a malformed peer cannot
+/// force an unbounded allocation on the other side.
+private let maxDebugFrameBytes = 8 * 1024 * 1024
+
+/// Reads exactly `count` bytes from `connection`, then invokes `completion` with
+/// them — or with `nil` if the peer reaches EOF (or errors) first. Shared by
+/// both directions: the server reads the request frame, the client reads the
+/// response frame. `accumulated` is threaded by value across the `@Sendable`
+/// receive callback so nothing mutable is captured. `maximumLength` is capped at
+/// the bytes still needed so a read never spills past the requested frame.
+private func readExactly(
+    _ count: Int, on connection: NWConnection, accumulated: Data = Data(),
+    completion: @escaping @Sendable (Data?) -> Void
+) {
+    if accumulated.count >= count {
+        completion(accumulated)
+        return
+    }
+    connection.receive(
+        minimumIncompleteLength: 1, maximumLength: count - accumulated.count
+    ) { data, _, isComplete, error in
+        var buffer = accumulated
+        if let data { buffer.append(data) }
+        if buffer.count >= count {
+            completion(buffer)
+        } else if isComplete || error != nil {
+            completion(nil)  // EOF or error before the full frame arrived
+        } else {
+            readExactly(count, on: connection, accumulated: buffer, completion: completion)
+        }
+    }
+}
 
 /// Listens on a Unix-domain socket for one `DebugCommand` per connection and
 /// writes back one `DebugResponse`.
 ///
-/// Request framing (client → server) is a 4-byte big-endian length prefix
-/// followed by exactly that many JSON bytes. The client keeps its send side
-/// open, so the server never depends on request EOF — a slow handler cannot
-/// race the client's half-close (which previously surfaced as a spurious
-/// `ENETDOWN` on the client during long replies). The reply (server → client)
-/// still half-closes with `isComplete: true` so the client sees a clean EOF.
+/// Both directions use the same framing: a 4-byte big-endian length prefix
+/// followed by exactly that many JSON bytes. Neither side depends on EOF, so
+/// connection teardown can never race the payload — a slow handler no longer
+/// surfaces a spurious `ENETDOWN` on the client during long replies. The client
+/// treats a fully received frame as success and ignores any connection error
+/// that arrives after the bytes are already in hand.
 ///
 /// `@unchecked Sendable`: wraps `Network.framework` whose handlers are
 /// `@Sendable`; all connection I/O runs on the single serial `queue`, and
@@ -96,52 +126,24 @@ public final class DebugSocketServer: @unchecked Sendable {
         connection.start(queue: queue)
         // Read the 4-byte big-endian length header, then exactly that many
         // payload bytes. No reliance on request EOF anymore.
-        readExactly(4, on: connection, accumulated: Data()) { [weak self] header in
+        readExactly(4, on: connection) { [weak self] header in
             guard let self else { return }
             guard let header else {
                 connection.cancel()  // client closed before sending a full header
                 return
             }
             let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
-            guard length > 0, length <= UInt32(maxDebugRequestBytes) else {
+            guard length > 0, length <= UInt32(maxDebugFrameBytes) else {
                 self.reply(.failure("invalid request length: \(length) bytes"), on: connection)
                 return
             }
-            self.readExactly(Int(length), on: connection, accumulated: Data()) { [weak self] payload in
+            readExactly(Int(length), on: connection) { [weak self] payload in
                 guard let self else { return }
                 guard let payload else {
                     connection.cancel()  // client closed before sending the full payload
                     return
                 }
                 self.dispatch(payload, on: connection)
-            }
-        }
-    }
-
-    /// Reads exactly `count` bytes from `connection`, then invokes `completion`
-    /// with them — or with `nil` if the peer reaches EOF (or errors) first.
-    /// `accumulated` is threaded by value across the `@Sendable` receive
-    /// callback so nothing mutable is captured. `maximumLength` is capped at the
-    /// bytes still needed so the read never spills past the requested frame.
-    private func readExactly(
-        _ count: Int, on connection: NWConnection, accumulated: Data,
-        completion: @escaping @Sendable (Data?) -> Void
-    ) {
-        if accumulated.count >= count {
-            completion(accumulated)
-            return
-        }
-        connection.receive(
-            minimumIncompleteLength: 1, maximumLength: count - accumulated.count
-        ) { [weak self] data, _, isComplete, error in
-            var buffer = accumulated
-            if let data { buffer.append(data) }
-            if buffer.count >= count {
-                completion(buffer)
-            } else if isComplete || error != nil {
-                completion(nil)  // EOF or error before the full frame arrived
-            } else {
-                self?.readExactly(count, on: connection, accumulated: buffer, completion: completion)
             }
         }
     }
@@ -161,12 +163,17 @@ public final class DebugSocketServer: @unchecked Sendable {
     }
 
     private func reply(_ response: DebugResponse, on connection: NWConnection) {
-        let data = (try? JSONEncoder().encode(response)) ?? Data()
-        // `.finalMessage` closes the send side (FIN) so the client sees EOF and
-        // stops reading. A plain `isComplete: true` on the default TCP options
-        // only marks a message boundary and never reaches the peer as EOF.
+        let payload = (try? JSONEncoder().encode(response)) ?? Data()
+        // Frame the response symmetrically with the request: a 4-byte big-endian
+        // length prefix followed by the JSON bytes. The client reads an exact
+        // count and never depends on EOF, so cancelling here cannot race its
+        // read. `.finalMessage` still closes the send side cleanly.
+        var framed = Data(capacity: 4 + payload.count)
+        let length = UInt32(payload.count).bigEndian
+        withUnsafeBytes(of: length) { framed.append(contentsOf: $0) }
+        framed.append(payload)
         connection.send(
-            content: data, contentContext: .finalMessage, isComplete: true,
+            content: framed, contentContext: .finalMessage, isComplete: true,
             completion: .contentProcessed { _ in connection.cancel() })
     }
 }
@@ -182,7 +189,7 @@ public enum DebugSocketClient {
         }
 
         let payload = try JSONEncoder().encode(command)
-        guard payload.count <= maxDebugRequestBytes else {
+        guard payload.count <= maxDebugFrameBytes else {
             throw DebugSocketError(reason: "request too large: \(payload.count) bytes")
         }
         // Frame the request with a 4-byte big-endian length prefix so the
@@ -210,27 +217,38 @@ public enum DebugSocketClient {
             done.signal()
         }
 
-        // Accumulate the reply until the server half-closes (EOF).
-        @Sendable func receiveResponse(_ accumulated: Data) {
-            connection.receive(
-                minimumIncompleteLength: 1, maximumLength: 64 * 1024
-            ) { chunk, _, isComplete, error in
-                var buffer = accumulated
-                if let chunk { buffer.append(chunk) }
-                if let error {
-                    finish(.failure(DebugSocketError(reason: "\(error)")))
+        // Read the framed response: a 4-byte big-endian length header, then
+        // exactly that many JSON bytes. Success depends only on receiving the
+        // full frame — once the bytes are in hand we `finish(.success(...))` and
+        // cancel, and any later `.failed`/receive error is ignored (the server
+        // cancels right after sending, which used to race the client's read and
+        // surface a spurious `ENETDOWN`). `finish` records the first result
+        // only, so that teardown error never overrides the delivered response.
+        @Sendable func receiveResponse() {
+            readExactly(4, on: connection) { header in
+                guard let header else {
+                    finish(.failure(DebugSocketError(reason: "no response from \(socketPath)")))
                     connection.cancel()
                     return
                 }
-                if isComplete {
-                    if let response = try? JSONDecoder().decode(DebugResponse.self, from: buffer) {
+                let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+                guard length > 0, length <= UInt32(maxDebugFrameBytes) else {
+                    finish(.failure(DebugSocketError(reason: "invalid response length: \(length) bytes")))
+                    connection.cancel()
+                    return
+                }
+                readExactly(Int(length), on: connection) { payload in
+                    guard let payload else {
+                        finish(.failure(DebugSocketError(reason: "truncated response from \(socketPath)")))
+                        connection.cancel()
+                        return
+                    }
+                    if let response = try? JSONDecoder().decode(DebugResponse.self, from: payload) {
                         finish(.success(response))
                     } else {
                         finish(.failure(DebugSocketError(reason: "undecodable response")))
                     }
                     connection.cancel()
-                } else {
-                    receiveResponse(buffer)
                 }
             }
         }
@@ -249,7 +267,7 @@ public enum DebugSocketClient {
                             connection.cancel()
                         }
                     })
-                receiveResponse(Data())
+                receiveResponse()
             case .failed(let error):
                 finish(.failure(DebugSocketError(reason: "\(error)")))
                 connection.cancel()
