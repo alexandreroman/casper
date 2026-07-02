@@ -67,10 +67,20 @@ diagnosis measurable.
     `surfaceEnvironment` (no global shim) — see [[casper-cli-availability]].
   - Deferred to Plan 5 (documented): the real GUI; wiring the app bundle's exec
     dir into `surfaceEnvironment(casperDirectory:basePath:)`; the heartbeat
-    *timer*; socket robustness (`stop()` doesn't cancel in-flight connections; no
-    read timeout/buffer cap; `start()` bind-wait unbounded; callback "set before
-    start()" contract prose-only) — **must be closed before Plan 5 wires
-    `onMessage` → `AgentStateStore`**.
+    *timer*.
+  - **Socket robustness — CLOSED (2026-07-02, commit `bb8b8b5`)** ahead of the
+    Plan 5 `onMessage` → `AgentStateStore` wiring. `HookSocketServer` now: cancels
+    in-flight connections in `stop()` (lock-tracked set + snapshot-clear + a
+    `queue.sync {}` barrier, so **no `onMessage` fires after `stop()` returns** —
+    hence `stop()` must not be called from `onMessage`/`onFailure`); caps the read
+    buffer (`maxMessageBytes`, 1 MiB) and enforces a per-connection read deadline
+    (`readTimeout`, 5s); bounds the `start()` bind-wait (`bindTimeout`, 5s,
+    cancel+throw) and no longer double-reports a bind failure (throw vs
+    `onFailure`, gated by a `readied` flag); and injects `onMessage`/`onFailure`
+    through `init` (required `let`s) so the set-before-`start()` contract is
+    structural. The same bind-timeout + no-double-notify fixes were ported to the
+    DEBUG-only `DebugSocketServer` (commit `bde5b11`). See
+    [[swift6-network-concurrency]].
 
 - **Plan 4 — CasperGhostty:** implemented, reviewed (all 6 impl tasks approved).
   Embeds libghostty via the pinned `GhosttyKit` xcframework — the only module
@@ -86,8 +96,8 @@ diagnosis measurable.
   - Manual GUI checklist (design §13) still to be run by a human.
 
 **Next milestone:** Plan 5 — CasperUI + the real app (SwiftUI sidebar, chrome,
-diff, browser; splits/tabs layout; wire `onMessage` → `AgentStateStore`). Before
-that wiring, close the Plan 3 socket-robustness Minors (see [[hooks-install-once]]).
+diff, browser; splits/tabs layout; wire `onMessage` → `AgentStateStore`). The
+Plan 3 socket-robustness prerequisite is now closed (see the Plan 3 entry above).
 
 See [[dependency-policy]], [[test-toolchain]], [[git-workflow]],
 [[libgit2-swift-interop]], [[ghosttykit-pin]].
