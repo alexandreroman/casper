@@ -10,7 +10,7 @@ struct DebugCLICommand: ParsableCommand {
         abstract: "Drive and observe the running Casper GUI (debug builds only).",
         subcommands: [
             DumpState.self, ReadText.self, SendText.self, SendKeys.self, SendKey.self,
-            SendAction.self, Screenshot.self, Focus.self,
+            SendAction.self, MouseMove.self, Screenshot.self, Focus.self,
         ])
 }
 
@@ -138,6 +138,25 @@ extension DebugCLICommand {
             // never retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendAction, text: text, target: target),
+                socket: socket.path, retriable: false)
+        }
+    }
+
+    struct MouseMove: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "mouse-move",
+            abstract: "Inject a mouse position (libghostty top-left coordinates) into a surface.")
+        @OptionGroup var socket: SocketOption
+        @Argument(help: "X position, in libghostty top-left coordinates.") var x: Double
+        @Argument(help: "Y position, in libghostty top-left coordinates.") var y: Double
+        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
+        var target: String?
+
+        func run() throws {
+            // Mutating: retrying could move the mouse more than once, so never
+            // retry this verb.
+            _ = try CasperCLI.run(
+                DebugCommand(verb: .mouseMove, target: target, x: x, y: y),
                 socket: socket.path, retriable: false)
         }
     }

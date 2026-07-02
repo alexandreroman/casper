@@ -111,6 +111,7 @@ extension DemoDelegate: DebugSurfaceProvider {
                 sendKeys: { [weak view] text in view?.debugSendKeys(text) },
                 sendKey: { [weak view] text, mods in view?.debugSendKey(text, mods: mods) },
                 sendAction: { [weak view] name in view?.debugSendAction(name) },
+                mouseMove: { [weak view] x, y in view?.debugMouseMove(x: x, y: y) },
                 geometry: { [weak view] in
                     view?.debugGeometry() ?? DebugSurfaceGeometry(
                         columns: 0, rows: 0, widthPixels: 0, heightPixels: 0,

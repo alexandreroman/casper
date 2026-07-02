@@ -59,6 +59,7 @@ public struct DebugSurfaceHandle {
     public let sendKeys: (_ text: String) -> Void
     public let sendKey: (_ text: String, _ mods: [String]) -> Void
     public let sendAction: (_ name: String) -> Void
+    public let mouseMove: (_ x: Double, _ y: Double) -> Void
     public let geometry: () -> DebugSurfaceGeometry
     public let focus: () -> Void
     public let window: NSWindow?
@@ -70,6 +71,7 @@ public struct DebugSurfaceHandle {
         sendKeys: @escaping (_ text: String) -> Void,
         sendKey: @escaping (_ text: String, _ mods: [String]) -> Void,
         sendAction: @escaping (_ name: String) -> Void,
+        mouseMove: @escaping (_ x: Double, _ y: Double) -> Void,
         geometry: @escaping () -> DebugSurfaceGeometry,
         focus: @escaping () -> Void,
         window: NSWindow?
@@ -83,6 +85,7 @@ public struct DebugSurfaceHandle {
         self.sendKeys = sendKeys
         self.sendKey = sendKey
         self.sendAction = sendAction
+        self.mouseMove = mouseMove
         self.geometry = geometry
         self.focus = focus
         self.window = window
@@ -191,6 +194,13 @@ public final class DebugServer {
             }
             guard let text = command.text else { return .failure("missing text") }
             handle.sendAction(text)
+            return .success()
+
+        case .mouseMove:
+            guard let handle = target(in: surfaces, matching: command.target) else {
+                return targetFailure(command.target)
+            }
+            handle.mouseMove(command.x ?? 0, command.y ?? 0)
             return .success()
 
         case .screenshot:

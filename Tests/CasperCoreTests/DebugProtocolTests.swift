@@ -42,6 +42,16 @@ final class DebugProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.target, "0")
     }
 
+    func testCommandRoundTripWithMouseMoveVerb() throws {
+        let command = DebugCommand(verb: .mouseMove, target: "0", x: 12.5, y: 34.75)
+        let data = try JSONEncoder().encode(command)
+        let decoded = try JSONDecoder().decode(DebugCommand.self, from: data)
+        XCTAssertEqual(decoded, command)
+        XCTAssertEqual(decoded.verb, .mouseMove)
+        XCTAssertEqual(decoded.x, 12.5)
+        XCTAssertEqual(decoded.y, 34.75)
+    }
+
     func testSurfaceRoundTripCarriesId() throws {
         let surface = DebugState.Surface(
             id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,

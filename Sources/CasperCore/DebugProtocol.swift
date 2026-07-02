@@ -14,6 +14,7 @@ public struct DebugCommand: Codable, Equatable, Sendable {
         case sendAction
         case screenshot
         case focus
+        case mouseMove
     }
 
     public var verb: Verb
@@ -23,10 +24,13 @@ public struct DebugCommand: Codable, Equatable, Sendable {
     public var scrollback: Bool?    // readText: full screen vs. viewport
     public var path: String?        // screenshot: output file path
     public var target: String?      // surface id to address (nil = focused/first)
+    public var x: Double?           // mouseMove: position in libghostty top-left coordinates
+    public var y: Double?           // mouseMove: position in libghostty top-left coordinates
 
     public init(
         verb: Verb, text: String? = nil, enter: Bool? = nil, mods: [String]? = nil,
-        scrollback: Bool? = nil, path: String? = nil, target: String? = nil
+        scrollback: Bool? = nil, path: String? = nil, target: String? = nil,
+        x: Double? = nil, y: Double? = nil
     ) {
         self.verb = verb
         self.text = text
@@ -35,6 +39,8 @@ public struct DebugCommand: Codable, Equatable, Sendable {
         self.scrollback = scrollback
         self.path = path
         self.target = target
+        self.x = x
+        self.y = y
     }
 }
 
