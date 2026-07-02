@@ -10,25 +10,27 @@ public struct DebugCommand: Codable, Equatable, Sendable {
         case readText
         case sendText
         case sendKeys
-        case sendCtrl
+        case sendKey
         case screenshot
         case focus
     }
 
     public var verb: Verb
-    public var text: String?        // sendText / sendKeys / sendCtrl payload
+    public var text: String?        // sendText / sendKeys / sendKey payload
     public var enter: Bool?         // sendText: submit the line via a Return key event
+    public var mods: [String]?      // sendKey: modifier names
     public var scrollback: Bool?    // readText: full screen vs. viewport
     public var path: String?        // screenshot: output file path
     public var target: String?      // surface id to address (nil = focused/first)
 
     public init(
-        verb: Verb, text: String? = nil, enter: Bool? = nil,
+        verb: Verb, text: String? = nil, enter: Bool? = nil, mods: [String]? = nil,
         scrollback: Bool? = nil, path: String? = nil, target: String? = nil
     ) {
         self.verb = verb
         self.text = text
         self.enter = enter
+        self.mods = mods
         self.scrollback = scrollback
         self.path = path
         self.target = target

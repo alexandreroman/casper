@@ -98,7 +98,7 @@ extension DemoDelegate: DebugSurfaceProvider {
                 readText: { [weak view] scrollback in view?.debugReadText(scrollback: scrollback) },
                 sendText: { [weak view] text, submit in view?.debugSendText(text, submit: submit) },
                 sendKeys: { [weak view] text in view?.debugSendKeys(text) },
-                sendCtrl: { [weak view] text in view?.debugSendCtrl(text) },
+                sendKey: { [weak view] text, mods in view?.debugSendKey(text, mods: mods) },
                 geometry: { [weak view] in
                     view?.debugGeometry() ?? DebugSurfaceGeometry(
                         columns: 0, rows: 0, widthPixels: 0, heightPixels: 0,

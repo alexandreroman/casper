@@ -115,6 +115,23 @@ public func ghosttyKeyEvent(
     return key
 }
 
+/// Map debug-channel modifier names ("ctrl", "cmd"/"super", "opt"/"alt", "shift")
+/// to libghostty's modifier bitset. Unknown names are ignored. Debug-only helper
+/// for `send-key`.
+public func ghosttyModsFromNames(_ names: [String]) -> ghostty_input_mods_e {
+    var raw = GHOSTTY_MODS_NONE.rawValue
+    for name in names {
+        switch name.lowercased() {
+        case "ctrl", "control": raw |= GHOSTTY_MODS_CTRL.rawValue
+        case "cmd", "command", "super": raw |= GHOSTTY_MODS_SUPER.rawValue
+        case "opt", "option", "alt": raw |= GHOSTTY_MODS_ALT.rawValue
+        case "shift": raw |= GHOSTTY_MODS_SHIFT.rawValue
+        default: break
+        }
+    }
+    return ghostty_input_mods_e(raw)
+}
+
 /// A physical key resolved from a `Character` for debug key injection: the macOS
 /// virtual keycode of the base (unshifted) key, that key's Unicode codepoint, and
 /// whether Shift is required (uppercase letters). Real macOS typing of 'H' reports

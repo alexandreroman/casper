@@ -21,8 +21,8 @@ cursor-position reason `key.text` is used instead of `ghostty_surface_text`).
 
 Practical rule: always populate `unshifted_codepoint` on every key event built
 from an NSEvent, not just the text-carrying one. Verify Ctrl-combos end to end
-via the DEBUG `send-ctrl <letter>` debug-channel verb (companion to `send-keys`),
-e.g. inject Ctrl-C over a running `sleep` and confirm SIGINT.
+via the DEBUG `send-key <letter> --mods ctrl` debug-channel verb (companion to
+`send-keys`), e.g. inject Ctrl-C over a running `sleep` and confirm SIGINT.
 
 See [[debug-channel-gating]] and [[ghostty-layer-contents-scale]] for other
 libghostty embedding gotchas.

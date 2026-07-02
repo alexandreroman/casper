@@ -9,7 +9,7 @@ struct DebugCLICommand: ParsableCommand {
         commandName: "debug",
         abstract: "Drive and observe the running Casper GUI (debug builds only).",
         subcommands: [
-            DumpState.self, ReadText.self, SendText.self, SendKeys.self, SendCtrl.self,
+            DumpState.self, ReadText.self, SendText.self, SendKeys.self, SendKey.self,
             Screenshot.self, Focus.self,
         ])
 }
@@ -105,20 +105,21 @@ extension DebugCLICommand {
         }
     }
 
-    struct SendCtrl: ParsableCommand {
+    struct SendKey: ParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "send-ctrl",
-            abstract: "Inject Ctrl+<letter> as a real key event (press + release).")
+            commandName: "send-key",
+            abstract: "Inject a key with modifiers as a real key event (press + release).")
         @OptionGroup var socket: SocketOption
-        @Argument(help: "Letters to send as Ctrl combinations.") var text: String
-        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @Argument(help: "Character to send, e.g. c") var text: String
+        @Option(name: .long, parsing: .upToNextOption,
+                help: "Modifiers: ctrl, cmd, opt, shift (repeatable).") var mods: [String] = []
+        @Option(name: .long, help: "Surface id (defaults to focused).") var target: String?
 
         func run() throws {
-            // Mutating: retrying could inject the control combo more than once, so
+            // Mutating: retrying could inject the key combo more than once, so
             // never retry this verb.
             _ = try CasperCLI.run(
-                DebugCommand(verb: .sendCtrl, text: text, target: target),
+                DebugCommand(verb: .sendKey, text: text, mods: mods, target: target),
                 socket: socket.path, retriable: false)
         }
     }

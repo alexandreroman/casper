@@ -98,28 +98,21 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
     }
 
-    // Inject each letter as a Ctrl+<letter> key event (press + release), the way a
-    // real keyboard sends control combinations. libghostty derives the control byte
-    // (Ctrl-C → 0x03) from the key's unshifted codepoint, so no text rides on the
-    // event. Unsupported characters are skipped.
-    func debugSendCtrl(_ text: String) {
-        guard let surface else { return }
-        let mods = ghostty_input_mods_e(GHOSTTY_MODS_CTRL.rawValue)
-        for character in text {
-            guard let key = ghosttyInjectedKey(for: character) else {
-                CasperLog.debug.debug(
-                    "send-ctrl: skipping unmapped character \(String(character), privacy: .public)")
-                continue
-            }
-            let press = ghosttyKeyEvent(
+    // Inject `character` as a real key event (press + release) with the given
+    // modifier names, through the bare-event path `performKeyEquivalent` uses.
+    func debugSendKey(_ character: String, mods names: [String]) {
+        guard let surface, let ch = character.first,
+              let key = ghosttyInjectedKey(for: ch) else { return }
+        let mods = ghosttyModsFromNames(names)
+        _ = character.withCString { textPtr in
+            surface.sendKey(ghosttyKeyEvent(
                 keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
-                text: nil, unshiftedCodepoint: key.unshiftedCodepoint)
-            _ = surface.sendKey(press)
-            let release = ghosttyKeyEvent(
-                keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
-                text: nil, unshiftedCodepoint: key.unshiftedCodepoint)
-            _ = surface.sendKey(release)
+                text: names.contains(where: { ["ctrl", "cmd", "command", "super"].contains($0) }) ? nil : textPtr,
+                unshiftedCodepoint: key.unshiftedCodepoint))
         }
+        _ = surface.sendKey(ghosttyKeyEvent(
+            keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
+            text: nil, unshiftedCodepoint: key.unshiftedCodepoint))
     }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
