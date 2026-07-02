@@ -36,6 +36,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override var acceptsFirstResponder: Bool { true }
 
+    // A click on an unfocused terminal must both focus this view AND arrive as a
+    // `mouseDown`, so a drag-selection starts at the clicked point instead of the
+    // click being swallowed just to activate the view.
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     // Create the surface once the view is in a window (so `self` is a valid,
     // sized host). Idempotent.
     public override func viewDidMoveToWindow() {
@@ -133,6 +138,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // translation. Used to exercise bindings (e.g. clipboard) that injected ⌘ key
     // events cannot reliably reach in an automated/headless session.
     func debugSendAction(_ name: String) { surface?.bindingAction(name) }
+
+    /// Inject a mouse position (libghostty top-left coordinates) straight into the
+    /// surface, bypassing AppKit event delivery. Used by the `mouse-move` debug
+    /// verb to exercise libghostty's mouse-shape emission in headless tests.
+    func debugMouseMove(x: Double, y: Double) {
+        surface?.sendMousePos(x: x, y: y, mods: ghosttyMods(from: []))
+    }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
     // so the debug channel can pinpoint content-scale double-counting.
@@ -332,28 +344,118 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     // MARK: Mouse
 
-    public override func mouseDown(with event: NSEvent) { mouseButton(event, .left, down: true) }
-    public override func mouseUp(with event: NSEvent) { mouseButton(event, .left, down: false) }
-    public override func rightMouseDown(with event: NSEvent) { mouseButton(event, .right, down: true) }
-    public override func rightMouseUp(with event: NSEvent) { mouseButton(event, .right, down: false) }
-    public override func mouseMoved(with event: NSEvent) { mousePos(event) }
-    public override func mouseDragged(with event: NSEvent) { mousePos(event) }
-
-    public override func scrollWheel(with event: NSEvent) {
-        surface?.sendMouseScroll(
-            deltaX: event.scrollingDeltaX,
-            deltaY: event.scrollingDeltaY,
-            mods: ghostty_input_scroll_mods_t(0))
+    // libghostty's core tracks the pointer from a continuous stream of position
+    // updates and detects multi-click (double = word, triple = line) itself using
+    // that stream's timing and position. Without a tracking area,
+    // `mouseMoved`/`mouseEntered`/`mouseExited` never fire, so the core's position
+    // is refreshed only during a drag and a fresh click lands at a stale cell. One
+    // tracking area over the whole visible rect restores the stream, matching
+    // upstream Ghostty.
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .inVisibleRect, .activeAlways],
+            owner: self,
+            userInfo: nil))
     }
 
-    private enum Button { case left, right }
+    public override func mouseDown(with event: NSEvent) {
+        // Report the position before the press so the selection anchors on the exact
+        // clicked cell even when no `mouseMoved` preceded this click (a cold click into
+        // an unfocused window). Upstream relies on the tracking stream alone; this
+        // pre-press position is a small, safe guard for the first-mouse case.
+        mousePos(event)
+        mouseButton(event, GHOSTTY_MOUSE_LEFT, down: true)
+    }
 
-    private func mouseButton(_ event: NSEvent, _ button: Button, down: Bool) {
+    public override func mouseUp(with event: NSEvent) { mouseButton(event, GHOSTTY_MOUSE_LEFT, down: false) }
+
+    public override func rightMouseDown(with event: NSEvent) {
+        mousePos(event)  // See `mouseDown`: anchor on the exact cell.
+        mouseButton(event, GHOSTTY_MOUSE_RIGHT, down: true)
+    }
+
+    public override func rightMouseUp(with event: NSEvent) { mouseButton(event, GHOSTTY_MOUSE_RIGHT, down: false) }
+
+    public override func otherMouseDown(with event: NSEvent) {
+        mousePos(event)  // See `mouseDown`: anchor on the exact cell.
+        mouseButton(event, Self.ghosttyButton(for: event.buttonNumber), down: true)
+    }
+
+    public override func otherMouseUp(with event: NSEvent) {
+        mouseButton(event, Self.ghosttyButton(for: event.buttonNumber), down: false)
+    }
+
+    public override func mouseMoved(with event: NSEvent) { mousePos(event) }
+    public override func mouseDragged(with event: NSEvent) { mousePos(event) }
+    public override func rightMouseDragged(with event: NSEvent) { mousePos(event) }
+    public override func otherMouseDragged(with event: NSEvent) { mousePos(event) }
+
+    public override func mouseEntered(with event: NSEvent) {
+        // NSCursor is a stack the system resets when the pointer crosses view
+        // boundaries; re-apply the shape libghostty last requested.
+        lastCursor.set()
+        mousePos(event)
+    }
+
+    public override func mouseExited(with event: NSEvent) {
+        // Upstream: while a button is held, a drag past the edge must keep selecting,
+        // so don't report the exit. Otherwise report an off-surface position so the
+        // core clears its hover state.
+        guard NSEvent.pressedMouseButtons == 0 else { return }
+        // Restore the default arrow: the terminal's I-beam must not leak onto sibling
+        // chrome that defines no cursor rect of its own (matches upstream Ghostty).
+        NSCursor.arrow.set()
+        surface?.sendMousePos(x: -1, y: -1, mods: ghosttyMods(from: event.modifierFlags))
+    }
+
+    public override func cursorUpdate(with event: NSEvent) {
+        // `cursorUpdate` is AppKit's own cursor-management hook, invoked as the pointer
+        // moves over this tracking area. Setting the cursor here wins over AppKit's
+        // default cursor-rect reset (which forces the arrow) that was clobbering the
+        // async `.set()` from `setCursorShape`, so libghostty's I-beam finally sticks.
+        lastCursor.set()
+    }
+
+    public override func scrollWheel(with event: NSEvent) {
+        guard let surface else { return }
+        var deltaX = event.scrollingDeltaX
+        var deltaY = event.scrollingDeltaY
+        // Precise (trackpad / high-resolution) deltas arrive in points at roughly half
+        // the magnitude of line-based wheel deltas; double them so trackpad and wheel
+        // scrolling feel consistent, matching upstream Ghostty.
+        if event.hasPreciseScrollingDeltas {
+            deltaX *= 2
+            deltaY *= 2
+        }
+        // Momentum/precision packing into `ghostty_input_scroll_mods_t` (an int whose
+        // bit layout the pinned header does not document) is left unencoded: passing 0
+        // omits the momentum path rather than guessing the layout. The ×2 precise-delta
+        // scaling above is the fix that matters for scroll feel.
+        surface.sendMouseScroll(deltaX: deltaX, deltaY: deltaY, mods: ghostty_input_scroll_mods_t(0))
+    }
+
+    /// Map an `NSEvent.buttonNumber` to libghostty's mouse button. 0→LEFT, 1→RIGHT,
+    /// 2→MIDDLE, 3→FOUR, 4→FIVE; anything else is reported as UNKNOWN. Pure and
+    /// static so it is unit-testable without a running app.
+    static func ghosttyButton(for buttonNumber: Int) -> ghostty_input_mouse_button_e {
+        switch buttonNumber {
+        case 0: return GHOSTTY_MOUSE_LEFT
+        case 1: return GHOSTTY_MOUSE_RIGHT
+        case 2: return GHOSTTY_MOUSE_MIDDLE
+        case 3: return GHOSTTY_MOUSE_FOUR
+        case 4: return GHOSTTY_MOUSE_FIVE
+        default: return GHOSTTY_MOUSE_UNKNOWN
+        }
+    }
+
+    private func mouseButton(_ event: NSEvent, _ button: ghostty_input_mouse_button_e, down: Bool) {
         guard let surface else { return }
         let state = down ? GHOSTTY_MOUSE_PRESS : GHOSTTY_MOUSE_RELEASE
-        let ghosttyButton = button == .left ? GHOSTTY_MOUSE_LEFT : GHOSTTY_MOUSE_RIGHT
         surface.sendMouseButton(
-            state: state, button: ghosttyButton, mods: ghosttyMods(from: event.modifierFlags))
+            state: state, button: button, mods: ghosttyMods(from: event.modifierFlags))
     }
 
     private func mousePos(_ event: NSEvent) {
@@ -363,6 +465,58 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface.sendMousePos(
             x: Double(point.x), y: Double(bounds.height - point.y),
             mods: ghosttyMods(from: event.modifierFlags))
+    }
+
+    // MARK: Cursor
+
+    // The terminal's resting pointer shape is the I-beam (text), matching upstream
+    // Ghostty's default. libghostty only emits MOUSE_SHAPE to CHANGE it (pointer over
+    // a link, resize handles, or the arrow in mouse-reporting mode), never for the
+    // resting text shape — so the I-beam must be our baseline, applied via
+    // `cursorUpdate`/`mouseEntered`, not awaited as an action.
+    private var lastCursor: NSCursor = .iBeam
+
+    /// Pure mapping from a libghostty mouse shape to the matching `NSCursor`.
+    /// Returns nil for shapes AppKit has no cursor for, so the caller leaves the
+    /// current cursor unchanged (upstream's `default: return`). Static so it is
+    /// unit-testable without a running app.
+    static func cursor(for shape: ghostty_action_mouse_shape_e) -> NSCursor? {
+        switch shape {
+        case GHOSTTY_MOUSE_SHAPE_DEFAULT: return .arrow
+        case GHOSTTY_MOUSE_SHAPE_TEXT, GHOSTTY_MOUSE_SHAPE_CELL: return .iBeam
+        case GHOSTTY_MOUSE_SHAPE_VERTICAL_TEXT: return .iBeamCursorForVerticalLayout
+        case GHOSTTY_MOUSE_SHAPE_POINTER: return .pointingHand
+        case GHOSTTY_MOUSE_SHAPE_CROSSHAIR: return .crosshair
+        case GHOSTTY_MOUSE_SHAPE_CONTEXT_MENU: return .contextualMenu
+        case GHOSTTY_MOUSE_SHAPE_GRAB: return .openHand
+        case GHOSTTY_MOUSE_SHAPE_GRABBING: return .closedHand
+        case GHOSTTY_MOUSE_SHAPE_COPY: return .dragCopy
+        case GHOSTTY_MOUSE_SHAPE_ALIAS: return .dragLink
+        case GHOSTTY_MOUSE_SHAPE_NO_DROP, GHOSTTY_MOUSE_SHAPE_NOT_ALLOWED: return .operationNotAllowed
+        case GHOSTTY_MOUSE_SHAPE_COL_RESIZE, GHOSTTY_MOUSE_SHAPE_EW_RESIZE,
+             GHOSTTY_MOUSE_SHAPE_E_RESIZE, GHOSTTY_MOUSE_SHAPE_W_RESIZE:
+            return .resizeLeftRight
+        case GHOSTTY_MOUSE_SHAPE_ROW_RESIZE, GHOSTTY_MOUSE_SHAPE_NS_RESIZE,
+             GHOSTTY_MOUSE_SHAPE_N_RESIZE, GHOSTTY_MOUSE_SHAPE_S_RESIZE:
+            return .resizeUpDown
+        // AppKit has no dedicated cursor for the diagonal resizes, all-scroll, zoom,
+        // progress/wait, help, or move shapes: leave the current cursor as-is.
+        default: return nil
+        }
+    }
+
+    /// Apply a libghostty-requested mouse shape. Unmapped shapes leave the cursor
+    /// unchanged. Called from the action trampoline on the main thread.
+    func setCursorShape(_ shape: ghostty_action_mouse_shape_e) {
+        guard let cursor = Self.cursor(for: shape) else { return }
+        lastCursor = cursor
+        cursor.set()
+    }
+
+    /// Show or hide the mouse cursor. libghostty requests hiding while the user
+    /// types; `setHiddenUntilMouseMoves` auto-restores it on the next movement.
+    func setCursorVisibility(_ visible: Bool) {
+        NSCursor.setHiddenUntilMouseMoves(!visible)
     }
 
     // MARK: NSTextInputClient (committed/IME text)

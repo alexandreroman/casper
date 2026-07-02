@@ -24,3 +24,4 @@
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — userdata is per-surface (the view), callbacks run on main thread, confirmed binding action names, Swift 6 pointer-sending fix
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring added; pinned binary's config effect on it is unconfirmed e2e
 - [e2e headless key-window limitation](references/e2e-headless-key-window-limitation.md) — this env can't grant real OS focus; `NSApp.keyWindow`-gated code is unverifiable e2e here
+- [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side (no click-count param); tracking-area position stream drives it; mouse-shape/visibility actions are surface-scoped via `ghostty_surface_userdata`

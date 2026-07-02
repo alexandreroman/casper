@@ -146,9 +146,38 @@ func casperGhosttyAction(
     _ target: ghostty_target_s,
     _ action: ghostty_action_s
 ) -> Bool {
+    // Cursor shape/visibility are surface-local: they apply directly to the target
+    // view and must NOT flow through the app-level `onAction` closure. Handle them
+    // here from the per-surface userdata (the same view-recovery mechanism the
+    // clipboard callbacks use), leaving every other action to the runtime unchanged.
+    switch action.tag {
+    case GHOSTTY_ACTION_MOUSE_SHAPE:
+        guard let view = surfaceView(from: target) else { return false }
+        let shape = action.action.mouse_shape
+        MainActor.assumeIsolated { view.setCursorShape(shape) }
+        return true
+    case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+        guard let view = surfaceView(from: target) else { return false }
+        let visible = action.action.mouse_visibility == GHOSTTY_MOUSE_VISIBLE
+        MainActor.assumeIsolated { view.setCursorVisibility(visible) }
+        return true
+    default:
+        break
+    }
+
     guard let app, let userdata = ghostty_app_userdata(app) else { return false }
     let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(userdata).takeUnretainedValue()
     return runtime.handleAction(action)
+}
+
+/// Recover the `GhosttySurfaceView` a surface-scoped action targets, from the
+/// per-surface `userdata` libghostty stored at surface creation (the view pointer,
+/// the same mechanism the clipboard callbacks use).
+private func surfaceView(from target: ghostty_target_s) -> GhosttySurfaceView? {
+    guard target.tag == GHOSTTY_TARGET_SURFACE,
+          let surface = target.target.surface,
+          let userdata = ghostty_surface_userdata(surface) else { return nil }
+    return Unmanaged<GhosttySurfaceView>.fromOpaque(userdata).takeUnretainedValue()
 }
 
 // Clipboard callbacks: libghostty hands back the per-surface `userdata` we set
