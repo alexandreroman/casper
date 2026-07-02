@@ -1,6 +1,8 @@
 import AppKit
 import CasperAgents
 import CasperCore
+import CasperGhostty
+import CasperGit
 import Foundation
 import Observation
 import UserNotifications
@@ -38,6 +40,11 @@ final class AppModel {
             identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
+
+    /// Set during Task 7 bootstrap once the Ghostty runtime and IPC socket exist.
+    @ObservationIgnored var runtime: GhosttyRuntime?
+    @ObservationIgnored var casperDirectory: String?
+    @ObservationIgnored var socketPath: String?
 
     init(
         sessionStore: SessionStore,
@@ -121,5 +128,47 @@ final class AppModel {
         saveWorkItem?.cancel()
         saveWorkItem = nil
         persist()
+    }
+
+    /// The per-surface environment injected into a terminal so `casper hooks
+    /// feed` resolves and the agent sees its reserved ports.
+    func surfaceConfiguration(
+        for workspace: Workspace, terminal: Surface
+    ) -> GhosttySurfaceConfiguration {
+        guard case .terminal(let cwd, let command) = terminal.kind else {
+            return GhosttySurfaceConfiguration()
+        }
+        var config = GhosttySurfaceConfiguration(workingDirectory: cwd, command: command)
+        if let socketPath {
+            config.environment = ClaudeCodeAdapter.surfaceEnvironment(
+                socketPath: socketPath,
+                workspaceId: workspace.id,
+                portBase: workspace.portBase,
+                casperDirectory: casperDirectory,
+                basePath: ProcessInfo.processInfo.environment["PATH"]
+            )
+        }
+        return config
+    }
+
+    /// Open a directory picker and adopt the chosen folder as a workspace.
+    func presentAddFolderPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        addWorkspace(folderURL: url, probe: Self.gitProbe)
+    }
+
+    /// Probe a folder for Git backing using CasperGit. Static so it holds no
+    /// state; returns nil for a non-Git folder (accepted per UI-1 design).
+    static func gitProbe(_ url: URL) -> WorkspaceFactory.RepoInfo? {
+        guard let repo = try? Repository.discover(startingAt: url.path),
+              let workdir = repo.workdirPath else { return nil }
+        let branch = (try? repo.headBranchName()) ?? ""
+        return WorkspaceFactory.RepoInfo(
+            repoPath: URL(fileURLWithPath: workdir).standardizedFileURL.path, branch: branch)
     }
 }
