@@ -270,29 +270,37 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         defer { keyTextAccumulator = nil }
         interpretKeyEvents([translationEvent])
 
-        // Whether Option was left in place for the event Cocoa just composed from:
-        // if so, Option was "consumed" producing that text (e.g. an accented
-        // character) and libghostty must not also re-encode it as a Meta escape.
+        // Whether Option was left in place for the event Cocoa just composed from: if
+        // so, Option was "consumed" producing that committed text (e.g. an accented
+        // character), and libghostty must not also re-encode it as a Meta escape. This
+        // only matters for the composed-text path below: for the bare (text-less)
+        // paths — Option+arrows, Option+Delete, bare control characters — the pinned
+        // libghostty uses `consumed_mods` to drive its own keycode encoding, so it must
+        // stay NONE there or Option's Alt/Meta sequence gets silently dropped.
         let consumedMods: ghostty_input_mods_e = translationEvent.modifierFlags.contains(.option)
             ? ghostty_input_mods_e(GHOSTTY_MODS_ALT.rawValue)
             : ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 
         guard let committed = keyTextAccumulator, !committed.isEmpty else {
-            // No committed text (arrows, Return, Backspace, Ctrl-combos): send the
-            // bare key event and let the keycode drive libghostty's own encoding.
-            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, consumedMods: consumedMods))
+            // No committed text (arrows, Return, Backspace, Ctrl-combos): send the bare
+            // key event and let the keycode drive libghostty's own encoding. Omit
+            // `consumedMods` (defaults to NONE) so Option+arrows/Delete keep their
+            // Alt/Meta encoding.
+            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
             return
         }
         for text in committed {
             guard ghosttyTextRidesOnKeyEvent(text) else {
                 // A bare control character (Ctrl-C, Ctrl-D): send the bare key event
                 // and let the keycode drive libghostty's own control-char encoding,
-                // exactly as the empty-accumulator fallback above does.
-                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, consumedMods: consumedMods))
+                // exactly as the empty-accumulator fallback above does — same reason
+                // `consumedMods` is omitted here.
+                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
                 continue
             }
             // `key.text` must outlive the send, so keep the C buffer alive across
-            // `sendKey` with `withCString`.
+            // `sendKey` with `withCString`. `consumedMods` is passed here because this
+            // is the composed-text path: Option was consumed to produce `text`.
             text.withCString { textPtr in
                 _ = surface.sendKey(
                     ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: textPtr, consumedMods: consumedMods))

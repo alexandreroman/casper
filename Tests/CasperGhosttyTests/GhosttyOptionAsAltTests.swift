@@ -63,4 +63,20 @@ final class GhosttyOptionAsAltTests: XCTestCase {
         XCTAssertFalse(translated.modifierFlags.contains(.option))
         XCTAssertTrue(translated.modifierFlags.contains(.shift))
     }
+
+    // `ghosttyKeyEvent`'s `consumedMods` parameter must plumb straight through to
+    // `consumed_mods` on the built key, and default to NONE when the caller omits it —
+    // this is what lets `keyDown` send bare (text-less) events, like Option+arrows,
+    // without telling libghostty Alt was consumed and losing their Meta encoding.
+    func testConsumedModsPlumbsThroughAndDefaultsToNone() {
+        let event = makeKeyEvent(modifierFlags: [.option])
+
+        let withAlt = ghosttyKeyEvent(
+            event, action: GHOSTTY_ACTION_PRESS,
+            consumedMods: ghostty_input_mods_e(GHOSTTY_MODS_ALT.rawValue))
+        XCTAssertEqual(withAlt.consumed_mods.rawValue, GHOSTTY_MODS_ALT.rawValue)
+
+        let withDefault = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
+        XCTAssertEqual(withDefault.consumed_mods.rawValue, GHOSTTY_MODS_NONE.rawValue)
+    }
 }
