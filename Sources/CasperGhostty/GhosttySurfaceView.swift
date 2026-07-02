@@ -249,6 +249,27 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface?.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
     }
 
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.type == .keyDown, let surface else { return false }
+        // Only handle when focused; otherwise let ⌘Q, ⌘Tab and menu equivalents work.
+        guard window?.firstResponder === self else { return false }
+
+        // Forward as a key event so libghostty's keybinding engine can match it.
+        // Attach committed text only when printable (control/command combos carry none);
+        // unshifted_codepoint is populated by ghosttyKeyEvent for binding resolution.
+        let consumed: Bool
+        if let chars = event.characters, let first = chars.utf8.first, first >= 0x20,
+           !event.modifierFlags.contains(.command) {
+            consumed = chars.withCString { ptr in
+                surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: ptr))
+            }
+        } else {
+            consumed = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+        }
+        // Consumed → the binding fired. Not consumed → let AppKit continue (menu, ⌘Q).
+        return consumed
+    }
+
     // MARK: Mouse
 
     public override func mouseDown(with event: NSEvent) { mouseButton(event, .left, down: true) }
