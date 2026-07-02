@@ -11,10 +11,10 @@ Command Line Tools' `swift` cannot link XCTest (symptom: `XCTestCase` resolves
 but `XCTAssert*` are "cannot find in scope"; Swift Testing's `import Testing`
 is also absent under CLT).
 
-**How to run tests locally:** Xcode 26.6 is installed and selected
-(`sudo xcode-select -s /Applications/Xcode.app` was run on 2026-07-01), so plain
-`swift test` and `make test` work. If the toolchain is ever mixed, `.build` gets
-corrupted — fix with `rm -rf .build`. Without a global switch, use
+**How to run tests locally:** with the full Xcode toolchain selected
+(`sudo xcode-select -s /Applications/Xcode.app`), plain `swift test` and
+`make test` work. If the toolchain is ever mixed, `.build` gets corrupted — fix
+with `rm -rf .build`. Without a global switch, use
 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test`.
 
 **Gotcha:** recent SDKs no longer re-export Foundation through `import XCTest` —

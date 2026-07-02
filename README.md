@@ -6,10 +6,9 @@ agents (Claude Code first). It tracks each agent's state and task progress,
 reserves network ports per workspace, and bundles a native browser and diff
 viewer.
 
-> **Status:** early development. Plans 1–3 — `CasperCore`, `CasperGit`, and
-> the `CasperAgents`/`CasperCLI` hook pipeline — are implemented and tested;
-> the terminal UI and app shell are on the roadmap. See
-> [Project status](#project-status).
+> **Status:** under active development and not yet ready for general use. The
+> terminal engine, the Git worktree layer, and the Claude Code hook pipeline are
+> in place; the full SwiftUI app is still being built.
 
 ## Features
 
@@ -49,7 +48,7 @@ git clone <repo-url> casper
 cd casper
 make vendor  # sync the pinned libghostty header (once)
 make build   # compile the library and CLI
-make test    # run the test suite (119 tests today)
+make test    # run the test suite
 ```
 
 ## Running the terminal
@@ -61,8 +60,7 @@ make test    # run the test suite (119 tests today)
 casper       # opens a one-terminal Ghostty window
 ```
 
-This is the Plan 4 deliverable; the full app (sidebar, worktrees, splits, browser,
-diff) arrives in Plan 5.
+The full app (sidebar, worktrees, splits, browser, diff) is still being built.
 
 ## Usage
 
@@ -129,17 +127,9 @@ The full design and per-milestone plans live in
 [`docs/superpowers/`](./docs/superpowers/) — start with the
 [design spec](./docs/superpowers/specs/2026-07-01-casper-design.md).
 
-## Project status
+## Continuous integration
 
-| Milestone                          | State                         |
-| ---------------------------------- | ----------------------------- |
-| **1. CasperCore** (pure core)      | ✅ implemented                 |
-| **2. CasperGit** (libgit2)         | ✅ implemented                 |
-| **3. CLI + Agents** (socket/hooks) | ✅ implemented, 89 tests green |
-| 4. CasperGhostty (embedding)       | planned                       |
-| 5. CasperUI + app                  | planned                       |
-
-Tests also run in CI via GitHub Actions on `macos-14`
+Tests run in CI via GitHub Actions on `macos-14`
 ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
 
 [ghostty]: https://ghostty.org

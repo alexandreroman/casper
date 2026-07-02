@@ -6,12 +6,12 @@ type: feedback
 
 # dependency-policy
 
-For Casper, the user requires a **native, performant macOS app** that **always
-prefers built-in macOS frameworks**, with the **smallest possible binary** and
-**minimum external dependencies**.
+Casper is a **native, performant macOS app** that **always prefers built-in
+macOS frameworks**, with the **smallest possible binary** and **minimum external
+dependencies**.
 
-**Why:** it is a distributable product where size and native feel matter; the
-user rejects heavyweight stacks (e.g. no Chromium/CEF — the browser is WKWebView).
+**Why:** it is a distributable product where size and native feel matter;
+heavyweight stacks are rejected (e.g. no Chromium/CEF — the browser is WKWebView).
 
 **How to apply:** only **three** external dependencies are sanctioned —
 **GhosttyKit** (libghostty terminal engine), **swift-argument-parser** (CLI),

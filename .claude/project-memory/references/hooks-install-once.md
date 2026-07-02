@@ -11,7 +11,7 @@ Casper installs its Claude Code hooks **globally, once**, into the **user-level
 once at app startup. It is **not** installed per worktree. The hook command
 is the *relative* `casper hooks feed`, which resolves only inside Casper-opened
 terminals (where Casper injects `casper` onto `PATH`); in any other terminal it
-is simply not found — an accepted trade-off (see [[casper-cli-availability]]).
+is simply not found — an accepted trade-off (see [[cli-availability]]).
 
 The CLI groups hook integration under a plural **`hooks`** command:
 `casper hooks setup` (merge Casper's hooks into `~/.claude/settings.json`,
@@ -33,11 +33,9 @@ nothing (a benign shell error) — which keeps it contained to Casper even thoug
 it lives in the user's global settings.
 
 **Why:** rewriting a per-worktree settings file for every worktree is redundant
-and pollutes each project. The user chose a single **global** install, triggered
-by the CLI or at app startup. This supersedes the earlier "once per worktree at
-creation" guidance (which itself had corrected the original per-terminal spec).
-Design spec §7/§10, README, base §8, and the Space spec/plan have all been
-updated to match this global model.
+and pollutes each project; a single **global** install, triggered by the CLI or
+at app startup, avoids that. The design spec, README, and the Space spec/plan
+describe this global model.
 
 **How to apply:** `ClaudeCodeAdapter.install` targets `~/.claude/settings.json`
 (the path is injectable for tests) and merges into it. `casper hooks setup` and

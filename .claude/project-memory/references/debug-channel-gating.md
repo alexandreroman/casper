@@ -19,8 +19,8 @@ diagnostic floor: `.error`/`.fault` stay compiled in for field crash diagnosis;
 `.debug`/`.info` verbose events are gated by `#if DEBUG`.
 
 **Why:** the debug channel is an injectable local control socket; leaving it in a
-shipped build is an attack surface, and the user requires it never reach a
-distributed release. `#if DEBUG` guarantees absence by construction because
+shipped build is an attack surface, and it must never reach a distributed
+release. `#if DEBUG` guarantees absence by construction because
 `make release` builds `-c release`, where `DEBUG` is undefined — a dedicated
 `-D` flag would leave room for accidental release activation. Logging errors are
 kept because `os.Logger` is privacy-preserving and near-zero cost, and is the

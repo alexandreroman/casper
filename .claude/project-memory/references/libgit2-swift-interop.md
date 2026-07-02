@@ -24,7 +24,7 @@ libgit2 1.9.x). Relevant to any future CasperGit work (e.g. adding `git_diff`).
   `GIT_WORKTREE_PRUNE_*`) are used via `UInt32(...)` / `.rawValue`.
 - **Pointer lifecycle:** wrapper types owning a `git_*` handle are `final class`
   with `deinit { git_*_free }`; for locals, place `defer { free/dispose }`
-  BEFORE the fallible call so the throw path also frees (this bit us once in
+  BEFORE the fallible call so the throw path also frees (notably in
   `gitStringArray`). `git_buf` → `git_buf_dispose`; `git_strarray` →
   `git_strarray_dispose`.
 - **Test fixtures build real repos via libgit2 only** (no `git` binary, per
