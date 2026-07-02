@@ -18,15 +18,14 @@ final class EndToEndHookTests: XCTestCase {
             socketPath: socketPath, workspaceId: workspace.id, portBase: 40000)
 
         let done = XCTestExpectation(description: "state reached .done")
-        let server = HookSocketServer(socketPath: socketPath)
-        server.onMessage = { message in
+        let server = HookSocketServer(socketPath: socketPath, onMessage: { message in
             guard let event = try? HookEventParser.parse(message.hookPayload)
             else { return }
             store.handle(event, workspaceId: message.workspaceId, focused: true)
             if store.workspace(id: workspace.id)?.agentState == .done {
                 done.fulfill()
             }
-        }
+        })
         try server.start()
         defer { server.stop() }
 
