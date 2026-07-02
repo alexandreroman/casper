@@ -3,9 +3,10 @@
 Native macOS app embedding libghostty to give each Git worktree its own
 agent-aware terminal workspace.
 
-See [README.md](README.md) for full documentation, and
-[docs/superpowers/](docs/superpowers/) for the design spec and per-milestone
-implementation plans (the authoritative source of truth).
+See [README.md](README.md) for full documentation, and the local working docs
+under [`.superpowers/`](.superpowers/) for the design spec and per-milestone
+implementation plans (the authoritative source of truth for design; not tracked
+in Git).
 
 ## Tech stack
 
@@ -72,7 +73,7 @@ Memory lives in the skill's default location: the index is
 files live under
 [`.claude/project-memory/references/`](.claude/project-memory/references/). Read
 `MEMORY.md` at the start of work. There is **no memory anywhere else** (not in
-`docs/`, not in `~/.claude`).
+`.superpowers/`, not in `~/.claude`).
 
 ## Conventions
 

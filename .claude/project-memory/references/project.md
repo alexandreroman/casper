@@ -15,7 +15,8 @@ per-workspace 10-port reservation (`CASPER_PORT`), a single GUI+CLI binary, and
 in-process PTYs. Distributable, **no notarization**, arm64-only.
 
 Source of truth: the design spec and implementation plans under
-`docs/superpowers/specs/` and `docs/superpowers/plans/`.
+`.superpowers/specs/` and `.superpowers/plans/` (local working docs, not tracked
+in Git).
 
 **Build roadmap — five module plans:** 1. CasperCore (pure Swift core) ·
 2. CasperGit (libgit2 wrapper + `WorktreeManager`) · 3. CasperCLI + CasperAgents
@@ -65,9 +66,9 @@ not yet built. The v1 agent target is Claude Code only.
     precision/momentum. Correct glyph size depends on syncing the Metal layer
     scale — see [[ghostty-layer-contents-scale]].
 
-Beyond the five build plans, design specs and plans under `docs/superpowers/`
-also cover debug observability, debug surface addressing/focus, and Space
-(project) + workspace diff-summary.
+Beyond the five build plans, design specs and plans under `.superpowers/` also
+cover debug observability, debug surface addressing/focus, and Space (project) +
+workspace diff-summary.
 
 See [[dependency-policy]], [[test-toolchain]], [[git-workflow]],
 [[libgit2-swift-interop]], [[ghosttykit-pin]], [[debug-channel-gating]].

@@ -123,10 +123,6 @@ flowchart TD
 | `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
 | `CasperCLI`     | `casper` subcommands: `hooks setup` / `hooks feed` (swift-argument-parser)            |
 
-The full design and per-milestone plans live in
-[`docs/superpowers/`](./docs/superpowers/) — start with the
-[design spec](./docs/superpowers/specs/2026-07-01-casper-design.md).
-
 ## Continuous integration
 
 Tests run in CI via GitHub Actions on `macos-14`

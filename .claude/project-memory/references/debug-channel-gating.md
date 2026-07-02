@@ -31,4 +31,4 @@ debug` subcommand registration in `#if DEBUG`. For logs, keep `.error`/`.fault`
 unconditional and wrap `.debug`/`.info` call sites in `#if DEBUG`. Prefer tying
 gating to the build configuration (`#if DEBUG`) over a custom compilation flag.
 See the [dependency policy](dependency-policy.md) note and the spec at
-`docs/superpowers/specs/2026-07-02-casper-debug-observability-design.md`.
+`.superpowers/specs/2026-07-02-casper-debug-observability-design.md`.
