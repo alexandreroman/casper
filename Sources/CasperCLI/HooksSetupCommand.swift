@@ -4,9 +4,11 @@ import Foundation
 
 /// `casper hooks setup [<worktree>]` — write Casper's Claude Code hooks into a
 /// worktree's `.claude/settings.local.json`, ONCE. Casper runs this when a
-/// workspace is created; a user may also run it manually. Idempotent
-/// (overwrites the file); not meant to run on every terminal open — per-surface
-/// environment injection handles runtime identity separately.
+/// workspace is created; a user may also run it manually. Idempotent: the hooks
+/// are merged into any existing file, preserving the user's permissions and
+/// custom hooks (a malformed existing file aborts without data loss). Not meant
+/// to run on every terminal open — per-surface environment injection handles
+/// runtime identity separately.
 public struct HooksSetupCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "setup",
