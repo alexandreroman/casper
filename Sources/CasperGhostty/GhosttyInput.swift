@@ -13,7 +13,9 @@ public func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods
 
 /// Build a libghostty key event from an NSEvent with no text payload. Used for
 /// keystrokes that commit no text (arrows, Return, Backspace, Ctrl-combos), where
-/// the keycode drives libghostty's own encoding. Committed typed text instead
+/// the keycode drives libghostty's own encoding. It populates `unshifted_codepoint`
+/// (required so libghostty can encode control characters such as Ctrl-C → U+0003
+/// from the base key) and only leaves `text` nil. Committed typed text instead
 /// rides on the key event via the `text`-carrying overload below.
 public func ghosttyKeyEvent(
     _ event: NSEvent, action: ghostty_input_action_e
@@ -25,7 +27,7 @@ public func ghosttyKeyEvent(
     key.keycode = UInt32(event.keyCode)
     key.composing = false
     key.text = nil
-    key.unshifted_codepoint = 0
+    key.unshifted_codepoint = ghosttyUnshiftedCodepoint(from: event)
     return key
 }
 
@@ -38,12 +40,14 @@ public func ghosttyKeyEvent(
 /// `text` must stay valid for the duration of the `ghostty_surface_key` call, so
 /// callers pass a pointer obtained from `String.withCString` and invoke `sendKey`
 /// inside that closure, never returning an event whose `text` has been freed.
+///
+/// The bare overload this delegates to already sets `unshifted_codepoint`; this
+/// overload only attaches the committed `text`.
 public func ghosttyKeyEvent(
     _ event: NSEvent, action: ghostty_input_action_e, text: UnsafePointer<CChar>?
 ) -> ghostty_input_key_s {
     var key = ghosttyKeyEvent(event, action: action)
     key.text = text
-    key.unshifted_codepoint = ghosttyUnshiftedCodepoint(from: event)
     return key
 }
 

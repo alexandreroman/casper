@@ -98,6 +98,30 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
     }
 
+    // Inject each letter as a Ctrl+<letter> key event (press + release), the way a
+    // real keyboard sends control combinations. libghostty derives the control byte
+    // (Ctrl-C → 0x03) from the key's unshifted codepoint, so no text rides on the
+    // event. Unsupported characters are skipped.
+    func debugSendCtrl(_ text: String) {
+        guard let surface else { return }
+        let mods = ghostty_input_mods_e(GHOSTTY_MODS_CTRL.rawValue)
+        for character in text {
+            guard let key = ghosttyInjectedKey(for: character) else {
+                CasperLog.debug.debug(
+                    "send-ctrl: skipping unmapped character \(String(character), privacy: .public)")
+                continue
+            }
+            let press = ghosttyKeyEvent(
+                keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
+                text: nil, unshiftedCodepoint: key.unshiftedCodepoint)
+            _ = surface.sendKey(press)
+            let release = ghosttyKeyEvent(
+                keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
+                text: nil, unshiftedCodepoint: key.unshiftedCodepoint)
+            _ = surface.sendKey(release)
+        }
+    }
+
     // Combine libghostty's surface readback with this view's own AppKit metrics,
     // so the debug channel can pinpoint content-scale double-counting.
     func debugGeometry() -> DebugSurfaceGeometry {
