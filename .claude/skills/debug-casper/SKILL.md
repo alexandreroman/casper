@@ -31,12 +31,29 @@ until [ -S /tmp/casper-debug.sock ]; do sleep 0.2; done
 
 Structured logs (subsystem `com.github.alexandreroman.casper`):
 
+Use the absolute path `/usr/bin/log`: in common zsh setups `log` is a
+shell builtin that shadows the system tool (a bare `log show ...` yields
+`(eval):log: too many arguments` and empty output).
+
+The app's lifecycle and command messages are emitted at `.debug` level
+(e.g. `debug server listening`, `debug command: dumpState`), so they do
+**not** appear in a default `log show`. Live streaming with `--level
+debug` is the reliable way to see them:
+
 ```bash
-log show --predicate 'subsystem == "com.github.alexandreroman.casper"' \
-  --last 2m --style compact
-# or live:
-log stream --predicate 'subsystem == "com.github.alexandreroman.casper"' \
-  --style compact
+/usr/bin/log stream \
+  --predicate 'subsystem == "com.github.alexandreroman.casper"' \
+  --level debug --style compact
+```
+
+Historical lookups need `--info --debug` to include `.info`/`.debug`
+messages; `.error`/`.fault` show without those flags (they are the
+always-compiled diagnostic floor):
+
+```bash
+/usr/bin/log show \
+  --predicate 'subsystem == "com.github.alexandreroman.casper"' \
+  --last 5m --info --debug --style compact
 ```
 
 App state as JSON:
@@ -57,6 +74,11 @@ A screenshot (then read the PNG to "see" the window):
 ```bash
 .build/debug/casper debug screenshot /tmp/casper.png
 ```
+
+`screenshot`, `dump-state`, and `read-text` are idempotent, so the CLI
+retries them automatically on transient local-socket transport blips —
+they are reliable. `send-text` is **not** retried, to avoid
+double-injecting input.
 
 ## 3. Drive
 
