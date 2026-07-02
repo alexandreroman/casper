@@ -22,6 +22,7 @@ public enum GhosttyAction: Equatable {
     case newWindow
     case closeTab
     case closeWindow
+    case quit
     /// Any action tag CasperGhostty does not model yet; carries the raw tag so
     /// callers can log or extend without this enum being a bottleneck.
     case other(tag: UInt32)
@@ -57,6 +58,8 @@ public enum GhosttyAction: Equatable {
             return .closeTab
         case GHOSTTY_ACTION_CLOSE_WINDOW:
             return .closeWindow
+        case GHOSTTY_ACTION_QUIT:
+            return .quit
         default:
             return .other(tag: c.tag.rawValue)
         }

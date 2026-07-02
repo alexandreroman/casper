@@ -39,9 +39,14 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
         do {
             let runtime = try GhosttyRuntime()
             runtime.onAction = { action in
-                if case .setTitle(let title) = action {
+                switch action {
+                case .setTitle(let title):
                     // Reflect the shell's title in the window.
                     NSApp.windows.first?.title = title
+                case .quit:
+                    NSApp.terminate(nil)
+                default:
+                    break
                 }
             }
             self.runtime = runtime

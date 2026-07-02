@@ -128,6 +128,12 @@ final class GhosttyActionTests: XCTestCase {
         XCTAssertEqual(GhosttyAction.decode(action), .closeWindow)
     }
 
+    func testDecodesQuit() {
+        var action = ghostty_action_s()
+        action.tag = GHOSTTY_ACTION_QUIT
+        XCTAssertEqual(GhosttyAction.decode(action), .quit)
+    }
+
     func testUnmodeledTagBecomesOther() {
         var action = ghostty_action_s()
         action.tag = GHOSTTY_ACTION_EQUALIZE_SPLITS
