@@ -26,6 +26,14 @@ used by `casper debug send-action <name>`): `paste_from_clipboard`,
 `copy_to_clipboard`, `select_all`. All three matched on the first try, no renaming
 needed.
 
+**Confirmed font-size binding actions** (kbd-task-5, verified by watching
+`cellWidthPixels`/`cellHeightPixels` in `casper debug dump-state` change around
+each `send-action` call): `increase_font_size:1`, `decrease_font_size:1`,
+`reset_font_size`. The increase/decrease actions take a `:<amount>` suffix
+(unlike the clipboard/select-all actions above, which take no argument);
+`reset_font_size` takes none. `1` step changed the demo's default cell size
+17×37px to 18×40px.
+
 **Swift 6 strict concurrency gotcha:** passing a raw `UnsafeMutableRawPointer?`
 function parameter directly into a `MainActor.assumeIsolated { ... }` closure from a
 nonisolated function fails with `error: sending 'state' risks causing data races
