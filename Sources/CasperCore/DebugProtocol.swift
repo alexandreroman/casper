@@ -11,12 +11,13 @@ public struct DebugCommand: Codable, Equatable, Sendable {
         case sendText
         case sendKeys
         case sendKey
+        case sendAction
         case screenshot
         case focus
     }
 
     public var verb: Verb
-    public var text: String?        // sendText / sendKeys / sendKey payload
+    public var text: String?        // sendText / sendKeys / sendKey / sendAction payload
     public var enter: Bool?         // sendText: submit the line via a Return key event
     public var mods: [String]?      // sendKey: modifier names
     public var scrollback: Bool?    // readText: full screen vs. viewport

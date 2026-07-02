@@ -11,7 +11,10 @@ import GhosttyKit
 public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let runtime: GhosttyRuntime
     private let configuration: GhosttySurfaceConfiguration
-    private var surface: GhosttySurface?
+    // Internal (not private): the clipboard callback trampolines in
+    // `GhosttyRuntime` recover this view from libghostty's userdata and need
+    // its surface.
+    var surface: GhosttySurface?
 
     // Collects the text the input system commits during a single `keyDown`, so
     // that text can ride on the key event (`key.text`) instead of going through
@@ -40,8 +43,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         guard surface == nil, window != nil else { return }
         let nsview = Unmanaged.passUnretained(self).toOpaque()
         do {
+            // userdata == nsview: libghostty hands this pointer back verbatim to
+            // the clipboard callbacks, letting them recover this view.
             surface = try GhosttySurface(
-                runtime: runtime, configuration: configuration, nsview: nsview)
+                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
             syncLayerContentsScale()
             pushContentScale()
             pushSize()
@@ -123,6 +128,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
             text: nil, unshiftedCodepoint: key.unshiftedCodepoint))
     }
+
+    // Trigger a libghostty keybinding action directly by name, bypassing key-event
+    // translation. Used to exercise bindings (e.g. clipboard) that injected ⌘ key
+    // events cannot reliably reach in an automated/headless session.
+    func debugSendAction(_ name: String) { surface?.bindingAction(name) }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
     // so the debug channel can pinpoint content-scale double-counting.

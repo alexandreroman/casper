@@ -10,17 +10,20 @@ public final class GhosttySurface {
     /// exists, since the surface belongs to that app and frees itself into it.
     private let runtime: GhosttyRuntime
 
-    /// Create a surface hosted in `nsview`. Throws if the runtime has no app or
-    /// libghostty returns null.
+    /// Create a surface hosted in `nsview`. `userdata` is handed back verbatim to
+    /// libghostty's clipboard/close callbacks — pass the view pointer so those
+    /// callbacks can recover the owning `GhosttySurfaceView`. Throws if the
+    /// runtime has no app or libghostty returns null.
     public init(
         runtime: GhosttyRuntime,
         configuration: GhosttySurfaceConfiguration,
-        nsview: UnsafeMutableRawPointer
+        nsview: UnsafeMutableRawPointer,
+        userdata: UnsafeMutableRawPointer?
     ) throws {
         guard let app = runtime.app else {
             throw GhosttyError(reason: "runtime has no app")
         }
-        let created = configuration.withCValue(nsview: nsview) { c in
+        let created = configuration.withCValue(nsview: nsview, userdata: userdata) { c in
             ghostty_surface_new(app, &c)
         }
         guard let created else {
@@ -77,6 +80,30 @@ public final class GhosttySurface {
         deltaX: Double, deltaY: Double, mods: ghostty_input_scroll_mods_t
     ) {
         ghostty_surface_mouse_scroll(surface, deltaX, deltaY, mods)
+    }
+
+    /// Whether the surface currently has an active text selection.
+    public func hasSelection() -> Bool { ghostty_surface_has_selection(surface) }
+
+    /// Deliver clipboard text back to libghostty for a pending read (paste)
+    /// request. `state` is the opaque token libghostty handed to the read
+    /// callback; it must be passed back unchanged.
+    public func completeClipboardRequest(
+        _ text: String, state: UnsafeMutableRawPointer?, confirmed: Bool
+    ) {
+        text.withCString { ptr in
+            ghostty_surface_complete_clipboard_request(surface, ptr, state, confirmed)
+        }
+    }
+
+    /// Trigger a libghostty keybinding action by name (e.g. `"copy_to_clipboard"`,
+    /// `"paste_from_clipboard"`, `"select_all"`), bypassing key-event translation.
+    /// Returns whether the action was recognized and performed.
+    @discardableResult
+    public func bindingAction(_ name: String) -> Bool {
+        name.withCString { ptr in
+            ghostty_surface_binding_action(surface, ptr, UInt(name.utf8.count))
+        }
     }
 
     /// Read the terminal's text: the visible viewport, or the full screen

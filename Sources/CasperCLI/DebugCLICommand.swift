@@ -10,7 +10,7 @@ struct DebugCLICommand: ParsableCommand {
         abstract: "Drive and observe the running Casper GUI (debug builds only).",
         subcommands: [
             DumpState.self, ReadText.self, SendText.self, SendKeys.self, SendKey.self,
-            Screenshot.self, Focus.self,
+            SendAction.self, Screenshot.self, Focus.self,
         ])
 }
 
@@ -120,6 +120,24 @@ extension DebugCLICommand {
             // never retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendKey, text: text, mods: mods, target: target),
+                socket: socket.path, retriable: false)
+        }
+    }
+
+    struct SendAction: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "send-action",
+            abstract: "Trigger a libghostty keybinding action by name (e.g. copy_to_clipboard).")
+        @OptionGroup var socket: SocketOption
+        @Argument(help: "Action name, e.g. copy_to_clipboard") var text: String
+        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
+        var target: String?
+
+        func run() throws {
+            // Mutating: retrying could trigger the action more than once, so
+            // never retry this verb.
+            _ = try CasperCLI.run(
+                DebugCommand(verb: .sendAction, text: text, target: target),
                 socket: socket.path, retriable: false)
         }
     }

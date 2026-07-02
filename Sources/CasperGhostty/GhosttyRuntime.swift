@@ -134,36 +134,89 @@ func casperGhosttyAction(
     return runtime.handleAction(action)
 }
 
-// Minimal clipboard/close callbacks: non-null so libghostty never dereferences a
-// null pointer. Full copy/paste fidelity is a Plan 5 refinement.
+// Clipboard callbacks: libghostty hands back the per-surface `userdata` we set
+// in `GhosttySurfaceConfiguration` (the hosting `GhosttySurfaceView` pointer),
+// which is how these recover the view to reach `NSPasteboard` and complete
+// pending requests. `close_surface_cb` stays a stub — surface teardown driven
+// from libghostty is a Plan 5 concern.
 
-/// `read_clipboard_cb`: `bool (*)(void*, ghostty_clipboard_e, void*)`.
+/// Extract the first clipboard entry's UTF-8 payload as a String. libghostty
+/// passes an array of `{mime, data}`; Casper writes plain text only.
+func clipboardString(from content: UnsafePointer<ghostty_clipboard_content_s>?, count: Int) -> String? {
+    guard let content, count > 0, let data = content[0].data else { return nil }
+    return String(cString: data)
+}
+
+/// Recover the `GhosttySurfaceView` libghostty's clipboard callbacks were
+/// configured with (via `GhosttySurfaceConfiguration`'s `userdata`).
+private func clipboardView(from userdata: UnsafeMutableRawPointer?) -> GhosttySurfaceView? {
+    guard let userdata else { return nil }
+    return Unmanaged<GhosttySurfaceView>.fromOpaque(userdata).takeUnretainedValue()
+}
+
+/// `read_clipboard_cb`: `bool (*)(void*, ghostty_clipboard_e, void*)`. Called
+/// when libghostty needs the system pasteboard's contents (e.g. ⌘V).
 func casperGhosttyReadClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
     _ state: UnsafeMutableRawPointer?
 ) -> Bool {
-    false  // Deny clipboard reads by default in Plan 4.
+    guard location == GHOSTTY_CLIPBOARD_STANDARD, let view = clipboardView(from: userdata) else {
+        return false
+    }
+    let text = NSPasteboard.general.string(forType: .string) ?? ""
+    // Cross the actor boundary as a trivial address (Sendable), like
+    // `casperGhosttyWakeup`, rather than sending the raw pointer itself.
+    let stateAddress = UInt(bitPattern: state)
+    MainActor.assumeIsolated {
+        view.surface?.completeClipboardRequest(
+            text, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+    }
+    return true
 }
 
 /// `confirm_read_clipboard_cb`:
-/// `void (*)(void*, const char*, void*, ghostty_clipboard_request_e)`.
+/// `void (*)(void*, const char*, void*, ghostty_clipboard_request_e)`. Called
+/// after a paste is decoded, to confirm delivery (e.g. for OSC 52 reads that
+/// would otherwise need a user prompt).
 func casperGhosttyConfirmReadClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ string: UnsafePointer<CChar>?,
     _ state: UnsafeMutableRawPointer?,
     _ request: ghostty_clipboard_request_e
-) {}
+) {
+    guard let string, let view = clipboardView(from: userdata) else { return }
+    let text = String(cString: string)
+    // Cross the actor boundary as a trivial address (Sendable); see
+    // `casperGhosttyReadClipboard`.
+    let stateAddress = UInt(bitPattern: state)
+    // v1: auto-confirm every read (including risky OSC 52 requests); a
+    // confirmation dialog is a future refinement.
+    MainActor.assumeIsolated {
+        view.surface?.completeClipboardRequest(
+            text, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+    }
+}
 
 /// `write_clipboard_cb`:
 /// `void (*)(void*, ghostty_clipboard_e, const ghostty_clipboard_content_s*, size_t, bool)`.
+/// Called when libghostty wants to write to the system pasteboard (e.g. ⌘C).
 func casperGhosttyWriteClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
     _ content: UnsafePointer<ghostty_clipboard_content_s>?,
     _ count: Int,
     _ confirm: Bool
-) {}
+) {
+    guard location == GHOSTTY_CLIPBOARD_STANDARD, let text = clipboardString(from: content, count: count) else {
+        return
+    }
+    let pasteboard = NSPasteboard.general
+    MainActor.assumeIsolated {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+}
 
 /// `close_surface_cb`: `void (*)(void*, bool)`.
 func casperGhosttyCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ processAlive: Bool) {}

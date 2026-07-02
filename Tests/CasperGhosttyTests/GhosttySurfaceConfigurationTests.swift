@@ -13,7 +13,7 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         var sentinel = 0
         withUnsafeMutablePointer(to: &sentinel) { raw in
             let nsview = UnsafeMutableRawPointer(raw)
-            config.withCValue(nsview: nsview) { c in
+            config.withCValue(nsview: nsview, userdata: nil) { c in
                 XCTAssertEqual(c.platform_tag, GHOSTTY_PLATFORM_MACOS)
                 XCTAssertEqual(c.platform.macos.nsview, nsview)
                 XCTAssertEqual(c.scale_factor, 2.0)
@@ -29,7 +29,7 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         let config = GhosttySurfaceConfiguration()
         var sentinel = 0
         withUnsafeMutablePointer(to: &sentinel) { raw in
-            config.withCValue(nsview: UnsafeMutableRawPointer(raw)) { c in
+            config.withCValue(nsview: UnsafeMutableRawPointer(raw), userdata: nil) { c in
                 XCTAssertNil(c.working_directory)
                 XCTAssertEqual(c.env_var_count, 0)
             }

@@ -26,16 +26,20 @@ public struct GhosttySurfaceConfiguration {
     }
 
     /// Build a `ghostty_surface_config_s` valid for the duration of `body`. All
-    /// other fields (`userdata`, `initial_input`, `wait_after_command`,
-    /// `context`) are left at libghostty's intended default from
-    /// `ghostty_surface_config_new()`.
+    /// other fields (`initial_input`, `wait_after_command`, `context`) are left
+    /// at libghostty's intended default from `ghostty_surface_config_new()`.
+    ///
+    /// `userdata` is handed back verbatim to libghostty's clipboard/close
+    /// callbacks, so the caller can recover the owning view from it.
     public func withCValue<R>(
         nsview: UnsafeMutableRawPointer,
+        userdata: UnsafeMutableRawPointer?,
         _ body: (inout ghostty_surface_config_s) -> R
     ) -> R {
         var c = ghostty_surface_config_new()
         c.platform_tag = GHOSTTY_PLATFORM_MACOS
         c.platform.macos.nsview = nsview
+        c.userdata = userdata
         c.scale_factor = scaleFactor
         c.font_size = fontSize
 
