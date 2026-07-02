@@ -200,6 +200,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             return
         }
         for text in committed {
+            guard ghosttyTextRidesOnKeyEvent(text) else {
+                // A bare control character (Ctrl-C, Ctrl-D): send the bare key event
+                // and let the keycode drive libghostty's own control-char encoding,
+                // exactly as the empty-accumulator fallback above does.
+                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+                continue
+            }
             // `key.text` must outlive the send, so keep the C buffer alive across
             // `sendKey` with `withCString`.
             text.withCString { textPtr in

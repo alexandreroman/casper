@@ -21,4 +21,21 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_CTRL.rawValue, 0)
         XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_ALT.rawValue, 0)
     }
+
+    func testControlCharactersDoNotRideOnKeyEvent() {
+        XCTAssertFalse(ghosttyTextRidesOnKeyEvent("\u{03}"))  // Ctrl-C
+        XCTAssertFalse(ghosttyTextRidesOnKeyEvent("\u{04}"))  // Ctrl-D
+        XCTAssertFalse(ghosttyTextRidesOnKeyEvent("\r"))  // 0x0D
+        XCTAssertFalse(ghosttyTextRidesOnKeyEvent("\t"))  // 0x09
+    }
+
+    func testPrintableTextRidesOnKeyEvent() {
+        XCTAssertTrue(ghosttyTextRidesOnKeyEvent("a"))
+        XCTAssertTrue(ghosttyTextRidesOnKeyEvent(" "))  // space, 0x20
+        XCTAssertTrue(ghosttyTextRidesOnKeyEvent("é"))
+    }
+
+    func testEmptyTextDoesNotRideOnKeyEvent() {
+        XCTAssertFalse(ghosttyTextRidesOnKeyEvent(""))
+    }
 }

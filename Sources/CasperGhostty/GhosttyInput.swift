@@ -47,6 +47,17 @@ public func ghosttyKeyEvent(
     return key
 }
 
+/// Whether committed text should ride on the key event's `text` field. libghostty
+/// encodes control characters itself from the keycode + modifiers, so a bare
+/// control character (Ctrl-C → U+0003, Ctrl-D → U+0004) must NOT be attached as
+/// `key.text` or libghostty mis-encodes it and the Ctrl combination is lost. Only
+/// text whose first UTF-8 byte is printable (>= 0x20) rides on the key event.
+/// Mirrors Ghostty's keyAction guard.
+public func ghosttyTextRidesOnKeyEvent(_ text: String) -> Bool {
+    guard let first = text.utf8.first else { return false }
+    return first >= 0x20
+}
+
 /// Codepoint of the base key with modifiers ignored, which libghostty uses to
 /// resolve keybindings against the physical key. Zero when the event exposes no
 /// such scalar.
