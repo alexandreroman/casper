@@ -1,4 +1,5 @@
 import GhosttyKit
+import Foundation
 
 /// Owns a libghostty `ghostty_surface_t` and frees it on deinit (same ownership
 /// pattern as `CasperGit.Repository`). Main-thread affine; not `Sendable`.
@@ -74,5 +75,27 @@ public final class GhosttySurface {
         deltaX: Double, deltaY: Double, mods: ghostty_input_scroll_mods_t
     ) {
         ghostty_surface_mouse_scroll(surface, deltaX, deltaY, mods)
+    }
+
+    /// Read the terminal's text: the visible viewport, or the full screen
+    /// (including scrollback) when `scrollback` is true. Returns nil if
+    /// libghostty declines to produce a selection.
+    public func readText(scrollback: Bool) -> String? {
+        let tag = scrollback ? GHOSTTY_POINT_SCREEN : GHOSTTY_POINT_VIEWPORT
+        let selection = ghostty_selection_s(
+            top_left: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+            bottom_right: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+            rectangle: false)
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(surface, selection, &out) else { return nil }
+        defer { ghostty_surface_free_text(surface, &out) }
+        guard let bytes = out.text else { return "" }
+        return String(decoding: Data(bytes: bytes, count: Int(out.text_len)), as: UTF8.self)
+    }
+
+    /// Current terminal grid dimensions.
+    public func surfaceSize() -> (columns: Int, rows: Int) {
+        let size = ghostty_surface_size(surface)
+        return (Int(size.columns), Int(size.rows))
     }
 }
