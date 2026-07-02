@@ -58,13 +58,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Hook socket: hop to the main actor, then route into the model.
         let socketPath = HookSocketPathProvider.defaultPath
-        model.socketPath = socketPath
         let server = HookSocketServer(socketPath: socketPath, onMessage: { message in
             Task { @MainActor in AppModel.shared.handleHookMessage(message, now: Date()) }
         })
         do {
             try server.start()
             self.socketServer = server
+            model.socketPath = socketPath
         } catch {
             CasperLog.app.error("hook socket failed to start: \(String(describing: error), privacy: .public)")
         }

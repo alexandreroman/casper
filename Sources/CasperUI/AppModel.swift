@@ -60,7 +60,8 @@ final class AppModel {
             let session = try store.load()
             return AppModel(sessionStore: store, session: session)
         } catch {
-            CasperLog.app.error("failed to load session, starting fresh: \(String(describing: error), privacy: .public)")
+            CasperLog.app.error(
+                "failed to load session, starting fresh: \(String(describing: error), privacy: .public)")
             let fallback = SessionStore(
                 fileURL: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("casper-session.json"))
             return AppModel(sessionStore: fallback)
