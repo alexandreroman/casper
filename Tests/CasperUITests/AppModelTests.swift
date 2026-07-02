@@ -58,4 +58,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.workspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, existing.workspaces[0].id)
     }
+
+    func testAddAfterRestoreDoesNotReuseRestoredPortBlock() {
+        let existing = Session(workspaces: [
+            Workspace(name: "a", repoPath: "/a", worktreePath: "/a", branch: "",
+                      portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0)),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+        model.addWorkspace(folderURL: URL(fileURLWithPath: "/tmp/b"), probe: { _ in nil })
+        XCTAssertEqual(model.workspaces.count, 2)
+        XCTAssertNotEqual(model.workspaces[1].portBase, 40000)
+    }
 }

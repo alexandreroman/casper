@@ -30,7 +30,13 @@ final class AppModel {
     var isEmpty: Bool { workspaces.isEmpty }
 
     func addWorkspace(folderURL: URL, probe: (URL) -> WorkspaceFactory.RepoInfo?) {
-        let portBase = (try? portAllocator.allocate()) ?? portAllocator.rangeStart
+        let portBase: Int
+        do {
+            portBase = try portAllocator.allocate()
+        } catch {
+            CasperLog.app.error("cannot add workspace: no free port block: \(String(describing: error), privacy: .public)")
+            return
+        }
         let ws = WorkspaceFactory.makeWorkspace(
             folderURL: folderURL, probe: probe, portBase: portBase)
         workspaces.append(ws)
