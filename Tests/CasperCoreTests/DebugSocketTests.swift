@@ -98,6 +98,22 @@ final class DebugSocketTests: XCTestCase {
         // Default when unset.
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
     }
+
+    func testStartSucceedsWellWithinBindTimeout() throws {
+        // A local Unix-domain listener binds near-instantly, so even a tight
+        // bind timeout must not trip. Guards the bounded-wait path against a
+        // regression that would make a healthy `start()` throw or hang.
+        let path = tempSocketPath()
+        let server = DebugSocketServer(socketPath: path, bindTimeout: 2)
+        server.onCommand = { _, reply in reply(.success(text: "bound")) }
+        try server.start()
+        defer { server.stop() }
+
+        let response = try DebugSocketClient.send(
+            DebugCommand(verb: .dumpState), toSocketAt: path)
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.text, "bound")
+    }
 }
 
 /// A minimal debug listener that fails the FIRST inbound connection — closing it

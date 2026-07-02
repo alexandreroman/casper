@@ -68,6 +68,7 @@ private func readExactly(
 /// callbacks are configured before `start()`.
 public final class DebugSocketServer: @unchecked Sendable {
     private let socketPath: String
+    private let bindTimeout: TimeInterval
     private let queue = DispatchQueue(label: "casper.debug-socket.server")
     private var listener: NWListener?
 
@@ -78,7 +79,10 @@ public final class DebugSocketServer: @unchecked Sendable {
     /// Invoked on the server queue if the listener fails.
     public var onFailure: ((Error) -> Void)?
 
-    public init(socketPath: String) { self.socketPath = socketPath }
+    public init(socketPath: String, bindTimeout: TimeInterval = 5) {
+        self.socketPath = socketPath
+        self.bindTimeout = bindTimeout
+    }
 
     public func start() throws {
         unlink(socketPath)  // remove any stale socket file before binding
@@ -91,14 +95,24 @@ public final class DebugSocketServer: @unchecked Sendable {
 
         let bound = DispatchSemaphore(value: 0)
         let bindError = OSAllocatedUnfairLock<Error?>(initialState: nil)
+        let readied = OSAllocatedUnfairLock<Bool>(initialState: false)
         listener.stateUpdateHandler = { [weak self] state in
             switch state {
             case .ready:
+                readied.withLock { $0 = true }
                 bound.signal()
             case .failed(let error):
-                bindError.withLock { $0 = error }
-                self?.onFailure?(error)
-                bound.signal()
+                // A failure before the listener ever went live is a bind failure:
+                // record it for `start()` to throw and do NOT also call
+                // `onFailure` (that would surface the same error twice). A failure
+                // after readiness is a runtime failure: route it to `onFailure`.
+                let wasReadied = readied.withLock { $0 }
+                if wasReadied {
+                    self?.onFailure?(error)
+                } else {
+                    bindError.withLock { $0 = error }
+                    bound.signal()
+                }
             default:
                 break
             }
@@ -109,8 +123,15 @@ public final class DebugSocketServer: @unchecked Sendable {
         self.listener = listener
         listener.start(queue: queue)
 
-        bound.wait()
+        // Bound the wait so a listener that never reaches `.ready`/`.failed`
+        // cannot hang the caller forever.
+        if bound.wait(timeout: .now() + bindTimeout) == .timedOut {
+            listener.cancel()
+            self.listener = nil
+            throw DebugSocketError(reason: "timed out binding debug socket at \(socketPath)")
+        }
         if let error = bindError.withLock({ $0 }) {
+            listener.cancel()
             self.listener = nil
             throw error
         }
