@@ -22,5 +22,4 @@ every XCTest file using `URL`/`Data`/`FileManager`/`UUID`/`JSONEncoder` must
 `import Foundation` explicitly.
 
 Tests also run in **GitHub Actions CI** on `macos-14` (Xcode present) —
-`.github/workflows/ci.yml`. `make` targets: `build`, `test`, `all`, `release`,
-`clean`, `help`.
+`.github/workflows/ci.yml`.

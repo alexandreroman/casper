@@ -3,10 +3,10 @@
 Native macOS app embedding libghostty to give each Git worktree its own
 agent-aware terminal workspace.
 
-See [README.md](README.md) for full documentation, and the local working docs
-under [`.superpowers/`](.superpowers/) for the design spec and per-milestone
-implementation plans (the authoritative source of truth for design; not tracked
-in Git).
+See [README.md](README.md) for full documentation, and the design docs under
+[`.superpowers/`](.superpowers/): design (`architecture.md` + `themes/`, the
+authoritative source of truth for design), implementation progress (`status.md`),
+and the map (`INDEX.md`). The `.superpowers/sdd/` scratch stays out of Git.
 
 ## Tech stack
 
@@ -37,7 +37,7 @@ casper       # (no args) open a one-terminal Ghostty window (Plan 4 demo)
 ## Modules
 
 - **CasperCore** — models, session store, port allocator, hook parsing,
-  agent-state reducer (pure Swift). *Implemented.*
+  agent-state reducer (pure Swift).
 - **CasperGit** — in-house libgit2 wrapper (worktrees, diff, status).
 - **CasperGhostty** — embeds GhosttyKit; owns terminal surfaces and layout.
 - **CasperAgents** — Claude Code adapter + hook `settings.json` generation.
@@ -83,8 +83,7 @@ files live under
   embedding API is unstable and must stay **pinned** (all access isolated in
   `CasperGhostty`).
 - Tests use XCTest and need the **full Xcode toolchain**
-  (`sudo xcode-select -s /Applications/Xcode.app`); the Command Line Tools
-  cannot link XCTest. XCTest files using Foundation types must
-  `import Foundation` explicitly.
+  (`sudo xcode-select -s /Applications/Xcode.app`) — see the `test-toolchain`
+  memory note for the CLT-can't-link-XCTest and `import Foundation` gotchas.
 - Get explicit authorization before `git init`, committing, adding a remote,
   or pushing.

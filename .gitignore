@@ -12,5 +12,6 @@
 *.xcodeproj/xcuserdata/
 DerivedData/
 
-## SDD scratch (controller-only, not part of the codebase)
-.superpowers/
+## SDD scratch (controller-only, not part of the codebase).
+## The design docs under .superpowers/ ARE tracked; only the scratch is ignored.
+.superpowers/sdd/
