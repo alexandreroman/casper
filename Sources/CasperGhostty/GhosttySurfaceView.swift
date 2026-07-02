@@ -251,23 +251,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, let surface else { return false }
-        // Only handle when focused; otherwise let ⌘Q, ⌘Tab and menu equivalents work.
+        // performKeyEquivalent fires for every key-down. Only Command combos need it:
+        // macOS never routes ⌘ combos to keyDown. Control/Option/plain keys and
+        // navigation keys must fall through to keyDown, which owns IME/dead-key
+        // composition and control-character encoding.
+        guard event.modifierFlags.contains(.command) else { return false }
+        // Only when focused, so ⌘Q/⌘Tab and menu equivalents still work when we're not.
         guard window?.firstResponder === self else { return false }
-
-        // Forward as a key event so libghostty's keybinding engine can match it.
-        // Attach committed text only when printable (control/command combos carry none);
-        // unshifted_codepoint is populated by ghosttyKeyEvent for binding resolution.
-        let consumed: Bool
-        if let chars = event.characters, let first = chars.utf8.first, first >= 0x20,
-           !event.modifierFlags.contains(.command) {
-            consumed = chars.withCString { ptr in
-                surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: ptr))
-            }
-        } else {
-            consumed = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
-        }
-        // Consumed → the binding fired. Not consumed → let AppKit continue (menu, ⌘Q).
-        return consumed
+        // ⌘ combos carry no committed text; return libghostty's consumed flag so unbound
+        // ⌘ combos fall through to the menu / system.
+        return surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
     }
 
     // MARK: Mouse
