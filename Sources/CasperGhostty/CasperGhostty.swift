@@ -7,14 +7,15 @@ import GhosttyKit
 ///
 /// Pinned to Ghostty `v1.3.1` via the `Lakr233/libghostty-spm` `1.2.8` binary
 /// package. See `Vendor/ghostty/ghostty.h` for the exact API this code is written
-/// against, and the project memory note for the full pin.
+/// against.
 public enum CasperGhostty {
     /// The upstream Ghostty tag the linked GhosttyKit was built from.
     public static let pinnedGhosttyVersion = "v1.3.1"
 }
 
-/// A libghostty embedding failure, surfaced instead of crashing (mirrors
-/// `CasperGit.GitError`). Carries a human-readable reason.
+/// A libghostty embedding failure, surfaced instead of crashing (mirrors the
+/// never-crash error pattern of `CasperGit.GitError`). Carries a human-readable
+/// reason.
 public struct GhosttyError: Error, Equatable, Sendable {
     public let reason: String
     public init(reason: String) { self.reason = reason }
