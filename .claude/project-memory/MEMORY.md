@@ -17,3 +17,4 @@
 - [Hooks install once](references/hooks-install-once.md) — `casper hooks setup` per worktree, not per terminal; `hooks feed` relays
 - [casper CLI availability](references/casper-cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
 - [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir
+- [Debug channel and logging gating](references/debug-channel-gating.md) — debug control channel is `#if DEBUG` only, never in release; verbose logs gated, `.error`/`.fault` kept
