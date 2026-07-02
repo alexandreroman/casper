@@ -94,6 +94,27 @@ Then re-read to verify:
 .build/debug/casper debug read-text
 ```
 
+## Target a specific surface
+
+`dump-state` reports a stable `id` per surface. Address one directly (without
+moving the UI focus):
+
+```bash
+.build/debug/casper debug read-text --target 0
+.build/debug/casper debug send-text 'ls' --enter --target 0
+.build/debug/casper debug screenshot /tmp/casper.png --target 0
+```
+
+Or change the actual UI focus to a surface:
+
+```bash
+.build/debug/casper debug focus 0
+```
+
+Without `--target`, verbs act on the focused surface (falling back to the
+first). An unknown id fails with `no surface with id <id>` — there is no silent
+fallback. The single-window demo exposes one surface, id `0`; Plan 5 adds more.
+
 ## 4. Teardown
 
 ```bash
@@ -109,3 +130,5 @@ kill %1 2>/dev/null; rm -f /tmp/casper-debug.sock
 - All verbs target the focused surface (falling back to the first surface).
 - This is a DEBUG-only channel. A `make release` (`swift build -c release`)
   binary omits the socket server and the `casper debug` subcommand entirely.
+- `--target <id>` addresses a surface without changing focus; `focus <id>`
+  changes the UI focus. `focus` is not retried (it mutates UI state).
