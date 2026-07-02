@@ -22,7 +22,7 @@ wrapper + WorktreeManager) · 3. CLI + Agents (single binary, `casper hooks`,
 socket, Claude Code settings) · 4. CasperGhostty (embedding) · 5. CasperUI + app.
 
 **Status (2026-07-02):** Plans 1, 2, 3 & 4 complete, committed on `main` (repo
-local only, **not pushed** to GitHub yet). **119 XCTest tests green**
+local only, **not pushed** to GitHub yet). **131 XCTest tests green**
 (`make test`). v1 agent target: Claude Code only. Plan 4's GUI terminal is
 **manually verified** (design §13): `casper` opens a window with a live
 GPU-rendered shell, `ls` runs, the cwd is the launch directory, and the window
@@ -30,13 +30,14 @@ title reflects the cwd — the latter confirms the C action-callback path
 (`action_cb` → `ghostty_app_userdata` → `handleAction` → `onAction`) works
 end-to-end (the one path with no unit coverage). Rendering is display-link
 driven, so `GHOSTTY_ACTION_RENDER` needs no `draw()` wiring.
-**Known open bug (Plan 4, not yet root-caused):** the terminal grid is wider
-than the window — `ls` output is truncated at the right edge, i.e. the surface
-reports more columns than fit. Suspected in `GhosttySurfaceView` geometry
-(size/scale push timing in `viewDidMoveToWindow` before the window is on-screen,
-or a points-vs-pixels / content-scale mismatch). Diagnosis pending more robust
-instrumentation; the readback `ghostty_surface_size` (columns/width_px/cell_*) is
-the key evidence. Fix before or during Plan 5's UI work.
+**Fixed (2026-07-02):** the terminal grid used to render ~2× too large and
+overflow the window (right-edge truncation). Root cause: libghostty's own
+`CAMetalLayer` kept `contentsScale = 1` while the window was at
+`backingScaleFactor = 2`, so Core Animation upscaled the native render ×2. Fix:
+`GhosttySurfaceView` now syncs `layer.contentsScale` to the window's backing
+scale — see [[ghostty-layer-contents-scale]]. A DEBUG-only geometry readback
+(`casper debug dump-state` now reports width_px/cell_px/content-scale) made the
+diagnosis measurable.
 
 - **Plan 1 — CasperCore:** implemented, reviewed. Pure Swift core.
 - **Plan 2 — CasperGit + WorktreeManager:** implemented, reviewed (final

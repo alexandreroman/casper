@@ -36,6 +36,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         do {
             surface = try GhosttySurface(
                 runtime: runtime, configuration: configuration, nsview: nsview)
+            syncLayerContentsScale()
             pushContentScale()
             pushSize()
         } catch {
@@ -89,9 +90,20 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
+        syncLayerContentsScale()
         pushContentScale()
         pushSize()
         pushDisplayID()
+    }
+
+    // Keep libghostty's Metal layer at the window's backing scale so Core Animation
+    // does not upscale the already-native-resolution render during compositing.
+    private func syncLayerContentsScale() {
+        guard let window else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.contentsScale = window.backingScaleFactor
+        CATransaction.commit()
     }
 
     private func pushSize() {
