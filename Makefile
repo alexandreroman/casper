@@ -4,7 +4,7 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build test release clean help
+.PHONY: all build test release clean vendor help
 
 ## build: compile the debug build
 build:
@@ -24,6 +24,10 @@ release:
 ## clean: remove build artifacts
 clean:
 	rm -rf .build
+
+## vendor: re-sync vendored files (pinned libghostty header) via Carvel vendir
+vendor:
+	vendir sync
 
 ## help: list available targets
 help:

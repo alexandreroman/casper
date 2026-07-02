@@ -9,12 +9,17 @@ let package = Package(
         .library(name: "CasperGit", targets: ["CasperGit"]),
         .library(name: "CasperAgents", targets: ["CasperAgents"]),
         .library(name: "CasperCLI", targets: ["CasperCLI"]),
+        .library(name: "CasperGhostty", targets: ["CasperGhostty"]),
         .executable(name: "casper", targets: ["casper"]),
     ],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-argument-parser.git",
             from: "1.5.0"
+        ),
+        .package(
+            url: "https://github.com/Lakr233/libghostty-spm.git",
+            exact: "1.2.8"
         ),
     ],
     targets: [
@@ -27,6 +32,16 @@ let package = Package(
         .target(name: "CasperCore", dependencies: ["CasperGit"]),
         .target(name: "CasperAgents", dependencies: ["CasperCore"]),
         .target(
+            name: "CasperGhostty",
+            dependencies: [
+                .product(name: "GhosttyKit", package: "libghostty-spm"),
+            ],
+            linkerSettings: [
+                .linkedLibrary("c++"),
+                .linkedFramework("Carbon", .when(platforms: [.macOS])),
+            ]
+        ),
+        .target(
             name: "CasperCLI",
             dependencies: [
                 "CasperCore",
@@ -34,7 +49,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .executableTarget(name: "casper", dependencies: ["CasperCLI"]),
+        .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperGhostty"]),
         .testTarget(
             name: "CasperGitTests",
             dependencies: ["CasperGit", "Clibgit2"]
@@ -50,6 +65,10 @@ let package = Package(
         .testTarget(
             name: "CasperCLITests",
             dependencies: ["CasperCLI", "CasperAgents", "CasperCore"]
+        ),
+        .testTarget(
+            name: "CasperGhosttyTests",
+            dependencies: ["CasperGhostty"]
         ),
     ]
 )

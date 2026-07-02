@@ -1,0 +1,14 @@
+apiVersion: vendir.k14s.io/v1alpha1
+kind: Config
+minimumRequiredVersion: 0.40.0
+directories:
+  - path: Vendor
+    contents:
+      # Pinned libghostty header — the source of truth for every ghostty_* symbol
+      # used by CasperGhostty. Ghostty tag v1.3.1, SHA
+      # 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28. NOT compiled (the module comes
+      # from the GhosttyKit xcframework); vendored for reference only.
+      - path: ghostty
+        http:
+          url: https://raw.githubusercontent.com/ghostty-org/ghostty/v1.3.1/include/ghostty.h
+          sha256: a619c107e9ab8841f71f91d06bf2bcea7b7c64bf6df252b151812cb932ac9b61
