@@ -80,6 +80,12 @@ public final class GhosttyRuntime {
         return true
     }
 
+    // Teardown contract (residual): `casperGhosttyWakeup` retains the runtime for
+    // the duration of its hop to main, so a wakeup already in flight is safe. It
+    // does NOT cover a wakeup that *begins* after the runtime is deallocated: the
+    // runtime must not be released while libghostty can still deliver wakeups.
+    // A full fix — an explicit invalidate/shutdown that frees the app before this
+    // object is released — is deferred to the Plan 5 multi-surface lifecycle work.
     deinit {
         if let app { ghostty_app_free(app) }
     }
@@ -97,12 +103,15 @@ public final class GhosttyRuntime {
 /// (which is `Sendable`) rather than the non-`Sendable` runtime object.
 func casperGhosttyWakeup(_ userdata: UnsafeMutableRawPointer?) {
     guard let userdata else { return }
-    // Hop to main across the raw address as a plain `UInt`: a trivial value the
-    // compiler can prove is race-free, unlike sending the pointer or the runtime.
+    // Pin the runtime across the hop: retain now (on libghostty's thread) so it
+    // cannot be deallocated before the main block runs; the block consumes the
+    // +1 via takeRetainedValue. Only the plain UInt address crosses the boundary
+    // (a trivial value the compiler can prove is race-free).
+    _ = Unmanaged<GhosttyRuntime>.fromOpaque(userdata).retain()
     let address = UInt(bitPattern: userdata)
     DispatchQueue.main.async {
         guard let pointer = UnsafeMutableRawPointer(bitPattern: address) else { return }
-        let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(pointer).takeUnretainedValue()
+        let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(pointer).takeRetainedValue()
         runtime.tick()
     }
 }

@@ -27,13 +27,13 @@ public struct GhosttySurfaceConfiguration {
 
     /// Build a `ghostty_surface_config_s` valid for the duration of `body`. All
     /// other fields (`userdata`, `initial_input`, `wait_after_command`,
-    /// `context`) are left at their zero default from the struct's memberwise
-    /// zero-initializer.
+    /// `context`) are left at libghostty's intended default from
+    /// `ghostty_surface_config_new()`.
     public func withCValue<R>(
         nsview: UnsafeMutableRawPointer,
         _ body: (inout ghostty_surface_config_s) -> R
     ) -> R {
-        var c = ghostty_surface_config_s()
+        var c = ghostty_surface_config_new()
         c.platform_tag = GHOSTTY_PLATFORM_MACOS
         c.platform.macos.nsview = nsview
         c.scale_factor = scaleFactor

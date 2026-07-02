@@ -49,8 +49,10 @@ public final class GhosttySurface {
 
     /// Committed/IME text (from `NSTextInputClient.insertText`).
     public func sendText(_ text: String) {
+        // Pass the full UTF-8 byte length, not strlen: the withCString buffer
+        // preserves embedded NULs, so text containing U+0000 is sent intact.
         text.withCString { ptr in
-            ghostty_surface_text(surface, ptr, UInt(strlen(ptr)))
+            ghostty_surface_text(surface, ptr, UInt(text.utf8.count))
         }
     }
 

@@ -39,6 +39,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             syncLayerContentsScale()
             pushContentScale()
             pushSize()
+            pushDisplayID()
         } catch {
             CasperLog.ghostty.error("surface creation failed: \(String(describing: error), privacy: .public)")
         }
@@ -112,9 +113,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private func pushSize() {
         guard let surface else { return }
         let backing = convertToBacking(bounds).size
-        surface.setSize(
-            widthPixels: UInt32(max(0, backing.width)),
-            heightPixels: UInt32(max(0, backing.height)))
+        // Never feed a non-finite value into UInt32(_:), which traps on NaN/inf.
+        let width = backing.width.isFinite ? max(0, backing.width) : 0
+        let height = backing.height.isFinite ? max(0, backing.height) : 0
+        surface.setSize(widthPixels: UInt32(width), heightPixels: UInt32(height))
     }
 
     private func pushContentScale() {
