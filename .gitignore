@@ -5,6 +5,9 @@
 ## macOS
 .DS_Store
 
+## Editors
+.vscode/
+
 ## Xcode (later plans)
 *.xcodeproj/xcuserdata/
 DerivedData/
