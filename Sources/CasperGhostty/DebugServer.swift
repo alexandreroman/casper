@@ -67,6 +67,16 @@ public final class DebugServer {
 
     private func handle(_ command: DebugCommand) -> DebugResponse {
         CasperLog.debug.debug("debug command: \(command.verb.rawValue, privacy: .public)")
+        let response = resolve(command)
+        if !response.ok {
+            let reason = response.error ?? ""
+            CasperLog.debug.debug(
+                "debug command failed: \(command.verb.rawValue, privacy: .public) — \(reason, privacy: .public)")
+        }
+        return response
+    }
+
+    private func resolve(_ command: DebugCommand) -> DebugResponse {
         let surfaces = provider?.debugSurfaces() ?? []
 
         switch command.verb {

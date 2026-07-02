@@ -125,7 +125,10 @@ public final class DebugSocketServer: @unchecked Sendable {
     private func receive(on connection: NWConnection) {
         connection.start(queue: queue)
         // Read the 4-byte big-endian length header, then exactly that many
-        // payload bytes. No reliance on request EOF anymore.
+        // payload bytes. No reliance on request EOF anymore. There is
+        // intentionally no idle/read timeout here: this is a local, single-peer,
+        // DEBUG-only channel; the >8 MB length guard bounds memory, and the
+        // client bounds its own wait with `timeout`.
         readExactly(4, on: connection) { [weak self] header in
             guard let self else { return }
             guard let header else {

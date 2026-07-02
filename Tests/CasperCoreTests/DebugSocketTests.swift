@@ -94,7 +94,7 @@ final class DebugSocketTests: XCTestCase {
                 timeout: 1))
     }
 
-    func testDefaultPathHonorsEnvOverride() {
+    func testDefaultPathWhenUnset() {
         // Default when unset.
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
     }

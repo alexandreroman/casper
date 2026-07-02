@@ -39,7 +39,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             pushContentScale()
             pushSize()
         } catch {
-            CasperLog.ghostty.error("surface creation failed: \(String(describing: error))")
+            CasperLog.ghostty.error("surface creation failed: \(String(describing: error), privacy: .public)")
         }
     }
 
