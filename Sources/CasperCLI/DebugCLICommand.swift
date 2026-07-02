@@ -19,10 +19,10 @@ struct SocketOption: ParsableArguments {
     var path: String { socket ?? DebugSocketPath.default }
 }
 
-private func run(_ command: DebugCommand, socket: String) throws -> DebugResponse {
+private func run(_ command: DebugCommand, socket: String, retriable: Bool = false) throws -> DebugResponse {
     let response: DebugResponse
     do {
-        response = try DebugSocketClient.send(command, toSocketAt: socket)
+        response = try DebugSocketClient.send(command, toSocketAt: socket, retriable: retriable)
     } catch let error as DebugSocketError {
         FileHandle.standardError.write(Data("error: \(error.reason)\n".utf8))
         throw ExitCode.failure
@@ -40,7 +40,10 @@ extension DebugCLICommand {
         @OptionGroup var socket: SocketOption
 
         func run() throws {
-            let response = try CasperCLI.run(DebugCommand(verb: .dumpState), socket: socket.path)
+            // Idempotent: re-reading state is safe, so recover from transient
+            // transport failures with a bounded retry.
+            let response = try CasperCLI.run(
+                DebugCommand(verb: .dumpState), socket: socket.path, retriable: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(response.state ?? DebugState(surfaces: []))
@@ -55,8 +58,10 @@ extension DebugCLICommand {
         var scrollback = false
 
         func run() throws {
+            // Idempotent: re-reading text is safe, so allow a bounded retry.
             let response = try CasperCLI.run(
-                DebugCommand(verb: .readText, scrollback: scrollback), socket: socket.path)
+                DebugCommand(verb: .readText, scrollback: scrollback),
+                socket: socket.path, retriable: true)
             print(response.text ?? "")
         }
     }
@@ -69,8 +74,11 @@ extension DebugCLICommand {
         var enter = false
 
         func run() throws {
+            // Mutating: retrying could inject the text more than once, so never
+            // retry this verb.
             _ = try CasperCLI.run(
-                DebugCommand(verb: .sendText, text: text, enter: enter), socket: socket.path)
+                DebugCommand(verb: .sendText, text: text, enter: enter),
+                socket: socket.path, retriable: false)
         }
     }
 
@@ -80,8 +88,11 @@ extension DebugCLICommand {
         @Argument(help: "Output PNG path.") var path: String
 
         func run() throws {
+            // Idempotent: re-capturing overwrites the same PNG, so allow a
+            // bounded retry — this is the verb whose slow handler triggers the
+            // transient transport failure in the first place.
             let response = try CasperCLI.run(
-                DebugCommand(verb: .screenshot, path: path), socket: socket.path)
+                DebugCommand(verb: .screenshot, path: path), socket: socket.path, retriable: true)
             print(response.text ?? path)
         }
     }

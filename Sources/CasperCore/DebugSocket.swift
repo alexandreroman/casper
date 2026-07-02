@@ -181,8 +181,47 @@ public final class DebugSocketServer: @unchecked Sendable {
 /// Sends one `DebugCommand` to the app's debug socket and returns the decoded
 /// `DebugResponse`. Synchronous by design: `casper debug` is short-lived.
 public enum DebugSocketClient {
+    /// Total attempts when `retriable` is true: the first try plus three retries.
+    private static let maxRetriableAttempts = 4
+    /// Backoff between retries. Short on purpose: a fresh connection usually
+    /// succeeds immediately, so the worst-case added delay stays well under a
+    /// second even after every retry.
+    private static let retryBackoffMicroseconds: useconds_t = 50_000
+
+    /// Sends `command` and returns the decoded `DebugResponse`.
+    ///
+    /// Set `retriable` to true ONLY for idempotent verbs. A transport-level
+    /// failure (`DebugSocketError`) then triggers a bounded retry over a fresh
+    /// connection, which papers over the intermittent cross-process
+    /// `ENETDOWN` seen when a slow handler (e.g. `screenshot`) blocks before any
+    /// response byte arrives. A decoded `DebugResponse` — even `ok: false` — is a
+    /// real answer and is returned immediately, never retried, so a mutating verb
+    /// is never applied twice.
     public static func send(
-        _ command: DebugCommand, toSocketAt socketPath: String, timeout: TimeInterval = 5
+        _ command: DebugCommand, toSocketAt socketPath: String,
+        timeout: TimeInterval = 5, retriable: Bool = false
+    ) throws -> DebugResponse {
+        let maxAttempts = retriable ? maxRetriableAttempts : 1
+        var lastError: DebugSocketError?
+        for attempt in 1...maxAttempts {
+            do {
+                return try sendOnce(command, toSocketAt: socketPath, timeout: timeout)
+            } catch let error as DebugSocketError {
+                lastError = error
+                if attempt < maxAttempts {
+                    usleep(retryBackoffMicroseconds)
+                }
+            }
+        }
+        // Only reached when every attempt threw a transport `DebugSocketError`.
+        throw lastError ?? DebugSocketError(reason: "no response from \(socketPath)")
+    }
+
+    /// One request/response exchange over a single fresh connection. Throws a
+    /// `DebugSocketError` on any transport failure; returns whatever
+    /// `DebugResponse` the server delivers, including an `ok: false` one.
+    private static func sendOnce(
+        _ command: DebugCommand, toSocketAt socketPath: String, timeout: TimeInterval
     ) throws -> DebugResponse {
         guard FileManager.default.fileExists(atPath: socketPath) else {
             throw DebugSocketError(reason: "no socket at \(socketPath) (is the GUI running?)")
