@@ -20,7 +20,13 @@ struct SocketOption: ParsableArguments {
 }
 
 private func run(_ command: DebugCommand, socket: String) throws -> DebugResponse {
-    let response = try DebugSocketClient.send(command, toSocketAt: socket)
+    let response: DebugResponse
+    do {
+        response = try DebugSocketClient.send(command, toSocketAt: socket)
+    } catch let error as DebugSocketError {
+        FileHandle.standardError.write(Data("error: \(error.reason)\n".utf8))
+        throw ExitCode.failure
+    }
     guard response.ok else {
         FileHandle.standardError.write(Data("error: \(response.error ?? "unknown")\n".utf8))
         throw ExitCode.failure
