@@ -1,4 +1,5 @@
 import AppKit
+import CasperCore
 import GhosttyKit
 
 /// Process-wide libghostty initialization. `ghostty_init` must run exactly once,
@@ -185,8 +186,19 @@ func casperGhosttyConfirmReadClipboard(
     _ state: UnsafeMutableRawPointer?,
     _ request: ghostty_clipboard_request_e
 ) {
-    guard let string, let view = clipboardView(from: userdata) else { return }
-    let text = String(cString: string)
+    // Both guards below "should never happen"; they exist defensively.
+    guard let view = clipboardView(from: userdata) else {
+        // No view means nothing to complete the request against — the one case
+        // that leaves libghostty's paste unresolved.
+        CasperLog.ghostty.warning("confirm-read callback fired with unresolved view userdata")
+        return
+    }
+    // A nil string still gets completed (with empty text) so the paste is never
+    // left hanging.
+    let text = string.map { String(cString: $0) }
+    if text == nil {
+        CasperLog.ghostty.warning("confirm-read callback fired with unresolved string; completing empty")
+    }
     // Cross the actor boundary as a trivial address (Sendable); see
     // `casperGhosttyReadClipboard`.
     let stateAddress = UInt(bitPattern: state)
@@ -194,13 +206,19 @@ func casperGhosttyConfirmReadClipboard(
     // confirmation dialog is a future refinement.
     MainActor.assumeIsolated {
         view.surface?.completeClipboardRequest(
-            text, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+            text ?? "", state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
     }
 }
 
 /// `write_clipboard_cb`:
 /// `void (*)(void*, ghostty_clipboard_e, const ghostty_clipboard_content_s*, size_t, bool)`.
 /// Called when libghostty wants to write to the system pasteboard (e.g. ⌘C).
+///
+/// v1: the `confirm` flag is intentionally NOT gated — writes are applied
+/// unconditionally, mirroring the auto-confirm paste policy used for reads
+/// (see `casperGhosttyConfirmReadClipboard`). Honoring `confirm` — to keep
+/// untrusted terminal output (e.g. OSC 52) from silently overwriting the
+/// user's clipboard — is a deferred follow-up, pending a confirmation UI.
 func casperGhosttyWriteClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
