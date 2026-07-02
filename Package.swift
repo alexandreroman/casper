@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "CasperAgents", targets: ["CasperAgents"]),
         .library(name: "CasperCLI", targets: ["CasperCLI"]),
         .library(name: "CasperGhostty", targets: ["CasperGhostty"]),
+        .library(name: "CasperUI", targets: ["CasperUI"]),
         .executable(name: "casper", targets: ["casper"]),
     ],
     dependencies: [
@@ -43,6 +44,10 @@ let package = Package(
             ]
         ),
         .target(
+            name: "CasperUI",
+            dependencies: ["CasperCore", "CasperGit", "CasperGhostty", "CasperAgents"]
+        ),
+        .target(
             name: "CasperCLI",
             dependencies: [
                 "CasperCore",
@@ -50,7 +55,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperGhostty"]),
+        .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperGhostty", "CasperUI"]),
         .testTarget(
             name: "CasperGitTests",
             dependencies: ["CasperGit", "Clibgit2"]
@@ -70,6 +75,10 @@ let package = Package(
         .testTarget(
             name: "CasperGhosttyTests",
             dependencies: ["CasperGhostty"]
+        ),
+        .testTarget(
+            name: "CasperUITests",
+            dependencies: ["CasperUI", "CasperCore", "CasperGhostty", "CasperAgents"]
         ),
     ]
 )
