@@ -72,7 +72,7 @@ extension DebugCLICommand {
         static let configuration = CommandConfiguration(abstract: "Inject text into a surface.")
         @OptionGroup var socket: SocketOption
         @Argument(help: "Text to send.") var text: String
-        @Flag(name: .long, help: "Append a trailing newline (press Return).")
+        @Flag(name: .long, help: "Submit the line by pressing Return.")
         var enter = false
         @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
         var target: String?

@@ -55,7 +55,7 @@ public struct DebugSurfaceHandle {
     public let workingDirectory: String?
     public let focused: Bool
     public let readText: (_ scrollback: Bool) -> String?
-    public let sendText: (_ text: String) -> Void
+    public let sendText: (_ text: String, _ submit: Bool) -> Void
     public let geometry: () -> DebugSurfaceGeometry
     public let focus: () -> Void
     public let window: NSWindow?
@@ -63,7 +63,7 @@ public struct DebugSurfaceHandle {
     public init(
         id: String, title: String, workingDirectory: String?, focused: Bool,
         readText: @escaping (_ scrollback: Bool) -> String?,
-        sendText: @escaping (_ text: String) -> Void,
+        sendText: @escaping (_ text: String, _ submit: Bool) -> Void,
         geometry: @escaping () -> DebugSurfaceGeometry,
         focus: @escaping () -> Void,
         window: NSWindow?
@@ -157,7 +157,7 @@ public final class DebugServer {
                 return targetFailure(command.target)
             }
             guard let text = command.text else { return .failure("missing text") }
-            handle.sendText(command.enter == true ? text + "\n" : text)
+            handle.sendText(text, command.enter == true)
             return .success()
 
         case .screenshot:

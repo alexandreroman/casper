@@ -15,7 +15,7 @@ public struct DebugCommand: Codable, Equatable, Sendable {
 
     public var verb: Verb
     public var text: String?        // sendText payload
-    public var enter: Bool?         // sendText: append a trailing newline
+    public var enter: Bool?         // sendText: submit the line via a Return key event
     public var scrollback: Bool?    // readText: full screen vs. viewport
     public var path: String?        // screenshot: output file path
     public var target: String?      // surface id to address (nil = focused/first)

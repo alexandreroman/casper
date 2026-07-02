@@ -27,3 +27,25 @@ public func ghosttyKeyEvent(
     key.unshifted_codepoint = 0
     return key
 }
+
+/// macOS virtual keycode for Return (kVK_Return). Used to synthesize a
+/// line-submission key event when no NSEvent is available (debug channel).
+public let ghosttyReturnKeyCode: UInt32 = 36
+
+/// Build a libghostty key event not backed by an NSEvent (e.g. debug-channel
+/// injection). `mods` defaults to none.
+public func ghosttyKeyEvent(
+    keycode: UInt32,
+    action: ghostty_input_action_e,
+    mods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
+) -> ghostty_input_key_s {
+    var key = ghostty_input_key_s()
+    key.action = action
+    key.mods = mods
+    key.consumed_mods = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
+    key.keycode = keycode
+    key.composing = false
+    key.text = nil
+    key.unshifted_codepoint = 0
+    return key
+}

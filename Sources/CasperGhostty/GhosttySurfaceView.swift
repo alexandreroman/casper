@@ -53,8 +53,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface?.readText(scrollback: scrollback)
     }
 
-    func debugSendText(_ text: String) {
-        surface?.sendText(text)
+    func debugSendText(_ text: String, submit: Bool) {
+        if !text.isEmpty { surface?.sendText(text) }
+        guard submit, let surface else { return }
+        _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_PRESS))
+        _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_RELEASE))
     }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
