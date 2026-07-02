@@ -19,4 +19,4 @@ and **libgit2** (Git, wrapped in an in-house `CasperGit` module; no external
 `git` binary). Everything else must use system frameworks (Network.framework,
 WebKit, UserNotifications, Foundation/Codable). Build **arm64-only**, release
 with `-Osize` + LTO + strip. Before adding any new package, stop and justify it
-against this policy. See [[project]].
+against this policy.

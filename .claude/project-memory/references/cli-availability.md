@@ -25,4 +25,4 @@ basePath is empty). The app supplies the app bundle's executable directory
 (`Bundle.main.executableURL`'s parent) and the inherited `PATH`. Trade-off:
 running `claude` from a non-Casper terminal — in any project, since the hook is
 global — leaves the hook command not found; this is acceptable, as it is outside
-Casper's scope. See [[hooks-install-once]], [[project]].
+Casper's scope. See [[hooks-install-once]].

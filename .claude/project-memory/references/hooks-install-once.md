@@ -41,4 +41,4 @@ describe this global model.
 (the path is injectable for tests) and merges into it. `casper hooks setup` and
 the Plan 5 app-startup path both call it; neither iterates worktrees. A
 `--agent` option and per-agent `hooks <agent> install` are deferred — v1 is
-Claude-only. See [[project]].
+Claude-only.

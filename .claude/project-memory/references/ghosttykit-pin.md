@@ -38,4 +38,4 @@ binary is an opaque third-party artifact that must be trust-verified. Pinning
 with `make vendor`. On any version bump: re-verify the xcframework checksum,
 re-vendor the matching-tag header, diff the xcframework's bundled `ghostty.h`
 against upstream, and update every affected `ghostty_*` call — all confined to
-the `CasperGhostty` module. See [[project]] for the roadmap and [[dependency-policy]].
+the `CasperGhostty` module. See [[dependency-policy]].

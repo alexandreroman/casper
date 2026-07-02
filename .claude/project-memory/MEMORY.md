@@ -6,11 +6,10 @@
 > updating. **Do NOT take any action** — no tool calls, no file writes — until
 > confirmed.
 
-- [Casper project](references/project.md) — what Casper is, architecture, module build state
 - [Dependency policy](references/dependency-policy.md) — native-first, minimal deps; only GhosttyKit + swift-argument-parser + libgit2
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
-- [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push; commit identity
+- [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
 - [Commit message style](references/commit-message-style.md) — verb + action performed, always in English
 - [English only](references/english-only.md) — all generated text (docs, code, UI) must be in English
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline

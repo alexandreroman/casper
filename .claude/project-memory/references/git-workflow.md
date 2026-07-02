@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: "On Casper, get explicit authorization before git init/commit/push; commit identity"
+description: "On Casper, get explicit authorization before git init/commit/push"
 type: feedback
 ---
 
@@ -13,5 +13,4 @@ steps, distinct from the global "OK to commit on main" default.
 **How to apply:** do **not** `git init`, commit, add a remote, or push unless
 asked for that specific action. Committing *implementation work* is fine once a
 plan is being executed, but never create the repo, push, or publish to GitHub
-without an explicit go-ahead. Commits use **alexandre.roman@gmail.com** (the
-local `user.email`). See [[project]].
+without an explicit go-ahead.

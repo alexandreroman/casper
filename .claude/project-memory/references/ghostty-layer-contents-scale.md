@@ -49,4 +49,4 @@ compositing concern distinct from the grid geometry.
 the rendered cell from a `casper debug screenshot` (pixel width of a known-length
 string ÷ its character count) and confirm the ratio is 1.0, not 2.0.
 
-See [[project]] and [[ghosttykit-pin]].
+See [[ghosttykit-pin]].
