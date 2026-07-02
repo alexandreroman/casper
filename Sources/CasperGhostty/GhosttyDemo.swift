@@ -19,10 +19,15 @@ public enum GhosttyDemo {
     }
 }
 
+@MainActor
 private final class DemoDelegate: NSObject, NSApplicationDelegate {
     private let directory: String
     private var window: NSWindow?
     private var runtime: GhosttyRuntime?
+    private var surfaceView: GhosttySurfaceView?
+    #if DEBUG
+    private var debugServer: DebugServer?
+    #endif
 
     init(directory: String) { self.directory = directory }
 
@@ -41,6 +46,7 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
             config.workingDirectory = directory
 
             let view = GhosttySurfaceView(runtime: runtime, configuration: config)
+            self.surfaceView = view
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 900, height: 560),
                 styleMask: [.titled, .closable, .resizable, .miniaturizable],
@@ -51,6 +57,9 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
             window.makeKeyAndOrderFront(nil)
             window.makeFirstResponder(view)
             self.window = window
+            #if DEBUG
+            startDebugServer()
+            #endif
         } catch {
             CasperLog.ghostty.error("demo failed: \(String(describing: error))")
             NSApp.terminate(nil)
@@ -60,4 +69,36 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
+
+    #if DEBUG
+    private func startDebugServer() {
+        let server = DebugServer(socketPath: DebugSocketPath.default, provider: self)
+        do {
+            try server.start()
+            self.debugServer = server
+        } catch {
+            CasperLog.debug.error("debug server failed to start: \(String(describing: error))")
+        }
+    }
+    #endif
 }
+
+#if DEBUG
+extension DemoDelegate: DebugSurfaceProvider {
+    func debugSurfaces() -> [DebugSurfaceHandle] {
+        guard let view = surfaceView, view.debugHasSurface else { return [] }
+        let window = self.window
+        let focused = (window?.firstResponder === view)
+        return [
+            DebugSurfaceHandle(
+                title: window?.title ?? "casper",
+                workingDirectory: directory,
+                focused: focused,
+                readText: { [weak view] scrollback in view?.debugReadText(scrollback: scrollback) },
+                sendText: { [weak view] text in view?.debugSendText(text) },
+                columnsRows: { [weak view] in view?.debugColumnsRows() ?? (0, 0) },
+                window: window),
+        ]
+    }
+}
+#endif
