@@ -29,8 +29,14 @@ GPU-rendered shell, `ls` runs, the cwd is the launch directory, and the window
 title reflects the cwd — the latter confirms the C action-callback path
 (`action_cb` → `ghostty_app_userdata` → `handleAction` → `onAction`) works
 end-to-end (the one path with no unit coverage). Rendering is display-link
-driven, so `GHOSTTY_ACTION_RENDER` needs no `draw()` wiring. Remaining quick
-confirms: window resize reflow, focus-away, clean quit.
+driven, so `GHOSTTY_ACTION_RENDER` needs no `draw()` wiring.
+**Known open bug (Plan 4, not yet root-caused):** the terminal grid is wider
+than the window — `ls` output is truncated at the right edge, i.e. the surface
+reports more columns than fit. Suspected in `GhosttySurfaceView` geometry
+(size/scale push timing in `viewDidMoveToWindow` before the window is on-screen,
+or a points-vs-pixels / content-scale mismatch). Diagnosis pending more robust
+instrumentation; the readback `ghostty_surface_size` (columns/width_px/cell_*) is
+the key evidence. Fix before or during Plan 5's UI work.
 
 - **Plan 1 — CasperCore:** implemented, reviewed. Pure Swift core.
 - **Plan 2 — CasperGit + WorktreeManager:** implemented, reviewed (final
