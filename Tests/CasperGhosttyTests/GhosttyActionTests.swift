@@ -55,6 +55,13 @@ final class GhosttyActionTests: XCTestCase {
         XCTAssertEqual(GhosttyAction.decode(action), .childExited(exitCode: 42))
     }
 
+    func testDecodesChildExitedWithOutOfRangeExitCodeDoesNotCrash() {
+        var action = ghostty_action_s()
+        action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED
+        action.action.child_exited.exit_code = UInt32.max
+        XCTAssertEqual(GhosttyAction.decode(action), .childExited(exitCode: -1))
+    }
+
     func testDecodesDesktopNotification() {
         "Build finished".withCString { titleCStr in
             "casper build succeeded".withCString { bodyCStr in

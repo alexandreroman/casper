@@ -40,7 +40,9 @@ public enum GhosttyAction: Equatable {
         case GHOSTTY_ACTION_RENDER:
             return .render
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-            return .childExited(exitCode: Int32(c.action.child_exited.exit_code))
+            // Truncating (not trapping) conversion: exit_code is external C data,
+            // and `Int32(UInt32)` would crash for any value above Int32.max.
+            return .childExited(exitCode: Int32(truncatingIfNeeded: c.action.child_exited.exit_code))
         case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
             return .desktopNotification(
                 title: Self.string(c.action.desktop_notification.title),
@@ -73,6 +75,8 @@ public enum GhosttyAction: Equatable {
         case GHOSTTY_SPLIT_DIRECTION_DOWN: return .down
         case GHOSTTY_SPLIT_DIRECTION_LEFT: return .left
         case GHOSTTY_SPLIT_DIRECTION_UP: return .up
+        // Unrecognized/future direction values fall back to `.right`, the same
+        // safe-default rationale as `.other(tag:)` for unmodeled action tags.
         default: return .right
         }
     }
