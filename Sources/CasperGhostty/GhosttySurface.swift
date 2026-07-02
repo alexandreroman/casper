@@ -5,6 +5,10 @@ import GhosttyKit
 public final class GhosttySurface {
     let surface: ghostty_surface_t
 
+    /// Pins the runtime's `ghostty_app_t` alive for as long as this surface
+    /// exists, since the surface belongs to that app and frees itself into it.
+    private let runtime: GhosttyRuntime
+
     /// Create a surface hosted in `nsview`. Throws if the runtime has no app or
     /// libghostty returns null.
     public init(
@@ -22,6 +26,7 @@ public final class GhosttySurface {
             throw GhosttyError(reason: "ghostty_surface_new returned null")
         }
         self.surface = created
+        self.runtime = runtime
     }
 
     deinit { ghostty_surface_free(surface) }
