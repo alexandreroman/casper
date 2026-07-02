@@ -10,6 +10,10 @@ public enum GhosttyDemo {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
 
+        let mainMenu = buildMainMenu()
+        app.mainMenu = mainMenu
+        app.windowsMenu = mainMenu.items.first { $0.submenu?.title == "Window" }?.submenu
+
         let delegate = DemoDelegate(directory: directory)
         app.delegate = delegate
         app.activate(ignoringOtherApps: true)

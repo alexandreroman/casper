@@ -218,6 +218,40 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         return super.resignFirstResponder()
     }
 
+    // MARK: Menu actions
+
+    // Edit/View menu items built by `buildMainMenu()` carry no `target`, so
+    // AppKit dispatches them up the responder chain; these fire whenever this
+    // view is the focused (first-responder) surface. `copy(_:)`/`paste(_:)` are
+    // plain selectors AppKit's Edit menu convention expects (not declared by
+    // `NSResponder`); `selectAll(_:)` overrides the one `NSResponder` does
+    // declare. The font-size selectors are custom, referenced directly by
+    // `buildMainMenu()`.
+
+    @objc func copy(_ sender: Any?) {
+        surface?.bindingAction("copy_to_clipboard")
+    }
+
+    @objc func paste(_ sender: Any?) {
+        surface?.bindingAction("paste_from_clipboard")
+    }
+
+    public override func selectAll(_ sender: Any?) {
+        surface?.bindingAction("select_all")
+    }
+
+    @objc func increaseFontSize(_ sender: Any?) {
+        surface?.bindingAction("increase_font_size:1")
+    }
+
+    @objc func decreaseFontSize(_ sender: Any?) {
+        surface?.bindingAction("decrease_font_size:1")
+    }
+
+    @objc func resetFontSize(_ sender: Any?) {
+        surface?.bindingAction("reset_font_size")
+    }
+
     // MARK: Keyboard
 
     public override func keyDown(with event: NSEvent) {
@@ -335,4 +369,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         forCharacterRange range: NSRange, actualRange: NSRangePointer?
     ) -> NSRect { .zero }
     public override func doCommand(by selector: Selector) {}
+}
+
+extension GhosttySurfaceView: NSMenuItemValidation {
+    // The Edit/View menu items built by `buildMainMenu()` all target this view
+    // via the responder chain; enable them only while it hosts a live surface.
+    public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { surface != nil }
 }
