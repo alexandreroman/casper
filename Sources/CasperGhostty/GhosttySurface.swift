@@ -87,8 +87,11 @@ public final class GhosttySurface {
             bottom_right: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
             rectangle: false)
         var out = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, selection, &out) else { return nil }
+        // Register cleanup before the fallible read so a failed read still frees any
+        // partially-allocated buffer (project pointer-lifecycle convention). Freeing a
+        // zero-initialized ghostty_text_s (text == nil) is a no-op.
         defer { ghostty_surface_free_text(surface, &out) }
+        guard ghostty_surface_read_text(surface, selection, &out) else { return nil }
         guard let bytes = out.text else { return "" }
         return String(decoding: Data(bytes: bytes, count: Int(out.text_len)), as: UTF8.self)
     }
