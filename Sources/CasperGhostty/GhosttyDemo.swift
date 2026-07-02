@@ -91,12 +91,14 @@ extension DemoDelegate: DebugSurfaceProvider {
         let focused = (window?.firstResponder === view)
         return [
             DebugSurfaceHandle(
+                id: "0",
                 title: window?.title ?? "casper",
                 workingDirectory: directory,
                 focused: focused,
                 readText: { [weak view] scrollback in view?.debugReadText(scrollback: scrollback) },
                 sendText: { [weak view] text in view?.debugSendText(text) },
                 columnsRows: { [weak view] in view?.debugColumnsRows() ?? (0, 0) },
+                focus: { [weak window, weak view] in window?.makeFirstResponder(view) },
                 window: window),
         ]
     }

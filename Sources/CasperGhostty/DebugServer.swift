@@ -7,27 +7,32 @@ import CoreGraphics
 /// concrete AppKit view. The provider builds these on the main thread.
 @MainActor
 public struct DebugSurfaceHandle {
+    public let id: String
     public let title: String
     public let workingDirectory: String?
     public let focused: Bool
     public let readText: (_ scrollback: Bool) -> String?
     public let sendText: (_ text: String) -> Void
     public let columnsRows: () -> (Int, Int)
+    public let focus: () -> Void
     public let window: NSWindow?
 
     public init(
-        title: String, workingDirectory: String?, focused: Bool,
+        id: String, title: String, workingDirectory: String?, focused: Bool,
         readText: @escaping (_ scrollback: Bool) -> String?,
         sendText: @escaping (_ text: String) -> Void,
         columnsRows: @escaping () -> (Int, Int),
+        focus: @escaping () -> Void,
         window: NSWindow?
     ) {
+        self.id = id
         self.title = title
         self.workingDirectory = workingDirectory
         self.focused = focused
         self.readText = readText
         self.sendText = sendText
         self.columnsRows = columnsRows
+        self.focus = focus
         self.window = window
     }
 }
@@ -84,29 +89,61 @@ public final class DebugServer {
             let entries = surfaces.map { handle -> DebugState.Surface in
                 let (columns, rows) = handle.columnsRows()
                 return DebugState.Surface(
-                    title: handle.title, workingDirectory: handle.workingDirectory,
+                    id: handle.id, title: handle.title, workingDirectory: handle.workingDirectory,
                     columns: columns, rows: rows, focused: handle.focused)
             }
             return .success(state: DebugState(surfaces: entries))
 
         case .readText:
-            guard let target = focusedOrFirst(surfaces) else { return .failure("no surface") }
-            guard let text = target.readText(command.scrollback ?? false) else {
+            guard let handle = target(in: surfaces, matching: command.target) else {
+                return targetFailure(command.target)
+            }
+            guard let text = handle.readText(command.scrollback ?? false) else {
                 return .failure("read-text unavailable")
             }
             return .success(text: text)
 
         case .sendText:
-            guard let target = focusedOrFirst(surfaces) else { return .failure("no surface") }
+            guard let handle = target(in: surfaces, matching: command.target) else {
+                return targetFailure(command.target)
+            }
             guard let text = command.text else { return .failure("missing text") }
-            target.sendText(command.enter == true ? text + "\n" : text)
+            handle.sendText(command.enter == true ? text + "\n" : text)
             return .success()
 
         case .screenshot:
             guard let path = command.path else { return .failure("missing path") }
-            guard let window = focusedOrFirst(surfaces)?.window else { return .failure("no window") }
+            guard let handle = target(in: surfaces, matching: command.target) else {
+                return targetFailure(command.target)
+            }
+            guard let window = handle.window else { return .failure("no window") }
             return screenshot(window: window, to: path)
+
+        case .focus:
+            guard let id = command.target else { return .failure("missing target id") }
+            guard let handle = surfaces.first(where: { $0.id == id }) else {
+                return .failure("no surface with id \(id)")
+            }
+            handle.focus()
+            return .success()
         }
+    }
+
+    /// The surface a verb acts on: the id-matched surface when `target` is set,
+    /// otherwise the focused surface (falling back to the first). A set-but-
+    /// unmatched target returns nil — never a silent fallback.
+    private func target(
+        in surfaces: [DebugSurfaceHandle], matching target: String?
+    ) -> DebugSurfaceHandle? {
+        if let target { return surfaces.first(where: { $0.id == target }) }
+        return focusedOrFirst(surfaces)
+    }
+
+    /// The failure for an unresolved target: id-specific when a target was
+    /// given, generic when none was.
+    private func targetFailure(_ target: String?) -> DebugResponse {
+        if let target { return .failure("no surface with id \(target)") }
+        return .failure("no surface")
     }
 
     private func focusedOrFirst(_ surfaces: [DebugSurfaceHandle]) -> DebugSurfaceHandle? {
