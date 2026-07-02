@@ -197,8 +197,9 @@ AgentStateStore  (per-workspace state machine + todo list)
 - surface clear errors in the UI (e.g. branch already checked out) — never crash
 
 Creating a workspace = creating a worktree, then opening a **plain Ghostty
-terminal** in its folder (with the hook plumbing installed). No agent is spawned;
-the user launches Claude Code manually if/when they want.
+terminal** in its folder. Casper's Claude Code hooks are installed globally,
+once (§7) — not per workspace. No agent is spawned; the user launches Claude
+Code manually if/when they want.
 
 ## 9. Port Reservation
 

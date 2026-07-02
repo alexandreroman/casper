@@ -79,11 +79,11 @@ make clean    # remove build artifacts
 
 ## Configuration
 
-Casper wires up Claude Code hooks like this: run
-`casper hooks setup [<worktree>]` once per worktree to install
-`.claude/settings.local.json`, which routes every hook event to
-`casper hooks feed` on stdin. Casper then injects the following environment
-variables into each terminal surface so `hooks feed` can relay events back to
+Casper wires up Claude Code hooks like this: run `casper hooks setup` once to
+install Casper's hooks **globally** in `~/.claude/settings.json`, which routes
+every hook event to `casper hooks feed` on stdin. Casper then injects the
+following environment variables into each terminal surface so `hooks feed` can
+relay events back to
 the app:
 
 | Variable                          | Description                                      |
@@ -121,7 +121,7 @@ flowchart TD
 | `CasperCore`    | Models, session store, port allocator, hook parsing, agent-state reducer (pure Swift) |
 | `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                               |
 | `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                  |
-| `CasperAgents`  | Claude Code adapter (`settings.local.json` generation) + hook socket server           |
+| `CasperAgents`  | Claude Code adapter (`~/.claude/settings.json` generation) + hook socket server       |
 | `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
 | `CasperCLI`     | `casper` subcommands: `hooks setup` / `hooks feed` (swift-argument-parser)            |
 

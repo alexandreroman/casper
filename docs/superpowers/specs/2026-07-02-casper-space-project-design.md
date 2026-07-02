@@ -126,9 +126,10 @@ Each workspace row shows a compact summary of its Git changes.
 
 - **Ports:** a contiguous 10-port block is reserved **per workspace** (`CASPER_PORT`,
   base §9), not per Space. A Space has no port block of its own.
-- **Hooks:** `casper hooks setup` remains **per worktree** (base §7). Every workspace
-  — primary included — gets its own `.claude/settings.local.json` and exports
-  `CASPER_SOCKET` / `CASPER_WORKSPACE_ID` / `CASPER_PORT` in its terminal surfaces.
+- **Hooks:** hook installation is **global**, once in `~/.claude/settings.json`
+  (base §7), unchanged by Spaces and **not** per workspace. Every workspace —
+  primary included — still exports `CASPER_SOCKET` / `CASPER_WORKSPACE_ID` /
+  `CASPER_PORT` in its terminal surfaces (per-surface runtime identity).
 - **No `CASPER_PROJECT` env in v1** (YAGNI). The per-surface environment is unchanged.
 - **Persistence:** `SessionStore` serializes the full `Session → Space → Workspace`
   tree (base §10). Each workspace's `portBase` is restored as-is; `diffStat` is not

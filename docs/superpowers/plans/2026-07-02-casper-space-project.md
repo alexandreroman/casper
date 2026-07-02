@@ -1022,7 +1022,7 @@ EOF
 - §4 Sidebar → **deferred to Plan 5** (stated in scope boundary); substrate consumed: `Space`, `Workspace`, `DiffStat`, `diffStat()`. ✓
 - §5 Lifecycle: open → Task 6; `git init` for a non-repo folder = UI (Plan 5); add-workspace = existing `WorktreeManager.create` (unchanged); non-destructive removal = UI drops the `Space` from `Session` + releases ports (pure model already supports it — `Session.spaces` is a `var`). ✓
 - §6 Diff summary (branch vs merge-base of base; +/− lines only; hidden when empty; libgit2, no parsing; derived) → Task 4 (git), Task 7 (`diffStat`), `DiffStat.isEmpty` for hiding. ✓
-- §7 Unchanged (ports per workspace, hooks per worktree, no `CASPER_PROJECT`, persistence tree) → `portBase` stays on `Workspace`; Task 2 covers persistence migration. ✓
+- §7 Unchanged (ports per workspace, hooks global, no `CASPER_PROJECT`, persistence tree) → `portBase` stays on `Workspace`; Task 2 covers persistence migration. ✓
 - §10 Persistence / migration of old files → Task 2. ✓
 
 **Placeholder scan:** none — every step carries real code and exact commands.

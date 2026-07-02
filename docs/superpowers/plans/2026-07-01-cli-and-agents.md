@@ -31,6 +31,9 @@
 >   terminal open; only the surface *environment* is injected per surface. See
 >   [[hooks-install-once]]. This supersedes the design spec §7 wording ("installed
 >   when a terminal surface is created").
+>   **Later superseded (2026-07-02):** hooks are now installed **globally** into
+>   `~/.claude/settings.json` (once, via `casper hooks setup` or at app
+>   startup), not per worktree — see [[hooks-install-once]] and spec §7/§10.
 > - **Doc-comment sweep (`05bb1aa`):** four stale `casper hook` doc comments in
 >   `CasperAgents` updated to `casper hooks feed`.
 > - **No global `casper` install (design refinement):** the design spec's
