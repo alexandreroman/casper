@@ -24,8 +24,13 @@ socket, Claude Code settings) · 4. CasperGhostty (embedding) · 5. CasperUI + a
 **Status (2026-07-02):** Plans 1, 2, 3 & 4 complete, committed on `main` (repo
 local only, **not pushed** to GitHub yet). **119 XCTest tests green**
 (`make test`). v1 agent target: Claude Code only. Plan 4's GUI terminal is
-pending **manual** verification (design §13: run `casper`, confirm a live shell
-renders) — automated tests cover only the pure/marshaling/mapping layers.
+**manually verified** (design §13): `casper` opens a window with a live
+GPU-rendered shell, `ls` runs, the cwd is the launch directory, and the window
+title reflects the cwd — the latter confirms the C action-callback path
+(`action_cb` → `ghostty_app_userdata` → `handleAction` → `onAction`) works
+end-to-end (the one path with no unit coverage). Rendering is display-link
+driven, so `GHOSTTY_ACTION_RENDER` needs no `draw()` wiring. Remaining quick
+confirms: window resize reflow, focus-away, clean quit.
 
 - **Plan 1 — CasperCore:** implemented, reviewed. Pure Swift core.
 - **Plan 2 — CasperGit + WorktreeManager:** implemented, reviewed (final
