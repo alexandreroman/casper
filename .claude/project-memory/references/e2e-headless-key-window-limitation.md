@@ -45,3 +45,31 @@ decoded action reaches the intended `onAction` case (proves the C→Swift
 plumbing), then fall back to source-level reasoning for anything gated on
 `NSApp.keyWindow`/real OS focus, and say so explicitly in the report rather
 than claiming an unobserved termination.
+
+**A stronger manifestation, seen in the real `CasperUI` app (SwiftUI
+`WindowGroup` + `NavigationSplitView`), not just the plain-AppKit demo
+window:** confirmed during ui1-task-8 (wiring the debug bridge into
+`AppModel`). `NSApp.windows.first` exists with a real, non-zero frame and
+`isVisible == true`, but `window.occlusionState` never has the `.visible`
+bit set (`rawValue` seen: `8192`, i.e. bit 2 clear) — the WindowServer
+considers the window occluded even though AppKit reports it ordered-in.
+Walking `window.contentView`'s subview tree confirms the `NSSplitView` and
+both `_NSSplitViewItemViewWrapper`s exist (sidebar renders, chrome renders),
+but the detail column's `NSHostingView` has **zero** subviews: SwiftUI never
+lays out the `WorkspaceDetailView` content, so a nested
+`NSViewRepresentable` (`GhosttySurfaceRepresentable`, hosting
+`GhosttySurfaceView`) is never instantiated at all — not merely without a
+live `ghostty_surface_new` surface, but structurally absent from the AppKit
+tree. `casper debug dump-state` then reports `"surfaces": []` forever, with
+no error logged anywhere (there is nothing to fail — the code path that
+would create the surface never runs). Tried and confirmed ineffective:
+`caffeinate -u -t N` and `caffeinate -u -i -t N` before/during launch,
+waking the display first (confirmed via `system_profiler
+SPDisplaysDataType` showing no `Display Asleep`), polling `dump-state` for
+up to 15s. Same recommendation as above: verify what you can (socket
+transport, the model state feeding the provider, the AppKit tree via a
+temporary diagnostic — remove it before committing), then fall back to
+source-level comparison against the last known-working reference
+implementation, and say explicitly in the report that live surface-level
+behavior (`read-text`/`send-text`/`focus`) was not observed rather than
+asserting it worked.

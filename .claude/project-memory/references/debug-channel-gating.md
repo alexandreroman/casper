@@ -32,3 +32,15 @@ unconditional and wrap `.debug`/`.info` call sites in `#if DEBUG`. Prefer tying
 gating to the build configuration (`#if DEBUG`) over a custom compilation flag.
 See the [dependency policy](dependency-policy.md) note and the spec at
 `.superpowers/themes/debug.md`.
+
+**Cross-module visibility gotcha:** `GhosttySurfaceView`'s `debug*` accessors
+(`debugHasSurface`, `debugReadText`, `debugSendText`, `debugSendKeys`,
+`debugSendKey`, `debugSendAction`, `debugMouseMove`, `debugGeometry`) live in
+`CasperGhostty` and were originally `internal` — fine for `GhosttyDemo.swift`
+(same module) but it does not compile from a `DebugSurfaceProvider`
+conformance written in a different target (e.g. `CasperUI`'s
+`DebugSurfaceBridge.swift`). They must be `public`. `DebugSurfaceHandle`,
+`DebugSurfaceGeometry`, `DebugSurfaceProvider`, and `DebugServer` are already
+`public` in `Sources/CasperGhostty/DebugServer.swift`; `DebugSocketPath` is
+`public` in `Sources/CasperCore/DebugSocket.swift`. `#if DEBUG` still fully
+compiles these out of a release build regardless of access level.

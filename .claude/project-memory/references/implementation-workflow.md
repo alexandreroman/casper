@@ -12,6 +12,9 @@ between tasks, and **commit after each task** (multiple commits per plan, one pe
 task, rather than a single squashed commit at the end). Close with a final
 whole-branch review before finishing.
 
+This is the **standing default** for executing any written plan on this project:
+do NOT ask which execution mode to use — pick subagent-driven automatically.
+
 **Why:** fresh per-task context keeps each subagent focused and its edits
 reliable; the review-between-tasks loop catches spec/quality issues early; and a
 commit per task yields a clean, bisectable history where each commit is an
