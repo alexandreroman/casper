@@ -1,10 +1,13 @@
 # Theme: App & UI (CasperUI)
 
-**Module:** CasperUI · **Status:** ❌ not started — no module, **no plan written
-yet** (see `../status.md`) · **This is the current milestone.**
+**Module:** CasperUI · **Status:** ◐ **UI-1 built** (app shell + minimal sidebar
++ one terminal + startup wiring); UI-2…UI-5 remain (see `../status.md`) · **This
+is the current milestone.**
 
-The SwiftUI app that turns the built modules into the real product. Depends on
-CasperGit `git_diff` (`git-worktrees.md`) and Ghostty layout composition
+The SwiftUI app that turns the built modules into the real product. Delivered as
+five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
+diff viewer (UI-5) depends on CasperGit `git_diff` (`git-worktrees.md`); the
+recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 (`terminal.md`).
 
 ## Design
@@ -26,8 +29,22 @@ CasperGit `git_diff` (`git-worktrees.md`) and Ghostty layout composition
   hooks at startup, injects the bundle exec dir into surface env, and runs the
   heartbeat timer (all detailed in `cli-agents.md`).
 
+## Sub-projects
+
+- **UI-1 — ✅ built.** App shell (SwiftUI `App` scene + `NSApplicationDelegateAdaptor`,
+  the existing AppKit `NSMenu` preserved), `@MainActor @Observable AppModel` as the
+  single state owner/bridge, `NavigationSplitView` with empty state, "Add folder…"
+  (adopt any folder — Git or not, multiple allowed), one live terminal per
+  workspace, and all startup wiring (hooks install, hook socket → agent-state
+  reducer, per-surface env, heartbeat timer, session persistence, `#if DEBUG`
+  debug bridge). No Git worktree creation. Renders only the single-terminal layout.
+- **UI-2** — multi-workspace creation via Git worktrees + Space grouping.
+- **UI-3** — recursive splits/tabs `LayoutNode` composition.
+- **UI-4** — `WKWebView` browser surface.
+- **UI-5** — diff viewer (SwiftUI over libgit2 `git_diff`).
+
 ## Next action
 
-**Write the CasperUI implementation plan** — it does not exist. The
-`space-project.md` plan already assumes the sidebar exists, so this plan must come
-first (or the two be sequenced deliberately).
+**UI-2**: multi-workspace via Git worktrees + Space grouping. Note the
+`space-project.md` plan already assumes the sidebar exists; sequence UI-2 and the
+Space work deliberately.

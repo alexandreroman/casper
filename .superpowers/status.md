@@ -9,8 +9,9 @@ Status legend: ✅ built · ◐ partial · ❌ not started.
 ## Roadmap at a glance
 
 The build proceeds in five module plans. Plans 1–4 are implemented; CasperUI
-(Plan 5, the real SwiftUI app) is the current milestone and is not yet built.
-The v1 agent target is Claude Code only.
+(Plan 5, the real SwiftUI app) is the current milestone and is under way — its
+first sub-project **UI-1** (app shell + minimal sidebar + one terminal + startup
+wiring) is built; UI-2…UI-5 remain. The v1 agent target is Claude Code only.
 
 | Plan | Module | Status |
 | --- | --- | --- |
@@ -18,7 +19,7 @@ The v1 agent target is Claude Code only.
 | 2 | CasperGit (+ Clibgit2) | ◐ worktrees/status built; `git_diff` missing |
 | 3 | CasperCLI + CasperAgents | ✅ |
 | 4 | CasperGhostty | ✅ one terminal end-to-end |
-| 5 | CasperUI + app | ❌ not started (no plan written) |
+| 5 | CasperUI + app | ◐ UI-1 built (shell + sidebar + one terminal + wiring); UI-2…UI-5 remain |
 
 Two developer-tooling features are built on top (both `#if DEBUG`): the
 debug/observability channel and debug surface addressing. The Space (project) +
@@ -45,9 +46,9 @@ add/list/lookup/validate/prune, status/isClean), `Worktree`, `GitError`.
 ### CasperAgents + CasperCLI — ✅
 `ClaudeCodeAdapter`, `HookMessage`, `HookSocketServer`/`Client`; the `casper`
 executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
-- Remaining for CasperUI: wire `onMessage` → `AgentStateStore`; pass the app
-  bundle's executable directory into
-  `surfaceEnvironment(casperDirectory:basePath:)`; run the heartbeat timer.
+- Wired by CasperUI UI-1: `onMessage` → agent-state reducer on `AppModel`'s
+  observable workspaces; the bundle executable directory is passed into
+  `surfaceEnvironment(casperDirectory:basePath:)`; the heartbeat timer runs.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,
@@ -60,13 +61,27 @@ executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
   binary). ⌘-key/menu paths confirmed by structure + live keypress (the debug
   channel bypasses `performKeyEquivalent`).
 - Remaining for CasperUI: splits/tabs layout composition (actions are decoded
-  and routed through `GhosttyActionDispatcher`, but not composed into a layout);
-  clipboard paste-confirmation UI (v1 auto-confirms); `flagsChanged`
-  press/release semantics and scroll precision/momentum.
+  and routed through `GhosttyActionDispatcher`, but not composed into a layout —
+  **UI-3**; UI-1 renders only the single-terminal case); clipboard
+  paste-confirmation UI (v1 auto-confirms); `flagsChanged` press/release
+  semantics and scroll precision/momentum.
 
-### CasperUI — ❌ not started
-No module exists. Sidebar, chrome, splits/tabs layout composition, `WKWebView`
-browser, and the diff viewer are all unbuilt. **No Plan 5 plan is written yet.**
+### CasperUI — ◐ UI-1 built
+The module exists. **UI-1** is done: a SwiftUI `App` scene
+(`CasperApp`/`AppDelegate`/`CasperUI.runApp`) replaces the Ghostty demo as the
+GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
+the core types to SwiftUI; a `NavigationSplitView` shows an empty state, an
+"Add folder…" flow (adopt any folder as a workspace — Git or not, multiple
+allowed) and one live terminal per workspace; and all startup wiring is landed
+(hooks install, hook socket → agent state, per-surface env, heartbeat timer,
+session persistence, `#if DEBUG` debug bridge). Release gating verified (no debug
+symbols in `make release`).
+
+Remaining CasperUI sub-projects: **UI-2** multi-workspace via Git worktrees +
+Space grouping; **UI-3** recursive splits/tabs layout; **UI-4** `WKWebView`
+browser; **UI-5** diff viewer (needs `git_diff`). Live GUI/debug-harness
+verification of UI-1 needs a real desktop session (the headless CI sandbox cannot
+materialize the SwiftUI detail `NSHostingView`).
 
 ## Developer tooling (`#if DEBUG`)
 
@@ -89,10 +104,12 @@ CasperUI.
 
 1. **CasperGit `git_diff`** — unblocks the diff viewer (design §11) and the
    workspace diff summary (Space §6).
-2. **CasperUI (Plan 5)** — sidebar, chrome, splits/tabs layout composition,
-   `WKWebView` browser, diff viewer, plus the wiring deferred from earlier plans
-   (listed per module above). **Write the CasperUI / Plan 5 plan first — it does
-   not exist yet.**
+2. **CasperUI (Plan 5)** — decomposed into UI-1…UI-5. **UI-1 is built** (app
+   shell + minimal sidebar + one terminal + all deferred startup wiring). Next:
+   **UI-2** (multi-workspace via Git worktrees + Space grouping), **UI-3**
+   (recursive splits/tabs layout), **UI-4** (`WKWebView` browser), **UI-5** (diff
+   viewer — depends on `git_diff`). Each sub-project gets its own spec → plan →
+   build cycle.
 3. **Space (project) + diff summary** — data-model change (`repoPath` up to
    Space; `Workspace.kind`/`baseBranch`/derived `diffStat`), sidebar grouping,
    and the `+/−` row summary. Depends on 1 and 2.
