@@ -64,13 +64,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // MARK: Debug accessors (compiled only into debug builds)
 
     #if DEBUG
-    var debugHasSurface: Bool { surface != nil }
+    public var debugHasSurface: Bool { surface != nil }
 
-    func debugReadText(scrollback: Bool) -> String? {
+    public func debugReadText(scrollback: Bool) -> String? {
         surface?.readText(scrollback: scrollback)
     }
 
-    func debugSendText(_ text: String, submit: Bool) {
+    public func debugSendText(_ text: String, submit: Bool) {
         if !text.isEmpty { surface?.sendText(text) }
         guard submit, let surface else { return }
         _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_PRESS))
@@ -81,7 +81,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // the key path, unlike `debugSendText` which uses the committed-text/paste
     // path. Each character is sent as its physical key with the right modifiers,
     // reproducing real keyboard typing. Unsupported characters are skipped.
-    func debugSendKeys(_ text: String) {
+    public func debugSendKeys(_ text: String) {
         guard let surface else { return }
         for character in text {
             guard let key = ghosttyInjectedKey(for: character) else {
@@ -110,7 +110,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     // Inject `character` as a real key event (press + release) with the given
     // modifier names, through the bare-event path `performKeyEquivalent` uses.
-    func debugSendKey(_ character: String, mods names: [String]) {
+    public func debugSendKey(_ character: String, mods names: [String]) {
         guard let surface, let ch = character.first else { return }
         guard let key = ghosttyInjectedKey(for: ch) else {
             CasperLog.debug.debug(
@@ -137,18 +137,18 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // Trigger a libghostty keybinding action directly by name, bypassing key-event
     // translation. Used to exercise bindings (e.g. clipboard) that injected ⌘ key
     // events cannot reliably reach in an automated/headless session.
-    func debugSendAction(_ name: String) { surface?.bindingAction(name) }
+    public func debugSendAction(_ name: String) { surface?.bindingAction(name) }
 
     /// Inject a mouse position (libghostty top-left coordinates) straight into the
     /// surface, bypassing AppKit event delivery. Used by the `mouse-move` debug
     /// verb to exercise libghostty's mouse-shape emission in headless tests.
-    func debugMouseMove(x: Double, y: Double) {
+    public func debugMouseMove(x: Double, y: Double) {
         surface?.sendMousePos(x: x, y: y, mods: ghosttyMods(from: []))
     }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
     // so the debug channel can pinpoint content-scale double-counting.
-    func debugGeometry() -> DebugSurfaceGeometry {
+    public func debugGeometry() -> DebugSurfaceGeometry {
         guard let surface else {
             return DebugSurfaceGeometry(
                 columns: 0, rows: 0, widthPixels: 0, heightPixels: 0,

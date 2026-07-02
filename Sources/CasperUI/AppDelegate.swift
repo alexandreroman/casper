@@ -22,6 +22,9 @@ enum HookSocketPathProvider {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var socketServer: HookSocketServer?
     private var heartbeatTimer: Timer?
+    #if DEBUG
+    private var debugServer: DebugServer?
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel.shared
@@ -75,6 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         self.heartbeatTimer = timer
+
+        // Debug channel for the `debug-casper` harness. Compiled out of release
+        // builds entirely — see the `nm` gating check in the task report.
+        #if DEBUG
+        let debug = DebugServer(socketPath: DebugSocketPath.default, provider: AppModel.shared)
+        do { try debug.start(); self.debugServer = debug }
+        catch { CasperLog.debug.error("debug server failed to start: \(String(describing: error))") }
+        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {
