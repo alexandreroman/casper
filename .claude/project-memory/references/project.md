@@ -55,7 +55,7 @@ diagnosis measurable.
     (exact root) not `discover`.
 
 - **Plan 3 — CLI + Agents:** implemented, reviewed (final whole-branch review:
-  ready to merge). Adds `CasperAgents` (`ClaudeCodeAdapter` → `.claude/settings.local.json`
+  ready to merge). Adds `CasperAgents` (`ClaudeCodeAdapter` → `~/.claude/settings.json`
   + surface env; `HookMessage`; `HookSocketServer`/`Client` over a Unix-domain
   socket via Network.framework) and `CasperCLI` (`casper` executable, the
   `casper hooks setup` / `casper hooks feed` command family, GUI/CLI argv fork).

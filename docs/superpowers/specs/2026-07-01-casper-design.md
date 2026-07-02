@@ -174,12 +174,13 @@ AgentStateStore  (per-workspace state machine + todo list)
   into the user-level `~/.claude/settings.json` (via `casper hooks setup`, or
   at app startup) — **not per worktree**. The Claude Code adapter merges
   Casper's hooks (which call `casper hooks feed`) into that file, preserving
-  the user's other settings. User-level hooks apply to every project, and
-  `casper hooks feed` no-ops when the Casper environment is absent, so a single
-  global hook is safe in every terminal. Separately, **every terminal surface**
+  the user's other settings. Although the hook is declared globally, its
+  command is the **relative** `casper hooks feed`: **every terminal surface**
   exports `CASPER_SOCKET` + `CASPER_WORKSPACE_ID` + `CASPER_PORT` (see §9) and
-  prepends the `casper` binary's directory to `PATH` (see §4), so the relative
-  `casper hooks feed` resolves only inside Casper's terminals. So the moment
+  prepends the `casper` binary's directory to `PATH` (see §4), so
+  `casper hooks feed` resolves **only** inside Casper's terminals. In any
+  other terminal `casper` is not on `PATH`, so the global hook is simply not
+  found — an accepted trade-off of the relative command. So the moment
   the user runs Claude Code there, hooks fire and state/progress flow.
 - Until an agent runs, the workspace state is simply `idle`.
 - **Fallback:** an agent with no hooks (or silent hooks) yields state `unknown`;
@@ -284,5 +285,6 @@ None blocking. To confirm during implementation planning:
 - Exact Claude Code `settings.json` hook shape and stdin payload schema per hook
   (`Stop`, `Notification`, `SessionStart`, `PostToolUse`) — verify against the
   installed Claude Code version.
-- Whether the worktree `settings.json` is project-scoped (`.claude/settings.json`)
-  or injected another way without polluting the user's repo.
+- **Resolved:** hooks go in the user-level `~/.claude/settings.json` (global),
+  installed once — not in any per-worktree/project file, so the user's repo is
+  never touched (see §7).

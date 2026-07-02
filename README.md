@@ -96,7 +96,7 @@ the app:
 
 `casper` is **not** installed on your system `PATH`. It is reachable only inside
 terminals Casper opens, because Casper prepends its own binary directory to
-`PATH` there — so the relative `casper hooks feed` in `settings.local.json`
+`PATH` there — so the relative `casper hooks feed` in `~/.claude/settings.json`
 resolves within Casper's terminals and nowhere else.
 
 ## Architecture
