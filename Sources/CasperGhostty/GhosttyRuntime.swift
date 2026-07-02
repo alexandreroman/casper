@@ -5,7 +5,7 @@ import GhosttyKit
 /// before any config or app call (mirrors `CasperGit.Libgit2.ensureInit`). We
 /// initialize once and never shut down, which is fine for a long-lived app and
 /// the test process.
-private let ghosttyInitialized: Bool = {
+let ghosttyInitialized: Bool = {
     // ghostty_init(argc, argv): hand libghostty the real process arguments.
     ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS
 }()
@@ -37,6 +37,11 @@ public final class GhosttyRuntime {
         }
         defer { ghostty_config_free(config) }
         ghostty_config_load_default_files(config)
+        // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
+        // user's config. Ghostty's own app runs this before finalize; without it, includes are
+        // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
+        // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
+        ghostty_config_load_recursive_files(config)
         ghostty_config_finalize(config)
 
         var runtimeConfig = ghostty_runtime_config_s()
