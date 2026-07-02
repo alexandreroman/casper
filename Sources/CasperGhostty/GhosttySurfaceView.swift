@@ -43,6 +43,24 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
     }
 
+    // MARK: Debug accessors (compiled only into debug builds)
+
+    #if DEBUG
+    var debugHasSurface: Bool { surface != nil }
+
+    func debugReadText(scrollback: Bool) -> String? {
+        surface?.readText(scrollback: scrollback)
+    }
+
+    func debugSendText(_ text: String) {
+        surface?.sendText(text)
+    }
+
+    func debugColumnsRows() -> (Int, Int) {
+        surface?.surfaceSize() ?? (0, 0)
+    }
+    #endif
+
     // MARK: Geometry
 
     public override func setFrameSize(_ newSize: NSSize) {
