@@ -71,7 +71,7 @@ executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
   paste-confirmation UI (v1 auto-confirms); `flagsChanged` press/release
   semantics and scroll precision/momentum.
 
-### CasperUI — ✅ UI-1..UI-5 built (live GUI check pending)
+### CasperUI — ✅ UI-1..UI-5 built (live GUI check partial)
 The module exists. **UI-1** is done: a SwiftUI `App` scene
 (`CasperApp`/`AppDelegate`/`CasperUI.runApp`) replaces the Ghostty demo as the
 GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
@@ -119,10 +119,12 @@ headers, and monospaced line rows colored by kind (addition/deletion/context)
 with old/new line-number gutters; computed on open + a refresh button; created via
 the tab-bar "+" menu (New diff).
 
-All five CasperUI sub-projects are built. Remaining: a **live GUI verification
-pass** on a real desktop (the headless sandbox cannot materialize the SwiftUI
-detail hierarchy, so splits/tabs, browser navigation, and the diff surface need a
-live check).
+All five CasperUI sub-projects are built. **Live GUI check (partial):** terminals
+render on a restored session and tab switching preserves content — verified via
+the `casper debug` channel on a real desktop (this fixed a restore-path bug where
+a non-observed `runtime` left terminals black; see the ledger). Still to verify
+live: splits, browser navigation, and the diff surface (the headless sandbox
+cannot materialize the SwiftUI detail hierarchy).
 
 ## Developer tooling (`#if DEBUG`)
 
