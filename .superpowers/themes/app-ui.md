@@ -51,7 +51,11 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   is deferred to UI-5.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
   `HSplitView`/`VSplitView`, tab groups as a tab bar over a `ZStack` keeping
-  inactive surfaces mounted (PTYs alive). Pure `LayoutTree` tree operations
+  inactive surfaces mounted (PTYs alive). Surface views live in a persistent cache
+  keyed by `Surface.id`, so a terminal's PTY survives split/collapse/reorder
+  restructuring (surface identity is anchored solely on `Surface.id`). Persisted
+  split `ratios` are **not** applied by the native split views in v1 (they open
+  evenly; ratios are retained in the model for a future custom-split renderer). Pure `LayoutTree` tree operations
   (`insertTab`/`split`/`closeSurface`, flat sibling insertion when the parent
   orientation matches) live in CasperCore and are heavily tested. libghostty
   `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed on
