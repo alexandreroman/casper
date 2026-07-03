@@ -95,21 +95,19 @@ struct WorkspaceDetailView: View {
                 Button {
                     model.setInspectorTab(.diff, for: workspace.id)
                 } label: {
-                    HStack(spacing: 6) {
-                        Text("+\(diff.insertions)").foregroundStyle(.green)
-                        Text("−\(diff.deletions)").foregroundStyle(.red)
+                    HStack(spacing: 5) {
+                        Text("+\(diff.insertions)").foregroundStyle(.green.opacity(0.9))
+                        Text("−\(diff.deletions)").foregroundStyle(.red.opacity(0.9))
                     }
-                    .font(.callout.monospacedDigit())
+                    .font(.caption.monospacedDigit())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .help("Show diff")
             }
-            Button {
-                model.newTerminalInSelectedWorkspace()
-            } label: {
-                Octicon(.terminal)
-            }
-            .help("New terminal")
             Button {
                 model.toggleInspectorCollapsed(for: workspace.id)
             } label: {
@@ -128,12 +126,6 @@ struct WorkspaceDetailView: View {
                 Image(systemName: "sidebar.left")
             }
             .help("Toggle sidebar")
-            Button {
-                model.presentAddFolderPanel()
-            } label: {
-                Image(systemName: "folder.badge.plus")
-            }
-            .help("Add a Space")
         }
     }
 }
