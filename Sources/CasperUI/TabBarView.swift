@@ -102,9 +102,10 @@ struct TabBarView: View {
     }
 }
 
-/// A single tab: its title selects the tab; a close button ("×") is revealed on
-/// hover (and stays visible while the tab is active). The close button is a
-/// distinct control so it never triggers selection.
+/// A single tab: its title selects the tab; a close button ("×") sits on the
+/// leading edge and is revealed only on hover (hidden otherwise, including while
+/// active). Its space is always reserved so revealing it never shifts the title.
+/// The close button is a distinct control so it never triggers selection.
 private struct TabItem: View {
     let title: String
     let isActive: Bool
@@ -115,17 +116,17 @@ private struct TabItem: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.caption2).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .opacity(hovering ? 1 : 0)
+            .allowsHitTesting(hovering)
+
             Button(action: onSelect) {
                 Text(title).font(.caption)
             }
             .buttonStyle(.plain)
-
-            if hovering || isActive {
-                Button(action: onClose) {
-                    Image(systemName: "xmark").font(.caption2).foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, 8).padding(.vertical, 3)
         .background(isActive ? Color.accentColor.opacity(0.25) : .clear)
