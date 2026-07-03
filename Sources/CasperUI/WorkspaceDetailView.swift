@@ -31,10 +31,14 @@ struct WorkspaceDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if !workspace.inspector.collapsed {
                     resizeDivider
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                     InspectorPanel(model: model, workspace: workspace)
                         .frame(width: inspectorWidth)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            // Keep the sliding inspector from spilling past the window edge mid-animation.
+            .clipped()
         }
         .toolbar {
                 ToolbarItem(placement: .navigation) { leadingButtons }.flatToolbarItem()
@@ -109,7 +113,9 @@ struct WorkspaceDetailView: View {
                 .help("Show diff")
             }
             Button {
-                model.toggleInspectorCollapsed(for: workspace.id)
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    model.toggleInspectorCollapsed(for: workspace.id)
+                }
             } label: {
                 Image(systemName: "sidebar.right")
             }
@@ -121,7 +127,9 @@ struct WorkspaceDetailView: View {
     private var leadingButtons: some View {
         HStack(spacing: 6) {
             Button {
-                columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+                }
             } label: {
                 Image(systemName: "sidebar.left")
             }
