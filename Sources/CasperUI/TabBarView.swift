@@ -68,7 +68,10 @@ struct TabGroupView: View {
     }
 }
 
-/// A minimal horizontal tab bar.
+/// A horizontal tab bar styled after Ghostty's terminal tabs: flush,
+/// full-height segments that share the bar width equally, the active tab lit and
+/// inactive tabs dimmed (no accent color, no border around the active tab), a
+/// leading hover-revealed close button, and a trailing "+" menu.
 struct TabBarView: View {
     let titles: [String]
     let activeIndex: Int
@@ -79,11 +82,12 @@ struct TabBarView: View {
     let onNewDiff: () -> Void
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
             ForEach(Array(titles.enumerated()), id: \.offset) { idx, title in
                 TabItem(
                     title: title,
                     isActive: idx == activeIndex,
+                    isLast: idx == titles.count - 1,
                     onSelect: { onSelect(idx) },
                     onClose: { onClose(idx) })
             }
@@ -93,22 +97,49 @@ struct TabBarView: View {
                 Button("New diff", action: onNewDiff)
             } label: {
                 Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(TabPalette.titleInactive)
+                    .frame(width: 30, height: TabPalette.height)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .fixedSize()
         }
-        .padding(.horizontal, 4).padding(.vertical, 2)
+        .frame(height: TabPalette.height)
+        .background(TabPalette.bar)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(TabPalette.bottomBorder).frame(height: 1)
+        }
     }
 }
 
-/// A single tab, Ghostty-style: it fills an equal share of the bar with its
-/// title centered. A close button ("×") floats at the leading edge, revealed
-/// only on hover (hidden otherwise, including while active) so it never shifts
-/// the centered title. The × is a distinct control, so it never triggers
-/// selection; the rest of the tab selects it.
+/// Colors and metrics for the Ghostty-style tab bar. A fixed dark chrome so the
+/// bar matches the (dark by default) embedded terminal regardless of the macOS
+/// light/dark appearance — mirroring how Ghostty derives its tab colors from the
+/// terminal background. All shades come from one neutral gray: the active tab is
+/// lightened, inactive tabs darkened.
+private enum TabPalette {
+    static let height: CGFloat = 28
+    static let bar = Color(white: 0.12)
+    static let active = Color(white: 0.20)
+    static let inactive = Color(white: 0.09)
+    static let inactiveHover = Color(white: 0.15)
+    static let titleActive = Color(white: 0.95)
+    static let titleInactive = Color(white: 0.58)
+    static let separator = Color.black.opacity(0.35)
+    static let bottomBorder = Color.black.opacity(0.45)
+}
+
+/// A single Ghostty-style tab: full-height, equal width, centered title. The
+/// active tab is lit; inactive tabs are dimmed and carry a hairline separator on
+/// their trailing edge (hidden on the active tab and the last tab). A close
+/// button floats at the leading edge, revealed only on hover so it never shifts
+/// the centered title, and it never triggers selection.
 private struct TabItem: View {
     let title: String
     let isActive: Bool
+    let isLast: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
 
@@ -116,25 +147,40 @@ private struct TabItem: View {
 
     var body: some View {
         Button(action: onSelect) {
-            Text(title).font(.caption)
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundStyle(isActive ? TabPalette.titleActive : TabPalette.titleInactive)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 8).padding(.vertical, 3)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 22)
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .background(background)
+        .overlay(alignment: .trailing) {
+            if !isActive && !isLast {
+                Rectangle().fill(TabPalette.separator).frame(width: 1)
+            }
+        }
         .overlay(alignment: .leading) {
             Button(action: onClose) {
-                Image(systemName: "xmark").font(.caption2).foregroundStyle(.secondary)
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(TabPalette.titleInactive)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .opacity(hovering ? 1 : 0)
             .allowsHitTesting(hovering)
-            .padding(.leading, 6)
+            .padding(.leading, 5)
         }
-        .background(isActive ? Color.accentColor.opacity(0.25) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
         .onHover { hovering = $0 }
+    }
+
+    private var background: Color {
+        if isActive { return TabPalette.active }
+        return hovering ? TabPalette.inactiveHover : TabPalette.inactive
     }
 }
