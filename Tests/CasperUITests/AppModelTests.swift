@@ -480,6 +480,50 @@ final class AppModelTests: XCTestCase {
             == "http://localhost:3000")
     }
 
+    // MARK: - Diff surfaces (UI-5 Task 1)
+
+    func testApplyNewDiffAddsDiffSurface() {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui5-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: { _ in nil })  // non-Git degenerate
+        let sid = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)[0]
+        model.focusSurface(sid)
+        model.applyNewDiff()
+        let ids = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)
+        XCTAssertEqual(ids.count, 2)
+        // The new focused surface is a diff.
+        XCTAssertNotNil(model.focusedSurfaceID)
+    }
+
+    func testComputeDiffReturnsChangesForDirtyWorktree() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui5diff-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try seedRepository(at: dir.path)  // existing helper: repo + one commit (README.md)
+        try "changed\n".write(
+            to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        let ws = model.spaces[0].workspaces[0]
+        let diff = model.computeDiff(for: ws)
+        XCTAssertNotNil(diff)
+        XCTAssertFalse(diff!.files.isEmpty)
+    }
+
+    func testComputeDiffNilForNonGitWorkspace() {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui5nogit-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: { _ in nil })
+        XCTAssertNil(model.computeDiff(for: model.spaces[0].workspaces[0]))
+    }
+
     // Helpers: walk the layout to find a surface by id and inspect its kind.
     private func surfaceKindIsBrowser(_ node: LayoutNode, _ id: UUID) -> Bool {
         browserURL(node, id) != nil

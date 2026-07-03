@@ -343,6 +343,31 @@ final class AppModel {
         persist()
     }
 
+    /// Insert a new diff surface (working tree vs HEAD) in the anchored group.
+    func applyNewDiff(anchor: UUID? = nil) {
+        guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
+        let surface = Surface(kind: .diff(againstHead: true))
+        let (layout, newFocus) = LayoutTree.insertTab(
+            spaces[at.space].workspaces[at.workspace].layout,
+            focused: target, surface: surface)
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+    }
+
+    /// Compute the working-tree-vs-HEAD diff of a workspace's worktree. Returns nil
+    /// when the workspace is not Git-backed or the diff fails.
+    func computeDiff(for workspace: Workspace) -> GitDiff? {
+        do {
+            let repo = try Repository.open(atPath: workspace.worktreePath)
+            return try repo.diffWorkdirToHead()
+        } catch {
+            CasperLog.app.error(
+                "diff failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
     /// Rewrite a browser surface's persisted URL (address-bar navigation).
     func setBrowserURL(_ surfaceID: UUID, _ url: URL) {
         guard let at = locateSurface(surfaceID) else { return }
