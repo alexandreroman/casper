@@ -27,6 +27,5 @@ was made observed.
   until a persisted multi-terminal session was reopened.
 - Use the [[debug-casper]]-style channel to confirm: `dump-state` shows whether a
   surface exists and its size; `read-text`/`screenshot` show whether it paints.
-  A running headless instance cannot materialize the SwiftUI detail hierarchy
-  (surfaces stay `[]`), so this needs a real desktop — see
-  [[e2e-headless-key-window-limitation]].
+  This works in a normal local session even when the agent itself launches the
+  app.

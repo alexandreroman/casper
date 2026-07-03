@@ -95,6 +95,5 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 **All five CasperUI sub-projects (UI-1..UI-5) are built.** Remaining cross-cutting
 work outside this milestone: the Space `+/−` diff summary
 (`space-project.md`, needs branch-vs-merge-base counts), Space rename, and a
-**live GUI verification pass** on a real desktop (the headless sandbox cannot
-materialize the SwiftUI detail hierarchy, so splits/tabs, browser navigation, and
-the diff surface need a live check).
+**live GUI verification pass** on a real desktop: splits/tabs, browser navigation,
+and the diff surface still need a live check.

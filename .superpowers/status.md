@@ -79,9 +79,7 @@ the core types to SwiftUI; a `NavigationSplitView` shows an empty state, an
 "Add folder…" flow and one live terminal per workspace; and all startup wiring is
 landed (hooks install, hook socket → agent state, per-surface env, heartbeat
 timer, session persistence, `#if DEBUG` debug bridge). Release gating verified (no
-debug symbols in `make release`). UI-1 is verified live on a real desktop session
-(the headless sandbox cannot materialize the SwiftUI detail `NSHostingView`, so
-live checks require a real window server).
+debug symbols in `make release`). UI-1 is verified live on a real desktop session.
 
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
 moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
@@ -139,8 +137,7 @@ tabs sharing the width with centered titles and a circular `+` menu, full-tab
 click (not just the title), and a fix so a clicked tab's terminal takes AppKit
 keyboard focus (`focusActiveSurfaceView()` → deferred `makeFirstResponder`).
 
-Still to verify live (headless sandbox cannot materialize the SwiftUI detail
-hierarchy or grant OS key focus): the terminal-focus-on-tab-switch fix (click a
+Still to verify live: the terminal-focus-on-tab-switch fix (click a
 tab, then type — the keystroke must reach the terminal), the Ghostty tab
 appearance vs the reference screenshot, full-tab click, and — open from before —
 splits, browser navigation, and the diff surface. Deferred follow-ups: deriving

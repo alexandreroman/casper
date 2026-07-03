@@ -23,7 +23,6 @@
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null in some sessions; verify via git-stash-to-baseline before blaming code
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — userdata is per-surface (the view), callbacks run on main thread, confirmed binding action names, Swift 6 pointer-sending fix
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring added; pinned binary's config effect on it is unconfirmed e2e
-- [e2e headless key-window limitation](references/e2e-headless-key-window-limitation.md) — this env can't grant real OS focus; `NSApp.keyWindow`-gated code is unverifiable e2e here
 - [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side (no click-count param); tracking-area position stream drives it; mouse-shape/visibility actions are surface-scoped via `ghostty_surface_userdata`
 - [Surface identity](references/surface-identity.md) — every Surface has a unique, stable `Surface.id` invariant across kind/state/UI-location; all UI identity (view cache, `.id`, focus) anchors on it
 - [Observed startup dependencies](references/observed-startup-dependencies.md) — startup-set @Observable props a view gates rendering on must not be @ObservationIgnored; live-verify the restore path
