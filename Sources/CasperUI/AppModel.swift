@@ -121,6 +121,12 @@ final class AppModel {
         return nil
     }
 
+    /// The Space that owns `workspace`, if any. A workspace has no back-pointer
+    /// to its Space, so this searches the spaces' workspace arrays.
+    func space(for workspace: Workspace) -> Space? {
+        spaces.first { $0.workspaces.contains { $0.id == workspace.id } }
+    }
+
     /// Resolve the (space, workspace) index pair for in-place mutation.
     private func locate(_ id: UUID) -> (space: Int, workspace: Int)? {
         for (si, space) in spaces.enumerated() {
