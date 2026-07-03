@@ -129,9 +129,23 @@ the tab-bar "+" menu (New diff).
 All five CasperUI sub-projects are built. **Live GUI check (partial):** terminals
 render on a restored session and tab switching preserves content — verified via
 the `casper debug` channel on a real desktop (this fixed a restore-path bug where
-a non-observed `runtime` left terminals black; see the ledger). Still to verify
-live: splits, browser navigation, and the diff surface (the headless sandbox
-cannot materialize the SwiftUI detail hierarchy).
+a non-observed `runtime` left terminals black; see the ledger).
+
+Post-milestone tab-bar polish landed (all on `main`, not pushed; see the ledger's
+"Tab-bar polish" section for commit hashes): a per-tab hover-revealed `×` close
+button (closing any surface by `Surface.id`, preserving the active tab when a
+background tab closes — with a regression test), Ghostty-style rounded "pill"
+tabs sharing the width with centered titles and a circular `+` menu, full-tab
+click (not just the title), and a fix so a clicked tab's terminal takes AppKit
+keyboard focus (`focusActiveSurfaceView()` → deferred `makeFirstResponder`).
+
+Still to verify live (headless sandbox cannot materialize the SwiftUI detail
+hierarchy or grant OS key focus): the terminal-focus-on-tab-switch fix (click a
+tab, then type — the keystroke must reach the terminal), the Ghostty tab
+appearance vs the reference screenshot, full-tab click, and — open from before —
+splits, browser navigation, and the diff surface. Deferred follow-ups: deriving
+tab shades from the live terminal background color (Casper does not yet read
+libghostty's `background-color`), and per-tab `⌘N` switch shortcuts.
 
 ## Developer tooling (`#if DEBUG`)
 
