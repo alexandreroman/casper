@@ -30,7 +30,8 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
-            ToolbarItem(placement: .primaryAction) { actions }.flatToolbarItem()
+            ToolbarItem(placement: .primaryAction) { diffBadge }.flatToolbarItem()
+            ToolbarItem(placement: .primaryAction) { inspectorToggle }
         }
         .task(id: model.selectedWorkspaceID) {
             diff = model.diffSummary(for: workspace)
@@ -60,33 +61,33 @@ struct WorkspaceDetailView: View {
         model.space(for: workspace)?.name ?? workspace.name
     }
 
-    private var actions: some View {
-        HStack(spacing: 8) {
-            if let diff, diff.insertions > 0 || diff.deletions > 0 {
-                Button {
-                    model.setInspectorTab(.diff, for: workspace.id)
-                } label: {
-                    HStack(spacing: 5) {
-                        Text("+\(diff.insertions)").foregroundStyle(.green.opacity(0.9))
-                        Text("−\(diff.deletions)").foregroundStyle(.red.opacity(0.9))
-                    }
-                    .font(.caption.monospacedDigit().bold())
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .help("Show diff")
-            }
+    @ViewBuilder private var diffBadge: some View {
+        if let diff, diff.insertions > 0 || diff.deletions > 0 {
             Button {
-                model.toggleInspectorCollapsed(for: workspace.id)
+                model.setInspectorTab(.diff, for: workspace.id)
             } label: {
-                Image(systemName: "sidebar.right")
+                HStack(spacing: 5) {
+                    Text("+\(diff.insertions)").foregroundStyle(.green.opacity(0.9))
+                    Text("−\(diff.deletions)").foregroundStyle(.red.opacity(0.9))
+                }
+                .font(.caption.monospacedDigit().bold())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.secondary.opacity(0.12), in: Capsule())
+                .contentShape(Capsule())
             }
-            .tint(workspace.inspector.collapsed ? nil : .accentColor)
-            .help("Toggle panel")
+            .buttonStyle(.plain)
+            .help("Show diff")
         }
+    }
+
+    private var inspectorToggle: some View {
+        Button {
+            model.toggleInspectorCollapsed(for: workspace.id)
+        } label: {
+            Image(systemName: "sidebar.right")
+        }
+        .help("Toggle panel")
     }
 
 }
