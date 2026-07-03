@@ -49,9 +49,12 @@ layer's `contentsScale` to the window backing scale — see
 
 ## Remaining (for CasperUI)
 
-- **Splits/tabs layout composition** — the split/tab actions are decoded and
-  routed through `GhosttyActionDispatcher`, but composing them into a layout tree
-  belongs to the app (the default handler logs them as no-ops).
+- **Splits/tabs layout composition — ✅ done (CasperUI UI-3).** The decoded
+  `newSplit`/`newTab`/`closeTab` actions are composed into a recursive
+  `LayoutNode` tree by CasperUI's `LayoutActionHandler` (installed on
+  `GhosttyRuntime.actionHandler`) and rendered as native split views + tab bars;
+  the surface `id` + first-responder focus callback added here feed the focused
+  target. See `app-ui.md`.
 - `flagsChanged` press/release semantics and scroll precision/momentum.
 - **Clipboard paste confirmation** — `write_clipboard_cb`'s `confirm` flag is not
   gated (v1 auto-confirm); honor it once a confirmation UI exists so untrusted

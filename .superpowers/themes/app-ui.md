@@ -49,12 +49,23 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   whole Space, leaving worktrees/branches on disk); a degenerate Space is promoted
   to Git on the heartbeat when its folder gains a `.git`. The `+/−` diff summary
   is deferred to UI-5.
-- **UI-3** — recursive splits/tabs `LayoutNode` composition.
+- **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
+  `HSplitView`/`VSplitView`, tab groups as a tab bar over a `ZStack` keeping
+  inactive surfaces mounted (PTYs alive). Pure `LayoutTree` tree operations
+  (`insertTab`/`split`/`closeSurface`, flat sibling insertion when the parent
+  orientation matches) live in CasperCore and are heavily tested. libghostty
+  `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed on
+  the runtime to the **focused** workspace (focus tracked via the surface's
+  first-responder callback). Closing the last surface closes the workspace
+  non-destructively (linked → `removeWorkspace`, primary → `removeSpace`). Only
+  terminal leaves are created; browser/diff leaves render a placeholder until
+  UI-4/UI-5.
 - **UI-4** — `WKWebView` browser surface.
 - **UI-5** — diff viewer (SwiftUI over libgit2 `git_diff`).
 
 ## Next action
 
-**UI-3**: recursive splits/tabs `LayoutNode` composition (consumes the decoded
-Ghostty split/tab actions — see `terminal.md`). UI-1 and UI-2 render only the
-single-terminal layout per workspace.
+**UI-4**: a `WKWebView` browser surface (address bar, reload) as a new
+`Surface.Kind` leaf in the layout, aimed at previewing a `localhost:PORT` app.
+The recursive `LayoutNodeView` from UI-3 already routes non-terminal leaves to a
+placeholder — UI-4 replaces that placeholder for `.browser`.
