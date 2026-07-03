@@ -183,8 +183,8 @@ private func surfaceView(from target: ghostty_target_s) -> GhosttySurfaceView? {
 // Clipboard callbacks: libghostty hands back the per-surface `userdata` we set
 // in `GhosttySurfaceConfiguration` (the hosting `GhosttySurfaceView` pointer),
 // which is how these recover the view to reach `NSPasteboard` and complete
-// pending requests. `close_surface_cb` stays a stub — surface teardown driven
-// from libghostty is a Plan 5 concern.
+// pending requests. `close_surface_cb` uses the same recovery to ask the view
+// to close itself (see `casperGhosttyCloseSurface`).
 
 /// Extract the first clipboard entry's UTF-8 payload as a String. libghostty
 /// passes an array of `{mime, data}`; Casper writes plain text only.
@@ -281,5 +281,17 @@ func casperGhosttyWriteClipboard(
     }
 }
 
-/// `close_surface_cb`: `void (*)(void*, bool)`.
-func casperGhosttyCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ processAlive: Bool) {}
+/// `close_surface_cb`: `void (*)(void*, bool)`. Called when the terminal's child
+/// process exits (Ctrl-D / `exit`, `processAlive == false`) or libghostty otherwise
+/// wants the surface torn down; `processAlive` is ignored (both close the pane).
+///
+/// The close is DEFERRED to the next main-runloop turn (like `casperGhosttyWakeup`):
+/// running `applyCloseSurface` synchronously here would re-enter the runtime — mutating
+/// SwiftUI state and tearing down views while libghostty is still mid-tick closing this
+/// surface — which detaches the sibling panes. Deferring lets the tick finish first.
+func casperGhosttyCloseSurface(_ userdata: UnsafeMutableRawPointer?, _ processAlive: Bool) {
+    guard let view = clipboardView(from: userdata) else { return }
+    DispatchQueue.main.async { [weak view] in
+        MainActor.assumeIsolated { view?.requestClose() }
+    }
+}

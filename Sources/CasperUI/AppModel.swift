@@ -350,7 +350,8 @@ final class AppModel {
             runtime: runtime,
             configuration: surfaceConfiguration(for: workspace, terminal: surface),
             surfaceID: surface.id,
-            onFocus: { [weak self] id in self?.focusSurface(id) })
+            onFocus: { [weak self] id in self?.focusSurface(id) },
+            onClose: { [weak self] id in self?.applyCloseSurface(id) })
         surfaceViews[surface.id] = view
         return view
     }

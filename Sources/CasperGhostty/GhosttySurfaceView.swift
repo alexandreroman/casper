@@ -13,6 +13,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let configuration: GhosttySurfaceConfiguration
     private let surfaceID: UUID
     var onFocus: (UUID) -> Void
+    var onClose: (UUID) -> Void
     // Internal (not private): the clipboard callback trampolines in
     // `GhosttyRuntime` recover this view from libghostty's userdata and need
     // its surface.
@@ -26,10 +27,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public init(
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
-        surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in }
+        surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
+        onClose: @escaping (UUID) -> Void = { _ in }
     ) {
         self.surfaceID = surfaceID
         self.onFocus = onFocus
+        self.onClose = onClose
         self.runtime = runtime
         self.configuration = configuration
         super.init(frame: .zero)
@@ -237,6 +240,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface?.setFocus(false)
         return super.resignFirstResponder()
     }
+
+    /// Ask the host to close this surface. Invoked by libghostty's
+    /// `close_surface_cb` (via the runtime) when the child process exits
+    /// (Ctrl-D / `exit`) or a close-surface request arrives.
+    func requestClose() { onClose(surfaceID) }
 
     // MARK: Menu actions
 
