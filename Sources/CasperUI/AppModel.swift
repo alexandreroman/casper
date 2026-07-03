@@ -318,6 +318,22 @@ final class AppModel {
         addSpace(folderURL: url, probe: Self.gitProbe)
     }
 
+    /// Prompt for a linked-workspace name and create it. AppKit alert with a text
+    /// field; no-op on cancel or empty input.
+    func presentAddLinkedWorkspacePanel(spaceID: UUID) {
+        let alert = NSAlert()
+        alert.messageText = "New workspace"
+        alert.informativeText = "Name for the new branch and worktree:"
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        addLinkedWorkspace(spaceID: spaceID, name: name)
+    }
+
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
     /// state; returns nil for a non-Git folder (accepted per UI-1 design).
     /// Uses `Repository.open`, an exact-path open, rather than `discover`,
