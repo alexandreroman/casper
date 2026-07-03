@@ -68,10 +68,10 @@ struct TabGroupView: View {
     }
 }
 
-/// A horizontal tab bar styled after Ghostty's terminal tabs: flush,
-/// full-height segments that share the bar width equally, the active tab lit and
-/// inactive tabs dimmed (no accent color, no border around the active tab), a
-/// leading hover-revealed close button, and a trailing "+" menu.
+/// A horizontal tab bar styled after Ghostty's terminal tabs: rounded "pill"
+/// tabs sharing the bar width equally with centered titles, the active tab a
+/// filled bordered pill and inactive tabs blended into the dark bar, a leading
+/// hover-revealed close button, and a trailing circular "+" menu.
 struct TabBarView: View {
     let titles: [String]
     let activeIndex: Int
@@ -87,7 +87,6 @@ struct TabBarView: View {
                 TabItem(
                     title: title,
                     isActive: idx == activeIndex,
-                    isLast: idx == titles.count - 1,
                     onSelect: { onSelect(idx) },
                     onClose: { onClose(idx) })
             }
@@ -97,14 +96,16 @@ struct TabBarView: View {
                 Button("New diff", action: onNewDiff)
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(TabPalette.titleInactive)
-                    .frame(width: 30, height: TabPalette.height)
-                    .contentShape(Rectangle())
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(TabPalette.plusFill))
+                    .contentShape(Circle())
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .padding(.horizontal, 6)
         }
         .frame(height: TabPalette.height)
         .background(TabPalette.bar)
@@ -114,32 +115,32 @@ struct TabBarView: View {
     }
 }
 
-/// Colors and metrics for the Ghostty-style tab bar. A fixed dark chrome so the
-/// bar matches the (dark by default) embedded terminal regardless of the macOS
-/// light/dark appearance — mirroring how Ghostty derives its tab colors from the
-/// terminal background. All shades come from one neutral gray: the active tab is
-/// lightened, inactive tabs darkened.
+/// Colors and metrics for the Ghostty-style rounded tab bar. A fixed dark chrome
+/// so the bar matches the (dark by default) embedded terminal regardless of the
+/// macOS light/dark appearance — mirroring how Ghostty derives its tab colors
+/// from the terminal background.
 private enum TabPalette {
-    static let height: CGFloat = 28
+    static let height: CGFloat = 32
+    static let cornerRadius: CGFloat = 7
+    static let tabInset: CGFloat = 4
     static let bar = Color(white: 0.12)
-    static let active = Color(white: 0.20)
-    static let inactive = Color(white: 0.09)
-    static let inactiveHover = Color(white: 0.15)
-    static let titleActive = Color(white: 0.95)
-    static let titleInactive = Color(white: 0.58)
-    static let separator = Color.black.opacity(0.35)
+    static let activeFill = Color(white: 0.24)
+    static let activeStroke = Color(white: 0.42)
+    static let hoverFill = Color(white: 0.17)
+    static let titleActive = Color(white: 0.96)
+    static let titleInactive = Color(white: 0.60)
     static let bottomBorder = Color.black.opacity(0.45)
+    static let plusFill = Color(white: 0.20)
 }
 
-/// A single Ghostty-style tab: full-height, equal width, centered title. The
-/// active tab is lit; inactive tabs are dimmed and carry a hairline separator on
-/// their trailing edge (hidden on the active tab and the last tab). A close
-/// button floats at the leading edge, revealed only on hover so it never shifts
-/// the centered title, and it never triggers selection.
+/// A single Ghostty-style rounded tab: full-height, equal width, centered title.
+/// The active tab is a filled, bordered pill; inactive tabs blend into the bar
+/// (a faint fill on hover). The whole pill is clickable to select the tab. A
+/// close button floats at the leading edge, revealed only on hover so it never
+/// shifts the centered title, and it never triggers selection.
 private struct TabItem: View {
     let title: String
     let isActive: Bool
-    let isLast: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
 
@@ -153,15 +154,18 @@ private struct TabItem: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 22)
+                .padding(.horizontal, 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contentShape(Rectangle())
-        .background(background)
-        .overlay(alignment: .trailing) {
-            if !isActive && !isLast {
-                Rectangle().fill(TabPalette.separator).frame(width: 1)
-            }
+        .background {
+            RoundedRectangle(cornerRadius: TabPalette.cornerRadius)
+                .fill(fill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: TabPalette.cornerRadius)
+                        .strokeBorder(isActive ? TabPalette.activeStroke : .clear, lineWidth: 1))
+                .padding(.vertical, TabPalette.tabInset)
+                .padding(.horizontal, 2)
         }
         .overlay(alignment: .leading) {
             Button(action: onClose) {
@@ -174,13 +178,13 @@ private struct TabItem: View {
             .buttonStyle(.plain)
             .opacity(hovering ? 1 : 0)
             .allowsHitTesting(hovering)
-            .padding(.leading, 5)
+            .padding(.leading, 8)
         }
         .onHover { hovering = $0 }
     }
 
-    private var background: Color {
-        if isActive { return TabPalette.active }
-        return hovering ? TabPalette.inactiveHover : TabPalette.inactive
+    private var fill: Color {
+        if isActive { return TabPalette.activeFill }
+        return hovering ? TabPalette.hoverFill : .clear
     }
 }
