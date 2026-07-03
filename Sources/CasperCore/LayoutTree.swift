@@ -130,6 +130,21 @@ public enum LayoutTree {
         }
     }
 
+    /// Set the `activeIndex` of the tab group containing `surface` to that surface.
+    public static func activate(_ node: LayoutNode, surface id: UUID) -> LayoutNode {
+        switch node {
+        case .tabGroup(let surfaces, _):
+            guard let idx = surfaces.firstIndex(where: { $0.id == id }) else { return node }
+            return .tabGroup(surfaces: surfaces, activeIndex: idx)
+        case .split(let orientation, var children, let ratios):
+            for i in children.indices where surfaceIDs(children[i]).contains(id) {
+                children[i] = activate(children[i], surface: id)
+                return .split(orientation: orientation, children: children, ratios: ratios)
+            }
+            return node
+        }
+    }
+
     // MARK: - Helpers
 
     private static func even(_ n: Int) -> [Double] {
@@ -148,3 +163,9 @@ public enum LayoutTree {
 /// Direction abstraction so CasperCore's `LayoutTree` does not depend on
 /// CasperGhostty. CasperUI maps `GhosttySplitDirection` onto this.
 public enum GhosttySplitDirectionLike: Equatable { case right, down, left, up }
+
+extension LayoutNode {
+    /// A stable identity anchor for SwiftUI ForEach: the first surface id in the
+    /// subtree (surface ids are unique across a workspace's tree).
+    public var stableID: UUID { LayoutTree.surfaceIDs(self).first ?? UUID() }
+}

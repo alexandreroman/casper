@@ -5,9 +5,10 @@ import CasperGhostty
 /// `true` for the actions it consumes so the runtime does not also fall through
 /// to `onAction`.
 struct LayoutActionHandler: GhosttyActionHandler {
-    let model: AppModel
+    weak var model: AppModel?
 
     func handle(_ action: GhosttyAction) -> Bool {
+        guard let model else { return false }
         switch action {
         case .newTab:
             MainActor.assumeIsolated { model.applyNewTab() }

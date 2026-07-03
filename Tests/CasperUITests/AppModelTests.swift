@@ -69,6 +69,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedWorkspaceID, existing.spaces[0].workspaces[0].id)
     }
 
+    func testFreshModelSeedsFocusedSurfaceIDToFirstSurfaceOfSelectedWorkspace() {
+        let surface = Surface(kind: .terminal(cwd: "/a", command: nil))
+        let existing = Session(spaces: [
+            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
+                Workspace(name: "a", worktreePath: "/a", branch: "",
+                          portBase: 40000, layout: .tabGroup(surfaces: [surface], activeIndex: 0)),
+            ]),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+        XCTAssertEqual(model.focusedSurfaceID, surface.id)
+    }
+
     func testAddAfterRestoreDoesNotReuseRestoredPortBlock() {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
@@ -402,6 +415,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(
             LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 1)
         XCTAssertEqual(model.spaces.count, 1)
+    }
+
+    func testSetActiveSurfaceSwitchesActiveTabAndFocus() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.applyNewTab()  // second surface added and focused, activeIndex == 1
+
+        model.setActiveSurface(first)
+
+        guard case .tabGroup(_, let active) = model.spaces[0].workspaces[0].layout else {
+            return XCTFail()
+        }
+        XCTAssertEqual(active, 0)
+        XCTAssertEqual(model.focusedSurfaceID, first)
     }
 }
 

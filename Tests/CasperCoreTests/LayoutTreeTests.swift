@@ -89,6 +89,15 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertNil(focus)
     }
 
+    func testActivateSetsActiveIndexOfContainingTabGroup() {
+        let a = term("a"); let b = term("b")
+        let root = group([a, b])
+        let out = LayoutTree.activate(root, surface: b.id)
+        guard case .tabGroup(let s, let active) = out else { return XCTFail() }
+        XCTAssertEqual(s.map(\.id), [a.id, b.id])
+        XCTAssertEqual(active, 1)
+    }
+
     func testDirectionMapping() {
         XCTAssertEqual(LayoutTree.orientationAndSide(for: .right).0, .horizontal)
         XCTAssertEqual(LayoutTree.orientationAndSide(for: .right).1, .after)

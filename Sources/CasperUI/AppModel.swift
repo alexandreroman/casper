@@ -57,6 +57,10 @@ final class AppModel {
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var socketPath: String?
 
+    /// Live terminal surface views, keyed by surface id. Persisting these across
+    /// SwiftUI rebuilds keeps each PTY alive when the layout tree is restructured.
+    @ObservationIgnored private var surfaceViews: [UUID: GhosttySurfaceView] = [:]
+
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
     /// AppKit lifecycle (`AppDelegate`). Loads the persisted session from its
     /// default location, falling back to a fresh, temp-backed store if the
@@ -88,6 +92,9 @@ final class AppModel {
         self.portAllocator = portAllocator
         self.spaces = session.spaces
         self.selectedWorkspaceID = session.spaces.first?.workspaces.first?.id
+        if let ws = session.spaces.first?.workspaces.first {
+            self.focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
+        }
         // Reserve restored port blocks so a later allocate() never collides.
         for space in session.spaces {
             for ws in space.workspaces { self.portAllocator.reserve(ws.portBase) }
@@ -147,6 +154,7 @@ final class AppModel {
         for ws in removed.workspaces {
             portAllocator.release(ws.portBase)
             lastSeen[ws.id] = nil
+            discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectedWorkspaceID = spaces.first?.workspaces.first?.id
@@ -206,6 +214,7 @@ final class AppModel {
         let ws = spaces[at.space].workspaces.remove(at: at.workspace)
         portAllocator.release(ws.portBase)
         lastSeen[ws.id] = nil
+        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         if selectedWorkspaceID == id {
             selectedWorkspaceID = spaces.first?.workspaces.first?.id
         }
@@ -260,17 +269,48 @@ final class AppModel {
         if let layout {
             spaces[at.space].workspaces[at.workspace].layout = layout
             focusedSurfaceID = newFocus
+            discardSurfaceViews([focus])
             persist()
             return
         }
         // Last surface closed -> close the workspace (non-destructive).
         let ws = spaces[at.space].workspaces[at.workspace]
+        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         focusedSurfaceID = nil
         if ws.kind == .linked {
             removeWorkspace(id: ws.id)
         } else {
             removeSpace(id: spaces[at.space].id)
         }
+    }
+
+    /// Make `surfaceID` the active tab of its group and the focused surface.
+    func setActiveSurface(_ surfaceID: UUID) {
+        guard let at = locateSurface(surfaceID) else { return }
+        let layout = LayoutTree.activate(
+            spaces[at.space].workspaces[at.workspace].layout, surface: surfaceID)
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = surfaceID
+        persist()
+    }
+
+    /// The persistent view for a terminal surface, created on first use. Returns nil
+    /// for a non-terminal surface or before the runtime exists.
+    func surfaceView(for surface: Surface, in workspace: Workspace) -> GhosttySurfaceView? {
+        guard let runtime, case .terminal = surface.kind else { return nil }
+        if let existing = surfaceViews[surface.id] { return existing }
+        let view = GhosttySurfaceView(
+            runtime: runtime,
+            configuration: surfaceConfiguration(for: workspace, terminal: surface),
+            surfaceID: surface.id,
+            onFocus: { [weak self] id in self?.focusSurface(id) })
+        surfaceViews[surface.id] = view
+        return view
+    }
+
+    /// Drop cached views for the given surface ids (their PTYs are freed on deinit).
+    private func discardSurfaceViews(_ ids: [UUID]) {
+        for id in ids { surfaceViews[id] = nil }
     }
 
     /// Best-effort: ensure `.casper/` is in the repo's `.git/info/exclude` so

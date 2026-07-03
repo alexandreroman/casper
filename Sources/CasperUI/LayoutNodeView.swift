@@ -26,7 +26,7 @@ struct LayoutNodeView: View {
 
     @ViewBuilder
     private func childViews(_ children: [LayoutNode]) -> some View {
-        ForEach(Array(children.enumerated()), id: \.offset) { _, child in
+        ForEach(Array(children.enumerated()), id: \.element.stableID) { _, child in
             LayoutNodeView(model: model, workspace: workspace, node: child)
         }
     }

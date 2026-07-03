@@ -14,9 +14,10 @@ struct TabGroupView: View {
         VStack(spacing: 0) {
             if surfaces.count > 1 {
                 TabBarView(
-                    titles: surfaces.map { title($0) }, activeIndex: activeIndex,
+                    titles: surfaces.enumerated().map { title($1, index: $0) },
+                    activeIndex: activeIndex,
                     onSelect: { idx in
-                        model.focusSurface(surfaces[idx].id)
+                        model.setActiveSurface(surfaces[idx].id)
                     })
             }
             ZStack {
@@ -31,24 +32,22 @@ struct TabGroupView: View {
 
     @ViewBuilder
     private func surfaceView(_ surface: Surface) -> some View {
-        if let runtime = model.runtime, case .terminal = surface.kind {
-            GhosttySurfaceRepresentable(
-                runtime: runtime,
-                configuration: model.surfaceConfiguration(for: workspace, terminal: surface),
-                surfaceID: surface.id,
-                onFocus: { model.focusSurface($0) })
-            .id(surface.id)
+        if let view = model.surfaceView(for: surface, in: workspace) {
+            GhosttySurfaceHostView(surfaceView: view).id(surface.id)
+        } else if case .terminal = surface.kind {
+            Color.black  // runtime not ready yet
         } else {
-            // Browser/diff surfaces arrive in UI-4/UI-5.
             ContentUnavailableView(
                 "Unsupported surface", systemImage: "rectangle.dashed",
                 description: Text("Browser and diff surfaces arrive in UI-4/UI-5."))
         }
     }
 
-    private func title(_ surface: Surface) -> String {
+    /// A tab's label: terminals get a 1-based ordinal within the group;
+    /// browser/diff surfaces are labeled by kind (they are singletons for now).
+    private func title(_ surface: Surface, index: Int) -> String {
         switch surface.kind {
-        case .terminal: return "Terminal"
+        case .terminal: return "Terminal \(index + 1)"
         case .browser: return "Browser"
         case .diff: return "Diff"
         }
