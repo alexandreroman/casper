@@ -230,6 +230,23 @@ final class AppModel {
 
     func focusSurface(_ id: UUID) { focusedSurfaceID = id }
 
+    /// Move AppKit keyboard focus to the focused surface's cached view. Deferred
+    /// to the next runloop turn so the view is attached to the window first: a
+    /// tab switch (or a new/closed surface) re-parents the newly active surface's
+    /// view during the SwiftUI update that runs right after this state change.
+    /// A no-op for surfaces with no cached `NSView` (e.g. the diff surface),
+    /// which manage their own focus.
+    private func focusActiveSurfaceView() {
+        guard let id = focusedSurfaceID else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let view = self.surfaceViews[id], let window = view.window
+                else { return }
+                window.makeFirstResponder(view)
+            }
+        }
+    }
+
     /// The (space, workspace) index pair whose layout contains `surfaceID`.
     private func locateSurface(_ surfaceID: UUID) -> (space: Int, workspace: Int)? {
         for (si, space) in spaces.enumerated() {
@@ -256,6 +273,7 @@ final class AppModel {
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = newFocus
         persist()
+        focusActiveSurfaceView()
     }
 
     func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
@@ -269,6 +287,7 @@ final class AppModel {
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = newFocus
         persist()
+        focusActiveSurfaceView()
     }
 
     func applyCloseFocusedSurface() {
@@ -289,6 +308,7 @@ final class AppModel {
             if wasFocused { focusedSurfaceID = newFocus }
             discardSurfaceViews([surfaceID])
             persist()
+            focusActiveSurfaceView()
             return
         }
         // Last surface closed -> close the workspace (non-destructive).
@@ -310,6 +330,7 @@ final class AppModel {
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = surfaceID
         persist()
+        focusActiveSurfaceView()
     }
 
     /// The persistent view for a terminal surface, created on first use. Returns nil
