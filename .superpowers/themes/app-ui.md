@@ -51,13 +51,15 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   to Git on the heartbeat when its folder gains a `.git`. The `+/−` diff summary
   is deferred to UI-5.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
-  `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar (flush
-  full-height segments sharing the width equally, centered titles, the active
-  tab lit and inactive tabs dimmed from a fixed dark neutral chrome — no accent
-  color; each tab has a leading hover-revealed `×` close button; a trailing `+`
-  menu) and renders **only its active surface**. Deriving the tab shades from the
-  live terminal background (as Ghostty does) is a deferred follow-up — Casper does
-  not yet read the libghostty background color. Inactive surfaces stay alive in a persistent view cache keyed
+  `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar (rounded
+  "pill" tabs sharing the width equally, centered titles; the active tab a filled
+  bordered pill and inactive tabs blended into a fixed dark neutral chrome — no
+  accent color; each tab has a leading hover-revealed `×` close button and the
+  whole pill is clickable; a trailing circular `+` menu) and renders **only its
+  active surface**. Two deferred follow-ups: deriving the tab shades from the live
+  terminal background (as Ghostty does — Casper does not yet read the libghostty
+  background color), and per-tab `⌘N` switch shortcuts (not wired, so no `⌘N`
+  hint is shown). Inactive surfaces stay alive in a persistent view cache keyed
   by `Surface.id` (their PTYs keep running; libghostty reads the PTY independently
   of rendering) and re-attach on re-selection. Rendering only the active surface
   avoids overlapping libghostty `CAMetalLayer`-backed terminals, which ignore

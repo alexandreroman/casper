@@ -97,11 +97,13 @@ whole Space, leaving worktrees/branches on disk). Persistence is a clean break
 
 **UI-3** is done: a workspace renders its `LayoutNode` tree recursively — splits
 as native `HSplitView`/`VSplitView`; a tab group renders only its active surface
-(Ghostty-style tab bar: flush full-height segments sharing the width equally,
-centered titles, the active tab lit and inactive tabs dimmed from a fixed dark
-neutral chrome — no accent color; each tab has a leading hover-revealed `×` that
-closes that surface by `Surface.id`, preserving the active tab when a background
-tab is closed; tying the shades to the live terminal background is deferred), with
+(Ghostty-style tab bar: rounded "pill" tabs sharing the width equally, centered
+titles, the active tab a filled bordered pill and inactive tabs blended into a
+fixed dark neutral chrome — no accent color; the whole pill is clickable; a
+trailing circular `+` menu; each tab has a leading hover-revealed `×` that closes
+that surface by `Surface.id`, preserving the active tab when a background tab is
+closed; tying the shades to the live terminal background and `⌘N` switch
+shortcuts are deferred), with
 inactive surfaces kept alive in a persistent cache (PTYs running) and re-attached
 on re-selection (rendering only the active surface avoids overlapping
 `CAMetalLayer` terminals that ignore SwiftUI opacity). Pure `LayoutTree` operations
