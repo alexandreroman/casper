@@ -262,14 +262,31 @@ final class AppModel {
         Surface(kind: .terminal(cwd: cwd, command: nil))
     }
 
-    /// Insert a new terminal tab in the group holding `anchor` (or the focused
-    /// surface when `anchor` is nil).
-    func applyNewTab(anchor: UUID? = nil) {
+    /// Add a new terminal by splitting the anchored surface (or the focused one
+    /// when `anchor` is nil) to the RIGHT.
+    func applyNewTerminal(anchor: UUID? = nil) {
         guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
-        let (layout, newFocus) = LayoutTree.insertTab(
+        let (layout, newFocus) = LayoutTree.split(
             spaces[at.space].workspaces[at.workspace].layout,
-            focused: target, surface: newTerminalSurface(cwd: cwd))
+            focused: target, orientation: .horizontal, side: .after,
+            surface: newTerminalSurface(cwd: cwd))
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+        focusActiveSurfaceView()
+    }
+
+    /// Split the given surface with a new terminal in `direction` (the pane
+    /// context-menu action; always creates a terminal).
+    func applySplit(from surfaceID: UUID, direction: GhosttySplitDirectionLike) {
+        guard let at = locateSurface(surfaceID) else { return }
+        let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
+        let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
+        let (layout, newFocus) = LayoutTree.split(
+            spaces[at.space].workspaces[at.workspace].layout,
+            focused: surfaceID, orientation: orientation, side: side,
+            surface: newTerminalSurface(cwd: cwd))
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = newFocus
         persist()
@@ -322,22 +339,13 @@ final class AppModel {
         }
     }
 
-    /// Make `surfaceID` the active tab of its group and the focused surface.
-    func setActiveSurface(_ surfaceID: UUID) {
-        guard let at = locateSurface(surfaceID) else { return }
-        let layout = LayoutTree.activate(
-            spaces[at.space].workspaces[at.workspace].layout, surface: surfaceID)
-        spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = surfaceID
-        persist()
-        focusActiveSurfaceView()
-    }
-
     /// The persistent view for a terminal surface, created on first use. Returns nil
     /// for a non-terminal surface or before the runtime exists.
     func surfaceView(for surface: Surface, in workspace: Workspace) -> GhosttySurfaceView? {
         guard let runtime, case .terminal = surface.kind else { return nil }
-        if let existing = surfaceViews[surface.id] as? GhosttySurfaceView { return existing }
+        if let existing = surfaceViews[surface.id] as? GhosttySurfaceView {
+            return existing
+        }
         let view = GhosttySurfaceView(
             runtime: runtime,
             configuration: surfaceConfiguration(for: workspace, terminal: surface),
@@ -360,29 +368,39 @@ final class AppModel {
         return coordinator
     }
 
-    /// Insert a new browser surface as a tab in the group holding `anchor` (or
-    /// the focused group when `anchor` is nil).
+    /// Add a new browser by splitting the anchored surface (or the focused one
+    /// when `anchor` is nil) to the RIGHT.
     func applyNewBrowser(anchor: UUID? = nil) {
         guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
         let surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
-        let (layout, newFocus) = LayoutTree.insertTab(
+        let (layout, newFocus) = LayoutTree.split(
             spaces[at.space].workspaces[at.workspace].layout,
-            focused: target, surface: surface)
+            focused: target, orientation: .horizontal, side: .after, surface: surface)
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = newFocus
         persist()
+        focusActiveSurfaceView()
     }
 
-    /// Insert a new diff surface (working tree vs HEAD) in the anchored group.
-    func applyNewDiff(anchor: UUID? = nil) {
-        guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
-        let surface = Surface(kind: .diff(againstHead: true))
-        let (layout, newFocus) = LayoutTree.insertTab(
-            spaces[at.space].workspaces[at.workspace].layout,
-            focused: target, surface: surface)
-        spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = newFocus
-        persist()
+    /// Anchor for a toolbar action on the selected workspace: the focused surface
+    /// when it belongs to that workspace, else the workspace's first surface.
+    private func anchorForSelectedWorkspace() -> UUID? {
+        guard let id = selectedWorkspaceID, let ws = workspace(id: id) else { return nil }
+        let ids = LayoutTree.surfaceIDs(ws.layout)
+        if let focus = focusedSurfaceID, ids.contains(focus) { return focus }
+        return ids.first
+    }
+
+    /// Toolbar "+ terminal": add a terminal to the selected workspace.
+    func newTerminalInSelectedWorkspace() {
+        guard let anchor = anchorForSelectedWorkspace() else { return }
+        applyNewTerminal(anchor: anchor)
+    }
+
+    /// Toolbar "+ browser": add a browser to the selected workspace.
+    func newBrowserInSelectedWorkspace() {
+        guard let anchor = anchorForSelectedWorkspace() else { return }
+        applyNewBrowser(anchor: anchor)
     }
 
     /// Whether the workspace's owning Space is a Git repository.
@@ -401,6 +419,12 @@ final class AppModel {
                 "diff failed: \(String(describing: error), privacy: .public)")
             return nil
         }
+    }
+
+    /// The workspace's working-tree-vs-HEAD line counts, or nil when not
+    /// Git-backed or the diff fails. Feeds the detail toolbar's `+INS −DEL`.
+    func diffSummary(for workspace: Workspace) -> (insertions: Int, deletions: Int)? {
+        computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
     }
 
     /// Rewrite a browser surface's persisted URL (address-bar navigation).

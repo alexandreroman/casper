@@ -11,7 +11,7 @@ struct LayoutActionHandler: GhosttyActionHandler {
         guard let model else { return false }
         switch action {
         case .newTab:
-            MainActor.assumeIsolated { model.applyNewTab() }
+            MainActor.assumeIsolated { model.applyNewTerminal() }
             return true
         case .newSplit(let direction):
             MainActor.assumeIsolated { model.applyNewSplit(map(direction)) }

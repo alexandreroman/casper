@@ -3,7 +3,8 @@ import CasperGhostty
 import SwiftUI
 
 /// Renders a workspace's `LayoutNode` recursively: splits as native
-/// `HSplitView`/`VSplitView`, tab groups as a tab bar + a ZStack of surfaces.
+/// `HSplitView`/`VSplitView` (thin dividers, no per-pane chrome), and each leaf
+/// as a single pane via `SurfaceHostView`.
 struct LayoutNodeView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
@@ -17,10 +18,8 @@ struct LayoutNodeView: View {
             } else {
                 VSplitView { childViews(children) }
             }
-        case .tabGroup(let surfaces, let activeIndex):
-            TabGroupView(
-                model: model, workspace: workspace,
-                surfaces: surfaces, activeIndex: activeIndex)
+        case .leaf(let surface):
+            SurfaceHostView(model: model, workspace: workspace, surface: surface)
         }
     }
 

@@ -24,9 +24,7 @@ enum WorkspaceFactory {
             worktreePath: canonical,
             branch: info?.branch ?? "",
             portBase: portBase,
-            layout: .tabGroup(
-                surfaces: [Surface(kind: .terminal(cwd: canonical, command: nil))],
-                activeIndex: 0),
+            layout: .leaf(Surface(kind: .terminal(cwd: canonical, command: nil))),
             kind: .primary
         )
         return Space(
@@ -43,9 +41,7 @@ enum WorkspaceFactory {
             worktreePath: worktreePath,
             branch: branch,
             portBase: portBase,
-            layout: .tabGroup(
-                surfaces: [Surface(kind: .terminal(cwd: worktreePath, command: nil))],
-                activeIndex: 0),
+            layout: .leaf(Surface(kind: .terminal(cwd: worktreePath, command: nil))),
             kind: .linked,
             baseBranch: baseBranch)
     }

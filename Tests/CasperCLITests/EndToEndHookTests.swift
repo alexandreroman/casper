@@ -10,7 +10,8 @@ final class EndToEndHookTests: XCTestCase {
 
         let workspace = Workspace(
             name: "e2e", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0))
+            portBase: 40000,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
         let store = AgentStateStore(workspaces: [workspace])
 
         // Surface env, exactly as a terminal surface would receive it.

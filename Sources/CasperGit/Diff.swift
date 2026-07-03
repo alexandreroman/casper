@@ -5,6 +5,16 @@ import Foundation
 public struct GitDiff: Equatable, Sendable {
     public var files: [GitDiffFile]
     public init(files: [GitDiffFile]) { self.files = files }
+
+    /// Total added lines across every hunk — the diff summary's "+" count.
+    public var insertions: Int {
+        files.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == .addition }.count
+    }
+
+    /// Total removed lines across every hunk — the diff summary's "−" count.
+    public var deletions: Int {
+        files.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == .deletion }.count
+    }
 }
 
 public struct GitDiffFile: Equatable, Sendable {

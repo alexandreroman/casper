@@ -9,11 +9,8 @@ final class ModelsTests: XCTestCase {
         let diff = Surface(kind: .diff(againstHead: true))
         let layout = LayoutNode.split(
             orientation: .horizontal,
-            children: [
-                .tabGroup(surfaces: [term, browser], activeIndex: 0),
-                .tabGroup(surfaces: [diff], activeIndex: 0),
-            ],
-            ratios: [0.6, 0.4]
+            children: [.leaf(term), .leaf(browser), .leaf(diff)],
+            ratios: [0.4, 0.3, 0.3]
         )
         let ws = Workspace(
             name: "feat-x",
@@ -46,11 +43,13 @@ final class ModelsTests: XCTestCase {
     func testSpaceSessionRoundTrip() throws {
         let primary = Workspace(
             name: "app", worktreePath: "/r", branch: "main",
-            portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0),
+            portBase: 40000,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))),
             kind: .primary)
         let linked = Workspace(
             name: "feat", worktreePath: "/r/.casper/worktrees/feat", branch: "feat",
-            portBase: 40010, layout: .tabGroup(surfaces: [], activeIndex: 0),
+            portBase: 40010,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r/.casper/worktrees/feat", command: nil))),
             kind: .linked, baseBranch: "main")
         let space = Space(
             name: "app", folderPath: "/r", isGitRepo: true,
@@ -61,6 +60,41 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded, session)
         XCTAssertEqual(decoded.spaces.first?.workspaces.first?.kind, .primary)
         XCTAssertEqual(decoded.spaces.first?.workspaces.last?.baseBranch, "main")
+    }
+
+    func testLegacyTabGroupDecodesIntoSplitOfLeaves() throws {
+        // A previously persisted `tabGroup` with 2 surfaces must migrate into an
+        // even horizontal split of one leaf per surface.
+        let s1 = UUID()
+        let s2 = UUID()
+        let json = """
+        { "tabGroup": { "surfaces": [
+            { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } },
+            { "id": "\(s2.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } }
+        ], "activeIndex": 0 } }
+        """
+        let node = try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8))
+        guard case .split(let orientation, let children, let ratios) = node else {
+            return XCTFail("expected a split")
+        }
+        XCTAssertEqual(orientation, .horizontal)
+        XCTAssertEqual(ratios, [0.5, 0.5])
+        guard case .leaf(let l1) = children[0], case .leaf(let l2) = children[1] else {
+            return XCTFail("expected two leaves")
+        }
+        XCTAssertEqual([l1.id, l2.id], [s1, s2])
+    }
+
+    func testLegacySingleSurfaceTabGroupDecodesIntoLeaf() throws {
+        let sid = UUID()
+        let json = """
+        { "tabGroup": { "surfaces": [
+            { "id": "\(sid.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } }
+        ], "activeIndex": 0 } }
+        """
+        let node = try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8))
+        guard case .leaf(let surface) = node else { return XCTFail("expected a leaf") }
+        XCTAssertEqual(surface.id, sid)
     }
 
     func testWorkspaceKindRawValues() {

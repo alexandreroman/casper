@@ -2,25 +2,25 @@ import XCTest
 @testable import CasperCore
 
 final class LayoutTreeTests: XCTestCase {
-    private func term(_ tag: String) -> Surface {
+    private func term() -> Surface {
         Surface(kind: .terminal(cwd: "/w", command: nil))
     }
-    private func group(_ surfaces: [Surface], active: Int = 0) -> LayoutNode {
-        .tabGroup(surfaces: surfaces, activeIndex: active)
+    private func leaf(_ surface: Surface) -> LayoutNode {
+        .leaf(surface)
     }
 
-    func testInsertTabAppendsAndActivates() {
-        let a = term("a"); let root = group([a])
-        let b = term("b")
-        let (out, focus) = LayoutTree.insertTab(root, focused: a.id, surface: b)
-        guard case .tabGroup(let s, let active) = out else { return XCTFail() }
-        XCTAssertEqual(s.map(\.id), [a.id, b.id])
-        XCTAssertEqual(active, 1)
-        XCTAssertEqual(focus, b.id)
+    func testSurfaceIDsWalksDepthFirst() {
+        let a = term(); let b = term(); let c = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal,
+            children: [leaf(a), .split(orientation: .vertical, children: [leaf(b), leaf(c)],
+                                       ratios: [0.5, 0.5])],
+            ratios: [0.5, 0.5])
+        XCTAssertEqual(LayoutTree.surfaceIDs(root), [a.id, b.id, c.id])
     }
 
-    func testSplitFromRootTabGroupWrapsInSplit() {
-        let a = term("a"); let root = group([a]); let b = term("b")
+    func testSplitFromRootLeafWrapsInSplit() {
+        let a = term(); let root = leaf(a); let b = term()
         let (out, focus) = LayoutTree.split(
             root, focused: a.id, orientation: .horizontal, side: .after, surface: b)
         guard case .split(let o, let children, let ratios) = out else { return XCTFail() }
@@ -32,11 +32,10 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testSplitSameOrientationInsertsFlatSibling() {
-        let a = term("a"); let b = term("b")
+        let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [group([a]), group([b])],
-            ratios: [0.5, 0.5])
-        let c = term("c")
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        let c = term()
         let (out, _) = LayoutTree.split(
             root, focused: a.id, orientation: .horizontal, side: .after, surface: c)
         guard case .split(_, let children, let ratios) = out else { return XCTFail() }
@@ -46,11 +45,10 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testSplitDifferentOrientationNests() {
-        let a = term("a"); let b = term("b")
+        let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [group([a]), group([b])],
-            ratios: [0.5, 0.5])
-        let c = term("c")
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        let c = term()
         let (out, _) = LayoutTree.split(
             root, focused: a.id, orientation: .vertical, side: .after, surface: c)
         guard case .split(_, let children, _) = out else { return XCTFail() }
@@ -61,53 +59,52 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(LayoutTree.surfaceIDs(out), [a.id, c.id, b.id])
     }
 
-    func testCloseSurfaceInMultiTabAdjustsActive() {
-        let a = term("a"); let b = term("b")
-        let root = group([a, b], active: 1)  // b active
-        let (out, focus) = LayoutTree.closeSurface(root, surface: b.id)
-        guard case .tabGroup(let s, let active)? = out else { return XCTFail() }
-        XCTAssertEqual(s.map(\.id), [a.id])
-        XCTAssertEqual(active, 0)
-        XCTAssertEqual(focus, a.id)
+    func testSplitUnknownFocusIsNoOp() {
+        let a = term(); let root = leaf(a); let b = term()
+        let (out, focus) = LayoutTree.split(
+            root, focused: UUID(), orientation: .horizontal, side: .after, surface: b)
+        XCTAssertEqual(out, root)
+        XCTAssertNotEqual(focus, b.id)
     }
 
     func testCloseSurfaceCollapsesSingleChildSplit() {
-        let a = term("a"); let b = term("b")
+        let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [group([a]), group([b])],
-            ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
         let (out, focus) = LayoutTree.closeSurface(root, surface: b.id)
-        guard case .tabGroup(let s, _)? = out else { return XCTFail("expected collapse to tabGroup") }
-        XCTAssertEqual(s.map(\.id), [a.id])
+        guard case .leaf(let s)? = out else { return XCTFail("expected collapse to leaf") }
+        XCTAssertEqual(s.id, a.id)
         XCTAssertEqual(focus, a.id)
     }
 
+    func testCloseSurfaceReEvensRatiosAndFocusesNeighbor() {
+        let a = term(); let b = term(); let c = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b), leaf(c)],
+            ratios: [0.2, 0.3, 0.5])
+        let (out, focus) = LayoutTree.closeSurface(root, surface: b.id)  // middle
+        guard case .split(_, let children, let ratios)? = out else { return XCTFail() }
+        XCTAssertEqual(LayoutTree.surfaceIDs(out!), [a.id, c.id])
+        XCTAssertEqual(ratios, [0.5, 0.5])
+        XCTAssertEqual(focus, c.id)  // neighbor at min(1, count-1) == index 1
+        XCTAssertEqual(children.count, 2)
+    }
+
     func testCloseLastSurfaceReturnsNil() {
-        let a = term("a"); let root = group([a])
+        let a = term(); let root = leaf(a)
         let (out, focus) = LayoutTree.closeSurface(root, surface: a.id)
         XCTAssertNil(out)
         XCTAssertNil(focus)
     }
 
-    func testActivateSetsActiveIndexOfContainingTabGroup() {
-        let a = term("a"); let b = term("b")
-        let root = group([a, b])
-        let out = LayoutTree.activate(root, surface: b.id)
-        guard case .tabGroup(let s, let active) = out else { return XCTFail() }
-        XCTAssertEqual(s.map(\.id), [a.id, b.id])
-        XCTAssertEqual(active, 1)
-    }
-
     func testMapSurfaceReplacesByID() {
-        let a = Surface(kind: .terminal(cwd: "/w", command: nil))
-        let root = LayoutNode.tabGroup(surfaces: [a], activeIndex: 0)
+        let a = term()
+        let root = LayoutNode.leaf(a)
         let out = LayoutTree.mapSurface(root, id: a.id) { _ in
             Surface(id: a.id, kind: .browser(url: URL(string: "http://x")!))
         }
-        guard case .tabGroup(let s, _) = out, case .browser = s[0].kind else {
-            return XCTFail()
-        }
-        XCTAssertEqual(s[0].id, a.id)  // id preserved
+        guard case .leaf(let s) = out, case .browser = s.kind else { return XCTFail() }
+        XCTAssertEqual(s.id, a.id)  // id preserved
     }
 
     func testDirectionMapping() {

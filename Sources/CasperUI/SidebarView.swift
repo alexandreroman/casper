@@ -3,10 +3,14 @@ import SwiftUI
 struct SidebarView: View {
     @Bindable var model: AppModel
 
+    /// Per-Space expansion state, keyed by space id. Missing means expanded, so
+    /// newly added Spaces start open.
+    @State private var expanded: [UUID: Bool] = [:]
+
     var body: some View {
         List(selection: $model.selectedWorkspaceID) {
             ForEach(model.spaces) { space in
-                Section {
+                Section(isExpanded: expansion(space.id)) {
                     ForEach(space.workspaces) { workspace in
                         WorkspaceRow(workspace: workspace)
                             .tag(workspace.id)
@@ -33,10 +37,17 @@ struct SidebarView: View {
                 Button {
                     model.presentAddFolderPanel()
                 } label: {
-                    Label("Add folder…", systemImage: "plus")
+                    Label("Add a Space", systemImage: "folder.badge.plus")
                 }
+                .help("Add a Space")
             }
         }
         .navigationTitle("Casper")
+    }
+
+    private func expansion(_ id: UUID) -> Binding<Bool> {
+        Binding(
+            get: { expanded[id] ?? true },
+            set: { expanded[id] = $0 })
     }
 }

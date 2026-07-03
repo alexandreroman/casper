@@ -6,7 +6,8 @@ final class AgentStateStoreTests: XCTestCase {
     private func makeWorkspace(name: String = "ws") -> Workspace {
         Workspace(
             name: name, worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0))
+            portBase: 40000,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
     }
 
     func testHandleSessionStartSetsRunning() {

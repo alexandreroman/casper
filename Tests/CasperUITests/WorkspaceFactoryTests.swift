@@ -17,11 +17,10 @@ final class WorkspaceFactoryTests: XCTestCase {
         // The primary workspace roots at the probe's canonical path, not just
         // the folder that was opened.
         XCTAssertEqual(space.workspaces[0].worktreePath, "/tmp/repo")
-        guard case .tabGroup(let surfaces, _) = space.workspaces[0].layout,
-              case .terminal(let cwd, _) = surfaces[0].kind else {
+        guard case .leaf(let surface) = space.workspaces[0].layout,
+              case .terminal(let cwd, _) = surface.kind else {
             return XCTFail("expected a single terminal surface")
         }
-        XCTAssertEqual(surfaces.count, 1)
         XCTAssertEqual(cwd, "/tmp/repo")
     }
 
@@ -36,11 +35,10 @@ final class WorkspaceFactoryTests: XCTestCase {
         // Non-Git folders are degenerate: the workspace roots at the opened
         // folder itself, with a terminal cwd to match.
         XCTAssertEqual(space.workspaces[0].worktreePath, "/tmp/plain")
-        guard case .tabGroup(let surfaces, _) = space.workspaces[0].layout,
-              case .terminal(let cwd, _) = surfaces[0].kind else {
+        guard case .leaf(let surface) = space.workspaces[0].layout,
+              case .terminal(let cwd, _) = surface.kind else {
             return XCTFail("expected a single terminal surface")
         }
-        XCTAssertEqual(surfaces.count, 1)
         XCTAssertEqual(cwd, "/tmp/plain")
     }
 
@@ -61,8 +59,8 @@ final class WorkspaceFactoryTests: XCTestCase {
         XCTAssertEqual(ws.kind, .linked)
         XCTAssertEqual(ws.baseBranch, "main")
         XCTAssertEqual(ws.worktreePath, "/r/.casper/worktrees/feat-x")
-        guard case .tabGroup(let surfaces, _) = ws.layout,
-              case .terminal(let cwd, _) = surfaces.first?.kind else {
+        guard case .leaf(let surface) = ws.layout,
+              case .terminal(let cwd, _) = surface.kind else {
             return XCTFail("expected one terminal")
         }
         XCTAssertEqual(cwd, "/r/.casper/worktrees/feat-x")

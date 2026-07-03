@@ -59,8 +59,8 @@ final class AppModelTests: XCTestCase {
     func testRestoresPersistedSessionAndSelectsFirst() {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
-                Workspace(name: "a", worktreePath: "/a", branch: "",
-                          portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0)),
+                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
             ]),
         ])
         let (store, _) = makeStore()
@@ -74,7 +74,7 @@ final class AppModelTests: XCTestCase {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "",
-                          portBase: 40000, layout: .tabGroup(surfaces: [surface], activeIndex: 0)),
+                          portBase: 40000, layout: .leaf(surface)),
             ]),
         ])
         let (store, _) = makeStore()
@@ -85,8 +85,8 @@ final class AppModelTests: XCTestCase {
     func testAddAfterRestoreDoesNotReuseRestoredPortBlock() {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
-                Workspace(name: "a", worktreePath: "/a", branch: "",
-                          portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0)),
+                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
             ]),
         ])
         let (store, _) = makeStore()
@@ -395,11 +395,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(LayoutTree.surfaceIDs(layout).count, 2)
     }
 
-    func testApplyNewTabAddsSurface() throws {
-        let (model, _) = try modelWithOneGitWorkspace()
-        model.applyNewTab()
-        XCTAssertEqual(
-            LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 2)
+    func testApplyNewTerminalSplitsInAndMovesFocus() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.applyNewTerminal()
+        let layout = model.spaces[0].workspaces[0].layout
+        // The single leaf becomes a horizontal split of two terminal leaves.
+        guard case .split(let orientation, let children, _) = layout else { return XCTFail() }
+        XCTAssertEqual(orientation, .horizontal)
+        XCTAssertEqual(children.count, 2)
+        XCTAssertEqual(LayoutTree.surfaceIDs(layout).count, 2)
+        // Focus moves to the freshly created terminal.
+        let focus = model.focusedSurfaceID!
+        XCTAssertNotEqual(focus, first)
+        XCTAssertTrue(surfaceKindIsTerminal(layout, focus))
     }
 
     func testCloseLastSurfaceOfPrimaryRemovesSpace() throws {
@@ -430,17 +438,17 @@ final class AppModelTests: XCTestCase {
             LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 1)
     }
 
-    func testSetActiveSurfaceSwitchesActiveTabAndFocus() throws {
+    func testApplySplitFromSurfaceSplitsInGivenDirection() throws {
         let (model, first) = try modelWithOneGitWorkspace()
-        model.applyNewTab()  // second surface added and focused, activeIndex == 1
-
-        model.setActiveSurface(first)
-
-        guard case .tabGroup(_, let active) = model.spaces[0].workspaces[0].layout else {
-            return XCTFail()
-        }
-        XCTAssertEqual(active, 0)
-        XCTAssertEqual(model.focusedSurfaceID, first)
+        model.applySplit(from: first, direction: .down)  // context-menu split; always a terminal
+        let layout = model.spaces[0].workspaces[0].layout
+        guard case .split(let orientation, let children, _) = layout else { return XCTFail() }
+        XCTAssertEqual(orientation, .vertical)  // a downward split stacks vertically
+        XCTAssertEqual(children.count, 2)
+        XCTAssertEqual(LayoutTree.surfaceIDs(layout).count, 2)
+        let focus = model.focusedSurfaceID!
+        XCTAssertNotEqual(focus, first)  // focus moves to the new terminal
+        XCTAssertTrue(surfaceKindIsTerminal(layout, focus))
     }
 
     // MARK: - Browser surfaces (UI-4 Task 1)
@@ -468,20 +476,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(surfaceKindIsBrowser(created, focus))
     }
 
-    func testApplyNewBrowserWithAnchorTargetsAnchoredGroupNotFocus() throws {
+    func testApplyNewBrowserWithAnchorSplitsBesideAnchorNotFocus() throws {
         let (model, first) = try modelWithOneGitWorkspace()
-        model.applyNewSplit(.right)  // two groups now; focus is on the new (second) surface
-        let layout = model.spaces[0].workspaces[0].layout
-        guard case .split(_, let children, _) = layout else { return XCTFail() }
-        let secondGroupSurfaceID = LayoutTree.surfaceIDs(children[1])[0]
+        model.applyNewSplit(.right)  // two surfaces; focus is on the new (second) one
+        let second = model.focusedSurfaceID!
 
-        model.focusSurface(first)  // point global focus back at the FIRST group
-        model.applyNewBrowser(anchor: secondGroupSurfaceID)
+        model.focusSurface(first)  // point global focus back at the FIRST surface
+        model.applyNewBrowser(anchor: second)  // anchor overrides focus
 
-        let updated = model.spaces[0].workspaces[0].layout
-        guard case .split(_, let updatedChildren, _) = updated else { return XCTFail() }
-        XCTAssertEqual(LayoutTree.surfaceIDs(updatedChildren[0]).count, 1)  // first group untouched
-        XCTAssertEqual(LayoutTree.surfaceIDs(updatedChildren[1]).count, 2)  // browser landed here
+        // The browser splits in beside the anchored surface, so it lands
+        // immediately after `second` — not after the focused `first`.
+        let ids = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)
+        let browser = model.focusedSurfaceID!
+        XCTAssertEqual(ids, [first, second, browser])
+        XCTAssertTrue(surfaceKindIsBrowser(model.spaces[0].workspaces[0].layout, browser))
     }
 
     func testSetBrowserURLPersists() throws {
@@ -494,22 +502,6 @@ final class AppModelTests: XCTestCase {
     }
 
     // MARK: - Diff surfaces (UI-5 Task 1)
-
-    func testApplyNewDiffAddsDiffSurface() {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-ui5-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let (store, _) = makeStore()
-        let model = AppModel(sessionStore: store)
-        model.addSpace(folderURL: dir, probe: { _ in nil })  // non-Git degenerate
-        let sid = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)[0]
-        model.focusSurface(sid)
-        model.applyNewDiff()
-        let ids = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)
-        XCTAssertEqual(ids.count, 2)
-        // The new focused surface is a diff.
-        XCTAssertNotNil(model.focusedSurfaceID)
-    }
 
     func testComputeDiffReturnsChangesForDirtyWorktree() throws {
         let dir = FileManager.default.temporaryDirectory
@@ -537,20 +529,41 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.computeDiff(for: model.spaces[0].workspaces[0]))
     }
 
+    func testDiffSummaryCountsChangedLines() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui5summary-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try seedRepository(at: dir.path)  // repo + one commit (README.md == "seed\n")
+        try "seed\nadded\n".write(
+            to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        let summary = model.diffSummary(for: model.spaces[0].workspaces[0])
+        XCTAssertEqual(summary?.insertions, 1)
+        XCTAssertEqual(summary?.deletions, 0)
+    }
+
     // Helpers: walk the layout to find a surface by id and inspect its kind.
+    private func surface(_ node: LayoutNode, _ id: UUID) -> Surface? {
+        switch node {
+        case .leaf(let s):
+            return s.id == id ? s : nil
+        case .split(_, let children, _):
+            for c in children { if let found = surface(c, id) { return found } }
+            return nil
+        }
+    }
     private func surfaceKindIsBrowser(_ node: LayoutNode, _ id: UUID) -> Bool {
         browserURL(node, id) != nil
     }
+    private func surfaceKindIsTerminal(_ node: LayoutNode, _ id: UUID) -> Bool {
+        if case .terminal = surface(node, id)?.kind { return true }
+        return false
+    }
     private func browserURL(_ node: LayoutNode, _ id: UUID) -> URL? {
-        switch node {
-        case .tabGroup(let surfaces, _):
-            if let s = surfaces.first(where: { $0.id == id }),
-               case .browser(let url) = s.kind { return url }
-            return nil
-        case .split(_, let children, _):
-            for c in children { if let u = browserURL(c, id) { return u } }
-            return nil
-        }
+        if case .browser(let url) = surface(node, id)?.kind { return url }
+        return nil
     }
 }
 

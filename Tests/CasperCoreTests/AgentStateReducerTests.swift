@@ -5,7 +5,8 @@ final class AgentStateReducerTests: XCTestCase {
     private func makeWorkspace() -> Workspace {
         Workspace(
             name: "feat-x", worktreePath: "/r/w", branch: "feat-x",
-            portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0)
+            portBase: 40000,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r/w", command: nil)))
         )
     }
 

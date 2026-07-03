@@ -57,4 +57,11 @@ final class FocusReportingWebView: WKWebView {
         onFocus?()
         return super.becomeFirstResponder()
     }
+
+    /// Suppress WebKit's native context menu so Casper's pane menu is the only
+    /// menu offered on a browser pane. WebKit builds this menu asynchronously,
+    /// so emptying it here is the supported hook.
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        menu.removeAllItems()
+    }
 }
