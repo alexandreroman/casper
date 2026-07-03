@@ -51,10 +51,14 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   to Git on the heartbeat when its folder gains a `.git`. The `+/−` diff summary
   is deferred to UI-5.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
-  `HSplitView`/`VSplitView`, tab groups as a tab bar over a `ZStack` keeping
-  inactive surfaces mounted (PTYs alive). Surface views live in a persistent cache
-  keyed by `Surface.id`, so a terminal's PTY survives split/collapse/reorder
-  restructuring (surface identity is anchored solely on `Surface.id`). Persisted
+  `HSplitView`/`VSplitView`; a tab group shows a tab bar and renders **only its
+  active surface**. Inactive surfaces stay alive in a persistent view cache keyed
+  by `Surface.id` (their PTYs keep running; libghostty reads the PTY independently
+  of rendering) and re-attach on re-selection. Rendering only the active surface
+  avoids overlapping libghostty `CAMetalLayer`-backed terminals, which ignore
+  SwiftUI `.opacity` and would occlude one another. The cache also makes a
+  terminal's PTY survive split/collapse/reorder restructuring (surface identity is
+  anchored solely on `Surface.id`). Persisted
   split `ratios` are **not** applied by the native split views in v1 (they open
   evenly; ratios are retained in the model for a future custom-split renderer). Pure `LayoutTree` tree operations
   (`insertTab`/`split`/`closeSurface`, flat sibling insertion when the parent
