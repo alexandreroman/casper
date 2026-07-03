@@ -4,11 +4,15 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build test release clean vendor help
+.PHONY: all build dev test release clean vendor help
 
 ## build: compile the debug build
 build:
 	swift build
+
+## dev: recompile and launch the app
+dev:
+	swift run casper
 
 ## test: run the full test suite
 test:
