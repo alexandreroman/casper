@@ -11,6 +11,8 @@ import GhosttyKit
 public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let runtime: GhosttyRuntime
     private let configuration: GhosttySurfaceConfiguration
+    private let surfaceID: UUID
+    var onFocus: (UUID) -> Void
     // Internal (not private): the clipboard callback trampolines in
     // `GhosttyRuntime` recover this view from libghostty's userdata and need
     // its surface.
@@ -22,7 +24,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // of a `keyDown`; `insertText` appends to it when set, else sends directly.
     private var keyTextAccumulator: [String]?
 
-    public init(runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration) {
+    public init(
+        runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
+        surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in }
+    ) {
+        self.surfaceID = surfaceID
+        self.onFocus = onFocus
         self.runtime = runtime
         self.configuration = configuration
         super.init(frame: .zero)
@@ -222,6 +229,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func becomeFirstResponder() -> Bool {
         surface?.setFocus(true)
+        onFocus(surfaceID)
         return super.becomeFirstResponder()
     }
 
