@@ -78,7 +78,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CasperUITests",
-            dependencies: ["CasperUI", "CasperCore", "CasperGhostty", "CasperAgents"]
+            dependencies: ["CasperUI", "CasperCore", "CasperGhostty", "CasperAgents", "CasperGit", "Clibgit2"]
         ),
     ]
 )

@@ -220,8 +220,11 @@ final class AppModel {
 
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
     /// state; returns nil for a non-Git folder (accepted per UI-1 design).
+    /// Uses `Repository.open`, an exact-path open, rather than `discover`,
+    /// which walks up to parent directories — a Space must root at the
+    /// folder the user picked, not at an ancestor repository.
     static func gitProbe(_ url: URL) -> WorkspaceFactory.GitInfo? {
-        guard let repo = try? Repository.discover(startingAt: url.path),
+        guard let repo = try? Repository.open(atPath: url.path),
               let workdir = repo.workdirPath else { return nil }
         let branch = (try? repo.headBranchName()) ?? ""
         return WorkspaceFactory.GitInfo(

@@ -1,6 +1,8 @@
+import Clibgit2
 import XCTest
 import CasperAgents
 import CasperCore
+@testable import CasperGit
 @testable import CasperUI
 
 @MainActor
@@ -203,4 +205,75 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reloadedModel.allWorkspaces[0].name, model.allWorkspaces[0].name)
         XCTAssertEqual(reloadedModel.allWorkspaces[0].portBase, model.allWorkspaces[0].portBase)
     }
+
+    // MARK: - gitProbe (disk-backed)
+
+    /// Regression test for `gitProbe` using `Repository.open` (exact-path,
+    /// no parent-directory walk) rather than `Repository.discover`. Builds a
+    /// real repo on disk, mirroring the fixture in `WorktreeManagerTests`.
+    func testGitProbeOpensExactFolderAndDoesNotWalkUpFromASubdirectory() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-gitprobe-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedRepository(at: root.path)
+
+        let probed = AppModel.gitProbe(root)
+        XCTAssertEqual(probed?.canonicalPath, root.standardizedFileURL.path)
+        XCTAssertNotEqual(probed?.branch, "")
+
+        let subdir = root.appendingPathComponent("nested")
+        try FileManager.default.createDirectory(at: subdir, withIntermediateDirectories: true)
+        // Repository.open is an exact-path open: probing a subdirectory of the
+        // repo must not find the ancestor repository rooted at `root`.
+        XCTAssertNil(AppModel.gitProbe(subdir))
+    }
+
+    /// Seed a repo with one commit via CasperGit (mirrors `WorktreeManagerTests`).
+    private func seedRepository(at path: String) throws {
+        let repo = try Repository.initialize(atPath: path)
+        let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
+        try "seed\n".write(to: readme, atomically: true, encoding: .utf8)
+        try makeInitialCommit(repo: repo, path: path)
+    }
+}
+
+/// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`
+/// itself is `internal` to `CasperGit`; this local equivalent keeps the commit
+/// helper below a literal copy of `WorktreeManagerTests`'s libgit2 sequence
+/// without pulling `GitError` construction into a test file.
+private func check(_ code: Int32) throws {
+    if code < 0 {
+        throw NSError(domain: "git", code: Int(code))
+    }
+}
+
+/// Create one commit on `repo`'s working tree at `path`, using the same
+/// libgit2 sequence as `WorktreeManagerTests`: stage the README already
+/// written by the caller, build a tree from the index, and commit it onto
+/// HEAD. `repo` must already be open on an initialized, unborn repository —
+/// this helper does not call `Repository.initialize`.
+private func makeInitialCommit(repo: Repository, path: String) throws {
+    var index: OpaquePointer?
+    try check(git_repository_index(&index, repo.pointer))
+    defer { git_index_free(index) }
+    try check(git_index_add_bypath(index, "README.md"))
+    try check(git_index_write(index))
+
+    var treeOid = git_oid()
+    try check(git_index_write_tree(&treeOid, index))
+    var tree: OpaquePointer?
+    try check(git_tree_lookup(&tree, repo.pointer, &treeOid))
+    defer { git_tree_free(tree) }
+
+    var signature: UnsafeMutablePointer<git_signature>?
+    try check(git_signature_now(&signature, "Casper Test", "test@casper.local"))
+    defer { git_signature_free(signature) }
+
+    // Swift cannot import the variadic `git_commit_create_v`, so use the
+    // array-based `git_commit_create` with zero parents (initial commit).
+    var commitOid = git_oid()
+    try check(git_commit_create(
+        &commitOid, repo.pointer, "HEAD",
+        signature, signature, nil, "Initial commit", tree, 0, nil))
 }
