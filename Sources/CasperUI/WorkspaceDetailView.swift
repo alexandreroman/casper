@@ -5,7 +5,6 @@ import SwiftUI
 struct WorkspaceDetailView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
-    @Binding var columnVisibility: NavigationSplitViewVisibility
 
     /// Cached diff summary so it isn't recomputed on every render; refreshed when
     /// the selected workspace changes (see the `.task` below).
@@ -27,8 +26,7 @@ struct WorkspaceDetailView: View {
                     max: InspectorState.maxWidth)
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) { leadingButtons }.flatToolbarItem()
-            ToolbarItem(placement: .navigation) { title }.flatToolbarItem()
+            ToolbarItem(placement: .navigation) { title }
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
@@ -55,6 +53,7 @@ struct WorkspaceDetailView: View {
                 .fontWeight(.bold)
             Text(spaceName).foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 10)
     }
 
     private var spaceName: String {
@@ -90,18 +89,6 @@ struct WorkspaceDetailView: View {
         }
     }
 
-    private var leadingButtons: some View {
-        HStack(spacing: 6) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.22)) {
-                    columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
-                }
-            } label: {
-                Image(systemName: "sidebar.left")
-            }
-            .help("Toggle sidebar")
-        }
-    }
 }
 
 private extension ToolbarContent {

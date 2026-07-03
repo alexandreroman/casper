@@ -37,6 +37,7 @@ struct SidebarView: View {
                 }
             }
         }
+        .listStyle(.sidebar)
         .navigationTitle("Casper")
     }
 

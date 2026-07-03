@@ -4,13 +4,10 @@ import SwiftUI
 struct RootView: View {
     @Bindable var model: AppModel
 
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView {
             SidebarView(model: model)
                 .frame(minWidth: 220)
-                .toolbar(removing: .sidebarToggle)
         } detail: {
             if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
                 // Give the detail a per-workspace identity so SwiftUI recreates the
@@ -18,7 +15,7 @@ struct RootView: View {
                 // scene-level inspector width and carries it across workspaces; a fresh
                 // identity forces the column width to re-seed from this workspace's
                 // persisted `inspector.width`.
-                WorkspaceDetailView(model: model, workspace: workspace, columnVisibility: $columnVisibility)
+                WorkspaceDetailView(model: model, workspace: workspace)
                     .id(id)
             } else {
                 EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
