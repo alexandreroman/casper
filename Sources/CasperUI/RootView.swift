@@ -4,13 +4,16 @@ import SwiftUI
 struct RootView: View {
     @Bindable var model: AppModel
 
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(model: model)
                 .frame(minWidth: 220)
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
-                WorkspaceDetailView(model: model, workspace: workspace)
+                WorkspaceDetailView(model: model, workspace: workspace, columnVisibility: $columnVisibility)
             } else {
                 EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
             }

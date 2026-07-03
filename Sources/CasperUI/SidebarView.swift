@@ -32,16 +32,6 @@ struct SidebarView: View {
                 }
             }
         }
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    model.presentAddFolderPanel()
-                } label: {
-                    Label("Add a Space", systemImage: "folder.badge.plus")
-                }
-                .help("Add a Space")
-            }
-        }
         .navigationTitle("Casper")
     }
 
