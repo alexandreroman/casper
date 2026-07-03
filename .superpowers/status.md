@@ -11,8 +11,9 @@ Status legend: ✅ built · ◐ partial · ❌ not started.
 The build proceeds in five module plans. Plans 1–4 are implemented; CasperUI
 (Plan 5, the real SwiftUI app) is the current milestone and is under way — its
 sub-projects **UI-1** (app shell + startup wiring), **UI-2** (Space model +
-Space-grouped sidebar + linked Git worktrees), and **UI-3** (recursive splits/tabs
-layout) are built; UI-4…UI-5 remain. The v1 agent target is Claude Code only.
+Space-grouped sidebar + linked Git worktrees), **UI-3** (recursive splits/tabs
+layout), and **UI-4** (WKWebView browser surface) are built; UI-5 remains. The v1
+agent target is Claude Code only.
 
 | Plan | Module | Status |
 | --- | --- | --- |
@@ -20,7 +21,7 @@ layout) are built; UI-4…UI-5 remain. The v1 agent target is Claude Code only.
 | 2 | CasperGit (+ Clibgit2) | ◐ worktrees/status/`remoteURL` built; `git_diff` missing |
 | 3 | CasperCLI + CasperAgents | ✅ |
 | 4 | CasperGhostty | ✅ one terminal + splits/tabs composed by UI-3 |
-| 5 | CasperUI + app | ◐ UI-1..UI-3 built (sidebar + worktrees + recursive splits/tabs); UI-4…UI-5 remain |
+| 5 | CasperUI + app | ◐ UI-1..UI-4 built (sidebar + worktrees + splits/tabs + browser); UI-5 remains |
 
 Two developer-tooling features are built on top (both `#if DEBUG`): the
 debug/observability channel and debug surface addressing. The Space (project) +
@@ -67,7 +68,7 @@ executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
   paste-confirmation UI (v1 auto-confirms); `flagsChanged` press/release
   semantics and scroll precision/momentum.
 
-### CasperUI — ◐ UI-1..UI-3 built
+### CasperUI — ◐ UI-1..UI-4 built
 The module exists. **UI-1** is done: a SwiftUI `App` scene
 (`CasperApp`/`AppDelegate`/`CasperUI.runApp`) replaces the Ghostty demo as the
 GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
@@ -98,11 +99,16 @@ keeping inactive surfaces mounted (PTYs alive). Pure `LayoutTree` operations
 `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` (installed on
 `GhosttyRuntime.actionHandler`) to the focused workspace, focus tracked via the
 surface first-responder callback added in CasperGhostty. Closing the last surface
-closes the workspace non-destructively. Only terminal leaves are created;
-browser/diff render a placeholder until UI-4/UI-5.
+closes the workspace non-destructively. Surface views live in a persistent cache
+keyed by `Surface.id` so PTYs/web state survive restructuring.
 
-Remaining CasperUI sub-projects: **UI-4** `WKWebView` browser; **UI-5** diff
-viewer (needs `git_diff`).
+**UI-4** is done: `.browser` leaves render a `WKWebView` surface (address bar with
+bare-host normalization, back/forward/reload), created via the tab-bar "+" menu
+(New terminal / New browser). The web view is cached by `Surface.id` (the cache
+generalized to any `NSView`) and its URL persists via the address bar. Only
+`.diff` leaves remain a placeholder (UI-5).
+
+Remaining CasperUI sub-project: **UI-5** diff viewer (needs CasperGit `git_diff`).
 
 ## Developer tooling (`#if DEBUG`)
 
@@ -125,11 +131,11 @@ depends on CasperGit `git_diff`) and **Space rename**.
 
 1. **CasperGit `git_diff`** — unblocks the diff viewer (design §11) and the
    workspace diff summary (Space §6).
-2. **CasperUI (Plan 5)** — decomposed into UI-1…UI-5. **UI-1, UI-2, and UI-3 are
-   built** (app shell + startup wiring; Space model + Space-grouped sidebar +
-   linked Git worktrees; recursive splits/tabs layout). Next: **UI-4**
-   (`WKWebView` browser), **UI-5** (diff viewer — depends on `git_diff`). Each
-   sub-project gets its own spec → plan → build cycle.
+2. **CasperUI (Plan 5)** — decomposed into UI-1…UI-5. **UI-1..UI-4 are built**
+   (app shell + startup wiring; Space model + Space-grouped sidebar + linked Git
+   worktrees; recursive splits/tabs layout; WKWebView browser surface). Next:
+   **UI-5** (diff viewer — depends on `git_diff`). Each sub-project gets its own
+   spec → plan → build cycle.
 3. **Space diff summary** — the Space data-model change and sidebar grouping
    landed in UI-2; what remains is the derived `diffStat` and the `+/−` row
    summary (depends on 1), plus Space rename.

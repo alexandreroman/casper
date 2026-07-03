@@ -1,8 +1,9 @@
 # Theme: App & UI (CasperUI)
 
-**Module:** CasperUI · **Status:** ◐ **UI-1 & UI-2 built** (app shell + startup
-wiring; Space-grouped sidebar + linked Git worktrees); UI-3…UI-5 remain (see
-`../status.md`) · **This is the current milestone.**
+**Module:** CasperUI · **Status:** ◐ **UI-1..UI-4 built** (app shell + wiring;
+Space-grouped sidebar + linked Git worktrees; recursive splits/tabs; WKWebView
+browser surface); UI-5 remains (see `../status.md`) · **This is the current
+milestone.**
 
 The SwiftUI app that turns the built modules into the real product. Delivered as
 five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
@@ -64,12 +65,18 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   non-destructively (linked → `removeWorkspace`, primary → `removeSpace`). Only
   terminal leaves are created; browser/diff leaves render a placeholder until
   UI-4/UI-5.
-- **UI-4** — `WKWebView` browser surface.
+- **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
+  normalization, back/forward/reload) renders `.browser` layout leaves, created
+  via the tab-bar "+" menu (New terminal / New browser). The web view lives in the
+  persistent surface-view cache keyed by `Surface.id` (generalized from UI-3 to
+  hold any `NSView`), so it survives layout restructuring like terminals; its URL
+  is persisted via the address bar (link-follow write-back through
+  `WKNavigationDelegate` is a deferred follow-up).
 - **UI-5** — diff viewer (SwiftUI over libgit2 `git_diff`).
 
 ## Next action
 
-**UI-4**: a `WKWebView` browser surface (address bar, reload) as a new
-`Surface.Kind` leaf in the layout, aimed at previewing a `localhost:PORT` app.
-The recursive `LayoutNodeView` from UI-3 already routes non-terminal leaves to a
-placeholder — UI-4 replaces that placeholder for `.browser`.
+**UI-5**: the diff viewer — a SwiftUI surface over libgit2's `git_diff` (structured
+hunks/lines, working tree vs base/HEAD), rendering `.diff` layout leaves (still a
+placeholder today). **Blocked on** implementing `git_diff` in CasperGit first (see
+`git-worktrees.md`/`status.md`).
