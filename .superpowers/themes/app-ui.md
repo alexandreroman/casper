@@ -1,9 +1,9 @@
 # Theme: App & UI (CasperUI)
 
-**Module:** CasperUI · **Status:** ◐ **UI-1..UI-4 built** (app shell + wiring;
+**Module:** CasperUI · **Status:** ✅ **UI-1..UI-5 built** (app shell + wiring;
 Space-grouped sidebar + linked Git worktrees; recursive splits/tabs; WKWebView
-browser surface); UI-5 remains (see `../status.md`) · **This is the current
-milestone.**
+browser surface; read-only diff viewer). Pending: a live GUI verification pass
+(see `../status.md`).
 
 The SwiftUI app that turns the built modules into the real product. Delivered as
 five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
@@ -72,11 +72,18 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   hold any `NSView`), so it survives layout restructuring like terminals; its URL
   is persisted via the address bar (link-follow write-back through
   `WKNavigationDelegate` is a deferred follow-up).
-- **UI-5** — diff viewer (SwiftUI over libgit2 `git_diff`).
+- **UI-5 — ✅ built.** A read-only diff surface renders `.diff` layout leaves over
+  CasperGit's `diffWorkdirToHead()`: per-file sections (path + status, binary
+  files noted), hunk headers, and monospaced line rows colored by kind
+  (green addition / red deletion / neutral context) with old/new line-number
+  gutters and a `+`/`-`/space prefix cue. Computed on open + a refresh button
+  (no live auto-refresh in v1); created via the tab-bar "+" menu (New diff).
 
 ## Next action
 
-**UI-5**: the diff viewer — a SwiftUI surface over libgit2's `git_diff` (structured
-hunks/lines, working tree vs base/HEAD), rendering `.diff` layout leaves (still a
-placeholder today). **Blocked on** implementing `git_diff` in CasperGit first (see
-`git-worktrees.md`/`status.md`).
+**All five CasperUI sub-projects (UI-1..UI-5) are built.** Remaining cross-cutting
+work outside this milestone: the Space `+/−` diff summary
+(`space-project.md`, needs branch-vs-merge-base counts), Space rename, and a
+**live GUI verification pass** on a real desktop (the headless sandbox cannot
+materialize the SwiftUI detail hierarchy, so splits/tabs, browser navigation, and
+the diff surface need a live check).
