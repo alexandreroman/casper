@@ -51,8 +51,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   to Git on the heartbeat when its folder gains a `.git`. The `+/−` diff summary
   is deferred to UI-5.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
-  `HSplitView`/`VSplitView`; a tab group shows a tab bar (each tab has a
-  hover-revealed `×` close button, plus a `+` menu) and renders **only its
+  `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar (tabs
+  share the full width equally with centered titles; each tab has a leading
+  hover-revealed `×` close button; a trailing `+` menu) and renders **only its
   active surface**. Inactive surfaces stay alive in a persistent view cache keyed
   by `Surface.id` (their PTYs keep running; libghostty reads the PTY independently
   of rendering) and re-attach on re-selection. Rendering only the active surface
