@@ -2,8 +2,16 @@ import CasperCore
 import CasperGhostty
 import SwiftUI
 
-/// A tab group: an always-visible tab bar over a ZStack of all the group's
-/// surfaces, only the active one visible so inactive PTYs stay alive.
+/// A tab group: an always-visible tab bar over the single active surface.
+///
+/// Only the active surface is rendered. Inactive surfaces stay alive in
+/// `AppModel`'s persistent view cache (`surfaceViews` / `browserCoordinators`),
+/// so their PTYs/navigation keep running in the background — libghostty reads
+/// the PTY independently of rendering — and they re-attach when re-selected.
+/// This avoids stacking multiple Metal-backed terminal layers: a `CAMetalLayer`
+/// keeps compositing on the GPU regardless of SwiftUI `.opacity`, so an
+/// inactive surface layered on top of the active one would occlude it even
+/// while "hidden".
 struct TabGroupView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
@@ -19,13 +27,16 @@ struct TabGroupView: View {
                 onNewTerminal: { model.applyNewTab(anchor: surfaces[activeIndex].id) },
                 onNewBrowser: { model.applyNewBrowser(anchor: surfaces[activeIndex].id) },
                 onNewDiff: { model.applyNewDiff(anchor: surfaces[activeIndex].id) })
-            ZStack {
-                ForEach(Array(surfaces.enumerated()), id: \.element.id) { idx, surface in
-                    surfaceView(surface)
-                        .opacity(idx == activeIndex ? 1 : 0)
-                        .allowsHitTesting(idx == activeIndex)
-                }
-            }
+            activeSurface
+        }
+    }
+
+    @ViewBuilder
+    private var activeSurface: some View {
+        let index = surfaces.indices.contains(activeIndex) ? activeIndex : 0
+        if surfaces.indices.contains(index) {
+            surfaceView(surfaces[index])
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
