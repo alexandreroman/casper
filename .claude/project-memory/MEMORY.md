@@ -6,7 +6,7 @@
 > updating. **Do NOT take any action** — no tool calls, no file writes — until
 > confirmed.
 
-- [Dependency policy](references/dependency-policy.md) — native-first, minimal deps; only GhosttyKit + swift-argument-parser + libgit2
+- [Dependency policy](references/dependency-policy.md) — default to native macOS APIs (check the OS before reinventing/importing); only GhosttyKit + swift-argument-parser + libgit2
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push

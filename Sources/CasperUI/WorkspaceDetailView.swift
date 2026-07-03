@@ -23,7 +23,7 @@ struct WorkspaceDetailView: View {
 
     private var title: some View {
         HStack(spacing: 7) {
-            Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
+            BranchIcon().foregroundStyle(.secondary)
             Text(workspace.branch.isEmpty ? workspace.name : workspace.branch)
             Text(workspace.worktreePath)
                 .font(.caption)

@@ -13,10 +13,17 @@ dependencies**.
 **Why:** it is a distributable product where size and native feel matter;
 heavyweight stacks are rejected (e.g. no Chromium/CEF — the browser is WKWebView).
 
-**How to apply:** only **three** external dependencies are sanctioned —
-**GhosttyKit** (libghostty terminal engine), **swift-argument-parser** (CLI),
-and **libgit2** (Git, wrapped in an in-house `CasperGit` module; no external
-`git` binary). Everything else must use system frameworks (Network.framework,
-WebKit, UserNotifications, Foundation/Codable). Build **arm64-only**, release
-with `-Osize` + LTO + strip. Before adding any new package, stop and justify it
-against this policy.
+**How to apply:** default to **native macOS APIs and frameworks** for every
+task. Before reinventing something OR reaching for a library, check whether the
+OS already provides it — e.g. `NSImage(data:)` decodes SVG markup natively on
+macOS 14+ (a vector `_NSSVGImageRep`; set `isTemplate = true` to tint it via
+SwiftUI `.foregroundStyle`), so rendering an octicon needs neither a custom SVG
+parser nor an SVG library.
+
+Only **three** external dependencies are sanctioned — **GhosttyKit** (libghostty
+terminal engine), **swift-argument-parser** (CLI), and **libgit2** (Git, wrapped
+in an in-house `CasperGit` module; no external `git` binary). Everything else
+must use system frameworks (Network.framework, WebKit, UserNotifications,
+AppKit/SwiftUI, Foundation/Codable). Build **arm64-only**, release with `-Osize`
++ LTO + strip. Before adding any new package, stop and justify it against this
+policy.
