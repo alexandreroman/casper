@@ -6,6 +6,7 @@ import CasperGit
 import Foundation
 import Observation
 import UserNotifications
+import WebKit
 
 /// The single owner of runtime UI state and the bridge from the non-observable
 /// core types to SwiftUI. Membership changes (add/remove folder) persist
@@ -57,9 +58,11 @@ final class AppModel {
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var socketPath: String?
 
-    /// Live terminal surface views, keyed by surface id. Persisting these across
-    /// SwiftUI rebuilds keeps each PTY alive when the layout tree is restructured.
-    @ObservationIgnored private var surfaceViews: [UUID: GhosttySurfaceView] = [:]
+    /// Live surface views, keyed by surface id. Holds terminal
+    /// (`GhosttySurfaceView`) and browser (`WKWebView`) views. Persisting these
+    /// across SwiftUI rebuilds keeps each PTY or web page alive when the layout
+    /// tree is restructured.
+    @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
 
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
     /// AppKit lifecycle (`AppDelegate`). Loads the persisted session from its
@@ -298,7 +301,7 @@ final class AppModel {
     /// for a non-terminal surface or before the runtime exists.
     func surfaceView(for surface: Surface, in workspace: Workspace) -> GhosttySurfaceView? {
         guard let runtime, case .terminal = surface.kind else { return nil }
-        if let existing = surfaceViews[surface.id] { return existing }
+        if let existing = surfaceViews[surface.id] as? GhosttySurfaceView { return existing }
         let view = GhosttySurfaceView(
             runtime: runtime,
             configuration: surfaceConfiguration(for: workspace, terminal: surface),
@@ -306,6 +309,41 @@ final class AppModel {
             onFocus: { [weak self] id in self?.focusSurface(id) })
         surfaceViews[surface.id] = view
         return view
+    }
+
+    /// The persistent `WKWebView` for a browser surface, created on first use and
+    /// loaded with the surface's URL.
+    func webView(for surface: Surface) -> WKWebView? {
+        guard case .browser(let url) = surface.kind else { return nil }
+        if let existing = surfaceViews[surface.id] as? WKWebView { return existing }
+        let web = WKWebView(frame: .zero)
+        web.load(URLRequest(url: url))
+        surfaceViews[surface.id] = web
+        return web
+    }
+
+    /// Insert a new browser surface as a tab in the focused group.
+    func applyNewBrowser() {
+        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+        let surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
+        let (layout, newFocus) = LayoutTree.insertTab(
+            spaces[at.space].workspaces[at.workspace].layout,
+            focused: focus, surface: surface)
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+    }
+
+    /// Rewrite a browser surface's persisted URL (address-bar navigation).
+    func setBrowserURL(_ surfaceID: UUID, _ url: URL) {
+        guard let at = locateSurface(surfaceID) else { return }
+        let updated = LayoutTree.mapSurface(
+            spaces[at.space].workspaces[at.workspace].layout, id: surfaceID) { s in
+                if case .browser = s.kind { return Surface(id: s.id, kind: .browser(url: url)) }
+                return s
+            }
+        spaces[at.space].workspaces[at.workspace].layout = updated
+        persist()
     }
 
     /// Drop cached views for the given surface ids (their PTYs are freed on deinit).

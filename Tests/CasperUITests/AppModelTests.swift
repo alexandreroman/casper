@@ -429,6 +429,56 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(active, 0)
         XCTAssertEqual(model.focusedSurfaceID, first)
     }
+
+    // MARK: - Browser surfaces (UI-4 Task 1)
+
+    private func modelWithOnePlainWorkspace() -> (AppModel, UUID) {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui4-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: { _ in nil })
+        let sid = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)[0]
+        model.focusSurface(sid)
+        return (model, sid)
+    }
+
+    func testApplyNewBrowserAddsBrowserSurface() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        model.applyNewBrowser()
+        let ids = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)
+        XCTAssertEqual(ids.count, 2)
+        let created = model.spaces[0].workspaces[0].layout
+        // The new focused surface is a browser.
+        let focus = model.focusedSurfaceID!
+        XCTAssertTrue(surfaceKindIsBrowser(created, focus))
+    }
+
+    func testSetBrowserURLPersists() throws {
+        let (model, _) = modelWithOnePlainWorkspace()
+        model.applyNewBrowser()
+        let focus = model.focusedSurfaceID!
+        model.setBrowserURL(focus, URL(string: "http://localhost:3000")!)
+        XCTAssertTrue(browserURL(model.spaces[0].workspaces[0].layout, focus)?.absoluteString
+            == "http://localhost:3000")
+    }
+
+    // Helpers: walk the layout to find a surface by id and inspect its kind.
+    private func surfaceKindIsBrowser(_ node: LayoutNode, _ id: UUID) -> Bool {
+        browserURL(node, id) != nil
+    }
+    private func browserURL(_ node: LayoutNode, _ id: UUID) -> URL? {
+        switch node {
+        case .tabGroup(let surfaces, _):
+            if let s = surfaces.first(where: { $0.id == id }),
+               case .browser(let url) = s.kind { return url }
+            return nil
+        case .split(_, let children, _):
+            for c in children { if let u = browserURL(c, id) { return u } }
+            return nil
+        }
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`

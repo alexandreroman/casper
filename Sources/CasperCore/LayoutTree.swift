@@ -130,6 +130,22 @@ public enum LayoutTree {
         }
     }
 
+    /// Return a copy of the tree with the surface `id` replaced by `transform(s)`.
+    public static func mapSurface(
+        _ node: LayoutNode, id: UUID, _ transform: (Surface) -> Surface
+    ) -> LayoutNode {
+        switch node {
+        case .tabGroup(let surfaces, let active):
+            return .tabGroup(
+                surfaces: surfaces.map { $0.id == id ? transform($0) : $0 },
+                activeIndex: active)
+        case .split(let o, let children, let ratios):
+            return .split(
+                orientation: o, children: children.map { mapSurface($0, id: id, transform) },
+                ratios: ratios)
+        }
+    }
+
     /// Set the `activeIndex` of the tab group containing `surface` to that surface.
     public static func activate(_ node: LayoutNode, surface id: UUID) -> LayoutNode {
         switch node {
