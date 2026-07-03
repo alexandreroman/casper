@@ -417,6 +417,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces.count, 1)
     }
 
+    func testCloseBackgroundSurfaceLeavesFocusUntouched() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.applyNewSplit(.right)  // two surfaces; focus moves to the new one
+        let background = model.focusedSurfaceID!
+        model.focusSurface(first)  // focus the original surface again
+
+        model.applyCloseSurface(background)  // close the non-focused surface
+
+        XCTAssertEqual(model.focusedSurfaceID, first)  // focus must not migrate
+        XCTAssertEqual(
+            LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 1)
+    }
+
     func testSetActiveSurfaceSwitchesActiveTabAndFocus() throws {
         let (model, first) = try modelWithOneGitWorkspace()
         model.applyNewTab()  // second surface added and focused, activeIndex == 1

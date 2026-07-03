@@ -281,11 +281,12 @@ final class AppModel {
     /// last surface closes the workspace non-destructively.
     func applyCloseSurface(_ surfaceID: UUID) {
         guard let at = locateSurface(surfaceID) else { return }
+        let wasFocused = focusedSurfaceID == surfaceID
         let (layout, newFocus) = LayoutTree.closeSurface(
             spaces[at.space].workspaces[at.workspace].layout, surface: surfaceID)
         if let layout {
             spaces[at.space].workspaces[at.workspace].layout = layout
-            focusedSurfaceID = newFocus
+            if wasFocused { focusedSurfaceID = newFocus }
             discardSurfaceViews([surfaceID])
             persist()
             return
@@ -293,7 +294,7 @@ final class AppModel {
         // Last surface closed -> close the workspace (non-destructive).
         let ws = spaces[at.space].workspaces[at.workspace]
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
-        focusedSurfaceID = nil
+        if wasFocused { focusedSurfaceID = nil }
         if ws.kind == .linked {
             removeWorkspace(id: ws.id)
         } else {
