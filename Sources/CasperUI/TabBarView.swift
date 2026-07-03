@@ -16,8 +16,8 @@ struct TabGroupView: View {
                 titles: surfaces.enumerated().map { idx, s in label(s, idx) },
                 activeIndex: activeIndex,
                 onSelect: { model.setActiveSurface(surfaces[$0].id) },
-                onNewTerminal: { model.applyNewTab() },
-                onNewBrowser: { model.applyNewBrowser() })
+                onNewTerminal: { model.applyNewTab(anchor: surfaces[activeIndex].id) },
+                onNewBrowser: { model.applyNewBrowser(anchor: surfaces[activeIndex].id) })
             ZStack {
                 ForEach(Array(surfaces.enumerated()), id: \.element.id) { idx, surface in
                     surfaceView(surface)

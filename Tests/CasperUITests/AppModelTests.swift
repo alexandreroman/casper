@@ -455,6 +455,22 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(surfaceKindIsBrowser(created, focus))
     }
 
+    func testApplyNewBrowserWithAnchorTargetsAnchoredGroupNotFocus() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.applyNewSplit(.right)  // two groups now; focus is on the new (second) surface
+        let layout = model.spaces[0].workspaces[0].layout
+        guard case .split(_, let children, _) = layout else { return XCTFail() }
+        let secondGroupSurfaceID = LayoutTree.surfaceIDs(children[1])[0]
+
+        model.focusSurface(first)  // point global focus back at the FIRST group
+        model.applyNewBrowser(anchor: secondGroupSurfaceID)
+
+        let updated = model.spaces[0].workspaces[0].layout
+        guard case .split(_, let updatedChildren, _) = updated else { return XCTFail() }
+        XCTAssertEqual(LayoutTree.surfaceIDs(updatedChildren[0]).count, 1)  // first group untouched
+        XCTAssertEqual(LayoutTree.surfaceIDs(updatedChildren[1]).count, 2)  // browser landed here
+    }
+
     func testSetBrowserURLPersists() throws {
         let (model, _) = modelWithOnePlainWorkspace()
         model.applyNewBrowser()

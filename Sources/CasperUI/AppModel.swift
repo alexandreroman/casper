@@ -6,7 +6,6 @@ import CasperGit
 import Foundation
 import Observation
 import UserNotifications
-import WebKit
 
 /// The single owner of runtime UI state and the bridge from the non-observable
 /// core types to SwiftUI. Membership changes (add/remove folder) persist
@@ -63,6 +62,11 @@ final class AppModel {
     /// across SwiftUI rebuilds keeps each PTY or web page alive when the layout
     /// tree is restructured.
     @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
+
+    /// Live browser coordinators, keyed by surface id. Each owns a browser
+    /// surface's `WKWebView` and navigation state; caching them here keeps the
+    /// web page and address alive across SwiftUI rebuilds.
+    @ObservationIgnored private var browserCoordinators: [UUID: BrowserCoordinator] = [:]
 
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
     /// AppKit lifecycle (`AppDelegate`). Loads the persisted session from its
@@ -241,12 +245,14 @@ final class AppModel {
         Surface(kind: .terminal(cwd: cwd, command: nil))
     }
 
-    func applyNewTab() {
-        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+    /// Insert a new terminal tab in the group holding `anchor` (or the focused
+    /// surface when `anchor` is nil).
+    func applyNewTab(anchor: UUID? = nil) {
+        guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
         let (layout, newFocus) = LayoutTree.insertTab(
             spaces[at.space].workspaces[at.workspace].layout,
-            focused: focus, surface: newTerminalSurface(cwd: cwd))
+            focused: target, surface: newTerminalSurface(cwd: cwd))
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = newFocus
         persist()
@@ -311,24 +317,27 @@ final class AppModel {
         return view
     }
 
-    /// The persistent `WKWebView` for a browser surface, created on first use and
-    /// loaded with the surface's URL.
-    func webView(for surface: Surface) -> WKWebView? {
+    /// The persistent coordinator (and its `WKWebView`) for a browser surface,
+    /// created on first use and loaded with the surface's URL. Cached by
+    /// `Surface.id` so navigation state and the web view survive layout churn.
+    func browserCoordinator(for surface: Surface) -> BrowserCoordinator? {
         guard case .browser(let url) = surface.kind else { return nil }
-        if let existing = surfaceViews[surface.id] as? WKWebView { return existing }
-        let web = WKWebView(frame: .zero)
-        web.load(URLRequest(url: url))
-        surfaceViews[surface.id] = web
-        return web
+        if let existing = browserCoordinators[surface.id] { return existing }
+        let coordinator = BrowserCoordinator(surfaceID: surface.id, url: url)
+        coordinator.onCommitURL = { [weak self] url in self?.setBrowserURL(surface.id, url) }
+        coordinator.onFocus = { [weak self] in self?.focusSurface(surface.id) }
+        browserCoordinators[surface.id] = coordinator
+        return coordinator
     }
 
-    /// Insert a new browser surface as a tab in the focused group.
-    func applyNewBrowser() {
-        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+    /// Insert a new browser surface as a tab in the group holding `anchor` (or
+    /// the focused group when `anchor` is nil).
+    func applyNewBrowser(anchor: UUID? = nil) {
+        guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
         let surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
         let (layout, newFocus) = LayoutTree.insertTab(
             spaces[at.space].workspaces[at.workspace].layout,
-            focused: focus, surface: surface)
+            focused: target, surface: surface)
         spaces[at.space].workspaces[at.workspace].layout = layout
         focusedSurfaceID = newFocus
         persist()
@@ -346,9 +355,13 @@ final class AppModel {
         persist()
     }
 
-    /// Drop cached views for the given surface ids (their PTYs are freed on deinit).
+    /// Drop cached views and browser coordinators for the given surface ids
+    /// (their PTYs or `WKWebView`s are freed on deinit).
     private func discardSurfaceViews(_ ids: [UUID]) {
-        for id in ids { surfaceViews[id] = nil }
+        for id in ids {
+            surfaceViews[id] = nil
+            browserCoordinators[id] = nil
+        }
     }
 
     /// Best-effort: ensure `.casper/` is in the repo's `.git/info/exclude` so
