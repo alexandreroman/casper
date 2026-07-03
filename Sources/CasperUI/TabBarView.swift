@@ -17,7 +17,8 @@ struct TabGroupView: View {
                 activeIndex: activeIndex,
                 onSelect: { model.setActiveSurface(surfaces[$0].id) },
                 onNewTerminal: { model.applyNewTab(anchor: surfaces[activeIndex].id) },
-                onNewBrowser: { model.applyNewBrowser(anchor: surfaces[activeIndex].id) })
+                onNewBrowser: { model.applyNewBrowser(anchor: surfaces[activeIndex].id) },
+                onNewDiff: { model.applyNewDiff(anchor: surfaces[activeIndex].id) })
             ZStack {
                 ForEach(Array(surfaces.enumerated()), id: \.element.id) { idx, surface in
                     surfaceView(surface)
@@ -36,10 +37,12 @@ struct TabGroupView: View {
             Color.black  // runtime not ready yet
         } else if case .browser = surface.kind {
             BrowserSurfaceView(model: model, surface: surface)
+        } else if case .diff = surface.kind {
+            DiffSurfaceView(model: model, workspace: workspace)
         } else {
             ContentUnavailableView(
                 "Unsupported surface", systemImage: "rectangle.dashed",
-                description: Text("Diff surfaces arrive in UI-5."))
+                description: Text("This surface kind isn't supported yet."))
         }
     }
 
@@ -60,6 +63,7 @@ struct TabBarView: View {
     let onSelect: (Int) -> Void
     let onNewTerminal: () -> Void
     let onNewBrowser: () -> Void
+    let onNewDiff: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
@@ -75,6 +79,7 @@ struct TabBarView: View {
             Menu {
                 Button("New terminal", action: onNewTerminal)
                 Button("New browser", action: onNewBrowser)
+                Button("New diff", action: onNewDiff)
             } label: {
                 Image(systemName: "plus")
             }
