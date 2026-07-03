@@ -23,7 +23,7 @@ struct WorkspaceDetailView: View {
 
     private var title: some View {
         HStack(spacing: 7) {
-            BranchIcon().foregroundStyle(.secondary)
+            Octicon(.gitBranch).foregroundStyle(.secondary)
             Text(workspace.branch.isEmpty ? workspace.name : workspace.branch)
             Text(workspace.worktreePath)
                 .font(.caption)
@@ -43,13 +43,13 @@ struct WorkspaceDetailView: View {
         Button {
             model.newTerminalInSelectedWorkspace()
         } label: {
-            Image(systemName: "terminal")
+            Octicon(.terminal)
         }
         .help("New terminal")
         Button {
             model.newBrowserInSelectedWorkspace()
         } label: {
-            Image(systemName: "globe")
+            Octicon(.globe)
         }
         .help("New browser")
     }

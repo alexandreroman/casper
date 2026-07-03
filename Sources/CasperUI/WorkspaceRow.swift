@@ -6,7 +6,7 @@ struct WorkspaceRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            BranchIcon()
+            Octicon(.gitBranch)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 7) {
                 Text(workspace.name).lineLimit(1)
