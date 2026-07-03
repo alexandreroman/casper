@@ -34,7 +34,7 @@ struct DiffSurfaceView: View {
                     description: Text("The working tree matches HEAD."))
             } else {
                 ScrollView([.vertical, .horizontal]) {
-                    VStack(alignment: .leading, spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: 14) {
                         ForEach(Array(diff.files.enumerated()), id: \.offset) { _, file in
                             DiffFileView(file: file)
                         }
@@ -42,6 +42,10 @@ struct DiffSurfaceView: View {
                     .padding(8)
                 }
             }
+        } else if model.isWorkspaceGitBacked(workspace) {
+            ContentUnavailableView(
+                "Couldn't compute the diff", systemImage: "exclamationmark.triangle",
+                description: Text("The repository couldn't be read."))
         } else {
             ContentUnavailableView(
                 "No diff", systemImage: "doc.text.magnifyingglass",
@@ -72,7 +76,7 @@ private struct DiffFileView: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                     ForEach(Array(hunk.lines.enumerated()), id: \.offset) { _, line in
-                        DiffLineRow(line: line)
+                        DiffLineRow(line: line, gutterWidth: gutterWidth)
                     }
                 }
             }
@@ -85,17 +89,34 @@ private struct DiffFileView: View {
         return file.oldPath == file.newPath
             ? file.newPath : "\(file.oldPath) → \(file.newPath)"
     }
+
+    /// Widest line number across the file's hunks, so the gutter never truncates
+    /// (e.g. 5-digit line numbers in a large file).
+    private var maxDigits: Int {
+        let lines = file.hunks.flatMap(\.lines)
+        let numbers = lines.flatMap { [$0.oldLineNumber, $0.newLineNumber] }.compactMap { $0 }
+        let widest = numbers.max() ?? 0
+        return max(String(widest).count, 1)
+    }
+
+    /// Two line numbers plus inter-number spacing, with a sensible minimum width.
+    private var gutterWidth: CGFloat {
+        max(CGFloat(maxDigits * 2 * 8 + 24), 60)
+    }
 }
 
 private struct DiffLineRow: View {
     let line: GitDiffLine
+    let gutterWidth: CGFloat
 
     var body: some View {
         HStack(spacing: 8) {
             Text(gutter)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.tertiary)
-                .frame(width: 76, alignment: .trailing)
+                .monospacedDigit()
+                .lineLimit(1)
+                .frame(width: gutterWidth, alignment: .trailing)
             Text(DiffLineStyle.prefix(for: line.kind) + line.content)
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(DiffLineStyle.color(for: line.kind))

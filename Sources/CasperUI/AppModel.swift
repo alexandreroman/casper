@@ -355,6 +355,11 @@ final class AppModel {
         persist()
     }
 
+    /// Whether the workspace's owning Space is a Git repository.
+    func isWorkspaceGitBacked(_ workspace: Workspace) -> Bool {
+        spaces.first { $0.workspaces.contains { $0.id == workspace.id } }?.isGitRepo ?? false
+    }
+
     /// Compute the working-tree-vs-HEAD diff of a workspace's worktree. Returns nil
     /// when the workspace is not Git-backed or the diff fails.
     func computeDiff(for workspace: Workspace) -> GitDiff? {
