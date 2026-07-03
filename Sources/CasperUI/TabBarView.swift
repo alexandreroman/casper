@@ -96,16 +96,16 @@ struct TabBarView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            Spacer()
         }
         .padding(.horizontal, 4).padding(.vertical, 2)
     }
 }
 
-/// A single tab: its title selects the tab; a close button ("×") sits on the
-/// leading edge and is revealed only on hover (hidden otherwise, including while
-/// active). Its space is always reserved so revealing it never shifts the title.
-/// The close button is a distinct control so it never triggers selection.
+/// A single tab, Ghostty-style: it fills an equal share of the bar with its
+/// title centered. A close button ("×") floats at the leading edge, revealed
+/// only on hover (hidden otherwise, including while active) so it never shifts
+/// the centered title. The × is a distinct control, so it never triggers
+/// selection; the rest of the tab selects it.
 private struct TabItem: View {
     let title: String
     let isActive: Bool
@@ -115,20 +115,24 @@ private struct TabItem: View {
     @State private var hovering = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        Button(action: onSelect) {
+            Text(title).font(.caption)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .overlay(alignment: .leading) {
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.caption2).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .opacity(hovering ? 1 : 0)
             .allowsHitTesting(hovering)
-
-            Button(action: onSelect) {
-                Text(title).font(.caption)
-            }
-            .buttonStyle(.plain)
+            .padding(.leading, 6)
         }
-        .padding(.horizontal, 8).padding(.vertical, 3)
         .background(isActive ? Color.accentColor.opacity(0.25) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .onHover { hovering = $0 }
