@@ -26,7 +26,10 @@ struct LayoutNodeView: View {
 
     @ViewBuilder
     private func childViews(_ children: [LayoutNode]) -> some View {
-        ForEach(Array(children.enumerated()), id: \.element.stableID) { _, child in
+        // Keyed by position, a purely structural concern: surface identity anchors
+        // on `Surface.id` alone, and `AppModel.surfaceViews` (keyed by that id)
+        // preserves each PTY across restructuring regardless of this ForEach key.
+        ForEach(Array(children.enumerated()), id: \.offset) { _, child in
             LayoutNodeView(model: model, workspace: workspace, node: child)
         }
     }

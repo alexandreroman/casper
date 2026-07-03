@@ -163,9 +163,3 @@ public enum LayoutTree {
 /// Direction abstraction so CasperCore's `LayoutTree` does not depend on
 /// CasperGhostty. CasperUI maps `GhosttySplitDirection` onto this.
 public enum GhosttySplitDirectionLike: Equatable { case right, down, left, up }
-
-extension LayoutNode {
-    /// A stable identity anchor for SwiftUI ForEach: the first surface id in the
-    /// subtree (surface ids are unique across a workspace's tree).
-    public var stableID: UUID { LayoutTree.surfaceIDs(self).first ?? UUID() }
-}
