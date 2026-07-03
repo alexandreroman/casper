@@ -10,16 +10,17 @@ Status legend: ✅ built · ◐ partial · ❌ not started.
 
 The build proceeds in five module plans. Plans 1–4 are implemented; CasperUI
 (Plan 5, the real SwiftUI app) is the current milestone and is under way — its
-first sub-project **UI-1** (app shell + minimal sidebar + one terminal + startup
-wiring) is built; UI-2…UI-5 remain. The v1 agent target is Claude Code only.
+sub-projects **UI-1** (app shell + minimal sidebar + one terminal + startup
+wiring) and **UI-2** (Space model + Space-grouped sidebar + linked Git worktrees)
+are built; UI-3…UI-5 remain. The v1 agent target is Claude Code only.
 
 | Plan | Module | Status |
 | --- | --- | --- |
 | 1 | CasperCore | ✅ |
-| 2 | CasperGit (+ Clibgit2) | ◐ worktrees/status built; `git_diff` missing |
+| 2 | CasperGit (+ Clibgit2) | ◐ worktrees/status/`remoteURL` built; `git_diff` missing |
 | 3 | CasperCLI + CasperAgents | ✅ |
 | 4 | CasperGhostty | ✅ one terminal end-to-end |
-| 5 | CasperUI + app | ◐ UI-1 built (shell + sidebar + one terminal + wiring); UI-2…UI-5 remain |
+| 5 | CasperUI + app | ◐ UI-1 & UI-2 built (shell + Space-grouped sidebar + worktrees + wiring); UI-3…UI-5 remain |
 
 Two developer-tooling features are built on top (both `#if DEBUG`): the
 debug/observability channel and debug surface addressing. The Space (project) +
@@ -66,24 +67,32 @@ executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
   paste-confirmation UI (v1 auto-confirms); `flagsChanged` press/release
   semantics and scroll precision/momentum.
 
-### CasperUI — ◐ UI-1 built
+### CasperUI — ◐ UI-1 & UI-2 built
 The module exists. **UI-1** is done: a SwiftUI `App` scene
 (`CasperApp`/`AppDelegate`/`CasperUI.runApp`) replaces the Ghostty demo as the
 GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
 the core types to SwiftUI; a `NavigationSplitView` shows an empty state, an
-"Add folder…" flow (adopt any folder as a workspace — Git or not, multiple
-allowed) and one live terminal per workspace; and all startup wiring is landed
-(hooks install, hook socket → agent state, per-surface env, heartbeat timer,
-session persistence, `#if DEBUG` debug bridge). Release gating verified (no debug
-symbols in `make release`).
+"Add folder…" flow and one live terminal per workspace; and all startup wiring is
+landed (hooks install, hook socket → agent state, per-surface env, heartbeat
+timer, session persistence, `#if DEBUG` debug bridge). Release gating verified (no
+debug symbols in `make release`). UI-1 is verified live on a real desktop session
+(the headless sandbox cannot materialize the SwiftUI detail `NSHostingView`, so
+live checks require a real window server).
 
-UI-1 is verified live on a real desktop session (the headless sandbox cannot
-materialize the SwiftUI detail `NSHostingView`, so live checks require a real
-window server).
+**UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
+moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
+`baseBranch`). Opening a folder builds a Space — Git or not (non-Git folders are
+degenerate Spaces: one primary, no worktree creation), promoted to Git on the
+heartbeat when a `.git` appears. A per-Space "+" creates a **linked** workspace as
+a new branch + `git worktree` under `<folder>/.casper/worktrees/<branch>`
+(`.casper/` added to `.git/info/exclude`). The sidebar is grouped by Space in
+collapsible sections; removal is non-destructive (drop a linked workspace or a
+whole Space, leaving worktrees/branches on disk). Persistence is a clean break
+(the `SessionStore` self-heal discards incompatible legacy `session.json`). The
+`+/−` diff summary is deferred to UI-5.
 
-Remaining CasperUI sub-projects: **UI-2** multi-workspace via Git worktrees +
-Space grouping; **UI-3** recursive splits/tabs layout; **UI-4** `WKWebView`
-browser; **UI-5** diff viewer (needs `git_diff`).
+Remaining CasperUI sub-projects: **UI-3** recursive splits/tabs layout; **UI-4**
+`WKWebView` browser; **UI-5** diff viewer (needs `git_diff`).
 
 ## Developer tooling (`#if DEBUG`)
 
@@ -95,23 +104,22 @@ browser; **UI-5** diff viewer (needs `git_diff`).
 
 Gated entirely at compile time; physically absent from `make release`.
 
-## Space (project) & workspace diff summary — ❌
-Design + plan only; no `Space` type exists. Promotes the sidebar's implicit repo
-grouping into a first-class **Space** (`Session → Space → Workspace`; `repoPath`
-moves up to Space; `Workspace` gains `kind`/`baseBranch`/derived `diffStat`) and
-adds a `+/−` diff summary per workspace row. Depends on CasperGit `git_diff` and
-CasperUI.
+## Space (project) & workspace diff summary — ◐
+The **Space** model shipped with CasperUI UI-2 (`Session → Space → Workspace`;
+`repoPath` up to `Space.folderPath`; `Workspace.kind`/`baseBranch`; Space-grouped
+sidebar; `Repository.remoteURL` + `origin` name derivation). What remains for this
+feature is the **`+/−` diff summary** per workspace row (derived `diffStat`,
+depends on CasperGit `git_diff`) and **Space rename**.
 
 ## Remaining work — dependency-ordered
 
 1. **CasperGit `git_diff`** — unblocks the diff viewer (design §11) and the
    workspace diff summary (Space §6).
-2. **CasperUI (Plan 5)** — decomposed into UI-1…UI-5. **UI-1 is built** (app
-   shell + minimal sidebar + one terminal + all deferred startup wiring). Next:
-   **UI-2** (multi-workspace via Git worktrees + Space grouping), **UI-3**
-   (recursive splits/tabs layout), **UI-4** (`WKWebView` browser), **UI-5** (diff
-   viewer — depends on `git_diff`). Each sub-project gets its own spec → plan →
-   build cycle.
-3. **Space (project) + diff summary** — data-model change (`repoPath` up to
-   Space; `Workspace.kind`/`baseBranch`/derived `diffStat`), sidebar grouping,
-   and the `+/−` row summary. Depends on 1 and 2.
+2. **CasperUI (Plan 5)** — decomposed into UI-1…UI-5. **UI-1 and UI-2 are built**
+   (app shell + startup wiring; Space model + Space-grouped sidebar + linked Git
+   worktrees). Next: **UI-3** (recursive splits/tabs layout), **UI-4**
+   (`WKWebView` browser), **UI-5** (diff viewer — depends on `git_diff`). Each
+   sub-project gets its own spec → plan → build cycle.
+3. **Space diff summary** — the Space data-model change and sidebar grouping
+   landed in UI-2; what remains is the derived `diffStat` and the `+/−` row
+   summary (depends on 1), plus Space rename.

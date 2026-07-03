@@ -1,12 +1,22 @@
 # Theme: Space (Project) & Workspace Diff Summary
 
-**Status:** ❌ not started — design + plan only, no `Space` type (see
-`../status.md`) · **Plan:** `../plans/space-project.md` (actionable) ·
-**Extends** `../architecture.md` (data model, sidebar, worktrees, persistence).
+**Status:** ◐ **Space model built by CasperUI UI-2** (`Session → Space →
+Workspace`; `repoPath` up on `Space.folderPath`; `Workspace.kind`/`baseBranch`);
+the **`+/−` diff summary and Space rename remain** (see `../status.md` and
+`app-ui.md`) · **Extends** `../architecture.md` (data model, sidebar, worktrees,
+persistence).
 
 Promotes the sidebar's implicit "group by repository" into a first-class
-**Space**, and enriches each workspace row with a Git diff summary. Depends on
-CasperGit `git_diff` (`git-worktrees.md`) and the CasperUI sidebar (`app-ui.md`).
+**Space**, and enriches each workspace row with a Git diff summary. The diff
+summary depends on CasperGit `git_diff` (`git-worktrees.md`); the Space grouping
+shipped with the CasperUI sidebar in UI-2 (`app-ui.md`).
+
+> **UI-2 relaxes the invariant below.** UI-2 defines a Space as a **folder that
+> may or may not be a Git repo**: a non-Git folder is a *degenerate* Space with
+> exactly one primary workspace and no worktree creation (the UI-1 behaviour is
+> preserved), and it is promoted to a full Git Space on the heartbeat once its
+> folder gains a `.git`. The "always a Git repository" wording in the next
+> section is the original design intent, superseded on this point by UI-2.
 
 ## Design
 
@@ -57,7 +67,14 @@ No `CASPER_PROJECT` env in v1. `SessionStore` serializes the full
 
 ## Implementation
 
-Not started. The full task-by-task plan is retained at
-`../plans/space-project.md` (model refactor + `session.json` migration + CasperGit
-remote URL / divergence stats + repo-name derivation + Space assembly + diff
-helper).
+**Partly built by CasperUI UI-2.** Done: the model refactor (`repoPath` up to
+`Space.folderPath`, `Workspace.kind`/`baseBranch`, `Session.spaces`), Space
+assembly, the collapsible Space-grouped sidebar, `CasperGit`
+`Repository.remoteURL`, and repo-name derivation from `origin`. Persistence uses a
+clean break (the existing `SessionStore` self-heal discards incompatible legacy
+files), not the migration the original plan described.
+
+Remaining for this theme: the workspace `+/−` **diff summary** (needs CasperGit
+`git_diff`; the `baseBranch` field is already persisted for it) and **Space
+rename**. The original task-by-task plan is retained at
+`../plans/space-project.md` for the divergence-stats and diff-helper work.

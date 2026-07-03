@@ -1,8 +1,8 @@
 # Theme: App & UI (CasperUI)
 
-**Module:** CasperUI · **Status:** ◐ **UI-1 built** (app shell + minimal sidebar
-+ one terminal + startup wiring); UI-2…UI-5 remain (see `../status.md`) · **This
-is the current milestone.**
+**Module:** CasperUI · **Status:** ◐ **UI-1 & UI-2 built** (app shell + startup
+wiring; Space-grouped sidebar + linked Git worktrees); UI-3…UI-5 remain (see
+`../status.md`) · **This is the current milestone.**
 
 The SwiftUI app that turns the built modules into the real product. Delivered as
 five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
@@ -38,13 +38,23 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   workspace, and all startup wiring (hooks install, hook socket → agent-state
   reducer, per-surface env, heartbeat timer, session persistence, `#if DEBUG`
   debug bridge). No Git worktree creation. Renders only the single-terminal layout.
-- **UI-2** — multi-workspace creation via Git worktrees + Space grouping.
+- **UI-2 — ✅ built.** The `Space` level (`Session → Space → Workspace`;
+  `repoPath` moved up to `Space.folderPath`; `Workspace` gained
+  `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
+  or not — non-Git folders are degenerate Spaces with one primary workspace and
+  no worktree creation); a per-Space "+" creates a **linked** workspace as a new
+  branch + `git worktree` under `<folder>/.casper/worktrees/<branch>` (with
+  `.casper/` added to `.git/info/exclude`). The sidebar is grouped by Space in
+  collapsible sections; removal is non-destructive (drop a linked workspace, or a
+  whole Space, leaving worktrees/branches on disk); a degenerate Space is promoted
+  to Git on the heartbeat when its folder gains a `.git`. The `+/−` diff summary
+  is deferred to UI-5.
 - **UI-3** — recursive splits/tabs `LayoutNode` composition.
 - **UI-4** — `WKWebView` browser surface.
 - **UI-5** — diff viewer (SwiftUI over libgit2 `git_diff`).
 
 ## Next action
 
-**UI-2**: multi-workspace via Git worktrees + Space grouping. Note the
-`space-project.md` plan already assumes the sidebar exists; sequence UI-2 and the
-Space work deliberately.
+**UI-3**: recursive splits/tabs `LayoutNode` composition (consumes the decoded
+Ghostty split/tab actions — see `terminal.md`). UI-1 and UI-2 render only the
+single-terminal layout per workspace.
