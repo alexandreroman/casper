@@ -8,6 +8,7 @@ enum WorkspaceFactory {
     struct GitInfo: Equatable {
         let canonicalPath: String
         let branch: String
+        let remoteURL: String?
     }
 
     static func makeSpace(
@@ -16,8 +17,10 @@ enum WorkspaceFactory {
         let folderPath = folderURL.path
         let info = probe(folderURL)
         let canonical = info?.canonicalPath ?? folderPath
+        let name = SpaceName.derive(
+            remoteURL: info?.remoteURL, folderName: folderURL.lastPathComponent)
         let primary = Workspace(
-            name: folderURL.lastPathComponent,
+            name: name,
             worktreePath: canonical,
             branch: info?.branch ?? "",
             portBase: portBase,
@@ -27,10 +30,23 @@ enum WorkspaceFactory {
             kind: .primary
         )
         return Space(
-            name: folderURL.lastPathComponent,
-            folderPath: canonical,
-            isGitRepo: info != nil,
-            workspaces: [primary]
-        )
+            name: name, folderPath: canonical, isGitRepo: info != nil,
+            workspaces: [primary])
+    }
+
+    static func makeLinkedWorkspace(
+        name: String, worktreePath: String, branch: String,
+        baseBranch: String, portBase: Int
+    ) -> Workspace {
+        Workspace(
+            name: name,
+            worktreePath: worktreePath,
+            branch: branch,
+            portBase: portBase,
+            layout: .tabGroup(
+                surfaces: [Surface(kind: .terminal(cwd: worktreePath, command: nil))],
+                activeIndex: 0),
+            kind: .linked,
+            baseBranch: baseBranch)
     }
 }

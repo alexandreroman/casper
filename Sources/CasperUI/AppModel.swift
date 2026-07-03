@@ -227,8 +227,9 @@ final class AppModel {
         guard let repo = try? Repository.open(atPath: url.path),
               let workdir = repo.workdirPath else { return nil }
         let branch = (try? repo.headBranchName()) ?? ""
+        let remote = (try? repo.remoteURL(named: "origin")) ?? nil
         return WorkspaceFactory.GitInfo(
             canonicalPath: URL(fileURLWithPath: workdir).standardizedFileURL.path,
-            branch: branch)
+            branch: branch, remoteURL: remote)
     }
 }
