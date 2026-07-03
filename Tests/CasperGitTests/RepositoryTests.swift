@@ -116,4 +116,18 @@ final class RepositoryTests: XCTestCase {
         XCTAssertNotNil(entry)
         XCTAssertEqual(entry?.isDeleted, true)
     }
+
+    func testRemoteURL() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+
+        XCTAssertNil(try repo.remoteURL(named: "origin"))
+
+        var remote: OpaquePointer?
+        try gitCheck(git_remote_create(
+            &remote, repo.pointer, "origin", "https://github.com/acme/casper.git"))
+        git_remote_free(remote)
+
+        XCTAssertEqual(
+            try repo.remoteURL(named: "origin"), "https://github.com/acme/casper.git")
+    }
 }

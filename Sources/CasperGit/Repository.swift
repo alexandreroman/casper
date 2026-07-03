@@ -144,6 +144,16 @@ public final class Repository {
     public func isClean() throws -> Bool {
         try status().isEmpty
     }
+
+    /// The URL of the named remote, or nil when the remote does not exist or has
+    /// no URL configured.
+    public func remoteURL(named name: String) throws -> String? {
+        var remote: OpaquePointer?
+        guard git_remote_lookup(&remote, pointer, name) == 0 else { return nil }
+        defer { git_remote_free(remote) }
+        guard let url = git_remote_url(remote) else { return nil }
+        return String(cString: url)
+    }
 }
 
 /// Per-path working-tree status, reduced to the flags Casper needs.
