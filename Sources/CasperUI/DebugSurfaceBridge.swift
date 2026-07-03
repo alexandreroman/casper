@@ -12,7 +12,7 @@ extension AppModel: DebugSurfaceProvider {
               let view = Self.findSurfaceView(in: window.contentView),
               view.debugHasSurface,
               let id = selectedWorkspaceID,
-              let workspace = workspaces.first(where: { $0.id == id })
+              let workspace = workspace(id: id)
         else { return [] }
         let focused = (window.firstResponder === view)
         return [

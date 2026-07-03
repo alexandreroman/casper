@@ -5,12 +5,15 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $model.selectedWorkspaceID) {
-            ForEach(model.workspaces) { workspace in
+            ForEach(model.allWorkspaces) { workspace in
                 WorkspaceRow(workspace: workspace)
                     .tag(workspace.id)
                     .contextMenu {
                         Button("Remove", role: .destructive) {
-                            model.removeWorkspace(id: workspace.id)
+                            if let space = model.spaces.first(
+                                where: { $0.workspaces.contains(where: { $0.id == workspace.id }) }) {
+                                model.removeSpace(id: space.id)
+                            }
                         }
                     }
             }

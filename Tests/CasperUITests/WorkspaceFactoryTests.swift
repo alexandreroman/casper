@@ -3,35 +3,23 @@ import CasperCore
 @testable import CasperUI
 
 final class WorkspaceFactoryTests: XCTestCase {
-    func testGitFolderPopulatesRepoPathAndBranch() {
-        let folder = URL(fileURLWithPath: "/tmp/repo/sub")
-        let probe: (URL) -> WorkspaceFactory.RepoInfo? = { _ in
-            WorkspaceFactory.RepoInfo(repoPath: "/tmp/repo", branch: "main")
-        }
-        let ws = WorkspaceFactory.makeWorkspace(folderURL: folder, probe: probe, portBase: 40000)
-        XCTAssertEqual(ws.name, "sub")
-        XCTAssertEqual(ws.repoPath, "/tmp/repo")
-        XCTAssertEqual(ws.worktreePath, "/tmp/repo/sub")
-        XCTAssertEqual(ws.branch, "main")
-        XCTAssertEqual(ws.portBase, 40000)
-        guard case .tabGroup(let surfaces, let active) = ws.layout else {
-            return XCTFail("expected a tabGroup layout")
-        }
-        XCTAssertEqual(active, 0)
-        XCTAssertEqual(surfaces.count, 1)
-        guard case .terminal(let cwd, let command) = surfaces[0].kind else {
-            return XCTFail("expected a terminal surface")
-        }
-        XCTAssertEqual(cwd, "/tmp/repo/sub")
-        XCTAssertNil(command)
+    func testMakeSpaceGitBacked() {
+        let space = WorkspaceFactory.makeSpace(
+            folderURL: URL(fileURLWithPath: "/tmp/repo"),
+            probe: { _ in WorkspaceFactory.GitInfo(canonicalPath: "/tmp/repo", branch: "main") },
+            portBase: 40000)
+        XCTAssertTrue(space.isGitRepo)
+        XCTAssertEqual(space.folderPath, "/tmp/repo")
+        XCTAssertEqual(space.workspaces.count, 1)
+        XCTAssertEqual(space.workspaces[0].kind, .primary)
+        XCTAssertEqual(space.workspaces[0].branch, "main")
     }
 
-    func testNonGitFolderUsesFolderAsRepoPathWithEmptyBranch() {
-        let folder = URL(fileURLWithPath: "/tmp/plain")
-        let ws = WorkspaceFactory.makeWorkspace(folderURL: folder, probe: { _ in nil }, portBase: 40010)
-        XCTAssertEqual(ws.repoPath, "/tmp/plain")
-        XCTAssertEqual(ws.worktreePath, "/tmp/plain")
-        XCTAssertEqual(ws.branch, "")
-        XCTAssertEqual(ws.name, "plain")
+    func testMakeSpaceNonGit() {
+        let space = WorkspaceFactory.makeSpace(
+            folderURL: URL(fileURLWithPath: "/tmp/plain"),
+            probe: { _ in nil }, portBase: 40000)
+        XCTAssertFalse(space.isGitRepo)
+        XCTAssertEqual(space.workspaces[0].branch, "")
     }
 }

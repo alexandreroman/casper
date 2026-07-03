@@ -44,10 +44,13 @@ public indirect enum LayoutNode: Codable, Equatable, Sendable {
     }
 }
 
+public enum WorkspaceKind: String, Codable, Sendable {
+    case primary, linked
+}
+
 public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
-    public var repoPath: String
     public var worktreePath: String
     public var branch: String
     public var agentState: AgentState
@@ -55,22 +58,24 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var pendingNotification: Bool
     public var portBase: Int
     public var layout: LayoutNode
+    public var kind: WorkspaceKind
+    public var baseBranch: String?
 
     public init(
         id: UUID = UUID(),
         name: String,
-        repoPath: String,
         worktreePath: String,
         branch: String,
         agentState: AgentState = .idle,
         todos: [Todo] = [],
         pendingNotification: Bool = false,
         portBase: Int,
-        layout: LayoutNode
+        layout: LayoutNode,
+        kind: WorkspaceKind = .primary,
+        baseBranch: String? = nil
     ) {
         self.id = id
         self.name = name
-        self.repoPath = repoPath
         self.worktreePath = worktreePath
         self.branch = branch
         self.agentState = agentState
@@ -78,12 +83,36 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.pendingNotification = pendingNotification
         self.portBase = portBase
         self.layout = layout
+        self.kind = kind
+        self.baseBranch = baseBranch
+    }
+}
+
+public struct Space: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var folderPath: String
+    public var isGitRepo: Bool
+    public var workspaces: [Workspace]
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        folderPath: String,
+        isGitRepo: Bool,
+        workspaces: [Workspace]
+    ) {
+        self.id = id
+        self.name = name
+        self.folderPath = folderPath
+        self.isGitRepo = isGitRepo
+        self.workspaces = workspaces
     }
 }
 
 public struct Session: Codable, Equatable, Sendable {
-    public var workspaces: [Workspace]
-    public init(workspaces: [Workspace] = []) {
-        self.workspaces = workspaces
+    public var spaces: [Space]
+    public init(spaces: [Space] = []) {
+        self.spaces = spaces
     }
 }

@@ -9,7 +9,7 @@ final class EndToEndHookTests: XCTestCase {
         let socketPath = "/tmp/casper-e2e-\(UUID().uuidString.prefix(8)).sock"
 
         let workspace = Workspace(
-            name: "e2e", repoPath: "/repo", worktreePath: "/wt", branch: "main",
+            name: "e2e", worktreePath: "/wt", branch: "main",
             portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0))
         let store = AgentStateStore(workspaces: [workspace])
 

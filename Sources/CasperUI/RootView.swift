@@ -8,8 +8,7 @@ struct RootView: View {
             SidebarView(model: model)
                 .frame(minWidth: 220)
         } detail: {
-            if let id = model.selectedWorkspaceID,
-               let workspace = model.workspaces.first(where: { $0.id == id }) {
+            if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
                 WorkspaceDetailView(model: model, workspace: workspace)
             } else {
                 EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })

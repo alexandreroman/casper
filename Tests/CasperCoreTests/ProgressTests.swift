@@ -4,7 +4,7 @@ import XCTest
 final class ProgressTests: XCTestCase {
     private func workspace(todos: [Todo]) -> Workspace {
         Workspace(
-            name: "w", repoPath: "/r", worktreePath: "/r/w", branch: "b",
+            name: "w", worktreePath: "/r/w", branch: "b",
             todos: todos, portBase: 40000,
             layout: .tabGroup(surfaces: [], activeIndex: 0)
         )

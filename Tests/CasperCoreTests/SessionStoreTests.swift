@@ -19,11 +19,12 @@ final class SessionStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = SessionStore(fileURL: url)
 
-        let session = Session(workspaces: [
-            Workspace(
-                name: "w", repoPath: "/r", worktreePath: "/r/w", branch: "b",
-                portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0)
-            )
+        let session = Session(spaces: [
+            Space(name: "r", folderPath: "/r", isGitRepo: true, workspaces: [
+                Workspace(
+                    name: "w", worktreePath: "/r/w", branch: "b",
+                    portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0))
+            ])
         ])
         try store.save(session)
         XCTAssertEqual(try store.load(), session)
@@ -68,5 +69,25 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), Session())
         // The stale backup is replaced by the newly corrupt file.
         XCTAssertEqual(try Data(contentsOf: backupURL), garbage)
+    }
+
+    func testUI1FormatSessionIsRejectedAndBackedUp() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("session.json")
+        let legacy = """
+        { "workspaces": [ { "id": "\(UUID().uuidString)", "name": "w",
+          "repoPath": "/r", "worktreePath": "/r", "branch": "main",
+          "agentState": "idle", "todos": [], "pendingNotification": false,
+          "portBase": 40000,
+          "layout": { "tabGroup": { "surfaces": [], "activeIndex": 0 } } } ] }
+        """
+        try legacy.write(to: url, atomically: true, encoding: .utf8)
+        let store = SessionStore(fileURL: url)
+        let loaded = try store.load()
+        XCTAssertTrue(loaded.spaces.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: url.appendingPathExtension("corrupt").path))
     }
 }

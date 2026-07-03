@@ -13,7 +13,7 @@ final class WorkspacePresentationTests: XCTestCase {
     }
 
     func testProgressLabel() {
-        let none = Workspace(name: "a", repoPath: "/a", worktreePath: "/a", branch: "",
+        let none = Workspace(name: "a", worktreePath: "/a", branch: "",
                              portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0))
         XCTAssertNil(none.progressLabel)
 

@@ -13,7 +13,7 @@ import UserNotifications
 @MainActor
 @Observable
 final class AppModel {
-    private(set) var workspaces: [Workspace]
+    private(set) var spaces: [Space]
     var selectedWorkspaceID: UUID?
 
     @ObservationIgnored private let sessionStore: SessionStore
@@ -75,55 +75,82 @@ final class AppModel {
     ) {
         self.sessionStore = sessionStore
         self.portAllocator = portAllocator
-        self.workspaces = session.workspaces
-        self.selectedWorkspaceID = session.workspaces.first?.id
+        self.spaces = session.spaces
+        self.selectedWorkspaceID = session.spaces.first?.workspaces.first?.id
         // Reserve restored port blocks so a later allocate() never collides.
-        for ws in session.workspaces { self.portAllocator.reserve(ws.portBase) }
+        for space in session.spaces {
+            for ws in space.workspaces { self.portAllocator.reserve(ws.portBase) }
+        }
     }
 
-    var isEmpty: Bool { workspaces.isEmpty }
+    var isEmpty: Bool { spaces.allSatisfy { $0.workspaces.isEmpty } }
 
-    func addWorkspace(folderURL: URL, probe: (URL) -> WorkspaceFactory.RepoInfo?) {
+    /// All workspaces across every Space, in sidebar order.
+    var allWorkspaces: [Workspace] { spaces.flatMap(\.workspaces) }
+
+    /// Look up a workspace by id across all Spaces.
+    func workspace(id: UUID) -> Workspace? {
+        for space in spaces {
+            if let ws = space.workspaces.first(where: { $0.id == id }) { return ws }
+        }
+        return nil
+    }
+
+    /// Resolve the (space, workspace) index pair for in-place mutation.
+    private func locate(_ id: UUID) -> (space: Int, workspace: Int)? {
+        for (si, space) in spaces.enumerated() {
+            if let wi = space.workspaces.firstIndex(where: { $0.id == id }) {
+                return (si, wi)
+            }
+        }
+        return nil
+    }
+
+    func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
         let portBase: Int
         do {
             portBase = try portAllocator.allocate()
         } catch {
             CasperLog.app.error(
-                "cannot add workspace: no free port block: \(String(describing: error), privacy: .public)")
+                "cannot add space: no free port block: \(String(describing: error), privacy: .public)")
             return
         }
-        let ws = WorkspaceFactory.makeWorkspace(
+        let space = WorkspaceFactory.makeSpace(
             folderURL: folderURL, probe: probe, portBase: portBase)
-        workspaces.append(ws)
-        selectedWorkspaceID = ws.id
+        spaces.append(space)
+        selectedWorkspaceID = space.workspaces.first?.id
         persist()
     }
 
-    func removeWorkspace(id: UUID) {
-        guard let index = workspaces.firstIndex(where: { $0.id == id }) else { return }
-        portAllocator.release(workspaces[index].portBase)
-        workspaces.remove(at: index)
-        lastSeen[id] = nil
-        if selectedWorkspaceID == id { selectedWorkspaceID = workspaces.first?.id }
+    func removeSpace(id: UUID) {
+        guard let index = spaces.firstIndex(where: { $0.id == id }) else { return }
+        let removed = spaces.remove(at: index)
+        for ws in removed.workspaces {
+            portAllocator.release(ws.portBase)
+            lastSeen[ws.id] = nil
+        }
+        if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
+            selectedWorkspaceID = spaces.first?.workspaces.first?.id
+        }
         persist()
     }
 
     func persist() {
         do {
-            try sessionStore.save(Session(workspaces: workspaces))
+            try sessionStore.save(Session(spaces: spaces))
         } catch {
             CasperLog.app.error("failed to persist session: \(String(describing: error), privacy: .public)")
         }
     }
 
     func handleHookMessage(_ message: HookMessage, now: Date) {
-        guard let index = workspaces.firstIndex(where: { $0.id == message.workspaceId })
-        else { return }
+        guard let at = locate(message.workspaceId) else { return }
         guard let event = try? HookEventParser.parse(message.hookPayload) else { return }
 
         lastSeen[message.workspaceId] = now
         let focused = (message.workspaceId == selectedWorkspaceID) && isWindowKey()
-        let effect = AgentStateReducer.apply(event, to: &workspaces[index], focused: focused)
+        let effect = AgentStateReducer.apply(
+            event, to: &spaces[at.space].workspaces[at.workspace], focused: focused)
         if case .notify(let title, let body)? = effect {
             deliverNotification(title, body)
         }
@@ -136,9 +163,9 @@ final class AppModel {
         var changed = false
         for id in stale {
             lastSeen[id] = nil  // consumed; don't reprocess this silence every tick
-            guard let index = workspaces.firstIndex(where: { $0.id == id }) else { continue }
-            if workspaces[index].agentState != .unknown {
-                workspaces[index].agentState = .unknown
+            guard let at = locate(id) else { continue }
+            if spaces[at.space].workspaces[at.workspace].agentState != .unknown {
+                spaces[at.space].workspaces[at.workspace].agentState = .unknown
                 changed = true
             }
         }
@@ -188,16 +215,17 @@ final class AppModel {
         panel.allowsMultipleSelection = false
         panel.prompt = "Add"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        addWorkspace(folderURL: url, probe: Self.gitProbe)
+        addSpace(folderURL: url, probe: Self.gitProbe)
     }
 
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
     /// state; returns nil for a non-Git folder (accepted per UI-1 design).
-    static func gitProbe(_ url: URL) -> WorkspaceFactory.RepoInfo? {
+    static func gitProbe(_ url: URL) -> WorkspaceFactory.GitInfo? {
         guard let repo = try? Repository.discover(startingAt: url.path),
               let workdir = repo.workdirPath else { return nil }
         let branch = (try? repo.headBranchName()) ?? ""
-        return WorkspaceFactory.RepoInfo(
-            repoPath: URL(fileURLWithPath: workdir).standardizedFileURL.path, branch: branch)
+        return WorkspaceFactory.GitInfo(
+            canonicalPath: URL(fileURLWithPath: workdir).standardizedFileURL.path,
+            branch: branch)
     }
 }

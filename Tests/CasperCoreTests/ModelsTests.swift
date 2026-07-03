@@ -17,7 +17,6 @@ final class ModelsTests: XCTestCase {
         )
         let ws = Workspace(
             name: "feat-x",
-            repoPath: "/repo",
             worktreePath: "/repo/wt",
             branch: "feat-x",
             agentState: .running,
@@ -26,7 +25,9 @@ final class ModelsTests: XCTestCase {
             portBase: 40010,
             layout: layout
         )
-        return Session(workspaces: [ws])
+        let space = Space(
+            name: "repo", folderPath: "/repo", isGitRepo: true, workspaces: [ws])
+        return Session(spaces: [space])
     }
 
     func testSessionCodableRoundTrip() throws {
@@ -40,5 +41,30 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(TodoStatus.pending.rawValue, "pending")
         XCTAssertEqual(TodoStatus.inProgress.rawValue, "in_progress")
         XCTAssertEqual(TodoStatus.completed.rawValue, "completed")
+    }
+
+    func testSpaceSessionRoundTrip() throws {
+        let primary = Workspace(
+            name: "app", worktreePath: "/r", branch: "main",
+            portBase: 40000, layout: .tabGroup(surfaces: [], activeIndex: 0),
+            kind: .primary)
+        let linked = Workspace(
+            name: "feat", worktreePath: "/r/.casper/worktrees/feat", branch: "feat",
+            portBase: 40010, layout: .tabGroup(surfaces: [], activeIndex: 0),
+            kind: .linked, baseBranch: "main")
+        let space = Space(
+            name: "app", folderPath: "/r", isGitRepo: true,
+            workspaces: [primary, linked])
+        let session = Session(spaces: [space])
+        let data = try JSONEncoder().encode(session)
+        let decoded = try JSONDecoder().decode(Session.self, from: data)
+        XCTAssertEqual(decoded, session)
+        XCTAssertEqual(decoded.spaces.first?.workspaces.first?.kind, .primary)
+        XCTAssertEqual(decoded.spaces.first?.workspaces.last?.baseBranch, "main")
+    }
+
+    func testWorkspaceKindRawValues() {
+        XCTAssertEqual(WorkspaceKind.primary.rawValue, "primary")
+        XCTAssertEqual(WorkspaceKind.linked.rawValue, "linked")
     }
 }
