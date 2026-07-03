@@ -154,6 +154,130 @@ public final class Repository {
         guard let url = git_remote_url(remote) else { return nil }
         return String(cString: url)
     }
+
+    /// Structured diff of the working tree + index against HEAD (or the whole tree
+    /// as additions when HEAD is unborn). Untracked files are included.
+    public func diffWorkdirToHead() throws -> GitDiff {
+        let tree = try headTree()  // nil when HEAD is unborn
+        defer { if let tree { git_tree_free(tree) } }
+
+        var options = git_diff_options()
+        try gitCheck(git_diff_options_init(&options, UInt32(GIT_DIFF_OPTIONS_VERSION)))
+        options.flags =
+            GIT_DIFF_INCLUDE_UNTRACKED.rawValue | GIT_DIFF_RECURSE_UNTRACKED_DIRS.rawValue
+
+        var diff: OpaquePointer?
+        try gitCheck(git_diff_tree_to_workdir_with_index(&diff, pointer, tree, &options))
+        defer { git_diff_free(diff) }
+
+        var files: [GitDiffFile] = []
+        let count = git_diff_num_deltas(diff)
+        for i in 0..<count {
+            var patch: OpaquePointer?
+            try gitCheck(git_patch_from_diff(&patch, diff, i))
+            defer { git_patch_free(patch) }
+            // Read the delta back off the patch (not the diff): binary detection
+            // reads file content, which only happens once the patch is generated.
+            guard let deltaPtr = git_patch_get_delta(patch) else { continue }
+            files.append(try Repository.buildFile(delta: deltaPtr, patch: patch))
+        }
+        return GitDiff(files: files)
+    }
+
+    /// The HEAD commit's tree, or nil when HEAD is unborn / not found.
+    private func headTree() throws -> OpaquePointer? {
+        var head: OpaquePointer?
+        let rc = git_repository_head(&head, pointer)
+        if rc == GIT_EUNBORNBRANCH.rawValue || rc == GIT_ENOTFOUND.rawValue { return nil }
+        try gitCheck(rc)
+        defer { git_reference_free(head) }
+        var obj: OpaquePointer?
+        try gitCheck(git_reference_peel(&obj, head, GIT_OBJECT_TREE))
+        return obj  // a git_tree*; freed by the caller with git_tree_free
+    }
+
+    private static func buildFile(
+        delta deltaPtr: UnsafePointer<git_diff_delta>, patch: OpaquePointer?
+    ) throws -> GitDiffFile {
+        let delta = deltaPtr.pointee
+        let oldPath = delta.old_file.path.map { String(cString: $0) } ?? ""
+        let newPath = delta.new_file.path.map { String(cString: $0) } ?? ""
+        let hunkCount = git_patch_num_hunks(patch)
+
+        // libgit2 only runs its content-based binary check for sides it already
+        // has a blob for; a plain untracked file never gets `GIT_DIFF_FLAG_BINARY`
+        // set even when its content is binary (confirmed empirically: the same
+        // bytes staged into the index, or as a modification to a tracked file,
+        // set the flag correctly). Its patch generation still refuses to emit
+        // hunks for such content though, so treat "no hunks despite a non-empty
+        // side" as the fallback binary signal.
+        let hasContent = delta.old_file.size > 0 || delta.new_file.size > 0
+        let isBinary =
+            (delta.flags & GIT_DIFF_FLAG_BINARY.rawValue) != 0 || (hunkCount == 0 && hasContent)
+
+        var hunks: [GitDiffHunk] = []
+        if !isBinary {
+            for h in 0..<hunkCount {
+                var hunkPtr: UnsafePointer<git_diff_hunk>?
+                var lineCount = 0
+                try gitCheck(git_patch_get_hunk(&hunkPtr, &lineCount, patch, h))
+                guard let hp = hunkPtr else { continue }
+                let hunk = hp.pointee
+                let header = withUnsafeBytes(of: hunk.header) { raw -> String in
+                    String(decoding: raw.prefix(Int(hunk.header_len)), as: UTF8.self)
+                }.trimmingCharacters(in: CharacterSet(charactersIn: "\n"))
+
+                var lines: [GitDiffLine] = []
+                for l in 0..<lineCount {
+                    var linePtr: UnsafePointer<git_diff_line>?
+                    try gitCheck(git_patch_get_line_in_hunk(&linePtr, patch, h, l))
+                    if let lp = linePtr { lines.append(mapLine(lp.pointee)) }
+                }
+                hunks.append(GitDiffHunk(
+                    header: header,
+                    oldStart: Int(hunk.old_start), oldLines: Int(hunk.old_lines),
+                    newStart: Int(hunk.new_start), newLines: Int(hunk.new_lines),
+                    lines: lines))
+            }
+        }
+        return GitDiffFile(
+            oldPath: oldPath, newPath: newPath,
+            status: mapStatus(delta.status), isBinary: isBinary, hunks: hunks)
+    }
+
+    private static func mapStatus(_ s: git_delta_t) -> GitDiffFile.Status {
+        switch s {
+        case GIT_DELTA_ADDED, GIT_DELTA_UNTRACKED: return .added
+        case GIT_DELTA_DELETED: return .deleted
+        case GIT_DELTA_MODIFIED: return .modified
+        case GIT_DELTA_RENAMED: return .renamed
+        case GIT_DELTA_COPIED: return .copied
+        case GIT_DELTA_TYPECHANGE: return .typechange
+        default: return .unmodified
+        }
+    }
+
+    private static func mapLine(_ line: git_diff_line) -> GitDiffLine {
+        let kind: GitDiffLine.Kind
+        switch line.origin {
+        case CChar(truncatingIfNeeded: GIT_DIFF_LINE_ADDITION.rawValue): kind = .addition
+        case CChar(truncatingIfNeeded: GIT_DIFF_LINE_DELETION.rawValue): kind = .deletion
+        default: kind = .context
+        }
+        let content: String
+        if let c = line.content {
+            content = String(
+                decoding: UnsafeRawBufferPointer(start: c, count: line.content_len),
+                as: UTF8.self)
+        } else {
+            content = ""
+        }
+        let trimmed = content.hasSuffix("\n") ? String(content.dropLast()) : content
+        return GitDiffLine(
+            kind: kind, content: trimmed,
+            oldLineNumber: line.old_lineno >= 0 ? Int(line.old_lineno) : nil,
+            newLineNumber: line.new_lineno >= 0 ? Int(line.new_lineno) : nil)
+    }
 }
 
 /// Per-path working-tree status, reduced to the flags Casper needs.
