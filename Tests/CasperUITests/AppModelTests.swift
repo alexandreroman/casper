@@ -312,6 +312,25 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces.count, 1)
     }
 
+    func testAddSpaceRejectsDuplicateFolderThroughSymlink() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-symlink-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let realRepo = root.appendingPathComponent("realrepo")
+        try FileManager.default.createDirectory(at: realRepo, withIntermediateDirectories: true)
+        try seedRepository(at: realRepo.path)
+        let link = root.appendingPathComponent("linkrepo")
+        try FileManager.default.createSymbolicLink(
+            atPath: link.path, withDestinationPath: realRepo.path)
+
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: realRepo, probe: AppModel.gitProbe)
+        model.addSpace(folderURL: link, probe: AppModel.gitProbe)
+        XCTAssertEqual(model.spaces.count, 1)
+    }
+
     // MARK: - Promotion on heartbeat (Task 6)
 
     func testDegenerateSpaceIsPromotedOnHeartbeat() {

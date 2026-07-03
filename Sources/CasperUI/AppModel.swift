@@ -116,8 +116,10 @@ final class AppModel {
 
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
         let folderPath = folderURL.path
-        if spaces.contains(where: { $0.folderPath == folderPath
-            || $0.folderPath == URL(fileURLWithPath: folderPath).standardizedFileURL.path }) {
+        let candidate = URL(fileURLWithPath: folderPath).resolvingSymlinksInPath().path
+        if spaces.contains(where: {
+            URL(fileURLWithPath: $0.folderPath).resolvingSymlinksInPath().path == candidate
+        }) {
             CasperLog.app.error("folder already open as a Space: \(folderPath, privacy: .public)")
             return
         }
@@ -262,14 +264,18 @@ final class AppModel {
         }
         var promoted = false
         for si in spaces.indices where !spaces[si].isGitRepo {
-            guard let info = gitReprobe(spaces[si].folderPath) else { continue }
+            guard let info = gitReprobe(spaces[si].folderPath),
+                  !spaces[si].workspaces.isEmpty else { continue }
             spaces[si].isGitRepo = true
             spaces[si].workspaces[0].branch = info.branch
             ensureCasperExcluded(folderPath: spaces[si].folderPath)
             promoted = true
         }
-        if promoted { persist() }
-        if changed { scheduleSave() }
+        if promoted {
+            persist()
+        } else if changed {
+            scheduleSave()
+        }
     }
 
     /// Debounced persistence for high-frequency agent-state changes.
@@ -331,7 +337,14 @@ final class AppModel {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        addLinkedWorkspace(spaceID: spaceID, name: name)
+        if !addLinkedWorkspace(spaceID: spaceID, name: name) {
+            let alert = NSAlert()
+            alert.messageText = "Could not create workspace"
+            alert.informativeText =
+                "\u{201c}\(name)\u{201d} could not be created. A branch or worktree with that name "
+                + "may already exist, or the name is not a valid branch name."
+            alert.runModal()
+        }
     }
 
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
