@@ -5,6 +5,12 @@ Space-grouped sidebar + linked Git worktrees; recursive splits/tabs; WKWebView
 browser surface; read-only diff viewer). Pending: a live GUI verification pass
 (see `../status.md`).
 
+> **Superseded:** the tabbed surface model below (UI-3) is replaced by a
+> **tmux-style pane layout** — no tabs, one surface per pane, a right-click pane
+> menu for splits, and a redesigned window toolbar/sidebar. See `../status.md` →
+> "Surface layout — tmux-style panes". The UI-3 tab-bar description here is kept
+> for history.
+
 The SwiftUI app that turns the built modules into the real product. Delivered as
 five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
 diff viewer (UI-5) depends on CasperGit `git_diff` (`git-worktrees.md`); the

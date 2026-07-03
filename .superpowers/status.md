@@ -27,6 +27,12 @@ Two developer-tooling features are built on top (both `#if DEBUG`): the
 debug/observability channel and debug surface addressing. The Space (project) +
 workspace diff-summary feature is design + plan only.
 
+> **Latest work — the tabbed surface model (UI-3) is replaced by a tmux-style
+> pane layout** (no tabs, one surface per pane), with close-on-process-exit and a
+> shared-NSView collapse fix. See
+> [Surface layout — tmux-style panes](#surface-layout--tmux-style-panes-supersedes-ui-3-tabs--) below. UI-3 sections in this file and in `themes/app-ui.md`
+> describe the superseded tab model.
+
 ## Modules
 
 ### CasperCore — ✅
@@ -143,6 +149,58 @@ appearance vs the reference screenshot, full-tab click, and — open from before
 splits, browser navigation, and the diff surface. Deferred follow-ups: deriving
 tab shades from the live terminal background color (Casper does not yet read
 libghostty's `background-color`), and per-tab `⌘N` switch shortcuts.
+
+## Surface layout — tmux-style panes (supersedes UI-3 tabs) — ✅
+
+The tabbed surface model (UI-3) is replaced by a **tmux-style layout**: no tabs,
+one surface per pane. Landed on `main` (not pushed) in three commits:
+
+- `656ce2a` Replace tabbed surfaces with a tmux-style pane layout
+- `ad9847c` Close a terminal surface when its process exits
+- `6b0dbab` Fix blank pane on split collapse from shared NSView host
+
+**Model.** `LayoutNode` is now `split | leaf(Surface)` (no `tabGroup`); each leaf
+holds one surface. A hand-written `LayoutNode` `Codable` migrates persisted
+`tabGroup` sessions (N surfaces → even horizontal split of N leaves).
+`LayoutTree` keeps `split`/`closeSurface`/`mapSurface`/`surfaceIDs`;
+`insertTab`/`activate` are removed. `GitDiff` gained `insertions`/`deletions`.
+
+**Rendering.** Leaves render via `SurfaceHostView` (no tab bar; `TabBarView`
+deleted). Right-click on a pane opens the pane menu: Split up/down/left/right
+(each creates a terminal), Copy/Paste, Close pane. Panes tile with the native
+split-view divider only (no per-pane chrome).
+
+**Chrome.** The native window toolbar (with the native sidebar toggle) shows the
+branch-icon title + worktree path, the `+ins −del` diff summary
+(`AppModel.diffSummary` via `computeDiff`), and side-by-side new-terminal /
+new-browser buttons (both split right). "Add Space" stays sidebar-side. Sidebar
+rows show a neutral branch icon, a full-width todo progress bar with the current
+task, and a notification bubble; Spaces stay collapsible; the per-Space "+" adds a
+linked workspace.
+
+**Close-on-exit.** libghostty `close_surface_cb` (Ctrl-D / `exit`) is wired via
+`GhosttySurfaceView.onClose` → `AppModel.applyCloseSurface`; closing the last pane
+closes the workspace non-destructively. The callback defers to the next runloop
+turn (like `wakeup_cb`) to avoid re-entering the runtime mid-tick.
+
+**Bug fixed.** On a split→leaf collapse a stale SwiftUI host stole the survivor's
+shared `NSView` into a container about to leave the window, blanking the pane.
+`PersistentNSViewHost` now runs a next-runloop, window-guarded reconcile so only
+the host whose container stays in the window keeps the view. See the
+`persistent-nsview-host-sharing` project-memory note.
+
+**Verified** via the `casper debug` channel + screenshots on a real desktop:
+`tabGroup`→`leaf` session migration, continuous split panes with no tab bar,
+terminal + browser panes side by side, sidebar progress/notification, the live
+diff summary, and close-on-exit collapsing two panes to one (the survivor stays
+rendered). `swift test` → 259 passing.
+
+**Follow-ups.** (1) Browser panes: WebKit consumes the right-click, so the Casper
+split menu does not yet surface over live web content (the native menu is
+suppressed). (2) The toolbar diff summary uses working-tree-vs-HEAD; the Space
+branch-vs-merge-base `+/−` summary (Space §6) is still open. (3) A broad live GUI
+pass on the new chrome (context-menu split actions, toolbar buttons) beyond the
+debug channel.
 
 ## Developer tooling (`#if DEBUG`)
 

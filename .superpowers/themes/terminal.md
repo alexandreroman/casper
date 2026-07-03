@@ -49,12 +49,14 @@ layer's `contentsScale` to the window backing scale — see
 
 ## Remaining (for CasperUI)
 
-- **Splits/tabs layout composition — ✅ done (CasperUI UI-3).** The decoded
-  `newSplit`/`newTab`/`closeTab` actions are composed into a recursive
+- **Splits/tabs layout composition — ✅ done (CasperUI UI-3), now tmux-style.**
+  The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a recursive
   `LayoutNode` tree by CasperUI's `LayoutActionHandler` (installed on
-  `GhosttyRuntime.actionHandler`) and rendered as native split views + tab bars;
-  the surface `id` + first-responder focus callback added here feed the focused
-  target. See `app-ui.md`.
+  `GhosttyRuntime.actionHandler`). **Tabs are gone**: `LayoutNode` is now
+  `split | leaf`, rendered as native split views only (no tab bar); `newTab` maps
+  to a right split. `close_surface_cb` is wired (Ctrl-D / `exit` closes the pane
+  via `GhosttySurfaceView.onClose`). See `../status.md` → "Surface layout —
+  tmux-style panes".
 - `flagsChanged` press/release semantics and scroll precision/momentum.
 - **Clipboard paste confirmation** — `write_clipboard_cb`'s `confirm` flag is not
   gated (v1 auto-confirm); honor it once a confirmation UI exists so untrusted
