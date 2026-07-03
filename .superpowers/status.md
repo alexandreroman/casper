@@ -96,9 +96,11 @@ whole Space, leaving worktrees/branches on disk). Persistence is a clean break
 `+/−` diff summary is deferred to UI-5.
 
 **UI-3** is done: a workspace renders its `LayoutNode` tree recursively — splits
-as native `HSplitView`/`VSplitView`; a tab group renders only its active surface,
-with inactive surfaces kept alive in a persistent cache (PTYs running) and
-re-attached on re-selection (rendering only the active surface avoids overlapping
+as native `HSplitView`/`VSplitView`; a tab group renders only its active surface
+(each tab has a hover-revealed `×` that closes that surface by `Surface.id`,
+preserving the active tab when a background tab is closed), with inactive
+surfaces kept alive in a persistent cache (PTYs running) and re-attached on
+re-selection (rendering only the active surface avoids overlapping
 `CAMetalLayer` terminals that ignore SwiftUI opacity). Pure `LayoutTree` operations
 (`insertTab`/`split`/`closeSurface`) live in CasperCore; libghostty
 `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` (installed on
