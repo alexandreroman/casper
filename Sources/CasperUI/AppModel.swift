@@ -510,6 +510,21 @@ final class AppModel {
         persist()
     }
 
+    /// Persist the inspector panel's width for a workspace. Called from the panel's
+    /// live width measurement as the user drags the divider; clamps to the allowed
+    /// range and no-ops when the (rounded) width is unchanged so a drag does not
+    /// thrash the store. Uses the debounced `scheduleSave()` since it fires rapidly
+    /// during a resize.
+    func setInspectorWidth(_ width: CGFloat, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        let clamped = min(max(Double(width), InspectorState.minWidth), InspectorState.maxWidth)
+        // Round to whole points: sub-point layout jitter must not trigger saves.
+        guard clamped.rounded() != spaces[at.space].workspaces[at.workspace].inspector.width.rounded()
+        else { return }
+        spaces[at.space].workspaces[at.workspace].inspector.width = clamped
+        scheduleSave()
+    }
+
     /// Drop cached views and browser coordinators for the given surface ids
     /// (their PTYs or `WKWebView`s are freed on deinit).
     private func discardSurfaceViews(_ ids: [UUID]) {

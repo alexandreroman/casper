@@ -559,6 +559,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(saves, 2)
     }
 
+    func testSetInspectorWidthClampsAndPersistsPerWorkspace() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let wsID = model.spaces[0].workspaces[0].id
+
+        model.setInspectorWidth(500, for: wsID)
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.width, 500)
+
+        model.setInspectorWidth(10_000, for: wsID)  // above max → clamped
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.width, InspectorState.maxWidth)
+
+        model.setInspectorWidth(10, for: wsID)  // below min → clamped
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.width, InspectorState.minWidth)
+    }
+
     func testSetBrowserURLWritesBackToInspectorBrowserWhenNotInLayout() {
         let (model, _) = modelWithOnePlainWorkspace()
         let inspectorBrowserID = model.spaces[0].workspaces[0].inspector.browser.id

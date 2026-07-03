@@ -11,10 +11,6 @@ struct WorkspaceDetailView: View {
     /// the selected workspace changes (see the `.task` below).
     @State private var diff: (insertions: Int, deletions: Int)?
 
-    private static let minInspectorWidth: CGFloat = 240
-    private static let idealInspectorWidth: CGFloat = 360
-    private static let maxInspectorWidth: CGFloat = 720
-
     var body: some View {
         VStack(spacing: 0) {
             Divider()
@@ -23,10 +19,12 @@ struct WorkspaceDetailView: View {
         }
         .inspector(isPresented: inspectorPresented) {
             InspectorPanel(model: model, workspace: workspace)
+                // `ideal` seeds the INITIAL column width only; feeding the
+                // per-workspace stored width restores it on a fresh launch.
                 .inspectorColumnWidth(
-                    min: Self.minInspectorWidth,
-                    ideal: Self.idealInspectorWidth,
-                    max: Self.maxInspectorWidth)
+                    min: InspectorState.minWidth,
+                    ideal: workspace.inspector.width,
+                    max: InspectorState.maxWidth)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) { leadingButtons }.flatToolbarItem()

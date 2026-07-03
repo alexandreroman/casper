@@ -127,6 +127,25 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded, ws)
     }
 
+    func testInspectorStateLegacyDecodeWithoutWidthDefaultsIt() throws {
+        // A `session.json` written before the panel width was persisted has an
+        // `inspector` object with no `width` key; decoding must fall back to the
+        // default width rather than throw on the missing key.
+        let inspector = InspectorState(
+            collapsed: false, tab: .browser,
+            browser: Surface(kind: .browser(url: URL(string: "http://localhost:5173")!)),
+            width: 512)
+        let data = try JSONEncoder().encode(inspector)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "width")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(InspectorState.self, from: legacyData)
+        XCTAssertEqual(decoded.width, InspectorState.defaultWidth)
+        XCTAssertFalse(decoded.collapsed)  // other fields still decode normally
+        XCTAssertEqual(decoded.tab, .browser)
+    }
+
     func testWorkspaceLegacyDecodeWithoutInspectorDefaultsIt() throws {
         // A `session.json` written before the inspector existed has no `inspector`
         // key; decoding it must fall back to a default (collapsed) InspectorState.

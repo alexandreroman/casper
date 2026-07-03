@@ -122,18 +122,49 @@ public enum InspectorTab: String, Codable, Sendable {
 /// browser reuses `AppModel`'s surface-view and coordinator caches, keyed by a
 /// stable `Surface.id` that survives workspace switches and collapse/expand.
 public struct InspectorState: Codable, Equatable, Sendable {
+    /// Bounds for the user-resizable panel width, in points. Single source of
+    /// truth shared by the SwiftUI `.inspectorColumnWidth(...)` call and the
+    /// model's clamping, so the two never drift apart.
+    public static let minWidth: Double = 240
+    public static let defaultWidth: Double = 360
+    public static let maxWidth: Double = 720
+
     public var collapsed: Bool
     public var tab: InspectorTab
     public var browser: Surface
+    public var width: Double
 
     public init(
         collapsed: Bool = true,
         tab: InspectorTab = .diff,
-        browser: Surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
+        browser: Surface = Surface(kind: .browser(url: URL(string: "about:blank")!)),
+        width: Double = InspectorState.defaultWidth
     ) {
         self.collapsed = collapsed
         self.tab = tab
         self.browser = browser
+        self.width = width
+    }
+
+    // Full case set is required once `init(from:)` is hand-rolled; case names
+    // match the property names so the synthesized `encode(to:)` keeps the same
+    // on-disk keys.
+    private enum CodingKeys: String, CodingKey {
+        case collapsed, tab, browser, width
+    }
+
+    /// Decodes every current field normally and defaults `width` when it's
+    /// absent, so legacy `session.json` files (written before the panel width
+    /// was persisted) load with the default width. `encode(to:)` stays
+    /// synthesized, keeping the on-disk shape stable and forward-writing the
+    /// new field.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.collapsed = try container.decode(Bool.self, forKey: .collapsed)
+        self.tab = try container.decode(InspectorTab.self, forKey: .tab)
+        self.browser = try container.decode(Surface.self, forKey: .browser)
+        self.width = try container.decodeIfPresent(Double.self, forKey: .width)
+            ?? Self.defaultWidth
     }
 }
 

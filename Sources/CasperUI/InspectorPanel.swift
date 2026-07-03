@@ -13,27 +13,39 @@ struct InspectorPanel: View {
     let workspace: Workspace
 
     var body: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(height: 2)
-                .padding(.top, -1)
-                .padding(.leading, 1)
-            Picker("View", selection: tabSelection) {
-                Text("Browser").tag(InspectorTab.browser)
-                Text("Diff").tag(InspectorTab.diff)
+        // SwiftUI's native inspector exposes no binding for the user-resized
+        // width, and its PreferenceKey propagation across the AppKit-hosted
+        // NSSplitView is unreliable (it only ever delivers the default value).
+        // So the panel fills a root GeometryReader and reports `proxy.size.width`
+        // — which equals the inspector column width — via `onChange`, letting the
+        // model clamp and debounce the persist. `onGeometryChange` would be
+        // simpler but is macOS 15+; this reads the proxy directly on macOS 14.
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 2)
+                    .padding(.top, -1)
+                    .padding(.leading, 1)
+                Picker("View", selection: tabSelection) {
+                    Text("Browser").tag(InspectorTab.browser)
+                    Text("Diff").tag(InspectorTab.diff)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                Divider()
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: proxy.size.width) { _, width in
+                model.setInspectorWidth(width, for: workspace.id)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder private var content: some View {

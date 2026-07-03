@@ -13,7 +13,13 @@ struct RootView: View {
                 .toolbar(removing: .sidebarToggle)
         } detail: {
             if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
+                // Give the detail a per-workspace identity so SwiftUI recreates the
+                // `.inspector` on a workspace switch. Otherwise SwiftUI retains a single
+                // scene-level inspector width and carries it across workspaces; a fresh
+                // identity forces the column width to re-seed from this workspace's
+                // persisted `inspector.width`.
                 WorkspaceDetailView(model: model, workspace: workspace, columnVisibility: $columnVisibility)
+                    .id(id)
             } else {
                 EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
             }
