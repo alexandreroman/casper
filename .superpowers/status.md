@@ -77,11 +77,13 @@ allowed) and one live terminal per workspace; and all startup wiring is landed
 session persistence, `#if DEBUG` debug bridge). Release gating verified (no debug
 symbols in `make release`).
 
+UI-1 is verified live on a real desktop session (the headless sandbox cannot
+materialize the SwiftUI detail `NSHostingView`, so live checks require a real
+window server).
+
 Remaining CasperUI sub-projects: **UI-2** multi-workspace via Git worktrees +
 Space grouping; **UI-3** recursive splits/tabs layout; **UI-4** `WKWebView`
-browser; **UI-5** diff viewer (needs `git_diff`). Live GUI/debug-harness
-verification of UI-1 needs a real desktop session (the headless CI sandbox cannot
-materialize the SwiftUI detail `NSHostingView`).
+browser; **UI-5** diff viewer (needs `git_diff`).
 
 ## Developer tooling (`#if DEBUG`)
 
