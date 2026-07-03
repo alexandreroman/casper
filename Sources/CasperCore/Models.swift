@@ -112,6 +112,31 @@ public enum WorkspaceKind: String, Codable, Sendable {
     case primary, linked
 }
 
+public enum InspectorTab: String, Codable, Sendable {
+    case browser, diff
+}
+
+/// Per-workspace state for the right inspector panel: whether it's collapsed,
+/// which tab is active, and the dedicated browser `Surface` (invariant: its
+/// `kind` is `.browser`). A full `Surface` — not just a URL — so the panel
+/// browser reuses `AppModel`'s surface-view and coordinator caches, keyed by a
+/// stable `Surface.id` that survives workspace switches and collapse/expand.
+public struct InspectorState: Codable, Equatable, Sendable {
+    public var collapsed: Bool
+    public var tab: InspectorTab
+    public var browser: Surface
+
+    public init(
+        collapsed: Bool = true,
+        tab: InspectorTab = .diff,
+        browser: Surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
+    ) {
+        self.collapsed = collapsed
+        self.tab = tab
+        self.browser = browser
+    }
+}
+
 public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
@@ -124,6 +149,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var layout: LayoutNode
     public var kind: WorkspaceKind
     public var baseBranch: String?
+    public var inspector: InspectorState
 
     public init(
         id: UUID = UUID(),
@@ -136,7 +162,8 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         portBase: Int,
         layout: LayoutNode,
         kind: WorkspaceKind = .primary,
-        baseBranch: String? = nil
+        baseBranch: String? = nil,
+        inspector: InspectorState = InspectorState()
     ) {
         self.id = id
         self.name = name
@@ -149,6 +176,37 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.layout = layout
         self.kind = kind
         self.baseBranch = baseBranch
+        self.inspector = inspector
+    }
+
+    // Full case set is required once `init(from:)` is hand-rolled; case names
+    // match the property names so the synthesized `encode(to:)` keeps the same
+    // on-disk keys.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, worktreePath, branch, agentState, todos
+        case pendingNotification, portBase, layout, kind, baseBranch, inspector
+    }
+
+    /// Decodes every current field normally and defaults `inspector` when it's
+    /// absent, so legacy `session.json` files (written before the inspector
+    /// existed) load with a collapsed, default inspector. `encode(to:)` stays
+    /// synthesized, keeping the on-disk shape stable and forward-writing the
+    /// new field.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.worktreePath = try container.decode(String.self, forKey: .worktreePath)
+        self.branch = try container.decode(String.self, forKey: .branch)
+        self.agentState = try container.decode(AgentState.self, forKey: .agentState)
+        self.todos = try container.decode([Todo].self, forKey: .todos)
+        self.pendingNotification = try container.decode(Bool.self, forKey: .pendingNotification)
+        self.portBase = try container.decode(Int.self, forKey: .portBase)
+        self.layout = try container.decode(LayoutNode.self, forKey: .layout)
+        self.kind = try container.decode(WorkspaceKind.self, forKey: .kind)
+        self.baseBranch = try container.decodeIfPresent(String.self, forKey: .baseBranch)
+        self.inspector = try container.decodeIfPresent(InspectorState.self, forKey: .inspector)
+            ?? InspectorState()
     }
 }
 

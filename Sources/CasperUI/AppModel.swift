@@ -404,6 +404,7 @@ final class AppModel {
         applyNewTerminal(anchor: anchor)
     }
 
+    // Retained for coexistence; no longer bound to a visible toolbar button.
     /// Toolbar "+ browser": add a browser to the selected workspace.
     func newBrowserInSelectedWorkspace() {
         guard let anchor = anchorForSelectedWorkspace() else { return }
@@ -435,14 +436,50 @@ final class AppModel {
     }
 
     /// Rewrite a browser surface's persisted URL (address-bar navigation).
+    /// Searches the layout trees first; when the surface isn't in any layout, it
+    /// falls back to each workspace's inspector browser, which lives outside the
+    /// tree.
     func setBrowserURL(_ surfaceID: UUID, _ url: URL) {
-        guard let at = locateSurface(surfaceID) else { return }
-        let updated = LayoutTree.mapSurface(
-            spaces[at.space].workspaces[at.workspace].layout, id: surfaceID) { s in
-                if case .browser = s.kind { return Surface(id: s.id, kind: .browser(url: url)) }
-                return s
+        if let at = locateSurface(surfaceID) {
+            let updated = LayoutTree.mapSurface(
+                spaces[at.space].workspaces[at.workspace].layout, id: surfaceID) { s in
+                    if case .browser = s.kind { return Surface(id: s.id, kind: .browser(url: url)) }
+                    return s
+                }
+            spaces[at.space].workspaces[at.workspace].layout = updated
+            persist()
+            return
+        }
+        for si in spaces.indices {
+            for wi in spaces[si].workspaces.indices
+            where spaces[si].workspaces[wi].inspector.browser.id == surfaceID {
+                spaces[si].workspaces[wi].inspector.browser =
+                    Surface(id: surfaceID, kind: .browser(url: url))
+                persist()
+                return
             }
-        spaces[at.space].workspaces[at.workspace].layout = updated
+        }
+    }
+
+    /// Flip the inspector panel's collapsed state for a workspace (toolbar toggle).
+    func toggleInspectorCollapsed(for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].inspector.collapsed.toggle()
+        persist()
+    }
+
+    /// Select the inspector's active tab, expanding the panel if it was collapsed.
+    func setInspectorTab(_ tab: InspectorTab, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].inspector.tab = tab
+        spaces[at.space].workspaces[at.workspace].inspector.collapsed = false
+        persist()
+    }
+
+    /// Explicitly set the inspector's collapsed state (the panel's collapse button).
+    func setInspectorCollapsed(_ collapsed: Bool, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].inspector.collapsed = collapsed
         persist()
     }
 

@@ -501,6 +501,63 @@ final class AppModelTests: XCTestCase {
             == "http://localhost:3000")
     }
 
+    // MARK: - Right inspector panel
+
+    func testSetInspectorTabSelectsTabExpandsAndPersists() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let wsID = model.spaces[0].workspaces[0].id
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+        model.setInspectorTab(.browser, for: wsID)
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.tab, .browser)
+        XCTAssertFalse(model.spaces[0].workspaces[0].inspector.collapsed)
+        XCTAssertEqual(saves, 1)
+    }
+
+    func testToggleInspectorCollapsedFlipsAndPersists() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let wsID = model.spaces[0].workspaces[0].id
+        let before = model.spaces[0].workspaces[0].inspector.collapsed
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+        model.toggleInspectorCollapsed(for: wsID)
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.collapsed, !before)
+        XCTAssertEqual(saves, 1)
+    }
+
+    func testSetInspectorCollapsedSetsAndPersists() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let wsID = model.spaces[0].workspaces[0].id
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+        model.setInspectorCollapsed(false, for: wsID)
+        XCTAssertFalse(model.spaces[0].workspaces[0].inspector.collapsed)
+        model.setInspectorCollapsed(true, for: wsID)
+        XCTAssertTrue(model.spaces[0].workspaces[0].inspector.collapsed)
+        XCTAssertEqual(saves, 2)
+    }
+
+    func testSetBrowserURLWritesBackToInspectorBrowserWhenNotInLayout() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let inspectorBrowserID = model.spaces[0].workspaces[0].inspector.browser.id
+        let layoutBefore = model.spaces[0].workspaces[0].layout
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        let url = URL(string: "http://localhost:8080")!
+        model.setBrowserURL(inspectorBrowserID, url)  // id lives outside the layout tree
+
+        guard case .browser(let newURL) =
+            model.spaces[0].workspaces[0].inspector.browser.kind else {
+            return XCTFail("inspector browser must stay a browser surface")
+        }
+        XCTAssertEqual(newURL, url)
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.browser.id, inspectorBrowserID)
+        // The layout tree is untouched: the write-back hit the inspector browser only.
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+        XCTAssertEqual(saves, 1)
+    }
+
     // MARK: - Diff surfaces (UI-5 Task 1)
 
     func testComputeDiffReturnsChangesForDirtyWorktree() throws {

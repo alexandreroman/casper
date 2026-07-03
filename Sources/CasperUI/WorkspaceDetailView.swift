@@ -1,3 +1,4 @@
+import AppKit
 import CasperCore
 import CasperGhostty
 import SwiftUI
@@ -11,9 +12,31 @@ struct WorkspaceDetailView: View {
     /// the selected workspace changes (see the `.task` below).
     @State private var diff: (insertions: Int, deletions: Int)?
 
+    private static let defaultInspectorWidth: CGFloat = 360
+    private static let minInspectorWidth: CGFloat = 240
+    private static let maxInspectorWidth: CGFloat = 720
+
+    /// User-chosen inspector width. Held in view `@State` so it survives the
+    /// `if !collapsed` toggle within the same workspace view.
+    @State private var inspectorWidth: CGFloat = WorkspaceDetailView.defaultInspectorWidth
+    /// Width captured at the start of a drag, so the panel resizes relative to
+    /// where it was when the drag began rather than accumulating per event.
+    @State private var widthBeforeDrag: CGFloat?
+
     var body: some View {
-        LayoutNodeView(model: model, workspace: workspace, node: workspace.layout)
-            .toolbar {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 0) {
+                LayoutNodeView(model: model, workspace: workspace, node: workspace.layout)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if !workspace.inspector.collapsed {
+                    resizeDivider
+                    InspectorPanel(model: model, workspace: workspace)
+                        .frame(width: inspectorWidth)
+                }
+            }
+        }
+        .toolbar {
                 ToolbarItem(placement: .navigation) { leadingButtons }.flatToolbarItem()
                 ToolbarItem(placement: .navigation) { title }.flatToolbarItem()
                 if #available(macOS 26.0, *) {
@@ -23,6 +46,33 @@ struct WorkspaceDetailView: View {
             }
             .task(id: model.selectedWorkspaceID) {
                 diff = model.diffSummary(for: workspace)
+            }
+    }
+
+    /// System separator with a transparent 10pt hit area straddling it so the
+    /// user can drag to resize the inspector. Dragging left widens the panel.
+    private var resizeDivider: some View {
+        Divider()
+            .overlay {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 10)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let base = widthBeforeDrag ?? inspectorWidth
+                                if widthBeforeDrag == nil { widthBeforeDrag = base }
+                                let proposed = base - value.translation.width
+                                inspectorWidth = min(
+                                    max(proposed, WorkspaceDetailView.minInspectorWidth),
+                                    WorkspaceDetailView.maxInspectorWidth)
+                            }
+                            .onEnded { _ in widthBeforeDrag = nil }
+                    )
             }
     }
 
@@ -42,11 +92,17 @@ struct WorkspaceDetailView: View {
     private var actions: some View {
         HStack(spacing: 6) {
             if let diff {
-                HStack(spacing: 6) {
-                    Text("+\(diff.insertions)").foregroundStyle(.green)
-                    Text("−\(diff.deletions)").foregroundStyle(.red)
+                Button {
+                    model.setInspectorTab(.diff, for: workspace.id)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("+\(diff.insertions)").foregroundStyle(.green)
+                        Text("−\(diff.deletions)").foregroundStyle(.red)
+                    }
+                    .font(.callout.monospacedDigit())
                 }
-                .font(.callout.monospacedDigit())
+                .buttonStyle(.plain)
+                .help("Show diff")
             }
             Button {
                 model.newTerminalInSelectedWorkspace()
@@ -55,11 +111,12 @@ struct WorkspaceDetailView: View {
             }
             .help("New terminal")
             Button {
-                model.newBrowserInSelectedWorkspace()
+                model.toggleInspectorCollapsed(for: workspace.id)
             } label: {
-                Octicon(.globe)
+                Image(systemName: "sidebar.right")
             }
-            .help("New browser")
+            .tint(workspace.inspector.collapsed ? nil : .accentColor)
+            .help("Toggle panel")
         }
     }
 

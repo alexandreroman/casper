@@ -32,6 +32,12 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   via `AttributedString`. Read-only in v1, no external highlighter.
 - **Browser** — a `WKWebView` surface (address bar, reload), aimed at previewing a
   `localhost:PORT` app started by the agent. No Chromium.
+- **Inspector panel** — a collapsible right-side panel on the workspace detail
+  view with two tabs (Browser | Diff), per workspace and persisted
+  (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
+  replacing them; the tmux `.browser`/`.diff` paths coexist. See `../status.md` →
+  "Right inspector panel" for the as-built model, chrome, and title-bar changes
+  (globe button removed, panel toggle added, `+/−` summary opens the Diff tab).
 - **Wiring** — connects `HookSocketServer.onMessage` → `AgentStateStore`, installs
   hooks at startup, injects the bundle exec dir into surface env, and runs the
   heartbeat timer (all detailed in `cli-agents.md`).

@@ -167,8 +167,14 @@ holds one surface. A hand-written `LayoutNode` `Codable` migrates persisted
 
 **Rendering.** Leaves render via `SurfaceHostView` (no tab bar; `TabBarView`
 deleted). Right-click on a pane opens the pane menu: Split up/down/left/right
-(each creates a terminal), Copy/Paste, Close pane. Panes tile with the native
-split-view divider only (no per-pane chrome).
+(each creates a terminal), Copy/Paste, Close pane. Splits render via a custom
+`SplitContainerView` (replacing native `HSplitView`/`VSplitView`) that separates
+panes with system `Divider()`s — so every separator in the app (sidebar/content
+edge, inspector panel, inter-pane) shares one color; the native split divider was
+darker (near-black) and stood out. Panes are laid out by fraction along the axis
+with draggable `Divider()` handles (left-right / up-down resize cursor); fractions
+live in local `@State` (resize is not persisted, matching v1). Leaves keep
+explicit non-overlapping frames so the Metal-backed terminals never occlude.
 
 **Chrome.** The native window toolbar (with the native sidebar toggle) shows the
 branch-icon title + worktree path, the `+ins −del` diff summary
@@ -201,6 +207,50 @@ suppressed). (2) The toolbar diff summary uses working-tree-vs-HEAD; the Space
 branch-vs-merge-base `+/−` summary (Space §6) is still open. (3) A broad live GUI
 pass on the new chrome (context-menu split actions, toolbar buttons) beyond the
 debug channel.
+
+## Right inspector panel — ✅ (live check pending)
+
+A collapsible right-side panel on the workspace detail view exposes a **browser**
+and the **Git diff** as two tabs, per workspace — an alternative to placing them
+in a tmux pane. Coexists with the `.browser`/`.diff` surface paths (those stay;
+only the title-bar globe "New browser" button is removed).
+
+**Model.** `Workspace` gained `inspector: InspectorState` (`collapsed`, `tab:
+InspectorTab{browser,diff}`, and a dedicated `browser: Surface`). A hand-written
+`Workspace.init(from:)` decodes `inspector` with `decodeIfPresent ?? .init()` so
+pre-existing `session.json` files load with a default (collapsed, Diff tab,
+`about:blank` browser); `encode` stays synthesized. State is per-workspace and
+persisted.
+
+**UI.** `WorkspaceDetailView` lays the detail out as an `HStack`: the tmux
+`LayoutNodeView` (`maxWidth: .infinity`), a `Divider()` (system separator, matching
+the sidebar/content edge), then `InspectorPanel` at a state-driven `width` (default 360,
+clamped 240–720) shown only when expanded. The `Divider()` doubles as a drag handle
+(transparent 10 pt hit area, left-right resize cursor) that resizes the panel; the
+width lives in view `@State`, so it is **preserved across collapse/expand** and,
+because the left region stays `maxWidth: .infinity`, **unaffected by adding
+terminals**. It is a side region, not an `HSplitView` pane (which would reset the
+width on re-add). Width is not yet persisted across workspace switches or restarts. `InspectorPanel` is a native segmented Browser|Diff
+selector pinned to the top over **full-bleed** content (no insets — a native
+`TabView`'s mandatory content inset was rejected), reusing `BrowserSurfaceView` (on
+`inspector.browser`) and `DiffSurfaceView` unchanged. The panel is collapsed only
+via the title-bar toggle (no in-panel collapse button). The panel browser's
+`WKWebView` survives collapse/expand and workspace switches via the existing
+surface-view cache (stable `Surface.id`); its address-bar URL write-back reaches
+`inspector.browser` through an extended `setBrowserURL` (fall-through on a
+`locateSurface` miss). Diff is on-demand (open + refresh).
+
+**Chrome.** The title bar drops the globe "New browser" button and gains a panel
+toggle (`sidebar.right`, tinted when expanded); the `+ins −del` diff summary is now
+a button that expands the panel on the Diff tab. "New terminal" is unchanged.
+
+**Tests.** `swift test` → 266 passing, incl. `InspectorState` defaults, `Workspace`
+round-trip with a non-default inspector, legacy-decode without the `inspector` key,
+the three `AppModel` inspector mutators, and the inspector-browser URL write-back.
+
+**Follow-up.** Live GUI pass (`debug-casper`): panel toggle, tab switch, browser
+survival across collapse/expand and workspace switch, and confirm a terminal pane
+is not blanked when toggling the panel (see `persistent-nsview-host-sharing`).
 
 ## Developer tooling (`#if DEBUG`)
 
