@@ -8,7 +8,12 @@ struct SidebarView: View {
     @State private var expanded: [UUID: Bool] = [:]
 
     var body: some View {
-        List(selection: $model.selectedWorkspaceID) {
+        // Route selection through `selectWorkspace` (not a plain `$model` binding)
+        // so picking a workspace also moves keyboard focus to its top-left terminal.
+        List(selection: Binding(
+            get: { model.selectedWorkspaceID },
+            set: { model.selectWorkspace($0) }
+        )) {
             ForEach(model.spaces) { space in
                 Section(isExpanded: expansion(space.id)) {
                     ForEach(space.workspaces) { workspace in

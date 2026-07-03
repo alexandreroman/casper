@@ -13,6 +13,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let configuration: GhosttySurfaceConfiguration
     private let surfaceID: UUID
     var onFocus: (UUID) -> Void
+    // Fired once this view is live in a window (see `viewDidMoveToWindow`). Lets
+    // the host claim AppKit first responder for the surface it already considers
+    // focused, which a SwiftUI `.onAppear` cannot do because the view may not yet
+    // be attached to a window when `.onAppear` runs.
+    var onAttach: (UUID) -> Void
     var onClose: (UUID) -> Void
     // Internal (not private): the clipboard callback trampolines in
     // `GhosttyRuntime` recover this view from libghostty's userdata and need
@@ -28,10 +33,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     public init(
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
         surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
+        onAttach: @escaping (UUID) -> Void = { _ in },
         onClose: @escaping (UUID) -> Void = { _ in }
     ) {
         self.surfaceID = surfaceID
         self.onFocus = onFocus
+        self.onAttach = onAttach
         self.onClose = onClose
         self.runtime = runtime
         self.configuration = configuration
@@ -55,20 +62,28 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // sized host). Idempotent.
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard surface == nil, window != nil else { return }
-        let nsview = Unmanaged.passUnretained(self).toOpaque()
-        do {
-            // userdata == nsview: libghostty hands this pointer back verbatim to
-            // the clipboard callbacks, letting them recover this view.
-            surface = try GhosttySurface(
-                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
-            syncLayerContentsScale()
-            pushContentScale()
-            pushSize()
-            pushDisplayID()
-        } catch {
-            CasperLog.ghostty.error("surface creation failed: \(String(describing: error), privacy: .public)")
+        guard window != nil else { return }
+        // Create the surface on first attach only; a later re-parent keeps it.
+        if surface == nil {
+            let nsview = Unmanaged.passUnretained(self).toOpaque()
+            do {
+                // userdata == nsview: libghostty hands this pointer back verbatim to
+                // the clipboard callbacks, letting them recover this view.
+                surface = try GhosttySurface(
+                    runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+                syncLayerContentsScale()
+                pushContentScale()
+                pushSize()
+                pushDisplayID()
+            } catch {
+                CasperLog.ghostty.error("surface creation failed: \(String(describing: error), privacy: .public)")
+            }
         }
+        // Now that the view is live in a window, let the host claim first responder
+        // for it if the model already considers this surface focused. Runs on every
+        // attach (not just the first), so a workspace switch that re-mounts this view
+        // still lands keyboard focus on the terminal.
+        onAttach(surfaceID)
     }
 
     // MARK: Debug accessors (compiled only into debug builds)

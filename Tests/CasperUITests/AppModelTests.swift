@@ -82,6 +82,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.focusedSurfaceID, surface.id)
     }
 
+    func testSelectWorkspaceUpdatesFocusedSurfaceToFirstSurfaceOfNewWorkspace() {
+        let surface1 = Surface(kind: .terminal(cwd: "/a", command: nil))
+        let surface2 = Surface(kind: .terminal(cwd: "/b", command: nil))
+        let existing = Session(spaces: [
+            Space(name: "s", folderPath: "/s", isGitRepo: false, workspaces: [
+                Workspace(name: "a", worktreePath: "/a", branch: "",
+                          portBase: 40000, layout: .leaf(surface1)),
+                Workspace(name: "b", worktreePath: "/b", branch: "",
+                          portBase: 40010, layout: .leaf(surface2)),
+            ]),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+        // Restore selects the first workspace and focuses its surface.
+        XCTAssertEqual(model.focusedSurfaceID, surface1.id)
+
+        let workspace2 = existing.spaces[0].workspaces[1].id
+        model.selectWorkspace(workspace2)
+        XCTAssertEqual(model.selectedWorkspaceID, workspace2)
+        XCTAssertEqual(model.focusedSurfaceID, surface2.id)
+    }
+
     func testAddAfterRestoreDoesNotReuseRestoredPortBlock() {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [

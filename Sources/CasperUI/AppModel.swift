@@ -157,7 +157,7 @@ final class AppModel {
         let space = WorkspaceFactory.makeSpace(
             folderURL: folderURL, probe: probe, portBase: portBase)
         spaces.append(space)
-        selectedWorkspaceID = space.workspaces.first?.id
+        selectWorkspace(space.workspaces.first?.id)
         persist()
     }
 
@@ -170,7 +170,7 @@ final class AppModel {
             discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
-            selectedWorkspaceID = spaces.first?.workspaces.first?.id
+            selectWorkspace(spaces.first?.workspaces.first?.id)
         }
         persist()
     }
@@ -214,7 +214,7 @@ final class AppModel {
             name: branch, worktreePath: worktreePath, branch: branch,
             baseBranch: base, portBase: portBase)
         spaces[si].workspaces.append(ws)
-        selectedWorkspaceID = ws.id
+        selectWorkspace(ws.id)
         persist()
         return true
     }
@@ -229,9 +229,24 @@ final class AppModel {
         lastSeen[ws.id] = nil
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         if selectedWorkspaceID == id {
-            selectedWorkspaceID = spaces.first?.workspaces.first?.id
+            selectWorkspace(spaces.first?.workspaces.first?.id)
         }
         persist()
+    }
+
+    /// Select a workspace and move focus to its top-left terminal. The sidebar's
+    /// `List(selection:)` and every programmatic selection route through here so a
+    /// switch always relocates keyboard focus, instead of leaving it on the
+    /// previous workspace's surface (or letting AppKit hand it to the inspector's
+    /// URL field). `surfaceIDs(...).first` is the depth-first, top-left surface.
+    /// `focusActiveSurfaceView()` covers the already-attached case; a freshly
+    /// mounted terminal's `onAttach` covers the not-yet-attached case. When `id` is
+    /// nil or resolves to no workspace, only the selection changes.
+    func selectWorkspace(_ id: UUID?) {
+        selectedWorkspaceID = id
+        guard let id, let ws = workspace(id: id) else { return }
+        focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
+        focusActiveSurfaceView()
     }
 
     func focusSurface(_ id: UUID) { focusedSurfaceID = id }
@@ -251,6 +266,17 @@ final class AppModel {
                 window.makeFirstResponder(view)
             }
         }
+    }
+
+    /// Claim AppKit first responder for a surface only when the model already
+    /// treats it as focused. Called from a terminal view's `onAttach` once it is
+    /// live in a window: at cold launch (and after a workspace switch) nothing else
+    /// pushes first responder to the terminal, so AppKit's key-view loop would
+    /// otherwise hand it to the inspector's URL field. The `focusedSurfaceID` guard
+    /// keeps a freshly mounted background surface from stealing focus.
+    private func focusSurfaceViewIfActive(_ id: UUID) {
+        guard id == focusedSurfaceID else { return }
+        focusActiveSurfaceView()
     }
 
     /// The (space, workspace) index pair whose layout contains `surfaceID`.
@@ -357,6 +383,7 @@ final class AppModel {
             configuration: surfaceConfiguration(for: workspace, terminal: surface),
             surfaceID: surface.id,
             onFocus: { [weak self] id in self?.focusSurface(id) },
+            onAttach: { [weak self] id in self?.focusSurfaceViewIfActive(id) },
             onClose: { [weak self] id in self?.applyCloseSurface(id) })
         surfaceViews[surface.id] = view
         return view
