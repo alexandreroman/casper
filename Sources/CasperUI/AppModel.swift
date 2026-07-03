@@ -272,13 +272,21 @@ final class AppModel {
     }
 
     func applyCloseFocusedSurface() {
-        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+        guard let focus = focusedSurfaceID else { return }
+        applyCloseSurface(focus)
+    }
+
+    /// Close the given surface (from a tab-bar close button or the keyboard).
+    /// Preserves the active tab when a background tab is closed; closing the
+    /// last surface closes the workspace non-destructively.
+    func applyCloseSurface(_ surfaceID: UUID) {
+        guard let at = locateSurface(surfaceID) else { return }
         let (layout, newFocus) = LayoutTree.closeSurface(
-            spaces[at.space].workspaces[at.workspace].layout, surface: focus)
+            spaces[at.space].workspaces[at.workspace].layout, surface: surfaceID)
         if let layout {
             spaces[at.space].workspaces[at.workspace].layout = layout
             focusedSurfaceID = newFocus
-            discardSurfaceViews([focus])
+            discardSurfaceViews([surfaceID])
             persist()
             return
         }

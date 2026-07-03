@@ -24,6 +24,7 @@ struct TabGroupView: View {
                 titles: surfaces.enumerated().map { idx, s in label(s, idx) },
                 activeIndex: activeIndex,
                 onSelect: { model.setActiveSurface(surfaces[$0].id) },
+                onClose: { model.applyCloseSurface(surfaces[$0].id) },
                 onNewTerminal: { model.applyNewTab(anchor: surfaces[activeIndex].id) },
                 onNewBrowser: { model.applyNewBrowser(anchor: surfaces[activeIndex].id) },
                 onNewDiff: { model.applyNewDiff(anchor: surfaces[activeIndex].id) })
@@ -72,6 +73,7 @@ struct TabBarView: View {
     let titles: [String]
     let activeIndex: Int
     let onSelect: (Int) -> Void
+    let onClose: (Int) -> Void
     let onNewTerminal: () -> Void
     let onNewBrowser: () -> Void
     let onNewDiff: () -> Void
@@ -79,13 +81,11 @@ struct TabBarView: View {
     var body: some View {
         HStack(spacing: 2) {
             ForEach(Array(titles.enumerated()), id: \.offset) { idx, title in
-                Button(action: { onSelect(idx) }) {
-                    Text(title).font(.caption)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(idx == activeIndex ? Color.accentColor.opacity(0.25) : .clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.plain)
+                TabItem(
+                    title: title,
+                    isActive: idx == activeIndex,
+                    onSelect: { onSelect(idx) },
+                    onClose: { onClose(idx) })
             }
             Menu {
                 Button("New terminal", action: onNewTerminal)
@@ -99,5 +99,37 @@ struct TabBarView: View {
             Spacer()
         }
         .padding(.horizontal, 4).padding(.vertical, 2)
+    }
+}
+
+/// A single tab: its title selects the tab; a close button ("×") is revealed on
+/// hover (and stays visible while the tab is active). The close button is a
+/// distinct control so it never triggers selection.
+private struct TabItem: View {
+    let title: String
+    let isActive: Bool
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: onSelect) {
+                Text(title).font(.caption)
+            }
+            .buttonStyle(.plain)
+
+            if hovering || isActive {
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.caption2).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
+        .background(isActive ? Color.accentColor.opacity(0.25) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .onHover { hovering = $0 }
     }
 }
