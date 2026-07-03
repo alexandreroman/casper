@@ -1,4 +1,3 @@
-import AppKit
 import CasperCore
 import CasperGhostty
 import SwiftUI
@@ -12,72 +11,43 @@ struct WorkspaceDetailView: View {
     /// the selected workspace changes (see the `.task` below).
     @State private var diff: (insertions: Int, deletions: Int)?
 
-    private static let defaultInspectorWidth: CGFloat = 360
     private static let minInspectorWidth: CGFloat = 240
+    private static let idealInspectorWidth: CGFloat = 360
     private static let maxInspectorWidth: CGFloat = 720
-
-    /// User-chosen inspector width. Held in view `@State` so it survives the
-    /// `if !collapsed` toggle within the same workspace view.
-    @State private var inspectorWidth: CGFloat = WorkspaceDetailView.defaultInspectorWidth
-    /// Width captured at the start of a drag, so the panel resizes relative to
-    /// where it was when the drag began rather than accumulating per event.
-    @State private var widthBeforeDrag: CGFloat?
 
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 0) {
-                LayoutNodeView(model: model, workspace: workspace, node: workspace.layout)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if !workspace.inspector.collapsed {
-                    resizeDivider
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    InspectorPanel(model: model, workspace: workspace)
-                        .frame(width: inspectorWidth)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
-            }
-            // Keep the sliding inspector from spilling past the window edge mid-animation.
-            .clipped()
+            LayoutNodeView(model: model, workspace: workspace, node: workspace.layout)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .inspector(isPresented: inspectorPresented) {
+            InspectorPanel(model: model, workspace: workspace)
+                .inspectorColumnWidth(
+                    min: Self.minInspectorWidth,
+                    ideal: Self.idealInspectorWidth,
+                    max: Self.maxInspectorWidth)
         }
         .toolbar {
-                ToolbarItem(placement: .navigation) { leadingButtons }.flatToolbarItem()
-                ToolbarItem(placement: .navigation) { title }.flatToolbarItem()
-                if #available(macOS 26.0, *) {
-                    ToolbarSpacer(.flexible)
-                }
-                ToolbarItem(placement: .primaryAction) { actions }.flatToolbarItem()
+            ToolbarItem(placement: .navigation) { leadingButtons }.flatToolbarItem()
+            ToolbarItem(placement: .navigation) { title }.flatToolbarItem()
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible)
             }
-            .task(id: model.selectedWorkspaceID) {
-                diff = model.diffSummary(for: workspace)
-            }
+            ToolbarItem(placement: .primaryAction) { actions }.flatToolbarItem()
+        }
+        .task(id: model.selectedWorkspaceID) {
+            diff = model.diffSummary(for: workspace)
+        }
     }
 
-    /// System separator with a transparent 10pt hit area straddling it so the
-    /// user can drag to resize the inspector. Dragging left widens the panel.
-    private var resizeDivider: some View {
-        Divider()
-            .overlay {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: 10)
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                    }
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                let base = widthBeforeDrag ?? inspectorWidth
-                                if widthBeforeDrag == nil { widthBeforeDrag = base }
-                                let proposed = base - value.translation.width
-                                inspectorWidth = min(
-                                    max(proposed, WorkspaceDetailView.minInspectorWidth),
-                                    WorkspaceDetailView.maxInspectorWidth)
-                            }
-                            .onEnded { _ in widthBeforeDrag = nil }
-                    )
-            }
+    /// Bridges the workspace's persisted `inspector.collapsed` flag to the native
+    /// inspector's `isPresented` binding (presented == not collapsed).
+    private var inspectorPresented: Binding<Bool> {
+        Binding(
+            get: { !workspace.inspector.collapsed },
+            set: { model.setInspectorCollapsed(!$0, for: workspace.id) }
+        )
     }
 
     private var title: some View {
@@ -94,7 +64,7 @@ struct WorkspaceDetailView: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             if let diff, diff.insertions > 0 || diff.deletions > 0 {
                 Button {
                     model.setInspectorTab(.diff, for: workspace.id)
@@ -113,9 +83,7 @@ struct WorkspaceDetailView: View {
                 .help("Show diff")
             }
             Button {
-                withAnimation(.easeInOut(duration: 0.22)) {
-                    model.toggleInspectorCollapsed(for: workspace.id)
-                }
+                model.toggleInspectorCollapsed(for: workspace.id)
             } label: {
                 Image(systemName: "sidebar.right")
             }

@@ -1,24 +1,32 @@
+import AppKit
 import CasperCore
 import SwiftUI
 
-/// The right-side inspector panel for a workspace: a native segmented
-/// Browser | Diff selector pinned to the top over full-bleed content. The
-/// Browser view reuses `BrowserSurfaceView` on the workspace's dedicated
+/// The right-side inspector panel for a workspace: a top separator continuing
+/// the workspace title bar's line, then a segmented Browser | Diff selector
+/// centred at the top of the panel, over full-bleed content below.
+/// The Browser view reuses `BrowserSurfaceView` on the workspace's dedicated
 /// inspector surface; the Diff view reuses `DiffSurfaceView` for the working
-/// tree vs HEAD. Content fills the panel edge-to-edge below the selector.
-/// Shown by `WorkspaceDetailView` only when the workspace's inspector is expanded.
+/// tree vs HEAD. Shown by `WorkspaceDetailView` only when the inspector is expanded.
 struct InspectorPanel: View {
     let model: AppModel
     let workspace: Workspace
 
     var body: some View {
         VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(height: 2)
+                .padding(.top, -1)
+                .padding(.leading, 1)
             Picker("View", selection: tabSelection) {
                 Text("Browser").tag(InspectorTab.browser)
                 Text("Diff").tag(InspectorTab.diff)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .fixedSize()
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             Divider()
@@ -37,8 +45,8 @@ struct InspectorPanel: View {
         }
     }
 
-    /// Bridges the persisted tab to the segmented selector: writing routes
-    /// through `setInspectorTab`, which also keeps the panel expanded.
+    /// Bridges the persisted inspector tab to the segmented selector; writing
+    /// routes through `setInspectorTab`, which also keeps the panel expanded.
     private var tabSelection: Binding<InspectorTab> {
         Binding(
             get: { workspace.inspector.tab },
