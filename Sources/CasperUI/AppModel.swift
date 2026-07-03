@@ -29,6 +29,14 @@ final class AppModel {
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp.keyWindow != nil }
 
+    /// Re-probe a folder path for Git backing. Injectable for tests.
+    @ObservationIgnored var gitReprobe: (String) -> WorkspaceFactory.GitInfo? = {
+        AppModel.gitProbePath($0)
+    }
+
+    /// Test hook fired after each successful/attempted persist. nil in production.
+    @ObservationIgnored var onPersistForTest: (() -> Void)?
+
     /// Delivers a local notification. Injectable for tests; the default posts a
     /// best-effort `UserNotifications` request (a bare executable without a
     /// bundle id may silently no-op, which is acceptable in dev builds).
@@ -223,6 +231,7 @@ final class AppModel {
         } catch {
             CasperLog.app.error("failed to persist session: \(String(describing: error), privacy: .public)")
         }
+        onPersistForTest?()
     }
 
     func handleHookMessage(_ message: HookMessage, now: Date) {
@@ -251,6 +260,15 @@ final class AppModel {
                 changed = true
             }
         }
+        var promoted = false
+        for si in spaces.indices where !spaces[si].isGitRepo {
+            guard let info = gitReprobe(spaces[si].folderPath) else { continue }
+            spaces[si].isGitRepo = true
+            spaces[si].workspaces[0].branch = info.branch
+            ensureCasperExcluded(folderPath: spaces[si].folderPath)
+            promoted = true
+        }
+        if promoted { persist() }
         if changed { scheduleSave() }
     }
 
@@ -313,5 +331,10 @@ final class AppModel {
         return WorkspaceFactory.GitInfo(
             canonicalPath: URL(fileURLWithPath: workdir).standardizedFileURL.path,
             branch: branch, remoteURL: remote)
+    }
+
+    /// Path variant of `gitProbe` for re-probing an already-open Space.
+    static func gitProbePath(_ path: String) -> WorkspaceFactory.GitInfo? {
+        gitProbe(URL(fileURLWithPath: path))
     }
 }

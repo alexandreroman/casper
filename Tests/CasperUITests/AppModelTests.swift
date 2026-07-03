@@ -311,6 +311,31 @@ final class AppModelTests: XCTestCase {
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         XCTAssertEqual(model.spaces.count, 1)
     }
+
+    // MARK: - Promotion on heartbeat (Task 6)
+
+    func testDegenerateSpaceIsPromotedOnHeartbeat() {
+        let dir = makeTempDir()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        XCTAssertFalse(model.spaces[0].isGitRepo)
+
+        // Simulate `git init` by having the reprobe report a repo now.
+        model.gitReprobe = { _ in
+            WorkspaceFactory.GitInfo(canonicalPath: dir.path, branch: "main", remoteURL: nil)
+        }
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1_000_000))
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+        XCTAssertEqual(model.spaces[0].workspaces[0].branch, "main")
+        XCTAssertEqual(saves, 1)
+
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1_000_001))  // no further change
+        XCTAssertEqual(saves, 1)
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`
