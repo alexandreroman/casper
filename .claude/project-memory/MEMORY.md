@@ -27,3 +27,4 @@
 - [Surface identity](references/surface-identity.md) — every Surface has a unique, stable `Surface.id` invariant across kind/state/UI-location; all UI identity (view cache, `.id`, focus) anchors on it
 - [Observed startup dependencies](references/observed-startup-dependencies.md) — startup-set @Observable props a view gates rendering on must not be @ObservationIgnored; live-verify the restore path
 - [PersistentNSViewHost shared-view collapse gotcha](references/persistent-nsview-host-sharing.md) — one cached NSView per surface; a layout collapse can let a stale host steal it, blanking the survivor — window-guarded deferred reconcile guards it
+- [SwiftUI native inspector width persistence](references/swiftui-inspector-width.md) — inspector column width is scene-level; measure via root GeometryReader+onChange, restore via ideal, re-seed per workspace with .id
