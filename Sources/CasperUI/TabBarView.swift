@@ -2,8 +2,8 @@ import CasperCore
 import CasperGhostty
 import SwiftUI
 
-/// A tab group: an optional tab bar (when >1 surface) over a ZStack of all the
-/// group's surfaces, only the active one visible so inactive PTYs stay alive.
+/// A tab group: an always-visible tab bar over a ZStack of all the group's
+/// surfaces, only the active one visible so inactive PTYs stay alive.
 struct TabGroupView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
@@ -12,14 +12,12 @@ struct TabGroupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if surfaces.count > 1 {
-                TabBarView(
-                    titles: surfaces.enumerated().map { title($1, index: $0) },
-                    activeIndex: activeIndex,
-                    onSelect: { idx in
-                        model.setActiveSurface(surfaces[idx].id)
-                    })
-            }
+            TabBarView(
+                titles: surfaces.enumerated().map { idx, s in label(s, idx) },
+                activeIndex: activeIndex,
+                onSelect: { model.setActiveSurface(surfaces[$0].id) },
+                onNewTerminal: { model.applyNewTab() },
+                onNewBrowser: { model.applyNewBrowser() })
             ZStack {
                 ForEach(Array(surfaces.enumerated()), id: \.element.id) { idx, surface in
                     surfaceView(surface)
@@ -36,20 +34,21 @@ struct TabGroupView: View {
             PersistentNSViewHost(view: view).id(surface.id)
         } else if case .terminal = surface.kind {
             Color.black  // runtime not ready yet
+        } else if case .browser = surface.kind {
+            BrowserSurfaceView(model: model, surface: surface)
         } else {
             ContentUnavailableView(
                 "Unsupported surface", systemImage: "rectangle.dashed",
-                description: Text("Browser and diff surfaces arrive in UI-4/UI-5."))
+                description: Text("Diff surfaces arrive in UI-5."))
         }
     }
 
-    /// A tab's label: terminals get a 1-based ordinal within the group;
-    /// browser/diff surfaces are labeled by kind (they are singletons for now).
-    private func title(_ surface: Surface, index: Int) -> String {
+    /// A tab's label: a 1-based ordinal within the group, indexed by kind.
+    private func label(_ surface: Surface, _ index: Int) -> String {
         switch surface.kind {
         case .terminal: return "Terminal \(index + 1)"
-        case .browser: return "Browser"
-        case .diff: return "Diff"
+        case .browser: return "Browser \(index + 1)"
+        case .diff: return "Diff \(index + 1)"
         }
     }
 }
@@ -59,6 +58,8 @@ struct TabBarView: View {
     let titles: [String]
     let activeIndex: Int
     let onSelect: (Int) -> Void
+    let onNewTerminal: () -> Void
+    let onNewBrowser: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
@@ -71,6 +72,14 @@ struct TabBarView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Menu {
+                Button("New terminal", action: onNewTerminal)
+                Button("New browser", action: onNewBrowser)
+            } label: {
+                Image(systemName: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             Spacer()
         }
         .padding(.horizontal, 4).padding(.vertical, 2)
