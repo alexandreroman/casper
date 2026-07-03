@@ -236,6 +236,81 @@ final class AppModelTests: XCTestCase {
         try "seed\n".write(to: readme, atomically: true, encoding: .utf8)
         try makeInitialCommit(repo: repo, path: path)
     }
+
+    /// A fresh temp directory on disk, removed after the test.
+    private func makeTempDir() -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-test-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir
+    }
+
+    /// A temp directory seeded as a real Git repo with one initial commit on
+    /// the default branch, via `seedRepository`.
+    private func makeTempGitRepo() throws -> URL {
+        let dir = makeTempDir()
+        try seedRepository(at: dir.path)
+        return dir
+    }
+
+    // MARK: - Linked workspaces (Task 5)
+
+    func testAddLinkedWorkspaceCreatesWorktreeAndPort() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let spaceID = model.spaces[0].id
+        let primaryPort = model.spaces[0].workspaces[0].portBase
+
+        XCTAssertTrue(model.addLinkedWorkspace(spaceID: spaceID, name: "My Feature"))
+        let linked = model.spaces[0].workspaces[1]
+        XCTAssertEqual(linked.kind, .linked)
+        XCTAssertEqual(linked.branch, "my-feature")
+        XCTAssertEqual(linked.baseBranch, model.spaces[0].workspaces[0].branch)
+        XCTAssertNotEqual(linked.portBase, primaryPort)
+        XCTAssertTrue(FileManager.default.fileExists(atPath:
+            repo.appendingPathComponent(".casper/worktrees/my-feature").path))
+        let exclude = try String(contentsOf:
+            repo.appendingPathComponent(".git/info/exclude"), encoding: .utf8)
+        XCTAssertTrue(exclude.contains(".casper/"))
+    }
+
+    func testAddLinkedWorkspaceRejectedForNonGitSpace() {
+        let dir = makeTempDir()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        XCTAssertFalse(model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "x"))
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+    }
+
+    func testRemoveWorkspaceLinkedOnlyReleasesPort() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let spaceID = model.spaces[0].id
+        _ = model.addLinkedWorkspace(spaceID: spaceID, name: "feat")
+        let linkedID = model.spaces[0].workspaces[1].id
+
+        model.removeWorkspace(id: linkedID)  // linked → dropped
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+
+        let primaryID = model.spaces[0].workspaces[0].id
+        model.removeWorkspace(id: primaryID)  // primary → refused
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+    }
+
+    func testAddSpaceRejectsDuplicateFolder() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        XCTAssertEqual(model.spaces.count, 1)
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`

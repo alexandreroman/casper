@@ -107,6 +107,12 @@ final class AppModel {
     }
 
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
+        let folderPath = folderURL.path
+        if spaces.contains(where: { $0.folderPath == folderPath
+            || $0.folderPath == URL(fileURLWithPath: folderPath).standardizedFileURL.path }) {
+            CasperLog.app.error("folder already open as a Space: \(folderPath, privacy: .public)")
+            return
+        }
         let portBase: Int
         do {
             portBase = try portAllocator.allocate()
@@ -133,6 +139,82 @@ final class AppModel {
             selectedWorkspaceID = spaces.first?.workspaces.first?.id
         }
         persist()
+    }
+
+    /// Create a linked workspace (new branch + worktree under
+    /// `.casper/worktrees/<branch>`) in a Git Space. Returns false when the Space
+    /// is missing, not a Git repo, the name is unusable, or the worktree cannot be
+    /// created.
+    @discardableResult
+    func addLinkedWorkspace(spaceID: UUID, name: String) -> Bool {
+        guard let si = spaces.firstIndex(where: { $0.id == spaceID }),
+              spaces[si].isGitRepo,
+              let branch = GitBranchName.sanitize(name) else { return false }
+        let folder = spaces[si].folderPath
+        let base = spaces[si].workspaces.first?.branch ?? ""
+        let worktreePath = folder + "/.casper/worktrees/" + branch
+
+        let portBase: Int
+        do { portBase = try portAllocator.allocate() } catch {
+            CasperLog.app.error(
+                "cannot add workspace: no free port block: \(String(describing: error), privacy: .public)")
+            return false
+        }
+        // `git_worktree_add` creates only the leaf directory, not the
+        // `.casper/worktrees/` parent, so make sure that exists first.
+        let worktreesDir = URL(fileURLWithPath: worktreePath).deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: worktreesDir, withIntermediateDirectories: true)
+        do {
+            _ = try WorktreeManager.create(
+                repoPath: folder, name: branch, worktreePath: worktreePath,
+                base: base.isEmpty ? nil : base)
+        } catch {
+            portAllocator.release(portBase)
+            CasperLog.app.error(
+                "worktree creation failed: \(String(describing: error), privacy: .public)")
+            return false
+        }
+        ensureCasperExcluded(folderPath: folder)
+        let ws = WorkspaceFactory.makeLinkedWorkspace(
+            name: branch, worktreePath: worktreePath, branch: branch,
+            baseBranch: base, portBase: portBase)
+        spaces[si].workspaces.append(ws)
+        selectedWorkspaceID = ws.id
+        persist()
+        return true
+    }
+
+    /// Drop a linked workspace (never a primary); releases its port, leaves the
+    /// worktree and branch on disk.
+    func removeWorkspace(id: UUID) {
+        guard let at = locate(id) else { return }
+        guard spaces[at.space].workspaces[at.workspace].kind == .linked else { return }
+        let ws = spaces[at.space].workspaces.remove(at: at.workspace)
+        portAllocator.release(ws.portBase)
+        lastSeen[ws.id] = nil
+        if selectedWorkspaceID == id {
+            selectedWorkspaceID = spaces.first?.workspaces.first?.id
+        }
+        persist()
+    }
+
+    /// Best-effort: ensure `.casper/` is in the repo's `.git/info/exclude` so
+    /// managed worktrees never show as untracked. Uses the pure `GitInfoExclude`
+    /// computation; a write failure logs and is ignored.
+    func ensureCasperExcluded(folderPath: String) {
+        let excludePath = folderPath + "/.git/info/exclude"
+        let current = try? String(contentsOfFile: excludePath, encoding: .utf8)
+        guard let updated = GitInfoExclude.ensuring(
+            GitInfoExclude.casperEntry, in: current) else { return }
+        do {
+            try FileManager.default.createDirectory(
+                atPath: folderPath + "/.git/info", withIntermediateDirectories: true)
+            try updated.write(toFile: excludePath, atomically: true, encoding: .utf8)
+        } catch {
+            CasperLog.app.error(
+                "could not update .git/info/exclude: \(String(describing: error), privacy: .public)")
+        }
     }
 
     func persist() {
