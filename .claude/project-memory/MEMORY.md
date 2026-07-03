@@ -26,3 +26,4 @@
 - [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side (no click-count param); tracking-area position stream drives it; mouse-shape/visibility actions are surface-scoped via `ghostty_surface_userdata`
 - [Surface identity](references/surface-identity.md) — every Surface has a unique, stable `Surface.id` invariant across kind/state/UI-location; all UI identity (view cache, `.id`, focus) anchors on it
 - [Observed startup dependencies](references/observed-startup-dependencies.md) — startup-set @Observable props a view gates rendering on must not be @ObservationIgnored; live-verify the restore path
+- [PersistentNSViewHost shared-view collapse gotcha](references/persistent-nsview-host-sharing.md) — one cached NSView per surface; a layout collapse can let a stale host steal it, blanking the survivor — window-guarded deferred reconcile guards it
