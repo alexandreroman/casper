@@ -91,7 +91,7 @@ struct WorkspaceDetailView: View {
 
     private var actions: some View {
         HStack(spacing: 6) {
-            if let diff {
+            if let diff, diff.insertions > 0 || diff.deletions > 0 {
                 Button {
                     model.setInspectorTab(.diff, for: workspace.id)
                 } label: {
@@ -99,7 +99,7 @@ struct WorkspaceDetailView: View {
                         Text("+\(diff.insertions)").foregroundStyle(.green.opacity(0.9))
                         Text("−\(diff.deletions)").foregroundStyle(.red.opacity(0.9))
                     }
-                    .font(.caption.monospacedDigit())
+                    .font(.caption.monospacedDigit().bold())
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(Color.secondary.opacity(0.12), in: Capsule())
