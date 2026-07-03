@@ -62,9 +62,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed on
   the runtime to the **focused** workspace (focus tracked via the surface's
   first-responder callback). Closing the last surface closes the workspace
-  non-destructively (linked → `removeWorkspace`, primary → `removeSpace`). Only
-  terminal leaves are created; browser/diff leaves render a placeholder until
-  UI-4/UI-5.
+  non-destructively (linked → `removeWorkspace`, primary → `removeSpace`). `.diff`
+  leaves render a placeholder until UI-5 (terminals and browsers are live — see
+  the UI-4 bullet).
 - **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
   normalization, back/forward/reload) renders `.browser` layout leaves, created
   via the tab-bar "+" menu (New terminal / New browser). The web view lives in the
