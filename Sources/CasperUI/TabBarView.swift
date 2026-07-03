@@ -33,7 +33,7 @@ struct TabGroupView: View {
     @ViewBuilder
     private func surfaceView(_ surface: Surface) -> some View {
         if let view = model.surfaceView(for: surface, in: workspace) {
-            GhosttySurfaceHostView(surfaceView: view).id(surface.id)
+            PersistentNSViewHost(view: view).id(surface.id)
         } else if case .terminal = surface.kind {
             Color.black  // runtime not ready yet
         } else {
