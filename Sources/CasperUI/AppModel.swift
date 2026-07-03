@@ -53,7 +53,7 @@ final class AppModel {
     }
 
     /// Set during Task 7 bootstrap once the Ghostty runtime and IPC socket exist.
-    @ObservationIgnored var runtime: GhosttyRuntime?
+    var runtime: GhosttyRuntime?
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var socketPath: String?
 
