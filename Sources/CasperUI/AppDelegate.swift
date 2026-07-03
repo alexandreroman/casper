@@ -44,11 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch action {
                 case .setTitle(let title): NSApp.keyWindow?.title = title
                 case .quit: NSApp.terminate(nil)
-                case .closeWindow, .closeTab: NSApp.keyWindow?.performClose(nil)
+                case .closeWindow: NSApp.keyWindow?.performClose(nil)
                 default: break
                 }
             }
             model.runtime = runtime
+            runtime.actionHandler = LayoutActionHandler(model: model)
         } catch {
             CasperLog.ghostty.error("ghostty init failed: \(String(describing: error), privacy: .public)")
             NSApp.terminate(nil)

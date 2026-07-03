@@ -1,7 +1,7 @@
 import GhosttyKit
 
 /// The direction a new split grows, mapped from `ghostty_action_split_direction_e`.
-public enum GhosttySplitDirection: Equatable {
+public enum GhosttySplitDirection: Equatable, Sendable {
     case right, down, left, up
 }
 
