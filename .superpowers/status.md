@@ -18,7 +18,7 @@ agent target is Claude Code only.
 | Plan | Module | Status |
 | --- | --- | --- |
 | 1 | CasperCore | ✅ |
-| 2 | CasperGit (+ Clibgit2) | ◐ worktrees/status/`remoteURL` built; `git_diff` missing |
+| 2 | CasperGit (+ Clibgit2) | ✅ worktrees/status/`remoteURL`/`git_diff` built |
 | 3 | CasperCLI + CasperAgents | ✅ |
 | 4 | CasperGhostty | ✅ one terminal + splits/tabs composed by UI-3 |
 | 5 | CasperUI + app | ◐ UI-1..UI-4 built (sidebar + worktrees + splits/tabs + browser); UI-5 remains |
@@ -34,11 +34,14 @@ Models, `AgentStateStore`, `HeartbeatMonitor`, `WorktreeManager`
 (create/list/remove/isClean with `WorktreeError` mapping), `PortAllocator`,
 `SessionStore`, hook parsing, and the agent-state reducer.
 
-### CasperGit + Clibgit2 — ◐
+### CasperGit + Clibgit2 — ✅ (core)
 `Repository` (open/discover/init, branch queries, worktree
-add/list/lookup/validate/prune, status/isClean), `Worktree`, `GitError`.
-- **`git_diff` is not implemented** — prerequisite for the diff viewer
-  (design §11) and the workspace diff summary (Space §6).
+add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`),
+`Worktree`, `GitError`.
+- **`git_diff` is built** — `diffWorkdirToHead()` returns a structured
+  `GitDiff` (files → hunks → lines, statuses, binary flag; working tree + index
+  vs HEAD, unborn HEAD as additions), unblocking the diff viewer (design §11).
+  Branch-divergence diffs for the Space `+/−` summary (Space §6) remain.
 - Standing limitations: `remove` prunes the worktree but not its branch, so
   recreating a same-named workspace surfaces an opaque `.gitFailure` (fix by
   mapping it to a clear reason or deleting the branch on remove); libgit2 is
@@ -129,12 +132,13 @@ depends on CasperGit `git_diff`) and **Space rename**.
 
 ## Remaining work — dependency-ordered
 
-1. **CasperGit `git_diff`** — unblocks the diff viewer (design §11) and the
-   workspace diff summary (Space §6).
+1. **CasperGit `git_diff` — ✅ built** (`diffWorkdirToHead()`); the diff viewer is
+   unblocked. Branch-divergence diffs for the Space `+/−` summary (Space §6)
+   remain.
 2. **CasperUI (Plan 5)** — decomposed into UI-1…UI-5. **UI-1..UI-4 are built**
    (app shell + startup wiring; Space model + Space-grouped sidebar + linked Git
-   worktrees; recursive splits/tabs layout; WKWebView browser surface). Next:
-   **UI-5** (diff viewer — depends on `git_diff`). Each sub-project gets its own
+   worktrees; recursive splits/tabs layout; WKWebView browser surface). Next and
+   last: **UI-5** (diff viewer over `git_diff`). Each sub-project gets its own
    spec → plan → build cycle.
 3. **Space diff summary** — the Space data-model change and sidebar grouping
    landed in UI-2; what remains is the derived `diffStat` and the `+/−` row
