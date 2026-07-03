@@ -16,6 +16,9 @@ final class AppModel {
     private(set) var spaces: [Space]
     var selectedWorkspaceID: UUID?
 
+    /// The surface that last became first responder (runtime-only, not persisted).
+    var focusedSurfaceID: UUID?
+
     @ObservationIgnored private let sessionStore: SessionStore
     @ObservationIgnored private var portAllocator: PortAllocator
 
@@ -207,6 +210,67 @@ final class AppModel {
             selectedWorkspaceID = spaces.first?.workspaces.first?.id
         }
         persist()
+    }
+
+    func focusSurface(_ id: UUID) { focusedSurfaceID = id }
+
+    /// The (space, workspace) index pair whose layout contains `surfaceID`.
+    private func locateSurface(_ surfaceID: UUID) -> (space: Int, workspace: Int)? {
+        for (si, space) in spaces.enumerated() {
+            for (wi, ws) in space.workspaces.enumerated()
+            where LayoutTree.surfaceIDs(ws.layout).contains(surfaceID) {
+                return (si, wi)
+            }
+        }
+        return nil
+    }
+
+    private func newTerminalSurface(cwd: String) -> Surface {
+        Surface(kind: .terminal(cwd: cwd, command: nil))
+    }
+
+    func applyNewTab() {
+        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+        let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
+        let (layout, newFocus) = LayoutTree.insertTab(
+            spaces[at.space].workspaces[at.workspace].layout,
+            focused: focus, surface: newTerminalSurface(cwd: cwd))
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+    }
+
+    func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
+        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+        let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
+        let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
+        let (layout, newFocus) = LayoutTree.split(
+            spaces[at.space].workspaces[at.workspace].layout,
+            focused: focus, orientation: orientation, side: side,
+            surface: newTerminalSurface(cwd: cwd))
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+    }
+
+    func applyCloseFocusedSurface() {
+        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
+        let (layout, newFocus) = LayoutTree.closeSurface(
+            spaces[at.space].workspaces[at.workspace].layout, surface: focus)
+        if let layout {
+            spaces[at.space].workspaces[at.workspace].layout = layout
+            focusedSurfaceID = newFocus
+            persist()
+            return
+        }
+        // Last surface closed -> close the workspace (non-destructive).
+        let ws = spaces[at.space].workspaces[at.workspace]
+        focusedSurfaceID = nil
+        if ws.kind == .linked {
+            removeWorkspace(id: ws.id)
+        } else {
+            removeSpace(id: spaces[at.space].id)
+        }
     }
 
     /// Best-effort: ensure `.casper/` is in the repo's `.git/info/exclude` so

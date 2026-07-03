@@ -355,6 +355,54 @@ final class AppModelTests: XCTestCase {
         model.tickHeartbeat(now: Date(timeIntervalSince1970: 1_000_001))  // no further change
         XCTAssertEqual(saves, 1)
     }
+
+    // MARK: - Focus and layout mutations (Task 3)
+
+    private func modelWithOneGitWorkspace() throws -> (AppModel, UUID) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui3-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try seedRepository(at: root.path)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: root, probe: AppModel.gitProbe)
+        let surfaceID = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)[0]
+        model.focusSurface(surfaceID)
+        return (model, surfaceID)
+    }
+
+    func testApplyNewSplitGrowsTheTree() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.applyNewSplit(.right)
+        let layout = model.spaces[0].workspaces[0].layout
+        guard case .split(let o, let children, _) = layout else { return XCTFail() }
+        XCTAssertEqual(o, .horizontal)
+        XCTAssertEqual(children.count, 2)
+        XCTAssertNotEqual(model.focusedSurfaceID, first)  // focus moved to the new surface
+        XCTAssertEqual(LayoutTree.surfaceIDs(layout).count, 2)
+    }
+
+    func testApplyNewTabAddsSurface() throws {
+        let (model, _) = try modelWithOneGitWorkspace()
+        model.applyNewTab()
+        XCTAssertEqual(
+            LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 2)
+    }
+
+    func testCloseLastSurfaceOfPrimaryRemovesSpace() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.applyCloseFocusedSurface()  // only surface -> closes the workspace
+        XCTAssertTrue(model.spaces.isEmpty)  // primary -> whole Space removed
+    }
+
+    func testCloseOneOfTwoSurvives() throws {
+        let (model, _) = try modelWithOneGitWorkspace()
+        model.applyNewSplit(.right)  // now two surfaces, focus on the new one
+        model.applyCloseFocusedSurface()
+        XCTAssertEqual(
+            LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 1)
+        XCTAssertEqual(model.spaces.count, 1)
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`
