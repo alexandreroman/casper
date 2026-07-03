@@ -204,16 +204,22 @@ public final class Repository {
         let newPath = delta.new_file.path.map { String(cString: $0) } ?? ""
         let hunkCount = git_patch_num_hunks(patch)
 
-        // libgit2 only runs its content-based binary check for sides it already
-        // has a blob for; a plain untracked file never gets `GIT_DIFF_FLAG_BINARY`
-        // set even when its content is binary (confirmed empirically: the same
-        // bytes staged into the index, or as a modification to a tracked file,
-        // set the flag correctly). Its patch generation still refuses to emit
-        // hunks for such content though, so treat "no hunks despite a non-empty
-        // side" as the fallback binary signal.
-        let hasContent = delta.old_file.size > 0 || delta.new_file.size > 0
+        // Binary detection has two branches:
+        //  1. For tracked content (modified/deleted files) libgit2 has blobs on
+        //     both sides and runs its content-based check, so `GIT_DIFF_FLAG_BINARY`
+        //     is authoritative. We trust it directly.
+        //  2. For an added/untracked file libgit2 never sets that flag even when
+        //     the content is binary (confirmed empirically: the same bytes staged
+        //     into the index, or as a modification to a tracked file, set the flag
+        //     correctly). Its patch generation still refuses to emit hunks for such
+        //     content, so "no hunks despite a non-empty new side" is the fallback
+        //     binary signal — but only for added/untracked files. Applying it to a
+        //     modified file would misflag mode-only changes (e.g. `chmod +x`), which
+        //     legitimately produce zero hunks with unchanged content.
+        let isAdded = delta.status == GIT_DELTA_ADDED || delta.status == GIT_DELTA_UNTRACKED
         let isBinary =
-            (delta.flags & GIT_DIFF_FLAG_BINARY.rawValue) != 0 || (hunkCount == 0 && hasContent)
+            (delta.flags & GIT_DIFF_FLAG_BINARY.rawValue) != 0
+            || (hunkCount == 0 && isAdded && delta.new_file.size > 0)
 
         var hunks: [GitDiffHunk] = []
         if !isBinary {
@@ -231,7 +237,7 @@ public final class Repository {
                 for l in 0..<lineCount {
                     var linePtr: UnsafePointer<git_diff_line>?
                     try gitCheck(git_patch_get_line_in_hunk(&linePtr, patch, h, l))
-                    if let lp = linePtr { lines.append(mapLine(lp.pointee)) }
+                    if let lp = linePtr, let line = mapLine(lp.pointee) { lines.append(line) }
                 }
                 hunks.append(GitDiffHunk(
                     header: header,
@@ -257,11 +263,19 @@ public final class Repository {
         }
     }
 
-    private static func mapLine(_ line: git_diff_line) -> GitDiffLine {
+    /// Maps a libgit2 diff line to our value type, or nil for lines that carry no
+    /// content of their own. The EOFNL origins mark a "\ No newline at end of file"
+    /// note rather than real content, so they are dropped instead of surfaced as
+    /// bogus context rows.
+    private static func mapLine(_ line: git_diff_line) -> GitDiffLine? {
         let kind: GitDiffLine.Kind
         switch line.origin {
         case CChar(truncatingIfNeeded: GIT_DIFF_LINE_ADDITION.rawValue): kind = .addition
         case CChar(truncatingIfNeeded: GIT_DIFF_LINE_DELETION.rawValue): kind = .deletion
+        case CChar(truncatingIfNeeded: GIT_DIFF_LINE_CONTEXT_EOFNL.rawValue),
+             CChar(truncatingIfNeeded: GIT_DIFF_LINE_ADD_EOFNL.rawValue),
+             CChar(truncatingIfNeeded: GIT_DIFF_LINE_DEL_EOFNL.rawValue):
+            return nil
         default: kind = .context
         }
         let content: String
@@ -272,7 +286,10 @@ public final class Repository {
         } else {
             content = ""
         }
-        let trimmed = content.hasSuffix("\n") ? String(content.dropLast()) : content
+        // Strip the trailing line terminator, handling both LF and CRLF.
+        var trimmed = content
+        if trimmed.hasSuffix("\n") { trimmed.removeLast() }
+        if trimmed.hasSuffix("\r") { trimmed.removeLast() }
         return GitDiffLine(
             kind: kind, content: trimmed,
             oldLineNumber: line.old_lineno >= 0 ? Int(line.old_lineno) : nil,
