@@ -12,6 +12,9 @@ struct DiffSurfaceView: View {
     /// Visible width of the content area, measured once laid out. Drives the
     /// full-bleed row/header backgrounds (see `DiffFileView`/`DiffLineRow`).
     @State private var contentWidth: CGFloat = 0
+    /// Visible height of the content area. Lets a short diff fill the viewport so
+    /// its files top-align instead of being vertically centered by the ScrollView.
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,8 +31,11 @@ struct DiffSurfaceView: View {
             // full available area (top-aligned file list) and hands us its width.
             GeometryReader { proxy in
                 content
-                    .onAppear { contentWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in contentWidth = width }
+                    .onAppear { contentWidth = proxy.size.width; contentHeight = proxy.size.height }
+                    .onChange(of: proxy.size) { _, size in
+                        contentWidth = size.width
+                        contentHeight = size.height
+                    }
             }
         }
         .onAppear { if !loaded { refresh() } }
@@ -49,6 +55,7 @@ struct DiffSurfaceView: View {
                         }
                     }
                     .padding(.vertical, 8)
+                    .frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
