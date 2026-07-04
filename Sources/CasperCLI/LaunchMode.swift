@@ -11,9 +11,6 @@ public enum LaunchMode: Equatable {
 
     public static func detect(arguments: [String]) -> LaunchMode {
         guard let first = arguments.dropFirst().first else { return .gui }
-        // CLI iff the first arg is a subcommand (non-dash) or an explicit
-        // help/version flag. AppKit/system launch flags start with '-'
-        // (e.g. -NSDocumentRevisionsDebugMode, -psn_, -AppleLanguages) → GUI.
         if first.hasPrefix("-") {
             return ["-h", "--help", "--version"].contains(first) ? .cli : .gui
         }

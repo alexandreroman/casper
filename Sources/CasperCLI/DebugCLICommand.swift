@@ -22,7 +22,7 @@ struct SocketOption: ParsableArguments {
     var path: String { socket ?? DebugSocketPath.default }
 }
 
-private func run(_ command: DebugCommand, socket: String, retriable: Bool = false) throws -> DebugResponse {
+private func run(_ command: DebugCommand, socket: String, retriable: Bool) throws -> DebugResponse {
     let response: DebugResponse
     do {
         response = try DebugSocketClient.send(command, toSocketAt: socket, retriable: retriable)

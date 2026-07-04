@@ -145,20 +145,16 @@ public enum ClaudeCodeAdapter {
         }
 
         let existingData = try Data(contentsOf: url)
-        let parsed = try? JSONSerialization.jsonObject(with: existingData)
-        guard var root = parsed as? [String: Any] else {
+        guard var root = (try? JSONSerialization.jsonObject(with: existingData)) as? [String: Any] else {
             throw ClaudeCodeAdapterError.invalidExistingSettings(path: url.path)
         }
 
         var hooks = (root["hooks"] as? [String: Any]) ?? [:]
         for (event, casperEntries) in casperEvents {
-            var preserved: [[String: Any]] = []
             // Keep user-added entries; a non-array value is malformed → dropped.
-            if let existingEntries = hooks[event] as? [[String: Any]] {
-                preserved = existingEntries.filter {
-                    !isCasperEntry($0, hookCommand: hookCommand)
-                }
-            }
+            let preserved = (hooks[event] as? [[String: Any]])?.filter {
+                !isCasperEntry($0, hookCommand: hookCommand)
+            } ?? []
             hooks[event] = preserved + casperEntries
         }
 

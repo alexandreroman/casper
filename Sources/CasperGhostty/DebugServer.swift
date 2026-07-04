@@ -44,6 +44,16 @@ public struct DebugSurfaceGeometry: Sendable {
         self.contentScaleY = contentScaleY
         self.backingScaleFactor = backingScaleFactor
     }
+
+    /// All-zero geometry, used when no live surface backs the view yet.
+    public static let zero = DebugSurfaceGeometry(
+        columns: 0, rows: 0,
+        widthPixels: 0, heightPixels: 0,
+        cellWidthPixels: 0, cellHeightPixels: 0,
+        boundsWidth: 0, boundsHeight: 0,
+        backingWidth: 0, backingHeight: 0,
+        contentScaleX: 0, contentScaleY: 0,
+        backingScaleFactor: 0)
 }
 
 /// A snapshot description of one live surface, decoupling `DebugServer` from the

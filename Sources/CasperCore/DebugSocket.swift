@@ -53,6 +53,20 @@ private func readExactly(
     }
 }
 
+/// Frames `payload` for the debug channel: a 4-byte big-endian length prefix
+/// followed by the payload bytes. Both directions use this identical framing.
+private func frame(_ payload: Data) -> Data {
+    var framed = Data(capacity: 4 + payload.count)
+    withUnsafeBytes(of: UInt32(payload.count).bigEndian) { framed.append(contentsOf: $0) }
+    framed.append(payload)
+    return framed
+}
+
+/// Decodes a 4-byte big-endian length header into its `UInt32` value.
+private func decodeLength(_ header: Data) -> UInt32 {
+    header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+}
+
 /// Listens on a Unix-domain socket for one `DebugCommand` per connection and
 /// writes back one `DebugResponse`.
 ///
@@ -156,7 +170,7 @@ public final class DebugSocketServer: @unchecked Sendable {
                 connection.cancel()  // client closed before sending a full header
                 return
             }
-            let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+            let length = decodeLength(header)
             guard length > 0, length <= UInt32(maxDebugFrameBytes) else {
                 self.reply(.failure("invalid request length: \(length) bytes"), on: connection)
                 return
@@ -192,10 +206,7 @@ public final class DebugSocketServer: @unchecked Sendable {
         // length prefix followed by the JSON bytes. The client reads an exact
         // count and never depends on EOF, so cancelling here cannot race its
         // read. `.finalMessage` still closes the send side cleanly.
-        var framed = Data(capacity: 4 + payload.count)
-        let length = UInt32(payload.count).bigEndian
-        withUnsafeBytes(of: length) { framed.append(contentsOf: $0) }
-        framed.append(payload)
+        let framed = frame(payload)
         connection.send(
             content: framed, contentContext: .finalMessage, isComplete: true,
             completion: .contentProcessed { _ in connection.cancel() })
@@ -257,13 +268,7 @@ public enum DebugSocketClient {
         }
         // Frame the request with a 4-byte big-endian length prefix so the
         // server reads an exact byte count and never waits for request EOF.
-        let request: Data = {
-            var framed = Data(capacity: 4 + payload.count)
-            let length = UInt32(payload.count).bigEndian
-            withUnsafeBytes(of: length) { framed.append(contentsOf: $0) }
-            framed.append(payload)
-            return framed
-        }()
+        let request = frame(payload)
 
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         let connection = NWConnection(to: NWEndpoint.unix(path: socketPath), using: params)
@@ -294,7 +299,7 @@ public enum DebugSocketClient {
                     connection.cancel()
                     return
                 }
-                let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+                let length = decodeLength(header)
                 guard length > 0, length <= UInt32(maxDebugFrameBytes) else {
                     finish(.failure(DebugSocketError(reason: "invalid response length: \(length) bytes")))
                     connection.cancel()

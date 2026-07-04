@@ -294,19 +294,31 @@ final class AppModel {
         Surface(kind: .terminal(cwd: cwd, command: nil))
     }
 
+    /// Shared tail of every split-based surface addition: split the leaf holding
+    /// `focused` in workspace `at` to insert `surface` along `orientation`/`side`,
+    /// move focus to the new surface, persist, and re-anchor AppKit first
+    /// responder. Callers resolve their own target and surface, then delegate here.
+    private func insertSurfaceBySplitting(
+        at: (space: Int, workspace: Int), focused: UUID,
+        orientation: LayoutNode.Orientation, side: LayoutTree.InsertSide, surface: Surface
+    ) {
+        let (layout, newFocus) = LayoutTree.split(
+            spaces[at.space].workspaces[at.workspace].layout,
+            focused: focused, orientation: orientation, side: side, surface: surface)
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+        focusActiveSurfaceView()
+    }
+
     /// Add a new terminal by splitting the anchored surface (or the focused one
     /// when `anchor` is nil) to the RIGHT.
     func applyNewTerminal(anchor: UUID? = nil) {
         guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
-        let (layout, newFocus) = LayoutTree.split(
-            spaces[at.space].workspaces[at.workspace].layout,
-            focused: target, orientation: .horizontal, side: .after,
+        insertSurfaceBySplitting(
+            at: at, focused: target, orientation: .horizontal, side: .after,
             surface: newTerminalSurface(cwd: cwd))
-        spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = newFocus
-        persist()
-        focusActiveSurfaceView()
     }
 
     /// Split the given surface with a new terminal in `direction` (the pane
@@ -315,28 +327,18 @@ final class AppModel {
         guard let at = locateSurface(surfaceID) else { return }
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
-        let (layout, newFocus) = LayoutTree.split(
-            spaces[at.space].workspaces[at.workspace].layout,
-            focused: surfaceID, orientation: orientation, side: side,
+        insertSurfaceBySplitting(
+            at: at, focused: surfaceID, orientation: orientation, side: side,
             surface: newTerminalSurface(cwd: cwd))
-        spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = newFocus
-        persist()
-        focusActiveSurfaceView()
     }
 
     func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
         guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
-        let (layout, newFocus) = LayoutTree.split(
-            spaces[at.space].workspaces[at.workspace].layout,
-            focused: focus, orientation: orientation, side: side,
+        insertSurfaceBySplitting(
+            at: at, focused: focus, orientation: orientation, side: side,
             surface: newTerminalSurface(cwd: cwd))
-        spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = newFocus
-        persist()
-        focusActiveSurfaceView()
     }
 
     func applyCloseFocusedSurface() {
@@ -407,40 +409,13 @@ final class AppModel {
     func applyNewBrowser(anchor: UUID? = nil) {
         guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
         let surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
-        let (layout, newFocus) = LayoutTree.split(
-            spaces[at.space].workspaces[at.workspace].layout,
-            focused: target, orientation: .horizontal, side: .after, surface: surface)
-        spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = newFocus
-        persist()
-        focusActiveSurfaceView()
-    }
-
-    /// Anchor for a toolbar action on the selected workspace: the focused surface
-    /// when it belongs to that workspace, else the workspace's first surface.
-    private func anchorForSelectedWorkspace() -> UUID? {
-        guard let id = selectedWorkspaceID, let ws = workspace(id: id) else { return nil }
-        let ids = LayoutTree.surfaceIDs(ws.layout)
-        if let focus = focusedSurfaceID, ids.contains(focus) { return focus }
-        return ids.first
-    }
-
-    /// Toolbar "+ terminal": add a terminal to the selected workspace.
-    func newTerminalInSelectedWorkspace() {
-        guard let anchor = anchorForSelectedWorkspace() else { return }
-        applyNewTerminal(anchor: anchor)
-    }
-
-    // Retained for coexistence; no longer bound to a visible toolbar button.
-    /// Toolbar "+ browser": add a browser to the selected workspace.
-    func newBrowserInSelectedWorkspace() {
-        guard let anchor = anchorForSelectedWorkspace() else { return }
-        applyNewBrowser(anchor: anchor)
+        insertSurfaceBySplitting(
+            at: at, focused: target, orientation: .horizontal, side: .after, surface: surface)
     }
 
     /// Whether the workspace's owning Space is a Git repository.
     func isWorkspaceGitBacked(_ workspace: Workspace) -> Bool {
-        spaces.first { $0.workspaces.contains { $0.id == workspace.id } }?.isGitRepo ?? false
+        space(for: workspace)?.isGitRepo ?? false
     }
 
     /// Compute the working-tree-vs-HEAD diff of a workspace's worktree. Returns nil

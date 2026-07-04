@@ -48,8 +48,6 @@ public final class GhosttySurface {
         ghostty_surface_set_focus(surface, focused)
     }
 
-    public func draw() { ghostty_surface_draw(surface) }
-
     /// Committed/IME text (from `NSTextInputClient.insertText`).
     public func sendText(_ text: String) {
         // Pass the full UTF-8 byte length, not strlen: the withCString buffer
@@ -123,12 +121,6 @@ public final class GhosttySurface {
         guard ghostty_surface_read_text(surface, selection, &out) else { return nil }
         guard let bytes = out.text else { return "" }
         return String(decoding: Data(bytes: bytes, count: Int(out.text_len)), as: UTF8.self)
-    }
-
-    /// Current terminal grid dimensions.
-    public func surfaceSize() -> (columns: Int, rows: Int) {
-        let size = ghostty_surface_size(surface)
-        return (Int(size.columns), Int(size.rows))
     }
 
     /// Full readback of `ghostty_surface_size`: grid dimensions plus the pixel

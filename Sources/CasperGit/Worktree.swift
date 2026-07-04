@@ -22,11 +22,7 @@ extension Repository {
     ) throws -> WorktreeInfo {
         // Resolve the base commit.
         var baseObject: OpaquePointer?
-        if let basedOn {
-            try gitCheck(git_revparse_single(&baseObject, pointer, basedOn))
-        } else {
-            try gitCheck(git_revparse_single(&baseObject, pointer, "HEAD"))
-        }
+        try gitCheck(git_revparse_single(&baseObject, pointer, basedOn ?? "HEAD"))
         defer { git_object_free(baseObject) }
         var commit: OpaquePointer?
         try gitCheck(git_object_peel(&commit, baseObject, GIT_OBJECT_COMMIT))
@@ -47,10 +43,7 @@ extension Repository {
         do {
             try gitCheck(git_worktree_add(&worktree, pointer, name, path, &options))
             defer { git_worktree_free(worktree) }
-            guard let worktree else {
-                throw GitError(
-                    code: -1, message: "libgit2 returned success but a null worktree")
-            }
+            let worktree = try requireNonNull(worktree, "worktree")
             return try worktreeInfo(fromPointer: worktree, name: name)
         } catch {
             // Roll back the branch created above so retrying the same name is
@@ -68,8 +61,7 @@ extension Repository {
         let rc = git_worktree_is_locked(&reason, worktree)
         git_buf_dispose(&reason)
         if rc < 0 { try gitCheck(rc) }
-        let locked = rc > 0
-        return WorktreeInfo(name: name, path: path, isLocked: locked)
+        return WorktreeInfo(name: name, path: path, isLocked: rc > 0)
     }
 
     /// Names of all worktrees linked to this repository.
@@ -84,11 +76,8 @@ extension Repository {
         var worktree: OpaquePointer?
         try gitCheck(git_worktree_lookup(&worktree, pointer, name))
         defer { git_worktree_free(worktree) }
-        guard let worktree else {
-            throw GitError(
-                code: -1, message: "libgit2 returned success but a null worktree")
-        }
-        return try worktreeInfo(fromPointer: worktree, name: name)
+        let handle = try requireNonNull(worktree, "worktree")
+        return try worktreeInfo(fromPointer: handle, name: name)
     }
 
     /// Whether the worktree named `name` is structurally valid (its gitdir and

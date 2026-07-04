@@ -41,6 +41,16 @@ func gitCheck(_ code: Int32) throws -> Int32 {
     throw GitError(code: code, message: message)
 }
 
+/// Unwrap a pointer libgit2 promised on success. A non-negative return code with
+/// a null out-pointer is a libgit2 contract violation, so surface it as an error
+/// rather than force-unwrapping.
+func requireNonNull<T>(_ value: T?, _ what: String) throws -> T {
+    guard let value else {
+        throw GitError(code: -1, message: "libgit2 returned success but a null \(what)")
+    }
+    return value
+}
+
 /// Run `body` against a zeroed `git_strarray`, copy the entries into a Swift
 /// array, and dispose the native array. `body` typically fills it via a libgit2
 /// `*_list` call.

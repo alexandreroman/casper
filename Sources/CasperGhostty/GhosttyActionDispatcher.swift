@@ -18,9 +18,9 @@ public struct LoggingActionHandler: GhosttyActionHandler {
             #if DEBUG
             CasperLog.ghostty.debug("action-dispatch: no handler for \(String(describing: action), privacy: .public)")
             #endif
-            return false
         default:
-            return false
+            break
         }
+        return false
     }
 }

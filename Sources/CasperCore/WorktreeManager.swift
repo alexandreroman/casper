@@ -33,17 +33,26 @@ public struct CreatedWorktree: Equatable, Sendable {
 /// Orchestrates `CasperGit` primitives into workspace-creation operations,
 /// enforcing Casper's rules and never crashing on git failure.
 public enum WorktreeManager {
+    /// Open the repository at `repoPath`, translating any open failure into a
+    /// `repositoryNotFound` so callers never see a raw libgit2 error.
+    private static func openRepo(_ repoPath: String) throws -> Repository {
+        do { return try Repository.open(atPath: repoPath) }
+        catch { throw WorktreeError(.repositoryNotFound) }
+    }
+
+    /// Run `body`, mapping any `GitError` it throws into a `gitFailure`. Every
+    /// other error propagates unchanged.
+    private static func mapGitError<T>(_ body: () throws -> T) throws -> T {
+        do { return try body() }
+        catch let error as GitError { throw WorktreeError(.gitFailure(error.message)) }
+    }
+
     /// Create a worktree named `name` (on a new branch of the same name, based
     /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`.
     public static func create(
         repoPath: String, name: String, worktreePath: String, base: String?
     ) throws -> CreatedWorktree {
-        let repo: Repository
-        do {
-            repo = try Repository.open(atPath: repoPath)
-        } catch {
-            throw WorktreeError(.repositoryNotFound)
-        }
+        let repo = try openRepo(repoPath)
 
         if (try? repo.isBranchCheckedOut(name)) == true {
             throw WorktreeError(.branchAlreadyCheckedOut)
@@ -52,12 +61,8 @@ public enum WorktreeManager {
             throw WorktreeError(.worktreePathExists)
         }
 
-        let info: WorktreeInfo
-        do {
-            info = try repo.addWorktree(
-                name: name, atPath: worktreePath, basedOn: base)
-        } catch let gitError as GitError {
-            throw WorktreeError(.gitFailure(gitError.message))
+        let info = try mapGitError {
+            try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
         }
 
         return CreatedWorktree(
@@ -67,38 +72,21 @@ public enum WorktreeManager {
 
     /// List worktrees of the repository at `repoPath`.
     public static func list(repoPath: String) throws -> [WorktreeInfo] {
-        let repo: Repository
-        do { repo = try Repository.open(atPath: repoPath) }
-        catch { throw WorktreeError(.repositoryNotFound) }
-
-        do {
-            return try repo.worktreeNames().map { try repo.worktreeInfo(name: $0) }
-        } catch let gitError as GitError {
-            throw WorktreeError(.gitFailure(gitError.message))
+        let repo = try openRepo(repoPath)
+        return try mapGitError {
+            try repo.worktreeNames().map { try repo.worktreeInfo(name: $0) }
         }
     }
 
     /// Remove the worktree named `name` from the repository at `repoPath`.
     public static func remove(repoPath: String, name: String) throws {
-        let repo: Repository
-        do { repo = try Repository.open(atPath: repoPath) }
-        catch { throw WorktreeError(.repositoryNotFound) }
-
-        do { try repo.pruneWorktree(name: name) }
-        catch let gitError as GitError {
-            throw WorktreeError(.gitFailure(gitError.message))
-        }
+        let repo = try openRepo(repoPath)
+        try mapGitError { try repo.pruneWorktree(name: name) }
     }
 
     /// Whether the working tree of the repository at `repoPath` is clean.
     public static func isClean(repoPath: String) throws -> Bool {
-        let repo: Repository
-        do { repo = try Repository.open(atPath: repoPath) }
-        catch { throw WorktreeError(.repositoryNotFound) }
-
-        do { return try repo.isClean() }
-        catch let gitError as GitError {
-            throw WorktreeError(.gitFailure(gitError.message))
-        }
+        let repo = try openRepo(repoPath)
+        return try mapGitError { try repo.isClean() }
     }
 }

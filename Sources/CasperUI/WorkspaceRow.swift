@@ -34,7 +34,7 @@ struct WorkspaceRow: View {
     }
 
     private var taskLabel: String? {
-        workspace.currentTask ?? (isComplete ? "Terminé" : nil)
+        workspace.currentTask ?? (isComplete ? "Done" : nil)
     }
 }
 

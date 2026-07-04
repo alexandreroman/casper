@@ -19,11 +19,7 @@ public final class Repository {
         Libgit2.ensureInit()
         var repo: OpaquePointer?
         try gitCheck(git_repository_init(&repo, path, 0))
-        guard let repo else {
-            throw GitError(
-                code: -1, message: "libgit2 returned success but a null repository")
-        }
-        return Repository(pointer: repo)
+        return Repository(pointer: try requireNonNull(repo, "repository"))
     }
 
     /// Open the repository at `path` (either a working directory or a `.git`
@@ -32,11 +28,7 @@ public final class Repository {
         Libgit2.ensureInit()
         var repo: OpaquePointer?
         try gitCheck(git_repository_open(&repo, path))
-        guard let repo else {
-            throw GitError(
-                code: -1, message: "libgit2 returned success but a null repository")
-        }
-        return Repository(pointer: repo)
+        return Repository(pointer: try requireNonNull(repo, "repository"))
     }
 
     /// Open the repository that owns `path`, searching upward through parents.
@@ -45,11 +37,7 @@ public final class Repository {
         var repo: OpaquePointer?
         // flags 0 → search parent directories; no ceiling dirs.
         try gitCheck(git_repository_open_ext(&repo, path, 0, nil))
-        guard let repo else {
-            throw GitError(
-                code: -1, message: "libgit2 returned success but a null repository")
-        }
-        return Repository(pointer: repo)
+        return Repository(pointer: try requireNonNull(repo, "repository"))
     }
 
     /// Absolute path to the `.git` directory (trailing slash, per libgit2).
@@ -68,9 +56,7 @@ public final class Repository {
         var head: OpaquePointer?
         try gitCheck(git_repository_head(&head, pointer))
         defer { git_reference_free(head) }
-        var shorthand: UnsafePointer<CChar>?
-        shorthand = git_reference_shorthand(head)
-        guard let shorthand else {
+        guard let shorthand = git_reference_shorthand(head) else {
             throw GitError(code: -1, message: "HEAD has no shorthand name")
         }
         return String(cString: shorthand)
@@ -119,12 +105,12 @@ public final class Repository {
         for index in 0..<count {
             guard let entry = git_status_byindex(list, index) else { continue }
             let bits = entry.pointee.status
-            let delta = entry.pointee.index_to_workdir ?? entry.pointee.head_to_index
-            guard let delta else { continue }
+            guard let delta = entry.pointee.index_to_workdir ?? entry.pointee.head_to_index
+            else { continue }
             // For a deleted entry `new_file.path` can be NULL; fall back to
             // `old_file.path` so the deletion is not silently dropped.
-            let cPath = delta.pointee.new_file.path ?? delta.pointee.old_file.path
-            guard let cPath else { continue }
+            guard let cPath = delta.pointee.new_file.path ?? delta.pointee.old_file.path
+            else { continue }
             let path = String(cString: cPath)
             result.append(FileStatus(
                 path: path,
@@ -278,14 +264,10 @@ public final class Repository {
             return nil
         default: kind = .context
         }
-        let content: String
-        if let c = line.content {
-            content = String(
-                decoding: UnsafeRawBufferPointer(start: c, count: line.content_len),
-                as: UTF8.self)
-        } else {
-            content = ""
-        }
+        let content = line.content.map {
+            String(decoding: UnsafeRawBufferPointer(start: $0, count: line.content_len),
+                   as: UTF8.self)
+        } ?? ""
         // Strip the trailing line terminator, handling both LF and CRLF.
         var trimmed = content
         if trimmed.hasSuffix("\n") { trimmed.removeLast() }

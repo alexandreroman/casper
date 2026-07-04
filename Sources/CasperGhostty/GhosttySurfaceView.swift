@@ -174,13 +174,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // Combine libghostty's surface readback with this view's own AppKit metrics,
     // so the debug channel can pinpoint content-scale double-counting.
     public func debugGeometry() -> DebugSurfaceGeometry {
-        guard let surface else {
-            return DebugSurfaceGeometry(
-                columns: 0, rows: 0, widthPixels: 0, heightPixels: 0,
-                cellWidthPixels: 0, cellHeightPixels: 0,
-                boundsWidth: 0, boundsHeight: 0, backingWidth: 0, backingHeight: 0,
-                contentScaleX: 0, contentScaleY: 0, backingScaleFactor: 0)
-        }
+        guard let surface else { return .zero }
         let g = surface.geometry()
         let backingBounds = convertToBacking(bounds).size
         let contentScale = convertToBacking(NSSize(width: 1, height: 1))
