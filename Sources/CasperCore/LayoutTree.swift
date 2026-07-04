@@ -113,7 +113,77 @@ public enum LayoutTree {
         }
     }
 
+    /// Relocate the leaf holding `surfaceID` to sit beside `targetID` on the
+    /// side implied by `direction`. Removes the source (reusing `closeSurface`'s
+    /// removal + single-child collapse), then reinserts the *same* `Surface`
+    /// value verbatim — so `Surface.id` is preserved and the cached view/PTY
+    /// survives (the surface-identity invariant). Ratios are re-evened by
+    /// `split`. Returns `nil` for degenerate moves: source == target, or either
+    /// id missing from the tree (before or after removal).
+    public static func move(
+        _ node: LayoutNode, surfaceID: UUID, toTarget targetID: UUID,
+        direction: GhosttySplitDirectionLike
+    ) -> (LayoutNode, focus: UUID)? {
+        guard surfaceID != targetID else { return nil }
+        guard let source = surface(node, id: surfaceID) else { return nil }
+        guard surfaceIDs(node).contains(targetID) else { return nil }
+
+        let (reduced, _) = closeSurface(node, surface: surfaceID)
+        guard let reduced, surfaceIDs(reduced).contains(targetID) else { return nil }
+
+        let (orientation, side) = orientationAndSide(for: direction)
+        return split(reduced, focused: targetID, orientation: orientation, side: side, surface: source)
+    }
+
+    /// One of the four triangular edge regions a drop can land in, mirroring
+    /// Ghostty's `TerminalSplitDropZone`. There is no center/swap zone.
+    public enum DropZone: Equatable {
+        case top, bottom, left, right
+
+        /// The split direction a drop in this zone relocates the pane along.
+        public var direction: GhosttySplitDirectionLike {
+            switch self {
+            case .top: return .up
+            case .bottom: return .down
+            case .left: return .left
+            case .right: return .right
+            }
+        }
+    }
+
+    /// The drop zone `point` falls in within a pane of `size`: the nearest edge,
+    /// mirroring Ghostty's `TerminalSplitDropZone.calculate`. Ties break in the
+    /// order left, right, top, bottom (so the exact center resolves to `.left`).
+    /// A zero/negative size defaults to `.left` rather than dividing by zero.
+    public static func dropZone(at point: CGPoint, in size: CGSize) -> DropZone {
+        guard size.width > 0, size.height > 0 else { return .left }
+        let relX = point.x / size.width
+        let relY = point.y / size.height
+        let left = relX
+        let right = 1 - relX
+        let top = relY
+        let bottom = 1 - relY
+        let nearest = min(left, right, top, bottom)
+        if nearest == left { return .left }
+        if nearest == right { return .right }
+        if nearest == top { return .top }
+        return .bottom
+    }
+
     // MARK: - Helpers
+
+    /// The `Surface` value with `id` from the tree, or `nil` if absent.
+    private static func surface(_ node: LayoutNode, id: UUID) -> Surface? {
+        switch node {
+        case .leaf(let surface):
+            return surface.id == id ? surface : nil
+        case .split(_, let children, _):
+            for child in children {
+                if let found = surface(child, id: id) { return found }
+            }
+            return nil
+        }
+    }
 
     private static func pair(
         _ orientation: LayoutNode.Orientation, _ existing: LayoutNode,
