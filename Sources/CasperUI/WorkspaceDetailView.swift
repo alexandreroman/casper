@@ -128,7 +128,7 @@ struct WorkspaceDetailView: View {
                     Text("+\(diff.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
                     Text("−\(diff.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
                 }
-                .font(.caption.monospacedDigit().bold())
+                .font(.body.monospacedDigit().bold())
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(Color.secondary.opacity(0.12), in: Capsule())
