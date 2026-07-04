@@ -34,4 +34,14 @@ enum DiffLineStyle {
         case .context: return Color.clear
         }
     }
+
+    /// Solid tint for the row's leading accent stripe. Context lines get no
+    /// stripe (clear), mirroring GitHub's gutter accent.
+    static func accent(for kind: GitDiffLine.Kind) -> Color {
+        switch kind {
+        case .addition: return insertionTint
+        case .deletion: return deletionTint
+        case .context: return Color.clear
+        }
+    }
 }
