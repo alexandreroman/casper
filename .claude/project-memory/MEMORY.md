@@ -30,3 +30,5 @@
 - [SwiftUI native inspector width persistence](references/swiftui-inspector-width.md) — inspector column width is scene-level; measure via root GeometryReader+onChange, restore via ideal, re-seed per workspace with .id
 - [Intra-app drag pasteboard type](references/intra-app-drag-pasteboard-type.md) — pane drag-drop transports over standard `public.utf8-plain-text`; a code-only custom UTType is ignored by SwiftUI .onDrop (no Info.plist)
 - [Debug screenshot uses ScreenCaptureKit](references/debug-screenshot-screencapturekit.md) — macOS 15 target obsoletes CGWindowListCreateImage; DEBUG screenshot uses async SCScreenshotManager + screen-recording permission
+- [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — for native macOS terminal UI/interaction features, match Ghostty's macOS Swift source instead of improvising
+- [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — overlays set the cursor via cursorUpdate AND mouseEntered, reset to arrow on exit; never push/pop or addCursorRect alone; divider uses .pointerStyle
