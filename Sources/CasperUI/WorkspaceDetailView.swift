@@ -50,7 +50,7 @@ struct WorkspaceDetailView: View {
     private var title: some View {
         HStack(spacing: 7) {
             Octicon(.gitBranch).foregroundStyle(.secondary)
-            Text(workspace.branch.isEmpty ? workspace.name : workspace.branch)
+            Text(workspace.branchLabel)
                 .fontWeight(.bold)
             Text(spaceName).foregroundStyle(.secondary)
         }

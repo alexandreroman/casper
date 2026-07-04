@@ -9,7 +9,7 @@ struct WorkspaceRow: View {
             Octicon(.gitBranch)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 7) {
-                Text(workspace.name).lineLimit(1)
+                Text(workspace.branchLabel).fontWeight(.bold).lineLimit(1)
                 if workspace.progress.total > 0 {
                     ProgressBar(fraction: workspace.progressFraction, complete: workspace.isComplete)
                     if let task = taskLabel {
