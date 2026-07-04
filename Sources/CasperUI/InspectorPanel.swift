@@ -3,7 +3,7 @@ import CasperCore
 import SwiftUI
 
 /// The right-side inspector panel for a workspace: a top separator continuing
-/// the workspace title bar's line, then a segmented Browser | Diff selector
+/// the workspace title bar's line, then a segmented Diff | Browser selector
 /// centred at the top of the panel, over full-bleed content below.
 /// The Browser view reuses `BrowserSurfaceView` on the workspace's dedicated
 /// inspector surface; the Diff view reuses `DiffSurfaceView` for the working
@@ -23,8 +23,8 @@ struct InspectorPanel: View {
                 .padding(.top, -1)
                 .padding(.leading, 1)
             Picker("View", selection: tabSelection) {
-                Text("Browser").tag(InspectorTab.browser)
                 Text("Diff").tag(InspectorTab.diff)
+                Text("Browser").tag(InspectorTab.browser)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
