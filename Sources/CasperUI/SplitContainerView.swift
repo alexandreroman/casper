@@ -32,9 +32,12 @@ struct SplitContainerView: View {
     private static let minPaneLength: CGFloat = 60
     /// Thickness of the visible divider line (Ghostty's `splitterVisibleSize`).
     private static let splitterVisibleSize: CGFloat = 1
-    /// Extra transparent thickness straddling the line, widening the grab target
-    /// (Ghostty's `splitterInvisibleSize`); the hitbox is visible + invisible = 7.
-    private static let splitterInvisibleSize: CGFloat = 6
+    /// Extra transparent thickness straddling the line, widening the grab target;
+    /// the hitbox is visible + invisible. Deliberate deviation from Ghostty (whose
+    /// `splitterInvisibleSize` is 6, a 7pt hitbox): Casper widens it to a 12pt hitbox
+    /// for an easier grab, kept below ~12pt so it never encroaches on the pane
+    /// drag-grip (`PaneDragHandleView`) sitting just past the divider.
+    private static let splitterInvisibleSize: CGFloat = 11
 
     /// Per-child size fractions along the axis (sum ≈ 1). Seeded from `ratios`
     /// when it matches and is usable, else an even split.
