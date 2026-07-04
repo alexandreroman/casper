@@ -12,7 +12,7 @@ struct WorkspaceRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
                 Octicon(isGitRepo ? .gitBranch : .fileDirectory)
                     .foregroundStyle(isSelected ? Color.white : Color.secondary)
@@ -26,7 +26,7 @@ struct WorkspaceRow: View {
                     .frame(width: 20)
             }
             if workspace.progress.total > 0 {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     ProgressBar(
                         fraction: workspace.progressFraction,
                         complete: workspace.isComplete,
