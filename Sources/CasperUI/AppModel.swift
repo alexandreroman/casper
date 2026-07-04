@@ -5,6 +5,7 @@ import CasperGhostty
 import CasperGit
 import Foundation
 import Observation
+import SwiftUI
 import UserNotifications
 
 /// The single owner of runtime UI state and the bridge from the non-observable
@@ -196,6 +197,18 @@ final class AppModel {
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(spaces.first?.workspaces.first?.id)
+        }
+        persist()
+    }
+
+    /// Flip a Space's collapsed state (sidebar header disclosure) and persist.
+    func toggleSpaceCollapsed(id: UUID) {
+        guard let i = spaces.firstIndex(where: { $0.id == id }) else { return }
+        // Drive the state change inside `withAnimation` so the sidebar's
+        // conditional rows animate their insertion/removal (and the header
+        // chevron's rotation) in one coherent `.snappy` transaction.
+        withAnimation(.snappy) {
+            spaces[i].isCollapsed.toggle()
         }
         persist()
     }

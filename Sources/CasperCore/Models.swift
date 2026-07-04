@@ -263,6 +263,7 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var folderPath: String
     public var isGitRepo: Bool
+    public var isCollapsed: Bool
     public var workspaces: [Workspace]
 
     public init(
@@ -270,13 +271,36 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
         name: String,
         folderPath: String,
         isGitRepo: Bool,
+        isCollapsed: Bool = false,
         workspaces: [Workspace]
     ) {
         self.id = id
         self.name = name
         self.folderPath = folderPath
         self.isGitRepo = isGitRepo
+        self.isCollapsed = isCollapsed
         self.workspaces = workspaces
+    }
+
+    // Full case set is required once `init(from:)` is hand-rolled; case names
+    // match the property names so the synthesized `encode(to:)` keeps the same
+    // on-disk keys.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, folderPath, isGitRepo, isCollapsed, workspaces
+    }
+
+    /// Decodes every current field normally and defaults `isCollapsed` when it's
+    /// absent, so legacy `session.json` files (written before the collapse flag
+    /// existed) load expanded. `encode(to:)` stays synthesized, keeping the
+    /// on-disk shape stable and forward-writing the new field.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.folderPath = try container.decode(String.self, forKey: .folderPath)
+        self.isGitRepo = try container.decode(Bool.self, forKey: .isGitRepo)
+        self.isCollapsed = try container.decodeIfPresent(Bool.self, forKey: .isCollapsed) ?? false
+        self.workspaces = try container.decode([Workspace].self, forKey: .workspaces)
     }
 }
 

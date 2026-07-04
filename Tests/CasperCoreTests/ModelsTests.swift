@@ -166,4 +166,39 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.inspector.tab, expected.tab)
         XCTAssertEqual(decoded.inspector.browser.kind, expected.browser.kind)
     }
+
+    // MARK: - Space collapse
+
+    func testSpaceDefaultsToExpanded() {
+        let space = Space(
+            name: "app", folderPath: "/r", isGitRepo: true, workspaces: [])
+        XCTAssertFalse(space.isCollapsed)
+    }
+
+    func testSpaceCodableRoundTripWhenCollapsed() throws {
+        let space = Space(
+            name: "app", folderPath: "/r", isGitRepo: true,
+            isCollapsed: true, workspaces: [])
+        let data = try JSONEncoder().encode(space)
+        let decoded = try JSONDecoder().decode(Space.self, from: data)
+        XCTAssertEqual(decoded, space)
+        XCTAssertTrue(decoded.isCollapsed)
+    }
+
+    func testSpaceLegacyDecodeWithoutIsCollapsedDefaultsToFalse() throws {
+        // A `session.json` written before the collapse flag existed has a `space`
+        // object with no `isCollapsed` key; decoding must fall back to expanded
+        // rather than throw on the missing key.
+        let space = Space(
+            name: "app", folderPath: "/r", isGitRepo: true,
+            isCollapsed: true, workspaces: [])
+        let data = try JSONEncoder().encode(space)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "isCollapsed")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(Space.self, from: legacyData)
+        XCTAssertFalse(decoded.isCollapsed)
+        XCTAssertEqual(decoded.name, "app")  // other fields still decode normally
+    }
 }
