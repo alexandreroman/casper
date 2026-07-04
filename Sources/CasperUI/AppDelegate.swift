@@ -87,6 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try debug.start(); self.debugServer = debug }
         catch { CasperLog.debug.error("debug server failed to start: \(String(describing: error))") }
         #endif
+
+        // Bare SPM executable launched from a terminal: macOS does not foreground
+        // us automatically, so activate explicitly (mirrors GhosttyDemo).
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
