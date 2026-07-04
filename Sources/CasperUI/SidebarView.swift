@@ -22,8 +22,8 @@ struct SidebarView: View {
                         }
                     }
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 6)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
             }
             Divider()
             AddFolderFooter(onAdd: { model.presentAddFolderPanel() })

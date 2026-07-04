@@ -34,7 +34,7 @@ struct SpaceHeaderView: View {
 
             trailingSlot
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .padding(.horizontal, 6)
         // The "+" button intercepts its own tap; the rest of the row toggles collapse.

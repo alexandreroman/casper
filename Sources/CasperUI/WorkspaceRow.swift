@@ -12,17 +12,21 @@ struct WorkspaceRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Octicon(isGitRepo ? .gitBranch : .fileDirectory)
-                .foregroundStyle(isSelected ? Color.white : Color.secondary)
-
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
+                Octicon(isGitRepo ? .gitBranch : .fileDirectory)
+                    .foregroundStyle(isSelected ? Color.white : Color.secondary)
                 Text(workspace.branchLabel)
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(isSelected ? Color.white : Color.primary)
-                if workspace.progress.total > 0 {
+                Spacer(minLength: 6)
+                NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
+                    .frame(width: 20)
+            }
+            if workspace.progress.total > 0 {
+                VStack(alignment: .leading, spacing: 4) {
                     ProgressBar(
                         fraction: workspace.progressFraction,
                         complete: workspace.isComplete,
@@ -34,17 +38,15 @@ struct WorkspaceRow: View {
                             .lineLimit(1)
                     }
                 }
+                // Align under the branch label: leading icon (16) + HStack spacing (8).
+                .padding(.leading, 24)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
-                .frame(width: 20)
         }
         // Indent the content by the header's chevron slot (16) + HStack spacing (8)
         // so the leading Octicon lines up under the Space name, not the chevron.
         // Applied inside the pill, so selection still spans the full row width.
         .padding(.leading, 24)
-        .padding(.vertical, 5)
+        .padding(.vertical, 8)
         .padding(.horizontal, 8)
         .background(
             RoundedRectangle(cornerRadius: 6)
