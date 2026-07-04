@@ -6,36 +6,83 @@ import SwiftUI
 /// terminal's PTY, a browser's navigation) alive across layout restructuring.
 /// The view's lifetime is owned by the caller's cache, not by SwiftUI identity.
 ///
-/// Because the hosted view is shared per surface, a layout collapse (a split
-/// folding back to a single leaf) can momentarily leave two hosts fighting over
-/// it. Each attach schedules a next-runloop, window-guarded reconcile so the
-/// view ends up owned by the host whose container actually stays in the window.
+/// Because the hosted view is shared per surface, restructuring the split tree
+/// (a collapse folding a split back to a single leaf, or a drag-relocate that
+/// reparents the view into a different container) can momentarily leave several
+/// containers pointing at it. Ownership is therefore driven by **window
+/// membership**: `SharedHostContainer.viewDidMoveToWindow` re-evaluates on every
+/// window transition and the single container currently in a window wins.
+///
+/// This supersedes the earlier one-shot `DispatchQueue.main.async` reconcile,
+/// which bailed permanently when it ran before the winning container had entered
+/// the window (`guard container.window != nil else { return }`, no retry) and so
+/// left the shared view orphaned after a move. The window-driven coordinator is
+/// robust to that timing: a move heals when the incoming container enters the
+/// window, and a collapse heals when the outgoing container leaves it — each
+/// transition simply re-runs the reconcile until it converges.
 public struct PersistentNSViewHost: NSViewRepresentable {
     private let view: NSView
     public init(view: NSView) { self.view = view }
 
     public func makeNSView(context: Context) -> NSView {
-        let container = NSView()
-        attach(to: container)
+        // Registration happens in the container's init.
+        let container = SharedHostContainer(hostedView: view)
+        // Handle the rare case the container is already in a window at creation.
+        SharedViewOwnership.reconcile(view)
         return container
     }
 
     public func updateNSView(_ container: NSView, context: Context) {
-        if view.superview !== container { attach(to: container) }
+        // Re-converge if the structure changed without a window transition.
+        // Let the coordinator decide the owner — do not unconditionally re-attach.
+        SharedViewOwnership.reconcile(view)
+    }
+}
+
+/// Container that reconciles shared-view ownership on every window transition.
+@MainActor
+final class SharedHostContainer: NSView {
+    let hostedView: NSView
+
+    init(hostedView: NSView) {
+        self.hostedView = hostedView
+        super.init(frame: .zero)
+        SharedViewOwnership.register(self)
     }
 
-    private func attach(to container: NSView) {
-        place(view, in: container)
-        // Ownership tie-break for a shared view. During a layout collapse the outgoing
-        // host can steal the view into a container that SwiftUI is about to remove from
-        // the window. On the next runloop turn only a host whose container is still in a
-        // window keeps the view; the surviving host re-claims it if it was stolen, and a
-        // stale host (its container already out of the window) yields.
-        let view = self.view
-        DispatchQueue.main.async {
-            guard container.window != nil else { return }
-            if view.superview !== container { place(view, in: container) }
-        }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Whether we just entered or left a window, re-evaluate who owns the
+        // shared view: the one container currently in a window wins.
+        SharedViewOwnership.reconcile(hostedView)
+    }
+}
+
+/// Ownership registry keyed by the shared view identity. Converges the shared
+/// view into whichever container is currently in a window.
+@MainActor
+enum SharedViewOwnership {
+    // Weak container refs per hosted view; dead/removed containers (window == nil)
+    // are naturally ignored at reconcile time.
+    private static var registry: [ObjectIdentifier: NSHashTable<SharedHostContainer>] = [:]
+
+    static func register(_ container: SharedHostContainer) {
+        let key = ObjectIdentifier(container.hostedView)
+        let table = registry[key] ?? NSHashTable<SharedHostContainer>.weakObjects()
+        table.add(container)
+        registry[key] = table
+    }
+
+    /// Place `view` into the single container that is currently in a window.
+    /// If several are transiently in-window (mid-transition), any pick is fine:
+    /// when the losers leave the window this runs again and converges.
+    static func reconcile(_ view: NSView) {
+        let key = ObjectIdentifier(view)
+        guard let containers = registry[key]?.allObjects else { return }
+        guard let winner = containers.first(where: { $0.window != nil }) else { return }
+        if view.superview !== winner { place(view, in: winner) }
     }
 }
 
