@@ -19,6 +19,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // be attached to a window when `.onAppear` runs.
     var onAttach: (UUID) -> Void
     var onClose: (UUID) -> Void
+    // Builds the pane context menu for a right-click AppKit is allowed to handle
+    // (i.e. the terminal is not capturing the mouse). Returns nil to decline, in
+    // which case the right-click is forwarded to libghostty as usual.
+    var onContextMenu: ((NSEvent) -> NSMenu?)?
     // Internal (not private): the clipboard callback trampolines in
     // `GhosttyRuntime` recover this view from libghostty's userdata and need
     // its surface.
@@ -34,12 +38,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
         surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
         onAttach: @escaping (UUID) -> Void = { _ in },
-        onClose: @escaping (UUID) -> Void = { _ in }
+        onClose: @escaping (UUID) -> Void = { _ in },
+        onContextMenu: ((NSEvent) -> NSMenu?)? = nil
     ) {
         self.surfaceID = surfaceID
         self.onFocus = onFocus
         self.onAttach = onAttach
         self.onClose = onClose
+        self.onContextMenu = onContextMenu
         self.runtime = runtime
         self.configuration = configuration
         super.init(frame: .zero)
@@ -397,12 +403,35 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func mouseUp(with event: NSEvent) { mouseButton(event, GHOSTTY_MOUSE_LEFT, down: false) }
 
+    // True only while a right-button *press* has been forwarded to libghostty and
+    // its matching *release* is still pending. Lets `rightMouseUp` avoid sending a
+    // spurious button-up when the press was instead consumed to show the app menu.
+    private var rightButtonDownSent = false
+
     public override func rightMouseDown(with event: NSEvent) {
+        // Show the app context menu when the terminal is not capturing the mouse,
+        // or when Shift is held (the standard terminal override for mouse
+        // reporting). Otherwise the right-click belongs to the terminal app.
+        let shift = event.modifierFlags.contains(.shift)
+        // No surface means nothing to forward and nothing to show a menu for.
+        guard let surface else { return }
+        if !surface.mouseCaptured() || shift, let menu = onContextMenu?(event) {
+            menu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
+            rightButtonDownSent = false  // The press was consumed by the menu, not forwarded.
+            return
+        }
         mousePos(event)  // See `mouseDown`: anchor on the exact cell.
         mouseButton(event, GHOSTTY_MOUSE_RIGHT, down: true)
+        rightButtonDownSent = true  // A matching button-up is now pending.
     }
 
-    public override func rightMouseUp(with event: NSEvent) { mouseButton(event, GHOSTTY_MOUSE_RIGHT, down: false) }
+    public override func rightMouseUp(with event: NSEvent) {
+        // Only release if the matching press was forwarded; a press consumed by the
+        // context menu must not emit a lone button-up.
+        guard rightButtonDownSent else { return }
+        rightButtonDownSent = false
+        mouseButton(event, GHOSTTY_MOUSE_RIGHT, down: false)
+    }
 
     public override func otherMouseDown(with event: NSEvent) {
         mousePos(event)  // See `mouseDown`: anchor on the exact cell.

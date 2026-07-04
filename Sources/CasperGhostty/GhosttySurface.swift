@@ -83,6 +83,10 @@ public final class GhosttySurface {
     /// Whether the surface currently has an active text selection.
     public func hasSelection() -> Bool { ghostty_surface_has_selection(surface) }
 
+    /// Whether the terminal app is currently capturing the mouse (mouse reporting
+    /// active). When true, right-clicks belong to the app, not an AppKit menu.
+    public func mouseCaptured() -> Bool { ghostty_surface_mouse_captured(surface) }
+
     /// Deliver clipboard text back to libghostty for a pending read (paste)
     /// request. `state` is the opaque token libghostty handed to the read
     /// callback; it must be passed back unchanged.
