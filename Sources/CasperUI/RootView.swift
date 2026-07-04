@@ -7,7 +7,7 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView(model: model)
-                .frame(minWidth: 220)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 400)
         } detail: {
             if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
                 // Give the detail a per-workspace identity so SwiftUI recreates the
