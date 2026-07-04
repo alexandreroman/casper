@@ -54,11 +54,8 @@ struct SurfaceHostView: View {
 
     /// Reads the live pane size into `paneSize` without affecting layout.
     private var sizeReader: some View {
-        GeometryReader { geometry in
-            Color.clear
-                .onAppear { paneSize = geometry.size }
-                .onChange(of: geometry.size) { _, newSize in paneSize = newSize }
-        }
+        Color.clear
+            .onGeometryChange(for: CGSize.self, of: \.size) { paneSize = $0 }
     }
 
     private var dropDelegate: PaneDropDelegate {

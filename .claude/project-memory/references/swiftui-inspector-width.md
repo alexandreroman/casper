@@ -20,9 +20,12 @@ Casper's working recipe (see `Sources/CasperUI/InspectorPanel.swift`,
 `WorkspaceDetailView.swift`, `RootView.swift`, and `InspectorState` in
 `Sources/CasperCore/Models.swift`):
 
-- **Measure** by filling a **root** `GeometryReader` and reading
-  `proxy.size.width` directly via `.onChange(of:)` (macOS 14). Not a
-  `.background`, not a `PreferenceKey`.
+- **Measure** with `.onGeometryChange(for: CGFloat.self, of: { $0.size.width })`
+  on the panel's own root view (macOS 15+). This reads the resolved layout
+  width the same way a root `GeometryReader` proxy did, but without the wrapper.
+  Not a `.background`, not a `PreferenceKey`. (Earlier code used a root
+  `GeometryReader` + `.onChange(of: proxy.size.width)` as a macOS 14 fallback;
+  dropped once the deployment target became macOS 15.)
 - **Restore** by feeding the persisted per-workspace width into
   `.inspectorColumnWidth(ideal:)`.
 - **Re-seed per workspace on switch** with `.id(workspaceID)` on the detail

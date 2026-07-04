@@ -26,7 +26,7 @@ struct Octicon: View {
     ]
 
     // Decoded once per name and cached. `NSImage(data:)` yields a vector
-    // `_NSSVGImageRep` on macOS 14+; marking it a template lets
+    // `_NSSVGImageRep` on macOS 15; marking it a template lets
     // `.foregroundStyle(...)` tint it.
     private static let images: [Name: NSImage] = markup.compactMapValues { svg in
         guard let image = NSImage(data: Data(svg.utf8)) else { return nil }
@@ -41,7 +41,7 @@ struct Octicon: View {
                 .renderingMode(.template)
                 .frame(width: size, height: size)
         } else {
-            // Defensive: decoding never fails on macOS 14, but keep layout
+            // Defensive: decoding never fails on macOS 15, but keep layout
             // stable if it ever does rather than crashing.
             Color.clear
                 .frame(width: size, height: size)
