@@ -16,7 +16,7 @@ struct SidebarView: View {
                                 }
                             }
                         if !space.isCollapsed {
-                            ForEach(space.workspaces) { workspace in
+                            ForEach(space.orderedWorkspaces) { workspace in
                                 row(for: workspace, in: space)
                             }
                         }

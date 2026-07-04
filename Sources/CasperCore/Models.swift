@@ -302,6 +302,17 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
         self.isCollapsed = try container.decodeIfPresent(Bool.self, forKey: .isCollapsed) ?? false
         self.workspaces = try container.decode([Workspace].self, forKey: .workspaces)
     }
+
+    /// Workspaces in display order: the primary workspace (the repo's default
+    /// branch) first, then the linked workspaces sorted by name.
+    public var orderedWorkspaces: [Workspace] {
+        workspaces.sorted { lhs, rhs in
+            if (lhs.kind == .primary) != (rhs.kind == .primary) {
+                return lhs.kind == .primary
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
 }
 
 public struct Session: Codable, Equatable, Sendable {
