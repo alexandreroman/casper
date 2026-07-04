@@ -49,10 +49,10 @@ struct WorkspaceDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigation) { title }
+            ToolbarItem(placement: .navigation) { diffBadge }.flatToolbarItem()
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
-            ToolbarItem(placement: .primaryAction) { diffBadge }.flatToolbarItem()
             ToolbarItem(placement: .primaryAction) { inspectorToggle }
         }
         .task(id: model.selectedWorkspaceID) {
