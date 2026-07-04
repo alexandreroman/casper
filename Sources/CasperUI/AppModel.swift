@@ -19,6 +19,27 @@ final class AppModel {
     /// The surface that last became first responder (runtime-only, not persisted).
     var focusedSurfaceID: UUID?
 
+    /// The surface currently being dragged by its grip, or nil. Set on drag begin/end.
+    var draggingSurfaceID: UUID?
+    /// The pane currently under the drag and the zone the drop would use. One at a
+    /// time; cleared whenever the drag ends so no highlight can get stuck.
+    var dropHoverTarget: UUID?
+    var dropHoverZone: LayoutTree.DropZone?
+
+    func beginPaneDrag(_ surfaceID: UUID) { draggingSurfaceID = surfaceID }
+    func endPaneDrag() { draggingSurfaceID = nil; dropHoverTarget = nil; dropHoverZone = nil }
+    func setDropHover(target: UUID, zone: LayoutTree.DropZone) {
+        guard target != draggingSurfaceID else { return }  // don't highlight the source pane
+        dropHoverTarget = target
+        dropHoverZone = zone
+    }
+    func clearDropHover(target: UUID) {
+        if dropHoverTarget == target {
+            dropHoverTarget = nil
+            dropHoverZone = nil
+        }
+    }
+
     @ObservationIgnored private let sessionStore: SessionStore
     @ObservationIgnored private var portAllocator: PortAllocator
 
@@ -369,6 +390,26 @@ final class AppModel {
         }
     }
 
+    /// Relocate an existing surface to sit beside `targetID` on the side implied
+    /// by `zone` (the drag-and-drop drop). Mirrors `insertSurfaceBySplitting`'s
+    /// tail, but reuses the SAME `Surface` value (same id), so the cached
+    /// `GhosttySurfaceView`/PTY survives untouched — no view is discarded or
+    /// recreated. Both surfaces must live in the same (space, workspace); a
+    /// cross-workspace move (or any degenerate move) is a no-op.
+    func moveSurface(_ surfaceID: UUID, toTarget targetID: UUID, zone: LayoutTree.DropZone) {
+        guard let at = locateSurface(surfaceID), let targetAt = locateSurface(targetID),
+              targetAt == at
+        else { return }
+        guard let (layout, newFocus) = LayoutTree.move(
+            spaces[at.space].workspaces[at.workspace].layout,
+            surfaceID: surfaceID, toTarget: targetID, direction: zone.direction)
+        else { return }
+        spaces[at.space].workspaces[at.workspace].layout = layout
+        focusedSurfaceID = newFocus
+        persist()
+        focusActiveSurfaceView()
+    }
+
     /// The persistent view for a terminal surface, created on first use. Returns nil
     /// for a non-terminal surface or before the runtime exists.
     func surfaceView(for surface: Surface, in workspace: Workspace) -> GhosttySurfaceView? {
@@ -382,7 +423,8 @@ final class AppModel {
             surfaceID: surface.id,
             onFocus: { [weak self] id in self?.focusSurface(id) },
             onAttach: { [weak self] id in self?.focusSurfaceViewIfActive(id) },
-            onClose: { [weak self] id in self?.applyCloseSurface(id) })
+            onClose: { [weak self] id in self?.applyCloseSurface(id) },
+            onContextMenu: { [weak self, id = surface.id] _ in self?.paneContextMenu(for: id) })
         surfaceViews[surface.id] = view
         return view
     }

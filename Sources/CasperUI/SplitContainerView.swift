@@ -1,4 +1,3 @@
-import AppKit
 import CasperCore
 import SwiftUI
 
@@ -68,7 +67,7 @@ struct SplitContainerView: View {
     @ViewBuilder
     private func panes(available: CGFloat) -> some View {
         let fracs = displayFractions()
-        ForEach(Array(children.enumerated()), id: \.offset) { index, child in
+        ForEach(Array(children.enumerated()), id: \.element.paneDiffKey) { index, child in
             pane(child, fixedLength: available > 0 ? max(0, available * fracs[index]) : nil)
             if index < children.count - 1 {
                 divider(index: index, available: available)
@@ -99,18 +98,21 @@ struct SplitContainerView: View {
     private func divider(index: Int, available: CGFloat) -> some View {
         Divider()
             .overlay {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(
-                        width: orientation == .horizontal ? Self.dividerHitThickness : nil,
-                        height: orientation == .vertical ? Self.dividerHitThickness : nil)
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        let cursor = orientation == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown
-                        if hovering { cursor.push() } else { NSCursor.pop() }
-                    }
+                resizeHitArea
                     .gesture(dragGesture(index: index, available: available))
             }
+    }
+
+    /// The transparent, easier-to-grab strip straddling the 1pt divider, carrying
+    /// the axis resize cursor: horizontal split → left-right, vertical → up-down.
+    private var resizeHitArea: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(
+                width: orientation == .horizontal ? Self.dividerHitThickness : nil,
+                height: orientation == .vertical ? Self.dividerHitThickness : nil)
+            .contentShape(Rectangle())
+            .pointerStyle(orientation == .horizontal ? .columnResize : .rowResize)
     }
 
     private func dragGesture(index: Int, available: CGFloat) -> some Gesture {
@@ -157,4 +159,11 @@ struct SplitContainerView: View {
         guard !children.isEmpty else { return [] }
         return LayoutNode.evenRatios(children.count)
     }
+}
+
+fileprivate extension LayoutNode {
+    /// Stable identity for sibling diffing: the surface ids in this subtree.
+    /// Keying ForEach by this (not the array index) keeps each pane's view/host
+    /// associated with its content across a drag-relocate reorder.
+    var paneDiffKey: [UUID] { LayoutTree.surfaceIDs(self) }
 }
