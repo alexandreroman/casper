@@ -13,12 +13,9 @@ struct InspectorPanel: View {
     let workspace: Workspace
 
     var body: some View {
-        // SwiftUI's native inspector exposes no binding for the user-resized
-        // width, and its PreferenceKey propagation across the AppKit-hosted
-        // NSSplitView is unreliable (it only ever delivers the default value).
-        // So the panel observes its own laid-out width — which equals the
-        // inspector column width — via `onGeometryChange`, letting the model
-        // clamp and debounce the persist.
+        // The panel no longer owns its width: `WorkspaceDetailView`'s custom
+        // resizable divider sets it via `.frame(width:)`, so the panel simply
+        // fills whatever width it is given.
         VStack(spacing: 0) {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
@@ -40,9 +37,6 @@ struct InspectorPanel: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
-            model.setInspectorWidth(width, for: workspace.id)
-        }
     }
 
     @ViewBuilder private var content: some View {
