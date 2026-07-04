@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try ClaudeCodeAdapter.install()
         } catch {
-            CasperLog.app.error("hook install failed: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("hook install failed", error)
         }
 
         // The Ghostty runtime is created once and shared by every surface.
@@ -51,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.runtime = runtime
             runtime.actionHandler = LayoutActionHandler(model: model)
         } catch {
-            CasperLog.ghostty.error("ghostty init failed: \(String(describing: error), privacy: .public)")
+            CasperLog.ghostty.failure("ghostty init failed", error)
             NSApp.terminate(nil)
             return
         }
@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.socketServer = server
             model.socketPath = socketPath
         } catch {
-            CasperLog.app.error("hook socket failed to start: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("hook socket failed to start", error)
         }
 
         // Heartbeat timer (main run loop).

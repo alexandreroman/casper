@@ -9,4 +9,14 @@ public extension Workspace {
     var currentTask: String? {
         todos.first { $0.status == .inProgress }?.content
     }
+
+    var progressFraction: Double {
+        let (completed, total) = progress
+        return total > 0 ? Double(completed) / Double(total) : 0
+    }
+
+    var isComplete: Bool {
+        let (completed, total) = progress
+        return total > 0 && completed == total
+    }
 }

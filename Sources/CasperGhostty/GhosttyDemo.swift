@@ -72,7 +72,7 @@ private final class DemoDelegate: NSObject, NSApplicationDelegate {
             startDebugServer()
             #endif
         } catch {
-            CasperLog.ghostty.error("demo failed: \(String(describing: error), privacy: .public)")
+            CasperLog.ghostty.failure("demo failed", error)
             NSApp.terminate(nil)
         }
     }

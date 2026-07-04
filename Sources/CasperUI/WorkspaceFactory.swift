@@ -24,7 +24,7 @@ enum WorkspaceFactory {
             worktreePath: canonical,
             branch: info?.branch ?? "",
             portBase: portBase,
-            layout: .leaf(Surface(kind: .terminal(cwd: canonical, command: nil))),
+            layout: .leaf(.terminal(cwd: canonical)),
             kind: .primary
         )
         return Space(
@@ -41,7 +41,7 @@ enum WorkspaceFactory {
             worktreePath: worktreePath,
             branch: branch,
             portBase: portBase,
-            layout: .leaf(Surface(kind: .terminal(cwd: worktreePath, command: nil))),
+            layout: .leaf(.terminal(cwd: worktreePath)),
             kind: .linked,
             baseBranch: baseBranch)
     }

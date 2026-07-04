@@ -67,8 +67,8 @@ struct WorkspaceDetailView: View {
                 model.setInspectorTab(.diff, for: workspace.id)
             } label: {
                 HStack(spacing: 5) {
-                    Text("+\(diff.insertions)").foregroundStyle(.green.opacity(0.9))
-                    Text("−\(diff.deletions)").foregroundStyle(.red.opacity(0.9))
+                    Text("+\(diff.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
+                    Text("−\(diff.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
                 }
                 .font(.caption.monospacedDigit().bold())
                 .padding(.horizontal, 8)

@@ -155,6 +155,6 @@ struct SplitContainerView: View {
 
     private func evenFractions() -> [Double] {
         guard !children.isEmpty else { return [] }
-        return Array(repeating: 1.0 / Double(children.count), count: children.count)
+        return LayoutNode.evenRatios(children.count)
     }
 }

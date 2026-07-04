@@ -11,7 +11,7 @@ struct WorkspaceRow: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text(workspace.name).lineLimit(1)
                 if workspace.progress.total > 0 {
-                    ProgressBar(fraction: fraction, complete: isComplete)
+                    ProgressBar(fraction: workspace.progressFraction, complete: workspace.isComplete)
                     if let task = taskLabel {
                         Text(task).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
@@ -23,18 +23,8 @@ struct WorkspaceRow: View {
         }
     }
 
-    private var fraction: Double {
-        let (completed, total) = workspace.progress
-        return total > 0 ? Double(completed) / Double(total) : 0
-    }
-
-    private var isComplete: Bool {
-        let (completed, total) = workspace.progress
-        return total > 0 && completed == total
-    }
-
     private var taskLabel: String? {
-        workspace.currentTask ?? (isComplete ? "Done" : nil)
+        workspace.currentTask ?? (workspace.isComplete ? "Done" : nil)
     }
 }
 

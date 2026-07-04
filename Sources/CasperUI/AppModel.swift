@@ -82,8 +82,7 @@ final class AppModel {
             let session = try store.load()
             return AppModel(sessionStore: store, session: session)
         } catch {
-            CasperLog.app.error(
-                "failed to load session, starting fresh: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("failed to load session, starting fresh", error)
             let fallback = SessionStore(
                 fileURL: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("casper-session.json"))
             return AppModel(sessionStore: fallback)
@@ -127,14 +126,20 @@ final class AppModel {
         spaces.first { $0.workspaces.contains { $0.id == workspace.id } }
     }
 
-    /// Resolve the (space, workspace) index pair for in-place mutation.
-    private func locate(_ id: UUID) -> (space: Int, workspace: Int)? {
+    /// Resolve the (space, workspace) index pair of the first workspace matching
+    /// `predicate`, for in-place mutation.
+    private func indexPair(where predicate: (Workspace) -> Bool) -> (space: Int, workspace: Int)? {
         for (si, space) in spaces.enumerated() {
-            if let wi = space.workspaces.firstIndex(where: { $0.id == id }) {
+            if let wi = space.workspaces.firstIndex(where: predicate) {
                 return (si, wi)
             }
         }
         return nil
+    }
+
+    /// Resolve the (space, workspace) index pair for in-place mutation.
+    private func locate(_ id: UUID) -> (space: Int, workspace: Int)? {
+        indexPair { $0.id == id }
     }
 
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
@@ -150,8 +155,7 @@ final class AppModel {
         do {
             portBase = try portAllocator.allocate()
         } catch {
-            CasperLog.app.error(
-                "cannot add space: no free port block: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("cannot add space: no free port block", error)
             return
         }
         let space = WorkspaceFactory.makeSpace(
@@ -190,8 +194,7 @@ final class AppModel {
 
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
-            CasperLog.app.error(
-                "cannot add workspace: no free port block: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("cannot add workspace: no free port block", error)
             return false
         }
         // `git_worktree_add` creates only the leaf directory, not the
@@ -205,8 +208,7 @@ final class AppModel {
                 base: base.isEmpty ? nil : base)
         } catch {
             portAllocator.release(portBase)
-            CasperLog.app.error(
-                "worktree creation failed: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("worktree creation failed", error)
             return false
         }
         ensureCasperExcluded(folderPath: folder)
@@ -281,17 +283,11 @@ final class AppModel {
 
     /// The (space, workspace) index pair whose layout contains `surfaceID`.
     private func locateSurface(_ surfaceID: UUID) -> (space: Int, workspace: Int)? {
-        for (si, space) in spaces.enumerated() {
-            for (wi, ws) in space.workspaces.enumerated()
-            where LayoutTree.surfaceIDs(ws.layout).contains(surfaceID) {
-                return (si, wi)
-            }
-        }
-        return nil
+        indexPair { LayoutTree.surfaceIDs($0.layout).contains(surfaceID) }
     }
 
     private func newTerminalSurface(cwd: String) -> Surface {
-        Surface(kind: .terminal(cwd: cwd, command: nil))
+        Surface.terminal(cwd: cwd)
     }
 
     /// Shared tail of every split-based surface addition: split the leaf holding
@@ -408,7 +404,7 @@ final class AppModel {
     /// when `anchor` is nil) to the RIGHT.
     func applyNewBrowser(anchor: UUID? = nil) {
         guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
-        let surface = Surface(kind: .browser(url: URL(string: "about:blank")!))
+        let surface = Surface.blankBrowser()
         insertSurfaceBySplitting(
             at: at, focused: target, orientation: .horizontal, side: .after, surface: surface)
     }
@@ -425,8 +421,7 @@ final class AppModel {
             let repo = try Repository.open(atPath: workspace.worktreePath)
             return try repo.diffWorkdirToHead()
         } catch {
-            CasperLog.app.error(
-                "diff failed: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("diff failed", error)
             return nil
         }
     }
@@ -452,14 +447,10 @@ final class AppModel {
             persist()
             return
         }
-        for si in spaces.indices {
-            for wi in spaces[si].workspaces.indices
-            where spaces[si].workspaces[wi].inspector.browser.id == surfaceID {
-                spaces[si].workspaces[wi].inspector.browser =
-                    Surface(id: surfaceID, kind: .browser(url: url))
-                persist()
-                return
-            }
+        if let at = indexPair(where: { $0.inspector.browser.id == surfaceID }) {
+            spaces[at.space].workspaces[at.workspace].inspector.browser =
+                Surface(id: surfaceID, kind: .browser(url: url))
+            persist()
         }
     }
 
@@ -522,8 +513,7 @@ final class AppModel {
                 atPath: folderPath + "/.git/info", withIntermediateDirectories: true)
             try updated.write(toFile: excludePath, atomically: true, encoding: .utf8)
         } catch {
-            CasperLog.app.error(
-                "could not update .git/info/exclude: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("could not update .git/info/exclude", error)
         }
     }
 
@@ -531,7 +521,7 @@ final class AppModel {
         do {
             try sessionStore.save(Session(spaces: spaces))
         } catch {
-            CasperLog.app.error("failed to persist session: \(String(describing: error), privacy: .public)")
+            CasperLog.app.failure("failed to persist session", error)
         }
         onPersistForTest?()
     }

@@ -14,3 +14,10 @@ public enum CasperLog {
     public static let hooks = Logger(subsystem: subsystem, category: "hooks")
     public static let debug = Logger(subsystem: subsystem, category: "debug")
 }
+
+public extension Logger {
+    /// Logs an operation failure, rendering the error public for field diagnosis.
+    func failure(_ message: String, _ error: Error) {
+        self.error("\(message, privacy: .public): \(String(describing: error), privacy: .public)")
+    }
+}

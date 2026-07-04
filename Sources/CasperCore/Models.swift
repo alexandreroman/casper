@@ -35,6 +35,23 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+extension Surface {
+    /// A terminal surface rooted at `cwd`, optionally launching `command`.
+    public static func terminal(cwd: String, command: String? = nil) -> Surface {
+        Surface(kind: .terminal(cwd: cwd, command: command))
+    }
+
+    /// A browser surface showing the blank start page.
+    public static func blankBrowser() -> Surface {
+        Surface(kind: .browser(url: .aboutBlank))
+    }
+}
+
+extension URL {
+    /// The blank page shown by a freshly-created browser surface.
+    public static let aboutBlank = URL(string: "about:blank")!
+}
+
 public indirect enum LayoutNode: Equatable, Sendable {
     case split(orientation: Orientation, children: [LayoutNode], ratios: [Double])
     case leaf(Surface)
@@ -103,7 +120,7 @@ extension LayoutNode: Codable {
         }
     }
 
-    static func evenRatios(_ n: Int) -> [Double] {
+    public static func evenRatios(_ n: Int) -> [Double] {
         Array(repeating: 1.0 / Double(n), count: n)
     }
 }
@@ -137,7 +154,7 @@ public struct InspectorState: Codable, Equatable, Sendable {
     public init(
         collapsed: Bool = true,
         tab: InspectorTab = .diff,
-        browser: Surface = Surface(kind: .browser(url: URL(string: "about:blank")!)),
+        browser: Surface = Surface.blankBrowser(),
         width: Double = InspectorState.defaultWidth
     ) {
         self.collapsed = collapsed

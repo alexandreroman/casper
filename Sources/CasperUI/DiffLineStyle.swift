@@ -5,6 +5,12 @@ import SwiftUI
 /// so the (color-independent) prefix is unit-testable and the view stays
 /// declarative.
 enum DiffLineStyle {
+    /// The single source of truth for the diff add/delete color convention. Call
+    /// sites layer their own opacity on top of these base hues (line backgrounds
+    /// use a light wash, badge text a near-solid tint).
+    static var insertionTint: Color { .green }
+    static var deletionTint: Color { .red }
+
     static func prefix(for kind: GitDiffLine.Kind) -> String {
         switch kind {
         case .addition: return "+"
@@ -15,16 +21,16 @@ enum DiffLineStyle {
 
     static func color(for kind: GitDiffLine.Kind) -> Color {
         switch kind {
-        case .addition: return .green
-        case .deletion: return .red
+        case .addition: return insertionTint
+        case .deletion: return deletionTint
         case .context: return .primary
         }
     }
 
     static func background(for kind: GitDiffLine.Kind) -> Color {
         switch kind {
-        case .addition: return Color.green.opacity(0.12)
-        case .deletion: return Color.red.opacity(0.12)
+        case .addition: return insertionTint.opacity(0.12)
+        case .deletion: return deletionTint.opacity(0.12)
         case .context: return Color.clear
         }
     }

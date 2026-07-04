@@ -50,7 +50,7 @@ public enum LayoutTree {
                     let at = side == .after ? i + 1 : i
                     children.insert(newLeaf, at: at)
                     return (.split(orientation: splitOrientation, children: children,
-                                   ratios: even(children.count)), surface.id)
+                                   ratios: LayoutNode.evenRatios(children.count)), surface.id)
                 }
                 children[i] = pair(orientation, children[i], newLeaf, side)
                 return (.split(orientation: splitOrientation, children: children,
@@ -92,7 +92,7 @@ public enum LayoutTree {
                 }
                 let focusChild = children[min(i, children.count - 1)]
                 return (.split(orientation: orientation, children: children,
-                               ratios: even(children.count)),
+                               ratios: LayoutNode.evenRatios(children.count)),
                         surfaceIDs(focusChild).first)
             }
             return (node, nil)
@@ -115,16 +115,12 @@ public enum LayoutTree {
 
     // MARK: - Helpers
 
-    private static func even(_ n: Int) -> [Double] {
-        Array(repeating: 1.0 / Double(n), count: n)
-    }
-
     private static func pair(
         _ orientation: LayoutNode.Orientation, _ existing: LayoutNode,
         _ newLeaf: LayoutNode, _ side: InsertSide
     ) -> LayoutNode {
         let children = side == .after ? [existing, newLeaf] : [newLeaf, existing]
-        return .split(orientation: orientation, children: children, ratios: even(2))
+        return .split(orientation: orientation, children: children, ratios: LayoutNode.evenRatios(2))
     }
 }
 

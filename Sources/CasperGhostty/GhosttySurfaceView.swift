@@ -76,7 +76,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
                 pushSize()
                 pushDisplayID()
             } catch {
-                CasperLog.ghostty.error("surface creation failed: \(String(describing: error), privacy: .public)")
+                CasperLog.ghostty.failure("surface creation failed", error)
             }
         }
         // Now that the view is live in a window, let the host claim first responder

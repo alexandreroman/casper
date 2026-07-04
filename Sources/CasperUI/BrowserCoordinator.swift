@@ -26,7 +26,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         super.init()
         web.onFocus = { [weak self] in self?.onFocus?() }
         web.navigationDelegate = self
-        self.address = url.absoluteString == "about:blank" ? "" : url.absoluteString
+        self.address = url == .aboutBlank ? "" : url.absoluteString
         web.load(URLRequest(url: url))
     }
 
