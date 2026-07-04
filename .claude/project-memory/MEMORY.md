@@ -32,3 +32,4 @@
 - [Debug screenshot uses ScreenCaptureKit](references/debug-screenshot-screencapturekit.md) — macOS 15 target obsoletes CGWindowListCreateImage; DEBUG screenshot uses async SCScreenshotManager + screen-recording permission
 - [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — for native macOS terminal UI/interaction features, match Ghostty's macOS Swift source instead of improvising
 - [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — overlays set the cursor via cursorUpdate AND mouseEntered, reset to arrow on exit; never push/pop or addCursorRect alone; divider uses .pointerStyle
+- [Driving the Casper GUI with synthetic mouse input](references/casper-gui-synthetic-input.md) — no debug mouse verb; use CGEvent but make the window key first, park cursor off-window for clean captures
