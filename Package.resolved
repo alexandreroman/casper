@@ -1,6 +1,15 @@
 {
-  "originHash" : "5eb2627bc606561a66c0e0d3df188f56f4825119b3c351e41f00c09f45d6e547",
+  "originHash" : "33d07f356b2533da3d92c05511e1a747e38f5853a435062df19c2d0e63f0557b",
   "pins" : [
+    {
+      "identity" : "highlightswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/appstefan/HighlightSwift.git",
+      "state" : {
+        "revision" : "784ca3ccfc8a2cf724fbb2f06cb6ec3329424da3",
+        "version" : "1.1.0"
+      }
+    },
     {
       "identity" : "libghostty-spm",
       "kind" : "remoteSourceControl",

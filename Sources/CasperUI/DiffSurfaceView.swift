@@ -2,13 +2,23 @@ import CasperCore
 import CasperGit
 import SwiftUI
 
+/// Highlighted lines for one diff file, indexed by 1-based source line number.
+/// `new` covers the working-tree side (additions + context); `old` covers the
+/// HEAD side (deletions). Either may be nil when that side can't be highlighted.
+private struct FileHighlight { var new: [AttributedString]?; var old: [AttributedString]? }
+
 /// Read-only diff surface: the workspace's working tree vs HEAD, per-file, with
 /// +/- line coloring. Refreshes on open and on the button.
 struct DiffSurfaceView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
+    @Environment(\.colorScheme) private var colorScheme
     @State private var diff: GitDiff?
     @State private var loaded = false
+    /// Syntax highlights keyed by the file's offset in `diff.files`; populated
+    /// progressively as each file finishes highlighting off the main actor.
+    @State private var highlights: [Int: FileHighlight] = [:]
+    @State private var highlightTask: Task<Void, Never>?
     /// Visible width of the content area, measured once laid out. Drives the
     /// full-bleed row/header backgrounds (see `DiffFileView`/`DiffLineRow`).
     @State private var contentWidth: CGFloat = 0
@@ -18,15 +28,6 @@ struct DiffSurfaceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Changes").font(.headline)
-                Spacer()
-                Button(action: refresh) { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
-                    .help("Refresh")
-            }
-            .padding(6)
-            Divider()
             // GeometryReader is greedy, so it anchors the content region to the
             // full available area (top-aligned file list) and hands us its width.
             GeometryReader { proxy in
@@ -39,6 +40,8 @@ struct DiffSurfaceView: View {
             }
         }
         .onAppear { if !loaded { refresh() } }
+        .onChange(of: colorScheme) { _, _ in if diff != nil { startHighlighting() } }
+        .onDisappear { highlightTask?.cancel() }
     }
 
     @ViewBuilder private var content: some View {
@@ -50,8 +53,9 @@ struct DiffSurfaceView: View {
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(Array(diff.files.enumerated()), id: \.offset) { _, file in
-                            DiffFileView(file: file, contentWidth: contentWidth)
+                        ForEach(Array(diff.files.enumerated()), id: \.offset) { offset, file in
+                            DiffFileView(
+                                file: file, contentWidth: contentWidth, highlight: highlights[offset])
                         }
                     }
                     .padding(.vertical, 8)
@@ -73,12 +77,49 @@ struct DiffSurfaceView: View {
     private func refresh() {
         diff = model.computeDiff(for: workspace)
         loaded = true
+        startHighlighting()
+    }
+
+    /// Kicks off a background pass that highlights each file's working-tree and
+    /// HEAD text, publishing results per file so colors appear as they finish.
+    /// File reads stay on the main actor (quick, size-capped); only the actual
+    /// highlighting suspends off-actor, keeping the UI responsive.
+    private func startHighlighting() {
+        highlightTask?.cancel()
+        highlights = [:]
+        guard let files = diff?.files else { return }
+        let dark = colorScheme == .dark
+        highlightTask = Task {
+            for (offset, file) in files.enumerated() {
+                if Task.isCancelled { return }
+                guard !file.isBinary else { continue }
+
+                let newText = model.worktreeFileText(for: workspace, path: file.newPath)
+                let oldText = model.headFileText(for: workspace, path: file.oldPath)
+
+                let newLines = await highlight(newText, path: file.newPath, dark: dark)
+                let oldLines = await highlight(oldText, path: file.oldPath, dark: dark)
+                if Task.isCancelled { return }
+
+                highlights[offset] = FileHighlight(new: newLines, old: oldLines)
+            }
+        }
+    }
+
+    /// Highlights one file's text, or returns nil when absent. The library trims
+    /// trailing whitespace, so a single trailing newline is stripped first to
+    /// keep its line count aligned with the source.
+    private func highlight(_ text: String?, path: String, dark: Bool) async -> [AttributedString]? {
+        guard let text else { return nil }
+        let trimmed = text.hasSuffix("\n") ? String(text.dropLast()) : text
+        return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path, dark: dark)
     }
 }
 
 private struct DiffFileView: View {
     let file: GitDiffFile
     let contentWidth: CGFloat
+    let highlight: FileHighlight?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -97,11 +138,30 @@ private struct DiffFileView: View {
                         .padding(.horizontal, 8)
                         .padding(.top, 6).padding(.bottom, 2)
                     ForEach(Array(hunk.lines.enumerated()), id: \.offset) { _, line in
-                        DiffLineRow(line: line, gutterWidth: gutterWidth, contentWidth: contentWidth)
+                        DiffLineRow(
+                            line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
+                            highlighted: highlightedLine(for: line))
                     }
                 }
             }
         }
+    }
+
+    /// The highlighted attributed text for a line, or nil when unavailable.
+    /// Deletions read from the HEAD side, additions and context from the
+    /// working-tree side, both indexed by their 1-based source line number.
+    private func highlightedLine(for line: GitDiffLine) -> AttributedString? {
+        switch line.kind {
+        case .deletion:
+            return lookup(highlight?.old, at: line.oldLineNumber)
+        case .addition, .context:
+            return lookup(highlight?.new, at: line.newLineNumber)
+        }
+    }
+
+    private func lookup(_ lines: [AttributedString]?, at number: Int?) -> AttributedString? {
+        guard let lines, let number, number >= 1, number <= lines.count else { return nil }
+        return lines[number - 1]
     }
 
     /// Full-bleed header band: file path + status on the left, the +N −N line
@@ -156,6 +216,7 @@ private struct DiffLineRow: View {
     let line: GitDiffLine
     let gutterWidth: CGFloat
     let contentWidth: CGFloat
+    let highlighted: AttributedString?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -170,9 +231,8 @@ private struct DiffLineRow: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .frame(width: gutterWidth, alignment: .trailing)
-                Text(DiffLineStyle.prefix(for: line.kind) + line.content)
+                codeText
                     .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(DiffLineStyle.color(for: line.kind))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
@@ -180,6 +240,29 @@ private struct DiffLineRow: View {
         }
         .frame(minWidth: contentWidth, alignment: .leading)
         .background(DiffLineStyle.background(for: line.kind))
+    }
+
+    /// The code column. When a highlight is available its runs carry their own
+    /// syntax colors (fonts stripped, so the monospaced font above applies
+    /// uniformly), prefixed by the neutral diff marker. Otherwise it falls back
+    /// to plain text tinted by the line kind.
+    @ViewBuilder private var codeText: some View {
+        if let highlightedContent {
+            Text(highlightedContent)
+        } else {
+            Text(DiffLineStyle.prefix(for: line.kind) + line.content)
+                .foregroundStyle(DiffLineStyle.color(for: line.kind))
+        }
+    }
+
+    /// The diff marker prepended to the highlighted content, or nil when there is
+    /// no highlight to show. The marker inherits `.primary`; the appended runs
+    /// keep their syntax colors.
+    private var highlightedContent: AttributedString? {
+        guard let highlighted else { return nil }
+        var content = AttributedString(DiffLineStyle.prefix(for: line.kind))
+        content.append(highlighted)
+        return content
     }
 
     private var gutter: String {

@@ -22,6 +22,10 @@ let package = Package(
             url: "https://github.com/Lakr233/libghostty-spm.git",
             exact: "1.2.8"
         ),
+        .package(
+            url: "https://github.com/appstefan/HighlightSwift.git",
+            from: "1.1.0"
+        ),
     ],
     targets: [
         .systemLibrary(
@@ -45,7 +49,13 @@ let package = Package(
         ),
         .target(
             name: "CasperUI",
-            dependencies: ["CasperCore", "CasperGit", "CasperGhostty", "CasperAgents"]
+            dependencies: [
+                "CasperCore",
+                "CasperGit",
+                "CasperGhostty",
+                "CasperAgents",
+                .product(name: "HighlightSwift", package: "HighlightSwift"),
+            ]
         ),
         .target(
             name: "CasperCLI",

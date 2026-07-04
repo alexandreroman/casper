@@ -170,6 +170,28 @@ public final class Repository {
         return GitDiff(files: files)
     }
 
+    /// The UTF-8 text of `path` in the HEAD commit's tree, or nil when HEAD is
+    /// unborn, the path is absent, the blob is binary, or the bytes aren't UTF-8.
+    public func fileTextAtHead(path: String) throws -> String? {
+        guard let tree = try headTree() else { return nil }  // HEAD is unborn
+        defer { git_tree_free(tree) }
+
+        var entry: OpaquePointer?
+        let rc = git_tree_entry_bypath(&entry, tree, path)
+        if rc == GIT_ENOTFOUND.rawValue { return nil }
+        try gitCheck(rc)
+        defer { git_tree_entry_free(entry) }
+
+        var blob: OpaquePointer?
+        try gitCheck(git_blob_lookup(&blob, pointer, git_tree_entry_id(entry)))
+        defer { git_blob_free(blob) }
+
+        if git_blob_is_binary(blob) == 1 { return nil }
+        guard let rawContent = git_blob_rawcontent(blob) else { return nil }
+        let data = Data(bytes: rawContent, count: Int(git_blob_rawsize(blob)))
+        return String(data: data, encoding: .utf8)
+    }
+
     /// The HEAD commit's tree, or nil when HEAD is unborn / not found.
     private func headTree() throws -> OpaquePointer? {
         var head: OpaquePointer?

@@ -14,8 +14,9 @@ and the map (`INDEX.md`). The `.superpowers/sdd/` scratch stays out of Git.
 - UI: SwiftUI + targeted AppKit. Browser: `WKWebView`. Notifications:
   `UserNotifications`. IPC: `Network.framework`.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),
-  **swift-argument-parser**, and **libgit2**. Everything else uses built-in
-  macOS frameworks.
+  **swift-argument-parser**, **libgit2**, and **HighlightSwift** (syntax
+  highlighting for the diff view). Everything else uses built-in macOS
+  frameworks.
 
 ## Build & run
 

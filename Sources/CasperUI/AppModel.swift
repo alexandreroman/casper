@@ -487,6 +487,42 @@ final class AppModel {
         computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
     }
 
+    /// Files larger than this are left un-highlighted (neutral) to keep the diff
+    /// view responsive. (bytes)
+    private static let maxHighlightBytes = 512 * 1024
+
+    /// The full UTF-8 text of `path` in the workspace's HEAD commit, or nil when
+    /// the path is empty/absent, the blob is binary, or the read fails. This is the
+    /// "before" side of the diff, feeding syntax highlighting.
+    func headFileText(for workspace: Workspace, path: String) -> String? {
+        guard !path.isEmpty else { return nil }
+        do {
+            let repo = try Repository.open(atPath: workspace.worktreePath)
+            return try repo.fileTextAtHead(path: path)
+        } catch {
+            CasperLog.app.failure("read HEAD file text failed", error)
+            return nil
+        }
+    }
+
+    /// The full UTF-8 text of `path` on disk in the workspace's worktree, or nil
+    /// when the path is empty, the file is missing/unreadable, exceeds
+    /// `maxHighlightBytes`, or is not valid UTF-8. This is the "after" side of the
+    /// diff, feeding syntax highlighting. Never throws.
+    func worktreeFileText(for workspace: Workspace, path: String) -> String? {
+        guard !path.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: workspace.worktreePath).appendingPathComponent(path)
+        do {
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+            if let size, size > Self.maxHighlightBytes { return nil }
+            let data = try Data(contentsOf: url)
+            guard data.count <= Self.maxHighlightBytes else { return nil }
+            return String(data: data, encoding: .utf8)
+        } catch {
+            return nil
+        }
+    }
+
     /// Rewrite a browser surface's persisted URL (address-bar navigation).
     /// Searches the layout trees first; when the surface isn't in any layout, it
     /// falls back to each workspace's inspector browser, which lives outside the
