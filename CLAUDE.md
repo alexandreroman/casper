@@ -10,7 +10,7 @@ and the map (`INDEX.md`). The `.superpowers/sdd/` scratch stays out of Git.
 
 ## Tech stack
 
-- Swift 6 / Swift Package Manager, targeting **macOS 14+, arm64-only**.
+- Swift 6 / Swift Package Manager, targeting **macOS 15+, arm64-only**.
 - UI: SwiftUI + targeted AppKit. Browser: `WKWebView`. Notifications:
   `UserNotifications`. IPC: `Network.framework`.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Casper",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "CasperCore", targets: ["CasperCore"]),
         .library(name: "CasperGit", targets: ["CasperGit"]),

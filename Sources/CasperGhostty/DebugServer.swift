@@ -2,6 +2,7 @@
 import AppKit
 import CasperCore
 import CoreGraphics
+import ScreenCaptureKit
 
 /// Full geometry snapshot of one surface: libghostty's pixel readback plus the
 /// hosting view's AppKit metrics. Carries the numbers `dumpState` reports without
@@ -122,7 +123,7 @@ public final class DebugServer {
         self.server.onCommand = { [weak self] command, reply in
             // onCommand runs on the socket queue; surface work is main-thread only.
             Task { @MainActor in
-                let response = self?.handle(command) ?? .failure("server deallocated")
+                let response = await self?.handle(command) ?? .failure("server deallocated")
                 reply(response)
             }
         }
@@ -135,9 +136,9 @@ public final class DebugServer {
 
     public func stop() { server.stop() }
 
-    private func handle(_ command: DebugCommand) -> DebugResponse {
+    private func handle(_ command: DebugCommand) async -> DebugResponse {
         CasperLog.debug.debug("debug command: \(command.verb.rawValue, privacy: .public)")
-        let response = resolve(command)
+        let response = await resolve(command)
         if !response.ok {
             let reason = response.error ?? ""
             CasperLog.debug.debug(
@@ -146,7 +147,7 @@ public final class DebugServer {
         return response
     }
 
-    private func resolve(_ command: DebugCommand) -> DebugResponse {
+    private func resolve(_ command: DebugCommand) async -> DebugResponse {
         let surfaces = provider?.debugSurfaces() ?? []
 
         switch command.verb {
@@ -219,7 +220,7 @@ public final class DebugServer {
                 return targetFailure(command.target)
             }
             guard let window = handle.window else { return .failure("no window") }
-            return screenshot(window: window, to: path)
+            return await screenshot(window: window, to: path)
 
         case .focus:
             guard let id = command.target else { return .failure("missing target id") }
@@ -252,25 +253,32 @@ public final class DebugServer {
         surfaces.first(where: { $0.focused }) ?? surfaces.first
     }
 
-    private func screenshot(window: NSWindow, to path: String) -> DebugResponse {
+    private func screenshot(window: NSWindow, to path: String) async -> DebugResponse {
         let windowID = CGWindowID(window.windowNumber)
-        // CGWindowListCreateImage is deprecated on macOS 14 but remains the only
-        // reliable way to capture a Metal-rendered window's actual pixels; this
-        // path is debug-only and never ships in release.
-        guard let image = CGWindowListCreateImage(
-            .null, .optionIncludingWindow, windowID, [.boundsIgnoreFraming, .bestResolution]
-        ) else {
-            return .failure("window capture failed")
-        }
-        let rep = NSBitmapImageRep(cgImage: image)
-        guard let png = rep.representation(using: .png, properties: [:]) else {
-            return .failure("PNG encoding failed")
-        }
+        // ScreenCaptureKit replaces the CGWindowListCreateImage API obsoleted in
+        // macOS 15, and is the only way to capture a Metal-rendered window's actual
+        // pixels. Debug-only, needs screen-recording permission, never ships in
+        // release.
         do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: true)
+            guard let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
+                return .failure("window not found")
+            }
+            let filter = SCContentFilter(desktopIndependentWindow: scWindow)
+            let config = SCStreamConfiguration()
+            config.width = Int(filter.contentRect.width * CGFloat(filter.pointPixelScale))
+            config.height = Int(filter.contentRect.height * CGFloat(filter.pointPixelScale))
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: filter, configuration: config)
+            let rep = NSBitmapImageRep(cgImage: image)
+            guard let png = rep.representation(using: .png, properties: [:]) else {
+                return .failure("PNG encoding failed")
+            }
             try png.write(to: URL(fileURLWithPath: path))
             return .success(text: path)
         } catch {
-            return .failure("write failed: \(error)")
+            return .failure("window capture failed: \(error)")
         }
     }
 }
