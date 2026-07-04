@@ -34,4 +34,3 @@
 - [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — overlays set the cursor via cursorUpdate AND mouseEntered, reset to arrow on exit; never push/pop or addCursorRect alone; divider uses .pointerStyle
 - [Pending: verify inspector resize after onGeometryChange switch](references/pending-inspector-resize-verification.md) — manual GUI check owed; drag inspector divider, quit, reopen, confirm width restores
 - [Driving the Casper GUI with synthetic mouse input](references/casper-gui-synthetic-input.md) — no debug mouse verb; use CGEvent but make the window key first, park cursor off-window for clean captures
-- [Pending: verify sidebar rework in the running app](references/pending-sidebar-rework-verification.md) — GUI check owed for dba53d3 (custom sidebar); surfaces failed to init this session
