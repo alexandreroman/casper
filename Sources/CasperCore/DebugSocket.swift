@@ -24,6 +24,13 @@ public struct DebugSocketError: Error, Equatable {
 /// force an unbounded allocation on the other side.
 private let maxDebugFrameBytes = 8 * 1024 * 1024
 
+/// How long the server keeps a replied-to connection open, waiting for the
+/// client to close its side, before force-dropping it. A well-behaved client
+/// closes as soon as it has read the reply (and its own `timeout`, 5s by
+/// default, bounds even a stuck one), so this fallback only exists so a client
+/// that never closes cannot leak the connection.
+private let debugReplyLingerTimeout: TimeInterval = 15
+
 /// Reads exactly `count` bytes from `connection`, then invokes `completion` with
 /// them — or with `nil` if the peer reaches EOF (or errors) first. Shared by
 /// both directions: the server reads the request frame, the client reads the
@@ -71,11 +78,12 @@ private func decodeLength(_ header: Data) -> UInt32 {
 /// writes back one `DebugResponse`.
 ///
 /// Both directions use the same framing: a 4-byte big-endian length prefix
-/// followed by exactly that many JSON bytes. Neither side depends on EOF, so
-/// connection teardown can never race the payload — a slow handler no longer
-/// surfaces a spurious `ENETDOWN` on the client during long replies. The client
-/// treats a fully received frame as success and ignores any connection error
-/// that arrives after the bytes are already in hand.
+/// followed by exactly that many JSON bytes; neither side depends on EOF to
+/// know when a frame ends. After replying, the server lingers until the client
+/// closes its side rather than hard-cancelling, so tearing the connection down
+/// can never discard buffered reply bytes — even a large, multi-chunk reply
+/// from a slow handler reaches the client intact instead of surfacing a
+/// spurious `ENETDOWN` mid-read.
 ///
 /// `@unchecked Sendable`: wraps `Network.framework` whose handlers are
 /// `@Sendable`; all connection I/O runs on the single serial `queue`, and
@@ -254,15 +262,56 @@ public final class DebugSocketServer: @unchecked Sendable {
     private func reply(_ response: DebugResponse, on connection: NWConnection) {
         let payload = (try? JSONEncoder().encode(response)) ?? Data()
         // Frame the response symmetrically with the request: a 4-byte big-endian
-        // length prefix followed by the JSON bytes. The client reads an exact
-        // count and never depends on EOF, so cancelling here cannot race its
-        // read. `.finalMessage` still closes the send side cleanly.
+        // length prefix followed by the JSON bytes. `.finalMessage` half-closes
+        // the send side once the bytes are queued.
+        //
+        // We must NOT hard-cancel the connection from `.contentProcessed`:
+        // that callback only means the bytes were handed to the local network
+        // stack, not that the client has drained them. For a large, multi-chunk
+        // reply an immediate cancel() tears the socket down abortively and can
+        // discard the still-buffered tail, surfacing a spurious `ENETDOWN` on
+        // the client mid-read. Instead we linger — waiting for the client to
+        // close its side (EOF) — so a fully framed reply is always delivered
+        // intact before the connection is dropped.
         let framed = frame(payload)
         connection.send(
             content: framed, contentContext: .finalMessage, isComplete: true,
-            completion: .contentProcessed { [weak self] _ in
-                self?.drop(connection)
+            completion: .contentProcessed { [weak self] error in
+                guard let self else { return }
+                if error != nil {
+                    self.drop(connection)  // send failed; nothing to deliver, tear down now
+                } else {
+                    self.lingerUntilClientCloses(connection)
+                }
             })
+    }
+
+    /// After a reply has been queued, wait for the client to finish draining it
+    /// and close its side before tearing the connection down. Dropping only
+    /// once the client's EOF is observed guarantees a hard `cancel()` can never
+    /// discard buffered reply bytes. A bounded fallback drops the connection
+    /// even if the client never closes, so a misbehaving peer cannot leak it.
+    private func lingerUntilClientCloses(_ connection: NWConnection) {
+        queue.asyncAfter(deadline: .now() + debugReplyLingerTimeout) { [weak self] in
+            self?.drop(connection)  // idempotent fallback: a no-op if already dropped
+        }
+        waitForClientClose(on: connection)
+    }
+
+    /// Post a receive that resolves only when the client closes (EOF) or errors,
+    /// then drop the connection. The client sends nothing after its request, so
+    /// this blocks harmlessly until the client cancels — which it does only
+    /// after reading the full reply. Any stray bytes are drained and ignored.
+    private func waitForClientClose(on connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: maxDebugFrameBytes) {
+            [weak self] _, _, isComplete, error in
+            guard let self else { return }
+            if isComplete || error != nil {
+                self.drop(connection)
+            } else {
+                self.waitForClientClose(on: connection)
+            }
+        }
     }
 
     /// Untrack a connection and cancel it. Idempotent: a second call finds no

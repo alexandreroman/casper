@@ -38,9 +38,10 @@ final class DebugSocketTests: XCTestCase {
         server.onCommand = { command, reply in
             XCTAssertEqual(command.verb, .dumpState)
             // Defer the reply to exercise the slow-handler path that broke the
-            // `screenshot` verb: the server cancels right after sending the
-            // framed reply, and the client must treat the fully received frame
-            // as success instead of seeing a spurious ENETDOWN from that cancel.
+            // `screenshot` verb. The large, multi-chunk reply must reach the
+            // client intact: the server lingers until the client closes rather
+            // than hard-cancelling on send completion, so the client never sees
+            // a spurious ENETDOWN from a teardown that discards buffered bytes.
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
                 reply(.success(text: largeText))
             }
