@@ -28,7 +28,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.4'
+          xcode-version: '26.3'
 
       - name: Install dependencies
         run: brew install libgit2 pkgconf dylibbundler

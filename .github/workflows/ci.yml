@@ -19,7 +19,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.4'
+          xcode-version: '26.3'
 
       - name: Print toolchain
         run: swift --version
