@@ -54,7 +54,9 @@ public enum ClaudeCodeAdapter {
     /// Environment injected into every terminal surface of a workspace so that
     /// `casper hooks feed` can reach the app and the agent can bind its reserved
     /// ports. `CASPER_PORT` is the block base; `CASPER_PORT_0…9` expose the
-    /// whole reserved block for convenience.
+    /// whole reserved block for convenience. When `controlSocketPath` is given,
+    /// it is exposed as `CASPER_CONTROL_SOCKET` so the terminal can reach the
+    /// control socket.
     ///
     /// When `casperDirectory` is given, it is prepended to `PATH` so the
     /// relative hook command `casper hooks feed` (written into
@@ -75,7 +77,8 @@ public enum ClaudeCodeAdapter {
         portBase: Int,
         blockSize: Int = 10,
         casperDirectory: String? = nil,
-        basePath: String? = nil
+        basePath: String? = nil,
+        controlSocketPath: String? = nil
     ) -> [String: String] {
         var env: [String: String] = [
             "CASPER_SOCKET": socketPath,
@@ -84,6 +87,9 @@ public enum ClaudeCodeAdapter {
         ]
         for offset in 0..<blockSize {
             env["CASPER_PORT_\(offset)"] = String(portBase + offset)
+        }
+        if let controlSocketPath {
+            env["CASPER_CONTROL_SOCKET"] = controlSocketPath
         }
         if let casperDirectory {
             if let basePath, !basePath.isEmpty {
