@@ -113,7 +113,7 @@ Both are usable locally so the release is reproducible off-CI.
 - **Steps:**
   1. `actions/checkout@v4` with `fetch-depth: 0` (needed for the monotonic
      `git rev-list --count HEAD`).
-  2. `maxim-lobanov/setup-xcode@v1` **pinned** to an explicit version (`16.2`)
+  2. `maxim-lobanov/setup-xcode@v1` **pinned** to an explicit version (`16.4`)
      — removes the `latest-stable` non-determinism flagged as a risk.
   3. `brew install libgit2 pkgconf dylibbundler`.
   4. Derive `SHORT_VERSION` (tag without the `v`) and `BUNDLE_VERSION`
