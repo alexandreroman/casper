@@ -14,9 +14,11 @@ shipped with the CasperUI sidebar in UI-2 (`app-ui.md`).
 > **UI-2 relaxes the invariant below.** UI-2 defines a Space as a **folder that
 > may or may not be a Git repo**: a non-Git folder is a *degenerate* Space with
 > exactly one primary workspace and no worktree creation (the UI-1 behaviour is
-> preserved), and it is promoted to a full Git Space on the heartbeat once its
-> folder gains a `.git`. The "always a Git repository" wording in the next
-> section is the original design intent, superseded on this point by UI-2.
+> preserved), and it is promoted to a full Git Space once its folder gains a
+> `.git` — detected live by the selected workspace's filesystem watcher (and once
+> per Space at launch), not by a heartbeat poll; it is demoted back to degenerate
+> if the `.git` is later removed. The "always a Git repository" wording in the
+> next section is the original design intent, superseded on this point by UI-2.
 
 ## Design
 

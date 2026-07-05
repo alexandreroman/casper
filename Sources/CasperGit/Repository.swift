@@ -131,6 +131,42 @@ public final class Repository {
         try status().isEmpty
     }
 
+    /// Whether `path` (relative to the working directory) is ignored per Git's own
+    /// ignore rules — `.gitignore` at any level, `core.excludesFile`, and
+    /// `.git/info/exclude` — evaluated by libgit2 (`git_ignore_path_is_ignored`).
+    /// No manual `.gitignore` parsing.
+    public func isPathIgnored(_ path: String) throws -> Bool {
+        var ignored: Int32 = 0
+        try gitCheck(git_ignore_path_is_ignored(&ignored, pointer, path))
+        return ignored != 0
+    }
+
+    /// Absolute paths of the working directory's immediate child directories that
+    /// Git ignores (e.g. `node_modules`, `build`). Used to exclude high-churn
+    /// ignored trees from filesystem watching. `.git` is never returned (excluded
+    /// separately). Returns `[]` for a bare repo (no working directory).
+    ///
+    /// Limitation: a directory Git ignores is returned even if it contains a
+    /// *tracked* file (force-added, or tracked before the ignore rule). Excluding
+    /// such a directory from watching means edits to that tracked file will not
+    /// live-refresh the diff. This is an accepted trade-off to avoid recompute
+    /// churn on large ignored trees.
+    public func ignoredTopLevelDirectories() throws -> [String] {
+        guard let workdir = workdirPath else { return [] }
+        let fm = FileManager.default
+        let entries = (try? fm.contentsOfDirectory(atPath: workdir)) ?? []
+        var result: [String] = []
+        for name in entries.sorted() where name != ".git" {
+            let abs = URL(fileURLWithPath: workdir).appendingPathComponent(name).path
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: abs, isDirectory: &isDir), isDir.boolValue else { continue }
+            if (try? isPathIgnored(name)) == true {
+                result.append(abs)
+            }
+        }
+        return result
+    }
+
     /// The URL of the named remote, or nil when the remote does not exist or has
     /// no URL configured.
     public func remoteURL(named name: String) throws -> String? {

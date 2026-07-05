@@ -13,9 +13,11 @@
 - [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes SwiftUI ScrollView centers undersized content; pin it top-leading via measured viewport size
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
+- [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in gitignored `.superpowers/sdd/`, not `docs/superpowers/specs/`
 - [Commit message style](references/commit-message-style.md) — verb + action performed, always in English
 - [English only](references/english-only.md) — all generated text (docs, code, UI) must be in English
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline
+- [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf (drops in-process writes), realpath-canonicalize paths, barrier stop()
 - [Hooks install once](references/hooks-install-once.md) — hooks installed once GLOBALLY (~/.claude/settings.json) via CLI or at app startup, not per worktree; `hooks feed` relays
 - [CLI availability](references/cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
 - [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir

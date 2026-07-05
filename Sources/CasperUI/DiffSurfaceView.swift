@@ -41,6 +41,7 @@ struct DiffSurfaceView: View {
         }
         .onAppear { if !loaded { refresh() } }
         .onChange(of: colorScheme) { _, _ in if diff != nil { startHighlighting() } }
+        .onChange(of: model.diffRevision) { _, _ in refresh() }
         .onDisappear { highlightTask?.cancel() }
     }
 

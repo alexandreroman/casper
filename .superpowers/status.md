@@ -90,10 +90,14 @@ debug symbols in `make release`). UI-1 is verified live on a real desktop sessio
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
 moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
 `baseBranch`). Opening a folder builds a Space — Git or not (non-Git folders are
-degenerate Spaces: one primary, no worktree creation), promoted to Git on the
-heartbeat when a `.git` appears. A per-Space "+" creates a **linked** workspace as
-a new branch + `git worktree` under `<folder>/.casper/worktrees/<branch>`
-(`.casper/` added to `.git/info/exclude`). The sidebar is grouped by Space in
+degenerate Spaces: one primary, no worktree creation), promoted to Git when a
+`.git` appears — detected live by the workspace filesystem watcher (and once per
+Space at launch), and demoted back if the `.git` is removed. A per-Space "+"
+creates a **linked** workspace as a new branch + `git worktree` at a visible
+sibling of the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so
+naturally untracked — the old in-repo `.casper/worktrees/` layout and its
+`.git/info/exclude` entry are gone; a `-2`/`-3`… suffix is used if the sibling
+name is taken). The sidebar is grouped by Space in
 collapsible sections; removal is non-destructive (drop a linked workspace or a
 whole Space, leaving worktrees/branches on disk). Persistence is a clean break
 (the `SessionStore` self-heal discards incompatible legacy `session.json`). The
@@ -127,7 +131,10 @@ generalized to any `NSView`) and its URL persists via the address bar. Only
 **UI-5** is done: `.diff` leaves render a read-only diff surface over
 `diffWorkdirToHead()` — per-file sections (path + status, binary noted), hunk
 headers, and monospaced line rows colored by kind (addition/deletion/context)
-with old/new line-number gutters; computed on open + a refresh button; created via
+with old/new line-number gutters; computed on open and **live-refreshed** by a
+native FSEvents watcher on the selected workspace's folder (debounced ~200 ms;
+`.git` + Git-ignored top-level dirs excluded) that bumps an observable revision
+driving both the diff surface and the title-bar `+/−` badge; created via
 the tab-bar "+" menu (New diff).
 
 All five CasperUI sub-projects are built. **Live GUI check (partial):** terminals

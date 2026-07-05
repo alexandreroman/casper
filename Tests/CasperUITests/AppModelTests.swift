@@ -403,11 +403,35 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(linked.branch, "my-feature")
         XCTAssertEqual(linked.baseBranch, model.spaces[0].workspaces[0].branch)
         XCTAssertNotEqual(linked.portBase, primaryPort)
-        XCTAssertTrue(FileManager.default.fileExists(atPath:
-            repo.appendingPathComponent(".casper/worktrees/my-feature").path))
-        let exclude = try String(contentsOf:
-            repo.appendingPathComponent(".git/info/exclude"), encoding: .utf8)
-        XCTAssertTrue(exclude.contains(".casper/"))
+        let expectedWorktree = repo.deletingLastPathComponent()
+            .appendingPathComponent(repo.lastPathComponent + "-my-feature").path
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: expectedWorktree) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedWorktree))
+    }
+
+    func testAddLinkedWorkspaceAvoidsExistingDirectory() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let spaceID = model.spaces[0].id
+
+        // Occupy the would-be target sibling so creation must fall back to `-2`.
+        let taken = repo.deletingLastPathComponent()
+            .appendingPathComponent(repo.lastPathComponent + "-my-feature").path
+        try FileManager.default.createDirectory(atPath: taken, withIntermediateDirectories: true)
+        let suffixed = repo.deletingLastPathComponent()
+            .appendingPathComponent(repo.lastPathComponent + "-my-feature-2").path
+        addTeardownBlock {
+            try? FileManager.default.removeItem(atPath: taken)
+            try? FileManager.default.removeItem(atPath: suffixed)
+        }
+
+        XCTAssertTrue(model.addLinkedWorkspace(spaceID: spaceID, name: "My Feature"))
+        let linked = model.spaces[0].workspaces[1]
+        XCTAssertTrue(linked.worktreePath.hasSuffix("-my-feature-2"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: linked.worktreePath))
+        XCTAssertEqual(linked.branch, "my-feature")
     }
 
     func testAddLinkedWorkspaceRejectedForNonGitSpace() {
@@ -464,9 +488,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces.count, 1)
     }
 
-    // MARK: - Promotion on heartbeat (Task 6)
+    // MARK: - Promotion on worktree change (degenerate space gaining .git)
 
-    func testDegenerateSpaceIsPromotedOnHeartbeat() {
+    func testSelectingDegenerateSpaceThatGainedGitPromotesIt() {
         let dir = makeTempDir()
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
@@ -477,16 +501,141 @@ final class AppModelTests: XCTestCase {
         model.gitReprobe = { _ in
             WorkspaceFactory.GitInfo(canonicalPath: dir.path, branch: "main", remoteURL: nil)
         }
-        var saves = 0
-        model.onPersistForTest = { saves += 1 }
-
-        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1_000_000))
+        // Selecting the space re-arms the watcher, which promotes on the way in.
+        model.selectWorkspace(model.spaces[0].workspaces[0].id)
         XCTAssertTrue(model.spaces[0].isGitRepo)
         XCTAssertEqual(model.spaces[0].workspaces[0].branch, "main")
-        XCTAssertEqual(saves, 1)
+    }
 
-        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1_000_001))  // no further change
-        XCTAssertEqual(saves, 1)
+    func testHeartbeatNoLongerPromotesDegenerateSpace() {
+        let dir = makeTempDir()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        XCTAssertFalse(model.spaces[0].isGitRepo)
+
+        // Even with the reprobe reporting a repo, the heartbeat must not promote:
+        // promotion moved off the heartbeat and onto worktree-change detection.
+        model.gitReprobe = { _ in
+            WorkspaceFactory.GitInfo(canonicalPath: dir.path, branch: "main", remoteURL: nil)
+        }
+        model.tickHeartbeat(now: Date(timeIntervalSince1970: 1_000_000))
+        XCTAssertFalse(model.spaces[0].isGitRepo)
+    }
+
+    func testWorktreeChangePromotesDegenerateSpaceAndBumpsRevision() {
+        let dir = makeTempDir()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        // Capture the watcher's onChange so the test can fire a synthetic change.
+        var captured: (@Sendable () -> Void)?
+        model.makeWorktreeWatcher = { _, _, onChange in
+            captured = onChange
+            return StubDirectoryWatcher()
+        }
+        model.gitReprobe = { _ in nil }  // no repo yet: no promotion when the watcher arms
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        XCTAssertFalse(model.spaces[0].isGitRepo)
+        let revisionBefore = model.diffRevision
+
+        // Simulate `git init` landing, then a filesystem change firing.
+        model.gitReprobe = { _ in
+            WorkspaceFactory.GitInfo(canonicalPath: dir.path, branch: "main", remoteURL: nil)
+        }
+        captured?()
+
+        // The bump is debounced (~0.2s), so wait a little before asserting.
+        expectAfter(0.5)
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+        XCTAssertEqual(model.spaces[0].workspaces[0].branch, "main")
+        XCTAssertGreaterThan(model.diffRevision, revisionBefore)
+    }
+
+    func testWorktreeChangeBumpsDiffRevisionForGitSpace() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        var captured: (@Sendable () -> Void)?
+        model.makeWorktreeWatcher = { _, _, onChange in
+            captured = onChange
+            return StubDirectoryWatcher()
+        }
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+        let revisionBefore = model.diffRevision
+
+        captured?()
+
+        // The bump is debounced (~0.2s), so wait a little before asserting.
+        expectAfter(0.5)
+        XCTAssertGreaterThan(model.diffRevision, revisionBefore)
+    }
+
+    // MARK: - Demotion on worktree change (Git space losing .git)
+
+    func testWorktreeChangeDemotesSpaceWhenGitRemoved() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        var captured: (@Sendable () -> Void)?
+        model.makeWorktreeWatcher = { _, _, onChange in
+            captured = onChange
+            return StubDirectoryWatcher()
+        }
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)  // selects & arms the watcher
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+        XCTAssertFalse(model.spaces[0].workspaces[0].branch.isEmpty)
+        let revisionBefore = model.diffRevision
+
+        // Simulate the `.git` directory being deleted, then a filesystem change firing.
+        model.gitReprobe = { _ in nil }
+        captured?()
+
+        // The reaction is debounced (~0.2s), so wait a little before asserting.
+        expectAfter(0.5)
+        XCTAssertFalse(model.spaces[0].isGitRepo)
+        XCTAssertEqual(model.spaces[0].workspaces[0].branch, "")
+        XCTAssertGreaterThan(model.diffRevision, revisionBefore)
+    }
+
+    func testSelectionDoesNotDemoteOnTransientProbeFailure() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+
+        // A transient probe failure at selection/launch time must NOT demote:
+        // demotion happens only on a live filesystem event, never on a probe.
+        model.gitReprobe = { _ in nil }
+        model.selectWorkspace(model.spaces[0].workspaces[0].id)
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+    }
+
+    func testLaunchPromotesAllDegenerateSpacesThatGainedGit() {
+        let dir = makeTempDir()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: { _ in nil })  // starts degenerate
+        XCTAssertFalse(model.spaces[0].isGitRepo)
+
+        // `init`'s promote-all loop uses the default disk-hitting probe, but this
+        // model is built via `addSpace` after construction and `gitReprobe` is
+        // injected only afterwards — so exercise the same promote-only path
+        // directly to assert a degenerate Space that gained a `.git` gets promoted.
+        model.gitReprobe = { _ in
+            WorkspaceFactory.GitInfo(canonicalPath: dir.path, branch: "main", remoteURL: nil)
+        }
+        XCTAssertTrue(model.promoteSpaceIfGitInitialized(spaceIndex: 0))
+        XCTAssertTrue(model.spaces[0].isGitRepo)
+        XCTAssertEqual(model.spaces[0].workspaces[0].branch, "main")
+    }
+
+    /// Spin the main runloop for `seconds` so debounced main-queue work can run.
+    private func expectAfter(_ seconds: TimeInterval) {
+        let done = expectation(description: "waited \(seconds)s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { done.fulfill() }
+        wait(for: [done], timeout: seconds + 2)
     }
 
     // MARK: - Focus and layout mutations (Task 3)
@@ -756,6 +905,12 @@ final class AppModelTests: XCTestCase {
         if case .browser(let url) = surface(node, id)?.kind { return url }
         return nil
     }
+}
+
+/// Trivial `DirectoryWatching` stub: lets AppModel watcher-wiring tests capture
+/// the `onChange` callback without spinning up a real FSEvents stream.
+private final class StubDirectoryWatcher: DirectoryWatching {
+    func stop() {}
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`

@@ -56,12 +56,15 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
   or not — non-Git folders are degenerate Spaces with one primary workspace and
   no worktree creation); a per-Space "+" creates a **linked** workspace as a new
-  branch + `git worktree` under `<folder>/.casper/worktrees/<branch>` (with
-  `.casper/` added to `.git/info/exclude`). The sidebar is grouped by Space in
+  branch + `git worktree` at a visible sibling of the repo folder,
+  `<parent>/<repo>-<branch>` (outside the repo, so naturally untracked — no
+  in-repo `.casper/worktrees/` and no `.git/info/exclude` entry; a `-2`/`-3`…
+  suffix is used if the sibling name is taken). The sidebar is grouped by Space in
   collapsible sections; removal is non-destructive (drop a linked workspace, or a
   whole Space, leaving worktrees/branches on disk); a degenerate Space is promoted
-  to Git on the heartbeat when its folder gains a `.git`. The `+/−` diff summary
-  is deferred to UI-5.
+  to Git when its folder gains a `.git` (detected live by the filesystem watcher,
+  and once per Space at launch), and demoted back if the `.git` is removed. The
+  `+/−` diff summary is deferred to UI-5.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
   `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar (rounded
   "pill" tabs sharing the width equally, centered titles; the active tab a filled
@@ -99,8 +102,11 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   CasperGit's `diffWorkdirToHead()`: per-file sections (path + status, binary
   files noted), hunk headers, and monospaced line rows colored by kind
   (green addition / red deletion / neutral context) with old/new line-number
-  gutters and a `+`/`-`/space prefix cue. Computed on open + a refresh button
-  (no live auto-refresh in v1); created via the tab-bar "+" menu (New diff).
+  gutters and a `+`/`-`/space prefix cue. Computed on open and **live-refreshed**:
+  a native FSEvents watcher on the selected workspace's folder (debounced ~200 ms,
+  `.git` + Git-ignored top-level dirs excluded) bumps an observable revision that
+  both the diff surface and the title-bar `+/−` badge react to. Created via the
+  tab-bar "+" menu (New diff).
 
 ## Next action
 

@@ -17,6 +17,28 @@ final class AppModel {
     private(set) var spaces: [Space]
     var selectedWorkspaceID: UUID?
 
+    /// Observable revision token bumped when the selected workspace's folder
+    /// changes on disk. The diff badge and diff surface re-pull on its change,
+    /// giving them a live refresh without knowing about the filesystem watcher.
+    private(set) var diffRevision = 0
+
+    /// FSEvents watcher for the selected workspace's worktree, or nil when
+    /// nothing is selected. Reconfigured on every selection change.
+    @ObservationIgnored private var worktreeWatcher: DirectoryWatching?
+
+    /// Builds the watcher for the selected worktree. Injectable so tests can
+    /// substitute a stub; the default builds the real FSEvents-backed watcher.
+    @ObservationIgnored
+    var makeWorktreeWatcher: (
+        _ path: String, _ excluding: [String], _ onChange: @escaping @Sendable () -> Void
+    ) -> DirectoryWatching? = { path, excluding, onChange in
+        DirectoryWatcher(path: path, excluding: excluding, onChange: onChange)
+    }
+
+    /// Coalesces filesystem-change bursts (builds, save-all) into a single
+    /// `diffRevision` bump.
+    @ObservationIgnored private let diffDebouncer = Debouncer(delay: 0.2)
+
     /// The surface that last became first responder (runtime-only, not persisted).
     var focusedSurfaceID: UUID?
 
@@ -139,6 +161,17 @@ final class AppModel {
         for space in session.spaces {
             for ws in space.workspaces { self.portAllocator.reserve(ws.portBase) }
         }
+        // Self-heal any Space that gained a `.git` while the app was closed. This
+        // is promote-only (a transiently-unreadable repo is never demoted) and runs
+        // ONCE at startup — not on a timer — so it does not reintroduce the removed
+        // heartbeat poll. Then arm the watcher for the restored selection (set
+        // directly above, not through selectWorkspace).
+        for si in spaces.indices { promoteSpaceIfGitInitialized(spaceIndex: si) }
+        reconfigureWorktreeWatcher()
+    }
+
+    deinit {
+        worktreeWatcher?.stop()
     }
 
     var isEmpty: Bool { spaces.allSatisfy { $0.workspaces.isEmpty } }
@@ -225,10 +258,24 @@ final class AppModel {
         persist()
     }
 
-    /// Create a linked workspace (new branch + worktree under
-    /// `.casper/worktrees/<branch>`) in a Git Space. Returns false when the Space
-    /// is missing, not a Git repo, the name is unusable, or the worktree cannot be
-    /// created.
+    /// The given path if free, otherwise the first `-<n>` suffixed sibling that does
+    /// not yet exist (`…-my-feature`, `…-my-feature-2`, `…-my-feature-3`, …). Keeps
+    /// worktree creation from failing when the target directory is already taken.
+    private func availableWorktreePath(_ basePath: String) -> String {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: basePath) else { return basePath }
+        var suffix = 2
+        while fm.fileExists(atPath: "\(basePath)-\(suffix)") { suffix += 1 }
+        return "\(basePath)-\(suffix)"
+    }
+
+    /// Create a linked workspace (new branch + worktree at a visible sibling of the
+    /// repo folder, `<parent>/<repo>-<branch>`) in a Git Space. Placing worktrees
+    /// outside the repo keeps them naturally untracked. When the sibling directory
+    /// name is already taken, a numeric suffix (`-2`, `-3`, …) is appended so
+    /// creation still succeeds; the branch name is left unchanged. Returns false when
+    /// the Space is missing, not a Git repo, the name is unusable, or the worktree
+    /// cannot be created.
     @discardableResult
     func addLinkedWorkspace(spaceID: UUID, name: String) -> Bool {
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }),
@@ -236,18 +283,16 @@ final class AppModel {
               let branch = GitBranchName.sanitize(name) else { return false }
         let folder = spaces[si].folderPath
         let base = spaces[si].workspaces.first?.branch ?? ""
-        let worktreePath = folder + "/.casper/worktrees/" + branch
+        let folderURL = URL(fileURLWithPath: folder)
+        let basePath = folderURL.deletingLastPathComponent()
+            .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
+        let worktreePath = availableWorktreePath(basePath)
 
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
             CasperLog.app.failure("cannot add workspace: no free port block", error)
             return false
         }
-        // `git_worktree_add` creates only the leaf directory, not the
-        // `.casper/worktrees/` parent, so make sure that exists first.
-        let worktreesDir = URL(fileURLWithPath: worktreePath).deletingLastPathComponent()
-        try? FileManager.default.createDirectory(
-            at: worktreesDir, withIntermediateDirectories: true)
         do {
             _ = try WorktreeManager.create(
                 repoPath: folder, name: branch, worktreePath: worktreePath,
@@ -257,7 +302,6 @@ final class AppModel {
             CasperLog.app.failure("worktree creation failed", error)
             return false
         }
-        ensureCasperExcluded(folderPath: folder)
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
             baseBranch: base, portBase: portBase)
@@ -292,6 +336,8 @@ final class AppModel {
     /// nil or resolves to no workspace, only the selection changes.
     func selectWorkspace(_ id: UUID?) {
         selectedWorkspaceID = id
+        // Re-arm before the early return so a nil/non-Git selection stops the watcher.
+        reconfigureWorktreeWatcher()
         guard let id, let ws = workspace(id: id) else { return }
         // A selected workspace must be visible: expand its owning Space if it was
         // collapsed. Only mutate when actually collapsed, so an already-expanded
@@ -303,6 +349,104 @@ final class AppModel {
         focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
         focusActiveSurfaceView()
         persist()
+    }
+
+    /// Reconcile the current selection's Git backing (promote-only — safe at
+    /// launch/selection time) and then (re)arm its watcher. Promotion picks up a
+    /// `.git` that appeared before selection; demotion never happens here, only on
+    /// a live filesystem event, so a transient probe failure can't drop a Space's
+    /// Git backing. Called from `selectWorkspace(_:)` and `init`.
+    private func reconfigureWorktreeWatcher() {
+        if let id = selectedWorkspaceID, let at = locate(id) {
+            promoteSpaceIfGitInitialized(spaceIndex: at.space)
+        }
+        armWorktreeWatcher()
+    }
+
+    /// (Re)build the FSEvents watcher for the current selection from the CURRENT
+    /// Git-backing/gitignore state. Stops any prior watcher, then starts a fresh
+    /// one on the selected worktree regardless of Git-backing — a degenerate Space
+    /// must still be watched so it can detect gaining a `.git`. Excludes `.git`
+    /// (for a Git Space) and gitignored directories. Each coalesced change hops to
+    /// the main actor and, after the debounce window, drives
+    /// `handleSelectedWorktreeChange`. Pure wiring: no promotion/demotion here. A
+    /// nil selection leaves the watcher stopped.
+    private func armWorktreeWatcher() {
+        worktreeWatcher?.stop()
+        worktreeWatcher = nil
+        guard let id = selectedWorkspaceID, let at = locate(id) else { return }
+        let ws = spaces[at.space].workspaces[at.workspace]
+        let path = ws.worktreePath
+        var exclusions: [String] = []
+        if spaces[at.space].isGitRepo {
+            exclusions.append(path + "/.git")
+            if let repo = try? Repository.open(atPath: path) {
+                exclusions.append(contentsOf: (try? repo.ignoredTopLevelDirectories()) ?? [])
+            }
+        }
+        // FSEventStreamSetExclusionPaths accepts at most 8 paths; .git stays first.
+        if exclusions.count > 8 { exclusions = Array(exclusions.prefix(8)) }
+        worktreeWatcher = makeWorktreeWatcher(path, exclusions) { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.diffDebouncer.schedule { [weak self] in
+                        self?.handleSelectedWorktreeChange()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Debounced reaction to a filesystem change in the selected worktree. This
+    /// runs only from a live FSEvents change, so it is the one place allowed to
+    /// flip a Space's Git backing in either direction: promote a degenerate Space
+    /// that just gained a `.git`, or demote a Git Space whose `.git` was removed.
+    /// A flip changes the exclusion set, so re-arm the watcher; then bump the diff
+    /// revision so the badge and diff view refresh.
+    ///
+    /// Deleting the whole `.git` directory fires a root-level FSEvents change even
+    /// though `.git` is excluded — exclusions suppress events *under* `.git`, not
+    /// the parent-directory change when `.git` itself is removed — so this handler
+    /// is still reached on demotion.
+    private func handleSelectedWorktreeChange() {
+        guard let id = selectedWorkspaceID, let at = locate(id) else { return }
+        let flipped = spaces[at.space].isGitRepo
+            ? demoteSpaceIfGitRemoved(spaceIndex: at.space)
+            : promoteSpaceIfGitInitialized(spaceIndex: at.space)
+        if flipped { armWorktreeWatcher() }   // backing changed → exclusions changed → re-arm
+        diffRevision += 1
+    }
+
+    /// Re-probe a not-yet-Git space and, if it now has a repository, promote it:
+    /// mark it Git-backed, adopt HEAD's branch on its primary workspace, and
+    /// persist. Returns whether a promotion happened. Reuses the injectable
+    /// `gitReprobe`. (Formerly driven by the heartbeat poll.)
+    @discardableResult
+    func promoteSpaceIfGitInitialized(spaceIndex si: Int) -> Bool {
+        guard spaces.indices.contains(si), !spaces[si].isGitRepo,
+              !spaces[si].workspaces.isEmpty,
+              let info = gitReprobe(spaces[si].folderPath) else { return false }
+        spaces[si].isGitRepo = true
+        spaces[si].workspaces[0].branch = info.branch
+        persist()
+        return true
+    }
+
+    /// Demote a Git-backed space whose repository has disappeared (e.g. its `.git`
+    /// was deleted): mark it non-Git and clear the primary workspace's branch, then
+    /// persist. Returns whether a demotion happened. Only ever called from a live
+    /// filesystem-change event — never from a launch/selection-time probe, where a
+    /// transient read failure must not be mistaken for `.git` removal.
+    @discardableResult
+    func demoteSpaceIfGitRemoved(spaceIndex si: Int) -> Bool {
+        guard spaces.indices.contains(si), spaces[si].isGitRepo,
+              !spaces[si].workspaces.isEmpty,
+              gitReprobe(spaces[si].folderPath) == nil else { return false }
+        spaces[si].isGitRepo = false
+        spaces[si].workspaces[0].branch = ""   // degenerate primaries carry an empty branch
+        persist()
+        return true
     }
 
     func focusSurface(_ id: UUID) { focusedSurfaceID = id }
@@ -611,23 +755,6 @@ final class AppModel {
         }
     }
 
-    /// Best-effort: ensure `.casper/` is in the repo's `.git/info/exclude` so
-    /// managed worktrees never show as untracked. Uses the pure `GitInfoExclude`
-    /// computation; a write failure logs and is ignored.
-    func ensureCasperExcluded(folderPath: String) {
-        let excludePath = folderPath + "/.git/info/exclude"
-        let current = try? String(contentsOfFile: excludePath, encoding: .utf8)
-        guard let updated = GitInfoExclude.ensuring(
-            GitInfoExclude.casperEntry, in: current) else { return }
-        do {
-            try FileManager.default.createDirectory(
-                atPath: folderPath + "/.git/info", withIntermediateDirectories: true)
-            try updated.write(toFile: excludePath, atomically: true, encoding: .utf8)
-        } catch {
-            CasperLog.app.failure("could not update .git/info/exclude", error)
-        }
-    }
-
     func persist() {
         do {
             try sessionStore.save(Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
@@ -663,20 +790,7 @@ final class AppModel {
                 changed = true
             }
         }
-        var promoted = false
-        for si in spaces.indices where !spaces[si].isGitRepo {
-            guard let info = gitReprobe(spaces[si].folderPath),
-                  !spaces[si].workspaces.isEmpty else { continue }
-            spaces[si].isGitRepo = true
-            spaces[si].workspaces[0].branch = info.branch
-            ensureCasperExcluded(folderPath: spaces[si].folderPath)
-            promoted = true
-        }
-        if promoted {
-            persist()
-        } else if changed {
-            scheduleSave()
-        }
+        if changed { scheduleSave() }
     }
 
     /// Debounced persistence for high-frequency agent-state changes.
