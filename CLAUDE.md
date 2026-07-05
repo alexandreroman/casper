@@ -32,8 +32,16 @@ make vendor  # sync the pinned libghostty header (Vendor/ghostty/ghostty.h)
 make build   # compile
 make test    # run the test suite
 make release # size-optimized release build (arm64)
+make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)
+make dist    # package Casper.app into a downloadable .zip + .sha256 (release artifact)
 casper       # (no args) open a one-terminal Ghostty window (Plan 4 demo)
 ```
+
+`make bundle`/`make dist` need `brew install dylibbundler` (embeds the libgit2
+dylib chain into the bundle so the app runs on a clean Mac). The
+`.github/workflows/release.yml` workflow runs `make dist` on every `v*` tag and
+publishes the `.app` as a GitHub Release — see
+[`.superpowers/plans/github-release.md`](.superpowers/plans/github-release.md).
 
 ## Modules
 

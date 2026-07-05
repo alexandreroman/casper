@@ -15,3 +15,8 @@ DerivedData/
 ## SDD scratch (controller-only, not part of the codebase).
 ## The design docs under .superpowers/ ARE tracked; only the scratch is ignored.
 .superpowers/sdd/
+
+## Packaging output
+/Casper.app/
+/dist/
+/appcast.xml

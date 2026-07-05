@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.1.0), without the leading v'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & publish Casper.app (macOS, arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+
+      - name: Install dependencies
+        run: brew install libgit2 pkgconf dylibbundler
+
+      - name: Derive version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHORT_VERSION="$INPUT_VERSION"
+            TAG="v${SHORT_VERSION}"
+          else
+            TAG="$REF_NAME"
+            SHORT_VERSION="${TAG#v}"
+          fi
+          if ! printf '%s' "$SHORT_VERSION" | grep -Eq '^[0-9A-Za-z.+-]+$'; then
+            echo "error: invalid version '$SHORT_VERSION'" >&2
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "short=$SHORT_VERSION"
+            echo "bundle=$(git rev-list --count HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bundle & package
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+          BUNDLE: ${{ steps.version.outputs.bundle }}
+        run: make dist SHORT_VERSION="$SHORT" BUNDLE_VERSION="$BUNDLE"
+
+      - name: Generate appcast
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+          BUNDLE: ${{ steps.version.outputs.bundle }}
+          TAG: ${{ steps.version.outputs.tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ZIP="dist/Casper-${SHORT}-arm64.zip"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Casper-${SHORT}-arm64.zip"
+          LEN="$(stat -f%z "$ZIP")"
+          Scripts/update-appcast.sh "$SHORT" "$BUNDLE" "$URL" "$LEN"
+
+      - name: Publish release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHORT: ${{ steps.version.outputs.short }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          ZIP="dist/Casper-${SHORT}-arm64.zip"
+          SUM="dist/Casper-${SHORT}-arm64.zip.sha256"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" "$SUM" appcast.xml --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$SUM" appcast.xml \
+              --title "Casper ${SHORT}" \
+              --notes-file Packaging/release-notes.md
+          fi
+
+      - name: Upload build artifacts (dry-run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Casper-${{ steps.version.outputs.short }}-arm64
+          path: |
+            dist/Casper-${{ steps.version.outputs.short }}-arm64.zip
+            dist/Casper-${{ steps.version.outputs.short }}-arm64.zip.sha256
+            appcast.xml
