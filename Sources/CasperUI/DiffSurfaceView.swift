@@ -188,7 +188,7 @@ private struct DiffFileView: View {
             if file.isBinary {
                 Text("Binary file")
                     .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .padding(.vertical, 4)
             } else {
                 ForEach(visibleHunks) { entry in
                     Text(entry.hunk.header)
@@ -196,7 +196,6 @@ private struct DiffFileView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .padding(.horizontal, 8)
                         .padding(.top, 6).padding(.bottom, 2)
                     ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
                         DiffLineRow(
@@ -207,7 +206,7 @@ private struct DiffFileView: View {
                 if hiddenLineCount > 0 {
                     Text("Diff too large — \(hiddenLineCount) more lines hidden")
                         .font(.caption).foregroundStyle(.secondary)
-                        .padding(.horizontal, 8).padding(.vertical, 6)
+                        .padding(.vertical, 6)
                 }
             }
         }
@@ -344,7 +343,6 @@ private struct DiffLineRow: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.leading, 8)
         }
         .frame(minWidth: contentWidth, alignment: .leading)
         .background(DiffLineStyle.background(for: line.kind))
