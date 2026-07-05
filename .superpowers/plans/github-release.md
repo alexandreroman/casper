@@ -10,7 +10,7 @@ without reworking the release pipeline.
 ## Problem
 
 `swift build` already compiles the project in CI (`.github/workflows/ci.yml`,
-`macos-14`). But that produces a bare Mach-O executable with a **hard dynamic
+`macos-15`). But that produces a bare Mach-O executable with a **hard dynamic
 dependency on Homebrew's libgit2**:
 
 ```
@@ -109,7 +109,7 @@ Both are usable locally so the release is reproducible off-CI.
   and packages, then uploads the artifacts to the workflow run (via
   `actions/upload-artifact`) **without** creating a release or a git tag.
 - **`permissions: contents: write`** — required to create a release.
-- **Runner:** `macos-14` (arm64), consistent with `ci.yml`.
+- **Runner:** `macos-15` (arm64), consistent with `ci.yml`.
 - **Steps:**
   1. `actions/checkout@v4` with `fetch-depth: 0` (needed for the monotonic
      `git rev-list --count HEAD`).
@@ -182,7 +182,7 @@ deferring them today.
 
 ```
 git push tag v0.1.0
-  └─ release.yml (macos-14, arm64)
+  └─ release.yml (macos-15, arm64)
        ├─ pinned Xcode + brew install libgit2 pkgconf dylibbundler
        ├─ swift build -c release            → bare casper binary
        ├─ bundle-app.sh                      → Casper.app
