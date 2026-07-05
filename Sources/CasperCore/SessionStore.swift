@@ -1,5 +1,8 @@
 import Foundation
 
+/// Not `Sendable`: holds shared mutable `JSONEncoder`/`JSONDecoder` instances.
+/// Thread-safety relies on caller confinement — all access must happen on the
+/// main actor (its sole owner, `AppModel`, is main-actor-isolated).
 public final class SessionStore {
     private let fileURL: URL
     private let encoder: JSONEncoder

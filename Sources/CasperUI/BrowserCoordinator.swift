@@ -13,6 +13,15 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     @Published var address: String = ""
     @Published var canGoBack = false
     @Published var canGoForward = false
+    /// The last navigation failure, surfaced as a banner and cleared when a new
+    /// navigation starts. Nil while the current load is healthy.
+    @Published var loadError: String?
+
+    /// True while the user is editing the address field. A navigation that
+    /// finishes mid-edit must not overwrite their in-progress text, so `syncNav`
+    /// skips the `address` assignment while this is set. Driven by the view's
+    /// focus state; not `@Published` since only the view mutates it.
+    var isEditingAddress = false
 
     /// Called with the committed URL so the model persists it into the surface.
     var onCommitURL: ((URL) -> Void)?
@@ -40,13 +49,34 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
         if let url = webView.url {
-            address = url.absoluteString
+            // Persist the committed URL regardless, but leave the visible text
+            // alone while the user is mid-edit so their typing isn't clobbered.
+            if !isEditingAddress { address = url.absoluteString }
             onCommitURL?(url)
         }
     }
 
+    private func handleFailure(_ error: Error) {
+        // A load superseded by a newer one reports as cancelled — not a failure.
+        let nsError = error as NSError
+        guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
+        loadError = error.localizedDescription
+        syncNav()
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        loadError = nil
+    }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { syncNav() }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { syncNav() }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        handleFailure(error)
+    }
+    func webView(
+        _ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error
+    ) {
+        handleFailure(error)
+    }
 }
 
 /// A `WKWebView` that reports first-responder acquisition, so clicking into web

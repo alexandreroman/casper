@@ -6,6 +6,8 @@ import Foundation
 /// long-lived app and for the test process).
 public enum Libgit2 {
     private static let initialized: Bool = {
+        // On success `git_libgit2_init` returns the (positive) number of
+        // initializations of this library; only a negative value is a failure.
         git_libgit2_init() >= 0
     }()
 

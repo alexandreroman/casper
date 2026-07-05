@@ -97,6 +97,32 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(surface.id, sid)
     }
 
+    func testSplitWithMismatchedRatiosFailsToDecode() {
+        // A corrupt `session.json` where `ratios.count != children.count` must be
+        // rejected at decode time (routed through SessionStore's self-heal) rather
+        // than decoding into a node that later traps in `LayoutTree.closeSurface`.
+        let s1 = UUID()
+        let s2 = UUID()
+        let json = """
+        { "split": { "orientation": "horizontal", "children": [
+            { "leaf": { "_0": { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } } } },
+            { "leaf": { "_0": { "id": "\(s2.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } } } }
+        ], "ratios": [1.0] } }
+        """
+        XCTAssertThrowsError(try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8)))
+    }
+
+    func testSplitWithSingleChildFailsToDecode() {
+        // A `.split` must hold at least two children; one child is inconsistent.
+        let s1 = UUID()
+        let json = """
+        { "split": { "orientation": "horizontal", "children": [
+            { "leaf": { "_0": { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } } } }
+        ], "ratios": [1.0] } }
+        """
+        XCTAssertThrowsError(try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8)))
+    }
+
     func testWorkspaceKindRawValues() {
         XCTAssertEqual(WorkspaceKind.primary.rawValue, "primary")
         XCTAssertEqual(WorkspaceKind.linked.rawValue, "linked")

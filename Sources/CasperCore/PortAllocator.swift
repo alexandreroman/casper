@@ -6,7 +6,12 @@ public struct PortAllocationError: Error, Equatable {
 }
 
 public struct PortAllocator: Equatable, Sendable {
+    /// Lowest allowed block base.
     public let rangeStart: Int
+    /// Highest allowed block *base* — not the highest allocatable port. Each
+    /// block occupies the `blockSize` ports `[base, base + blockSize - 1]`, so a
+    /// block anchored at `rangeEnd` can extend up to `blockSize - 1` ports past
+    /// `rangeEnd`. Size the range so that tail fits within the intended ceiling.
     public let rangeEnd: Int
     public let blockSize: Int
     private var used: Set<Int>

@@ -190,22 +190,60 @@ private struct DiffFileView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .padding(.horizontal, 8).padding(.vertical, 4)
             } else {
-                ForEach(Array(file.hunks.enumerated()), id: \.offset) { _, hunk in
-                    Text(hunk.header)
+                ForEach(visibleHunks) { entry in
+                    Text(entry.hunk.header)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                         .padding(.horizontal, 8)
                         .padding(.top, 6).padding(.bottom, 2)
-                    ForEach(Array(hunk.lines.enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
                         DiffLineRow(
                             line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
                             highlighted: highlightedLine(for: line))
                     }
                 }
+                if hiddenLineCount > 0 {
+                    Text("Diff too large — \(hiddenLineCount) more lines hidden")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 6)
+                }
             }
         }
+    }
+
+    /// Per-file cap on rendered diff rows. A single pathologically large file
+    /// (e.g. a generated lockfile) would otherwise instantiate every line row at
+    /// once when it scrolls into the enclosing lazy stack; the overflow is
+    /// summarized by `hiddenLineCount` instead.
+    private static let maxRenderedLines = 3000
+
+    /// One rendered hunk, trimmed to the leading `lineCount` lines that still fit
+    /// under `maxRenderedLines`. Hunks past the cap are dropped entirely.
+    private struct VisibleHunk: Identifiable {
+        let id: Int  // hunk offset within the file
+        let hunk: GitDiffHunk
+        let lineCount: Int
+    }
+
+    /// The file's hunks distributed across the per-file line budget, in order.
+    private var visibleHunks: [VisibleHunk] {
+        var remaining = Self.maxRenderedLines
+        var result: [VisibleHunk] = []
+        for (offset, hunk) in file.hunks.enumerated() {
+            guard remaining > 0 else { break }
+            let count = min(hunk.lines.count, remaining)
+            result.append(VisibleHunk(id: offset, hunk: hunk, lineCount: count))
+            remaining -= count
+        }
+        return result
+    }
+
+    /// Lines omitted by the per-file cap, for the truncation notice.
+    private var hiddenLineCount: Int {
+        let total = file.hunks.reduce(0) { $0 + $1.lines.count }
+        return max(0, total - Self.maxRenderedLines)
     }
 
     /// The highlighted attributed text for a line, or nil when unavailable.

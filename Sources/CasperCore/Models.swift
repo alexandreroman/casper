@@ -74,10 +74,24 @@ extension LayoutNode: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if container.contains(.split) {
             let c = try container.nestedContainer(keyedBy: SplitKeys.self, forKey: .split)
-            self = .split(
-                orientation: try c.decode(Orientation.self, forKey: .orientation),
-                children: try c.decode([LayoutNode].self, forKey: .children),
-                ratios: try c.decode([Double].self, forKey: .ratios))
+            let orientation = try c.decode(Orientation.self, forKey: .orientation)
+            let children = try c.decode([LayoutNode].self, forKey: .children)
+            let ratios = try c.decode([Double].self, forKey: .ratios)
+            // Reject inconsistent splits so a corrupt `session.json` self-heals via
+            // SessionStore rather than decoding into a node that later traps in
+            // `LayoutTree.closeSurface` (`ratios.remove(at:)` index-out-of-range).
+            guard children.count >= 2 else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "split must have at least 2 children, found \(children.count)"))
+            }
+            guard ratios.count == children.count else {
+                throw DecodingError.dataCorrupted(.init(
+                    codingPath: decoder.codingPath,
+                    debugDescription:
+                        "split ratios count (\(ratios.count)) must equal children count (\(children.count))"))
+            }
+            self = .split(orientation: orientation, children: children, ratios: ratios)
         } else if container.contains(.leaf) {
             let c = try container.nestedContainer(keyedBy: LeafKeys.self, forKey: .leaf)
             self = .leaf(try c.decode(Surface.self, forKey: ._0))

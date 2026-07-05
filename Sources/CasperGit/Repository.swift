@@ -171,8 +171,10 @@ public final class Repository {
     /// no URL configured.
     public func remoteURL(named name: String) throws -> String? {
         var remote: OpaquePointer?
-        guard git_remote_lookup(&remote, pointer, name) == 0 else { return nil }
+        let code = git_remote_lookup(&remote, pointer, name)
         defer { git_remote_free(remote) }
+        if code == GIT_ENOTFOUND.rawValue { return nil }
+        try gitCheck(code)
         guard let url = git_remote_url(remote) else { return nil }
         return String(cString: url)
     }
@@ -194,6 +196,10 @@ public final class Repository {
             // produces real addition hunks while untracked binary still yields none.
             | GIT_DIFF_SHOW_UNTRACKED_CONTENT.rawValue
 
+        // Rename/copy detection is intentionally not enabled: we never call
+        // `git_diff_find_similar`, so a renamed file surfaces as a delete + add
+        // rather than a single `.renamed` delta. Consequently the `.renamed` /
+        // `.copied` arms of `mapStatus` are currently unreachable for this diff.
         var diff: OpaquePointer?
         try gitCheck(git_diff_tree_to_workdir_with_index(&diff, pointer, tree, &options))
         defer { git_diff_free(diff) }
@@ -316,6 +322,9 @@ public final class Repository {
         case GIT_DELTA_ADDED, GIT_DELTA_UNTRACKED: return .added
         case GIT_DELTA_DELETED: return .deleted
         case GIT_DELTA_MODIFIED: return .modified
+        // `.renamed` / `.copied` are mapped for completeness but are currently
+        // unreachable: `diffWorkdirToHead` does not run `git_diff_find_similar`,
+        // so libgit2 never emits rename/copy deltas for our diffs.
         case GIT_DELTA_RENAMED: return .renamed
         case GIT_DELTA_COPIED: return .copied
         case GIT_DELTA_TYPECHANGE: return .typechange
@@ -342,10 +351,15 @@ public final class Repository {
             String(decoding: UnsafeRawBufferPointer(start: $0, count: line.content_len),
                    as: UTF8.self)
         } ?? ""
-        // Strip the trailing line terminator, handling both LF and CRLF.
+        // Strip the trailing line terminator, handling both LF and CRLF. Only
+        // drop a `\r` that immediately precedes the stripped `\n` (CRLF); a lone
+        // trailing `\r` is legitimate content (e.g. a CR-terminated final line)
+        // and must be preserved.
         var trimmed = content
-        if trimmed.hasSuffix("\n") { trimmed.removeLast() }
-        if trimmed.hasSuffix("\r") { trimmed.removeLast() }
+        if trimmed.hasSuffix("\n") {
+            trimmed.removeLast()
+            if trimmed.hasSuffix("\r") { trimmed.removeLast() }
+        }
         return GitDiffLine(
             kind: kind, content: trimmed,
             oldLineNumber: line.old_lineno >= 0 ? Int(line.old_lineno) : nil,

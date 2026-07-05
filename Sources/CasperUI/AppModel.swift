@@ -541,8 +541,11 @@ final class AppModel {
     }
 
     /// Close the given surface (from a tab-bar close button or the keyboard).
-    /// Preserves the active tab when a background tab is closed; closing the
-    /// last surface closes the workspace non-destructively.
+    /// Preserves the active tab when a background tab is closed. Closing the last
+    /// surface tears down the workspace non-destructively: a linked workspace is
+    /// dropped (worktree/branch left on disk); a primary closes its whole Space,
+    /// unless linked workspaces depend on that Space, in which case the Space stays
+    /// and the primary is re-seeded with a fresh terminal.
     func applyCloseSurface(_ surfaceID: UUID) {
         guard let at = locateSurface(surfaceID) else { return }
         let wasFocused = focusedSurfaceID == surfaceID
@@ -556,13 +559,30 @@ final class AppModel {
             focusActiveSurfaceView()
             return
         }
-        // Last surface closed -> close the workspace (non-destructive).
+        // Last surface in the workspace was closed. Discard its views, then close
+        // the workspace non-destructively — never taking down anything that depends
+        // on it (its worktree/branch, or a Space's linked workspaces).
         let ws = spaces[at.space].workspaces[at.workspace]
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
-        if wasFocused { focusedSurfaceID = nil }
-        if ws.kind == .linked {
+        switch ws.kind {
+        case .linked:
+            // A linked workspace stands alone: drop it (its worktree and branch stay
+            // on disk). removeWorkspace reassigns the selection.
+            if wasFocused { focusedSurfaceID = nil }
             removeWorkspace(id: ws.id)
-        } else {
+        case .primary where spaces[at.space].workspaces.contains(where: { $0.kind == .linked }):
+            // The primary anchors the Space and its linked workspaces depend on it,
+            // so removing the whole Space would destroy them too. Keep the Space and
+            // re-seed the primary with a fresh terminal to keep it alive.
+            let fresh = newTerminalSurface(cwd: ws.worktreePath)
+            spaces[at.space].workspaces[at.workspace].layout = .leaf(fresh)
+            if wasFocused || selectedWorkspaceID == ws.id { focusedSurfaceID = fresh.id }
+            persist()
+            focusActiveSurfaceView()
+        case .primary:
+            // No linked workspaces depend on this primary: closing its last pane
+            // closes the whole Space. removeSpace reassigns the selection.
+            if wasFocused { focusedSurfaceID = nil }
             removeSpace(id: spaces[at.space].id)
         }
     }
@@ -633,16 +653,32 @@ final class AppModel {
         space(for: workspace)?.isGitRepo ?? false
     }
 
+    /// Memoizes the last `computeDiff` result so the diff surface and the toolbar
+    /// summary don't each recompute it for the same state. Keyed by the workspace
+    /// id and the `diffRevision` at compute time, so a new selection or a
+    /// filesystem-change bump invalidates it without an explicit clear.
+    @ObservationIgnored private var cachedDiff: (workspaceID: UUID, revision: Int, diff: GitDiff?)?
+
     /// Compute the working-tree-vs-HEAD diff of a workspace's worktree. Returns nil
     /// when the workspace is not Git-backed or the diff fails.
     func computeDiff(for workspace: Workspace) -> GitDiff? {
+        if let cached = cachedDiff, cached.workspaceID == workspace.id, cached.revision == diffRevision {
+            return cached.diff
+        }
+        // Runs synchronously on the main actor: `Repository` is non-Sendable and
+        // main-actor-confined, so an off-actor move would force this API to async
+        // and thread through the diff and toolbar views. The per-revision cache
+        // above keeps the cost to one diff per selection or filesystem change.
+        let diff: GitDiff?
         do {
             let repo = try Repository.open(atPath: workspace.worktreePath)
-            return try repo.diffWorkdirToHead()
+            diff = try repo.diffWorkdirToHead()
         } catch {
             CasperLog.app.failure("diff failed", error)
-            return nil
+            diff = nil
         }
+        cachedDiff = (workspace.id, diffRevision, diff)
+        return diff
     }
 
     /// The workspace's working-tree-vs-HEAD line counts, or nil when not
@@ -656,13 +692,17 @@ final class AppModel {
     private static let maxHighlightBytes = 512 * 1024
 
     /// The full UTF-8 text of `path` in the workspace's HEAD commit, or nil when
-    /// the path is empty/absent, the blob is binary, or the read fails. This is the
-    /// "before" side of the diff, feeding syntax highlighting.
+    /// the path is empty/absent, the blob is binary, exceeds `maxHighlightBytes`,
+    /// or the read fails. This is the "before" side of the diff, feeding syntax
+    /// highlighting.
     func headFileText(for workspace: Workspace, path: String) -> String? {
         guard !path.isEmpty else { return nil }
         do {
             let repo = try Repository.open(atPath: workspace.worktreePath)
-            return try repo.fileTextAtHead(path: path)
+            guard let text = try repo.fileTextAtHead(path: path) else { return nil }
+            // Mirror worktreeFileText's cap: keep oversized blobs out of the highlighter.
+            guard text.utf8.count <= Self.maxHighlightBytes else { return nil }
+            return text
         } catch {
             CasperLog.app.failure("read HEAD file text failed", error)
             return nil
@@ -691,21 +731,30 @@ final class AppModel {
     /// Searches the layout trees first; when the surface isn't in any layout, it
     /// falls back to each workspace's inspector browser, which lives outside the
     /// tree.
+    ///
+    /// `syncNav` fires on both `didCommit` and `didFinish`, so persistence is
+    /// debounced via `scheduleSave()` and skipped entirely when the committed URL
+    /// already matches the stored one — a page load must not thrash the session file.
     func setBrowserURL(_ surfaceID: UUID, _ url: URL) {
         if let at = locateSurface(surfaceID) {
+            var changed = false
             let updated = LayoutTree.mapSurface(
                 spaces[at.space].workspaces[at.workspace].layout, id: surfaceID) { s in
-                    if case .browser = s.kind { return Surface(id: s.id, kind: .browser(url: url)) }
-                    return s
+                    guard case .browser(let current) = s.kind, current != url else { return s }
+                    changed = true
+                    return Surface(id: s.id, kind: .browser(url: url))
                 }
+            guard changed else { return }
             spaces[at.space].workspaces[at.workspace].layout = updated
-            persist()
+            scheduleSave()
             return
         }
         if let at = indexPair(where: { $0.inspector.browser.id == surfaceID }) {
+            if case .browser(let current) = spaces[at.space].workspaces[at.workspace].inspector.browser.kind,
+               current == url { return }
             spaces[at.space].workspaces[at.workspace].inspector.browser =
                 Surface(id: surfaceID, kind: .browser(url: url))
-            persist()
+            scheduleSave()
         }
     }
 

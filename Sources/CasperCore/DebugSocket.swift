@@ -81,10 +81,23 @@ private func decodeLength(_ header: Data) -> UInt32 {
 /// `@Sendable`; all connection I/O runs on the single serial `queue`, and
 /// callbacks are configured before `start()`.
 public final class DebugSocketServer: @unchecked Sendable {
+    /// Lock-guarded server state, mirroring `HookSocketServer`'s discipline so
+    /// `stop()` can tear down cleanly. `stopped` refuses connections accepted
+    /// after `stop()` began (they would have no drainer); `conns` tracks every
+    /// in-flight connection so `stop()` can cancel them and gate `onCommand`
+    /// against firing after teardown. `uncheckedState` because `NWConnection`
+    /// carries no `Sendable` guarantee across SDKs; the lock still provides the
+    /// mutual exclusion.
+    private struct State {
+        var stopped = false
+        var conns: [ObjectIdentifier: NWConnection] = [:]
+    }
+
     private let socketPath: String
     private let bindTimeout: TimeInterval
     private let queue = DispatchQueue(label: "casper.debug-socket.server")
     private var listener: NWListener?
+    private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
 
     /// Invoked on the server queue with each decoded command and a `reply`
     /// callback. The handler MUST call `reply` exactly once (it may hop threads
@@ -152,12 +165,44 @@ public final class DebugSocketServer: @unchecked Sendable {
     }
 
     public func stop() {
+        // Mark stopped and snapshot-and-clear the in-flight set in one locked
+        // block, so a connection accepted from here on is refused by `receive(on:)`
+        // (no drainer) and any later `dispatch` sees its connection gone and stays
+        // silent — closing the race where a queued receive callback invokes
+        // `onCommand` after `stop()` returns.
+        let inflight = state.withLockUnchecked { current -> [NWConnection] in
+            current.stopped = true
+            let values = Array(current.conns.values)
+            current.conns.removeAll()
+            return values
+        }
         listener?.cancel()
         listener = nil
+        for connection in inflight {
+            connection.cancel()
+        }
+        // Barrier: every receive callback (including the one that invokes
+        // `onCommand`) runs as a serial-queue item, so waiting for the queue to
+        // drain guarantees any callback mid-flight has fully returned before
+        // `stop()` returns. This is why `stop()` must not be called from within
+        // `onCommand` — it would deadlock.
+        queue.sync {}
         unlink(socketPath)
     }
 
     private func receive(on connection: NWConnection) {
+        let id = ObjectIdentifier(connection)
+        // Track under the lock, but refuse if `stop()` already ran: a connection
+        // accepted post-stop would have no drainer, so cancel it and bail.
+        let tracked = state.withLockUnchecked { current -> Bool in
+            guard !current.stopped else { return false }
+            current.conns[id] = connection
+            return true
+        }
+        guard tracked else {
+            connection.cancel()
+            return
+        }
         connection.start(queue: queue)
         // Read the 4-byte big-endian length header, then exactly that many
         // payload bytes. No reliance on request EOF anymore. There is
@@ -167,7 +212,7 @@ public final class DebugSocketServer: @unchecked Sendable {
         readExactly(4, on: connection) { [weak self] header in
             guard let self else { return }
             guard let header else {
-                connection.cancel()  // client closed before sending a full header
+                self.drop(connection)  // client closed before sending a full header
                 return
             }
             let length = decodeLength(header)
@@ -178,7 +223,7 @@ public final class DebugSocketServer: @unchecked Sendable {
             readExactly(Int(length), on: connection) { [weak self] payload in
                 guard let self else { return }
                 guard let payload else {
-                    connection.cancel()  // client closed before sending the full payload
+                    self.drop(connection)  // client closed before sending the full payload
                     return
                 }
                 self.dispatch(payload, on: connection)
@@ -195,6 +240,12 @@ public final class DebugSocketServer: @unchecked Sendable {
             reply(.failure("no handler"), on: connection)
             return
         }
+        // If `stop()` already dropped this connection, don't invoke the handler.
+        let live = state.withLockUnchecked { $0.conns[ObjectIdentifier(connection)] != nil }
+        guard live else {
+            connection.cancel()
+            return
+        }
         onCommand(command) { [weak self] response in
             self?.reply(response, on: connection)
         }
@@ -209,7 +260,16 @@ public final class DebugSocketServer: @unchecked Sendable {
         let framed = frame(payload)
         connection.send(
             content: framed, contentContext: .finalMessage, isComplete: true,
-            completion: .contentProcessed { _ in connection.cancel() })
+            completion: .contentProcessed { [weak self] _ in
+                self?.drop(connection)
+            })
+    }
+
+    /// Untrack a connection and cancel it. Idempotent: a second call finds no
+    /// entry and simply re-cancels the already-cancelled connection.
+    private func drop(_ connection: NWConnection) {
+        state.withLockUnchecked { _ = $0.conns.removeValue(forKey: ObjectIdentifier(connection)) }
+        connection.cancel()
     }
 }
 

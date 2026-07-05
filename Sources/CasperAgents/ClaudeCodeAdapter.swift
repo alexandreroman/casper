@@ -1,7 +1,9 @@
 import Foundation
 
-/// Thrown when `install` finds an existing `settings.json` that is not a JSON
-/// object. Casper refuses to overwrite it so the user's file is preserved.
+/// Thrown when `install` finds an existing `settings.json` with non-empty
+/// content that is not a JSON object. Casper refuses to overwrite it so the
+/// user's file is preserved. An empty or whitespace-only file is treated as
+/// absent (a fresh Casper file is written), not as invalid.
 public struct ClaudeCodeAdapterError: Error, LocalizedError {
     public let reason: String
     public var errorDescription: String? { reason }
@@ -108,15 +110,27 @@ public enum ClaudeCodeAdapter {
     /// must survive a re-install. Idempotent; refuses a malformed existing file
     /// without writing.
     ///
-    /// - If the file is absent, write Casper's settings and create `.claude/`.
-    /// - If it exists but is not a JSON object (malformed or non-object
-    ///   top-level), throw `ClaudeCodeAdapterError` and write nothing, leaving
-    ///   the user's file byte-for-byte intact.
+    /// - If the file is absent (or present but empty/whitespace-only), write
+    ///   Casper's settings and create `.claude/`.
+    /// - If it exists with non-empty content that is not a JSON object
+    ///   (malformed or non-object top-level), throw `ClaudeCodeAdapterError` and
+    ///   write nothing, leaving the user's file byte-for-byte intact.
     /// - Otherwise merge: every top-level key other than `hooks` is preserved,
     ///   as is every hook event other than Casper's four. For each Casper event,
     ///   prior Casper entries are dropped and the canonical entry re-appended
     ///   (idempotent), while user-added entries on those events are preserved. A
     ///   non-array value for a Casper event is treated as malformed and replaced.
+    ///
+    /// - Note: The merged object is re-serialized with `.sortedKeys` and
+    ///   `.prettyPrinted`, so non-hook top-level content the user wrote is
+    ///   normalized on install — keys are reordered, indentation is Casper's,
+    ///   and numbers may be re-formatted by `JSONSerialization`. Values and
+    ///   semantics are preserved; only the on-disk formatting changes.
+    /// - Note: This read-merge-write is not atomic against a concurrent
+    ///   installer. Concurrent installs are not supported; correctness relies on
+    ///   the single-startup-install invariant (hooks are installed once, either
+    ///   via the CLI or at app startup — see the `hooks-install-once` note), so
+    ///   no file locking is used here.
     public static func install(
         intoUserSettingsAt settingsURL: URL = userSettingsURL(),
         hookCommand: String = "casper hooks feed"
@@ -133,8 +147,9 @@ public enum ClaudeCodeAdapter {
     }
 
     /// Compute the merged settings object to write for `install`. Returns a
-    /// fresh Casper object when no file exists, and throws (without side
-    /// effects) when an existing file is not a JSON object.
+    /// fresh Casper object when no file exists (or the file is empty/
+    /// whitespace-only), and throws (without side effects) when an existing file
+    /// has non-empty content that is not a JSON object.
     private static func mergedSettings(
         existingAt url: URL, hookCommand: String
     ) throws -> [String: Any] {
@@ -145,6 +160,12 @@ public enum ClaudeCodeAdapter {
         }
 
         let existingData = try Data(contentsOf: url)
+        // A 0-byte or whitespace-only file (e.g. a touched-but-never-written
+        // settings.json) is treated as absent rather than malformed.
+        if String(decoding: existingData, as: UTF8.self).trimmingCharacters(
+            in: .whitespacesAndNewlines).isEmpty {
+            return ["hooks": casperEvents]
+        }
         guard var root = (try? JSONSerialization.jsonObject(with: existingData)) as? [String: Any] else {
             throw ClaudeCodeAdapterError.invalidExistingSettings(path: url.path)
         }

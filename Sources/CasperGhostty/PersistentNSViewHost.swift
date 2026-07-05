@@ -79,10 +79,20 @@ enum SharedViewOwnership {
     /// If several are transiently in-window (mid-transition), any pick is fine:
     /// when the losers leave the window this runs again and converges.
     static func reconcile(_ view: NSView) {
+        pruneEmptyTables()
         let key = ObjectIdentifier(view)
         guard let containers = registry[key]?.allObjects else { return }
         guard let winner = containers.first(where: { $0.window != nil }) else { return }
         if view.superview !== winner { place(view, in: winner) }
+    }
+
+    /// Drop registry entries whose tables have emptied out. The tables hold
+    /// containers weakly, so a torn-down surface's containers vanish from their table
+    /// but leave the now-empty table keyed by the (dead) hosted view — an unbounded
+    /// accumulation over a long session. Pruning on each reconcile (which runs on
+    /// every window transition) keeps the registry bounded.
+    private static func pruneEmptyTables() {
+        registry = registry.filter { !$0.value.allObjects.isEmpty }
     }
 }
 

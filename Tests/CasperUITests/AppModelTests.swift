@@ -838,6 +838,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].inspector.browser.id, inspectorBrowserID)
         // The layout tree is untouched: the write-back hit the inspector browser only.
         XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+        // setBrowserURL persists via the debounced scheduleSave(); flush it so the
+        // save fires synchronously instead of after the 0.5s debounce delay.
+        model.flushPendingSave()
         XCTAssertEqual(saves, 1)
     }
 

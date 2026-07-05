@@ -34,6 +34,15 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // of a `keyDown`; `insertText` appends to it when set, else sends directly.
     private var keyTextAccumulator: [String]?
 
+    // Surface creation can transiently return null (see the
+    // e2e-surface-creation-flakiness note): retry a bounded number of times before
+    // giving up, so a single null does not permanently kill the pane.
+    private var surfaceCreationAttempts = 0
+    private static let maxSurfaceCreationAttempts = 3
+    // Shown in place of the terminal when surface creation ultimately fails, so the
+    // user gets an explanation instead of a silently blank pane.
+    private var errorOverlay: NSView?
+
     public init(
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
         surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
@@ -65,31 +74,78 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // Create the surface once the view is in a window (so `self` is a valid,
-    // sized host). Idempotent.
+    // sized host). Idempotent, with a bounded retry on transient null.
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
-        // Create the surface on first attach only; a later re-parent keeps it.
-        if surface == nil {
-            let nsview = Unmanaged.passUnretained(self).toOpaque()
-            do {
-                // userdata == nsview: libghostty hands this pointer back verbatim to
-                // the clipboard callbacks, letting them recover this view.
-                surface = try GhosttySurface(
-                    runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
-                syncLayerContentsScale()
-                pushContentScale()
-                pushSize()
-                pushDisplayID()
-            } catch {
-                CasperLog.ghostty.failure("surface creation failed", error)
-            }
-        }
+        createSurfaceIfNeeded()
+        // On re-parent the surface already exists and `viewDidChangeBackingProperties`
+        // may not fire, so reconcile the Metal layer scale here too: a re-parent into a
+        // different-DPI window must always re-sync (see ghostty-layer-contents-scale).
+        syncLayerContentsScale()
         // Now that the view is live in a window, let the host claim first responder
         // for it if the model already considers this surface focused. Runs on every
         // attach (not just the first), so a workspace switch that re-mounts this view
         // still lands keyboard focus on the terminal.
         onAttach(surfaceID)
+    }
+
+    // Create the libghostty surface if this view has none yet and is in a window.
+    // `ghostty_surface_new` can transiently return null (see the
+    // e2e-surface-creation-flakiness note); rather than leave a dead, PTY-less pane,
+    // retry a few times and only then surface a visible error. A later re-parent keeps
+    // the existing surface (the `surface == nil` guard makes this a no-op then).
+    private func createSurfaceIfNeeded() {
+        guard surface == nil, window != nil else { return }
+        let nsview = Unmanaged.passUnretained(self).toOpaque()
+        do {
+            // userdata == nsview: libghostty hands this pointer back verbatim to the
+            // clipboard callbacks, letting them recover this view.
+            surface = try GhosttySurface(
+                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+            surfaceCreationAttempts = 0
+            removeErrorOverlay()
+            syncLayerContentsScale()
+            pushContentScale()
+            pushSize()
+            pushDisplayID()
+        } catch {
+            CasperLog.ghostty.failure("surface creation failed", error)
+            surfaceCreationAttempts += 1
+            if surfaceCreationAttempts < Self.maxSurfaceCreationAttempts {
+                // Transient null: retry shortly, as long as the view is still hosted.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                    self?.createSurfaceIfNeeded()
+                }
+            } else {
+                showErrorOverlay()
+            }
+        }
+    }
+
+    // Present a centered message where the terminal would render, so a surface that
+    // never comes up is explained rather than shown as a blank pane.
+    private func showErrorOverlay() {
+        guard errorOverlay == nil else { return }
+        let message = "Terminal failed to start.\nClose and reopen this pane to retry."
+        let label = NSTextField(labelWithString: message)
+        label.alignment = .center
+        label.textColor = .secondaryLabelColor
+        label.maximumNumberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 16),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+        ])
+        errorOverlay = label
+    }
+
+    private func removeErrorOverlay() {
+        errorOverlay?.removeFromSuperview()
+        errorOverlay = nil
     }
 
     // MARK: Debug accessors (compiled only into debug builds)
@@ -356,7 +412,23 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     }
 
     public override func flagsChanged(with event: NSEvent) {
-        surface?.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+        guard let surface else { return }
+        // Mirror Ghostty's reference `SurfaceView_AppKit.flagsChanged`: a modifier
+        // transition is a press only while that modifier is still held, and a release
+        // once it is let go. Map the physical key that toggled to its NSEvent modifier,
+        // then read whether that flag is still set in the event's flags (Ghostty is the
+        // reference).
+        let modifier: NSEvent.ModifierFlags
+        switch event.keyCode {
+        case 0x39: modifier = .capsLock       // Caps Lock
+        case 0x38, 0x3C: modifier = .shift     // Shift (left/right)
+        case 0x3B, 0x3E: modifier = .control   // Control (left/right)
+        case 0x3A, 0x3D: modifier = .option    // Option (left/right)
+        case 0x37, 0x36: modifier = .command   // Command (left/right)
+        default: return
+        }
+        let action = event.modifierFlags.contains(modifier) ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
+        surface.sendKey(ghosttyKeyEvent(event, action: action))
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -586,6 +658,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
     }
 
+    // Known limitation (out of v1 scope, not a regression): marked-text composition —
+    // CJK IME and dead-key accents — is intentionally NOT implemented. The methods
+    // below are deliberate no-ops; only committed text (via `insertText` above) is
+    // handled. Full NSTextInputClient marked-text support is deferred to a later plan.
     public func hasMarkedText() -> Bool { false }
     public func markedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
     public func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }

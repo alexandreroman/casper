@@ -297,10 +297,25 @@ public enum HookSocketClient {
             case .ready:
                 connection.send(content: data, completion: .contentProcessed { error in
                     sendError.withLock { $0 = error }
+                    // Cancelling right after `.contentProcessed` is safe for a
+                    // local AF_UNIX socket: the queued bytes and the EOF are
+                    // retained in the kernel socket buffer until the server
+                    // reads them, so the message is not lost by cancelling.
                     connection.cancel()
                     done.signal()
                 })
             case .failed(let error):
+                sendError.withLock { $0 = error }
+                connection.cancel()
+                done.signal()
+            case .waiting(let error):
+                // A stale socket file (app crashed but left the socket) passes
+                // the `fileExists` check above, yet the connect is refused and
+                // Network.framework parks in `.waiting(ECONNREFUSED)` — it would
+                // retry until the timeout. For this local endpoint there is no
+                // point waiting: treat `.waiting` like `.failed` and return at
+                // once. A live listener transitions straight to `.ready`, so the
+                // happy path is unaffected.
                 sendError.withLock { $0 = error }
                 connection.cancel()
                 done.signal()

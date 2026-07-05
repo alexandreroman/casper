@@ -11,9 +11,12 @@ import UniformTypeIdentifiers
 /// the whole `bounds` is the grip — Ghostty drives the cursor the same way, via
 /// `cursorUpdate(with:)` over the bounds (open hand, or closed hand while dragging).
 final class PaneDragHandleView: NSView, NSDraggingSource {
-    private let surfaceID: UUID
-    private let label: String
-    private let onDragStateChange: (Bool) -> Void
+    // Mutable so `PaneDragHandle.updateNSView` can refresh them: a browser pane
+    // mints a new `Surface` on navigation, so the id and preview label must follow
+    // rather than staying pinned to whatever was captured at `makeNSView` time.
+    fileprivate var surfaceID: UUID
+    fileprivate var label: String
+    fileprivate var onDragStateChange: (Bool) -> Void
 
     /// Cursor is over the grip: reveals the three dots. Redraws on change.
     private var hovering = false {
@@ -46,6 +49,22 @@ final class PaneDragHandleView: NSView, NSDraggingSource {
     override var isFlipped: Bool { true }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // MARK: - Hit testing
+
+    /// The grip only draws while hovered (see `draw`), yet this view spans a
+    /// 200×24 band across the pane's top-center. With the default `hitTest` that
+    /// band would swallow EVERY mouse-down over it — even with the grip invisible —
+    /// blocking cursor placement, text selection, and TUI/link clicks on the
+    /// terminal below. Stay transparent to the mouse unless the grip is engaged
+    /// (hovered, pressed, or mid-drag) so those clicks fall through to the surface.
+    /// `mouseEntered`/`cursorUpdate` are unaffected: the tracking area drives them
+    /// by geometry, independent of `hitTest`, so hover reveal and the hand cursor
+    /// keep working. Mirrors `PaneDropHighlightView`, which is likewise click-through.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard hovering || pressed || isTracking else { return nil }
+        return super.hitTest(point)
+    }
 
     // MARK: - Cursor
 
@@ -218,7 +237,14 @@ struct PaneDragHandle: NSViewRepresentable {
         PaneDragHandleView(surfaceID: surfaceID, label: label, onDragStateChange: onDragStateChange)
     }
 
-    func updateNSView(_ nsView: PaneDragHandleView, context: Context) {}
+    func updateNSView(_ nsView: PaneDragHandleView, context: Context) {
+        // Keep the backing view in sync with the current inputs; otherwise a pane
+        // that swaps its `Surface` (e.g. a browser navigation) would keep dragging
+        // the old id and preview label.
+        nsView.surfaceID = surfaceID
+        nsView.label = label
+        nsView.onDragStateChange = onDragStateChange
+    }
 }
 
 /// SwiftUI drop TARGET for one pane. Reads the dragged `Surface.id`, tracks the
@@ -255,28 +281,32 @@ struct PaneDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         clearHover()
-        guard let provider = info.itemProviders(for: [.utf8PlainText]).first else {
+
+        // The return value must be decided synchronously (`false` animates the drag
+        // back to its source), but `NSItemProvider` only loads asynchronously. The
+        // dragged id is on the drag pasteboard for the duration of the drop, so read
+        // it there. A payload that is not one of our surface UUIDs is a foreign text
+        // drag we don't own: reject it instead of accepting a silent no-op. `.onDrop`
+        // still registers on `.utf8PlainText`, so the standard-type transport (which
+        // is what makes SwiftUI engage this delegate at all) is unchanged.
+        guard let string = NSPasteboard(name: .drag).string(forType: .string),
+              let sourceID = UUID(uuidString: string)
+        else {
             return false
         }
+        // Our own drag dropped onto its own pane: accept it as an intentional no-op
+        // rather than animating a rejection back.
+        guard sourceID != targetID else { return true }
 
-        // Capture only Sendable values; the zone is computed inside `move` on the
-        // main actor so the non-Sendable `DropZone` never crosses a boundary.
+        // Defer the relocation: mutating the layout tears down and reparents the very
+        // NSViews driving this drag, so let the drag operation finish first. Capture
+        // only Sendable values; the non-Sendable `DropZone` is computed inside `move`
+        // on the main actor, never crossing a concurrency boundary.
         let location = info.location
         let size = size
-        let targetID = targetID
         let move = move
-        provider.loadDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier) { data, _ in
-            // A non-UUID payload is some other text drag we don't own: treat it as a
-            // parse failure and no-op, filtering it out.
-            guard let data, let string = String(data: data, encoding: .utf8),
-                  let sourceID = UUID(uuidString: string)
-            else {
-                return
-            }
-            guard sourceID != targetID else { return }
-            DispatchQueue.main.async {
-                move(sourceID, location, size)
-            }
+        DispatchQueue.main.async {
+            move(sourceID, location, size)
         }
         return true
     }

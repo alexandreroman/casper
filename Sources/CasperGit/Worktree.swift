@@ -14,6 +14,16 @@ public struct WorktreeInfo: Equatable, Sendable {
     }
 }
 
+/// Thrown by `worktreeInfo(name:)` when no worktree with the given name is
+/// registered (libgit2 `GIT_ENOTFOUND`), distinct from a real lookup failure.
+public struct WorktreeNotFoundError: Error, Equatable, Sendable {
+    public let name: String
+
+    public init(name: String) {
+        self.name = name
+    }
+}
+
 extension Repository {
     /// Create a worktree named `name` at `path`, checked out to a new branch
     /// (also named `name`) based on `basedOn` (a branch/tag/commit-ish) or HEAD.
@@ -43,12 +53,19 @@ extension Repository {
         do {
             try gitCheck(git_worktree_add(&worktree, pointer, name, path, &options))
             defer { git_worktree_free(worktree) }
-            let worktree = try requireNonNull(worktree, "worktree")
-            return try worktreeInfo(fromPointer: worktree, name: name)
+            let handle = try requireNonNull(worktree, "worktree")
+            return try worktreeInfo(fromPointer: handle, name: name)
         } catch {
-            // Roll back the branch created above so retrying the same name is
-            // idempotent instead of failing with GIT_EEXISTS. The `defer` above
-            // still frees `branchRef`; deleting first removes it from the refdb.
+            // Roll back so retrying the same name is idempotent instead of
+            // failing with GIT_EEXISTS. If `git_worktree_add` already created the
+            // worktree before a later step threw, prune it first — otherwise the
+            // working tree is orphaned — then delete the branch created above.
+            // The `defer`s still free the handles; this clears the on-disk
+            // worktree and the refdb branch. `pruneWorktree` re-looks-up by name,
+            // which is safe now that the handle above has been freed.
+            if worktree != nil {
+                try? pruneWorktree(name: name)
+            }
             git_branch_delete(branchRef)
             throw error
         }
@@ -56,7 +73,8 @@ extension Repository {
 
     /// Build a `WorktreeInfo` from an open `git_worktree*`.
     func worktreeInfo(fromPointer worktree: OpaquePointer, name: String) throws -> WorktreeInfo {
-        let path = String(cString: git_worktree_path(worktree))
+        let cPath = try requireNonNull(git_worktree_path(worktree), "worktree path")
+        let path = String(cString: cPath)
         var reason = git_buf()
         let rc = git_worktree_is_locked(&reason, worktree)
         git_buf_dispose(&reason)
@@ -71,21 +89,28 @@ extension Repository {
         }
     }
 
-    /// Look up a single worktree by name.
+    /// Look up a single worktree by name. Throws `WorktreeNotFoundError` when no
+    /// worktree with that name is registered, so callers can distinguish a
+    /// missing worktree from a genuine libgit2 failure.
     public func worktreeInfo(name: String) throws -> WorktreeInfo {
         var worktree: OpaquePointer?
-        try gitCheck(git_worktree_lookup(&worktree, pointer, name))
+        let code = git_worktree_lookup(&worktree, pointer, name)
         defer { git_worktree_free(worktree) }
+        if code == GIT_ENOTFOUND.rawValue { throw WorktreeNotFoundError(name: name) }
+        try gitCheck(code)
         let handle = try requireNonNull(worktree, "worktree")
         return try worktreeInfo(fromPointer: handle, name: name)
     }
 
     /// Whether the worktree named `name` is structurally valid (its gitdir and
-    /// working directory still exist and agree).
+    /// working directory still exist and agree). Returns `false` when no worktree
+    /// with that name is registered.
     public func isWorktreeValid(name: String) throws -> Bool {
         var worktree: OpaquePointer?
-        try gitCheck(git_worktree_lookup(&worktree, pointer, name))
+        let code = git_worktree_lookup(&worktree, pointer, name)
         defer { git_worktree_free(worktree) }
+        if code == GIT_ENOTFOUND.rawValue { return false }
+        try gitCheck(code)
         return git_worktree_validate(worktree) == 0
     }
 
