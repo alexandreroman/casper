@@ -77,6 +77,7 @@ final class GhosttyInputTests: XCTestCase {
     }
 
     /// The `NSEvent.buttonNumber`→libghostty-button mapping used by the middle/extra mouse buttons.
+    @MainActor
     func testButtonNumberMapsToGhosttyButton() {
         XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 0).rawValue, GHOSTTY_MOUSE_LEFT.rawValue)
         XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 1).rawValue, GHOSTTY_MOUSE_RIGHT.rawValue)

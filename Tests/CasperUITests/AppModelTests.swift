@@ -680,7 +680,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCloseLastSurfaceOfPrimaryRemovesSpace() throws {
-        let (model, first) = try modelWithOneGitWorkspace()
+        let (model, _) = try modelWithOneGitWorkspace()
         model.applyCloseFocusedSurface()  // only surface -> closes the workspace
         XCTAssertTrue(model.spaces.isEmpty)  // primary -> whole Space removed
     }

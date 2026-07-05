@@ -4,6 +4,7 @@ import CasperCore
 
 /// Exercises the pure `SplitContainerView.resizedFractions` resize math, which is
 /// where all the divider-drag geometry lives.
+@MainActor
 final class SplitResizeTests: XCTestCase {
     private let accuracy = 1e-9
 

@@ -1,6 +1,7 @@
 import XCTest
 @testable import CasperUI
 
+@MainActor
 final class BrowserSurfaceViewTests: XCTestCase {
     func testNormalize() {
         XCTAssertEqual(
