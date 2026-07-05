@@ -12,6 +12,7 @@
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning from Homebrew's libgit2 is benign; left unsuppressed on purpose
 - [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes SwiftUI ScrollView centers undersized content; pin it top-leading via measured viewport size
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
+- [Swift toolchain floor](references/swift-toolchain-floor.md) — code uses Swift 6.2 isolated conformances; CI/release Xcode pin must stay >= 26 (currently 26.3)
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
 - [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in gitignored `.superpowers/sdd/`, not `docs/superpowers/specs/`
 - [Commit message style](references/commit-message-style.md) — verb + action performed, always in English
