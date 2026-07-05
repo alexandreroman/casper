@@ -17,7 +17,7 @@ public struct GitDiff: Equatable, Sendable {
     }
 }
 
-public struct GitDiffFile: Equatable, Sendable {
+public struct GitDiffFile: Equatable, Sendable, Identifiable {
     public enum Status: String, Sendable {
         case added, deleted, modified, renamed, copied, typechange, unmodified
     }
@@ -26,6 +26,11 @@ public struct GitDiffFile: Equatable, Sendable {
     public var status: Status
     public var isBinary: Bool
     public var hunks: [GitDiffHunk]
+    /// Stable identity for a file across successive diff computations. Unique
+    /// within a single diff: additions carry a non-empty `newPath`, deletions
+    /// have an empty `newPath` (so fall back to `oldPath`), and
+    /// modifications/renames use `newPath`.
+    public var id: String { newPath.isEmpty ? oldPath : newPath }
     public init(
         oldPath: String, newPath: String, status: Status,
         isBinary: Bool, hunks: [GitDiffHunk]

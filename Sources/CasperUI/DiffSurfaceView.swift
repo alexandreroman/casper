@@ -15,10 +15,13 @@ struct DiffSurfaceView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var diff: GitDiff?
     @State private var loaded = false
-    /// Syntax highlights keyed by the file's offset in `diff.files`; populated
-    /// progressively as each file finishes highlighting off the main actor.
-    @State private var highlights: [Int: FileHighlight] = [:]
+    /// Syntax highlights keyed by `GitDiffFile.id`; populated progressively as
+    /// each file finishes highlighting off the main actor. The stable key lets a
+    /// rebuild carry over highlights for files whose diff hasn't changed.
+    @State private var highlights: [String: FileHighlight] = [:]
     @State private var highlightTask: Task<Void, Never>?
+    /// Top visible file across rebuilds, so a debounced refresh keeps scroll.
+    @State private var scrolledFileID: String?
     /// Visible width of the content area, measured once laid out. Drives the
     /// full-bleed row/header backgrounds (see `DiffFileView`/`DiffLineRow`).
     @State private var contentWidth: CGFloat = 0
@@ -54,13 +57,15 @@ struct DiffSurfaceView: View {
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(Array(diff.files.enumerated()), id: \.offset) { offset, file in
+                        ForEach(diff.files) { file in
                             DiffFileView(
-                                file: file, contentWidth: contentWidth, highlight: highlights[offset])
+                                file: file, contentWidth: contentWidth, highlight: highlights[file.id])
                         }
                     }
                     .frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)
+                    .scrollTargetLayout()
                 }
+                .scrollPosition(id: $scrolledFileID, anchor: .top)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         } else if model.isWorkspaceGitBacked(workspace) {
@@ -75,24 +80,48 @@ struct DiffSurfaceView: View {
     }
 
     private func refresh() {
+        let previousFiles = diff?.files ?? []
+        let previousHighlights = highlights
         diff = model.computeDiff(for: workspace)
         loaded = true
-        startHighlighting()
+        startHighlighting(reusing: previousFiles, previousHighlights)
     }
 
     /// Kicks off a background pass that highlights each file's working-tree and
     /// HEAD text, publishing results per file so colors appear as they finish.
     /// File reads stay on the main actor (quick, size-capped); only the actual
     /// highlighting suspends off-actor, keeping the UI responsive.
-    private func startHighlighting() {
+    ///
+    /// When the previous diff and its highlights are handed in, files whose
+    /// `GitDiffFile` value is unchanged keep their existing `FileHighlight`
+    /// instead of being re-highlighted: value-equality means the file's hunks
+    /// vs HEAD are byte-identical, which for the working-tree diff implies the
+    /// text used for highlighting is unchanged, so its cached highlight is still
+    /// valid within the same color scheme. Callers reacting to a color-scheme
+    /// change pass no reuse args, forcing a full re-highlight (colors differ).
+    private func startHighlighting(
+        reusing previousFiles: [GitDiffFile] = [], _ previousHighlights: [String: FileHighlight] = [:]
+    ) {
         highlightTask?.cancel()
-        highlights = [:]
-        guard let files = diff?.files else { return }
+        guard let files = diff?.files else { highlights = [:]; return }
+
+        // Index the previous diff by file id so we can carry over highlights for
+        // files whose diff is byte-identical, skipping a redundant re-highlight.
+        let previousByID = Dictionary(previousFiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var carried: [String: FileHighlight] = [:]
+        for file in files {
+            if let old = previousByID[file.id], old == file, let existing = previousHighlights[file.id] {
+                carried[file.id] = existing
+            }
+        }
+        highlights = carried
+
         let dark = colorScheme == .dark
         highlightTask = Task {
-            for (offset, file) in files.enumerated() {
+            for file in files {
                 if Task.isCancelled { return }
                 guard !file.isBinary else { continue }
+                if carried[file.id] != nil { continue }  // already have a valid highlight — skip
 
                 let newText = model.worktreeFileText(for: workspace, path: file.newPath)
                 let oldText = model.headFileText(for: workspace, path: file.oldPath)
@@ -101,7 +130,7 @@ struct DiffSurfaceView: View {
                 let oldLines = await highlight(oldText, path: file.oldPath, dark: dark)
                 if Task.isCancelled { return }
 
-                highlights[offset] = FileHighlight(new: newLines, old: oldLines)
+                highlights[file.id] = FileHighlight(new: newLines, old: oldLines)
             }
         }
     }
