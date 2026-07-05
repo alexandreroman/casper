@@ -47,9 +47,20 @@ struct DiffSurfaceView: View {
     @ViewBuilder private var content: some View {
         if let diff {
             if diff.files.isEmpty {
-                ContentUnavailableView(
-                    "No changes", systemImage: "checkmark.circle",
-                    description: Text("The working tree matches HEAD."))
+                // Compact, centered empty state; the default ContentUnavailableView is too tall here.
+                VStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary)
+                    Text("No changes")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("The working tree matches HEAD.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     LazyVStack(alignment: .leading, spacing: 14) {
