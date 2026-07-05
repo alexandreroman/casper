@@ -47,20 +47,9 @@ struct DiffSurfaceView: View {
     @ViewBuilder private var content: some View {
         if let diff {
             if diff.files.isEmpty {
-                // Compact, centered empty state; the default ContentUnavailableView is too tall here.
-                VStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.secondary)
-                    Text("No changes")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    Text("The working tree matches HEAD.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                DiffEmptyState(
+                    systemImage: "checkmark.circle", title: "No changes",
+                    message: "The working tree matches HEAD.")
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     LazyVStack(alignment: .leading, spacing: 14) {
@@ -74,13 +63,13 @@ struct DiffSurfaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         } else if model.isWorkspaceGitBacked(workspace) {
-            ContentUnavailableView(
-                "Couldn't compute the diff", systemImage: "exclamationmark.triangle",
-                description: Text("The repository couldn't be read."))
+            DiffEmptyState(
+                systemImage: "exclamationmark.triangle", title: "Couldn't compute the diff",
+                message: "The repository couldn't be read.")
         } else {
-            ContentUnavailableView(
-                "No diff", systemImage: "doc.text.magnifyingglass",
-                description: Text("This workspace has no Git repository."))
+            DiffEmptyState(
+                systemImage: "doc.text.magnifyingglass", title: "No diff",
+                message: "This workspace has no Git repository.")
         }
     }
 
@@ -123,6 +112,31 @@ struct DiffSurfaceView: View {
         guard let text else { return nil }
         let trimmed = text.hasSuffix("\n") ? String(text.dropLast()) : text
         return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path, dark: dark)
+    }
+}
+
+/// The diff surface's compact, centered empty/error state. Replaces
+/// ContentUnavailableView, which renders too tall and top-anchored in this
+/// narrow inspector panel.
+private struct DiffEmptyState: View {
+    let systemImage: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 26))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
