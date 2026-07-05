@@ -969,4 +969,64 @@ final class AppModel {
     static func gitProbePath(_ path: String) -> WorkspaceFactory.GitInfo? {
         gitProbe(URL(fileURLWithPath: path))
     }
+
+    // MARK: - CLI control handlers
+    //
+    // Explicit, agent-agnostic state reporting and UI driving for the `casper`
+    // control channel. State setters mutate the target workspace in place (never
+    // changing the current selection); the model is `@Observable`, so the sidebar
+    // updates automatically. All run on the main actor.
+
+    @discardableResult
+    func controlSetAgentState(_ state: AgentState, for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        spaces[at.space].workspaces[at.workspace].agentState = state
+        persist()
+        return true
+    }
+
+    @discardableResult
+    func controlSetProgress(total: Int, current: Int, label: String, for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID),
+              let todos = ProgressSynthesis.todos(total: total, current: current, label: label)
+        else { return false }
+        spaces[at.space].workspaces[at.workspace].todos = todos
+        persist()
+        return true
+    }
+
+    @discardableResult
+    func controlClearProgress(for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        spaces[at.space].workspaces[at.workspace].todos = []
+        persist()
+        return true
+    }
+
+    @discardableResult
+    func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        spaces[at.space].workspaces[at.workspace].pendingNotification = true
+        if let message {
+            deliverNotification(spaces[at.space].workspaces[at.workspace].name, message)
+        }
+        persist()
+        return true
+    }
+
+    /// Resolve a control-channel target selector to a workspace id. A nil selector
+    /// falls back to the current selection; a non-nil selector matches by id then by
+    /// name (see `ControlTargeting`).
+    func controlResolveWorkspaceID(selector: String?) -> UUID? {
+        guard let selector else { return selectedWorkspaceID }
+        guard let matched = ControlTargeting.match(selector: selector, candidates: controlListWorkspaces())
+        else { return nil }
+        return UUID(uuidString: matched)
+    }
+
+    func controlListWorkspaces() -> [ControlWorkspaceInfo] {
+        allWorkspaces.map {
+            ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch)
+        }
+    }
 }
