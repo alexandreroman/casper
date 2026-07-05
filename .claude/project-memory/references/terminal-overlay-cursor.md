@@ -25,8 +25,11 @@ toolbar** (`.toolbar { ToolbarItem(.navigation) }`) directly above the top pane 
 so the hand cursor never appears on that downward entry, even though it works
 entering from another terminal. `cursorUpdate` alone has the same entry gap, which
 is why the cursor must **also** be set in `mouseEntered` (which does fire on that
-entry). The split divider uses SwiftUI **`.pointerStyle`** (macOS 15+,
-`SplitContainerView`), not `NSCursor.push()/pop()`, for the same robustness reason.
+entry). The split divider follows this same pattern: its grab strip is the AppKit
+`SplitterHandleView` (`SplitContainerView`), which sets the resize cursor in both
+`cursorUpdate` and `mouseEntered`. A SwiftUI **`.pointerStyle`** was tried first but
+loses the cursor to the terminal surface's own `cursorUpdate` (the terminal is a
+concrete sibling `NSView`), so a concrete overlay `NSView` is required here too.
 
 **How to apply:** mirror `GhosttySurfaceView`'s `mouseEntered`/`cursorUpdate`/
 `mouseExited` cursor trio for any new overlay/handle over a terminal surface; drive

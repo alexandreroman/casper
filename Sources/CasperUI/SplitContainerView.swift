@@ -1,3 +1,4 @@
+import AppKit
 import CasperCore
 import SwiftUI
 
@@ -8,12 +9,15 @@ import SwiftUI
 /// Panes and dividers live in a `ZStack(alignment: .topLeading)`: each pane is
 /// placed with an explicit, non-overlapping `.frame(…).offset(…)` (libghostty's
 /// Metal-backed views must never overlap or they occlude each other), and each
-/// divider is a top-most child placed with `.position(…)`. The `.position` makes
-/// the divider's layout frame fill the parent, so the drag gesture reports its
-/// location in the full `GeometryReader` space — the exact geometry the resize
-/// math maps against — while `contentShape` keeps the *hittable* region limited to
-/// the thin strip, letting pane clicks fall through to the terminal underneath.
-/// Attaching `.gesture` *after* `.position` is load-bearing for this to hold.
+/// divider is a top-most child placed with `.position(center)`. A divider is the
+/// SwiftUI-drawn 1pt separator line plus a transparent AppKit `SplitterHandle`
+/// (`SplitterHandleView`) layered on top: the handle's `NSView` bounds are the
+/// wider grab strip, so default AppKit hit-testing captures clicks there for the
+/// resize while the rest of each pane falls through to the terminal underneath.
+/// The handle owns the resize cursor, the drag, and double-click-to-equalize — a
+/// concrete `NSView` is required because a SwiftUI `.pointerStyle` loses the cursor
+/// to the terminal surface's own `cursorUpdate` (see the terminal-overlay-cursor
+/// note).
 ///
 /// The visible 1pt line is filled with `NSColor.separatorColor` so every separator
 /// in the app — sidebar edge, inspector edge, and the terminal splits — reads as
@@ -34,10 +38,11 @@ struct SplitContainerView: View {
     private static let splitterVisibleSize: CGFloat = 1
     /// Extra transparent thickness straddling the line, widening the grab target;
     /// the hitbox is visible + invisible. Deliberate deviation from Ghostty (whose
-    /// `splitterInvisibleSize` is 6, a 7pt hitbox): Casper widens it to a 12pt hitbox
-    /// for an easier grab, kept below ~12pt so it never encroaches on the pane
-    /// drag-grip (`PaneDragHandleView`) sitting just past the divider.
-    private static let splitterInvisibleSize: CGFloat = 11
+    /// `splitterInvisibleSize` is 6, a 7pt hitbox): Casper widens it to an 18pt hitbox
+    /// for an easier grab. It straddles the line symmetrically, reaching 9pt into each
+    /// pane — kept short enough that it stays clear of the pane drag-grip's dots
+    /// (`PaneDragHandleView`, a 24pt band at the pane's top edge, dots centered ~y=12).
+    private static let splitterInvisibleSize: CGFloat = 17
 
     /// Per-child size fractions along the axis (sum ≈ 1). Seeded from `ratios`
     /// when it matches and is usable, else an even split.
@@ -142,55 +147,42 @@ struct SplitContainerView: View {
         return (offset, max(0, length))
     }
 
-    /// A divider centred on boundary `index`: a thin visible line inside a wider
-    /// transparent hit strip. `.position` fills the parent for the drag's
-    /// coordinate space; `.gesture`/`.onTapGesture` are attached afterwards.
+    /// A divider centred on boundary `index`: the SwiftUI-drawn 1pt separator line
+    /// plus, on top, an AppKit `SplitterHandle` spanning the wider hit strip. The
+    /// handle owns the resize cursor, the drag, and double-click-to-equalize — a
+    /// concrete `NSView` is required so the cursor wins over the terminal surface's
+    /// own `cursorUpdate` (a SwiftUI `.pointerStyle` cannot; see the
+    /// terminal-overlay-cursor note). Positioned with `.position(center)`.
     private func divider(
         index: Int, boundaries: [CGFloat], axisLength: CGFloat, crossLength: CGFloat
     ) -> some View {
         let boundary = boundaries[index]
+        let hitThickness = Self.splitterVisibleSize + Self.splitterInvisibleSize
         let center: CGPoint = orientation == .horizontal
             ? CGPoint(x: boundary, y: crossLength / 2)
             : CGPoint(x: crossLength / 2, y: boundary)
-        return dividerStrip(crossLength: crossLength)
-            .position(center)
-            .gesture(dragGesture(index: index, axisLength: axisLength))
-            // Nice-to-have from Ghostty: double-click equalizes the split.
-            .onTapGesture(count: 2) {
-                fractions = LayoutNode.evenRatios(children.count)
-            }
-    }
-
-    /// The divider's visuals: a transparent grab strip (7pt across the axis) whose
-    /// `contentShape` limits hit-testing to itself, plus the 1pt separator line
-    /// centred within it. Carries the axis resize cursor via `.pointerStyle`.
-    private func dividerStrip(crossLength: CGFloat) -> some View {
-        let hitThickness = Self.splitterVisibleSize + Self.splitterInvisibleSize
         return ZStack {
-            Color.clear
-                .frame(
-                    width: orientation == .horizontal ? hitThickness : crossLength,
-                    height: orientation == .horizontal ? crossLength : hitThickness)
-                .contentShape(Rectangle())
+            // Visible 1pt line, drawn by SwiftUI behind the transparent handle.
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
                 .frame(
                     width: orientation == .horizontal ? Self.splitterVisibleSize : crossLength,
                     height: orientation == .horizontal ? crossLength : Self.splitterVisibleSize)
+            // Transparent AppKit grab strip: cursor + drag + double-click.
+            SplitterHandle(
+                orientation: orientation,
+                boundary: boundary,
+                onResize: { target in
+                    fractions = Self.resizedFractions(
+                        displayFractions(), dividerIndex: index, boundaryTarget: target,
+                        axisLength: axisLength, minLength: Self.minPaneLength)
+                },
+                onEqualize: { fractions = LayoutNode.evenRatios(children.count) })
+                .frame(
+                    width: orientation == .horizontal ? hitThickness : crossLength,
+                    height: orientation == .horizontal ? crossLength : hitThickness)
         }
-        .pointerStyle(orientation == .horizontal ? .columnResize : .rowResize)
-    }
-
-    /// Drags divider `index` by the *absolute* cursor location (not accumulated
-    /// translation), so the divider tracks the pointer exactly.
-    private func dragGesture(index: Int, axisLength: CGFloat) -> some Gesture {
-        DragGesture()
-            .onChanged { value in
-                let target = orientation == .horizontal ? value.location.x : value.location.y
-                fractions = Self.resizedFractions(
-                    displayFractions(), dividerIndex: index, boundaryTarget: target,
-                    axisLength: axisLength, minLength: Self.minPaneLength)
-            }
+        .position(center)
     }
 
     /// Recompute `fractions` after dragging divider `dividerIndex` to
@@ -247,4 +239,127 @@ fileprivate extension LayoutNode {
     /// Keying ForEach by this (not the array index) keeps each pane's view/host
     /// associated with its content across a drag-relocate reorder.
     var paneDiffKey: [UUID] { LayoutTree.surfaceIDs(self) }
+}
+
+/// SwiftUI wrapper hosting one divider's AppKit `SplitterHandleView`.
+private struct SplitterHandle: NSViewRepresentable {
+    let orientation: LayoutNode.Orientation
+    let boundary: CGFloat
+    let onResize: (CGFloat) -> Void
+    let onEqualize: () -> Void
+
+    func makeNSView(context: Context) -> SplitterHandleView {
+        SplitterHandleView(
+            orientation: orientation, boundary: boundary,
+            onResize: onResize, onEqualize: onEqualize)
+    }
+
+    func updateNSView(_ nsView: SplitterHandleView, context: Context) {
+        // SwiftUI mutates `boundary` (via fractions) on every layout, including
+        // mid-drag; keep the backing view's inputs in sync so a fresh drag starts
+        // from the current boundary and the closures capture the latest state.
+        nsView.orientation = orientation
+        nsView.boundary = boundary
+        nsView.onResize = onResize
+        nsView.onEqualize = onEqualize
+    }
+}
+
+/// AppKit grab handle for one split divider, layered above the panes. A concrete
+/// `NSView` — not a SwiftUI `.pointerStyle` — is required so the resize cursor wins
+/// over the libghostty terminal surface (`GhosttySurfaceView`), a real sibling
+/// `NSView` whose `cursorUpdate` tracking area resets the cursor to the I-beam over
+/// the strip where the divider overlaps it. Mirrors `PaneDragHandleView`'s cursor
+/// discipline (see the "Cursor management for chrome over the terminal" note): set
+/// the cursor in BOTH `cursorUpdate` and `mouseEntered`, reset to arrow on exit.
+///
+/// The view is transparent (the 1pt line is drawn by SwiftUI behind it); its whole
+/// `bounds` is the grab zone. The drag and double-click-to-equalize are handled
+/// here in AppKit rather than by a SwiftUI `DragGesture`, because a click-through
+/// (`hitTest == nil`) view could not win the cursor while an opaque one would steal
+/// the mouse-down — so this view owns both.
+final class SplitterHandleView: NSView {
+    var orientation: LayoutNode.Orientation
+    var boundary: CGFloat
+    var onResize: (CGFloat) -> Void
+    var onEqualize: () -> Void
+
+    /// Captured at `mouseDown` so the drag maps window-space movement onto the axis
+    /// independently of the live `boundary`, which SwiftUI mutates mid-drag.
+    private var dragStartBoundary: CGFloat = 0
+    private var dragStartWindowLocation: NSPoint = .zero
+
+    init(orientation: LayoutNode.Orientation, boundary: CGFloat,
+         onResize: @escaping (CGFloat) -> Void, onEqualize: @escaping () -> Void) {
+        self.orientation = orientation
+        self.boundary = boundary
+        self.onResize = onResize
+        self.onEqualize = onEqualize
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// Top-left origin, matching SwiftUI.
+    override var isFlipped: Bool { true }
+
+    /// Resize even when the window is not key, like `PaneDragHandleView`.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // MARK: - Cursor
+
+    /// A `.horizontal` split has a vertical line dragged left/right (columns); a
+    /// `.vertical` split has a horizontal line dragged up/down (rows).
+    private var resizeCursor: NSCursor {
+        orientation == .horizontal ? .columnResize : .rowResize
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .cursorUpdate, .activeInActiveApp, .inVisibleRect],
+            owner: self))
+    }
+
+    override func cursorUpdate(with event: NSEvent) { resizeCursor.set() }
+
+    override func mouseEntered(with event: NSEvent) {
+        // Also set here, not only in `cursorUpdate`: entering from a region that
+        // defines no cursor of its own (e.g. the window toolbar) fires `mouseEntered`
+        // but not `cursorUpdate`. Mirrors `PaneDragHandleView`/`GhosttySurfaceView`.
+        resizeCursor.set()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        // Reset so the resize cursor does not leak onto the terminal; the surface
+        // restores its I-beam via its own `cursorUpdate` on re-entry.
+        NSCursor.arrow.set()
+    }
+
+    // MARK: - Drag
+
+    override func mouseDown(with event: NSEvent) {
+        // No `super`: this whole view is the grab strip, so any press begins a
+        // resize (or, on a double-click, equalizes the split).
+        if event.clickCount == 2 {
+            onEqualize()
+            return
+        }
+        dragStartBoundary = boundary
+        dragStartWindowLocation = event.locationInWindow
+        resizeCursor.set()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let now = event.locationInWindow
+        // Window coordinates are y-up; the vertical-split axis grows downward, so
+        // invert dy. The horizontal-split axis (x) shares the window's direction.
+        let deltaAxis = orientation == .horizontal
+            ? now.x - dragStartWindowLocation.x
+            : dragStartWindowLocation.y - now.y
+        onResize(dragStartBoundary + deltaAxis)
+    }
 }
