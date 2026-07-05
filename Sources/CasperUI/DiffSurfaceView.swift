@@ -307,7 +307,7 @@ private struct DiffFileView: View {
 
     /// Two line numbers plus inter-number spacing, with a sensible minimum width.
     private var gutterWidth: CGFloat {
-        max(CGFloat(maxDigits * 2 * 8 + 24), 60)
+        max(CGFloat(maxDigits * 2 * 9 + 24), 60)
     }
 }
 
@@ -325,13 +325,13 @@ private struct DiffLineRow: View {
                 .frame(width: 3)
             HStack(spacing: 8) {
                 Text(gutter)
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .frame(width: gutterWidth, alignment: .trailing)
                 codeText
-                    .font(.system(.body, design: .monospaced))
+                    .font(.system(size: 14, design: .monospaced))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
