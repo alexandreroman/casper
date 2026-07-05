@@ -201,7 +201,7 @@ private struct DiffFileView: View {
                     ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
                         DiffLineRow(
                             line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
-                            highlighted: highlightedLine(for: line))
+                            maxDigits: maxDigits, highlighted: highlightedLine(for: line))
                     }
                 }
                 if hiddenLineCount > 0 {
@@ -315,6 +315,7 @@ private struct DiffLineRow: View {
     let line: GitDiffLine
     let gutterWidth: CGFloat
     let contentWidth: CGFloat
+    let maxDigits: Int
     let highlighted: AttributedString?
 
     var body: some View {
@@ -324,12 +325,20 @@ private struct DiffLineRow: View {
                 .fill(DiffLineStyle.accent(for: line.kind))
                 .frame(width: 3)
             HStack(spacing: 8) {
-                Text(gutter)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .frame(width: gutterWidth, alignment: .trailing)
+                // Two independent right-aligned columns so the old- and
+                // new-number columns line up on every row, even when one side is
+                // empty (added or deleted lines).
+                HStack(spacing: 8) {
+                    Text(line.oldLineNumber.map(String.init) ?? "")
+                        .frame(width: CGFloat(maxDigits * 9), alignment: .trailing)
+                    Text(line.newLineNumber.map(String.init) ?? "")
+                        .frame(width: CGFloat(maxDigits * 9), alignment: .trailing)
+                }
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .frame(width: gutterWidth, alignment: .trailing)
                 codeText
                     .font(.system(size: 14, design: .monospaced))
                     .lineLimit(1)
@@ -362,11 +371,5 @@ private struct DiffLineRow: View {
         var content = AttributedString(DiffLineStyle.prefix(for: line.kind))
         content.append(highlighted)
         return content
-    }
-
-    private var gutter: String {
-        let old = line.oldLineNumber.map(String.init) ?? ""
-        let new = line.newLineNumber.map(String.init) ?? ""
-        return "\(old)  \(new)"
     }
 }
