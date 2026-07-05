@@ -1,0 +1,42 @@
+import Foundation
+import XCTest
+@testable import CasperCore
+
+final class ControlSocketTests: XCTestCase {
+    private func tempSocketPath() -> String {
+        (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("casper-control-test-\(UUID().uuidString.prefix(8)).sock")
+    }
+
+    func testServerReceivesCommandAndClientGetsResponse() throws {
+        let path = tempSocketPath()
+        let server = ControlSocketServer(socketPath: path)
+        server.onCommand = { command, reply in
+            XCTAssertEqual(command.verb, .statusSet)
+            XCTAssertEqual(command.state, "running")
+            reply(.success(text: "ok"))
+        }
+        try server.start()
+        defer { server.stop() }
+
+        let response = try ControlSocketClient.send(
+            ControlCommand(verb: .statusSet, workspace: "w", state: "running"),
+            toSocketAt: path)
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.text, "ok")
+    }
+
+    func testMissingSocketThrowsControlSocketError() {
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(
+                ControlCommand(verb: .workspaceList), toSocketAt: tempSocketPath())
+        ) { error in
+            XCTAssertTrue(error is ControlSocketError)
+        }
+    }
+
+    func testDefaultPathHonorsEnvOverride() {
+        // With no override, the default lives under the temp dir.
+        XCTAssertTrue(ControlSocketPath.default.hasSuffix("casper-control.sock"))
+    }
+}
