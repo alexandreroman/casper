@@ -26,6 +26,17 @@ final class AppModel {
     /// nothing is selected. Reconfigured on every selection change.
     @ObservationIgnored private var worktreeWatcher: DirectoryWatching?
 
+    /// Second, narrow FSEvents watcher rooted at the selected Git repo's reflog
+    /// directory (`<gitdir>/logs`), or nil for a non-Git selection. It exists
+    /// because `worktreeWatcher` deliberately excludes `.git` to dodge the event
+    /// storm from Git's high-frequency internal writes — but a `git commit` only
+    /// writes inside `.git` (index, HEAD, refs, logs) and touches no working-tree
+    /// file, so it would otherwise slip past the diff refresh. `logs/HEAD` is
+    /// appended on every HEAD-moving op (commit, checkout, reset, merge, rebase)
+    /// yet is never written by `git status`/`add`/`diff`, making it a low-churn
+    /// commit signal with no storm. Reconfigured on every selection change.
+    @ObservationIgnored private var gitMetaWatcher: DirectoryWatching?
+
     /// Builds the watcher for the selected worktree. Injectable so tests can
     /// substitute a stub; the default builds the real FSEvents-backed watcher.
     @ObservationIgnored
@@ -172,6 +183,7 @@ final class AppModel {
 
     deinit {
         worktreeWatcher?.stop()
+        gitMetaWatcher?.stop()
     }
 
     var isEmpty: Bool { spaces.allSatisfy { $0.workspaces.isEmpty } }
@@ -374,6 +386,8 @@ final class AppModel {
     private func armWorktreeWatcher() {
         worktreeWatcher?.stop()
         worktreeWatcher = nil
+        gitMetaWatcher?.stop()
+        gitMetaWatcher = nil
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
         let ws = spaces[at.space].workspaces[at.workspace]
         let path = ws.worktreePath
@@ -392,6 +406,27 @@ final class AppModel {
                     guard let self else { return }
                     self.diffDebouncer.schedule { [weak self] in
                         self?.handleSelectedWorktreeChange()
+                    }
+                }
+            }
+        }
+        // Commit detection: watch the resolved gitdir's reflog directory, which the
+        // `.git`-excluded worktree watcher above can't see. `gitDirPath` carries a
+        // trailing slash and, for a linked worktree, resolves to
+        // `<maindir>/.git/worktrees/<name>/`, so its `logs/HEAD` reflog is the one
+        // that moves on this worktree's commits. Reuse `makeWorktreeWatcher` (the
+        // test injection seam) with no exclusions, routing through the same debounced
+        // hop as the primary watcher. Degrades gracefully to nil if the repo can't be
+        // opened or the logs dir can't be watched.
+        if spaces[at.space].isGitRepo, let repo = try? Repository.open(atPath: path) {
+            let logsPath = repo.gitDirPath + "logs"
+            gitMetaWatcher = makeWorktreeWatcher(logsPath, []) { [weak self] in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.diffDebouncer.schedule { [weak self] in
+                            self?.handleSelectedWorktreeChange()
+                        }
                     }
                 }
             }
