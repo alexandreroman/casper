@@ -158,7 +158,7 @@ public struct InspectorState: Codable, Equatable, Sendable {
     /// model's clamping, so the two never drift apart.
     public static let minWidth: Double = 240
     public static let defaultWidth: Double = 360
-    public static let maxWidth: Double = 900
+    public static let maxWidth: Double = 1400
 
     public var collapsed: Bool
     public var tab: InspectorTab
