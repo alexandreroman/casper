@@ -96,9 +96,13 @@ final class AppModel {
     @ObservationIgnored var onPersistForTest: (() -> Void)?
 
     /// Delivers a local notification. Injectable for tests; the default posts a
-    /// best-effort `UserNotifications` request (a bare executable without a
-    /// bundle id may silently no-op, which is acceptable in dev builds).
+    /// best-effort `UserNotifications` request. Skipped entirely when the process
+    /// has no bundle identifier (a bare `swift run` executable): on macOS 26
+    /// `UNUserNotificationCenter.current()` aborts rather than no-ops without a
+    /// bundle, so guarding here keeps `make dev` runs from crashing on the first
+    /// hook notification.
     @ObservationIgnored var deliverNotification: (String, String) -> Void = { title, body in
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
