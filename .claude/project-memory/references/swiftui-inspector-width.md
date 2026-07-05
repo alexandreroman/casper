@@ -25,6 +25,23 @@ inspector out of the `NavigationSplitView`'s `NSSplitView` into a pure SwiftUI
 `HStack` removes the `SplitViewChildController` from the path entirely, so the
 divider is a normal SwiftUI gesture that cannot trigger the loop.
 
+**Open/close animation — reveal by clip width, do NOT mount/unmount with a
+`.move` transition.** The panel is **always mounted**; collapsing animates a
+**trailing-pinned clip width** (`0 ↔ divider+panel`, `alignment: .trailing` +
+`.clipped()`) so the panel content sits at fixed coordinates and is *revealed*,
+not translated. A `.transition(.move(edge: .trailing))` looked right but made
+the **segmented tab `Picker` lag** the sliding chrome: it is an AppKit
+`NSSegmentedControl`, and AppKit-hosted views don't follow a SwiftUI
+transition's per-frame offset (a freshly inserted `NSView` is laid out straight
+at its final frame). This mirrors `SplitContainerView`, which animates hosted
+Metal views by frame/offset on always-mounted views for the same reason. Because
+the panel now stays mounted while collapsed, `InspectorPanel` **gates its heavy
+`content`** (the diff / browser views) on the expanded state, so no diff
+computation or `WKWebView` runs while collapsed. Trailing (not leading)
+alignment is load-bearing: the detail area is `maxWidth: .infinity`, so the
+inspector's *right* edge is fixed and its *left* edge moves — leading alignment
+would translate the tabs and reintroduce the lag.
+
 **Divider drag — track the pointer by ABSOLUTE location**, mirroring
 `SplitContainerView`'s splitter: the `DragGesture` reads `value.location.x` in a
 stable **named coordinate space** anchored to the full-width container
