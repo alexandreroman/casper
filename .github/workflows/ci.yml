@@ -24,8 +24,19 @@ jobs:
       - name: Print toolchain
         run: swift --version
 
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-macos-15-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            swiftpm-macos-15-
+
       - name: Install libgit2
         run: brew install libgit2 pkgconf
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
 
       - name: Build
         run: swift build
