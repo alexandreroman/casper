@@ -7,7 +7,14 @@ import SwiftUI
 /// centred at the top of the panel, over full-bleed content below.
 /// The Browser view reuses `BrowserSurfaceView` on the workspace's dedicated
 /// inspector surface; the Diff view reuses `DiffSurfaceView` for the working
-/// tree vs HEAD. Shown by `WorkspaceDetailView` only when the inspector is expanded.
+/// tree vs HEAD.
+///
+/// The panel is ALWAYS mounted by `WorkspaceDetailView` (which reveals it by
+/// animating a clip width so the AppKit segmented control never lags a
+/// transition). The chrome — top separator, segmented selector, `Divider` —
+/// therefore stays live at all times, but the heavy `content` (the diff
+/// computation and the browser `WKWebView`) is gated on the inspector being
+/// expanded so those resources are torn down while it is collapsed.
 struct InspectorPanel: View {
     let model: AppModel
     let workspace: Workspace
@@ -40,11 +47,18 @@ struct InspectorPanel: View {
     }
 
     @ViewBuilder private var content: some View {
-        switch workspace.inspector.tab {
-        case .browser:
-            BrowserSurfaceView(model: model, surface: workspace.inspector.browser)
-        case .diff:
-            DiffSurfaceView(model: model, workspace: workspace)
+        // The panel is mounted even while collapsed (clipped to zero width), so
+        // only spin up the diff or the browser `WKWebView` when it is actually
+        // visible; an empty filler keeps the collapsed panel inert.
+        if workspace.inspector.collapsed {
+            Color.clear
+        } else {
+            switch workspace.inspector.tab {
+            case .browser:
+                BrowserSurfaceView(model: model, surface: workspace.inspector.browser)
+            case .diff:
+                DiffSurfaceView(model: model, workspace: workspace)
+            }
         }
     }
 

@@ -20,6 +20,11 @@ struct WorkspaceDetailView: View {
     /// inspector's maximum width.
     private static let minDetailWidth: Double = 320
 
+    /// Width of the inspector's grab strip (the transparent hit area around the
+    /// 1pt separator line). Named so the reveal container can size itself to
+    /// divider + panel in one place.
+    private static let inspectorDividerWidth: Double = 7
+
     /// Stable coordinate space for the inspector divider drag, anchored to the
     /// full-width detail container so the pointer's absolute location is read
     /// against a fixed origin (the divider itself moves as the panel resizes).
@@ -37,12 +42,27 @@ struct WorkspaceDetailView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if !workspace.inspector.collapsed {
+                // The inspector region (divider + panel) is ALWAYS mounted and
+                // pinned at its full width; collapsing animates the OUTER clip
+                // width to zero instead of unmounting the panel with a `.move`
+                // transition. A freshly inserted AppKit-hosted view — the
+                // segmented `Picker` (an NSSegmentedControl) — does not follow
+                // SwiftUI's per-frame transition offset: it snaps to its final
+                // frame and visibly lags the sliding chrome. Revealing by
+                // clipping keeps that control at fixed coordinates (content
+                // pinned to the trailing edge, which is the window's fixed right
+                // edge) so nothing translates, mirroring `SplitContainerView`'s
+                // always-mounted, frame-animated approach. The divider lives
+                // inside the same clipped container so it reveals with the panel
+                // rather than popping in as a separate mount.
+                HStack(spacing: 0) {
                     inspectorDivider(total: proxy.size.width, range: range)
                     InspectorPanel(model: model, workspace: workspace)
                         .frame(width: width)
-                        .transition(.move(edge: .trailing))
                 }
+                .frame(width: workspace.inspector.collapsed ? 0 : Self.inspectorDividerWidth + width,
+                       alignment: .trailing)
+                .clipped()
             }
             .coordinateSpace(.named(Self.inspectorDragSpace))
             .animation(.easeInOut(duration: 0.18), value: workspace.inspector.collapsed)
@@ -82,7 +102,7 @@ struct WorkspaceDetailView: View {
     private func inspectorDivider(total: Double, range: ClosedRange<Double>) -> some View {
         ZStack {
             Color.clear
-                .frame(width: 7)
+                .frame(width: Self.inspectorDividerWidth)
                 .contentShape(Rectangle())
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
