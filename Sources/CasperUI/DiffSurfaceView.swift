@@ -266,7 +266,7 @@ private struct DiffFileView: View {
     /// Full-bleed header band: file path + status on the left, the +N −N line
     /// summary pushed to the right, over a subtly elevated fill.
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .lastTextBaseline, spacing: 8) {
             Text(title).font(.system(.body, design: .monospaced)).bold()
             Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 12)
