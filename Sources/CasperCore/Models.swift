@@ -317,7 +317,12 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
 
 public struct Session: Codable, Equatable, Sendable {
     public var spaces: [Space]
-    public init(spaces: [Space] = []) {
+    /// The workspace selected when the session was last saved, re-selected on
+    /// relaunch. Optional, so its synthesized `Codable` decodes an absent key
+    /// (legacy `session.json` files) to nil.
+    public var selectedWorkspaceID: UUID?
+    public init(spaces: [Space] = [], selectedWorkspaceID: UUID? = nil) {
         self.spaces = spaces
+        self.selectedWorkspaceID = selectedWorkspaceID
     }
 }

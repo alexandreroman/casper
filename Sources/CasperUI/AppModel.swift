@@ -119,9 +119,21 @@ final class AppModel {
         self.sessionStore = sessionStore
         self.portAllocator = portAllocator
         self.spaces = session.spaces
-        self.selectedWorkspaceID = session.spaces.first?.workspaces.first?.id
-        if let ws = session.spaces.first?.workspaces.first {
+        // Restore the persisted selection when it still resolves to a live
+        // workspace; otherwise fall back to the first workspace of the first
+        // Space (fresh-session behavior).
+        let restored = session.selectedWorkspaceID.flatMap { id in
+            spaces.contains { $0.workspaces.contains { $0.id == id } } ? id : nil
+        }
+        let selected = restored ?? spaces.first?.workspaces.first?.id
+        self.selectedWorkspaceID = selected
+        if let selected,
+           let si = spaces.firstIndex(where: { $0.workspaces.contains { $0.id == selected } }),
+           let ws = spaces[si].workspaces.first(where: { $0.id == selected }) {
             self.focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
+            // The restored selection must be visible: expand its owning Space.
+            // `init` runs before the view exists, so mutate directly (no animation).
+            spaces[si].isCollapsed = false
         }
         // Reserve restored port blocks so a later allocate() never collides.
         for space in session.spaces {
@@ -281,8 +293,16 @@ final class AppModel {
     func selectWorkspace(_ id: UUID?) {
         selectedWorkspaceID = id
         guard let id, let ws = workspace(id: id) else { return }
+        // A selected workspace must be visible: expand its owning Space if it was
+        // collapsed. Only mutate when actually collapsed, so an already-expanded
+        // Space doesn't run a redundant no-op animation.
+        if let si = spaces.firstIndex(where: { $0.workspaces.contains { $0.id == id } }),
+           spaces[si].isCollapsed {
+            withAnimation(.snappy) { spaces[si].isCollapsed = false }
+        }
         focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
         focusActiveSurfaceView()
+        persist()
     }
 
     func focusSurface(_ id: UUID) { focusedSurfaceID = id }
@@ -610,7 +630,7 @@ final class AppModel {
 
     func persist() {
         do {
-            try sessionStore.save(Session(spaces: spaces))
+            try sessionStore.save(Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
         } catch {
             CasperLog.app.failure("failed to persist session", error)
         }

@@ -104,6 +104,104 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.focusedSurfaceID, surface2.id)
     }
 
+    // MARK: - Persisted selection & Space expansion
+
+    /// A two-workspace session in a single Space, plus the surfaces so tests can
+    /// assert on focus. `selectedWorkspaceID` seeds the persisted selection.
+    private func twoWorkspaceSession(
+        isCollapsed: Bool = false, selecting selected: UUID? = nil
+    ) -> (Session, Workspace, Surface, Workspace, Surface) {
+        let surface1 = Surface(kind: .terminal(cwd: "/a", command: nil))
+        let surface2 = Surface(kind: .terminal(cwd: "/b", command: nil))
+        let ws1 = Workspace(name: "a", worktreePath: "/a", branch: "",
+                            portBase: 40000, layout: .leaf(surface1))
+        let ws2 = Workspace(name: "b", worktreePath: "/b", branch: "",
+                            portBase: 40010, layout: .leaf(surface2))
+        let session = Session(spaces: [
+            Space(name: "s", folderPath: "/s", isGitRepo: false,
+                  isCollapsed: isCollapsed, workspaces: [ws1, ws2]),
+        ], selectedWorkspaceID: selected)
+        return (session, ws1, surface1, ws2, surface2)
+    }
+
+    func testRestoresPersistedSelectedWorkspace() {
+        let (session, _, _, ws2, surface2) = twoWorkspaceSession()
+        let existing = Session(spaces: session.spaces, selectedWorkspaceID: ws2.id)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+        XCTAssertEqual(model.selectedWorkspaceID, ws2.id)
+        XCTAssertEqual(model.focusedSurfaceID, surface2.id)
+    }
+
+    func testRestoreFallsBackToFirstWhenSelectedWorkspaceMissing() {
+        // A stale selection id (workspace since removed) must fall back to the
+        // first workspace of the first Space, matching fresh-session behavior.
+        let (session, ws1, surface1, _, _) = twoWorkspaceSession(selecting: UUID())
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+        XCTAssertEqual(model.selectedWorkspaceID, ws1.id)
+        XCTAssertEqual(model.focusedSurfaceID, surface1.id)
+    }
+
+    func testStartupExpandsSpaceOwningRestoredSelection() {
+        let (session, _, _, ws2, _) = twoWorkspaceSession(isCollapsed: true)
+        let existing = Session(spaces: session.spaces, selectedWorkspaceID: ws2.id)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+        XCTAssertFalse(model.spaces[0].isCollapsed)
+    }
+
+    func testSelectingWorkspaceExpandsItsCollapsedSpace() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let space = model.spaces[0]
+        let wsID = space.workspaces[0].id
+        model.toggleSpaceCollapsed(id: space.id)
+        XCTAssertTrue(model.spaces[0].isCollapsed)
+
+        model.selectWorkspace(wsID)
+        XCTAssertFalse(model.spaces[0].isCollapsed)
+    }
+
+    func testSelectWorkspacePersistsSelectionAcrossReload() throws {
+        let (session, _, _, ws2, _) = twoWorkspaceSession()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+        model.selectWorkspace(ws2.id)
+        XCTAssertEqual(try store.load().selectedWorkspaceID, ws2.id)
+    }
+
+    /// The selection invariant: it must be nil or resolve to a live workspace,
+    /// never dangle at a removed id.
+    private func assertSelectionValidOrNil(_ model: AppModel) {
+        if let sel = model.selectedWorkspaceID {
+            XCTAssertNotNil(model.workspace(id: sel), "selection dangles at a removed workspace")
+        }
+    }
+
+    func testRemovingSelectedSpaceLeavingNoneClearsSelection() throws {
+        let (session, _, _, _, _) = twoWorkspaceSession()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+        model.removeSpace(id: model.spaces[0].id)  // the only Space holds the selection
+        XCTAssertNil(model.selectedWorkspaceID)
+        XCTAssertNil(try store.load().selectedWorkspaceID)
+        assertSelectionValidOrNil(model)
+    }
+
+    func testRemovingSelectedLinkedWorkspaceReselectsValidWorkspace() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        _ = model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat")
+        let linkedID = model.spaces[0].workspaces[1].id
+        model.selectWorkspace(linkedID)
+
+        model.removeWorkspace(id: linkedID)  // removing the selected linked workspace
+        XCTAssertEqual(model.selectedWorkspaceID, model.spaces[0].workspaces[0].id)
+        assertSelectionValidOrNil(model)
+    }
+
     func testAddAfterRestoreDoesNotReuseRestoredPortBlock() {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [

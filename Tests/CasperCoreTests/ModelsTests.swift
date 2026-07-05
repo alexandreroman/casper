@@ -201,4 +201,34 @@ final class ModelsTests: XCTestCase {
         XCTAssertFalse(decoded.isCollapsed)
         XCTAssertEqual(decoded.name, "app")  // other fields still decode normally
     }
+
+    // MARK: - Selected workspace persistence
+
+    func testSessionLegacyDecodeWithoutSelectedWorkspaceIDDefaultsToNil() throws {
+        // A `session.json` written before the selected workspace was persisted has
+        // no `selectedWorkspaceID` key; decoding must fall back to nil rather than
+        // throw on the missing key.
+        let session = Session(spaces: [
+            Space(name: "app", folderPath: "/r", isGitRepo: true, workspaces: []),
+        ], selectedWorkspaceID: UUID())
+        let data = try JSONEncoder().encode(session)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "selectedWorkspaceID")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(Session.self, from: legacyData)
+        XCTAssertNil(decoded.selectedWorkspaceID)
+        XCTAssertEqual(decoded.spaces.first?.name, "app")  // other fields decode normally
+    }
+
+    func testSessionCodableRoundTripWithSelectedWorkspaceID() throws {
+        let selected = UUID()
+        let session = Session(spaces: [
+            Space(name: "app", folderPath: "/r", isGitRepo: true, workspaces: []),
+        ], selectedWorkspaceID: selected)
+        let data = try JSONEncoder().encode(session)
+        let decoded = try JSONDecoder().decode(Session.self, from: data)
+        XCTAssertEqual(decoded, session)
+        XCTAssertEqual(decoded.selectedWorkspaceID, selected)
+    }
 }
