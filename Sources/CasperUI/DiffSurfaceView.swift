@@ -69,7 +69,6 @@ struct DiffSurfaceView: View {
                                 file: file, contentWidth: contentWidth, highlight: highlights[offset])
                         }
                     }
-                    .padding(.vertical, 8)
                     .frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
