@@ -21,7 +21,7 @@ jobs:
     name: Build & publish Casper.app (macOS, arm64)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload build artifacts (dry-run)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Casper-${{ steps.version.outputs.short }}-arm64
           path: |
