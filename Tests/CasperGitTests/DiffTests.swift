@@ -40,9 +40,28 @@ final class DiffTests: XCTestCase {
             to: dir.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
         let file = try repo.diffWorkdirToHead().files.first { $0.newPath == "new.txt" }
         XCTAssertEqual(file?.status, .added)
+        // An untracked text file must not be misclassified as binary.
+        XCTAssertFalse(file?.isBinary ?? true)
         let lines = file?.hunks.flatMap(\.lines) ?? []
+        // Real addition hunks must be present, carrying the file's actual content.
+        XCTAssertFalse(lines.isEmpty)
         XCTAssertTrue(lines.allSatisfy { $0.kind == .addition })
         XCTAssertTrue(lines.allSatisfy { $0.oldLineNumber == nil })
+        XCTAssertTrue(lines.contains { $0.content == "new" })
+        XCTAssertTrue(lines.contains { $0.content == "content" })
+    }
+
+    func testFilesAreSortedAlphabetically() throws {
+        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let repo = try GitFixture.repository(at: dir.path)
+        // Create untracked files deliberately out of alphabetical order.
+        for name in ["zebra.txt", "apple.txt", "mango.txt"] {
+            try "\(name)\n".write(
+                to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        let paths = try repo.diffWorkdirToHead().files.map { $0.newPath }
+        XCTAssertEqual(paths, paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
+        XCTAssertEqual(paths, ["apple.txt", "mango.txt", "zebra.txt"])
     }
 
     func testDeletedFileIsDeletion() throws {

@@ -150,7 +150,13 @@ public final class Repository {
         var options = git_diff_options()
         try gitCheck(git_diff_options_init(&options, UInt32(GIT_DIFF_OPTIONS_VERSION)))
         options.flags =
-            GIT_DIFF_INCLUDE_UNTRACKED.rawValue | GIT_DIFF_RECURSE_UNTRACKED_DIRS.rawValue
+            GIT_DIFF_INCLUDE_UNTRACKED.rawValue
+            | GIT_DIFF_RECURSE_UNTRACKED_DIRS.rawValue
+            // Without this flag libgit2 emits zero hunks for any untracked file's
+            // content, so the binary-fallback heuristic in `buildFile` would misflag
+            // every non-empty untracked text file as binary. With it, untracked text
+            // produces real addition hunks while untracked binary still yields none.
+            | GIT_DIFF_SHOW_UNTRACKED_CONTENT.rawValue
 
         var diff: OpaquePointer?
         try gitCheck(git_diff_tree_to_workdir_with_index(&diff, pointer, tree, &options))
@@ -166,6 +172,14 @@ public final class Repository {
             // reads file content, which only happens once the patch is generated.
             guard let deltaPtr = git_patch_get_delta(patch) else { continue }
             files.append(try Repository.buildFile(delta: deltaPtr, patch: patch))
+        }
+        // Present files in a stable alphabetical order by their display path
+        // (`newPath`, or `oldPath` for deletions), matching how the diff view lists
+        // them. `localizedStandardCompare` gives case-insensitive natural ordering.
+        files.sort { lhs, rhs in
+            let lhsPath = lhs.newPath.isEmpty ? lhs.oldPath : lhs.newPath
+            let rhsPath = rhs.newPath.isEmpty ? rhs.oldPath : rhs.newPath
+            return lhsPath.localizedStandardCompare(rhsPath) == .orderedAscending
         }
         return GitDiff(files: files)
     }
@@ -219,11 +233,13 @@ public final class Repository {
         //  2. For an added/untracked file libgit2 never sets that flag even when
         //     the content is binary (confirmed empirically: the same bytes staged
         //     into the index, or as a modification to a tracked file, set the flag
-        //     correctly). Its patch generation still refuses to emit hunks for such
-        //     content, so "no hunks despite a non-empty new side" is the fallback
-        //     binary signal — but only for added/untracked files. Applying it to a
-        //     modified file would misflag mode-only changes (e.g. `chmod +x`), which
-        //     legitimately produce zero hunks with unchanged content.
+        //     correctly). With `GIT_DIFF_SHOW_UNTRACKED_CONTENT` set (see
+        //     `diffWorkdirToHead`), untracked *text* now diffs into real hunks, but
+        //     patch generation still refuses to emit hunks for *binary* content, so
+        //     "no hunks despite a non-empty new side" is the fallback binary signal —
+        //     but only for added/untracked files. Applying it to a modified file
+        //     would misflag mode-only changes (e.g. `chmod +x`), which legitimately
+        //     produce zero hunks with unchanged content.
         let isAdded = delta.status == GIT_DELTA_ADDED || delta.status == GIT_DELTA_UNTRACKED
         let isBinary =
             (delta.flags & GIT_DIFF_FLAG_BINARY.rawValue) != 0

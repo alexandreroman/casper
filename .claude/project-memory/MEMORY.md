@@ -8,6 +8,7 @@
 
 - [Dependency policy](references/dependency-policy.md) — default to native macOS APIs (check the OS before reinventing/importing); only GhosttyKit + swift-argument-parser + libgit2
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
+- [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — GIT_DIFF_SHOW_UNTRACKED_CONTENT required or untracked text misflags binary + badge undercounts
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning from Homebrew's libgit2 is benign; left unsuppressed on purpose
 - [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes SwiftUI ScrollView centers undersized content; pin it top-leading via measured viewport size
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
