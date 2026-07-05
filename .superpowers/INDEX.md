@@ -37,5 +37,5 @@ is [`status.md`](status.md).
 - *CasperUI / app — plan not written yet (the current milestone).*
 
 The original design specs and completed build plans are not kept here — they are
-recoverable from Git history (tracked under `docs/superpowers/` before being
-distilled into `architecture.md` + `themes/`).
+recoverable from Git history (tracked under the now-removed `docs/superpowers/`
+tree before being distilled into `architecture.md` + `themes/`).

@@ -3,7 +3,8 @@
 Cross-cutting design that applies across every theme. Module-specific design
 lives in `themes/`; implementation progress lives in `status.md`. The original
 per-milestone specs and completed plans are recoverable from Git history (they
-were tracked under `docs/superpowers/` before being distilled here).
+were tracked under the now-removed `docs/superpowers/` tree before being
+distilled here).
 
 ## Vision
 

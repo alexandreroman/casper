@@ -14,9 +14,10 @@ default location of `docs/superpowers/specs/`.
 design/plan pair lives (e.g. `native-sidebar`, `sidebar-ui-rework`,
 `casper-ui-1..5`, `casper-git-diff`, `keyboard-shortcuts`). It is gitignored
 (`.gitignore` line 17 plus `.superpowers/sdd/.gitignore`), so these docs are never
-committed and need no commit authorization. The `docs/superpowers/` tree is the
-OLD location: its specs are recoverable only from Git history after being
-distilled into `.superpowers/architecture.md` + `.superpowers/themes/`.
+committed and need no commit authorization. The `docs/superpowers/` tree (the
+`brainstorming` skill's default location) has been **removed** from the repo; its
+old specs are recoverable only from Git history, distilled into
+`.superpowers/architecture.md` + `.superpowers/themes/`. Do not recreate it.
 
 **How to apply:** write brainstorm outputs to
 `.superpowers/sdd/YYYY-MM-DD-<topic>-design.md` and plans to
