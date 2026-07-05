@@ -29,6 +29,5 @@ real bundle with `UTExportedTypeDeclarations`. Note also (same file/spec): the d
 SOURCE, the grip handle, and the drop-zone highlight are all AppKit `NSView`s
 layered in the `ZStack` — a Metal-backed libghostty surface composites **above**
 sibling SwiftUI views, so any drag overlay drawn in SwiftUI is invisible and must be
-an `NSView`. See the design at
-`docs/superpowers/specs/2026-07-04-split-drag-and-drop-design.md` and
-[[persistent-nsview-host-sharing]].
+an `NSView`. See the split drag-and-drop design (removed from `docs/`;
+recoverable from Git history) and [[persistent-nsview-host-sharing]].
