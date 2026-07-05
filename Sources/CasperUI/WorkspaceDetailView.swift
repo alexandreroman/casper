@@ -100,7 +100,7 @@ struct WorkspaceDetailView: View {
     /// 1pt separator line, carrying the column-resize pointer). Dragging it
     /// resizes the inspector; the model is persisted only on drag-end.
     private func inspectorDivider(total: Double, range: ClosedRange<Double>) -> some View {
-        ZStack {
+        ZStack(alignment: .trailing) {
             Color.clear
                 .frame(width: Self.inspectorDividerWidth)
                 .contentShape(Rectangle())
