@@ -25,7 +25,7 @@ was made observed.
   create-after-launch path — they exercise different timing. UI-1's live check
   only covered *Add folder* after launch (runtime already set), so this bug hid
   until a persisted multi-terminal session was reopened.
-- Use the [[debug-casper]]-style channel to confirm: `dump-state` shows whether a
+- Use the `debug-casper` skill's channel to confirm: `dump-state` shows whether a
   surface exists and its size; `read-text`/`screenshot` show whether it paints.
   This works in a normal local session even when the agent itself launches the
   app.

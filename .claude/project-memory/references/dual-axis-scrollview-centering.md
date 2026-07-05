@@ -23,4 +23,4 @@ that size, top-leading:
 `.frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)`
 on the inner `LazyVStack`. Short content then fills the viewport and anchors to
 the top; taller content keeps its intrinsic size and still scrolls. See
-[DiffSurfaceView.swift](../../Sources/CasperUI/DiffSurfaceView.swift).
+[DiffSurfaceView.swift](../../../Sources/CasperUI/DiffSurfaceView.swift).

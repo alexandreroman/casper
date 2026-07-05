@@ -27,8 +27,8 @@ entering from another terminal. `cursorUpdate` alone has the same entry gap, whi
 is why the cursor must **also** be set in `mouseEntered` (which does fire on that
 entry). The split divider follows this same pattern: its grab strip is the AppKit
 `SplitterHandleView` (`SplitContainerView`), which sets the resize cursor in both
-`cursorUpdate` and `mouseEntered`. A SwiftUI **`.pointerStyle`** was tried first but
-loses the cursor to the terminal surface's own `cursorUpdate` (the terminal is a
+`cursorUpdate` and `mouseEntered`. A SwiftUI **`.pointerStyle`** does not work here:
+it loses the cursor to the terminal surface's own `cursorUpdate` (the terminal is a
 concrete sibling `NSView`), so a concrete overlay `NSView` is required here too.
 
 **How to apply:** mirror `GhosttySurfaceView`'s `mouseEntered`/`cursorUpdate`/

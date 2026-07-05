@@ -42,8 +42,10 @@ alignment is load-bearing: the detail area is `maxWidth: .infinity`, so the
 inspector's *right* edge is fixed and its *left* edge moves — leading alignment
 would translate the tabs and reintroduce the lag.
 
-**Divider drag — track the pointer by ABSOLUTE location**, mirroring
-`SplitContainerView`'s splitter: the `DragGesture` reads `value.location.x` in a
+**Divider drag — track the pointer by ABSOLUTE location** (the same principle as
+`SplitContainerView`'s splitter, which maps absolute movement rather than
+accumulated translation — though that one now drives its drag from AppKit): the
+inspector's `DragGesture` reads `value.location.x` in a
 stable **named coordinate space** anchored to the full-width container
 (`.coordinateSpace(.named(...))` on the `HStack`), and sets
 `inspectorWidth = total - location.x`. Using accumulated `translation.width`

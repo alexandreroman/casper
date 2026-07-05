@@ -24,5 +24,5 @@ setup.
 
 **How to access:** Confirm the cause with
 `otool -l /opt/homebrew/opt/libgit2/lib/libgit2.*.dylib | grep -A4 LC_BUILD_VERSION`.
-See the linking setup in [Package.swift](../../Package.swift) (`Clibgit2`
+See the linking setup in [Package.swift](../../../Package.swift) (`Clibgit2`
 systemLibrary) and the [libgit2 Swift interop](libgit2-swift-interop.md) note.

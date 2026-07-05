@@ -31,9 +31,10 @@ without this you cannot confirm them end-to-end in the running app.
   the cursor; a parked cursor inside the frame corrupts pixel measurements (e.g. a
   luminance scan for the 1pt separator line locks onto the bright cursor glyph
   instead). Move it far off-window first.
-- **Divider geometry:** the resize hit strip is 12pt centred on the line
-  (`SplitContainerView`); the pane drag-grip (`PaneDragHandleView`) is a 200×24pt
-  rect at each pane's top edge only — mid-height off-centre points hit neither.
+- **Divider geometry:** the resize hit strip is 18pt centred on the line — the
+  transparent AppKit `SplitterHandleView` in `SplitContainerView`; the pane
+  drag-grip (`PaneDragHandleView`) is a 200×24pt rect at each pane's top edge only
+  — mid-height off-centre points hit neither.
 - **Side effects persist.** Pane drag-relocate writes the new layout to
   `session.json` (unlike divider ratios, which are local `@State`); restore the
   user's `session.json` if a stray test drag reorganises their panes.
