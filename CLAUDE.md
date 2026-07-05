@@ -30,6 +30,7 @@ extracted artifact instead of re-resolving.
 ```bash
 make vendor  # sync the pinned libghostty header (Vendor/ghostty/ghostty.h)
 make build   # compile
+make dev     # recompile and launch the app (swift run casper)
 make test    # run the test suite
 make release # size-optimized release build (arm64)
 make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)
@@ -70,19 +71,12 @@ tasks:
 
 **Always manage project memory with the `skillbox:project-memory` skill** — use
 it to save durable context (decisions and their rationale, workflow preferences,
-corrective feedback, external references, hard-won reference details) and to
-recall it. Follow the skill's rules: its `name`/`description`/`type` frontmatter
-plus a `# <name>` heading, English and present tense, and its contradiction
-handling — **never silently override a conflicting note; surface it and get
-explicit confirmation first**. Don't store what the repo already records (code,
-git history, the design spec).
-
-Memory lives in the skill's default location: the index is
-[`.claude/project-memory/MEMORY.md`](.claude/project-memory/MEMORY.md) and fact
-files live under
-[`.claude/project-memory/references/`](.claude/project-memory/references/). Read
-`MEMORY.md` at the start of work. There is **no memory anywhere else** (not in
-`.superpowers/`, not in `~/.claude`).
+corrective feedback, external references) and to recall it. The skill defines the
+frontmatter, tense, contradiction handling, and location. Read the index
+[`.claude/project-memory/MEMORY.md`](.claude/project-memory/MEMORY.md) at the
+start of work. Don't store what the repo already records (code, git history, the
+`.superpowers/` design spec). Memory lives **only** here — not in `.superpowers/`
+or `~/.claude`.
 
 ## Conventions
 
@@ -94,5 +88,3 @@ files live under
 - Tests use XCTest and need the **full Xcode toolchain**
   (`sudo xcode-select -s /Applications/Xcode.app`) — see the `test-toolchain`
   memory note for the CLT-can't-link-XCTest and `import Foundation` gotchas.
-- Get explicit authorization before `git init`, committing, adding a remote,
-  or pushing.
