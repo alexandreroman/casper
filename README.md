@@ -1,6 +1,7 @@
 # Casper
 
 [![CI](https://github.com/alexandreroman/casper/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandreroman/casper/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Casper is a native macOS app that embeds [libghostty][ghostty] to give every
 **Git worktree** its own terminal workspace — built for developers running code
