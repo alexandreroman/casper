@@ -92,6 +92,15 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try open.makeCommand())
     }
 
+    func testBrowserOpenRejectsInvalidURL() throws {
+        let schemeless = try BrowserCommand.Open.parse(["not-a-url", "--workspace", "feature"])
+        XCTAssertThrowsError(try schemeless.makeCommand())
+
+        // A dotted host without a scheme parses as a relative URL, not an absolute web URL.
+        let dottedHost = try BrowserCommand.Open.parse(["example.com", "--workspace", "feature"])
+        XCTAssertThrowsError(try dottedHost.makeCommand())
+    }
+
     func testDiffOpenBuildsCommand() throws {
         let open = try DiffCommand.Open.parse(["--workspace", "feature"])
         let command = try open.makeCommand()

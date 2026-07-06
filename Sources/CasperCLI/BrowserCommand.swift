@@ -1,5 +1,6 @@
 import ArgumentParser
 import CasperCore
+import Foundation
 
 /// `casper browser open <url>` — open a URL in the workspace's browser panel.
 struct BrowserCommand: ParsableCommand {
@@ -17,6 +18,9 @@ struct BrowserCommand: ParsableCommand {
 
         func makeCommand() throws -> ControlCommand {
             guard !url.isEmpty else { throw exitWithError("missing url") }
+            guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
+                throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
+            }
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserOpen, workspace: selector, url: url)
         }

@@ -78,7 +78,7 @@ final class ControlServer {
                 ? .success(workspace: id.uuidString)
                 : .failure("no terminal '\(command.target ?? "")' in this workspace")
         case .browserOpen:
-            guard let raw = command.url, let url = URL(string: raw) else {
+            guard let raw = command.url, let url = URL(string: raw), url.scheme != nil, url.host != nil else {
                 return .failure("invalid url: \(command.url ?? "nil")")
             }
             return model.controlOpenBrowser(url: url, in: id)
