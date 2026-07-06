@@ -386,6 +386,10 @@ final class AppModel {
         let ws = spaces[at.space].workspaces.remove(at: at.workspace)
         portAllocator.release(ws.portBase)
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
+        // Prune the transient agent-state maps so they don't grow unbounded across a
+        // long session (both the close and control-destroy paths funnel through here).
+        explicitAuthority.remove(id)
+        agentResolvers[id] = nil
         if selectedWorkspaceID == id {
             selectWorkspace(spaces.first?.workspaces.first?.id)
         }
@@ -1069,14 +1073,14 @@ final class AppModel {
     }
 
     /// Write a *detected* agent state. Distinct from the explicit
-    /// `controlSetAgentState`: it must NOT grant authority. Writes and persists
-    /// only when the value actually changes, so a steady detection stream doesn't
-    /// thrash the store.
+    /// `controlSetAgentState`: it must NOT grant authority. Writes only when the
+    /// value actually changes, so a steady detection stream doesn't thrash the UI.
     private func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID),
               spaces[at.space].workspaces[at.workspace].agentState != state else { return }
+        // agentState is transient (deliberately not encoded by Session's Codable),
+        // so the @Observable mutation refreshes the sidebar with no need to persist.
         spaces[at.space].workspaces[at.workspace].agentState = state
-        persist()
     }
 
     // MARK: - CLI control handlers
@@ -1092,7 +1096,8 @@ final class AppModel {
         spaces[at.space].workspaces[at.workspace].agentState = state
         // The explicit CLI path is the ONLY place authority is granted: once an
         // agent reports its own state, terminal-scraping detection steps aside for
-        // this workspace (release-on-childExited is a later lot).
+        // this workspace. Robust authority release is deferred to a later timeout
+        // mechanism.
         explicitAuthority.insert(workspaceID)
         persist()
         return true

@@ -18,6 +18,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // focused, which a SwiftUI `.onAppear` cannot do because the view may not yet
     // be attached to a window when `.onAppear` runs.
     var onAttach: (UUID) -> Void
+    // Fired when this surface should be torn down (child exit or a close request).
     var onClose: (UUID) -> Void
     // Builds the pane context menu for a right-click AppKit is allowed to handle
     // (i.e. the terminal is not capturing the mouse). Returns nil to decline, in

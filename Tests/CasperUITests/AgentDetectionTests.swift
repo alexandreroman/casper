@@ -35,4 +35,29 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertTrue(model.isUnderExplicitAuthority(id), "explicit set latches authority")
         XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
     }
+
+    /// Removing a workspace prunes its entry from the transient authority map, so
+    /// those maps don't grow unbounded over a long session. (The control-destroy
+    /// path funnels through the same `removeWorkspace`, so covering it here suffices.)
+    func testRemoveWorkspacePrunesExplicitAuthority() {
+        let primary = Workspace(
+            name: "main", worktreePath: "/wt", branch: "main", portBase: 42200,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
+        let linked = Workspace(
+            name: "feature", worktreePath: "/wt-feature", branch: "feature", portBase: 42210,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/wt-feature", command: nil))), kind: .linked)
+        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [primary, linked])
+        let url = URL(fileURLWithPath:
+            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
+        let model = AppModel(sessionStore: SessionStore(fileURL: url),
+                             session: Session(spaces: [space], selectedWorkspaceID: primary.id))
+
+        XCTAssertTrue(model.controlSetAgentState(.working, for: linked.id))
+        XCTAssertTrue(model.isUnderExplicitAuthority(linked.id))
+
+        model.removeWorkspace(id: linked.id)
+
+        XCTAssertNil(model.workspace(id: linked.id), "workspace is gone")
+        XCTAssertFalse(model.isUnderExplicitAuthority(linked.id), "authority pruned on removal")
+    }
 }

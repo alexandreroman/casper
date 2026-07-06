@@ -19,10 +19,12 @@ per workspace, and bundles a native browser and diff viewer.
 
 - **Worktree = workspace** — each workspace maps to a Git worktree; creating one
   opens a plain Ghostty terminal in that worktree (no agent is auto-launched).
-- **Agent state & progress** — an agent reports its per-workspace state
-  (`idle` / `running` / `waiting` / `done` / `error`) and a `completed / total`
-  todo progress bar by calling the `casper` CLI (see below), surfaced in the
-  sidebar with pending-notification dots.
+- **Agent state & progress** — each workspace carries an agent state
+  (`working` / `blocked` / `idle` / `done` / `unknown` / `error`) and a
+  `completed / total` todo progress bar, surfaced in the sidebar with
+  pending-notification dots. State is inferred from terminal output by built-in
+  detection (no hooks) and can also be set explicitly via the `casper` CLI
+  (see below).
 - **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
   tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
   native diff view per workspace.
