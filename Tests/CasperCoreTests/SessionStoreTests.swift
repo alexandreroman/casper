@@ -19,8 +19,10 @@ final class SessionStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = SessionStore(fileURL: url)
 
+        // `isGitRepo` is intentionally not persisted (it is resolved at runtime), so
+        // build the fixture with `isGitRepo: false` for the round-trip equality to hold.
         let session = Session(spaces: [
-            Space(name: "r", folderPath: "/r", isGitRepo: true, workspaces: [
+            Space(name: "r", folderPath: "/r", isGitRepo: false, workspaces: [
                 Workspace(
                     name: "w", worktreePath: "/r/w", branch: "b",
                     portBase: 40000,

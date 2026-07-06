@@ -318,19 +318,23 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
     // match the property names so the synthesized `encode(to:)` keeps the same
     // on-disk keys.
     private enum CodingKeys: String, CodingKey {
-        case id, name, folderPath, isGitRepo, isCollapsed, workspaces
+        case id, name, folderPath, isCollapsed, workspaces
     }
 
-    /// Decodes every current field normally and defaults `isCollapsed` when it's
+    /// Decodes every persisted field normally and defaults `isCollapsed` when it's
     /// absent, so legacy `session.json` files (written before the collapse flag
     /// existed) load expanded. `encode(to:)` stays synthesized, keeping the
-    /// on-disk shape stable and forward-writing the new field.
+    /// on-disk shape stable and forward-writing new fields.
+    ///
+    /// `isGitRepo` is intentionally NOT persisted: it is a runtime-only flag,
+    /// resolved after decoding by probing `folderPath` for Git backing. Every
+    /// decoded Space therefore arrives non-Git and must be reconciled at load.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
         self.folderPath = try container.decode(String.self, forKey: .folderPath)
-        self.isGitRepo = try container.decode(Bool.self, forKey: .isGitRepo)
+        self.isGitRepo = false  // runtime-only; resolved after load by probing the folder
         self.isCollapsed = try container.decodeIfPresent(Bool.self, forKey: .isCollapsed) ?? false
         self.workspaces = try container.decode([Workspace].self, forKey: .workspaces)
     }

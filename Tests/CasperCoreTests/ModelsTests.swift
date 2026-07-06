@@ -21,8 +21,10 @@ final class ModelsTests: XCTestCase {
             portBase: 40010,
             layout: layout
         )
+        // `isGitRepo` is not persisted (resolved at runtime), so use `false` here
+        // for the round-trip equality to hold; see testIsGitRepoIsNotPersisted.
         let space = Space(
-            name: "repo", folderPath: "/repo", isGitRepo: true, workspaces: [ws])
+            name: "repo", folderPath: "/repo", isGitRepo: false, workspaces: [ws])
         return Session(spaces: [space])
     }
 
@@ -50,8 +52,10 @@ final class ModelsTests: XCTestCase {
             portBase: 40010,
             layout: .leaf(Surface(kind: .terminal(cwd: "/r/.casper/worktrees/feat", command: nil))),
             kind: .linked, baseBranch: "main")
+        // `isGitRepo` is not persisted (resolved at runtime), so use `false` here
+        // for the round-trip equality to hold; see testIsGitRepoIsNotPersisted.
         let space = Space(
-            name: "app", folderPath: "/r", isGitRepo: true,
+            name: "app", folderPath: "/r", isGitRepo: false,
             workspaces: [primary, linked])
         let session = Session(spaces: [space])
         let data = try JSONEncoder().encode(session)
@@ -249,8 +253,10 @@ final class ModelsTests: XCTestCase {
     }
 
     func testSpaceCodableRoundTripWhenCollapsed() throws {
+        // `isGitRepo` is not persisted (resolved at runtime), so use `false` here
+        // for the round-trip equality to hold; see testIsGitRepoIsNotPersisted.
         let space = Space(
-            name: "app", folderPath: "/r", isGitRepo: true,
+            name: "app", folderPath: "/r", isGitRepo: false,
             isCollapsed: true, workspaces: [])
         let data = try JSONEncoder().encode(space)
         let decoded = try JSONDecoder().decode(Space.self, from: data)
@@ -296,12 +302,33 @@ final class ModelsTests: XCTestCase {
 
     func testSessionCodableRoundTripWithSelectedWorkspaceID() throws {
         let selected = UUID()
+        // `isGitRepo` is not persisted (resolved at runtime), so use `false` here
+        // for the round-trip equality to hold; see testIsGitRepoIsNotPersisted.
         let session = Session(spaces: [
-            Space(name: "app", folderPath: "/r", isGitRepo: true, workspaces: []),
+            Space(name: "app", folderPath: "/r", isGitRepo: false, workspaces: []),
         ], selectedWorkspaceID: selected)
         let data = try JSONEncoder().encode(session)
         let decoded = try JSONDecoder().decode(Session.self, from: data)
         XCTAssertEqual(decoded, session)
         XCTAssertEqual(decoded.selectedWorkspaceID, selected)
+    }
+
+    // MARK: - isGitRepo is runtime-only
+
+    func testIsGitRepoIsNotPersisted() throws {
+        let space = Space(
+            name: "app", folderPath: "/r", isGitRepo: true, workspaces: [])
+        let data = try JSONEncoder().encode(space)
+
+        // The flag is dropped from the encoded form entirely.
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["isGitRepo"])
+
+        // Decoding always yields a non-Git Space; it is resolved at runtime.
+        let decoded = try JSONDecoder().decode(Space.self, from: data)
+        XCTAssertFalse(decoded.isGitRepo)
+        XCTAssertEqual(decoded.name, "app")          // persisted fields still decode
+        XCTAssertEqual(decoded.folderPath, "/r")
     }
 }

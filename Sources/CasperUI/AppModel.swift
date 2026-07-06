@@ -191,12 +191,12 @@ final class AppModel {
         for space in session.spaces {
             for ws in space.workspaces { self.portAllocator.reserve(ws.portBase) }
         }
-        // Self-heal any Space that gained a `.git` while the app was closed. This
-        // is promote-only (a transiently-unreadable repo is never demoted) and runs
-        // ONCE at startup — not on a timer — so it does not reintroduce the removed
+        // `isGitRepo` is not persisted: every decoded Space arrives non-Git, so
+        // resolve each Space's Git backing now by probing its folder. Runs ONCE at
+        // startup — not on a timer — so it does not reintroduce the removed
         // heartbeat poll. Then arm the watcher for the restored selection (set
         // directly above, not through selectWorkspace).
-        for si in spaces.indices { promoteSpaceIfGitInitialized(spaceIndex: si) }
+        resolveGitBacking()
         reconfigureWorktreeWatcher()
     }
 
@@ -489,6 +489,23 @@ final class AppModel {
             : promoteSpaceIfGitInitialized(spaceIndex: at.space)
         if flipped { armWorktreeWatcher() }   // backing changed → exclusions changed → re-arm
         diffRevision += 1
+    }
+
+    /// Determine every Space's Git backing at load time. `isGitRepo` is no longer
+    /// persisted, so each decoded Space arrives non-Git; probe its folder to set
+    /// the runtime flag and adopt HEAD's branch on the primary workspace. Runs
+    /// ONCE at startup (not on a timer). Uses the injectable `gitReprobe`.
+    ///
+    /// A transient probe failure here shows a real repo as non-Git for the
+    /// session — acceptable now that the flag is computed rather than stored; the
+    /// live FSEvents path (promote/demote) still corrects it on the next change.
+    private func resolveGitBacking() {
+        for si in spaces.indices {
+            guard !spaces[si].workspaces.isEmpty,
+                  let info = gitReprobe(spaces[si].folderPath) else { continue }
+            spaces[si].isGitRepo = true
+            spaces[si].workspaces[0].branch = info.branch
+        }
     }
 
     /// Re-probe a not-yet-Git space and, if it now has a repository, promote it:
