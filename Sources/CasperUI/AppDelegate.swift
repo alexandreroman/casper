@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel.shared
+        // Force the app-wide appearance to dark regardless of the system Light/Dark
+        // setting. This covers all SwiftUI chrome and AppKit surfaces (menus, panels,
+        // Open/Save dialogs). The Ghostty terminal is Metal-rendered with its own
+        // palette, so it is unaffected.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         NSApp.mainMenu = buildMainMenu()
 
         // The Ghostty runtime is created once and shared by every surface.
