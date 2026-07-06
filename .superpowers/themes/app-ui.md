@@ -112,6 +112,6 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 
 **All five CasperUI sub-projects (UI-1..UI-5) are built** and have passed the live
 GUI verification pass on a real desktop (splits/tabs, browser navigation, diff
-surface). Remaining cross-cutting work outside this milestone: the Space `+/−`
-diff summary (`space-project.md`, needs branch-vs-merge-base counts) and Space
-rename.
+surface). Remaining cross-cutting work outside this milestone: **Space rename**.
+(The Space `+/−` per-workspace diff summary was **dropped** — decision
+2026-07-06; the title-bar working-tree-vs-HEAD summary covers the need.)

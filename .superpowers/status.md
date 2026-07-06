@@ -24,8 +24,9 @@ pass on a real desktop is complete. The v1 agent target is Claude Code only.
 | 5 | CasperUI + app | ✅ UI-1..UI-5 built (sidebar + worktrees + splits/tabs + browser + diff); live GUI check done |
 
 Two developer-tooling features are built on top (both `#if DEBUG`): the
-debug/observability channel and debug surface addressing. The Space (project) +
-workspace diff-summary feature is design + plan only.
+debug/observability channel and debug surface addressing. The Space (project)
+model shipped with UI-2; only **Space rename** remains open for it (the
+per-workspace `+/−` diff summary is **dropped** — decision 2026-07-06).
 
 > **Latest work — the tabbed surface model (UI-3) is replaced by a tmux-style
 > pane layout** (no tabs, one surface per pane), with close-on-process-exit and a
@@ -48,7 +49,8 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`
 - **`git_diff` is built** — `diffWorkdirToHead()` returns a structured
   `GitDiff` (files → hunks → lines, statuses, binary flag; working tree + index
   vs HEAD, unborn HEAD as additions), unblocking the diff viewer (design §11).
-  Branch-divergence diffs for the Space `+/−` summary (Space §6) remain.
+  (Branch-divergence diffs were designed for the Space `+/−` summary, now
+  dropped — not built.)
 - Standing limitations: `remove` prunes the worktree but not its branch, so
   recreating a same-named workspace surfaces an opaque `.gitFailure` (fix by
   mapping it to a clear reason or deleting the branch on remove); libgit2 is
@@ -220,7 +222,8 @@ rendered). `swift test` → 259 passing.
 **Follow-ups.** (1) Browser panes: WebKit consumes the right-click, so the Casper
 split menu does not yet surface over live web content (the native menu is
 suppressed). (2) The toolbar diff summary uses working-tree-vs-HEAD; the Space
-branch-vs-merge-base `+/−` summary (Space §6) is still open.
+branch-vs-merge-base `+/−` summary was **dropped** (decision 2026-07-06), so this
+is now the intended behaviour, not a stopgap.
 
 ## Right inspector panel — ✅ (live check done)
 
@@ -276,12 +279,17 @@ blanked when toggling the panel (see `persistent-nsview-host-sharing`).
 
 Gated entirely at compile time; physically absent from `make release`.
 
-## Space (project) & workspace diff summary — ◐
+## Space (project) — ◐
 The **Space** model shipped with CasperUI UI-2 (`Session → Space → Workspace`;
 `repoPath` up to `Space.folderPath`; `Workspace.kind`/`baseBranch`; Space-grouped
 sidebar; `Repository.remoteURL` + `origin` name derivation). What remains for this
-feature is the **`+/−` diff summary** per workspace row (derived `diffStat`,
-depends on CasperGit `git_diff`) and **Space rename**.
+feature is **Space rename** only.
+
+The per-workspace **`+/−` diff summary** (branch-vs-merge-base divergence badge)
+is **dropped** (decision 2026-07-06) — the title-bar working-tree-vs-HEAD summary
+covers the need. The old task-by-task plan (`plans/space-project.md`) is
+superseded: its model/remote/naming tasks landed with UI-2, and its divergence
+tasks are moot.
 
 ## Agent-state detection — ◐
 Infers `Workspace.agentState` (`working | blocked | idle | done | unknown |
@@ -319,12 +327,11 @@ rule sets).
 ## Remaining work — dependency-ordered
 
 1. **CasperGit `git_diff` — ✅ built** (`diffWorkdirToHead()`); the diff viewer is
-   unblocked. Branch-divergence diffs for the Space `+/−` summary (Space §6)
-   remain.
+   unblocked.
 2. **CasperUI (Plan 5) — ✅ built.** All of UI-1..UI-5 (app shell + startup wiring;
    Space model + Space-grouped sidebar + linked Git worktrees; recursive
    splits/tabs layout; WKWebView browser surface; read-only diff viewer). The live
    GUI verification pass on a real desktop is complete.
-3. **Space diff summary** — the Space data-model change and sidebar grouping
-   landed in UI-2; what remains is the derived `diffStat` and the `+/−` row
-   summary (depends on 1), plus Space rename.
+3. **Space rename** — the Space data-model change and sidebar grouping landed in
+   UI-2; what remains is renaming a Space from the sidebar. (The `+/−` diff
+   summary that used to live here is **dropped** — decision 2026-07-06.)

@@ -65,7 +65,6 @@ Session
          ├─ agentState: working | blocked | idle | done | unknown | error
          ├─ todos: [Todo{content, status: pending|in_progress|completed}]
          ├─ pendingNotification: Bool
-         ├─ diffStat: {insertions, deletions}   // derived, not persisted
          ├─ portBase: Int                        // 10-port block; env CASPER_PORT
          └─ layout: LayoutNode
 
@@ -73,8 +72,9 @@ LayoutNode = Split(orientation, children, ratios) | TabGroup(surfaces, activeInd
 Surface    = Terminal(cwd, command?) | Browser(url) | Diff(target)
 ```
 
-The **Space** layer and `kind`/`baseBranch`/`diffStat` are introduced by
-`themes/space-project.md` (not yet implemented). Persistence: `SessionStore`
+The **Space** layer and `kind`/`baseBranch` shipped with CasperUI UI-2
+(`themes/space-project.md`); the once-planned derived `diffStat` is **dropped**
+(decision 2026-07-06). Persistence: `SessionStore`
 serializes the whole tree to `~/Library/Application Support/Casper/session.json`
 (`Codable`, debounced); terminals restart cold, browser/diff surfaces reload
 their target, `portBase` is restored as-is.

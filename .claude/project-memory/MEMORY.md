@@ -20,6 +20,7 @@
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf (drops in-process writes), realpath-canonicalize paths, barrier stop()
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — worktree watcher (excl. .git) + reflog watcher on <gitdir>/logs; second one refreshes diff after commit
+- [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the Space +/− branch-vs-merge-base row badge is not built; only Space rename remains open
 - [Domain CLI and control channel](references/domain-cli-control-channel.md) — domain CLI emits JSON over `$CASPER_CONTROL_SOCKET` (verbs + shapes, errors exit non-zero); no hook mechanism
 - [App sessions (--session)](references/app-sessions.md) — `--session <name>` suffixes layout+sockets and sets `CASPER_SESSION`; live-verify the GUI under session `dev` to isolate from the real instance
 - [CLI availability](references/cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection

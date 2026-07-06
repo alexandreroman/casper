@@ -20,10 +20,11 @@ binary. We own this surface; it exposes only what Casper needs.
   branch/base, then opening a plain Ghostty terminal in its folder. Dirty/locked
   states are surfaced as clear UI errors, never a crash (`git_status`,
   `git_worktree_validate`).
-- **Diff — ◐ built for working-tree-vs-HEAD.** `Repository.diffWorkdirToHead()`
+- **Diff — ✅ built for working-tree-vs-HEAD.** `Repository.diffWorkdirToHead()`
   returns a structured `GitDiff` (files → hunks → lines, statuses, binary flag) —
-  no text parsing — feeding the diff viewer (`app-ui.md`). The branch-vs-merge-base
-  line counts for the workspace diff summary (`space-project.md`) remain.
+  no text parsing — feeding the diff viewer (`app-ui.md`). (Branch-vs-merge-base
+  line counts were designed for the workspace diff summary, now **dropped** —
+  see `space-project.md`.)
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.
@@ -31,7 +32,8 @@ captured in the [[libgit2-swift-interop]] project-memory note.
 ## Remaining
 
 - **`git_diff` — ✅ built** (`diffWorkdirToHead()`, working tree + index vs HEAD).
-  The branch-vs-merge-base line counts for the workspace diff summary remain.
+  (Branch-vs-merge-base line counts for the workspace diff summary are **dropped**
+  — see `space-project.md`.)
 - Standing limitations: `remove` prunes the worktree but not its branch (an opaque
   `.gitFailure` on same-name recreation); libgit2 unpinned in brew/CI;
   `WorktreeManager` uses `Repository.open` (exact root) not `discover`.

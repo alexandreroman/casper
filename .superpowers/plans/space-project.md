@@ -1,5 +1,13 @@
 # Space (Project) & Workspace Diff Summary — Implementation Plan
 
+> **⚠️ SUPERSEDED (2026-07-06) — do not execute.** The Space model, remote-URL
+> read, and repo-name derivation (Tasks 1–3, 5, 6) already landed with CasperUI
+> UI-2. The **workspace diff summary is dropped** (decision 2026-07-06), so the
+> divergence-stats and diff-helper tasks (Task 4, Task 7) are moot. The only
+> Space work still open is **Space rename**, which this plan does not cover. This
+> file is retained for historical reference. See `../status.md` and
+> `../themes/space-project.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Per the project convention ([[implementation-workflow]]), dispatch **one `skillbox:code-writer` per task**, review between tasks, and commit per task.
 
 **Goal:** Add the CasperCore + CasperGit substrate for the **Space (project)** concept and the **per-workspace branch-divergence diff summary**, fully unit-tested, ready for the Plan 5 sidebar to consume.

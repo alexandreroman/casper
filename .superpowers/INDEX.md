@@ -26,7 +26,7 @@ Layout:
 | App & UI (CasperUI) | [`themes/app-ui.md`](themes/app-ui.md) |
 | Agent state detection | [`themes/agent-state-detection.md`](themes/agent-state-detection.md) |
 | Debug & observability | [`themes/debug.md`](themes/debug.md) |
-| Space (project) & diff summary | [`themes/space-project.md`](themes/space-project.md) |
+| Space (project) | [`themes/space-project.md`](themes/space-project.md) |
 
 Per-theme status markers appear in each doc's header; the authoritative aggregate
 is [`status.md`](status.md).
@@ -34,7 +34,8 @@ is [`status.md`](status.md).
 ## Active plans
 
 - [`plans/space-project.md`](plans/space-project.md) — Space + workspace diff
-  summary (unbuilt).
+  summary (**superseded 2026-07-06**: model landed in UI-2; the diff summary is
+  dropped). Kept for reference only.
 - *CasperUI / app — plan not written yet (the current milestone).*
 
 The original design specs and completed build plans are not kept here — they are
