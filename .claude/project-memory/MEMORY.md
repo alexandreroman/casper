@@ -46,3 +46,4 @@
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — `UNUserNotificationCenter.current()` aborts (no bundle id) under `make dev`; guard `deliverNotification` on `Bundle.main.bundleIdentifier`
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — `@Option var x: String?` needs explicit `self.x = nil` in `init()` or direct construction (tests) crashes
 - [Agent-state working signal lives in the OSC title](references/agent-state-osc-title.md) — Claude Code signals working via OSC-title Braille spinner (not viewport); pinned libghostty fork forwards titles; detection is version-coupled
+- [libghostty macOS config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — bundled Casper.app misses the user's Ghostty config (empty com.alexandreroman.casper dir) → vanilla gray; hence the baked-in default theme

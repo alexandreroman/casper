@@ -43,6 +43,11 @@ public final class GhosttyRuntime {
             throw GhosttyError(reason: "ghostty_config_new returned null")
         }
         defer { ghostty_config_free(config) }
+        // Load Casper's built-in default theme *first*, before the user's own config,
+        // so any user setting still wins. This compensates for macOS libghostty keying
+        // the Application-Support config dir on the bundle id (empty for a bundled
+        // Casper.app) — without it, the bundle would fall back to the vanilla gray default.
+        loadEmbeddedDefaults(into: config)
         ghostty_config_load_default_files(config)
         // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
         // user's config. Ghostty's own app runs this before finalize; without it, includes are
@@ -65,6 +70,26 @@ public final class GhosttyRuntime {
             throw GhosttyError(reason: "ghostty_app_new returned null")
         }
         self.app = app
+    }
+
+    /// Load Casper's built-in default terminal theme into `config`.
+    ///
+    /// libghostty exposes no load-from-string API — only `ghostty_config_load_file`
+    /// — so the embedded config is written to a per-process temp file, loaded, then
+    /// removed. Never crashes: if the temp file can't be written, the embedded
+    /// default is skipped and the terminal still starts with libghostty's default.
+    private func loadEmbeddedDefaults(into config: ghostty_config_t) {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-default-config-\(ProcessInfo.processInfo.processIdentifier).ghostty")
+        do {
+            try GhosttyDefaultConfig.text.write(to: path, atomically: true, encoding: .utf8)
+        } catch {
+            CasperLog.ghostty.warning("failed to write embedded default config; skipping: \(error)")
+            return
+        }
+        // Remove the temp file once loaded; a cleanup failure is harmless, so ignore it.
+        defer { try? FileManager.default.removeItem(at: path) }
+        ghostty_config_load_file(config, path.path)
     }
 
     /// Test-only constructor: a runtime with no libghostty app, used to exercise
