@@ -58,6 +58,11 @@ public enum ClaudeCodeAdapter {
     /// it is exposed as `CASPER_CONTROL_SOCKET` so the terminal can reach the
     /// control socket.
     ///
+    /// Only `CASPER_SOCKET` is coupled to the hook socket: it is set solely when
+    /// `socketPath` is non-nil. Every other variable — including
+    /// `CASPER_CONTROL_SOCKET`, `CASPER_WORKSPACE_ID`, the `CASPER_PORT*` block,
+    /// and the `casperDirectory` PATH prepend — is injected unconditionally.
+    ///
     /// When `casperDirectory` is given, it is prepended to `PATH` so the
     /// relative hook command `casper hooks feed` (written into
     /// `~/.claude/settings.json`) resolves only inside terminals Casper opens —
@@ -72,7 +77,7 @@ public enum ClaudeCodeAdapter {
     ///   workspace's reserved block and collide with the neighboring
     ///   workspace's ports.
     public static func surfaceEnvironment(
-        socketPath: String,
+        socketPath: String?,
         workspaceId: UUID,
         portBase: Int,
         blockSize: Int = 10,
@@ -81,10 +86,12 @@ public enum ClaudeCodeAdapter {
         controlSocketPath: String? = nil
     ) -> [String: String] {
         var env: [String: String] = [
-            "CASPER_SOCKET": socketPath,
             "CASPER_WORKSPACE_ID": workspaceId.uuidString,
             "CASPER_PORT": String(portBase),
         ]
+        if let socketPath {
+            env["CASPER_SOCKET"] = socketPath
+        }
         for offset in 0..<blockSize {
             env["CASPER_PORT_\(offset)"] = String(portBase + offset)
         }

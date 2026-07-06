@@ -925,16 +925,14 @@ final class AppModel {
             return GhosttySurfaceConfiguration()
         }
         var config = GhosttySurfaceConfiguration(workingDirectory: cwd, command: command)
-        if let socketPath {
-            config.environment = ClaudeCodeAdapter.surfaceEnvironment(
-                socketPath: socketPath,
-                workspaceId: workspace.id,
-                portBase: workspace.portBase,
-                casperDirectory: casperDirectory,
-                basePath: ProcessInfo.processInfo.environment["PATH"],
-                controlSocketPath: controlSocketPath
-            )
-        }
+        config.environment = ClaudeCodeAdapter.surfaceEnvironment(
+            socketPath: socketPath,
+            workspaceId: workspace.id,
+            portBase: workspace.portBase,
+            casperDirectory: casperDirectory,
+            basePath: ProcessInfo.processInfo.environment["PATH"],
+            controlSocketPath: controlSocketPath
+        )
         return config
     }
 
