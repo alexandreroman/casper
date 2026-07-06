@@ -62,7 +62,7 @@ Session
      └─ [Workspace]
          ├─ id, name, kind: primary | linked
          ├─ worktreePath, branch, baseBranch
-         ├─ agentState: idle | running | waiting | done | error | unknown
+         ├─ agentState: working | blocked | idle | done | unknown | error
          ├─ todos: [Todo{content, status: pending|in_progress|completed}]
          ├─ pendingNotification: Bool
          ├─ diffStat: {insertions, deletions}   // derived, not persisted
@@ -87,7 +87,7 @@ their target, `portBase` is restored as-is.
 | Worktree op fails (branch checked out, dirty) | Clear UI error, never crash |
 | PTY dies | Surface marked closed, restartable |
 | App crash | Agents lost (accepted); relaunch restores layout cold |
-| Agent without hooks | State `unknown`, non-blocking |
+| Agent never calls the CLI | State inferred from the terminal; `unknown` only when unreadable |
 | Binary size creep | Three justified externals only; arm64-only; `-Osize` + LTO |
 
 ## Testing strategy
