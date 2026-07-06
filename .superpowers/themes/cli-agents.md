@@ -24,12 +24,19 @@ handful of verbs:
 - `progress set --total --current --label` / `progress clear` — set or clear
   todo progress.
 - `notify [--message <str>]` — raise the attention flag; `--message` also
-  posts a macOS notification.
-- `terminal new` — open a new terminal, split right.
-- `browser open <url>` — open a URL in the browser panel.
-- `diff show [<target>]` — show the diff view.
-- `workspace list` / `workspace current` / `workspace new --branch [--base]`
-  — enumerate, identify, and create workspaces.
+  posts a macOS notification (suppressed when the target is already focused).
+- `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
+  split right (cwd defaults to the worktree); `terminal list` — list the
+  workspace's terminals; `terminal close <id>` — close a terminal by id.
+- `browser open <url>` — load an **absolute** URL (scheme + host) into the
+  workspace's single **inspector** browser surface and select the browser tab
+  (there are no browser layout panels; layout panels are terminal-only).
+- `diff open [<file>]` — open the diff view and scroll to `<file>` (which must
+  exist on disk and be inside the worktree, else an error).
+- `workspace list` / `workspace current` / `workspace new --branch [--base]` /
+  `workspace delete` — enumerate, identify, create, and destroy workspaces.
+  `workspace delete` is **destructive** (prunes the worktree folder, deletes the
+  branch, drops it from the UI) and **refuses a primary workspace**.
 
 Every workspace-scoped command shares a `--workspace <id-or-name>` option,
 defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is
@@ -43,6 +50,20 @@ socket named by `$CASPER_CONTROL_SOCKET` (also per-surface env, alongside
 "Casper is not running" error instead of hanging. `casper debug …` is a
 separate, `#if DEBUG`-only channel — never present in a release build. See
 [[debug-channel-gating]].
+
+### JSON output
+
+Every command is machine-readable. On **success** it prints a JSON object (or
+array) to stdout and exits 0, describing the resulting resource state and always
+including the affected `workspace` id — e.g. `status set waiting` →
+`{"status":"waiting","workspace":"<id>"}`; verbs with no meaningful state
+(`progress clear`, `notify`, `browser open`, `diff open`) → `{"workspace":"<id>"}`.
+`terminal new`/`list` carry `working-dir` (always) and `command` (when
+non-default); `workspace new`/`list`/`current` carry the worktree `path`
+(`branch` omitted for a degenerate, non-Git space). On **error** it prints
+`{"error":"<msg>"}` to stderr and exits **non-zero** — a command in error never
+returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's
+own output (`--help`, missing option, unknown flag) stays native.
 
 `casper hooks setup` / `casper hooks feed` are **removed from the CLI**
 (Task 14) — they are not part of the domain surface above. Installing Claude

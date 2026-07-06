@@ -56,7 +56,12 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`
 
 ### CasperAgents + CasperCLI — ✅
 `ClaudeCodeAdapter`, `HookMessage`, `HookSocketServer`/`Client`; the `casper`
-executable with `casper hooks setup` / `casper hooks feed` and the GUI/CLI fork.
+executable with the GUI/CLI fork and the domain CLI
+(`status`/`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`) that
+emits JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero). The `casper
+hooks setup`/`feed` commands are removed from the CLI — hook installation is a
+GUI follow-up; the app-side hook socket is unchanged. See the
+`domain-cli-control-channel` memory note for the current surface.
 - Wired by CasperUI UI-1: `onMessage` → agent-state reducer on `AppModel`'s
   observable workspaces; the bundle executable directory is passed into
   `surfaceEnvironment(casperDirectory:basePath:)`; the heartbeat timer runs.

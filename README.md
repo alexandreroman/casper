@@ -132,22 +132,31 @@ prepends its own binary directory to `PATH`. The CLI is organized by domain,
 targeting the workspace behind the current terminal by default:
 
 ```bash
-casper status set running               # set the agent state
+casper status set running                    # set the agent state
 casper progress set --total 5 --current 2 --label "run tests"
 casper progress clear
-casper notify --message "needs review" # raise the attention flag + notify
-casper terminal new                     # open a terminal, split right
-casper browser open https://example.com # open a URL in the browser panel
-casper diff show                        # show the diff view
-casper workspace list                   # enumerate workspaces
-casper workspace current                # print $CASPER_WORKSPACE_ID
-casper workspace new --branch feature/x # create a Git worktree workspace
+casper notify --message "needs review"       # raise the attention flag + notify
+casper terminal new --command "npm test"     # open a terminal (split right)
+casper terminal list                         # list the workspace's terminals
+casper terminal close <id>                   # close a terminal by id
+casper browser open https://example.com      # load a URL in the inspector browser
+casper diff open Sources/App/Main.swift      # open the diff, scroll to a file
+casper workspace list                        # enumerate workspaces
+casper workspace current                     # print the current workspace + path
+casper workspace new --branch feature/x      # create a Git worktree workspace
+casper workspace delete                      # destroy a workspace (worktree + branch)
 ```
 
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
 workspace other than the current one. Commands talk to the running app over a
 Unix domain socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal
 alongside `$CASPER_WORKSPACE_ID` and `$CASPER_PORT[_0..9]`.
+
+Every command is machine-readable: on success it prints a JSON object (or array)
+to stdout describing the affected `workspace` and any resulting state; on error
+it prints `{"error":"…"}` to stderr and exits non-zero. `workspace delete` is
+destructive (it removes the worktree folder and its branch) and refuses the
+primary workspace.
 
 Installing Claude Code's hooks (`casper hooks setup`/`feed` in earlier
 builds) has moved out of the CLI; hook installation is now driven by the app's
