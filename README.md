@@ -11,8 +11,9 @@ per workspace, and bundles a native browser and diff viewer.
 > **Status:** under active development and not yet ready for general use. All the
 > core layers — the terminal engine, the Git worktree layer, and the `casper`
 > control CLI — and the SwiftUI app (Space-grouped sidebar, linked worktrees,
-> tmux-style split panes, browser, and diff viewer) are built; live GUI
-> verification and polish are ongoing. Claude Code is the first supported agent.
+> tmux-style split panes, browser, and diff viewer) are built and have passed a
+> live GUI verification pass; polish is ongoing. Claude Code is the first
+> supported agent.
 
 ## Features
 

@@ -12,8 +12,8 @@ The build proceeds in five module plans. **All five are implemented.** CasperUI
 (Plan 5, the real SwiftUI app) is complete across its five sub-projects: **UI-1**
 (app shell + startup wiring), **UI-2** (Space model + Space-grouped sidebar +
 linked Git worktrees), **UI-3** (recursive splits/tabs layout), **UI-4** (WKWebView
-browser surface), and **UI-5** (read-only diff viewer). A live GUI verification
-pass on a real desktop remains. The v1 agent target is Claude Code only.
+browser surface), and **UI-5** (read-only diff viewer). The live GUI verification
+pass on a real desktop is complete. The v1 agent target is Claude Code only.
 
 | Plan | Module | Status |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ pass on a real desktop remains. The v1 agent target is Claude Code only.
 | 2 | CasperGit (+ Clibgit2) | ✅ worktrees/status/`remoteURL`/`git_diff` built |
 | 3 | CasperCLI + CasperAgents | ✅ |
 | 4 | CasperGhostty | ✅ one terminal + splits/tabs composed by UI-3 |
-| 5 | CasperUI + app | ✅ UI-1..UI-5 built (sidebar + worktrees + splits/tabs + browser + diff); live GUI check pending |
+| 5 | CasperUI + app | ✅ UI-1..UI-5 built (sidebar + worktrees + splits/tabs + browser + diff); live GUI check done |
 
 Two developer-tooling features are built on top (both `#if DEBUG`): the
 debug/observability channel and debug surface addressing. The Space (project) +
@@ -82,7 +82,7 @@ the `domain-cli-control-channel` memory note for the current surface.
   paste-confirmation UI (v1 auto-confirms); `flagsChanged` press/release
   semantics and scroll precision/momentum.
 
-### CasperUI — ✅ UI-1..UI-5 built (live GUI check partial)
+### CasperUI — ✅ UI-1..UI-5 built (live GUI check done)
 The module exists. **UI-1** is done: a SwiftUI `App` scene
 (`CasperApp`/`AppDelegate`/`CasperUI.runApp`) replaces the Ghostty demo as the
 GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
@@ -142,7 +142,7 @@ native FSEvents watcher on the selected workspace's folder (debounced ~200 ms;
 driving both the diff surface and the title-bar `+/−` badge; created via
 the tab-bar "+" menu (New diff).
 
-All five CasperUI sub-projects are built. **Live GUI check (partial):** terminals
+All five CasperUI sub-projects are built. **Live GUI check: done.** Terminals
 render on a restored session and tab switching preserves content — verified via
 the `casper debug` channel on a real desktop (this fixed a restore-path bug where
 a non-observed `runtime` left terminals black; see the ledger).
@@ -216,11 +216,9 @@ rendered). `swift test` → 259 passing.
 **Follow-ups.** (1) Browser panes: WebKit consumes the right-click, so the Casper
 split menu does not yet surface over live web content (the native menu is
 suppressed). (2) The toolbar diff summary uses working-tree-vs-HEAD; the Space
-branch-vs-merge-base `+/−` summary (Space §6) is still open. (3) A broad live GUI
-pass on the new chrome (context-menu split actions, toolbar buttons) beyond the
-debug channel.
+branch-vs-merge-base `+/−` summary (Space §6) is still open.
 
-## Right inspector panel — ✅ (live check pending)
+## Right inspector panel — ✅ (live check done)
 
 A collapsible right-side panel on the workspace detail view exposes a **browser**
 and the **Git diff** as two tabs, per workspace — an alternative to placing them
@@ -260,9 +258,9 @@ a button that expands the panel on the Diff tab. "New terminal" is unchanged.
 round-trip with a non-default inspector, legacy-decode without the `inspector` key,
 the three `AppModel` inspector mutators, and the inspector-browser URL write-back.
 
-**Follow-up.** Live GUI pass (`debug-casper`): panel toggle, tab switch, browser
-survival across collapse/expand and workspace switch, and confirm a terminal pane
-is not blanked when toggling the panel (see `persistent-nsview-host-sharing`).
+**Verified.** Live GUI pass (`debug-casper`): panel toggle, tab switch, browser
+survival across collapse/expand and workspace switch, and a terminal pane not
+blanked when toggling the panel (see `persistent-nsview-host-sharing`).
 
 ## Developer tooling (`#if DEBUG`)
 
@@ -288,8 +286,8 @@ depends on CasperGit `git_diff`) and **Space rename**.
    remain.
 2. **CasperUI (Plan 5) — ✅ built.** All of UI-1..UI-5 (app shell + startup wiring;
    Space model + Space-grouped sidebar + linked Git worktrees; recursive
-   splits/tabs layout; WKWebView browser surface; read-only diff viewer). A live
-   GUI verification pass on a real desktop remains.
+   splits/tabs layout; WKWebView browser surface; read-only diff viewer). The live
+   GUI verification pass on a real desktop is complete.
 3. **Space diff summary** — the Space data-model change and sidebar grouping
    landed in UI-2; what remains is the derived `diffStat` and the `+/−` row
    summary (depends on 1), plus Space rename.

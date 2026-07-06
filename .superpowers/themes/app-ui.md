@@ -2,8 +2,8 @@
 
 **Module:** CasperUI · **Status:** ✅ **UI-1..UI-5 built** (app shell + wiring;
 Space-grouped sidebar + linked Git worktrees; recursive splits/tabs; WKWebView
-browser surface; read-only diff viewer). Pending: a live GUI verification pass
-(see `../status.md`).
+browser surface; read-only diff viewer). The live GUI verification pass is
+complete (see `../status.md`).
 
 > **Superseded:** the tabbed surface model below (UI-3) is replaced by a
 > **tmux-style pane layout** — no tabs, one surface per pane, a right-click pane
@@ -110,8 +110,8 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 
 ## Next action
 
-**All five CasperUI sub-projects (UI-1..UI-5) are built.** Remaining cross-cutting
-work outside this milestone: the Space `+/−` diff summary
-(`space-project.md`, needs branch-vs-merge-base counts), Space rename, and a
-**live GUI verification pass** on a real desktop: splits/tabs, browser navigation,
-and the diff surface still need a live check.
+**All five CasperUI sub-projects (UI-1..UI-5) are built** and have passed the live
+GUI verification pass on a real desktop (splits/tabs, browser navigation, diff
+surface). Remaining cross-cutting work outside this milestone: the Space `+/−`
+diff summary (`space-project.md`, needs branch-vs-merge-base counts) and Space
+rename.
