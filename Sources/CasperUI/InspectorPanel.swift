@@ -22,6 +22,10 @@ struct InspectorPanel: View {
     let model: AppModel
     let workspace: Workspace
 
+    /// Shared namespace so the single selected-tab pill can slide between
+    /// segments via `matchedGeometryEffect` when the selection changes.
+    @Namespace private var tabSelection
+
     var body: some View {
         // The panel no longer owns its width: `WorkspaceDetailView`'s custom
         // resizable divider sets it via `.frame(width:)`, so the panel simply
@@ -72,6 +76,9 @@ struct InspectorPanel: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
         .fixedSize()
+        // Animate the matched-geometry pill (and the label colors) so the
+        // selected indicator slides between segments on selection change.
+        .animation(.smooth(duration: 0.22), value: workspace.inspector.tab)
     }
 
     /// One segment of `tabSelector`: a plain button that routes through
@@ -88,15 +95,20 @@ struct InspectorPanel: View {
                 .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(isSelected ? Color(nsColor: .controlColor) : .clear)
-                        .shadow(color: .black.opacity(isSelected ? 0.12 : 0), radius: 1, y: 0.5))
+                // A single pill exists only behind the selected segment and is
+                // matched across segments, so it slides rather than cross-fades.
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color(nsColor: .controlColor))
+                            .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
+                            .matchedGeometryEffect(id: "selectedTab", in: tabSelection, isSource: true)
+                    }
+                }
                 // Make the whole padded pill clickable, not just the glyphs:
                 // `.plain` buttons hit-test the label's content shape by default.
                 .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.12), value: isSelected)
     }
 }
