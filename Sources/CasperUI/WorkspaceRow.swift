@@ -118,11 +118,13 @@ private struct NotificationBubble: View {
 }
 
 /// Leading agent-status indicator, occupying the chevron column under the Space
-/// header: an SF Symbol reflecting the live `AgentState`. `working` spins
-/// continuously; the `idle`/`unknown` states render nothing yet still reserve a
-/// fixed-width slot so the trailing Octicon column stays aligned across rows as
-/// the state changes. Selection-aware so the glyphs read on the accent selection
-/// pill.
+/// header: an SF Symbol reflecting the live `AgentState`. The icons are
+/// monochrome — the symbol *shape* carries the distinction, not color — and are
+/// tinted like the sibling Git glyph so the two leading columns read as one.
+/// `working` spins continuously; the `idle`/`unknown` states render nothing yet
+/// still reserve a fixed-width slot so the trailing Octicon column stays aligned
+/// across rows as the state changes. Selection-aware so the glyphs read on the
+/// accent selection pill.
 private struct AgentStatusIcon: View {
     let state: AgentState
     let isSelected: Bool
@@ -133,11 +135,11 @@ private struct AgentStatusIcon: View {
             case .working:
                 SpinningIcon(isSelected: isSelected)
             case .blocked:
-                icon("exclamationmark.circle.fill", color: .orange)
+                icon("exclamationmark.circle.fill")
             case .done:
-                icon("checkmark.circle.fill", color: .green)
+                icon("checkmark.circle.fill")
             case .error:
-                icon("xmark.octagon.fill", color: .red)
+                icon("xmark.octagon.fill")
             case .idle, .unknown:
                 Color.clear
             }
@@ -145,10 +147,10 @@ private struct AgentStatusIcon: View {
         .frame(width: 16)
     }
 
-    private func icon(_ symbol: String, color: Color) -> some View {
+    private func icon(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .imageScale(.medium)
-            .foregroundStyle(isSelected ? Color.white : color)
+            .foregroundStyle(isSelected ? Color.white : Color.secondary)
     }
 }
 
@@ -163,7 +165,7 @@ private struct SpinningIcon: View {
     var body: some View {
         Image(systemName: "arrow.triangle.2.circlepath")
             .imageScale(.medium)
-            .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+            .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
             .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
             .onAppear { spin = true }
