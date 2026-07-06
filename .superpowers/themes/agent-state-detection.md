@@ -100,10 +100,14 @@ without a recompile. Matching is case-insensitive.
 The raw signal becomes the reported state through a small resolver — the only
 place with policy; there is still no state machine on the model (`core.md`):
 
-1. **No foreground agent → `unknown`.** libghostty exposes no pid, so "is the
-   agent present" is approximated from `ghostty_surface_process_exited`
-   (liveness) and the surface `command`. If no agent surface is live, the
-   workspace is `unknown`.
+1. **No foreground agent → `unknown`.** The resolver maps the `absent` signal
+   to `unknown`. **As built, the tick never feeds `absent`**: a workspace with
+   no readable terminal this tick is *skipped* (its prior state is left
+   untouched) rather than forced to `unknown`, so an unvisited workspace is not
+   clobbered. So in the live wiring `unknown` (and `AgentSignal.absent`) come
+   only from an explicit `casper status set unknown` and the unit tests; the
+   `absent → unknown` mapping is retained for when a real liveness signal is
+   wired.
 2. **Debounce transitions.** Require the `working` affordance to be **absent for
    N consecutive reads** before `working → idle`, so a gap between two tool
    calls does not flicker to idle. Never let a late or stale read revive `idle`
