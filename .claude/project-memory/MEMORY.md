@@ -42,3 +42,4 @@
 - [Driving the Casper GUI with synthetic mouse input](references/casper-gui-synthetic-input.md) — no debug mouse verb; use CGEvent but make the window key first, park cursor off-window for clean captures
 - [Browser address bar select-all on click](references/browser-address-bar-select-all.md) — field is already first-responder on tab show; select-all in NSTextField.mouseDown after super (not on focus transition), gated on empty selection
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — `UNUserNotificationCenter.current()` aborts (no bundle id) under `make dev`; guard `deliverNotification` on `Bundle.main.bundleIdentifier`
+- [ArgumentParser Optional default](references/argumentparser-optional-default.md) — `@Option var x: String?` needs explicit `self.x = nil` in `init()` or direct construction (tests) crashes
