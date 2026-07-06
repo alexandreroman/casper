@@ -120,10 +120,40 @@ flowchart TD
 | `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                  |
 | `CasperAgents`  | Code-agent adapter (`~/.claude/settings.json` generation) + hook socket server        |
 | `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
-| `CasperCLI`     | Internal subcommands, sharing the single app binary (swift-argument-parser)           |
+| `CasperCLI`     | Domain subcommands, sharing the single app binary (swift-argument-parser)             |
 
-The app and CLI ship as one binary: an empty argv launches the GUI, while the
-internal subcommands drive the automatic agent-hook integration.
+The app and CLI ship as one binary: an empty argv launches the GUI, while a
+recognized subcommand runs the CLI and exits.
+
+### CLI
+
+`casper` is only reachable from inside a Casper-opened terminal, where the app
+prepends its own binary directory to `PATH`. The CLI is organized by domain,
+targeting the workspace behind the current terminal by default:
+
+```bash
+casper status set running               # set the agent state
+casper progress set --total 5 --current 2 --label "run tests"
+casper progress clear
+casper notify --message "needs review" # raise the attention flag + notify
+casper terminal new                     # open a terminal, split right
+casper browser open https://example.com # open a URL in the browser panel
+casper diff show                        # show the diff view
+casper workspace list                   # enumerate workspaces
+casper workspace current                # print $CASPER_WORKSPACE_ID
+casper workspace new --branch feature/x # create a Git worktree workspace
+```
+
+Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
+workspace other than the current one. Commands talk to the running app over a
+Unix domain socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal
+alongside `$CASPER_WORKSPACE_ID` and `$CASPER_PORT[_0..9]`.
+
+Installing Claude Code's hooks (`casper hooks setup`/`feed` in earlier
+builds) has moved out of the CLI; hook installation is now driven by the app's
+GUI, and bridging Claude Code hook events to the domain commands above is
+follow-up work. The app-side hook socket that receives those events is
+unchanged.
 
 ## License
 

@@ -8,4 +8,9 @@ final class RootSubcommandsTests: XCTestCase {
             XCTAssertTrue(names.contains(expected), "missing subcommand: \(expected)")
         }
     }
+
+    func testHooksDomainIsRemoved() {
+        let names = CasperCommand.configuration.subcommands.map { $0.configuration.commandName }
+        XCTAssertFalse(names.contains("hooks"))
+    }
 }
