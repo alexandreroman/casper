@@ -56,6 +56,8 @@ struct SidebarView: View {
 private struct AddFolderFooter: View {
     let onAdd: () -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Button(action: onAdd) {
             HStack(spacing: 7) {
@@ -63,11 +65,49 @@ private struct AddFolderFooter: View {
                 Text("Add folder…")
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(AddFolderButtonStyle(isHovered: isHovered))
+        .onHover { isHovered = $0 }
+    }
+}
+
+/// Borderless-looking style that layers a hover highlight over a deeper neutral
+/// pressed state (a stronger grey fill in the same hue family as hover) so the
+/// "Add folder…" click reads unmistakably through color — `.borderless` alone
+/// never surfaces `configuration.isPressed`.
+private struct AddFolderButtonStyle: ButtonStyle {
+    let isHovered: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(foregroundColor(isPressed: configuration.isPressed))
             .padding(.vertical, 8)
             .padding(.horizontal, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(fillColor(isPressed: configuration.isPressed))
+            )
             .contentShape(Rectangle())
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+
+    private func fillColor(isPressed: Bool) -> Color {
+        if isPressed {
+            return Color.primary.opacity(0.12)
         }
-        .buttonStyle(.borderless)
+        if isHovered {
+            return Color.primary.opacity(0.06)
+        }
+        return Color.clear
+    }
+
+    private func foregroundColor(isPressed: Bool) -> Color {
+        if isPressed {
+            return Color.primary
+        }
+        if isHovered {
+            return Color.primary
+        }
+        return Color.secondary
     }
 }
