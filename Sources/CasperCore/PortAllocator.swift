@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PortAllocationError: Error, Equatable {
+struct PortAllocationError: Error, Equatable {
     public let reason: String
     public init(reason: String) { self.reason = reason }
 }

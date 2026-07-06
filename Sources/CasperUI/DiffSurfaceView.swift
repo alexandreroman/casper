@@ -371,7 +371,7 @@ private struct DiffLineRow: View {
     /// The code column. When a highlight is available its runs carry their own
     /// syntax colors (fonts stripped, so the monospaced font above applies
     /// uniformly), prefixed by the neutral diff marker. Otherwise it falls back
-    /// to plain text tinted by the line kind.
+    /// to plain text with a uniform `.primary` foreground.
     @ViewBuilder private var codeText: some View {
         if let highlightedContent {
             Text(highlightedContent)

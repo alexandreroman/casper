@@ -2,7 +2,7 @@ import AppKit
 import GhosttyKit
 
 /// Map Cocoa modifier flags to libghostty's modifier bitset.
-public func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
+func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
     var raw = GHOSTTY_MODS_NONE.rawValue
     if flags.contains(.shift) { raw |= GHOSTTY_MODS_SHIFT.rawValue }
     if flags.contains(.control) { raw |= GHOSTTY_MODS_CTRL.rawValue }
@@ -21,7 +21,7 @@ public func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods
 /// `consumedMods` tells libghostty which modifiers Cocoa's text system already
 /// spent while composing the event (e.g. Option composing an accented character),
 /// so it does not also re-encode them as an escape sequence. Defaults to none.
-public func ghosttyKeyEvent(
+func ghosttyKeyEvent(
     _ event: NSEvent, action: ghostty_input_action_e,
     consumedMods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 ) -> ghostty_input_key_s {
@@ -48,7 +48,7 @@ public func ghosttyKeyEvent(
 ///
 /// The bare overload this delegates to already sets `unshifted_codepoint`; this
 /// overload only attaches the committed `text`.
-public func ghosttyKeyEvent(
+func ghosttyKeyEvent(
     _ event: NSEvent, action: ghostty_input_action_e, text: UnsafePointer<CChar>?,
     consumedMods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 ) -> ghostty_input_key_s {
@@ -69,7 +69,7 @@ public func ghosttyKeyEvent(
 /// requires Cocoa not to consume Option for composition at all — so this strips
 /// `.option` from the event before Cocoa sees it whenever libghostty's answer omits
 /// the Alt bit. Mirrors Ghostty's own AppKit key handling.
-public func ghosttyTranslationEvent(
+func ghosttyTranslationEvent(
     for event: NSEvent, translationMods: ghostty_input_mods_e
 ) -> NSEvent {
     let optionDrivesComposition = translationMods.rawValue & GHOSTTY_MODS_ALT.rawValue != 0
@@ -96,7 +96,7 @@ public func ghosttyTranslationEvent(
 /// `key.text` or libghostty mis-encodes it and the Ctrl combination is lost. Only
 /// text whose first UTF-8 byte is printable (>= 0x20) rides on the key event.
 /// Mirrors Ghostty's keyAction guard.
-public func ghosttyTextRidesOnKeyEvent(_ text: String) -> Bool {
+func ghosttyTextRidesOnKeyEvent(_ text: String) -> Bool {
     guard let first = text.utf8.first else { return false }
     return first >= 0x20
 }
@@ -111,11 +111,11 @@ private func ghosttyUnshiftedCodepoint(from event: NSEvent) -> UInt32 {
 
 /// macOS virtual keycode for Return (kVK_Return). Used to synthesize a
 /// line-submission key event when no NSEvent is available (debug channel).
-public let ghosttyReturnKeyCode: UInt32 = 36
+let ghosttyReturnKeyCode: UInt32 = 36
 
 /// Build a libghostty key event not backed by an NSEvent (e.g. debug-channel
 /// injection). `mods` defaults to none.
-public func ghosttyKeyEvent(
+func ghosttyKeyEvent(
     keycode: UInt32,
     action: ghostty_input_action_e,
     mods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
@@ -141,7 +141,7 @@ public func ghosttyKeyEvent(
 /// `text` must stay valid for the duration of the `ghostty_surface_key` call, so
 /// callers pass a pointer obtained from `String.withCString` and invoke `sendKey`
 /// inside that closure. Release events pass `text = nil`, mirroring real key-up.
-public func ghosttyKeyEvent(
+func ghosttyKeyEvent(
     keycode: UInt32,
     action: ghostty_input_action_e,
     mods: ghostty_input_mods_e,
@@ -157,7 +157,7 @@ public func ghosttyKeyEvent(
 /// Map debug-channel modifier names ("ctrl", "cmd"/"super", "opt"/"alt", "shift")
 /// to libghostty's modifier bitset. Unknown names are ignored. Debug-only helper
 /// for `send-key`.
-public func ghosttyModsFromNames(_ names: [String]) -> ghostty_input_mods_e {
+func ghosttyModsFromNames(_ names: [String]) -> ghostty_input_mods_e {
     var raw = GHOSTTY_MODS_NONE.rawValue
     for name in names {
         switch name.lowercased() {
@@ -175,7 +175,7 @@ public func ghosttyModsFromNames(_ names: [String]) -> ghostty_input_mods_e {
 /// virtual keycode of the base (unshifted) key, that key's Unicode codepoint, and
 /// whether Shift is required (uppercase letters). Real macOS typing of 'H' reports
 /// the 'h' physical key plus Shift, so injection must do the same.
-public struct GhosttyInjectedKey: Equatable, Sendable {
+struct GhosttyInjectedKey: Equatable, Sendable {
     public let keycode: UInt32
     public let unshiftedCodepoint: UInt32
     public let needsShift: Bool
@@ -246,7 +246,7 @@ private let unshiftedKeyCodes: [Character: UInt32] = [
 /// Resolve a `Character` to the physical key a real keyboard would press to type
 /// it, or nil when the character is outside the supported set (letters, digits,
 /// space). Uppercase letters map to the lowercase key plus Shift.
-public func ghosttyInjectedKey(for character: Character) -> GhosttyInjectedKey? {
+func ghosttyInjectedKey(for character: Character) -> GhosttyInjectedKey? {
     let needsShift = character.isUppercase
     let base: Character = needsShift ? Character(character.lowercased()) : character
     guard let keycode = unshiftedKeyCodes[base] else { return nil }

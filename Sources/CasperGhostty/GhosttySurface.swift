@@ -3,7 +3,7 @@ import Foundation
 
 /// Owns a libghostty `ghostty_surface_t` and frees it on deinit (same ownership
 /// pattern as `CasperGit.Repository`). Main-thread affine; not `Sendable`.
-public final class GhosttySurface {
+final class GhosttySurface {
     let surface: ghostty_surface_t
 
     /// Pins the runtime's `ghostty_app_t` alive for as long as this surface

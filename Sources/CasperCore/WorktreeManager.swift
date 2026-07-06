@@ -3,7 +3,7 @@ import Foundation
 
 /// A worktree-creation failure expressed in Casper's own vocabulary, so the UI
 /// never sees a raw libgit2 code.
-public struct WorktreeError: Error, Equatable, Sendable {
+struct WorktreeError: Error, Equatable, Sendable {
     public enum Reason: Equatable, Sendable {
         case repositoryNotFound
         case branchAlreadyCheckedOut

@@ -1,1 +1,1 @@
-public let casperCoreVersion = "0.1.0"
+let casperCoreVersion = "0.1.0"

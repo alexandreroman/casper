@@ -4,7 +4,7 @@ import Foundation
 /// Process-wide libgit2 initialization. `git_libgit2_init` is reference-counted
 /// by libgit2; we call it exactly once and never shut down (acceptable for a
 /// long-lived app and for the test process).
-public enum Libgit2 {
+enum Libgit2 {
     private static let initialized: Bool = {
         // On success `git_libgit2_init` returns the (positive) number of
         // initializations of this library; only a negative value is a failure.
