@@ -8,7 +8,7 @@ type: feedback
 
 Commit messages for the Casper project must follow the format **verb + action
 performed**, and must **always be written in English** (subject AND body), e.g.
-"Simplify hook parsing", "Add the port allocator".
+"Simplify the diff parser", "Add the port allocator".
 
 **Why:** a consistent, English, verb-first subject is a project-wide convention.
 

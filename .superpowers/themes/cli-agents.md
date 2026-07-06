@@ -1,10 +1,10 @@
-# Theme: CLI & Agent Hooks (CasperCLI + CasperAgents)
+# Theme: CLI & Agent Environment (CasperCLI + CasperAgents)
 
 **Modules:** CasperCLI + CasperAgents · **Status:** ✅ built (see `../status.md`)
 · **Code:** `Sources/CasperCLI/`, `Sources/CasperAgents/`
 
-The single GUI+CLI binary, its domain command surface, and the Claude Code hook
-pipeline that drives per-workspace agent state.
+The single GUI+CLI binary, its domain command surface, and the per-surface
+environment that lets an agent in a terminal report its state through the CLI.
 
 ## Design
 
@@ -65,48 +65,21 @@ non-default); `workspace new`/`list`/`current` carry the worktree `path`
 returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's
 own output (`--help`, missing option, unknown flag) stays native.
 
-`casper hooks setup` / `casper hooks feed` are **removed from the CLI**
-(Task 14) — they are not part of the domain surface above. Installing Claude
-Code's hooks is deferred to the app's GUI (follow-up, out of scope here).
+### Agent state & progress
 
-### Agent state & progress (app-side hook plumbing — unchanged)
+Casper has **no agent-hook mechanism** — no hook installation, no hook socket,
+no `hooks` CLI. A workspace's agent state (`agentState`, todo progress, the
+attention flag) is set **only** by the explicit domain verbs above: an agent (or
+any tool) running in a Casper terminal calls `casper status set …`,
+`casper progress set …`, and `casper notify …` itself. Casper **never launches an
+agent**; the user runs their agent manually.
 
-```
-Claude Code (in a Ghostty surface)
-   │  hooks: Stop / Notification / SessionStart / PostToolUse:TodoWrite
-   ▼
-HookSocketServer  (reads hook JSON; $CASPER_SOCKET, $CASPER_WORKSPACE_ID)
-   │  JSON {workspace, event, payload}  →  Unix domain socket
-   ▼
-AgentStateStore  ──►  Sidebar (badge, progress, notification dot)
-                 └─►  UserNotifications  (if unfocused & state in
-                       {waiting, done})
-```
+The only agent-facing runtime coupling is the per-surface environment
+`ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal:
+`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, and `CASPER_PORT[_0..9]`. A CLI
+command reads `CASPER_WORKSPACE_ID` for its default target and
+`CASPER_CONTROL_SOCKET` to reach the app; state changes flow straight into the
+sidebar (badge, progress, notification dot) and, for `notify`, `UserNotifications`.
 
-- Casper **never launches an agent**; the user runs Claude Code manually.
-- The app-side hook socket (`HookSocketServer`, `ClaudeCodeAdapter.install`,
-  `AppModel.handleHookMessage`) **still exists** and is unchanged by Task 14 —
-  only the CLI's `hooks` command family was removed. Hooks were previously
-  installed **once, globally** in `~/.claude/settings.json` via
-  `casper hooks setup` or at app startup, merged not clobbered — **not per
-  worktree**. See [[hooks-install-once]]. Re-wiring hook *installation* through
-  the GUI, and bridging Claude Code hooks to the domain commands above (rather
-  than the removed `hooks feed` relay), are both follow-up work.
-- Per-surface env: `CASPER_SOCKET`, `CASPER_WORKSPACE_ID`, `CASPER_PORT[_0..9]`,
-  `CASPER_CONTROL_SOCKET`.
-- **`unknown`/`error`** states originate here (heartbeat timeout / broken
-  socket), not in the pure reducer (`core.md`).
-
-The socket classes use `@unchecked Sendable` + serial-queue discipline under
-Swift 6 — see [[swift6-network-concurrency]].
-
-## Remaining (consumed by CasperUI)
-
-- Install Claude Code hooks from the GUI (replaces the removed
-  `casper hooks setup`); wire `HookSocketServer.onMessage` → `AgentStateStore`.
-- Bridge Claude Code hook events to the domain commands (`status`, `progress`,
-  `notify`) instead of the removed `hooks feed` relay; then dismantle
-  `HookSocket`/`handleHookMessage`.
-- Pass the app bundle's executable directory into
-  `surfaceEnvironment(casperDirectory:basePath:)`.
-- Run the heartbeat *timer* (the monitor exists; the periodic tick does not).
+The control socket class uses `@unchecked Sendable` + serial-queue discipline
+under Swift 6 — see [[swift6-network-concurrency]].

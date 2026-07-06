@@ -36,9 +36,10 @@ workspace diff-summary feature is design + plan only.
 ## Modules
 
 ### CasperCore — ✅
-Models, `AgentStateStore`, `HeartbeatMonitor`, `WorktreeManager`
-(create/list/remove/isClean with `WorktreeError` mapping), `PortAllocator`,
-`SessionStore`, hook parsing, and the agent-state reducer.
+Models (`AgentState`, `Todo`, `LayoutTree`, session), `WorktreeManager`
+(create/list/remove/deleteBranch/isClean with `WorktreeError` mapping),
+`PortAllocator`, `SessionStore`, and the control-channel protocol + socket
+(`ControlProtocol`/`ControlSocket`) plus CLI-targeting/progress helpers.
 
 ### CasperGit + Clibgit2 — ✅ (core)
 `Repository` (open/discover/init, branch queries, worktree
@@ -55,16 +56,15 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`
   (`Repository.open`) rather than `discover`.
 
 ### CasperAgents + CasperCLI — ✅
-`ClaudeCodeAdapter`, `HookMessage`, `HookSocketServer`/`Client`; the `casper`
+`ClaudeCodeAdapter.surfaceEnvironment` (per-surface env injection); the `casper`
 executable with the GUI/CLI fork and the domain CLI
-(`status`/`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`) that
-emits JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero). The `casper
-hooks setup`/`feed` commands are removed from the CLI — hook installation is a
-GUI follow-up; the app-side hook socket is unchanged. See the
-`domain-cli-control-channel` memory note for the current surface.
-- Wired by CasperUI UI-1: `onMessage` → agent-state reducer on `AppModel`'s
-  observable workspaces; the bundle executable directory is passed into
-  `surfaceEnvironment(casperDirectory:basePath:)`; the heartbeat timer runs.
+(`status`/`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`) that emits
+JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero). There is **no hook
+mechanism** — a workspace's agent state is set only by the explicit CLI verbs. See
+the `domain-cli-control-channel` memory note for the current surface.
+- The bundle executable directory is injected onto each surface's `PATH` (via
+  `surfaceEnvironment(casperDirectory:basePath:)`) so `casper` resolves inside
+  Casper terminals.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,
@@ -88,8 +88,8 @@ The module exists. **UI-1** is done: a SwiftUI `App` scene
 GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
 the core types to SwiftUI; a `NavigationSplitView` shows an empty state, an
 "Add folder…" flow and one live terminal per workspace; and all startup wiring is
-landed (hooks install, hook socket → agent state, per-surface env, heartbeat
-timer, session persistence, `#if DEBUG` debug bridge). Release gating verified (no
+landed (per-surface env, the release control channel, session persistence,
+`#if DEBUG` debug bridge). Release gating verified (no
 debug symbols in `make release`). UI-1 is verified live on a real desktop session.
 
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`

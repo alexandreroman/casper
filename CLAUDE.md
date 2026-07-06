@@ -46,11 +46,11 @@ publishes the `.app` as a GitHub Release — see
 
 ## Modules
 
-- **CasperCore** — models, session store, port allocator, hook parsing,
-  agent-state reducer (pure Swift).
+- **CasperCore** — models, session store, port allocator, control-channel
+  protocol + socket (pure Swift).
 - **CasperGit** — in-house libgit2 wrapper (worktrees, diff, status).
 - **CasperGhostty** — embeds GhosttyKit; owns terminal surfaces and layout.
-- **CasperAgents** — Claude Code adapter + hook `settings.json` generation.
+- **CasperAgents** — per-surface environment injection for Casper terminals.
 - **CasperUI** — SwiftUI sidebar, chrome, diff, browser views.
 - **CasperCLI** — `casper` subcommands. The app and CLI ship as one binary.
 

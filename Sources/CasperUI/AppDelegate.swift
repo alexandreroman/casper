@@ -1,28 +1,14 @@
 import AppKit
-import CasperAgents
 import CasperCore
 import CasperGhostty
 import Foundation
 
-/// Per-user socket under the temp dir, stable across relaunches. No canonical
-/// hook socket path constant exists elsewhere in the codebase (unlike the debug
-/// channel's `DebugSocketPath`); this is the one source of truth for it, shared
-/// between the server and the `CASPER_SOCKET` value injected into surfaces.
-enum HookSocketPathProvider {
-    static var defaultPath: String {
-        (NSTemporaryDirectory() as NSString).appendingPathComponent("casper-hooks.sock")
-    }
-}
-
-/// Carries lifecycle work that a SwiftUI `App` scene does not express: install
-/// hooks, start the hook socket + heartbeat, set the AppKit menu, and save on
-/// terminate. Shares the one `AppModel` with the SwiftUI scene via
-/// `AppModel.shared`.
+/// Carries lifecycle work that a SwiftUI `App` scene does not express: start the
+/// control server, set the AppKit menu, and save on terminate. Shares the one
+/// `AppModel` with the SwiftUI scene via `AppModel.shared`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var socketServer: HookSocketServer?
     private var controlServer: ControlServer?
-    private var heartbeatTimer: Timer?
     private var keyWindowObserver: NSObjectProtocol?
     #if DEBUG
     private var debugServer: DebugServer?
@@ -31,13 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel.shared
         NSApp.mainMenu = buildMainMenu()
-
-        // Global, idempotent hook install; non-blocking on failure.
-        do {
-            try ClaudeCodeAdapter.install()
-        } catch {
-            CasperLog.app.failure("hook install failed", error)
-        }
 
         // The Ghostty runtime is created once and shared by every surface.
         do {
@@ -62,19 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.casperDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
             ?? (CommandLine.arguments.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
 
-        // Hook socket: hop to the main actor, then route into the model.
-        let socketPath = HookSocketPathProvider.defaultPath
-        let server = HookSocketServer(socketPath: socketPath, onMessage: { message in
-            Task { @MainActor in AppModel.shared.handleHookMessage(message, now: Date()) }
-        })
-        do {
-            try server.start()
-            self.socketServer = server
-            model.socketPath = socketPath
-        } catch {
-            CasperLog.app.failure("hook socket failed to start", error)
-        }
-
         // Release control socket: the `casper` CLI's command channel, distinct
         // from the DEBUG-only debug channel below — this one ships in release.
         let controlPath = ControlSocketPath.default
@@ -86,13 +52,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             CasperLog.app.failure("control server failed to start", error)
         }
-
-        // Heartbeat timer (main run loop).
-        let timer = Timer(timeInterval: 5, repeats: true) { _ in
-            Task { @MainActor in AppModel.shared.tickHeartbeat(now: Date()) }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        self.heartbeatTimer = timer
 
         // When a window becomes key (the app returns to the foreground), dismiss
         // the attention bubble of the now-focused workspace. Mirrors the
@@ -117,9 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        heartbeatTimer?.invalidate()
         if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
-        socketServer?.stop()  // stop BEFORE the final save (no post-save onMessage)
         controlServer?.stop()
         #if DEBUG
         debugServer?.stop()

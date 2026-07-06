@@ -9,8 +9,8 @@ agents. It tracks each agent's state and task progress, reserves network ports
 per workspace, and bundles a native browser and diff viewer.
 
 > **Status:** under active development and not yet ready for general use. All the
-> core layers — the terminal engine, the Git worktree layer, and the agent hook
-> pipeline — and the SwiftUI app (Space-grouped sidebar, linked worktrees,
+> core layers — the terminal engine, the Git worktree layer, and the `casper`
+> control CLI — and the SwiftUI app (Space-grouped sidebar, linked worktrees,
 > tmux-style split panes, browser, and diff viewer) are built; live GUI
 > verification and polish are ongoing. Claude Code is the first supported agent.
 
@@ -18,13 +18,13 @@ per workspace, and bundles a native browser and diff viewer.
 
 - **Worktree = workspace** — each workspace maps to a Git worktree; creating one
   opens a plain Ghostty terminal in that worktree (no agent is auto-launched).
-- **Agent state & progress** — code-agent hooks feed a per-workspace state
-  machine (`idle` / `running` / `waiting` / `done`) and a `completed / total`
-  todo progress bar, surfaced in the sidebar with pending-notification dots.
-- **Split-pane layout** — tmux-style nested splits (one surface per pane, no
-  tabs); each pane is a terminal, a `WKWebView` browser, or a native diff view,
-  and a collapsible right-hand inspector offers browser and diff tabs per
-  workspace.
+- **Agent state & progress** — an agent reports its per-workspace state
+  (`idle` / `running` / `waiting` / `done` / `error`) and a `completed / total`
+  todo progress bar by calling the `casper` CLI (see below), surfaced in the
+  sidebar with pending-notification dots.
+- **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
+  tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
+  native diff view per workspace.
 - **Per-workspace port reservation** — a contiguous block of 10 ports
   (`CASPER_PORT`) per workspace, so the same app can run once per worktree
   without collisions.
@@ -115,10 +115,10 @@ flowchart TD
 
 | Module          | Description                                                                            |
 | --------------- | ------------------------------------------------------------------------------------- |
-| `CasperCore`    | Models, session store, port allocator, hook parsing, agent-state reducer (pure Swift) |
+| `CasperCore`    | Models, session store, port allocator, control-channel protocol + socket (pure Swift) |
 | `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                               |
 | `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                  |
-| `CasperAgents`  | Code-agent adapter (`~/.claude/settings.json` generation) + hook socket server        |
+| `CasperAgents`  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …) |
 | `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
 | `CasperCLI`     | Domain subcommands, sharing the single app binary (swift-argument-parser)             |
 
@@ -158,11 +158,9 @@ it prints `{"error":"…"}` to stderr and exits non-zero. `workspace delete` is
 destructive (it removes the worktree folder and its branch) and refuses the
 primary workspace.
 
-Installing Claude Code's hooks (`casper hooks setup`/`feed` in earlier
-builds) has moved out of the CLI; hook installation is now driven by the app's
-GUI, and bridging Claude Code hook events to the domain commands above is
-follow-up work. The app-side hook socket that receives those events is
-unchanged.
+Casper has no agent-hook integration: an agent reports its state by calling these
+commands itself (e.g. `casper status set running`), so the surface is explicit
+and agent-agnostic.
 
 ## License
 

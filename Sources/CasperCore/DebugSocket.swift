@@ -89,8 +89,8 @@ private func decodeLength(_ header: Data) -> UInt32 {
 /// `@Sendable`; all connection I/O runs on the single serial `queue`, and
 /// callbacks are configured before `start()`.
 public final class DebugSocketServer: @unchecked Sendable {
-    /// Lock-guarded server state, mirroring `HookSocketServer`'s discipline so
-    /// `stop()` can tear down cleanly. `stopped` refuses connections accepted
+    /// Lock-guarded server state so `stop()` can tear down cleanly. `stopped`
+    /// refuses connections accepted
     /// after `stop()` began (they would have no drainer); `conns` tracks every
     /// in-flight connection so `stop()` can cancel them and gate `onCommand`
     /// against firing after teardown. `uncheckedState` because `NWConnection`

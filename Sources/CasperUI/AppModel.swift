@@ -89,12 +89,7 @@ final class AppModel {
     @ObservationIgnored private let sessionStore: SessionStore
     @ObservationIgnored private var portAllocator: PortAllocator
 
-    /// Timestamp of the last hook message per workspace, for heartbeat staleness.
-    @ObservationIgnored private var lastSeen: [UUID: Date] = [:]
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
-
-    /// Seconds of silence before a workspace with prior activity goes `unknown`.
-    @ObservationIgnored var heartbeatTimeout: TimeInterval = 30
 
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp?.keyWindow != nil }
@@ -126,7 +121,6 @@ final class AppModel {
     /// Set during Task 7 bootstrap once the Ghostty runtime and IPC socket exist.
     var runtime: GhosttyRuntime?
     @ObservationIgnored var casperDirectory: String?
-    @ObservationIgnored var socketPath: String?
     @ObservationIgnored var controlSocketPath: String?
 
     /// Live surface views, keyed by surface id. Holds terminal
@@ -266,7 +260,6 @@ final class AppModel {
         let removed = spaces.remove(at: index)
         for ws in removed.workspaces {
             portAllocator.release(ws.portBase)
-            lastSeen[ws.id] = nil
             discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
@@ -367,7 +360,6 @@ final class AppModel {
         guard spaces[at.space].workspaces[at.workspace].kind == .linked else { return }
         let ws = spaces[at.space].workspaces.remove(at: at.workspace)
         portAllocator.release(ws.portBase)
-        lastSeen[ws.id] = nil
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         if selectedWorkspaceID == id {
             selectWorkspace(spaces.first?.workspaces.first?.id)
@@ -877,35 +869,6 @@ final class AppModel {
         onPersistForTest?()
     }
 
-    func handleHookMessage(_ message: HookMessage, now: Date) {
-        guard let at = locate(message.workspaceId) else { return }
-        guard let event = try? HookEventParser.parse(message.hookPayload) else { return }
-
-        lastSeen[message.workspaceId] = now
-        let focused = (message.workspaceId == selectedWorkspaceID) && isWindowKey()
-        let effect = AgentStateReducer.apply(
-            event, to: &spaces[at.space].workspaces[at.workspace], focused: focused)
-        if case .notify(let title, let body)? = effect {
-            deliverNotification(title, body)
-        }
-        scheduleSave()
-    }
-
-    func tickHeartbeat(now: Date) {
-        let stale = HeartbeatMonitor.staleWorkspaces(
-            lastSeen: lastSeen, now: now, timeout: heartbeatTimeout)
-        var changed = false
-        for id in stale {
-            lastSeen[id] = nil  // consumed; don't reprocess this silence every tick
-            guard let at = locate(id) else { continue }
-            if spaces[at.space].workspaces[at.workspace].agentState != .unknown {
-                spaces[at.space].workspaces[at.workspace].agentState = .unknown
-                changed = true
-            }
-        }
-        if changed { scheduleSave() }
-    }
-
     /// Debounced persistence for high-frequency agent-state changes.
     private func scheduleSave() {
         saveWorkItem?.cancel()
@@ -920,8 +883,8 @@ final class AppModel {
         persist()
     }
 
-    /// The per-surface environment injected into a terminal so `casper hooks
-    /// feed` resolves and the agent sees its reserved ports.
+    /// The per-surface environment injected into a terminal so the `casper` CLI
+    /// resolves and the agent sees its reserved ports.
     func surfaceConfiguration(
         for workspace: Workspace, terminal: Surface
     ) -> GhosttySurfaceConfiguration {
@@ -930,7 +893,6 @@ final class AppModel {
         }
         var config = GhosttySurfaceConfiguration(workingDirectory: cwd, command: command)
         config.environment = ClaudeCodeAdapter.surfaceEnvironment(
-            socketPath: socketPath,
             workspaceId: workspace.id,
             portBase: workspace.portBase,
             casperDirectory: casperDirectory,

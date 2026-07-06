@@ -1,6 +1,6 @@
 ---
 name: "Domain CLI and control channel"
-description: "casper's domain CLI emits JSON over CASPER_CONTROL_SOCKET; full verb surface, error paths exit non-zero; hooks CLI removed"
+description: "casper's domain CLI emits JSON over CASPER_CONTROL_SOCKET; full verb surface, error paths exit non-zero; no hook mechanism"
 type: project
 ---
 
@@ -51,7 +51,7 @@ channel ([[debug-channel-gating]]).
 - `browser open` loads the URL into the workspace's **single inspector browser
   surface** and selects the browser tab (mirroring how `diff open` selects the
   diff tab) — there are no browser layout panels; layout panels are
-  **terminal-only** (`applyNewBrowser` removed).
+  **terminal-only**.
 - `diff open [<file>]` opens the diff view and scrolls to `<file>` (resolved
   against diff file ids by exact → path-suffix → basename). The file must exist
   on disk **and** be inside the worktree, else an error (`WorkspaceFilePath`
@@ -67,21 +67,22 @@ channel ([[debug-channel-gating]]).
   (selected **and** the app window is key); the bubble clears when a workspace
   becomes focused again.
 
-## Hooks (removed from the CLI)
+## No hooks
 
-`casper hooks setup` / `casper hooks feed` are **removed from the CLI**.
-Installing Claude Code's hooks is deferred to the app's GUI, and bridging Claude
-Code hook events to the domain commands above (replacing the removed `hooks
-feed` relay) is a separate follow-up. The app-side hook socket
-(`HookSocketServer`, `ClaudeCodeAdapter.install`, `AppModel.handleHookMessage`)
-is untouched by the CLI removal — see [[hooks-install-once]].
+Casper has no agent-hook mechanism at all — no hook installation, no hook
+socket, no `hooks` CLI. A workspace's agent state (status / progress /
+notification) is set **only** by the explicit CLI verbs above; an agent (or any
+tool) calls `casper status set …` / `progress set …` / `notify …` itself. The
+only agent-facing runtime coupling is the per-surface environment
+(`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT*`) that
+`ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal.
 
-**Why:** the CLI is an explicit, agent-agnostic, machine-readable surface: every
-workspace action has its own namespaced verb, emits JSON, and a stable
-per-surface control socket lets external tools and agents drive Casper without
-depending on the removed hook-relay shape.
+**Why:** an explicit, agent-agnostic, machine-readable surface — every workspace
+action has its own namespaced verb, emits JSON, and the stable per-surface
+control socket lets external tools and agents drive Casper directly, with no
+dependency on a specific agent's hook shape.
 
 **How to apply:** add a new action as a new `ControlCommand.Verb` + `ControlServer`
 dispatch case + CLI command + JSON output struct, following the existing domains.
 Success emits the resulting resource state including the affected `workspace`;
-every error path must exit non-zero. Do not resurrect a `hooks` CLI subcommand.
+every error path must exit non-zero.

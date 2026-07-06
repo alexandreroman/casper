@@ -38,9 +38,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   replacing them; the tmux `.browser`/`.diff` paths coexist. See `../status.md` →
   "Right inspector panel" for the as-built model, chrome, and title-bar changes
   (globe button removed, panel toggle added, `+/−` summary opens the Diff tab).
-- **Wiring** — connects `HookSocketServer.onMessage` → `AgentStateStore`, installs
-  hooks at startup, injects the bundle exec dir into surface env, and runs the
-  heartbeat timer (all detailed in `cli-agents.md`).
+- **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
+  injects the bundle exec dir + per-surface env into each terminal, and runs the
+  `#if DEBUG` debug bridge (all detailed in `cli-agents.md`).
 
 ## Sub-projects
 
@@ -48,9 +48,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   the existing AppKit `NSMenu` preserved), `@MainActor @Observable AppModel` as the
   single state owner/bridge, `NavigationSplitView` with empty state, "Add folder…"
   (adopt any folder — Git or not, multiple allowed), one live terminal per
-  workspace, and all startup wiring (hooks install, hook socket → agent-state
-  reducer, per-surface env, heartbeat timer, session persistence, `#if DEBUG`
-  debug bridge). No Git worktree creation. Renders only the single-terminal layout.
+  workspace, and all startup wiring (the release control server, per-surface env,
+  session persistence, `#if DEBUG` debug bridge). No Git worktree creation.
+  Renders only the single-terminal layout.
 - **UI-2 — ✅ built.** The `Space` level (`Session → Space → Workspace`;
   `repoPath` moved up to `Space.folderPath`; `Workspace` gained
   `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git

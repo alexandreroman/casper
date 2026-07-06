@@ -22,6 +22,4 @@ rest of the system.
 `casperDirectory` + `basePath` and, when given, sets
 `PATH = "<casperDirectory>:<basePath>"` (or just `<casperDirectory>` when
 basePath is empty). The app supplies the app bundle's executable directory
-(`Bundle.main.executableURL`'s parent) and the inherited `PATH`. (The removed
-`casper hooks feed` relay relied on this same relative-resolution property; hook
-installation is now a GUI follow-up — see [[hooks-install-once]].)
+(`Bundle.main.executableURL`'s parent) and the inherited `PATH`.

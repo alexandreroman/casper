@@ -12,8 +12,9 @@ handler closures: the framework's handlers are `@Sendable` and capture
 non-Sendable `self`. Converting such a class to an `actor` is rejected because
 it would force the public API to become `async`.
 
-Established convention in the `CasperAgents` module (used by `HookSocketServer`
-in `Sources/CasperAgents/HookSocket.swift`):
+Established convention for the release control channel (used by
+`ControlSocketServer` in `Sources/CasperCore/ControlSocket.swift`, and mirrored
+by the DEBUG `DebugSocketServer`):
 
 - Mark the class `final class X: @unchecked Sendable` when it must keep a
   synchronous public interface (`start()` / `stop()` etc.).
@@ -31,7 +32,7 @@ in `Sources/CasperAgents/HookSocket.swift`):
   with `OSAllocatedUnfairLock(uncheckedState:)` and access it via
   `withLockUnchecked` — this is the lock's designed API for non-Sendable state
   and is *not* a second class-level `@unchecked`; the lock still supplies the
-  mutual exclusion. (`HookSocketServer.State`.)
+  mutual exclusion. (`ControlSocketServer.State`.)
 - "No callback after `stop()`" invariant: mark the class state `stopped` under
   the lock, snapshot-and-cancel in `stop()`, then `queue.sync {}` as a barrier
   so any in-flight completion finishes before `stop()` returns. Consequence:

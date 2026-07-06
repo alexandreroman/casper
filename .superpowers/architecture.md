@@ -44,9 +44,9 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 | Module | Responsibility | Theme |
 | --- | --- | --- |
 | **CasperGit** | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base | `themes/git-worktrees.md` |
-| **CasperCore** | Models, `SessionStore`, `AgentStateStore`, `WorktreeManager`, `PortAllocator`. Pure Swift, no UI | `themes/core.md` |
+| **CasperCore** | Models, `SessionStore`, `WorktreeManager`, `PortAllocator`, control-channel protocol + socket. Pure Swift, no UI | `themes/core.md` |
 | **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits/tabs. The only module touching the unstable API | `themes/terminal.md` |
-| **CasperAgents** | Claude Code adapter + hooks `settings.json` generation + the hook socket | `themes/cli-agents.md` |
+| **CasperAgents** | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals | `themes/cli-agents.md` |
 | **CasperCLI** | `casper` subcommand dispatch (swift-argument-parser) | `themes/cli-agents.md` |
 | **CasperUI** | SwiftUI sidebar, chrome, diff, browser + AppKit bridges | `themes/app-ui.md` |
 | **Casper** (app) | Wiring, window, lifecycle, GUI/CLI dispatch | all |
@@ -92,9 +92,9 @@ their target, `portBase` is restored as-is.
 
 ## Testing strategy
 
-- **Unit (XCTest):** `WorktreeManager`, `AgentStateStore`, hook parsing,
-  `SessionStore` round-trip, `PortAllocator`. Needs the full Xcode toolchain —
-  see [[test-toolchain]].
+- **Unit (XCTest):** `WorktreeManager`, control protocol/targeting, the CLI
+  command builders + JSON output, `SessionStore` round-trip, `PortAllocator`.
+  Needs the full Xcode toolchain — see [[test-toolchain]].
 - **Integration:** end-to-end adapter driven by a fake agent over the socket.
 - **Manual:** terminal rendering, keyboard/focus, notifications — via the
   `debug-casper` harness (`themes/debug.md`).
