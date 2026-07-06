@@ -1,10 +1,11 @@
 import CasperCore
 import SwiftUI
 
-/// A workspace row: a leading Git/folder glyph, the branch label with optional
-/// agent progress, and a trailing status cluster (an agent-state icon followed
-/// by the notification bubble). Draws its own selection pill so the accent stays
-/// visible even when the sidebar is not first responder.
+/// A workspace row: a leading agent-state icon sitting under the Space header's
+/// chevron column, then the Git/folder glyph (aligned under the Space name) and
+/// the branch label with optional agent progress, and a trailing notification
+/// bubble. Draws its own selection pill so the accent stays visible even when the
+/// sidebar is not first responder.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let isSelected: Bool
@@ -15,6 +16,7 @@ struct WorkspaceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
+                AgentStatusIcon(state: workspace.agentState, isSelected: isSelected)
                 Octicon(isGitRepo ? .gitBranch : .fileDirectory)
                     .foregroundStyle(isSelected ? Color.white : Color.secondary)
                 Text(workspace.branchLabel)
@@ -23,7 +25,6 @@ struct WorkspaceRow: View {
                     .truncationMode(.middle)
                     .foregroundStyle(isSelected ? Color.white : Color.primary)
                 Spacer(minLength: 6)
-                AgentStatusIcon(state: workspace.agentState, isSelected: isSelected)
                 NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
                     .frame(width: 20)
             }
@@ -40,14 +41,16 @@ struct WorkspaceRow: View {
                             .lineLimit(1)
                     }
                 }
-                // Align under the branch label: leading icon (16) + HStack spacing (8).
-                .padding(.leading, 24)
+                // Align under the branch label: status slot (16) + spacing (8) +
+                // Octicon (16) + spacing (8).
+                .padding(.leading, 48)
             }
         }
-        // Indent the content by the header's chevron slot (16) + HStack spacing (8)
-        // so the leading Octicon lines up under the Space name, not the chevron.
-        // Applied inside the pill, so selection still spans the full row width.
-        .padding(.leading, 24)
+        // No extra leading indent: the row's content edge already matches the
+        // header's content edge (both inset by pill 8 + outer 6). The leading
+        // status slot (16) lines up under the header chevron, and the HStack's
+        // 16 + 8 spacing lands the Octicon under the Space name — the exact
+        // position it held before the status icon existed.
         .padding(.vertical, 8)
         .padding(.horizontal, 8)
         .background(
@@ -114,10 +117,12 @@ private struct NotificationBubble: View {
     }
 }
 
-/// Trailing agent-status indicator: an SF Symbol reflecting the live `AgentState`.
-/// `working` spins continuously; the `idle`/`unknown` states render nothing yet
-/// still reserve a fixed-width slot so the notification bubble never shifts as the
-/// state changes. Selection-aware so the glyphs read on the accent selection pill.
+/// Leading agent-status indicator, occupying the chevron column under the Space
+/// header: an SF Symbol reflecting the live `AgentState`. `working` spins
+/// continuously; the `idle`/`unknown` states render nothing yet still reserve a
+/// fixed-width slot so the trailing Octicon column stays aligned across rows as
+/// the state changes. Selection-aware so the glyphs read on the accent selection
+/// pill.
 private struct AgentStatusIcon: View {
     let state: AgentState
     let isSelected: Bool
