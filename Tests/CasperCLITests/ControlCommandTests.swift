@@ -93,4 +93,33 @@ final class ControlCommandTests: XCTestCase {
         let command = try show.makeCommand()
         XCTAssertEqual(command.verb, .diffShow)
     }
+
+    func testWorkspaceNewBuildsCommand() throws {
+        var new = WorkspaceCommand.New()
+        new.branch = "feature-x"
+        new.base = "main"
+        new.target.workspace = "primary"
+        let command = try new.makeCommand()
+        XCTAssertEqual(command.verb, .workspaceNew)
+        XCTAssertEqual(command.branch, "feature-x")
+        XCTAssertEqual(command.base, "main")
+    }
+
+    func testWorkspaceNewRequiresBranch() {
+        var new = WorkspaceCommand.New()
+        new.branch = ""
+        new.target.workspace = "primary"
+        XCTAssertThrowsError(try new.makeCommand())
+    }
+
+    func testWorkspaceListBuildsCommand() throws {
+        let list = WorkspaceCommand.List()
+        XCTAssertEqual(list.makeCommand().verb, .workspaceList)
+    }
+
+    func testWorkspaceCurrentReadsEnv() throws {
+        let current = WorkspaceCommand.Current()
+        XCTAssertEqual(current.resolve(environment: ["CASPER_WORKSPACE_ID": "abc"]), "abc")
+        XCTAssertNil(current.resolve(environment: [:]))
+    }
 }
