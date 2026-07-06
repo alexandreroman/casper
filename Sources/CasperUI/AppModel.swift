@@ -1021,6 +1021,14 @@ final class AppModel {
         if !focused {
             spaces[at.space].workspaces[at.workspace].pendingNotification = true
         }
+        // A notification means "look at this workspace". If its owning Space is
+        // collapsed, the workspace row (and any attention bubble) is hidden, so expand
+        // the Space to surface it — regardless of focus, since the user may have
+        // collapsed a Space that still contains the selection. Guard on isCollapsed to
+        // avoid a redundant no-op animation.
+        if spaces[at.space].isCollapsed {
+            withAnimation(.snappy) { spaces[at.space].isCollapsed = false }
+        }
         if let message {
             deliverNotification(spaces[at.space].workspaces[at.workspace].name, message)
         }
