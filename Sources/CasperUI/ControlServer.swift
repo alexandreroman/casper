@@ -54,26 +54,32 @@ final class ControlServer {
                 return .failure("invalid state: \(command.state ?? "nil")")
             }
             return model.controlSetAgentState(state, for: id)
-                ? .success() : .failure("workspace not found")
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")
         case .progressSet:
             guard let total = command.total, let current = command.current,
                   let label = command.label else { return .failure("missing progress fields") }
             return model.controlSetProgress(total: total, current: current, label: label, for: id)
-                ? .success() : .failure("invalid progress \(current)/\(total)")
+                ? .success(workspace: id.uuidString) : .failure("invalid progress \(current)/\(total)")
         case .progressClear:
-            return model.controlClearProgress(for: id) ? .success() : .failure("workspace not found")
+            return model.controlClearProgress(for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")
         case .notify:
-            return model.controlRaiseNotification(message: command.message, for: id)
-                ? .success() : .failure("workspace not found")
+            guard let pending = model.controlRaiseNotification(message: command.message, for: id) else {
+                return .failure("workspace not found")
+            }
+            return .success(text: pending ? "true" : "false", workspace: id.uuidString)
         case .terminalNew:
-            return model.controlOpenTerminal(in: id) ? .success() : .failure("cannot open terminal")
+            return model.controlOpenTerminal(in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot open terminal")
         case .browserOpen:
             guard let raw = command.url, let url = URL(string: raw) else {
                 return .failure("invalid url: \(command.url ?? "nil")")
             }
-            return model.controlOpenBrowser(url: url, in: id) ? .success() : .failure("cannot open browser")
+            return model.controlOpenBrowser(url: url, in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot open browser")
         case .diffShow:
-            return model.controlShowDiff(in: id) ? .success() : .failure("workspace not found")
+            return model.controlShowDiff(in: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")
         case .workspaceList, .workspaceNew:
             return .failure("unreachable")  // handled above
         }

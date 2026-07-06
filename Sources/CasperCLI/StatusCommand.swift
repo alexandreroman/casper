@@ -24,6 +24,9 @@ struct StatusCommand: ParsableCommand {
             return ControlCommand(verb: .statusSet, workspace: selector, state: parsed.rawValue)
         }
 
-        func run() throws { _ = try sendControl(makeCommand(), retriable: false) }
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(StatusOut(status: state, workspace: response.workspace ?? ""))
+        }
     }
 }

@@ -18,6 +18,9 @@ struct TerminalCommand: ParsableCommand {
             ControlCommand(verb: .terminalNew, workspace: try requireSelector(target))
         }
 
-        func run() throws { _ = try sendControl(makeCommand(), retriable: false) }
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(TerminalOut(terminal: Opened(opened: true), workspace: response.workspace ?? ""))
+        }
     }
 }

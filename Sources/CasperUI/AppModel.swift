@@ -700,15 +700,6 @@ final class AppModel {
         return coordinator
     }
 
-    /// Add a new browser by splitting the anchored surface (or the focused one
-    /// when `anchor` is nil) to the RIGHT.
-    func applyNewBrowser(anchor: UUID? = nil) {
-        guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
-        let surface = Surface.blankBrowser()
-        insertSurfaceBySplitting(
-            at: at, focused: target, orientation: .horizontal, side: .after, surface: surface)
-    }
-
     /// Whether the workspace's owning Space is a Git repository.
     func isWorkspaceGitBacked(_ workspace: Workspace) -> Bool {
         space(for: workspace)?.isGitRepo ?? false
@@ -1033,9 +1024,13 @@ final class AppModel {
     /// Raise a workspace notification. The persistent attention bubble is suppressed
     /// when the target is focused (selected AND the window is key); the macOS
     /// notification (when a message is given) is always delivered.
+    ///
+    /// Returns the resulting `pendingNotification` state of the target workspace
+    /// (true if the bubble is now lit, false if it was suppressed because the
+    /// target was focused), or `nil` when no such workspace exists.
     @discardableResult
-    func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool {
-        guard let at = locate(workspaceID) else { return false }
+    func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool? {
+        guard let at = locate(workspaceID) else { return nil }
         // The attention bubble draws the eye to a workspace you are NOT looking
         // at. If the target is already focused (selected AND the window is key),
         // raising it is noise, so skip it. The macOS notification (with a message)
@@ -1048,7 +1043,7 @@ final class AppModel {
             deliverNotification(spaces[at.space].workspaces[at.workspace].name, message)
         }
         persist()
-        return true
+        return spaces[at.space].workspaces[at.workspace].pendingNotification
     }
 
     /// Dismiss the attention bubble of the selected workspace once it is focused
@@ -1092,16 +1087,14 @@ final class AppModel {
         return true
     }
 
-    /// Open a browser surface preloaded to `url` in `workspaceID`, splitting its
-    /// top-left surface to the right.
+    /// Load `url` into `workspaceID`'s inspector browser surface and select the
+    /// browser tab (expanding the panel). The browser lives ONLY in the inspector
+    /// — there are no browser layout panels — so this mirrors `controlShowDiff`.
     @discardableResult
     func controlOpenBrowser(url: URL, in workspaceID: UUID) -> Bool {
-        guard let ws = workspace(id: workspaceID),
-              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
-              let at = locateSurface(anchor) else { return false }
-        insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: .horizontal, side: .after,
-            surface: Surface(kind: .browser(url: url)))
+        guard let at = locate(workspaceID) else { return false }
+        spaces[at.space].workspaces[at.workspace].inspector.browser = Surface(kind: .browser(url: url))
+        setInspectorTab(.browser, for: workspaceID)   // selects the browser tab, expands, persists
         return true
     }
 

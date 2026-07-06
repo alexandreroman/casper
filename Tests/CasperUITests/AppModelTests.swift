@@ -734,40 +734,16 @@ final class AppModelTests: XCTestCase {
         return (model, sid)
     }
 
-    func testApplyNewBrowserAddsBrowserSurface() {
-        let (model, _) = modelWithOnePlainWorkspace()
-        model.applyNewBrowser()
-        let ids = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)
-        XCTAssertEqual(ids.count, 2)
-        let created = model.spaces[0].workspaces[0].layout
-        // The new focused surface is a browser.
-        let focus = model.focusedSurfaceID!
-        XCTAssertTrue(surfaceKindIsBrowser(created, focus))
-    }
-
-    func testApplyNewBrowserWithAnchorSplitsBesideAnchorNotFocus() throws {
-        let (model, first) = try modelWithOneGitWorkspace()
-        model.applyNewSplit(.right)  // two surfaces; focus is on the new (second) one
-        let second = model.focusedSurfaceID!
-
-        model.focusSurface(first)  // point global focus back at the FIRST surface
-        model.applyNewBrowser(anchor: second)  // anchor overrides focus
-
-        // The browser splits in beside the anchored surface, so it lands
-        // immediately after `second` — not after the focused `first`.
-        let ids = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)
-        let browser = model.focusedSurfaceID!
-        XCTAssertEqual(ids, [first, second, browser])
-        XCTAssertTrue(surfaceKindIsBrowser(model.spaces[0].workspaces[0].layout, browser))
-    }
-
     func testSetBrowserURLPersists() throws {
         let (model, _) = modelWithOnePlainWorkspace()
-        model.applyNewBrowser()
-        let focus = model.focusedSurfaceID!
-        model.setBrowserURL(focus, URL(string: "http://localhost:3000")!)
-        XCTAssertTrue(browserURL(model.spaces[0].workspaces[0].layout, focus)?.absoluteString
-            == "http://localhost:3000")
+        // Browsers live only in the inspector now, so an address-bar navigation
+        // (setBrowserURL) targets the workspace's inspector browser surface.
+        let browserID = model.spaces[0].workspaces[0].inspector.browser.id
+        model.setBrowserURL(browserID, URL(string: "http://localhost:3000")!)
+        guard case .browser(let url) = model.spaces[0].workspaces[0].inspector.browser.kind else {
+            return XCTFail("inspector browser surface is not a browser kind")
+        }
+        XCTAssertEqual(url.absoluteString, "http://localhost:3000")
     }
 
     // MARK: - Right inspector panel
@@ -897,16 +873,9 @@ final class AppModelTests: XCTestCase {
             return nil
         }
     }
-    private func surfaceKindIsBrowser(_ node: LayoutNode, _ id: UUID) -> Bool {
-        browserURL(node, id) != nil
-    }
     private func surfaceKindIsTerminal(_ node: LayoutNode, _ id: UUID) -> Bool {
         if case .terminal = surface(node, id)?.kind { return true }
         return false
-    }
-    private func browserURL(_ node: LayoutNode, _ id: UUID) -> URL? {
-        if case .browser(let url) = surface(node, id)?.kind { return url }
-        return nil
     }
 }
 

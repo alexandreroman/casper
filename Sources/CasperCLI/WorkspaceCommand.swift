@@ -16,9 +16,9 @@ struct WorkspaceCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: true)
-            for workspace in response.workspaces ?? [] {
-                print("\(workspace.id)\t\(workspace.name)\t\(workspace.branch)")
-            }
+            emit(response.workspaces?.map {
+                WorkspaceOut(id: $0.id, name: $0.name, branch: $0.branch)
+            } ?? [])
         }
     }
 
@@ -34,7 +34,7 @@ struct WorkspaceCommand: ParsableCommand {
             guard let id = resolve() else {
                 throw exitWithError("not inside a Casper terminal (CASPER_WORKSPACE_ID unset)")
             }
-            print(id)
+            emit(CurrentOut(workspace: id))
         }
     }
 
@@ -54,7 +54,10 @@ struct WorkspaceCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
-            if let id = response.text { print(id) }
+            guard let info = response.workspaces?.first else {
+                throw exitWithError("no workspace returned")
+            }
+            emit(WorkspaceNewOut(workspace: info.id, name: info.name, branch: info.branch))
         }
     }
 }

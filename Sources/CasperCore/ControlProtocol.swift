@@ -68,23 +68,28 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
 public struct ControlResponse: Codable, Equatable, Sendable {
     public var ok: Bool
     public var text: String?
+    /// The resolved target workspace id, so the CLI can echo which workspace an
+    /// action actually acted on.
+    public var workspace: String?
     public var workspaces: [ControlWorkspaceInfo]?
     public var error: String?
 
     public init(
-        ok: Bool, text: String? = nil,
+        ok: Bool, text: String? = nil, workspace: String? = nil,
         workspaces: [ControlWorkspaceInfo]? = nil, error: String? = nil
     ) {
         self.ok = ok
         self.text = text
+        self.workspace = workspace
         self.workspaces = workspaces
         self.error = error
     }
 
     public static func success(
-        text: String? = nil, workspaces: [ControlWorkspaceInfo]? = nil
+        text: String? = nil, workspaces: [ControlWorkspaceInfo]? = nil,
+        workspace: String? = nil
     ) -> ControlResponse {
-        ControlResponse(ok: true, text: text, workspaces: workspaces)
+        ControlResponse(ok: true, text: text, workspace: workspace, workspaces: workspaces)
     }
 
     public static func failure(_ message: String) -> ControlResponse {

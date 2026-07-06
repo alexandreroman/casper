@@ -16,5 +16,10 @@ struct NotifyCommand: ParsableCommand {
         ControlCommand(verb: .notify, workspace: try requireSelector(target), message: message)
     }
 
-    func run() throws { _ = try sendControl(makeCommand(), retriable: false) }
+    func run() throws {
+        let response = try sendControl(makeCommand(), retriable: false)
+        emit(NotifyOut(
+            pendingNotification: response.text == "true",
+            workspace: response.workspace ?? ""))
+    }
 }

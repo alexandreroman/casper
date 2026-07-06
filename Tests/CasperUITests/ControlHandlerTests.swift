@@ -89,25 +89,15 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(after, before + 1)
     }
 
-    func testOpenBrowserAddsBrowserSurface() throws {
+    func testOpenBrowserLoadsInspectorBrowserAndSelectsTab() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!
         XCTAssertTrue(model.controlOpenBrowser(url: url, in: id))
         let ws = try XCTUnwrap(model.workspace(id: id))
-        let surfaces = flattenSurfaces(ws.layout)
-        XCTAssertEqual(surfaces.count, 2)
-        XCTAssertTrue(surfaces.contains { surface in
-            if case .browser(let u) = surface.kind { return u == url }
-            return false
-        })
-    }
-
-    /// Depth-first flatten of a layout tree into its surfaces (test helper).
-    private func flattenSurfaces(_ node: LayoutNode) -> [Surface] {
-        switch node {
-        case .leaf(let surface): return [surface]
-        case .split(_, let children, _): return children.flatMap(flattenSurfaces)
-        }
+        XCTAssertEqual(ws.inspector.tab, .browser)
+        XCTAssertFalse(ws.inspector.collapsed)
+        if case .browser(let u) = ws.inspector.browser.kind { XCTAssertEqual(u, url) }
+        else { XCTFail("inspector browser surface is not a browser kind") }
     }
 
     func testShowDiffSelectsInspectorTab() throws {
@@ -158,14 +148,14 @@ final class ControlHandlerTests: XCTestCase {
     func testRaiseNotificationOnSelectedButBackgroundedSetsBubble() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }  // selected, but app not frontmost
-        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertEqual(model.controlRaiseNotification(message: nil, for: id), true)
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 
     func testRaiseNotificationOnFocusedWorkspaceSkipsBubble() {
         let (model, id) = seededModel()   // id is the selected workspace
         model.isWindowKey = { true }      // and the window is key → focused
-        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertEqual(model.controlRaiseNotification(message: nil, for: id), false)
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
     }
 
@@ -173,7 +163,7 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         model.selectedWorkspaceID = UUID()  // some OTHER workspace is selected
         model.isWindowKey = { true }        // app frontmost, but target not selected
-        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertEqual(model.controlRaiseNotification(message: nil, for: id), true)
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 

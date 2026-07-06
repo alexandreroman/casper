@@ -21,6 +21,9 @@ struct BrowserCommand: ParsableCommand {
             return ControlCommand(verb: .browserOpen, workspace: selector, url: url)
         }
 
-        func run() throws { _ = try sendControl(makeCommand(), retriable: false) }
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(BrowserOut(browser: BrowserBody(url: url), workspace: response.workspace ?? ""))
+        }
     }
 }

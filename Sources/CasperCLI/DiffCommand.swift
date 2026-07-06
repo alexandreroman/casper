@@ -20,6 +20,9 @@ struct DiffCommand: ParsableCommand {
                 verb: .diffShow, workspace: try requireSelector(workspaceTarget), target: target)
         }
 
-        func run() throws { _ = try sendControl(makeCommand(), retriable: false) }
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(DiffOut(view: "diff", workspace: response.workspace ?? ""))
+        }
     }
 }
