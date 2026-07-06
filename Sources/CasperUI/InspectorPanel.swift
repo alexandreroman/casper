@@ -35,7 +35,7 @@ struct InspectorPanel: View {
                 .fill(Color(nsColor: .separatorColor))
                 .frame(height: 2)
                 .padding(.top, -1)
-                .padding(.leading, 1)
+                .padding(.leading, -1)
             tabSelector
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
