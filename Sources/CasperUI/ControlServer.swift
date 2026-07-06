@@ -64,12 +64,10 @@ final class ControlServer {
             return model.controlClearProgress(for: id)
                 ? .success(workspace: id.uuidString) : .failure("workspace not found")
         case .notify:
-            guard let pending = model.controlRaiseNotification(message: command.message, for: id) else {
-                return .failure("workspace not found")
-            }
-            return .success(text: pending ? "true" : "false", workspace: id.uuidString)
+            return model.controlRaiseNotification(message: command.message, for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")
         case .terminalNew:
-            return model.controlOpenTerminal(in: id)
+            return model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd)
                 ? .success(workspace: id.uuidString) : .failure("cannot open terminal")
         case .browserOpen:
             guard let raw = command.url, let url = URL(string: raw) else {

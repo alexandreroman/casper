@@ -23,7 +23,7 @@ struct BrowserCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
-            emit(BrowserOut(browser: BrowserBody(url: url), workspace: response.workspace ?? ""))
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

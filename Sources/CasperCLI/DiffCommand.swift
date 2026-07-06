@@ -22,7 +22,7 @@ struct DiffCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
-            emit(DiffOut(view: "diff", workspace: response.workspace ?? ""))
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

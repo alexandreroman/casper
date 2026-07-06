@@ -49,7 +49,7 @@ struct ProgressCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
-            emit(ProgressOut(progress: nil, workspace: response.workspace ?? ""))
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

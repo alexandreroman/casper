@@ -13,14 +13,19 @@ struct TerminalCommand: ParsableCommand {
             abstract: "Open a new terminal as a split to the right.")
 
         @OptionGroup var target: WorkspaceTargetOption
+        @Option(name: .long, help: "Command to run in the new terminal.") var command: String?
+        @Option(name: .long, help: "Working directory for the new terminal (defaults to the workspace's worktree).")
+        var cwd: String?
 
         func makeCommand() throws -> ControlCommand {
-            ControlCommand(verb: .terminalNew, workspace: try requireSelector(target))
+            ControlCommand(
+                verb: .terminalNew, workspace: try requireSelector(target),
+                command: command, cwd: cwd)
         }
 
         func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(TerminalOut(terminal: Opened(opened: true), workspace: response.workspace ?? ""))
+            let r = try sendControl(makeCommand(), retriable: false)
+            emit(TerminalNewOut(workspace: r.workspace ?? "", command: command, cwd: cwd))
         }
     }
 }

@@ -18,8 +18,6 @@ struct NotifyCommand: ParsableCommand {
 
     func run() throws {
         let response = try sendControl(makeCommand(), retriable: false)
-        emit(NotifyOut(
-            pendingNotification: response.text == "true",
-            workspace: response.workspace ?? ""))
+        emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
     }
 }

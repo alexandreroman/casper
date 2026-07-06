@@ -3,8 +3,8 @@ import XCTest
 
 final class ControlTargetingTests: XCTestCase {
     private let candidates = [
-        ControlWorkspaceInfo(id: "11111111-1111-1111-1111-111111111111", name: "main", branch: "main"),
-        ControlWorkspaceInfo(id: "22222222-2222-2222-2222-222222222222", name: "feature", branch: "feature"),
+        ControlWorkspaceInfo(id: "11111111-1111-1111-1111-111111111111", name: "main", branch: "main", path: "/main"),
+        ControlWorkspaceInfo(id: "22222222-2222-2222-2222-222222222222", name: "feature", branch: "feature", path: "/feature"),
     ]
 
     func testMatchesByID() {

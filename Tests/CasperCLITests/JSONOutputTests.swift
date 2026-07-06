@@ -18,50 +18,41 @@ final class JSONOutputTests: XCTestCase {
             #"{"progress":{"current":1,"label":"wire","total":3},"workspace":"W"}"#)
     }
 
-    func testProgressNull() {
-        XCTAssertEqual(
-            jsonLine(ProgressOut(progress: nil, workspace: "W")),
-            #"{"progress":null,"workspace":"W"}"#)
-    }
-
-    func testNotify() {
-        XCTAssertEqual(
-            jsonLine(NotifyOut(pendingNotification: false, workspace: "W")),
-            #"{"pendingNotification":false,"workspace":"W"}"#)
-    }
-
-    func testTerminal() {
-        XCTAssertEqual(
-            jsonLine(TerminalOut(terminal: Opened(opened: true), workspace: "W")),
-            #"{"terminal":{"opened":true},"workspace":"W"}"#)
-    }
-
-    func testBrowserSlashesNotEscaped() {
-        XCTAssertEqual(
-            jsonLine(BrowserOut(browser: BrowserBody(url: "https://example.com/a"), workspace: "W")),
-            #"{"browser":{"url":"https://example.com/a"},"workspace":"W"}"#)
-    }
-
-    func testDiff() {
-        XCTAssertEqual(
-            jsonLine(DiffOut(view: "diff", workspace: "W")),
-            #"{"view":"diff","workspace":"W"}"#)
+    func testWorkspaceRef() {
+        XCTAssertEqual(jsonLine(WorkspaceRefOut(workspace: "W")), #"{"workspace":"W"}"#)
     }
 
     func testWorkspaceNew() {
         XCTAssertEqual(
-            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: "b")),
-            #"{"branch":"b","name":"n","workspace":"i"}"#)
+            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: "b", path: "p")),
+            #"{"branch":"b","name":"n","path":"p","workspace":"i"}"#)
     }
 
-    func testCurrent() {
-        XCTAssertEqual(jsonLine(CurrentOut(workspace: "i")), #"{"workspace":"i"}"#)
+    func testTerminalNew() {
+        XCTAssertEqual(
+            jsonLine(TerminalNewOut(workspace: "W", command: nil, cwd: nil)),
+            #"{"workspace":"W"}"#)
+        XCTAssertEqual(
+            jsonLine(TerminalNewOut(workspace: "W", command: "c", cwd: "d")),
+            #"{"command":"c","cwd":"d","workspace":"W"}"#)
+        XCTAssertEqual(
+            jsonLine(TerminalNewOut(workspace: "W", command: "c", cwd: nil)),
+            #"{"command":"c","workspace":"W"}"#)
     }
 
     func testWorkspaceArray() {
         XCTAssertEqual(
-            jsonLine([WorkspaceOut(id: "i", name: "n", branch: "b")]),
-            #"[{"branch":"b","id":"i","name":"n"}]"#)
+            jsonLine([WorkspaceOut(id: "i", name: "n", branch: "b", path: "p")]),
+            #"[{"branch":"b","id":"i","name":"n","path":"p"}]"#)
+    }
+
+    func testCurrent() {
+        XCTAssertEqual(
+            jsonLine(CurrentOut(workspace: "i", path: "p")),
+            #"{"path":"p","workspace":"i"}"#)
+        XCTAssertEqual(
+            jsonLine(CurrentOut(workspace: "i", path: nil)),
+            #"{"workspace":"i"}"#)
     }
 
     func testErrorEscaping() {

@@ -28,12 +28,15 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var target: String?      // diffShow: reserved diff selector (nil = default)
     public var branch: String?      // workspaceNew
     public var base: String?        // workspaceNew
+    public var command: String?     // terminalNew: optional command to run
+    public var cwd: String?         // terminalNew: optional working directory
 
     public init(
         verb: Verb, workspace: String? = nil, state: String? = nil,
         total: Int? = nil, current: Int? = nil, label: String? = nil,
         message: String? = nil, url: String? = nil, target: String? = nil,
-        branch: String? = nil, base: String? = nil
+        branch: String? = nil, base: String? = nil,
+        command: String? = nil, cwd: String? = nil
     ) {
         self.verb = verb
         self.workspace = workspace
@@ -46,6 +49,8 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         self.target = target
         self.branch = branch
         self.base = base
+        self.command = command
+        self.cwd = cwd
     }
 }
 
@@ -54,11 +59,13 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
     public var id: String
     public var name: String
     public var branch: String
+    public var path: String
 
-    public init(id: String, name: String, branch: String) {
+    public init(id: String, name: String, branch: String, path: String) {
         self.id = id
         self.name = name
         self.branch = branch
+        self.path = path
     }
 }
 

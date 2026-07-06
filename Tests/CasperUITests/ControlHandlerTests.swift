@@ -89,6 +89,30 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(after, before + 1)
     }
 
+    func testOpenTerminalHonorsCommandAndCwd() throws {
+        let (model, id) = seededModel()
+        XCTAssertTrue(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
+        let ws = try XCTUnwrap(model.workspace(id: id))
+        let match = surfaces(in: ws.layout).contains { surface in
+            if case .terminal(let cwd, let command) = surface.kind {
+                return cwd == "/some/dir" && command == "npm test"
+            }
+            return false
+        }
+        XCTAssertTrue(match, "expected a terminal surface with the given cwd and command")
+    }
+
+    /// Collect every leaf surface in a layout, depth-first (the test target has no
+    /// public surface-by-id accessor, so it walks the public `LayoutNode` directly).
+    private func surfaces(in node: LayoutNode) -> [Surface] {
+        switch node {
+        case .leaf(let surface):
+            return [surface]
+        case .split(_, let children, _):
+            return children.flatMap { surfaces(in: $0) }
+        }
+    }
+
     func testOpenBrowserLoadsInspectorBrowserAndSelectsTab() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!
@@ -148,14 +172,14 @@ final class ControlHandlerTests: XCTestCase {
     func testRaiseNotificationOnSelectedButBackgroundedSetsBubble() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }  // selected, but app not frontmost
-        XCTAssertEqual(model.controlRaiseNotification(message: nil, for: id), true)
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 
     func testRaiseNotificationOnFocusedWorkspaceSkipsBubble() {
         let (model, id) = seededModel()   // id is the selected workspace
         model.isWindowKey = { true }      // and the window is key → focused
-        XCTAssertEqual(model.controlRaiseNotification(message: nil, for: id), false)
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
     }
 
@@ -163,7 +187,7 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         model.selectedWorkspaceID = UUID()  // some OTHER workspace is selected
         model.isWindowKey = { true }        // app frontmost, but target not selected
-        XCTAssertEqual(model.controlRaiseNotification(message: nil, for: id), true)
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 

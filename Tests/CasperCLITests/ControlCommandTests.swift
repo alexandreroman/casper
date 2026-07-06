@@ -54,10 +54,13 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testTerminalNewBuildsCommand() throws {
-        let new = try TerminalCommand.New.parse(["--workspace", "feature"])
+        let new = try TerminalCommand.New.parse(
+            ["--workspace", "feature", "--command", "npm test", "--cwd", "/some/dir"])
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .terminalNew)
         XCTAssertEqual(command.workspace, "feature")
+        XCTAssertEqual(command.command, "npm test")
+        XCTAssertEqual(command.cwd, "/some/dir")
     }
 
     func testBrowserOpenBuildsCommand() throws {

@@ -27,7 +27,7 @@ final class ControlProtocolTests: XCTestCase {
     }
 
     func testWorkspaceInfoRoundTrips() throws {
-        let info = ControlWorkspaceInfo(id: "u", name: "n", branch: "b")
+        let info = ControlWorkspaceInfo(id: "u", name: "n", branch: "b", path: "p")
         let data = try JSONEncoder().encode(ControlResponse.success(workspaces: [info]))
         let decoded = try JSONDecoder().decode(ControlResponse.self, from: data)
         XCTAssertEqual(decoded.workspaces, [info])

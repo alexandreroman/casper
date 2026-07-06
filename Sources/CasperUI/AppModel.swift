@@ -1025,12 +1025,12 @@ final class AppModel {
     /// when the target is focused (selected AND the window is key); the macOS
     /// notification (when a message is given) is always delivered.
     ///
-    /// Returns the resulting `pendingNotification` state of the target workspace
-    /// (true if the bubble is now lit, false if it was suppressed because the
-    /// target was focused), or `nil` when no such workspace exists.
+    /// Returns `false` when no such workspace exists, `true` otherwise. The
+    /// attention bubble is only raised when the target is not already focused; the
+    /// macOS notification (when a message is given) is always delivered.
     @discardableResult
-    func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool? {
-        guard let at = locate(workspaceID) else { return nil }
+    func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
         // The attention bubble draws the eye to a workspace you are NOT looking
         // at. If the target is already focused (selected AND the window is key),
         // raising it is noise, so skip it. The macOS notification (with a message)
@@ -1043,7 +1043,7 @@ final class AppModel {
             deliverNotification(spaces[at.space].workspaces[at.workspace].name, message)
         }
         persist()
-        return spaces[at.space].workspaces[at.workspace].pendingNotification
+        return true
     }
 
     /// Dismiss the attention bubble of the selected workspace once it is focused
@@ -1072,18 +1072,22 @@ final class AppModel {
 
     func controlListWorkspaces() -> [ControlWorkspaceInfo] {
         allWorkspaces.map {
-            ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch)
+            ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath)
         }
     }
 
     /// Open a new terminal in `workspaceID` by splitting its top-left surface to
     /// the right. Mirrors the toolbar's "new terminal" action, but targeted at an
-    /// arbitrary (non-selected) workspace.
+    /// arbitrary (non-selected) workspace, and allows overriding the working
+    /// directory (defaults to the workspace's worktree) and running a command.
     @discardableResult
-    func controlOpenTerminal(in workspaceID: UUID) -> Bool {
+    func controlOpenTerminal(in workspaceID: UUID, command: String? = nil, cwd: String? = nil) -> Bool {
         guard let ws = workspace(id: workspaceID),
-              let anchor = LayoutTree.surfaceIDs(ws.layout).first else { return false }
-        applyNewTerminal(anchor: anchor)   // splits the anchor to the RIGHT
+              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
+              let at = locateSurface(anchor) else { return false }
+        insertSurfaceBySplitting(
+            at: at, focused: anchor, orientation: .horizontal, side: .after,
+            surface: Surface.terminal(cwd: cwd ?? ws.worktreePath, command: command))
         return true
     }
 
@@ -1116,6 +1120,6 @@ final class AppModel {
             return .failure(WorkspaceCreationError(message: "no target workspace"))
         }
         return createLinkedWorkspace(spaceID: space.id, name: branch, base: base)
-            .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch) }
+            .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 }

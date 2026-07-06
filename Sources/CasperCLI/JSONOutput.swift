@@ -40,81 +40,53 @@ struct ProgressBody: Encodable {
     let label: String
 }
 
-/// `{"progress":<body|null>,"workspace":"<id>"}`. The `progress` key is always
-/// present: a cleared progress must serialize as an explicit `{"progress":null}`,
-/// which the default synthesized encoding would omit.
+/// `{"progress":{…},"workspace":"<id>"}` — a progress report for `progress set`.
 struct ProgressOut: Encodable {
-    let progress: ProgressBody?
-    let workspace: String
-
-    private enum CodingKeys: String, CodingKey {
-        case progress
-        case workspace
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        if let progress {
-            try container.encode(progress, forKey: .progress)
-        } else {
-            try container.encodeNil(forKey: .progress)
-        }
-        try container.encode(workspace, forKey: .workspace)
-    }
-}
-
-/// `{"pendingNotification":<bool>,"workspace":"<id>"}`
-struct NotifyOut: Encodable {
-    let pendingNotification: Bool
+    let progress: ProgressBody
     let workspace: String
 }
 
-/// `{"terminal":{"opened":true},"workspace":"<id>"}`
-struct TerminalOut: Encodable {
-    let terminal: Opened
+/// `{"workspace":"<id>"}` — the sole "affected workspace" shape, shared by every
+/// command whose only meaningful output is which workspace it acted on
+/// (`progress clear`, `notify`, `browser open`, `diff show`).
+struct WorkspaceRefOut: Encodable {
     let workspace: String
 }
 
-struct Opened: Encodable {
-    let opened: Bool
-}
-
-/// `{"browser":{"url":"<url>"},"workspace":"<id>"}`
-struct BrowserOut: Encodable {
-    let browser: BrowserBody
+/// `{"command":"...","cwd":"...","workspace":"<id>"}` — the created terminal for
+/// `terminal new`. `command`/`cwd` are echoed only when they were specified;
+/// `JSONEncoder` omits nil optionals, so an unspecified field simply won't appear.
+struct TerminalNewOut: Encodable {
     let workspace: String
+    let command: String?
+    let cwd: String?
 }
 
-struct BrowserBody: Encodable {
-    let url: String
-}
-
-/// `{"view":"diff","workspace":"<id>"}`
-struct DiffOut: Encodable {
-    let view: String
-    let workspace: String
-}
-
-/// `{"id":"...","name":"...","branch":"..."}` — one workspace descriptor, used
-/// as an array element for `workspace list`.
+/// `{"id":"...","name":"...","branch":"...","path":"..."}` — one workspace
+/// descriptor, used as an array element for `workspace list`.
 struct WorkspaceOut: Encodable {
     let id: String
     let name: String
     let branch: String
+    let path: String
 }
 
-/// `{"workspace":"<new id>","name":"...","branch":"..."}` — the created
-/// workspace for `workspace new`. The new id is keyed as `workspace` (matching
-/// the affected-workspace convention), not `id`.
+/// `{"path":"...","workspace":"<id>"}` — the current workspace for
+/// `workspace current`. `path` is omitted when the id isn't found in the app's
+/// workspace list, so the caller still gets the id.
+struct CurrentOut: Encodable {
+    let workspace: String
+    let path: String?
+}
+
+/// `{"workspace":"<new id>","name":"...","branch":"...","path":"..."}` — the
+/// created workspace for `workspace new`. The new id is keyed as `workspace`
+/// (matching the affected-workspace convention), not `id`.
 struct WorkspaceNewOut: Encodable {
     let workspace: String
     let name: String
     let branch: String
-}
-
-/// `{"workspace":"<CASPER_WORKSPACE_ID>"}`
-struct CurrentOut: Encodable {
-    let workspace: String
+    let path: String
 }
 
 /// `{"error":"<message>"}` — the sole error shape, written to stderr.

@@ -17,7 +17,7 @@ struct WorkspaceCommand: ParsableCommand {
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: true)
             emit(response.workspaces?.map {
-                WorkspaceOut(id: $0.id, name: $0.name, branch: $0.branch)
+                WorkspaceOut(id: $0.id, name: $0.name, branch: $0.branch, path: $0.path)
             } ?? [])
         }
     }
@@ -34,7 +34,12 @@ struct WorkspaceCommand: ParsableCommand {
             guard let id = resolve() else {
                 throw exitWithError("not inside a Casper terminal (CASPER_WORKSPACE_ID unset)")
             }
-            emit(CurrentOut(workspace: id))
+            // Resolve the path via the control channel: a Casper terminal always has
+            // the app running, so the standard "Casper is not running" error is fine
+            // if the socket is unset/unreachable.
+            let response = try sendControl(ControlCommand(verb: .workspaceList), retriable: true)
+            let match = response.workspaces?.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
+            emit(CurrentOut(workspace: match?.id ?? id, path: match?.path))
         }
     }
 
@@ -57,7 +62,8 @@ struct WorkspaceCommand: ParsableCommand {
             guard let info = response.workspaces?.first else {
                 throw exitWithError("no workspace returned")
             }
-            emit(WorkspaceNewOut(workspace: info.id, name: info.name, branch: info.branch))
+            emit(WorkspaceNewOut(
+                workspace: info.id, name: info.name, branch: info.branch, path: info.path))
         }
     }
 }
