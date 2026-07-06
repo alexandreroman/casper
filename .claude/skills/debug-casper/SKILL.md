@@ -15,23 +15,29 @@ to `swift build`).
 
 ## 1. Build and launch
 
-Always launch under a dedicated **session** (`dev`) so this harness isolates its
-debug socket, control socket, and layout file from the user's real Casper
-instance — verification never disturbs a running dogfood instance.
+Always launch under a dedicated **session** so this harness isolates its debug
+socket, control socket, and layout file from the user's real Casper instance —
+verification never disturbs a running dogfood instance.
+
+Use a **unique** session name per test run, never a fixed one: several agents
+may be verifying different branches at the same time, and a shared name would
+collide on the same sockets and layout file. Derive it from the current branch
+(for readability) plus the shell PID (for uniqueness); keep it within the 1–32
+char, `[A-Za-z0-9._-]` limit:
 
 ```bash
 make build
-.build/debug/casper --session dev >/tmp/casper.out 2>&1 &
-export CASPER_SESSION=dev   # every `casper debug …` below inherits this
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
+export CASPER_SESSION="test-${branch:-x}-$$"   # e.g. test-my-feature-51377
+.build/debug/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
 ```
 
-Under `--session dev` the GUI binds its debug socket at
-`/tmp/casper-debug-dev.sock`. Exporting `CASPER_SESSION=dev` makes every
-`casper debug …` derive that same path (an explicit `CASPER_DEBUG_SOCKET` still
-overrides it). Wait for the socket:
+The GUI then binds its debug socket at `/tmp/casper-debug-$CASPER_SESSION.sock`.
+Exporting `CASPER_SESSION` makes every `casper debug …` below derive that same
+path (an explicit `CASPER_DEBUG_SOCKET` still overrides it). Wait for the socket:
 
 ```bash
-until [ -S /tmp/casper-debug-dev.sock ]; do sleep 0.2; done
+until [ -S "/tmp/casper-debug-$CASPER_SESSION.sock" ]; do sleep 0.2; done
 ```
 
 ## 2. Observe
@@ -125,7 +131,7 @@ fallback. The single-window demo exposes one surface, id `0`; Plan 5 adds more.
 ## 4. Teardown
 
 ```bash
-kill %1 2>/dev/null; rm -f /tmp/casper-debug-dev.sock
+kill %1 2>/dev/null; rm -f "/tmp/casper-debug-$CASPER_SESSION.sock"
 unset CASPER_SESSION
 ```
 
