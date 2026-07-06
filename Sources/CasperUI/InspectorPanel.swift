@@ -92,6 +92,9 @@ struct InspectorPanel: View {
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(isSelected ? Color(nsColor: .controlColor) : .clear)
                         .shadow(color: .black.opacity(isSelected ? 0.12 : 0), radius: 1, y: 0.5))
+                // Make the whole padded pill clickable, not just the glyphs:
+                // `.plain` buttons hit-test the label's content shape by default.
+                .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.12), value: isSelected)
