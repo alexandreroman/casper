@@ -27,11 +27,6 @@ struct SpaceHeaderView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // "Hidden selection" cue: a collapsed Space that owns the selected row.
-            if space.isCollapsed && ownsSelection {
-                Circle().fill(Color.accentColor).frame(width: 7, height: 7)
-            }
-
             trailingSlot
         }
         .padding(.vertical, 6)
@@ -58,10 +53,5 @@ struct SpaceHeaderView: View {
             }
         }
         .frame(width: 20)
-    }
-
-    private var ownsSelection: Bool {
-        guard let selected = model.selectedWorkspaceID else { return false }
-        return space.workspaces.contains { $0.id == selected }
     }
 }
