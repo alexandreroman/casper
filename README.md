@@ -156,15 +156,6 @@ workspace other than the current one. Commands talk to the running app over a
 Unix domain socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal
 alongside `$CASPER_WORKSPACE_ID` and `$CASPER_PORT[_0..9]`.
 
-### Named sessions
-
-Launch the app with `casper --session <name>` (name: 1–32 chars from
-`[A-Za-z0-9._-]`) to run an **isolated instance**: its layout file
-(`session-<name>.json`), control socket, and debug socket are all suffixed with
-the session name, and its terminals carry `CASPER_SESSION=<name>`. This lets a
-throwaway/test build run alongside your real Casper without clobbering its saved
-layout or sockets. With no `--session`, paths are exactly as before.
-
 Every command is machine-readable: on success it prints a JSON object (or array)
 to stdout describing the affected `workspace` and any resulting state; on error
 it prints `{"error":"…"}` to stderr and exits non-zero. `workspace delete` is

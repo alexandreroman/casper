@@ -1,6 +1,6 @@
 ---
 name: "App sessions (--session) and isolated live verification"
-description: "casper --session <name> suffixes layout+sockets and sets CASPER_SESSION; live-verify the GUI under session dev to never disturb the real instance"
+description: "casper --session <name> (DEBUG builds only) suffixes layout+sockets and sets CASPER_SESSION; live-verify the GUI under session dev to never disturb the real instance"
 type: feedback
 ---
 
@@ -24,9 +24,12 @@ that collision. Confirmed by live test: a `--session dev` run left the real
 **How to apply:**
 
 - `SessionIdentity` (CasperCore) is the single source of the `-<name>` suffix.
-  No `--session` → default session = byte-for-byte the historical paths (no
-  `CASPER_SESSION` injected). Name rule: 1–32 chars from `[A-Za-z0-9._-]`; an
-  invalid name exits non-zero at launch (never a silent fallback).
+  Parsing `--session` is gated by `#if DEBUG`: a release build ignores the
+  argument entirely and always runs the default session. No `--session` (or
+  any `--session` in a release build) → default session = byte-for-byte the
+  historical paths (no `CASPER_SESSION` injected). Name rule: 1–32 chars from
+  `[A-Za-z0-9._-]`; an invalid name exits non-zero at launch in a debug build
+  (never a silent fallback).
 - **Domain CLI** (`status`/`notify`/…) needs no change per session: it reads the
   per-session `CASPER_CONTROL_SOCKET` already injected into the terminal — it
   does **not** read `CASPER_SESSION`. Keep the "only works inside a Casper

@@ -23,9 +23,10 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 - **Control channel** — a bidirectional request/response Unix-domain-socket
   channel (protocol + client in CasperCore; server wired in the `casper` target
   via a `DebugSurfaceProvider`). Default path `/tmp/casper-debug.sock`; under
-  `--session <name>` it is `/tmp/casper-debug-<name>.sock`, and an external
-  driver targets a session by exporting `CASPER_SESSION=<name>` (the CLI derives
-  the same path). See [[app-sessions]].
+  `--session <name>` (itself a `#if DEBUG`-only flag) it is
+  `/tmp/casper-debug-<name>.sock`, and an external driver targets a session by
+  exporting `CASPER_SESSION=<name>` (the CLI derives the same path). See
+  [[app-sessions]].
 - **Verbs** — `dump-state` (windows/surfaces/cwd/title/cols/rows/focus),
   `read-text [--scrollback]`, `send-text <str> [--enter]`, `screenshot <path>`.
 - **Surface addressing** — each surface has a stable string `id`; `dump-state`

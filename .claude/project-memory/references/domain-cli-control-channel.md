@@ -23,13 +23,14 @@ Every workspace-scoped command accepts `--workspace <id-or-name>`, defaulting to
 `$CASPER_WORKSPACE_ID` (set in every Casper terminal). Each command sends a
 `ControlCommand` to the running app over a Unix domain socket named by
 `$CASPER_CONTROL_SOCKET` (per-surface env, alongside `$CASPER_WORKSPACE_ID`,
-`$CASPER_PORT[_0..9]`, and — under `--session <name>` — `$CASPER_SESSION`) and
-gets back a `ControlResponse`. This control channel **ships in every release
-build** — unlike the `#if DEBUG`-only `casper debug` channel
-([[debug-channel-gating]]). The socket path is **per-session**: default
-`casper-control.sock`, or `casper-control-<name>.sock` when the app is launched
-with `--session <name>` (see [[app-sessions]]); the domain CLI keys on the
-injected `$CASPER_CONTROL_SOCKET` path, not `$CASPER_SESSION`.
+`$CASPER_PORT[_0..9]`, and — under `--session <name>`, a DEBUG-build-only flag
+— `$CASPER_SESSION`) and gets back a `ControlResponse`. This control channel
+**ships in every release build** — unlike the `#if DEBUG`-only `casper debug`
+channel ([[debug-channel-gating]]) and the `#if DEBUG`-only `--session` flag
+itself. The socket path is **per-session**: default `casper-control.sock`, or
+`casper-control-<name>.sock` when a debug build is launched with `--session
+<name>` (see [[app-sessions]]); the domain CLI keys on the injected
+`$CASPER_CONTROL_SOCKET` path, not `$CASPER_SESSION`.
 
 ## JSON output (every command)
 
