@@ -19,6 +19,15 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(LayoutTree.surfaceIDs(root), [a.id, b.id, c.id])
     }
 
+    func testSurfacesReturnsSurfaceObjectsInOrder() {
+        let a = term(); let b = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        let surfaces = LayoutTree.surfaces(root)
+        XCTAssertEqual(surfaces, [a, b])  // ids and kinds, in order
+        XCTAssertEqual(surfaces.map(\.id), LayoutTree.surfaceIDs(root))  // mirrors the id walk
+    }
+
     func testSplitFromRootLeafWrapsInSplit() {
         let a = term(); let root = leaf(a); let b = term()
         let (out, focus) = LayoutTree.split(

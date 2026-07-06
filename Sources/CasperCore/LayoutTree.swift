@@ -16,6 +16,17 @@ public enum LayoutTree {
         }
     }
 
+    /// All surfaces in visual (depth-first) order — the `Surface`-valued twin of
+    /// `surfaceIDs`, walking the same cases.
+    public static func surfaces(_ node: LayoutNode) -> [Surface] {
+        switch node {
+        case .leaf(let surface):
+            return [surface]
+        case .split(_, let children, _):
+            return children.flatMap { surfaces($0) }
+        }
+    }
+
     /// Map a Ghostty split direction to an orientation and insertion side.
     public static func orientationAndSide(
         for direction: GhosttySplitDirectionLike

@@ -7,7 +7,7 @@ struct WorkspaceCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "workspace",
         abstract: "List, identify, and create workspaces.",
-        subcommands: [List.self, Current.self, New.self])
+        subcommands: [List.self, Current.self, New.self, Delete.self])
 
     struct List: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "List all workspaces.")
@@ -17,7 +17,9 @@ struct WorkspaceCommand: ParsableCommand {
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: true)
             emit(response.workspaces?.map {
-                WorkspaceOut(id: $0.id, name: $0.name, branch: $0.branch, path: $0.path)
+                WorkspaceOut(
+                    id: $0.id, name: $0.name,
+                    branch: $0.branch.isEmpty ? nil : $0.branch, path: $0.path)
             } ?? [])
         }
     }
@@ -63,7 +65,21 @@ struct WorkspaceCommand: ParsableCommand {
                 throw exitWithError("no workspace returned")
             }
             emit(WorkspaceNewOut(
-                workspace: info.id, name: info.name, branch: info.branch, path: info.path))
+                workspace: info.id, name: info.name,
+                branch: info.branch.isEmpty ? nil : info.branch, path: info.path))
+        }
+    }
+
+    struct Delete: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Delete a workspace: remove its worktree folder, its branch, and its UI entry.")
+        @OptionGroup var target: WorkspaceTargetOption
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .workspaceDelete, workspace: try requireSelector(target))
+        }
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

@@ -53,21 +53,49 @@ struct WorkspaceRefOut: Encodable {
     let workspace: String
 }
 
-/// `{"command":"...","cwd":"...","workspace":"<id>"}` — the created terminal for
-/// `terminal new`. `command`/`cwd` are echoed only when they were specified;
-/// `JSONEncoder` omits nil optionals, so an unspecified field simply won't appear.
+/// `{"terminal":"<id>","command":"...","working-dir":"...","workspace":"<id>"}` —
+/// the created terminal for `terminal new`. `working-dir` is always present (the
+/// resolved directory, defaulting to the workspace's worktree); `command` is
+/// echoed only when specified, since `JSONEncoder` omits nil optionals.
 struct TerminalNewOut: Encodable {
+    let terminal: String
     let workspace: String
     let command: String?
-    let cwd: String?
+    let workingDir: String
+
+    enum CodingKeys: String, CodingKey {
+        case terminal, workspace, command
+        case workingDir = "working-dir"
+    }
+}
+
+/// `{"id":"...","working-dir":"...","command":"..."}` — one terminal descriptor,
+/// used as an array element for `terminal list`. `command` is omitted when unset.
+struct TerminalInfoOut: Encodable {
+    let id: String
+    let workingDir: String
+    let command: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, command
+        case workingDir = "working-dir"
+    }
+}
+
+/// `{"terminal":"<id>","workspace":"<id>"}` — the closed terminal for
+/// `terminal close`.
+struct TerminalCloseOut: Encodable {
+    let terminal: String
+    let workspace: String
 }
 
 /// `{"id":"...","name":"...","branch":"...","path":"..."}` — one workspace
-/// descriptor, used as an array element for `workspace list`.
+/// descriptor, used as an array element for `workspace list`. `branch` is omitted
+/// when unknown (a degenerate space stores it as an empty string).
 struct WorkspaceOut: Encodable {
     let id: String
     let name: String
-    let branch: String
+    let branch: String?
     let path: String
 }
 
@@ -81,11 +109,12 @@ struct CurrentOut: Encodable {
 
 /// `{"workspace":"<new id>","name":"...","branch":"...","path":"..."}` — the
 /// created workspace for `workspace new`. The new id is keyed as `workspace`
-/// (matching the affected-workspace convention), not `id`.
+/// (matching the affected-workspace convention), not `id`. `branch` is omitted
+/// when unknown, matching `WorkspaceOut`.
 struct WorkspaceNewOut: Encodable {
     let workspace: String
     let name: String
-    let branch: String
+    let branch: String?
     let path: String
 }
 

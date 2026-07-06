@@ -26,24 +26,44 @@ final class JSONOutputTests: XCTestCase {
         XCTAssertEqual(
             jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: "b", path: "p")),
             #"{"branch":"b","name":"n","path":"p","workspace":"i"}"#)
+        XCTAssertEqual(
+            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: nil, path: "p")),
+            #"{"name":"n","path":"p","workspace":"i"}"#)
     }
 
     func testTerminalNew() {
+        // `working-dir` is always present (the resolved directory); `command` is
+        // omitted when nil.
         XCTAssertEqual(
-            jsonLine(TerminalNewOut(workspace: "W", command: nil, cwd: nil)),
-            #"{"workspace":"W"}"#)
+            jsonLine(TerminalNewOut(terminal: "t", workspace: "w", command: nil, workingDir: "/wt")),
+            #"{"terminal":"t","working-dir":"/wt","workspace":"w"}"#)
         XCTAssertEqual(
-            jsonLine(TerminalNewOut(workspace: "W", command: "c", cwd: "d")),
-            #"{"command":"c","cwd":"d","workspace":"W"}"#)
+            jsonLine(TerminalNewOut(terminal: "t", workspace: "w", command: "c", workingDir: "/wt")),
+            #"{"command":"c","terminal":"t","working-dir":"/wt","workspace":"w"}"#)
+    }
+
+    func testTerminalInfoArray() {
         XCTAssertEqual(
-            jsonLine(TerminalNewOut(workspace: "W", command: "c", cwd: nil)),
-            #"{"command":"c","workspace":"W"}"#)
+            jsonLine([TerminalInfoOut(id: "t", workingDir: "d", command: "c")]),
+            #"[{"command":"c","id":"t","working-dir":"d"}]"#)
+        XCTAssertEqual(
+            jsonLine([TerminalInfoOut(id: "t", workingDir: "d", command: nil)]),
+            #"[{"id":"t","working-dir":"d"}]"#)
+    }
+
+    func testTerminalClose() {
+        XCTAssertEqual(
+            jsonLine(TerminalCloseOut(terminal: "t", workspace: "w")),
+            #"{"terminal":"t","workspace":"w"}"#)
     }
 
     func testWorkspaceArray() {
         XCTAssertEqual(
             jsonLine([WorkspaceOut(id: "i", name: "n", branch: "b", path: "p")]),
             #"[{"branch":"b","id":"i","name":"n","path":"p"}]"#)
+        XCTAssertEqual(
+            jsonLine([WorkspaceOut(id: "i", name: "n", branch: nil, path: "p")]),
+            #"[{"id":"i","name":"n","path":"p"}]"#)
     }
 
     func testCurrent() {

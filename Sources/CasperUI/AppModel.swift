@@ -1006,6 +1006,12 @@ final class AppModel {
         var description: String { message }
     }
 
+    /// Error carrying a human-readable reason for a rejected `workspace delete`.
+    struct WorkspaceDeleteError: Error, CustomStringConvertible {
+        let message: String
+        var description: String { message }
+    }
+
     // MARK: - CLI control handlers
     //
     // Explicit, agent-agnostic state reporting and UI driving for the `casper`
@@ -1099,13 +1105,38 @@ final class AppModel {
     /// arbitrary (non-selected) workspace, and allows overriding the working
     /// directory (defaults to the workspace's worktree) and running a command.
     @discardableResult
-    func controlOpenTerminal(in workspaceID: UUID, command: String? = nil, cwd: String? = nil) -> Bool {
+    func controlOpenTerminal(in workspaceID: UUID, command: String? = nil, cwd: String? = nil) -> ControlTerminalInfo? {
         guard let ws = workspace(id: workspaceID),
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
-              let at = locateSurface(anchor) else { return false }
+              let at = locateSurface(anchor) else { return nil }
+        let resolvedCwd = cwd ?? ws.worktreePath
+        let surface = Surface.terminal(cwd: resolvedCwd, command: command)
         insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: .horizontal, side: .after,
-            surface: Surface.terminal(cwd: cwd ?? ws.worktreePath, command: command))
+            at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
+        return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd, command: command)
+    }
+
+    /// List the terminal surfaces of `workspaceID` in visual (depth-first) order.
+    /// Non-terminal leaves (none exist in a layout today, but the filter stays
+    /// defensive) are skipped.
+    func controlListTerminals(in workspaceID: UUID) -> [ControlTerminalInfo] {
+        guard let ws = workspace(id: workspaceID) else { return [] }
+        return LayoutTree.surfaces(ws.layout).compactMap { surface in
+            guard case .terminal(let cwd, let command) = surface.kind else { return nil }
+            return ControlTerminalInfo(id: surface.id.uuidString, cwd: cwd, command: command)
+        }
+    }
+
+    /// Close the terminal `terminalID` in `workspaceID`. Returns false when the id
+    /// is malformed or is not a terminal surface of that workspace.
+    func controlCloseTerminal(in workspaceID: UUID, terminalID: String?) -> Bool {
+        guard let terminalID, let uuid = UUID(uuidString: terminalID),
+              let ws = workspace(id: workspaceID),
+              LayoutTree.surfaces(ws.layout).contains(where: { surface in
+                  guard surface.id == uuid, case .terminal = surface.kind else { return false }
+                  return true
+              }) else { return false }
+        applyCloseSurface(uuid)
         return true
     }
 
@@ -1162,5 +1193,34 @@ final class AppModel {
         }
         return createLinkedWorkspace(spaceID: space.id, name: branch, base: base)
             .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
+    }
+
+    /// Destroy a LINKED workspace: prune its worktree (deletes the folder),
+    /// delete its branch in the origin repo, then drop it from the UI. Refuses a
+    /// primary workspace. Git cleanup runs BEFORE the UI removal so a git failure
+    /// leaves the workspace intact and retryable. Pruning must precede the branch
+    /// delete (a checked-out branch cannot be deleted); pruning is skipped when the
+    /// worktree is already gone, and the branch delete is idempotent.
+    @discardableResult
+    func controlDeleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+        guard let at = locate(workspaceID) else {
+            return .failure(WorkspaceDeleteError(message: "workspace not found"))
+        }
+        guard spaces[at.space].workspaces[at.workspace].kind == .linked else {
+            return .failure(WorkspaceDeleteError(message: "cannot delete the primary workspace"))
+        }
+        let repoPath = spaces[at.space].folderPath
+        let branch = spaces[at.space].workspaces[at.workspace].branch
+        do {
+            let names = (try? WorktreeManager.list(repoPath: repoPath).map(\.name)) ?? []
+            if names.contains(branch) {
+                try WorktreeManager.remove(repoPath: repoPath, name: branch)
+            }
+            try WorktreeManager.deleteBranch(repoPath: repoPath, name: branch)
+        } catch {
+            return .failure(WorkspaceDeleteError(message: "delete failed: \(error)"))
+        }
+        removeWorkspace(id: workspaceID)   // drops from UI, releases port, discards views
+        return .success(())
     }
 }

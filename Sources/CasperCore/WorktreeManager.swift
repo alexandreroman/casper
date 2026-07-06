@@ -84,6 +84,12 @@ public enum WorktreeManager {
         try mapGitError { try repo.pruneWorktree(name: name) }
     }
 
+    /// Delete the local branch `name` in the repository at `repoPath`. Idempotent.
+    public static func deleteBranch(repoPath: String, name: String) throws {
+        let repo = try openRepo(repoPath)
+        try mapGitError { try repo.deleteBranch(name) }
+    }
+
     /// Whether the working tree of the repository at `repoPath` is clean.
     public static func isClean(repoPath: String) throws -> Bool {
         let repo = try openRepo(repoPath)

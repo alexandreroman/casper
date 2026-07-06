@@ -1,12 +1,13 @@
 import ArgumentParser
 import CasperCore
 
-/// `casper terminal new` — open a new terminal as a split to the right.
+/// `casper terminal new|list|close` — open, enumerate, and close terminals in a
+/// workspace.
 struct TerminalCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "terminal",
-        abstract: "Open terminals in a workspace.",
-        subcommands: [New.self])
+        abstract: "Open, list, and close terminals in a workspace.",
+        subcommands: [New.self, List.self, Close.self])
 
     struct New: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -14,18 +15,58 @@ struct TerminalCommand: ParsableCommand {
 
         @OptionGroup var target: WorkspaceTargetOption
         @Option(name: .long, help: "Command to run in the new terminal.") var command: String?
-        @Option(name: .long, help: "Working directory for the new terminal (defaults to the workspace's worktree).")
-        var cwd: String?
+        @Option(
+            name: .customLong("working-dir"),
+            help: "Working directory for the new terminal (defaults to the workspace's worktree).")
+        var workingDir: String?
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .terminalNew, workspace: try requireSelector(target),
-                command: command, cwd: cwd)
+                command: command, cwd: workingDir)
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            guard let info = response.terminals?.first else { throw exitWithError("no terminal returned") }
+            emit(TerminalNewOut(
+                terminal: info.id, workspace: response.workspace ?? "",
+                command: info.command, workingDir: info.cwd))
+        }
+    }
+
+    struct List: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "List the terminals in a workspace.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .terminalList, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
+            let r = try sendControl(makeCommand(), retriable: true)
+            emit((r.terminals ?? []).map {
+                TerminalInfoOut(id: $0.id, workingDir: $0.cwd, command: $0.command)
+            })
+        }
+    }
+
+    struct Close: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Close a terminal by id.")
+
+        @Argument(help: "The id of the terminal to close.") var id: String
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: id)
         }
 
         func run() throws {
             let r = try sendControl(makeCommand(), retriable: false)
-            emit(TerminalNewOut(workspace: r.workspace ?? "", command: command, cwd: cwd))
+            emit(TerminalCloseOut(terminal: id, workspace: r.workspace ?? ""))
         }
     }
 }

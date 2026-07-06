@@ -67,8 +67,16 @@ final class ControlServer {
             return model.controlRaiseNotification(message: command.message, for: id)
                 ? .success(workspace: id.uuidString) : .failure("workspace not found")
         case .terminalNew:
-            return model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd)
-                ? .success(workspace: id.uuidString) : .failure("cannot open terminal")
+            guard let info = model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd) else {
+                return .failure("cannot open terminal")
+            }
+            return .success(workspace: id.uuidString, terminals: [info])
+        case .terminalList:
+            return .success(workspace: id.uuidString, terminals: model.controlListTerminals(in: id))
+        case .terminalClose:
+            return model.controlCloseTerminal(in: id, terminalID: command.target)
+                ? .success(workspace: id.uuidString)
+                : .failure("no terminal '\(command.target ?? "")' in this workspace")
         case .browserOpen:
             guard let raw = command.url, let url = URL(string: raw) else {
                 return .failure("invalid url: \(command.url ?? "nil")")
@@ -77,6 +85,11 @@ final class ControlServer {
                 ? .success(workspace: id.uuidString) : .failure("cannot open browser")
         case .diffOpen:
             switch model.controlOpenDiff(in: id, file: command.target) {
+            case .success: return .success(workspace: id.uuidString)
+            case .failure(let error): return .failure(error.message)
+            }
+        case .workspaceDelete:
+            switch model.controlDeleteWorkspace(id: id) {
             case .success: return .success(workspace: id.uuidString)
             case .failure(let error): return .failure(error.message)
             }

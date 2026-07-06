@@ -55,12 +55,29 @@ final class ControlCommandTests: XCTestCase {
 
     func testTerminalNewBuildsCommand() throws {
         let new = try TerminalCommand.New.parse(
-            ["--workspace", "feature", "--command", "npm test", "--cwd", "/some/dir"])
+            ["--workspace", "feature", "--command", "npm test", "--working-dir", "/some/dir"])
+        XCTAssertEqual(new.workingDir, "/some/dir")
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .terminalNew)
         XCTAssertEqual(command.workspace, "feature")
         XCTAssertEqual(command.command, "npm test")
         XCTAssertEqual(command.cwd, "/some/dir")
+    }
+
+    func testTerminalListBuildsCommand() throws {
+        let list = try TerminalCommand.List.parse(["--workspace", "feature"])
+        let command = try list.makeCommand()
+        XCTAssertEqual(command.verb, .terminalList)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testTerminalCloseBuildsCommand() throws {
+        let uuid = UUID().uuidString
+        let close = try TerminalCommand.Close.parse([uuid, "--workspace", "f"])
+        let command = try close.makeCommand()
+        XCTAssertEqual(command.verb, .terminalClose)
+        XCTAssertEqual(command.target, uuid)
+        XCTAssertEqual(command.workspace, "f")
     }
 
     func testBrowserOpenBuildsCommand() throws {
@@ -101,6 +118,13 @@ final class ControlCommandTests: XCTestCase {
     func testWorkspaceNewRequiresBranch() throws {
         let new = try WorkspaceCommand.New.parse(["--workspace", "primary"])
         XCTAssertThrowsError(try new.makeCommand())
+    }
+
+    func testWorkspaceDeleteBuildsCommand() throws {
+        let delete = try WorkspaceCommand.Delete.parse(["--workspace", "f"])
+        let command = try delete.makeCommand()
+        XCTAssertEqual(command.verb, .workspaceDelete)
+        XCTAssertEqual(command.workspace, "f")
     }
 
     func testWorkspaceListBuildsCommand() throws {

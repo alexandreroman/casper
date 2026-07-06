@@ -84,14 +84,22 @@ final class ControlHandlerTests: XCTestCase {
     func testOpenTerminalAddsSurface() throws {
         let (model, id) = seededModel()
         let before = model.workspace(id: id).map { LayoutTree.surfaceIDs($0.layout).count } ?? 0
-        XCTAssertTrue(model.controlOpenTerminal(in: id))
+        let info = try XCTUnwrap(model.controlOpenTerminal(in: id))
         let after = model.workspace(id: id).map { LayoutTree.surfaceIDs($0.layout).count } ?? 0
         XCTAssertEqual(after, before + 1)
+        let ws = try XCTUnwrap(model.workspace(id: id))
+        let newID = try XCTUnwrap(UUID(uuidString: info.id))
+        XCTAssertTrue(LayoutTree.surfaceIDs(ws.layout).contains(newID))
+        // No cwd passed → the resolved cwd is the workspace's worktree.
+        XCTAssertEqual(info.cwd, ws.worktreePath)
+        XCTAssertNil(info.command)
     }
 
     func testOpenTerminalHonorsCommandAndCwd() throws {
         let (model, id) = seededModel()
-        XCTAssertTrue(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
+        let info = try XCTUnwrap(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
+        XCTAssertEqual(info.cwd, "/some/dir")
+        XCTAssertEqual(info.command, "npm test")
         let ws = try XCTUnwrap(model.workspace(id: id))
         let match = surfaces(in: ws.layout).contains { surface in
             if case .terminal(let cwd, let command) = surface.kind {
@@ -100,6 +108,39 @@ final class ControlHandlerTests: XCTestCase {
             return false
         }
         XCTAssertTrue(match, "expected a terminal surface with the given cwd and command")
+    }
+
+    func testListTerminalsReportsOpenTerminals() throws {
+        let (model, id) = seededModel()
+        XCTAssertEqual(model.controlListTerminals(in: id).count, 1)  // the seeded leaf
+        XCTAssertNotNil(model.controlOpenTerminal(in: id, command: "htop", cwd: "/tmp"))
+        let terminals = model.controlListTerminals(in: id)
+        XCTAssertEqual(terminals.count, 2)
+        XCTAssertTrue(
+            terminals.contains { $0.cwd == "/tmp" && $0.command == "htop" },
+            "expected a listed terminal with the opened cwd and command")
+    }
+
+    func testCloseTerminalRemovesItById() throws {
+        let (model, id) = seededModel()
+        // Open a second terminal first: closing the LAST surface would tear down
+        // the workspace, so keep one alive to assert it survives.
+        XCTAssertNotNil(model.controlOpenTerminal(in: id))
+        let terminals = model.controlListTerminals(in: id)
+        XCTAssertEqual(terminals.count, 2)
+        let victim = try XCTUnwrap(terminals.first)
+        XCTAssertTrue(model.controlCloseTerminal(in: id, terminalID: victim.id))
+        let remaining = model.controlListTerminals(in: id)
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertFalse(remaining.contains { $0.id == victim.id })
+    }
+
+    func testCloseTerminalRejectsUnknownAndMalformedIds() throws {
+        let (model, id) = seededModel()
+        XCTAssertNotNil(model.controlOpenTerminal(in: id))  // keep at least two alive
+        XCTAssertFalse(model.controlCloseTerminal(in: id, terminalID: UUID().uuidString))  // random UUID
+        XCTAssertFalse(model.controlCloseTerminal(in: id, terminalID: "not-a-uuid"))       // non-UUID
+        XCTAssertEqual(model.controlListTerminals(in: id).count, 2)  // nothing closed
     }
 
     /// Collect every leaf surface in a layout, depth-first (the test target has no
@@ -182,6 +223,36 @@ final class ControlHandlerTests: XCTestCase {
         case .failure(let error):
             XCTFail("expected success, got \(error.message)")
         }
+    }
+
+    func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() throws {
+        let (model, primaryID, repoPath) = try seededGitModel(primaryBranch: "main")
+        let info: ControlWorkspaceInfo
+        switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-del", base: nil) {
+        case .success(let created): info = created
+        case .failure(let error): return XCTFail("setup failed: \(error.message)")
+        }
+        let linkedID = try XCTUnwrap(UUID(uuidString: info.id))
+        // Precondition: the linked worktree folder and its branch exist on disk.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: info.path))
+        XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(info.branch))
+
+        guard case .success = model.controlDeleteWorkspace(id: linkedID) else {
+            return XCTFail("expected delete to succeed")
+        }
+        // Gone from the UI, its worktree folder removed, and its branch deleted.
+        XCTAssertFalse(model.controlListWorkspaces().contains { $0.id == info.id })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: info.path))
+        XCTAssertFalse(try Repository.open(atPath: repoPath).branchExists(info.branch))
+    }
+
+    func testDeleteWorkspaceRefusesPrimary() throws {
+        let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
+        guard case .failure(let error) = model.controlDeleteWorkspace(id: primaryID) else {
+            return XCTFail("expected failure for a primary workspace")
+        }
+        XCTAssertTrue(error.message.contains("primary"), "got: \(error.message)")
+        XCTAssertTrue(model.controlListWorkspaces().contains { $0.id == primaryID.uuidString })
     }
 
     func testSetAgentState() {

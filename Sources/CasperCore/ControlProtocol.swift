@@ -11,10 +11,13 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case progressClear
         case notify
         case terminalNew
+        case terminalList
+        case terminalClose
         case browserOpen
         case diffOpen
         case workspaceList
         case workspaceNew
+        case workspaceDelete
     }
 
     public var verb: Verb
@@ -25,7 +28,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var label: String?       // progressSet
     public var message: String?     // notify: optional macOS-notification body
     public var url: String?         // browserOpen
-    public var target: String?      // diffOpen: file path to scroll to (nil = top)
+    public var target: String?      // diffOpen: file path to scroll to; terminalClose: terminal id
     public var branch: String?      // workspaceNew
     public var base: String?        // workspaceNew
     public var command: String?     // terminalNew: optional command to run
@@ -69,6 +72,19 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// A terminal surface summary returned by `terminalList`.
+public struct ControlTerminalInfo: Codable, Equatable, Sendable {
+    public var id: String
+    public var cwd: String
+    public var command: String?
+
+    public init(id: String, cwd: String, command: String? = nil) {
+        self.id = id
+        self.cwd = cwd
+        self.command = command
+    }
+}
+
 /// The reply to a `ControlCommand`. `text` carries a scalar result (e.g. a new
 /// workspace id); `workspaces` carries list results; `error` is set when `ok`
 /// is false.
@@ -79,24 +95,29 @@ public struct ControlResponse: Codable, Equatable, Sendable {
     /// action actually acted on.
     public var workspace: String?
     public var workspaces: [ControlWorkspaceInfo]?
+    public var terminals: [ControlTerminalInfo]?
     public var error: String?
 
     public init(
         ok: Bool, text: String? = nil, workspace: String? = nil,
-        workspaces: [ControlWorkspaceInfo]? = nil, error: String? = nil
+        workspaces: [ControlWorkspaceInfo]? = nil, terminals: [ControlTerminalInfo]? = nil,
+        error: String? = nil
     ) {
         self.ok = ok
         self.text = text
         self.workspace = workspace
         self.workspaces = workspaces
+        self.terminals = terminals
         self.error = error
     }
 
     public static func success(
         text: String? = nil, workspaces: [ControlWorkspaceInfo]? = nil,
-        workspace: String? = nil
+        workspace: String? = nil, terminals: [ControlTerminalInfo]? = nil
     ) -> ControlResponse {
-        ControlResponse(ok: true, text: text, workspace: workspace, workspaces: workspaces)
+        ControlResponse(
+            ok: true, text: text, workspace: workspace, workspaces: workspaces,
+            terminals: terminals)
     }
 
     public static func failure(_ message: String) -> ControlResponse {

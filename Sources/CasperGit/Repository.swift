@@ -72,6 +72,16 @@ public final class Repository {
         return true
     }
 
+    /// Delete the local branch `name`. A missing branch is a no-op (idempotent).
+    public func deleteBranch(_ name: String) throws {
+        var ref: OpaquePointer?
+        let code = git_branch_lookup(&ref, pointer, name, GIT_BRANCH_LOCAL)
+        defer { git_reference_free(ref) }
+        if code == GIT_ENOTFOUND.rawValue { return }
+        try gitCheck(code)
+        try gitCheck(git_branch_delete(ref))
+    }
+
     /// Whether local branch `name` is checked out in any working tree. Returns
     /// false if the branch does not exist.
     public func isBranchCheckedOut(_ name: String) throws -> Bool {
