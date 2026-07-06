@@ -50,4 +50,28 @@ final class PortAllocatorTests: XCTestCase {
         XCTAssertTrue(a.reserve(40010))  // exact last block base is in range
         XCTAssertFalse(a.reserve(40020)) // one block past rangeEnd is out of range
     }
+
+    func testAllocateWrapsAroundFromStartBase() throws {
+        var a = PortAllocator(rangeStart: 40000, rangeEnd: 40030, blockSize: 10, startBase: 40020)
+        XCTAssertEqual(try a.allocate(), 40020)
+        XCTAssertEqual(try a.allocate(), 40030)
+        XCTAssertEqual(try a.allocate(), 40000) // wrapped
+        XCTAssertEqual(try a.allocate(), 40010)
+        XCTAssertThrowsError(try a.allocate())  // exhausted
+    }
+
+    func testRandomStartBaseIsAlignedAndInRange() {
+        for _ in 0..<1000 {
+            let base = PortAllocator.randomStartBase()
+            XCTAssertGreaterThanOrEqual(base, 40000)
+            XCTAssertLessThanOrEqual(base, 49990)
+            XCTAssertEqual((base - 40000) % 10, 0)
+        }
+    }
+
+    func testDifferentStartsDoNotCollideOnFirstAllocation() throws {
+        var a = PortAllocator(startBase: 40000)
+        var b = PortAllocator(startBase: 40500)
+        XCTAssertNotEqual(try a.allocate(), try b.allocate())
+    }
 }
