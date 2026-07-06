@@ -22,10 +22,14 @@ with a handful of verbs. Full surface:
 Every workspace-scoped command accepts `--workspace <id-or-name>`, defaulting to
 `$CASPER_WORKSPACE_ID` (set in every Casper terminal). Each command sends a
 `ControlCommand` to the running app over a Unix domain socket named by
-`$CASPER_CONTROL_SOCKET` (per-surface env, alongside `$CASPER_WORKSPACE_ID` and
-`$CASPER_PORT[_0..9]`) and gets back a `ControlResponse`. This control channel
-**ships in every release build** — unlike the `#if DEBUG`-only `casper debug`
-channel ([[debug-channel-gating]]).
+`$CASPER_CONTROL_SOCKET` (per-surface env, alongside `$CASPER_WORKSPACE_ID`,
+`$CASPER_PORT[_0..9]`, and — under `--session <name>` — `$CASPER_SESSION`) and
+gets back a `ControlResponse`. This control channel **ships in every release
+build** — unlike the `#if DEBUG`-only `casper debug` channel
+([[debug-channel-gating]]). The socket path is **per-session**: default
+`casper-control.sock`, or `casper-control-<name>.sock` when the app is launched
+with `--session <name>` (see [[app-sessions]]); the domain CLI keys on the
+injected `$CASPER_CONTROL_SOCKET` path, not `$CASPER_SESSION`.
 
 ## JSON output (every command)
 
@@ -74,8 +78,9 @@ socket, no `hooks` CLI. A workspace's agent state (status / progress /
 notification) is set **only** by the explicit CLI verbs above; an agent (or any
 tool) calls `casper status set …` / `progress set …` / `notify …` itself. The
 only agent-facing runtime coupling is the per-surface environment
-(`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT*`) that
-`ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal.
+(`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT*`, and
+`CASPER_SESSION` under a named session) that `ClaudeCodeAdapter.surfaceEnvironment`
+injects into every Casper terminal.
 
 **Why:** an explicit, agent-agnostic, machine-readable surface — every workspace
 action has its own namespaced verb, emits JSON, and the stable per-surface

@@ -15,16 +15,23 @@ to `swift build`).
 
 ## 1. Build and launch
 
+Always launch under a dedicated **session** (`dev`) so this harness isolates its
+debug socket, control socket, and layout file from the user's real Casper
+instance — verification never disturbs a running dogfood instance.
+
 ```bash
 make build
-.build/debug/casper >/tmp/casper.out 2>&1 &
+.build/debug/casper --session dev >/tmp/casper.out 2>&1 &
+export CASPER_SESSION=dev   # every `casper debug …` below inherits this
 ```
 
-The GUI binds a debug socket at `/tmp/casper-debug.sock` (override with
-`CASPER_DEBUG_SOCKET`). Wait for it:
+Under `--session dev` the GUI binds its debug socket at
+`/tmp/casper-debug-dev.sock`. Exporting `CASPER_SESSION=dev` makes every
+`casper debug …` derive that same path (an explicit `CASPER_DEBUG_SOCKET` still
+overrides it). Wait for the socket:
 
 ```bash
-until [ -S /tmp/casper-debug.sock ]; do sleep 0.2; done
+until [ -S /tmp/casper-debug-dev.sock ]; do sleep 0.2; done
 ```
 
 ## 2. Observe
@@ -118,7 +125,8 @@ fallback. The single-window demo exposes one surface, id `0`; Plan 5 adds more.
 ## 4. Teardown
 
 ```bash
-kill %1 2>/dev/null; rm -f /tmp/casper-debug.sock
+kill %1 2>/dev/null; rm -f /tmp/casper-debug-dev.sock
+unset CASPER_SESSION
 ```
 
 ## Notes

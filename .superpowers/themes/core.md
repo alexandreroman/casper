@@ -17,9 +17,16 @@ The pure-Swift, UI-free core. Fully unit-tested.
 - **`PortAllocator`** — assigns the first free contiguous **10-port block** from a
   configurable range (default `40000–49990` → ~1000 workspaces), persisted as
   `portBase`, released on workspace removal. **Logical only** — blocks never
-  overlap, but ports are not OS-bound.
+  overlap, but ports are not OS-bound. The scan starts at a **randomized** block
+  base per app instance (`randomStartBase`) and wraps around, so two concurrent
+  instances (e.g. a `--session` test build alongside the real one) statistically
+  hand out different blocks to their first workspaces — a mitigation, not strict
+  isolation.
 - **`SessionStore`** — `Codable` + `FileManager` persistence, debounced on each
-  mutation; self-heals a corrupt `session.json`. The transient agent state
+  mutation; self-heals a corrupt layout file. The layout file is
+  `session.json` by default, or `session-<name>.json` when the app is launched
+  with `--session <name>` (see [[app-sessions]]), so a named session never
+  clobbers the default instance's layout. The transient agent state
   (`agentState`, `todos`, `pendingNotification`) is intentionally **not**
   persisted — it resets on load.
 - **Control channel** — `ControlProtocol` (`ControlCommand`/`ControlResponse`

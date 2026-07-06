@@ -12,9 +12,9 @@ two design increments (observability channel, then surface addressing).
 **Never ships in a release.** The entire channel — protocol, transport, CLI, and
 GUI wiring — is gated at **compile time** by `#if DEBUG`, physically absent from
 `make release` (`-c release`, `DEBUG` undefined). No runtime flag enables it;
-`CASPER_DEBUG_SOCKET` only selects the socket *path*. Logging keeps a floor:
-`.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
-[[debug-channel-gating]].
+`CASPER_DEBUG_SOCKET` only selects the socket *path* (else `CASPER_SESSION`
+derives it, else the default). Logging keeps a floor: `.error`/`.fault` always
+compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 
 ## Design
 
@@ -22,8 +22,10 @@ GUI wiring — is gated at **compile time** by `#if DEBUG`, physically absent fr
   `com.github.alexandreroman.casper`, categories `app`/`ghostty`/`hooks`/`debug`).
 - **Control channel** — a bidirectional request/response Unix-domain-socket
   channel (protocol + client in CasperCore; server wired in the `casper` target
-  via a `DebugSurfaceProvider`). Discovered at
-  `NSTemporaryDirectory()/casper-debug.sock`.
+  via a `DebugSurfaceProvider`). Default path `/tmp/casper-debug.sock`; under
+  `--session <name>` it is `/tmp/casper-debug-<name>.sock`, and an external
+  driver targets a session by exporting `CASPER_SESSION=<name>` (the CLI derives
+  the same path). See [[app-sessions]].
 - **Verbs** — `dump-state` (windows/surfaces/cwd/title/cols/rows/focus),
   `read-text [--scrollback]`, `send-text <str> [--enter]`, `screenshot <path>`.
 - **Surface addressing** — each surface has a stable string `id`; `dump-state`
