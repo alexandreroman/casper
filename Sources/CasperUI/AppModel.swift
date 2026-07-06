@@ -8,6 +8,13 @@ import Observation
 import SwiftUI
 import UserNotifications
 
+/// Lets control-handler results use `Result<_, String>`: every current failure
+/// case is already a human-readable message meant to be shown or printed
+/// verbatim, so a one-off wrapper error type would add indirection with no
+/// benefit. `@retroactive` acknowledges that neither `String` nor `Error` is
+/// declared in this module.
+extension String: @retroactive Error {}
+
 /// The single owner of runtime UI state and the bridge from the non-observable
 /// core types to SwiftUI. Membership changes (add/remove folder) persist
 /// synchronously; high-frequency agent-state changes (Task 4) debounce.
@@ -294,11 +301,28 @@ final class AppModel {
     /// cannot be created.
     @discardableResult
     func addLinkedWorkspace(spaceID: UUID, name: String) -> Bool {
-        guard let si = spaces.firstIndex(where: { $0.id == spaceID }),
-              spaces[si].isGitRepo,
-              let branch = GitBranchName.sanitize(name) else { return false }
+        if case .success = createLinkedWorkspace(spaceID: spaceID, name: name, base: nil) {
+            return true
+        }
+        return false
+    }
+
+    /// Create a linked workspace (new branch + worktree at `<parent>/<repo>-<branch>`)
+    /// in a Git Space. `base` overrides the fork point; nil derives it from the
+    /// primary workspace's branch (the prior behavior). Returns the new workspace or
+    /// a human-readable error.
+    func createLinkedWorkspace(
+        spaceID: UUID, name: String, base baseOverride: String?
+    ) -> Result<Workspace, String> {
+        guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
+            return .failure("space not found")
+        }
+        guard spaces[si].isGitRepo else { return .failure("space is not a Git repository") }
+        guard let branch = GitBranchName.sanitize(name) else {
+            return .failure("invalid branch name: \(name)")
+        }
         let folder = spaces[si].folderPath
-        let base = spaces[si].workspaces.first?.branch ?? ""
+        let base = baseOverride ?? (spaces[si].workspaces.first?.branch ?? "")
         let folderURL = URL(fileURLWithPath: folder)
         let basePath = folderURL.deletingLastPathComponent()
             .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
@@ -306,8 +330,7 @@ final class AppModel {
 
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
-            CasperLog.app.failure("cannot add workspace: no free port block", error)
-            return false
+            return .failure("no free port block")
         }
         do {
             _ = try WorktreeManager.create(
@@ -315,8 +338,7 @@ final class AppModel {
                 base: base.isEmpty ? nil : base)
         } catch {
             portAllocator.release(portBase)
-            CasperLog.app.failure("worktree creation failed", error)
-            return false
+            return .failure("worktree creation failed: \(error.localizedDescription)")
         }
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
@@ -324,7 +346,7 @@ final class AppModel {
         spaces[si].workspaces.append(ws)
         selectWorkspace(ws.id)
         persist()
-        return true
+        return .success(ws)
     }
 
     /// Drop a linked workspace (never a primary); releases its port, leaves the
@@ -1028,5 +1050,50 @@ final class AppModel {
         allWorkspaces.map {
             ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch)
         }
+    }
+
+    /// Open a new terminal in `workspaceID` by splitting its top-left surface to
+    /// the right. Mirrors the toolbar's "new terminal" action, but targeted at an
+    /// arbitrary (non-selected) workspace.
+    @discardableResult
+    func controlOpenTerminal(in workspaceID: UUID) -> Bool {
+        guard let ws = workspace(id: workspaceID),
+              let anchor = LayoutTree.surfaceIDs(ws.layout).first else { return false }
+        applyNewTerminal(anchor: anchor)   // splits the anchor to the RIGHT
+        return true
+    }
+
+    /// Open a browser surface preloaded to `url` in `workspaceID`, splitting its
+    /// top-left surface to the right.
+    @discardableResult
+    func controlOpenBrowser(url: URL, in workspaceID: UUID) -> Bool {
+        guard let ws = workspace(id: workspaceID),
+              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
+              let at = locateSurface(anchor) else { return false }
+        insertSurfaceBySplitting(
+            at: at, focused: anchor, orientation: .horizontal, side: .after,
+            surface: Surface(kind: .browser(url: url)))
+        return true
+    }
+
+    /// Switch `workspaceID`'s inspector to the diff tab, expanding the panel.
+    @discardableResult
+    func controlShowDiff(in workspaceID: UUID) -> Bool {
+        guard locate(workspaceID) != nil else { return false }
+        setInspectorTab(.diff, for: workspaceID)
+        return true
+    }
+
+    /// Create a linked workspace in the Space that owns `workspaceID` (the control
+    /// channel's "create workspace" verb, targetable from any workspace in that
+    /// Space, not just the primary).
+    func controlCreateWorkspace(
+        inSpaceOf workspaceID: UUID, branch: String, base: String?
+    ) -> Result<ControlWorkspaceInfo, String> {
+        guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
+            return .failure("no target workspace")
+        }
+        return createLinkedWorkspace(spaceID: space.id, name: branch, base: base)
+            .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch) }
     }
 }
