@@ -20,7 +20,8 @@
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf (drops in-process writes), realpath-canonicalize paths, barrier stop()
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — worktree watcher (excl. .git) + reflog watcher on <gitdir>/logs; second one refreshes diff after commit
-- [Hooks install once](references/hooks-install-once.md) — hooks installed once GLOBALLY (~/.claude/settings.json) via CLI or at app startup, not per worktree; `hooks feed` relays
+- [Hooks install once](references/hooks-install-once.md) — hooks installed once GLOBALLY (~/.claude/settings.json) at app startup, not per worktree; `casper hooks` CLI removed (Task 14), GUI installer is follow-up
+- [Domain CLI and control channel](references/domain-cli-control-channel.md) — status/progress/notify/terminal/browser/diff/workspace CLI over `$CASPER_CONTROL_SOCKET`, ships in release; `hooks` CLI removed
 - [CLI availability](references/cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
 - [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir
 - [Debug channel and logging gating](references/debug-channel-gating.md) — debug control channel is `#if DEBUG` only, never in release; verbose logs gated, `.error`/`.fault` kept

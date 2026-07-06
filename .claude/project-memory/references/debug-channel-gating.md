@@ -18,6 +18,13 @@ Structured logging (`CasperLog` over `os.Logger`) follows the same rule with a
 diagnostic floor: `.error`/`.fault` stay compiled in for field crash diagnosis;
 `.debug`/`.info` verbose events are gated by `#if DEBUG`.
 
+**Scope note:** this gating applies only to the `casper debug` /
+`DebugSocketServer` channel. The separate domain **control channel** (`status`/
+`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`, over
+`$CASPER_CONTROL_SOCKET`) ships in every release build by design — see
+[[domain-cli-control-channel]]. Do not conflate the two when reasoning about
+what is release-safe.
+
 **Why:** the debug channel is an injectable local control socket; leaving it in a
 shipped build is an attack surface, and it must never reach a distributed
 release. `#if DEBUG` guarantees absence by construction because

@@ -38,7 +38,12 @@ at app startup, avoids that. The design spec, README, and the Space spec/plan
 describe this global model.
 
 **How to apply:** `ClaudeCodeAdapter.install` targets `~/.claude/settings.json`
-(the path is injectable for tests) and merges into it. `casper hooks setup` and
-the Plan 5 app-startup path both call it; neither iterates worktrees. A
-`--agent` option and per-agent `hooks <agent> install` are deferred — v1 is
-Claude-only.
+(the path is injectable for tests) and merges into it. The app-startup path
+calls it; it does not iterate worktrees. A `--agent` option and per-agent
+`hooks <agent> install` are deferred — v1 is Claude-only.
+
+**Update (Task 14):** `casper hooks setup` and `casper hooks feed` are removed
+from the CLI — the global-install model above still holds, but the *trigger*
+is now app-startup only, pending a GUI installer (follow-up). See
+[[domain-cli-control-channel]] for the CLI that replaced the `hooks` command
+family.
