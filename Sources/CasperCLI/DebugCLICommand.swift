@@ -16,7 +16,11 @@ struct DebugCLICommand: ParsableCommand {
 
 /// Shared socket-path option.
 struct SocketOption: ParsableArguments {
-    @Option(name: .long, help: "Debug socket path (defaults to CASPER_DEBUG_SOCKET or /tmp/casper-debug.sock).")
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Debug socket path (defaults to CASPER_DEBUG_SOCKET, else the CASPER_SESSION-derived "
+                + "socket, else /tmp/casper-debug.sock)."))
     var socket: String?
 
     var path: String { socket ?? DebugSocketPath.default }

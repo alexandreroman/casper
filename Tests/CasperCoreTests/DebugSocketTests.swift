@@ -96,7 +96,14 @@ final class DebugSocketTests: XCTestCase {
     }
 
     func testDefaultPathWhenUnset() {
-        // Default when unset.
+        // The `.default` property resolves to the historical path only when no
+        // override is present. `.default` reads both CASPER_DEBUG_SOCKET and
+        // CASPER_SESSION, so assert the clean-env contract only when neither is
+        // set (a CASPER_SESSION-exporting shell, e.g. the debug-casper harness,
+        // would otherwise fail this spuriously). The env-independent derivation
+        // is covered hermetically by SocketPathResolutionTests.
+        let env = ProcessInfo.processInfo.environment
+        guard env["CASPER_DEBUG_SOCKET"] == nil, env["CASPER_SESSION"] == nil else { return }
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
     }
 
