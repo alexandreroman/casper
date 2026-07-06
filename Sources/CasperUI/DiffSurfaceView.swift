@@ -72,6 +72,7 @@ struct DiffSurfaceView: View {
                                 file: file, contentWidth: contentWidth, highlight: highlights[file.id])
                         }
                     }
+                    .padding(.bottom, 24)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentNaturalHeight = $0 }
                     .frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)
                     .scrollTargetLayout()
