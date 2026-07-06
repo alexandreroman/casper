@@ -22,6 +22,18 @@ final class AppModel {
     /// giving them a live refresh without knowing about the filesystem watcher.
     private(set) var diffRevision = 0
 
+    /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
+    /// makes repeated requests for the same file distinct so the view re-scrolls.
+    struct DiffScrollTarget: Equatable {
+        let workspaceID: UUID
+        let file: String
+        let nonce: Int
+    }
+    /// Set by `controlOpenDiff` / read by `DiffSurfaceView`. Observable so the
+    /// view reacts; not part of any persisted model.
+    private(set) var diffScrollTarget: DiffScrollTarget?
+    @ObservationIgnored private var diffScrollNonce = 0
+
     /// FSEvents watcher for the selected workspace's worktree, or nil when
     /// nothing is selected. Reconfigured on every selection change.
     @ObservationIgnored private var worktreeWatcher: DirectoryWatching?
@@ -988,6 +1000,12 @@ final class AppModel {
         var description: String { message }
     }
 
+    /// Error carrying a human-readable reason for a rejected `diff open` request.
+    struct DiffOpenError: Error, CustomStringConvertible {
+        let message: String
+        var description: String { message }
+    }
+
     // MARK: - CLI control handlers
     //
     // Explicit, agent-agnostic state reporting and UI driving for the `casper`
@@ -1093,7 +1111,7 @@ final class AppModel {
 
     /// Load `url` into `workspaceID`'s inspector browser surface and select the
     /// browser tab (expanding the panel). The browser lives ONLY in the inspector
-    /// — there are no browser layout panels — so this mirrors `controlShowDiff`.
+    /// — there are no browser layout panels — so this mirrors `controlOpenDiff`.
     @discardableResult
     func controlOpenBrowser(url: URL, in workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
@@ -1102,12 +1120,35 @@ final class AppModel {
         return true
     }
 
-    /// Switch `workspaceID`'s inspector to the diff tab, expanding the panel.
+    /// Open `workspaceID`'s diff view (select the diff tab, expand the inspector).
+    /// When `file` is given, validate it against the workspace's worktree — it
+    /// must resolve INSIDE the worktree and exist on disk — then request the view
+    /// scroll to its worktree-relative path (matching `GitDiffFile.id`). Mirrors
+    /// `controlOpenBrowser`, but returns a `Result` so an invalid file surfaces as
+    /// a control-channel error instead of a silent no-op.
     @discardableResult
-    func controlShowDiff(in workspaceID: UUID) -> Bool {
-        guard locate(workspaceID) != nil else { return false }
-        setInspectorTab(.diff, for: workspaceID)
-        return true
+    func controlOpenDiff(in workspaceID: UUID, file: String? = nil) -> Result<Void, DiffOpenError> {
+        guard let at = locate(workspaceID) else {
+            return .failure(DiffOpenError(message: "workspace not found"))
+        }
+        let worktree = spaces[at.space].workspaces[at.workspace].worktreePath
+        if let file, !file.isEmpty {
+            guard let resolved = WorkspaceFilePath.resolve(file, inWorktree: worktree) else {
+                return .failure(DiffOpenError(message: "file is outside the workspace: \(file)"))
+            }
+            guard FileManager.default.fileExists(atPath: resolved) else {
+                return .failure(DiffOpenError(message: "file does not exist: \(file)"))
+            }
+            setInspectorTab(.diff, for: workspaceID)
+            diffScrollNonce += 1
+            diffScrollTarget = DiffScrollTarget(
+                workspaceID: workspaceID,
+                file: WorkspaceFilePath.relative(resolved, toWorktree: worktree),
+                nonce: diffScrollNonce)
+        } else {
+            setInspectorTab(.diff, for: workspaceID)
+        }
+        return .success(())
     }
 
     /// Create a linked workspace in the Space that owns `workspaceID` (the control

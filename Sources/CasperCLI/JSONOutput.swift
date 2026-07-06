@@ -48,7 +48,7 @@ struct ProgressOut: Encodable {
 
 /// `{"workspace":"<id>"}` — the sole "affected workspace" shape, shared by every
 /// command whose only meaningful output is which workspace it acted on
-/// (`progress clear`, `notify`, `browser open`, `diff show`).
+/// (`progress clear`, `notify`, `browser open`, `diff open`).
 struct WorkspaceRefOut: Encodable {
     let workspace: String
 }

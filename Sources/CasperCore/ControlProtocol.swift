@@ -12,7 +12,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case notify
         case terminalNew
         case browserOpen
-        case diffShow
+        case diffOpen
         case workspaceList
         case workspaceNew
     }
@@ -25,7 +25,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var label: String?       // progressSet
     public var message: String?     // notify: optional macOS-notification body
     public var url: String?         // browserOpen
-    public var target: String?      // diffShow: reserved diff selector (nil = default)
+    public var target: String?      // diffOpen: file path to scroll to (nil = top)
     public var branch: String?      // workspaceNew
     public var base: String?        // workspaceNew
     public var command: String?     // terminalNew: optional command to run

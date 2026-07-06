@@ -124,11 +124,53 @@ final class ControlHandlerTests: XCTestCase {
         else { XCTFail("inspector browser surface is not a browser kind") }
     }
 
-    func testShowDiffSelectsInspectorTab() throws {
-        let (model, id) = seededModel()
-        XCTAssertTrue(model.controlShowDiff(in: id))
+    func testOpenDiffSelectsInspectorTab() throws {
+        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        guard case .success = model.controlOpenDiff(in: id) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertNil(model.diffScrollTarget)
         XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff)
         XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, false)
+    }
+
+    func testOpenDiffWithExistingFileSetsScrollTarget() throws {
+        // `makeRepo` writes a real `README.md` into the fixture worktree, so the
+        // on-disk existence check passes for it.
+        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
+            return XCTFail("expected success")
+        }
+        let first = try XCTUnwrap(model.diffScrollTarget)
+        XCTAssertEqual(first.workspaceID, id)
+        XCTAssertEqual(first.file, "README.md")
+
+        // A repeat request for the same file must produce a fresh nonce so the
+        // view re-scrolls even though the file argument is unchanged.
+        guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
+            return XCTFail("expected success")
+        }
+        let second = try XCTUnwrap(model.diffScrollTarget)
+        XCTAssertEqual(second.file, "README.md")
+        XCTAssertNotEqual(second.nonce, first.nonce)
+    }
+
+    func testOpenDiffWithMissingFileFails() throws {
+        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        guard case .failure(let error) = model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
+        XCTAssertNil(model.diffScrollTarget)
+    }
+
+    func testOpenDiffWithEscapingFileFails() throws {
+        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        guard case .failure(let error) = model.controlOpenDiff(in: id, file: "../escape.txt") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("outside the workspace"), "got: \(error.message)")
+        XCTAssertNil(model.diffScrollTarget)
     }
 
     func testCreateWorkspaceMakesWorktreeAndReturnsInfo() throws {

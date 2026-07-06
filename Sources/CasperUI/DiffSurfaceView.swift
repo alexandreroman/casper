@@ -22,6 +22,9 @@ struct DiffSurfaceView: View {
     @State private var highlightTask: Task<Void, Never>?
     /// Top visible file across rebuilds, so a debounced refresh keeps scroll.
     @State private var scrolledFileID: String?
+    /// Nonce of the last `model.diffScrollTarget` this view acted on, so a target
+    /// is applied once (not re-applied on every unrelated body re-evaluation).
+    @State private var appliedScrollNonce = 0
     /// Visible width of the content area, measured once laid out. Drives the
     /// full-bleed row/header backgrounds (see `DiffFileView`/`DiffLineRow`).
     @State private var contentWidth: CGFloat = 0
@@ -50,6 +53,7 @@ struct DiffSurfaceView: View {
         .onAppear { if !loaded { refresh() } }
         .onChange(of: colorScheme) { _, _ in if diff != nil { startHighlighting() } }
         .onChange(of: model.diffRevision) { _, _ in refresh() }
+        .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
         .onDisappear { highlightTask?.cancel() }
     }
 
@@ -90,8 +94,24 @@ struct DiffSurfaceView: View {
         let previousFiles = diff?.files ?? []
         let previousHighlights = highlights
         diff = model.computeDiff(for: workspace)
+        applyPendingScroll()
         loaded = true
         startHighlighting(reusing: previousFiles, previousHighlights)
+    }
+
+    /// Apply a pending `model.diffScrollTarget` for this workspace once its file
+    /// exists in the loaded diff. Idempotent via `appliedScrollNonce`, so it can
+    /// be called both when the target changes and when the diff finishes loading.
+    private func applyPendingScroll() {
+        guard let target = model.diffScrollTarget,
+              target.workspaceID == workspace.id,
+              target.nonce != appliedScrollNonce,
+              let files = diff?.files,
+              let matchID = DiffFileMatch.match(target.file, in: files) else { return }
+        appliedScrollNonce = target.nonce
+        // Defer one runloop so the ScrollView has laid the target file out before
+        // we drive its scroll position.
+        DispatchQueue.main.async { scrolledFileID = matchID }
     }
 
     /// Kicks off a background pass that highlights each file's working-tree and

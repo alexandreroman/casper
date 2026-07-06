@@ -50,7 +50,7 @@ final class ControlServerTests: XCTestCase {
     func testUnresolvableTargetFails() throws {
         let (server, _) = try seededServer()
         let response = server.handle(
-            ControlCommand(verb: .diffShow, workspace: "ghost"))
+            ControlCommand(verb: .diffOpen, workspace: "ghost"))
         XCTAssertFalse(response.ok)
         XCTAssertNotNil(response.error)
     }

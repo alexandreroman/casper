@@ -75,9 +75,11 @@ final class ControlServer {
             }
             return model.controlOpenBrowser(url: url, in: id)
                 ? .success(workspace: id.uuidString) : .failure("cannot open browser")
-        case .diffShow:
-            return model.controlShowDiff(in: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")
+        case .diffOpen:
+            switch model.controlOpenDiff(in: id, file: command.target) {
+            case .success: return .success(workspace: id.uuidString)
+            case .failure(let error): return .failure(error.message)
+            }
         case .workspaceList, .workspaceNew:
             return .failure("unreachable")  // handled above
         }

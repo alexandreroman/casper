@@ -75,10 +75,18 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try open.makeCommand())
     }
 
-    func testDiffShowBuildsCommand() throws {
-        let show = try DiffCommand.Show.parse(["--workspace", "feature"])
-        let command = try show.makeCommand()
-        XCTAssertEqual(command.verb, .diffShow)
+    func testDiffOpenBuildsCommand() throws {
+        let open = try DiffCommand.Open.parse(["--workspace", "feature"])
+        let command = try open.makeCommand()
+        XCTAssertEqual(command.verb, .diffOpen)
+        XCTAssertNil(command.target)
+    }
+
+    func testDiffOpenCarriesFileArgument() throws {
+        let open = try DiffCommand.Open.parse(["Sources/Foo.swift", "--workspace", "feature"])
+        let command = try open.makeCommand()
+        XCTAssertEqual(command.verb, .diffOpen)
+        XCTAssertEqual(command.target, "Sources/Foo.swift")
     }
 
     func testWorkspaceNewBuildsCommand() throws {
