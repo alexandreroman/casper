@@ -17,6 +17,8 @@ public enum GhosttyAction: Equatable {
     case render
     case childExited(exitCode: Int32)
     case desktopNotification(title: String, body: String)
+    /// Emitted on cmd+click of a terminal URL; carries the URL to open.
+    case openURL(String)
     case newSplit(GhosttySplitDirection)
     case newTab
     case newWindow
@@ -48,6 +50,8 @@ public enum GhosttyAction: Equatable {
             return .desktopNotification(
                 title: Self.string(c.action.desktop_notification.title),
                 body: Self.string(c.action.desktop_notification.body))
+        case GHOSTTY_ACTION_OPEN_URL:
+            return .openURL(Self.string(c.action.open_url.url, len: c.action.open_url.len))
         case GHOSTTY_ACTION_NEW_SPLIT:
             return .newSplit(Self.direction(c.action.new_split))
         case GHOSTTY_ACTION_NEW_TAB:
@@ -68,6 +72,14 @@ public enum GhosttyAction: Equatable {
     private static func string(_ ptr: UnsafePointer<CChar>?) -> String {
         guard let ptr else { return "" }
         return String(cString: ptr)
+    }
+
+    /// Length-delimited variant for fields (like `open_url.url`) that are NOT
+    /// null-terminated: reads exactly `len` bytes and decodes them as UTF-8.
+    private static func string(_ ptr: UnsafePointer<CChar>?, len: UInt) -> String {
+        guard let ptr else { return "" }
+        let bytes = UnsafeBufferPointer(start: ptr, count: Int(len))
+        return bytes.withMemoryRebound(to: UInt8.self) { String(decoding: $0, as: UTF8.self) }
     }
 
     private static func direction(

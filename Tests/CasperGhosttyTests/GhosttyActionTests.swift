@@ -76,6 +76,23 @@ final class GhosttyActionTests: XCTestCase {
         }
     }
 
+    func testDecodesOpenURL() {
+        let urlString = "https://example.com"
+        urlString.withCString { cstr in
+            var action = ghostty_action_s()
+            action.tag = GHOSTTY_ACTION_OPEN_URL
+            action.action.open_url.url = cstr
+            action.action.open_url.len = UInt(urlString.utf8.count)
+            XCTAssertEqual(GhosttyAction.decode(action), .openURL("https://example.com"))
+        }
+    }
+
+    func testDecodesOpenURLWithNilPointerAsEmptyString() {
+        var action = ghostty_action_s()
+        action.tag = GHOSTTY_ACTION_OPEN_URL
+        XCTAssertEqual(GhosttyAction.decode(action), .openURL(""))
+    }
+
     func testDecodesNewSplitRight() {
         var action = ghostty_action_s()
         action.tag = GHOSTTY_ACTION_NEW_SPLIT
