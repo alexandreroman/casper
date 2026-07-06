@@ -8,7 +8,8 @@ public enum ClaudeCodeAdapter {
     /// reserved ports. `CASPER_PORT` is the block base; `CASPER_PORT_0…9` expose
     /// the whole reserved block for convenience. When `controlSocketPath` is
     /// given, it is exposed as `CASPER_CONTROL_SOCKET` so the terminal can reach
-    /// the control socket.
+    /// the control socket. When `sessionName` is given, it is exposed as
+    /// `CASPER_SESSION`.
     ///
     /// When `casperDirectory` is given, it is prepended to `PATH` so the `casper`
     /// binary resolves only inside terminals Casper opens — it is deliberately not
@@ -28,7 +29,8 @@ public enum ClaudeCodeAdapter {
         blockSize: Int = 10,
         casperDirectory: String? = nil,
         basePath: String? = nil,
-        controlSocketPath: String? = nil
+        controlSocketPath: String? = nil,
+        sessionName: String? = nil
     ) -> [String: String] {
         var env: [String: String] = [
             "CASPER_WORKSPACE_ID": workspaceId.uuidString,
@@ -39,6 +41,9 @@ public enum ClaudeCodeAdapter {
         }
         if let controlSocketPath {
             env["CASPER_CONTROL_SOCKET"] = controlSocketPath
+        }
+        if let sessionName {
+            env["CASPER_SESSION"] = sessionName
         }
         if let casperDirectory {
             if let basePath, !basePath.isEmpty {

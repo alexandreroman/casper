@@ -35,4 +35,15 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         let env = ClaudeCodeAdapter.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
         XCTAssertNil(env["PATH"])
     }
+
+    func testSurfaceEnvironmentInjectsSessionWhenNamed() {
+        let env = ClaudeCodeAdapter.surfaceEnvironment(
+            workspaceId: UUID(), portBase: 40000, sessionName: "dev")
+        XCTAssertEqual(env["CASPER_SESSION"], "dev")
+    }
+
+    func testSurfaceEnvironmentOmitsSessionForDefault() {
+        let env = ClaudeCodeAdapter.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
+        XCTAssertNil(env["CASPER_SESSION"])
+    }
 }
