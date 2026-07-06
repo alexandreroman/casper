@@ -12,13 +12,13 @@ final class ModelsTests: XCTestCase {
             children: [.leaf(term), .leaf(browser), .leaf(diff)],
             ratios: [0.4, 0.3, 0.3]
         )
+        // Transient runtime fields (agentState/todos/pendingNotification) are left
+        // at their defaults: they are intentionally not persisted, so a non-default
+        // value here would never survive the round-trip this fixture feeds.
         let ws = Workspace(
             name: "feat-x",
             worktreePath: "/repo/wt",
             branch: "feat-x",
-            agentState: .running,
-            todos: [Todo(content: "wire up", status: .inProgress)],
-            pendingNotification: false,
             portBase: 40010,
             layout: layout
         )
@@ -191,6 +191,54 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.inspector.collapsed, expected.collapsed)
         XCTAssertEqual(decoded.inspector.tab, expected.tab)
         XCTAssertEqual(decoded.inspector.browser.kind, expected.browser.kind)
+    }
+
+    // MARK: - Transient runtime fields are not persisted
+
+    func testWorkspaceDoesNotPersistTransientRuntimeFields() throws {
+        // agentState / todos / pendingNotification are live runtime state, driven
+        // by hooks and the CLI. They must never be written to `session.json`, and
+        // must reset to their defaults on load.
+        let ws = Workspace(
+            name: "feat", worktreePath: "/r", branch: "feat",
+            agentState: .running,
+            todos: [Todo(content: "x", status: .inProgress)],
+            pendingNotification: true,
+            portBase: 40000,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))))
+
+        let data = try JSONEncoder().encode(ws)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(json.contains("\"agentState\""))
+        XCTAssertFalse(json.contains("\"todos\""))
+        XCTAssertFalse(json.contains("\"pendingNotification\""))
+
+        let decoded = try JSONDecoder().decode(Workspace.self, from: data)
+        XCTAssertEqual(decoded.agentState, .idle)
+        XCTAssertTrue(decoded.todos.isEmpty)
+        XCTAssertFalse(decoded.pendingNotification)
+        // The persisted fields still round-trip.
+        XCTAssertEqual(decoded.name, "feat")
+        XCTAssertEqual(decoded.portBase, 40000)
+    }
+
+    func testWorkspaceLegacyDecodeResetsTransientRuntimeFields() throws {
+        // A legacy `session.json` that still carries the three transient keys must
+        // ignore them and reset to defaults, not restore the on-disk values.
+        let json = """
+        { "id": "\(UUID().uuidString)", "name": "legacy", "worktreePath": "/r",
+          "branch": "main", "agentState": "running",
+          "todos": [ { "content": "x", "status": "in_progress" } ],
+          "pendingNotification": true, "portBase": 40000,
+          "layout": { "leaf": { "_0": { "id": "\(UUID().uuidString)",
+            "kind": { "terminal": { "cwd": "/r", "command": null } } } } },
+          "kind": "primary" }
+        """
+        let decoded = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.agentState, .idle)
+        XCTAssertTrue(decoded.todos.isEmpty)
+        XCTAssertFalse(decoded.pendingNotification)
+        XCTAssertEqual(decoded.name, "legacy")  // persisted fields still decode
     }
 
     // MARK: - Space collapse

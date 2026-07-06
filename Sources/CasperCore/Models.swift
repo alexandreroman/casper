@@ -241,28 +241,47 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.inspector = inspector
     }
 
-    // Full case set is required once `init(from:)` is hand-rolled; case names
-    // match the property names so the synthesized `encode(to:)` keeps the same
-    // on-disk keys.
+    // Full case set required now that both `init(from:)` and `encode(to:)` are
+    // hand-rolled; case names match the property names so the on-disk keys stay
+    // stable. The three transient cases (agentState, todos, pendingNotification)
+    // remain listed but are neither read nor written — see the coders below.
     private enum CodingKeys: String, CodingKey {
         case id, name, worktreePath, branch, agentState, todos
         case pendingNotification, portBase, layout, kind, baseBranch, inspector
     }
 
-    /// Decodes every current field normally and defaults `inspector` when it's
+    /// Encodes every persisted field, deliberately omitting the three transient
+    /// runtime fields (`agentState`, `todos`, `pendingNotification`): they are
+    /// driven by live hooks and the `casper` CLI, never restored from disk.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(worktreePath, forKey: .worktreePath)
+        try c.encode(branch, forKey: .branch)
+        // agentState / todos / pendingNotification are transient runtime state — never persisted.
+        try c.encode(portBase, forKey: .portBase)
+        try c.encode(layout, forKey: .layout)
+        try c.encode(kind, forKey: .kind)
+        try c.encodeIfPresent(baseBranch, forKey: .baseBranch)
+        try c.encode(inspector, forKey: .inspector)
+    }
+
+    /// Decodes every persisted field normally and defaults `inspector` when it's
     /// absent, so legacy `session.json` files (written before the inspector
-    /// existed) load with a collapsed, default inspector. `encode(to:)` stays
-    /// synthesized, keeping the on-disk shape stable and forward-writing the
-    /// new field.
+    /// existed) load with a collapsed, default inspector. The three transient
+    /// runtime fields (`agentState`, `todos`, `pendingNotification`) are never
+    /// read from disk — they always reset to their defaults on load, whether the
+    /// file omits them (current shape) or still carries them (legacy shape).
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
         self.name = try container.decode(String.self, forKey: .name)
         self.worktreePath = try container.decode(String.self, forKey: .worktreePath)
         self.branch = try container.decode(String.self, forKey: .branch)
-        self.agentState = try container.decode(AgentState.self, forKey: .agentState)
-        self.todos = try container.decode([Todo].self, forKey: .todos)
-        self.pendingNotification = try container.decode(Bool.self, forKey: .pendingNotification)
+        self.agentState = .idle
+        self.todos = []
+        self.pendingNotification = false
         self.portBase = try container.decode(Int.self, forKey: .portBase)
         self.layout = try container.decode(LayoutNode.self, forKey: .layout)
         self.kind = try container.decode(WorkspaceKind.self, forKey: .kind)
