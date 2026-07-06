@@ -7,8 +7,21 @@ import os
 /// path; whether the channel exists at all is decided at compile time (`#if
 /// DEBUG`) by the app and CLI that use this transport.
 public enum DebugSocketPath {
+    /// Default used by the external debug CLI: the `CASPER_DEBUG_SOCKET` override
+    /// wins; otherwise the session is taken from `CASPER_SESSION` (falling back to
+    /// the default session), so a driver that exports `CASPER_SESSION=dev`
+    /// automatically targets `/tmp/casper-debug-dev.sock`.
     public static var `default`: String {
-        ProcessInfo.processInfo.environment["CASPER_DEBUG_SOCKET"] ?? "/tmp/casper-debug.sock"
+        let session = SessionIdentity(name: ProcessInfo.processInfo.environment["CASPER_SESSION"])
+            ?? .default
+        return resolve(for: session)
+    }
+
+    /// The debug socket path for `session`: the `CASPER_DEBUG_SOCKET` override
+    /// wins; otherwise the session-derived path. The app (server) passes its
+    /// launch identity here.
+    public static func resolve(for session: SessionIdentity) -> String {
+        ProcessInfo.processInfo.environment["CASPER_DEBUG_SOCKET"] ?? session.debugSocketPath
     }
 }
 

@@ -91,4 +91,11 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: url.appendingPathExtension("corrupt").path))
     }
+
+    func testDefaultURLUsesSessionLayoutFileName() throws {
+        let base = try SessionStore.defaultURL(session: SessionIdentity(name: "dev")!)
+        XCTAssertEqual(base.lastPathComponent, "session-dev.json")
+        let dflt = try SessionStore.defaultURL()
+        XCTAssertEqual(dflt.lastPathComponent, "session.json") // backward-compatible
+    }
 }

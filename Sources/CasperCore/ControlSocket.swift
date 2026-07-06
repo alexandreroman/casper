@@ -5,9 +5,15 @@ import os
 /// Default socket path for the control channel. The env var only selects the
 /// path; this channel ships in release and is always available.
 public enum ControlSocketPath {
-    public static var `default`: String {
+    /// Backward-compatible default (unnamed session), honoring the
+    /// `CASPER_CONTROL_SOCKET` override.
+    public static var `default`: String { resolve(for: .default) }
+
+    /// The control socket path for `session`: the `CASPER_CONTROL_SOCKET`
+    /// override wins; otherwise the session-derived path.
+    public static func resolve(for session: SessionIdentity) -> String {
         ProcessInfo.processInfo.environment["CASPER_CONTROL_SOCKET"]
-            ?? (NSTemporaryDirectory() as NSString).appendingPathComponent("casper-control.sock")
+            ?? session.controlSocketPath()
     }
 }
 

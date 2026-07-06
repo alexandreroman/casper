@@ -16,7 +16,8 @@ public final class SessionStore {
         self.decoder = JSONDecoder()
     }
 
-    public static func defaultURL(fileManager: FileManager = .default) throws -> URL {
+    public static func defaultURL(fileManager: FileManager = .default,
+                                  session: SessionIdentity = .default) throws -> URL {
         let appSupport = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -25,7 +26,7 @@ public final class SessionStore {
         )
         let dir = appSupport.appendingPathComponent("Casper", isDirectory: true)
         try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("session.json", isDirectory: false)
+        return dir.appendingPathComponent(session.layoutFileName, isDirectory: false)
     }
 
     /// Load the persisted session, self-healing when the file is unreadable as a
