@@ -62,4 +62,35 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.verb, .notify)
         XCTAssertNil(command.message)
     }
+
+    func testTerminalNewBuildsCommand() throws {
+        var new = TerminalCommand.New()
+        new.target.workspace = "feature"
+        let command = try new.makeCommand()
+        XCTAssertEqual(command.verb, .terminalNew)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testBrowserOpenBuildsCommand() throws {
+        var open = BrowserCommand.Open()
+        open.url = "https://example.com"
+        open.target.workspace = "feature"
+        let command = try open.makeCommand()
+        XCTAssertEqual(command.verb, .browserOpen)
+        XCTAssertEqual(command.url, "https://example.com")
+    }
+
+    func testBrowserOpenRejectsEmptyURL() {
+        var open = BrowserCommand.Open()
+        open.url = ""
+        open.target.workspace = "feature"
+        XCTAssertThrowsError(try open.makeCommand())
+    }
+
+    func testDiffShowBuildsCommand() throws {
+        var show = DiffCommand.Show()
+        show.workspaceTarget.workspace = "feature"
+        let command = try show.makeCommand()
+        XCTAssertEqual(command.verb, .diffShow)
+    }
 }
