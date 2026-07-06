@@ -1,8 +1,10 @@
 import ArgumentParser
 import CasperAgents
 
-/// The root `casper` command. Ships the `casper hooks` family; `casper debug`
-/// is added only in debug builds.
+/// The root `casper` command. Ships the domain commands (`status`, `progress`,
+/// `notify`, `terminal`, `browser`, `diff`, `workspace`) plus the `casper hooks`
+/// family, which is removed in Milestone 4; `casper debug` is added only in
+/// debug builds.
 public struct CasperCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "casper",
@@ -11,7 +13,12 @@ public struct CasperCommand: ParsableCommand {
         // CLI by `LaunchMode.detect`) prints instead of erroring.
         version: casperAgentsVersion,
         subcommands: {
-            var subs: [ParsableCommand.Type] = [HooksCommand.self]
+            var subs: [ParsableCommand.Type] = [
+                StatusCommand.self, ProgressCommand.self, NotifyCommand.self,
+                TerminalCommand.self, BrowserCommand.self, DiffCommand.self,
+                WorkspaceCommand.self,
+                HooksCommand.self,  // removed in Milestone 4
+            ]
             #if DEBUG
             subs.append(DebugCLICommand.self)
             #endif
