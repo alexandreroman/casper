@@ -123,8 +123,8 @@ final class ControlHandlerTests: XCTestCase {
         case .success(let info):
             XCTAssertEqual(info.branch, "feature-x")
             XCTAssertTrue(model.allWorkspaces.contains { $0.id.uuidString == info.id })
-        case .failure(let msg):
-            XCTFail("expected success, got \(msg)")
+        case .failure(let error):
+            XCTFail("expected success, got \(error.message)")
         }
     }
 

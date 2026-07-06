@@ -8,13 +8,6 @@ import Observation
 import SwiftUI
 import UserNotifications
 
-/// Lets control-handler results use `Result<_, String>`: every current failure
-/// case is already a human-readable message meant to be shown or printed
-/// verbatim, so a one-off wrapper error type would add indirection with no
-/// benefit. `@retroactive` acknowledges that neither `String` nor `Error` is
-/// declared in this module.
-extension String: @retroactive Error {}
-
 /// The single owner of runtime UI state and the bridge from the non-observable
 /// core types to SwiftUI. Membership changes (add/remove folder) persist
 /// synchronously; high-frequency agent-state changes (Task 4) debounce.
@@ -313,13 +306,15 @@ final class AppModel {
     /// a human-readable error.
     func createLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?
-    ) -> Result<Workspace, String> {
+    ) -> Result<Workspace, WorkspaceCreationError> {
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
-            return .failure("space not found")
+            return .failure(WorkspaceCreationError(message: "space not found"))
         }
-        guard spaces[si].isGitRepo else { return .failure("space is not a Git repository") }
+        guard spaces[si].isGitRepo else {
+            return .failure(WorkspaceCreationError(message: "space is not a Git repository"))
+        }
         guard let branch = GitBranchName.sanitize(name) else {
-            return .failure("invalid branch name: \(name)")
+            return .failure(WorkspaceCreationError(message: "invalid branch name: \(name)"))
         }
         let folder = spaces[si].folderPath
         let base = baseOverride ?? (spaces[si].workspaces.first?.branch ?? "")
@@ -330,7 +325,8 @@ final class AppModel {
 
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
-            return .failure("no free port block")
+            CasperLog.app.failure("cannot add workspace: no free port block", error)
+            return .failure(WorkspaceCreationError(message: "no free port block"))
         }
         do {
             _ = try WorktreeManager.create(
@@ -338,7 +334,9 @@ final class AppModel {
                 base: base.isEmpty ? nil : base)
         } catch {
             portAllocator.release(portBase)
-            return .failure("worktree creation failed: \(error.localizedDescription)")
+            CasperLog.app.failure("worktree creation failed", error)
+            return .failure(
+                WorkspaceCreationError(message: "worktree creation failed: \(error.localizedDescription)"))
         }
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
@@ -992,6 +990,12 @@ final class AppModel {
         gitProbe(URL(fileURLWithPath: path))
     }
 
+    /// Error carrying a human-readable reason for a failed workspace creation.
+    struct WorkspaceCreationError: Error, CustomStringConvertible {
+        let message: String
+        var description: String { message }
+    }
+
     // MARK: - CLI control handlers
     //
     // Explicit, agent-agnostic state reporting and UI driving for the `casper`
@@ -1089,9 +1093,9 @@ final class AppModel {
     /// Space, not just the primary).
     func controlCreateWorkspace(
         inSpaceOf workspaceID: UUID, branch: String, base: String?
-    ) -> Result<ControlWorkspaceInfo, String> {
+    ) -> Result<ControlWorkspaceInfo, WorkspaceCreationError> {
         guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
-            return .failure("no target workspace")
+            return .failure(WorkspaceCreationError(message: "no target workspace"))
         }
         return createLinkedWorkspace(spaceID: space.id, name: branch, base: base)
             .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch) }
