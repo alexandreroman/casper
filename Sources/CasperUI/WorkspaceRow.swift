@@ -2,8 +2,9 @@ import CasperCore
 import SwiftUI
 
 /// A workspace row: a leading Git/folder glyph, the branch label with optional
-/// agent progress, and a trailing notification bubble. Draws its own selection
-/// pill so the accent stays visible even when the sidebar is not first responder.
+/// agent progress, and a trailing status cluster (an agent-state icon followed
+/// by the notification bubble). Draws its own selection pill so the accent stays
+/// visible even when the sidebar is not first responder.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let isSelected: Bool
@@ -22,6 +23,7 @@ struct WorkspaceRow: View {
                     .truncationMode(.middle)
                     .foregroundStyle(isSelected ? Color.white : Color.primary)
                 Spacer(minLength: 6)
+                AgentStatusIcon(state: workspace.agentState, isSelected: isSelected)
                 NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
                     .frame(width: 20)
             }
@@ -109,5 +111,56 @@ private struct NotificationBubble: View {
         } else {
             EmptyView()
         }
+    }
+}
+
+/// Trailing agent-status indicator: an SF Symbol reflecting the live `AgentState`.
+/// `working` spins continuously; the `idle`/`unknown` states render nothing yet
+/// still reserve a fixed-width slot so the notification bubble never shifts as the
+/// state changes. Selection-aware so the glyphs read on the accent selection pill.
+private struct AgentStatusIcon: View {
+    let state: AgentState
+    let isSelected: Bool
+
+    var body: some View {
+        Group {
+            switch state {
+            case .working:
+                SpinningIcon(isSelected: isSelected)
+            case .blocked:
+                icon("exclamationmark.circle.fill", color: .orange)
+            case .done:
+                icon("checkmark.circle.fill", color: .green)
+            case .error:
+                icon("xmark.octagon.fill", color: .red)
+            case .idle, .unknown:
+                Color.clear
+            }
+        }
+        .frame(width: 16)
+    }
+
+    private func icon(_ symbol: String, color: Color) -> some View {
+        Image(systemName: symbol)
+            .imageScale(.medium)
+            .foregroundStyle(isSelected ? Color.white : color)
+    }
+}
+
+/// The `working` glyph: a circular-arrows SF Symbol in continuous clockwise
+/// rotation. The spin starts when the view appears — i.e. when the agent enters
+/// the working state — and stops when it leaves, since the view is then torn down
+/// and replaced by a different (non-animated) state glyph.
+private struct SpinningIcon: View {
+    let isSelected: Bool
+    @State private var spin = false
+
+    var body: some View {
+        Image(systemName: "arrow.triangle.2.circlepath")
+            .imageScale(.medium)
+            .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+            .rotationEffect(.degrees(spin ? 360 : 0))
+            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
+            .onAppear { spin = true }
     }
 }
