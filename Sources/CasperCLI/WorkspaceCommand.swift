@@ -11,7 +11,6 @@ struct WorkspaceCommand: ParsableCommand {
 
     struct List: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "List all workspaces.")
-        init() {}
 
         func makeCommand() -> ControlCommand { ControlCommand(verb: .workspaceList) }
 
@@ -26,7 +25,6 @@ struct WorkspaceCommand: ParsableCommand {
     struct Current: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Print the current workspace id ($CASPER_WORKSPACE_ID).")
-        init() {}
 
         func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
             environment["CASPER_WORKSPACE_ID"]
@@ -47,12 +45,6 @@ struct WorkspaceCommand: ParsableCommand {
         @Option(name: .long, help: "Base ref to fork from (defaults to the space's base branch).")
         var base: String?
         @OptionGroup var target: WorkspaceTargetOption
-
-        init() {
-            self.branch = ""
-            self.base = nil
-            self.target = WorkspaceTargetOption()
-        }
 
         func makeCommand() throws -> ControlCommand {
             guard !branch.isEmpty else { throw exitWithError("missing --branch") }

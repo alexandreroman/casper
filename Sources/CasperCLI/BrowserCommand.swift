@@ -15,11 +15,6 @@ struct BrowserCommand: ParsableCommand {
         var url: String
         @OptionGroup var target: WorkspaceTargetOption
 
-        init() {
-            self.url = ""
-            self.target = WorkspaceTargetOption()
-        }
-
         func makeCommand() throws -> ControlCommand {
             guard !url.isEmpty else { throw exitWithError("missing url") }
             let selector = try requireSelector(target)

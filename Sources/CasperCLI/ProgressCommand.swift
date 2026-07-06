@@ -20,13 +20,6 @@ struct ProgressCommand: ParsableCommand {
         var label: String
         @OptionGroup var target: WorkspaceTargetOption
 
-        init() {
-            self.total = 0
-            self.current = 0
-            self.label = ""
-            self.target = WorkspaceTargetOption()
-        }
-
         func makeCommand() throws -> ControlCommand {
             guard ProgressSynthesis.todos(total: total, current: current, label: label) != nil else {
                 throw exitWithError("invalid progress \(current)/\(total) (need 1 <= current <= total)")
@@ -44,10 +37,6 @@ struct ProgressCommand: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Clear all progress.")
 
         @OptionGroup var target: WorkspaceTargetOption
-
-        init() {
-            self.target = WorkspaceTargetOption()
-        }
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .progressClear, workspace: try requireSelector(target))

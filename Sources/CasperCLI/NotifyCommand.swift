@@ -12,11 +12,6 @@ struct NotifyCommand: ParsableCommand {
     var message: String?
     @OptionGroup var target: WorkspaceTargetOption
 
-    init() {
-        self.message = nil
-        self.target = WorkspaceTargetOption()
-    }
-
     func makeCommand() throws -> ControlCommand {
         ControlCommand(verb: .notify, workspace: try requireSelector(target), message: message)
     }

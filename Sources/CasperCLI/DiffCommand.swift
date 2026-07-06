@@ -15,11 +15,6 @@ struct DiffCommand: ParsableCommand {
         var target: String?
         @OptionGroup var workspaceTarget: WorkspaceTargetOption
 
-        init() {
-            self.target = nil
-            self.workspaceTarget = WorkspaceTargetOption()
-        }
-
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .diffShow, workspace: try requireSelector(workspaceTarget), target: target)

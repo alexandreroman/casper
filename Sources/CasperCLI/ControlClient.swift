@@ -8,10 +8,6 @@ struct WorkspaceTargetOption: ParsableArguments {
     @Option(name: .long, help: "Target workspace id or name (defaults to $CASPER_WORKSPACE_ID).")
     var workspace: String?
 
-    init() {
-        self.workspace = nil
-    }
-
     func resolvedSelector(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {

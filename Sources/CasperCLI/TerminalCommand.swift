@@ -14,10 +14,6 @@ struct TerminalCommand: ParsableCommand {
 
         @OptionGroup var target: WorkspaceTargetOption
 
-        init() {
-            self.target = WorkspaceTargetOption()
-        }
-
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .terminalNew, workspace: try requireSelector(target))
         }
