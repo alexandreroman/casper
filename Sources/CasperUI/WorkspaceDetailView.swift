@@ -20,10 +20,16 @@ struct WorkspaceDetailView: View {
     /// inspector's maximum width.
     private static let minDetailWidth: Double = 320
 
-    /// Width of the inspector's grab strip (the transparent hit area around the
-    /// 1pt separator line). Named so the reveal container can size itself to
-    /// divider + panel in one place.
-    private static let inspectorDividerWidth: Double = 7
+    /// Width of the inspector's visible 1pt separator line. Named so the reveal
+    /// container can size itself to divider + panel in one place. The transparent
+    /// grab strip is a wider OVERLAY (`inspectorGrabWidth`) that straddles this
+    /// line without consuming layout width, so no background-coloured band shows
+    /// between the terminal and the panel.
+    private static let inspectorDividerWidth: Double = 1
+
+    /// Width of the transparent grab strip overlaid on the 1pt line, widening the
+    /// drag target (mirrors `SplitContainerView`'s splitter hitbox).
+    private static let inspectorGrabWidth: Double = 18
 
     /// Stable coordinate space for the inspector divider drag, anchored to the
     /// full-width detail container so the pointer's absolute location is read
@@ -99,37 +105,38 @@ struct WorkspaceDetailView: View {
         return InspectorState.minWidth...upper
     }
 
-    /// A self-drawn vertical divider (mirrors `SplitContainerView`'s splitter: a
-    /// 7pt transparent grab strip whose `contentShape` limits hit-testing, plus a
-    /// 1pt separator line, carrying the column-resize pointer). Dragging it
-    /// resizes the inspector; the model is persisted only on drag-end.
+    /// A self-drawn vertical divider (mirrors `SplitContainerView`'s splitter): a
+    /// 1pt separator line for layout, with a wider transparent grab strip overlaid
+    /// on top — straddling the line and carrying the column-resize pointer — so the
+    /// hit area never reserves visible layout width. Dragging it resizes the
+    /// inspector; the model is persisted only on drag-end.
     private func inspectorDivider(total: Double, range: ClosedRange<Double>) -> some View {
-        ZStack(alignment: .trailing) {
-            Color.clear
-                .frame(width: Self.inspectorDividerWidth)
-                .contentShape(Rectangle())
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(width: 1)
-        }
-        .frame(maxHeight: .infinity)
-        .pointerStyle(.columnResize)
-        .gesture(
-            DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.inspectorDragSpace))
-                .onChanged { value in
-                    // Track the pointer's ABSOLUTE x in the stable container space:
-                    // the inspector's left edge sits at value.location.x, so its
-                    // width is the space remaining to the right. Using the absolute
-                    // location (not accumulated translation) keeps the divider
-                    // locked to the pointer even as the panel — and this divider —
-                    // shift during the drag, eliminating the resize lag.
-                    inspectorWidth = (total - value.location.x).clamped(to: range)
-                }
-                .onEnded { _ in
-                    if let width = inspectorWidth {
-                        model.setInspectorWidth(width, for: workspace.id)
-                    }
-                })
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: Self.inspectorDividerWidth)
+            .frame(maxHeight: .infinity)
+            .overlay {
+                Color.clear
+                    .frame(width: Self.inspectorGrabWidth)
+                    .contentShape(Rectangle())
+                    .pointerStyle(.columnResize)
+                    .gesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.inspectorDragSpace))
+                            .onChanged { value in
+                                // Track the pointer's ABSOLUTE x in the stable container space:
+                                // the inspector's left edge sits at value.location.x, so its
+                                // width is the space remaining to the right. Using the absolute
+                                // location (not accumulated translation) keeps the divider
+                                // locked to the pointer even as the panel — and this divider —
+                                // shift during the drag, eliminating the resize lag.
+                                inspectorWidth = (total - value.location.x).clamped(to: range)
+                            }
+                            .onEnded { _ in
+                                if let width = inspectorWidth {
+                                    model.setInspectorWidth(width, for: workspace.id)
+                                }
+                            })
+            }
     }
 
     private var title: some View {
