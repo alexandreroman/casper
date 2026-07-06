@@ -147,15 +147,27 @@ struct WorkspaceDetailView: View {
             Button {
                 model.setInspectorTab(.diff, for: workspace.id)
             } label: {
-                HStack(spacing: 5) {
+                let content = HStack(spacing: 5) {
                     Text("+\(diff.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
                     Text("−\(diff.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
                 }
                 .font(.body.monospacedDigit().bold())
                 .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.12), in: Capsule())
-                .contentShape(Capsule())
+                // Match the branch capsule: same Liquid Glass material (.glassEffect) and
+                // same height, but keep the badge a DISTINCT pill (its toolbar item is
+                // flattened so it doesn't merge into the branch's shared glass). 36 pt is
+                // the branch capsule's real height on a Retina display — off-screen window
+                // captures under-report the system glass, so it was calibrated live.
+                .frame(height: 36)
+                if #available(macOS 26.0, *) {
+                    content
+                        .glassEffect(in: .capsule)
+                        .contentShape(Capsule())
+                } else {
+                    content
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .contentShape(Capsule())
+                }
             }
             .buttonStyle(.plain)
             .help("Show diff")
@@ -173,9 +185,16 @@ struct WorkspaceDetailView: View {
 
 }
 
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
 private extension ToolbarContent {
-    /// Removes the automatic macOS 26 "Liquid Glass" capsule background that
-    /// wraps toolbar item content, so the title and actions render flat.
+    /// Removes the automatic macOS 26 "Liquid Glass" capsule background that wraps
+    /// toolbar item content, so the diff badge can draw its OWN distinct glass
+    /// capsule instead of merging into the branch capsule's shared glass.
     @ToolbarContentBuilder
     func flatToolbarItem() -> some ToolbarContent {
         if #available(macOS 26.0, *) {
@@ -183,11 +202,5 @@ private extension ToolbarContent {
         } else {
             self
         }
-    }
-}
-
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
     }
 }
