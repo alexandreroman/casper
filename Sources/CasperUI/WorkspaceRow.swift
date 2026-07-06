@@ -94,9 +94,9 @@ private struct ProgressBar: View {
     }
 }
 
-/// Trailing notification indicator: a filled dot when pending, otherwise a faint
-/// hollow ring so the row's trailing edge stays visually anchored. Selection-aware
-/// so it reads on the accent selection background.
+/// Trailing notification indicator: a filled dot when pending, otherwise hidden.
+/// The call site reserves the trailing space so the row's edge stays anchored even
+/// when nothing renders. Selection-aware so it reads on the accent selection background.
 private struct NotificationBubble: View {
     let on: Bool
     let isSelected: Bool
@@ -107,11 +107,7 @@ private struct NotificationBubble: View {
                 .fill(isSelected ? Color.white : Color.blue)
                 .frame(width: 9, height: 9)
         } else {
-            Circle()
-                .strokeBorder(
-                    isSelected ? Color.white.opacity(0.5) : Color.secondary.opacity(0.4),
-                    lineWidth: 1)
-                .frame(width: 9, height: 9)
+            EmptyView()
         }
     }
 }
