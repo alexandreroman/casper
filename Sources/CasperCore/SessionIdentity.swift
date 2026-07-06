@@ -50,10 +50,12 @@ public struct SessionIdentity: Sendable, Equatable {
     }
 
     /// Parse an optional `--session <name>` / `--session=<name>` from GUI launch
-    /// arguments. No `--session` → the default session. `--session` with no
-    /// value throws `.missingValue`; a present-but-invalid name throws
-    /// `.invalidName`.
+    /// arguments. Debug builds only — release builds always return `.default`,
+    /// ignoring any `--session` argument. No `--session` → the default session.
+    /// `--session` with no value throws `.missingValue`; a present-but-invalid
+    /// name throws `.invalidName`.
     public static func parse(arguments: [String]) throws -> SessionIdentity {
+#if DEBUG
         var iterator = arguments.dropFirst().makeIterator()
         while let arg = iterator.next() {
             if arg == "--session" {
@@ -67,6 +69,7 @@ public struct SessionIdentity: Sendable, Equatable {
                 return id
             }
         }
+#endif
         return .default
     }
 }

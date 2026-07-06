@@ -82,16 +82,18 @@ agent**; the user runs their agent manually.
 The only agent-facing runtime coupling is the per-surface environment
 `ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal:
 `CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT[_0..9]`, and — when
-the app runs under `--session <name>` — `CASPER_SESSION`. A CLI command reads
-`CASPER_WORKSPACE_ID` for its default target and `CASPER_CONTROL_SOCKET` to reach
-the app; state changes flow straight into the sidebar (badge, progress,
-notification dot) and, for `notify`, `UserNotifications`.
+a debug build runs under `--session <name>` (a `#if DEBUG`-only flag) —
+`CASPER_SESSION`. A CLI command reads `CASPER_WORKSPACE_ID` for its default
+target and `CASPER_CONTROL_SOCKET` to reach the app; state changes flow straight
+into the sidebar (badge, progress, notification dot) and, for `notify`,
+`UserNotifications`.
 
-When the app is launched with `--session <name>`, its control socket is the
-session-scoped `casper-control-<name>.sock` and that path is the value injected
-as `CASPER_CONTROL_SOCKET`, so the domain CLI keeps working unchanged inside a
-named session's terminals (it never reads `CASPER_SESSION` — the injected socket
-path already points at the right instance). See [[app-sessions]].
+When a debug build is launched with `--session <name>`, its control socket is
+the session-scoped `casper-control-<name>.sock` and that path is the value
+injected as `CASPER_CONTROL_SOCKET`, so the domain CLI keeps working unchanged
+inside a named session's terminals (it never reads `CASPER_SESSION` — the
+injected socket path already points at the right instance). See
+[[app-sessions]].
 
 The control socket class uses `@unchecked Sendable` + serial-queue discipline
 under Swift 6 — see [[swift6-network-concurrency]].
