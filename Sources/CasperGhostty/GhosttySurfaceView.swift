@@ -549,18 +549,38 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         guard let surface else { return }
         var deltaX = event.scrollingDeltaX
         var deltaY = event.scrollingDeltaY
+        // `ghostty_input_scroll_mods_t` is declared as an opaque `int` by the pinned
+        // header, but its real layout is a packed i32: bit 0 = precision (deltas are
+        // pixels, not lines), bits 1–3 = momentum (`ghostty_input_mouse_momentum_e`).
+        // We must set the precision bit for trackpad deltas — otherwise libghostty reads
+        // precise pixel deltas as line counts and scrolling runs far too fast.
+        var mods: Int32 = 0
         // Precise (trackpad / high-resolution) deltas arrive in points at roughly half
         // the magnitude of line-based wheel deltas; double them so trackpad and wheel
         // scrolling feel consistent, matching upstream Ghostty.
         if event.hasPreciseScrollingDeltas {
             deltaX *= 2
             deltaY *= 2
+            mods |= 1  // precision bit
         }
-        // Momentum/precision packing into `ghostty_input_scroll_mods_t` (an int whose
-        // bit layout the pinned header does not document) is left unencoded: passing 0
-        // omits the momentum path rather than guessing the layout. The ×2 precise-delta
-        // scaling above is the fix that matters for scroll feel.
-        surface.sendMouseScroll(deltaX: deltaX, deltaY: deltaY, mods: ghostty_input_scroll_mods_t(0))
+        let momentum = Self.ghosttyMomentum(for: event.momentumPhase)
+        mods |= Int32(momentum.rawValue) << 1
+        surface.sendMouseScroll(deltaX: deltaX, deltaY: deltaY, mods: ghostty_input_scroll_mods_t(mods))
+    }
+
+    /// Map an `NSEvent.Phase` momentum phase to libghostty's momentum enum. Anything
+    /// outside the known phases (including the empty set) reports NONE. Pure and static
+    /// so it is unit-testable without a running app.
+    static func ghosttyMomentum(for phase: NSEvent.Phase) -> ghostty_input_mouse_momentum_e {
+        switch phase {
+        case .began: return GHOSTTY_MOUSE_MOMENTUM_BEGAN
+        case .stationary: return GHOSTTY_MOUSE_MOMENTUM_STATIONARY
+        case .changed: return GHOSTTY_MOUSE_MOMENTUM_CHANGED
+        case .ended: return GHOSTTY_MOUSE_MOMENTUM_ENDED
+        case .cancelled: return GHOSTTY_MOUSE_MOMENTUM_CANCELLED
+        case .mayBegin: return GHOSTTY_MOUSE_MOMENTUM_MAY_BEGIN
+        default: return GHOSTTY_MOUSE_MOMENTUM_NONE
+        }
     }
 
     /// Map an `NSEvent.buttonNumber` to libghostty's mouse button. 0→LEFT, 1→RIGHT,
