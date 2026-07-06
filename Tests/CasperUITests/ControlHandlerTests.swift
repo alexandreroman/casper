@@ -155,10 +155,64 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.progress.total, 0)
     }
 
-    func testRaiseNotificationSetsPendingFlag() {
+    func testRaiseNotificationOnSelectedButBackgroundedSetsBubble() {
         let (model, id) = seededModel()
+        model.isWindowKey = { false }  // selected, but app not frontmost
         XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+    }
+
+    func testRaiseNotificationOnFocusedWorkspaceSkipsBubble() {
+        let (model, id) = seededModel()   // id is the selected workspace
+        model.isWindowKey = { true }      // and the window is key → focused
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
+    func testRaiseNotificationOnUnselectedWorkspaceSetsBubble() {
+        let (model, id) = seededModel()
+        model.selectedWorkspaceID = UUID()  // some OTHER workspace is selected
+        model.isWindowKey = { true }        // app frontmost, but target not selected
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+    }
+
+    func testForegroundClearsBubbleOnFocusedWorkspace() {
+        let (model, id) = seededModel()          // id is selected
+        model.isWindowKey = { false }            // app backgrounded
+        _ = model.controlRaiseNotification(message: nil, for: id)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+        model.isWindowKey = { true }             // app returns to foreground
+        model.clearNotificationForFocusedWorkspace()
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
+    func testForegroundDoesNotClearBubbleWhenWindowNotKey() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        _ = model.controlRaiseNotification(message: nil, for: id)
+        model.clearNotificationForFocusedWorkspace()   // still backgrounded
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+    }
+
+    func testClearDoesNotTouchUnselectedWorkspaceBubble() {
+        let (model, id) = seededModel()
+        model.selectedWorkspaceID = UUID()       // a different workspace is selected
+        model.isWindowKey = { true }
+        _ = model.controlRaiseNotification(message: nil, for: id)  // id not selected → bubble set
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+        model.clearNotificationForFocusedWorkspace()               // clears only the selected one
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+    }
+
+    func testSelectingWorkspaceClearsItsBubbleWhenKey() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        _ = model.controlRaiseNotification(message: nil, for: id)  // bubble set while backgrounded
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+        model.isWindowKey = { true }             // app frontmost
+        model.selectWorkspace(id)                // (re)selecting the focused workspace clears it
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
     }
 
     func testResolveByNameAndSelectedFallback() {

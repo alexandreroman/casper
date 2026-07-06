@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var socketServer: HookSocketServer?
     private var controlServer: ControlServer?
     private var heartbeatTimer: Timer?
+    private var keyWindowObserver: NSObjectProtocol?
     #if DEBUG
     private var debugServer: DebugServer?
     #endif
@@ -93,6 +94,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RunLoop.main.add(timer, forMode: .common)
         self.heartbeatTimer = timer
 
+        // When a window becomes key (the app returns to the foreground), dismiss
+        // the attention bubble of the now-focused workspace. Mirrors the
+        // selection-time clear in `selectWorkspace`.
+        keyWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in AppModel.shared.clearNotificationForFocusedWorkspace() }
+        }
+
         // Debug channel for the `debug-casper` harness. Compiled out of release
         // builds entirely — see the `nm` gating check in the task report.
         #if DEBUG
@@ -108,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         heartbeatTimer?.invalidate()
+        if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
         socketServer?.stop()  // stop BEFORE the final save (no post-save onMessage)
         controlServer?.stop()
         #if DEBUG

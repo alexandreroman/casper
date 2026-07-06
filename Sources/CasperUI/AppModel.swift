@@ -85,7 +85,7 @@ final class AppModel {
     @ObservationIgnored var heartbeatTimeout: TimeInterval = 30
 
     /// Whether the app's window currently has key focus. Injectable for tests.
-    @ObservationIgnored var isWindowKey: () -> Bool = { NSApp.keyWindow != nil }
+    @ObservationIgnored var isWindowKey: () -> Bool = { NSApp?.keyWindow != nil }
 
     /// Re-probe a folder path for Git backing. Injectable for tests.
     @ObservationIgnored var gitReprobe: (String) -> WorkspaceFactory.GitInfo? = {
@@ -385,6 +385,7 @@ final class AppModel {
         }
         focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
         focusActiveSurfaceView()
+        clearNotificationForFocusedWorkspace()
         persist()
     }
 
@@ -1029,15 +1030,39 @@ final class AppModel {
         return true
     }
 
+    /// Raise a workspace notification. The persistent attention bubble is suppressed
+    /// when the target is focused (selected AND the window is key); the macOS
+    /// notification (when a message is given) is always delivered.
     @discardableResult
     func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
-        spaces[at.space].workspaces[at.workspace].pendingNotification = true
+        // The attention bubble draws the eye to a workspace you are NOT looking
+        // at. If the target is already focused (selected AND the window is key),
+        // raising it is noise, so skip it. The macOS notification (with a message)
+        // is still delivered so an explicit `--message` is never silently dropped.
+        let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
+        if !focused {
+            spaces[at.space].workspaces[at.workspace].pendingNotification = true
+        }
         if let message {
             deliverNotification(spaces[at.space].workspaces[at.workspace].name, message)
         }
         persist()
         return true
+    }
+
+    /// Dismiss the attention bubble of the selected workspace once it is focused
+    /// (selected AND the window is key). The bubble draws the eye to a workspace
+    /// you are NOT looking at, so as soon as you look at it — by selecting it while
+    /// the app is frontmost, or by bringing the app back to the foreground while it
+    /// is already selected — it must clear. Complements `controlRaiseNotification`,
+    /// which never raises the bubble on an already-focused workspace. Persists only
+    /// when it actually clears a bubble, so the common no-op case is free.
+    func clearNotificationForFocusedWorkspace() {
+        guard let id = selectedWorkspaceID, isWindowKey(), let at = locate(id) else { return }
+        guard spaces[at.space].workspaces[at.workspace].pendingNotification else { return }
+        spaces[at.space].workspaces[at.workspace].pendingNotification = false
+        persist()
     }
 
     /// Resolve a control-channel target selector to a workspace id. A nil selector
