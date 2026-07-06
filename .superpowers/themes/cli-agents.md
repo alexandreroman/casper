@@ -28,6 +28,11 @@ handful of verbs:
 - `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
   split right (cwd defaults to the worktree); `terminal list` — list the
   workspace's terminals; `terminal close <id>` — close a terminal by id.
+  **Known limitation:** `--command` is currently **inert** — the embedded
+  libghostty (a sandbox/host-managed fork) does not honor a surface's `command`
+  at spawn, so a plain login shell launches regardless. Run the command inside
+  the shell instead. (This is why agent-state detection has no agent-as-command
+  path — see `agent-state-detection.md`.)
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
   workspace's single **inspector** browser surface and select the browser tab
   (there are no browser layout panels; layout panels are terminal-only).

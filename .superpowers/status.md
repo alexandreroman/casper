@@ -279,6 +279,36 @@ sidebar; `Repository.remoteURL` + `origin` name derivation). What remains for th
 feature is the **`+/−` diff summary** per workspace row (derived `diffStat`,
 depends on CasperGit `git_diff`) and **Space rename**.
 
+## Agent-state detection — ◐
+Infers `Workspace.agentState` (`working | blocked | idle | done | unknown |
+error`) by scraping the terminal, no hooks. Design: `themes/agent-state-detection.md`.
+
+**Built & live-verified:** the pure engine (`CasperCore/AgentDetection.swift` —
+data-driven viewport matcher, most-urgent aggregation, debounce/`done`-latch
+resolver, 22 tests); a non-DEBUG `readViewportText()` accessor; the `AppModel`
+timer (~250 ms) that scrapes each workspace's terminals, resolves, and writes
+`agentState` unless the workspace is under explicit authority; the `casper status
+set` authority latch (transient) that stops detection for that workspace; and the
+sidebar status icon (`WorkspaceRow`, monochrome outline SF Symbols in the chevron
+column, animated `working`). Live GUI check confirmed idle→working→idle and
+blocked, driven purely by scraping.
+
+`done` is produced by the resolver's own `working → idle` derivation.
+
+**Not implemented (by decision):** a process-exit (`childExited`) `done`/`error`
+producer + authority release. It only fits an *agent-as-command* surface, which
+Casper can't create — the embedded libghostty (a sandbox/host-managed fork) does
+not spawn a surface's `command` (a plain shell launches; this also makes `casper
+terminal new --command X` inert). Agents therefore run inside a shell; `error`
+has no detected producer and authority release is deferred to the timeout
+mechanism (option B). The initial implementation was removed. See the theme's
+"Process lifecycle" section.
+
+**Deferred:** `.render`-driven trigger (timer poll for now); wiring `blocked`/
+`done` to `casper notify` + `pendingNotification` (with option-B timeout authority
+release); per-surface status (option B); agents beyond Claude Code (per-agent
+rule sets).
+
 ## Remaining work — dependency-ordered
 
 1. **CasperGit `git_diff` — ✅ built** (`diffWorkdirToHead()`); the diff viewer is

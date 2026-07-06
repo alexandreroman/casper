@@ -1,8 +1,10 @@
 # Theme: Agent State Detection (CasperGhostty + CasperCore + CasperUI)
 
-**Modules:** CasperGhostty, CasperCore, CasperUI · **Status:** 🚧 design
-(unbuilt) · **Code:** new — `Sources/CasperGhostty/`, `Sources/CasperCore/`,
-`Sources/CasperUI/`
+**Modules:** CasperGhostty, CasperCore, CasperUI · **Status:** ◐ built —
+detection (working/blocked/idle) is live and verified; the process-exit
+`done`/`error` path is **not** implemented (unsupported by the embedded
+libghostty — see "Process lifecycle") · **Code:** `Sources/CasperGhostty/`,
+`Sources/CasperCore/`, `Sources/CasperUI/`
 
 Infer each workspace's agent state (working / blocked / idle / done / unknown /
 error) by reading the terminal itself, with **zero cooperation required from the
@@ -134,57 +136,72 @@ enum AgentAuthority: Sendable { case detection, explicit }
 Rationale: an agent that reports its own state is more precise than any scrape;
 once it opts in, detection steps aside.
 
-## Process lifecycle: `childExited`
+## Process lifecycle: `done` / `error` — not implemented
 
-`GhosttyAction.childExited(exitCode:)` is already decoded. On this event, for
-the surface's workspace W, in this order:
+`done` and `error` are in the `AgentState` model, but there is **no detected
+producer** for them, by decision. The obvious source — a process-exit event
+(`GHOSTTY_ACTION_SHOW_CHILD_EXITED`) mapping exit `0 → done` / `≠0 → error` —
+was implemented and then **removed**, because it only makes sense for an
+*agent-as-command* surface (`Surface.terminal(command: "claude")`) and that
+scenario does not exist in Casper today:
 
-1. **Release authority** — `authority(W) → detection` (a new agent run is
-   detectable again).
-2. **Set the terminal state** through the detection path — exit `0 → done`,
-   `≠0 → error`.
+**The embedded libghostty does not spawn a surface's `command`.** The pinned
+binary (`libghostty-spm`, a sandbox/host-managed-oriented fork) does not honor
+`ghostty_surface_config_s.command` — both `casper terminal new --command X` and
+restored command-surfaces launch a plain login shell instead. So agents always
+run **inside a shell** (`command == nil`, the user types `claude`); the shell
+survives when the agent exits, and no agent-scoped exit event is available. See
+the CasperGhostty note in `themes/cli-agents.md`.
 
-Release **then** write, so the `done` / `error` value is not gated by the latch
-we just cleared.
-
-**Known limitation (v1 decision A).** libghostty owns the **shell**, not the
-agent. `.childExited` means "the agent exited" only when the surface was
-launched with `command == <agent>` (`Surface.terminal(cwd:command:)`). For an
-agent run *inside* a shell (`command == nil`, the user types `claude`), the
-shell survives, so no `.childExited` fires and — if the agent had taken
-explicit authority — the latch would stay stuck. v1 guarantees the release only
-for agent-as-command surfaces and documents the shell-hosted case as a known
-gap; Casper materializes the agent as the surface command anyway. A
-timeout-based release (option B) is a later refinement.
+Given the shell-hosted reality:
+- **`done`** is still produced by the resolver's own `working → idle` derivation
+  (the agent finishes, the shell shows the completed output at rest, unseen →
+  `done`). No process-exit hook needed.
+- **`error`** has no detected producer for now; a crashed agent reads as `idle`
+  from its at-rest shell. Acceptable until there's a real signal for it.
+- **Authority release** (undoing a `casper status set` latch) is likewise
+  deferred: there is no reliable per-agent exit event, so a workspace that took
+  explicit authority stays latched until reload. Robust release will come with
+  the **timeout mechanism (option B)** wired alongside `casper notify`.
 
 ## Aggregation (per-workspace)
 
 `agentState` stays **per-workspace**; a workspace can hold several terminal
 panes. The detector rolls the per-surface raw signals up to the **most urgent**
-using the resolver priority above. Which surfaces feed the rollup: those whose
-`command` is the agent (v1), else the focused terminal. **No `Surface.status`
-field is added** in v1 — detection state lives only at the workspace level.
+using the resolver priority above. Which surfaces feed the rollup: **every
+terminal surface** of the workspace — detection is text-based, so it works
+regardless of how the terminal was launched (an agent run inside any shell is
+matched all the same). **No `Surface.status` field is added** in v1 — detection
+state lives only at the workspace level.
 
-## Wiring (touch points)
+## Wiring (as built)
 
-- **CasperGhostty** — non-DEBUG `readText` accessor; observe `.render` per
-  surface (extend action target resolution).
-- **CasperCore** — revise `AgentState`; add the transient `AgentAuthority`
-  (a `Workspace` field or an `AppModel` runtime set).
-- **CasperUI** — a detector owned by `AppModel` (main actor) that schedules
-  throttled reads, runs the resolver, and writes via the existing
-  `controlSetAgentState`; the authority latch is set there and released on
-  `.childExited`. The sidebar already observes `AppModel`; rendering a state
-  badge on `WorkspaceRow` (where `agentState` is shown nowhere today) is a
-  separate UI task.
+- **CasperGhostty** — non-DEBUG `readViewportText()` accessor. (A
+  `.render`-driven trigger is deferred; see Deferred.)
+- **CasperCore** — the revised `AgentState` and the pure engine
+  (`AgentDetection.swift`).
+- **CasperUI** — a detector owned by `AppModel` (main actor): a ~250 ms timer
+  scrapes each workspace's terminals, runs the resolver, and writes `agentState`
+  via `setDetectedAgentState` unless the workspace is under explicit authority.
+  The authority latch is set in `controlSetAgentState` (`casper status set`);
+  its release is deferred (option B). The sidebar status icon lives on
+  `WorkspaceRow` (monochrome outline SF Symbols in the chevron column, animated
+  `working`).
 
 ## Deferred / out of scope
 
 - **Notifications.** `blocked` and `done` are the future triggers for
   `casper notify` + `pendingNotification`; not wired here. This theme produces
   **states only**.
+- **`.render`-driven trigger** — replace the ~250 ms timer poll with a
+  throttled re-read on `GHOSTTY_ACTION_RENDER` (decoded as `.render`, currently
+  discarded).
+- **Timeout-based authority release** for shell-hosted agents (option B),
+  wired with `casper notify`.
+- **A real `error` signal** and the **agent-as-command** `done`/`error` path —
+  both blocked on the embedded libghostty honoring a surface's `command` at
+  spawn (see "Process lifecycle").
 - **Per-surface status** field + pane-chrome indicator (option B).
-- **Timeout-based authority release** for shell-hosted agents (option B).
 - **Agents beyond Claude Code** — the rule set is per-agent.
 
 ## Open questions
