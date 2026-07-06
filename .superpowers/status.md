@@ -284,14 +284,17 @@ Infers `Workspace.agentState` (`working | blocked | idle | done | unknown |
 error`) by scraping the terminal, no hooks. Design: `themes/agent-state-detection.md`.
 
 **Built & live-verified:** the pure engine (`CasperCore/AgentDetection.swift` —
-data-driven viewport matcher, most-urgent aggregation, debounce/`done`-latch
-resolver, 22 tests); a non-DEBUG `readViewportText()` accessor; the `AppModel`
-timer (~250 ms) that scrapes each workspace's terminals, resolves, and writes
-`agentState` unless the workspace is under explicit authority; the `casper status
-set` authority latch (transient) that stops detection for that workspace; and the
-sidebar status icon (`WorkspaceRow`, monochrome outline SF Symbols in the chevron
-column, animated `working`). Live GUI check confirmed idle→working→idle and
-blocked, driven purely by scraping.
+data-driven matchers for both the viewport (`blocked`) and the OSC title
+(`working`/`idle`), most-urgent aggregation, debounce/`done`-latch resolver, 29
+tests); non-DEBUG `readViewportText()` and `readOSCTitle()` accessors (the latter
+fed by `GHOSTTY_ACTION_SET_TITLE` captured per-surface); the `AppModel` timer
+(~250 ms) that scrapes each workspace's terminals — viewport **and** title —
+resolves, and writes `agentState` unless the workspace is under explicit
+authority; the `casper status set` authority latch (transient) that stops
+detection for that workspace; and the sidebar status icon (`WorkspaceRow`,
+monochrome outline SF Symbols in the chevron column, animated `working`). Live
+GUI check confirmed idle→working→idle, driven by the real OSC-title spinner
+(current Claude Code's `working` marker), plus `blocked` from the viewport.
 
 `done` is produced by the resolver's own `working → idle` derivation.
 

@@ -45,9 +45,9 @@ done | error`): `running` becomes `working`, `waiting` becomes `blocked`,
 
 | State | Meaning | Producer |
 | --- | --- | --- |
-| `working` | executing | detection (viewport) |
+| `working` | executing | detection (OSC title spinner) |
 | `blocked` | waiting on the user | detection (viewport) |
-| `idle` | at rest, seen | detection (viewport) |
+| `idle` | at rest, seen | detection (OSC title / viewport) |
 | `done` | at rest, unseen | derived (see resolver) |
 | `error` | abnormal exit | `.childExited(exitCode: ≠0)` |
 | `unknown` | no signal | resolver default |
@@ -56,16 +56,27 @@ done | error`): `running` becomes `working`, `waiting` becomes `blocked`,
 
 ### Reading the terminal
 
-Reuse `GhosttySurface.readText(scrollback: false)` — it fabricates a
-full-**viewport** selection and calls `ghostty_surface_read_text`, returning
-plain UTF-8 synchronously on the main thread. Read the **viewport only**, never
-the full scrollback, on every tick: the affordances we match are always on the
-visible screen, and scraping scrollback each time is needlessly expensive.
+Detection reads **two** signals per surface, both cheap and synchronous on the
+main thread:
 
-Today that method is only reachable through the `#if DEBUG` debug channel
-(`themes/debug.md`). This theme needs a **non-DEBUG accessor** on
-`GhosttySurfaceView` / `AppModel` so the detector can reach it in a release
-build.
+1. **The OSC title** — `GhosttySurfaceView.readOSCTitle()`. libghostty delivers
+   the terminal title via `GHOSTTY_ACTION_SET_TITLE`; the runtime captures it
+   per-surface (see Wiring) and the detector reads the latest value. This is the
+   **primary `working` signal**: current Claude Code no longer prints an
+   interrupt hint in the grid — it encodes its live state in the title (an
+   animated Braille spinner while working, a `✳` at rest). The embedded
+   libghostty fork forwards these title sequences intact (verified).
+2. **The viewport grid** — `GhosttySurface.readText(scrollback: false)`
+   fabricates a full-**viewport** selection and calls `ghostty_surface_read_text`.
+   Read the **viewport only**, never the full scrollback, on every tick: the
+   `blocked` affordances we match are always on the visible screen, and scraping
+   scrollback each time is needlessly expensive.
+
+Both `readText` (viewport) and `readOSCTitle` are exposed through **non-DEBUG
+accessors** on `GhosttySurfaceView` / `AppModel` (`readViewportText()` /
+`surfaceViewportText`, `readOSCTitle()` / `surfaceOSCTitle`) so the detector can
+reach them in a release build (distinct from the `#if DEBUG` debug channel,
+`themes/debug.md`).
 
 ### Trigger
 
@@ -81,19 +92,30 @@ surface for the mouse actions today; extend that resolution (as done for
 
 ### Rules
 
-A small, **data-driven** matcher runs over the viewport text and yields a raw
-signal. The patterns describe Claude Code's on-screen affordances and should
-live in an external resource (not hard-coded) so they can track the agent's UI
-without a recompile. Matching is case-insensitive.
+A small, **data-driven** matcher (`AgentDetectionRuleSet`) yields a raw signal
+from each source. The patterns describe Claude Code's affordances and are held
+as values on the rule set (not hard-coded control flow) so a new agent is just a
+new rule set; the aspiration is to move them to an external, updatable resource
+so they can track the agent's UI without a recompile. Viewport matching is
+case-insensitive.
 
-- **`working`** — the interrupt hint the agent shows **only while it runs**:
-  `esc to interrupt`, `press esc to interrupt`, `ctrl+c to interrupt`, or a
-  `running tools` line alongside `esc to interrupt`. Its disappearance is the
-  primary "no longer working" signal.
-- **`blocked`** — a pending confirmation the agent shows **only while it waits
-  for the user**: `do you want to proceed?` together with an `esc to cancel`
-  affordance (and sibling confirmation prompts).
-- **`idle`** — none of the above; the prompt is at rest.
+- **`working`** — from the **OSC title**: a leading **Braille spinner glyph**
+  (any scalar in `U+2800…U+28FF`), the animated marker Claude Code shows while a
+  turn is running. This is the authoritative "is it working" signal; its
+  disappearance (the title reverting to a `✳` or to the shell's own cwd/command
+  title) is the "no longer working" signal. The legacy viewport interrupt hints
+  (`esc to interrupt`, `press esc to interrupt`, `ctrl+c to interrupt`) are
+  **retained as a secondary matcher** for resilience and other agents, but
+  current Claude Code no longer prints them.
+- **`idle`** — from the **OSC title**: a leading `✳` (`U+2733`), the marker
+  Claude Code shows at rest. A title with neither prefix (the shell's own
+  cwd/command title) yields no title signal (`absent`), and the viewport's
+  at-rest prompt then resolves to `idle`.
+- **`blocked`** — from the **viewport**: a pending confirmation the agent shows
+  only while it waits for the user — `do you want to proceed?` together with an
+  `esc to cancel` affordance (and sibling confirmation prompts). `blocked`
+  outranks a lingering `working` title in aggregation, so a pending prompt is
+  never masked by a stale spinner.
 
 ### Resolver
 
@@ -180,13 +202,19 @@ state lives only at the workspace level.
 
 ## Wiring (as built)
 
-- **CasperGhostty** — non-DEBUG `readViewportText()` accessor. (A
-  `.render`-driven trigger is deferred; see Deferred.)
+- **CasperGhostty** — non-DEBUG `readViewportText()` accessor **and**
+  `readOSCTitle()`: `casperGhosttyAction` captures `GHOSTTY_ACTION_SET_TITLE`
+  per-surface (resolving the target the same way it does for `MOUSE_SHAPE`) into
+  `GhosttySurfaceView.latestOSCTitle`, then falls through so the app-level
+  window-title behavior is preserved. (A `.render`-driven trigger is deferred;
+  see Deferred.)
 - **CasperCore** — the revised `AgentState` and the pure engine
-  (`AgentDetection.swift`).
+  (`AgentDetection.swift`): both `signal(fromViewport:)` and `signal(fromTitle:)`,
+  the latter classifying the Braille-spinner / `✳` title prefixes.
 - **CasperUI** — a detector owned by `AppModel` (main actor): a ~250 ms timer
-  scrapes each workspace's terminals, runs the resolver, and writes `agentState`
-  via `setDetectedAgentState` unless the workspace is under explicit authority.
+  scrapes each workspace's terminals — viewport **and** OSC title — aggregates
+  the two signals, runs the resolver, and writes `agentState` via
+  `setDetectedAgentState` unless the workspace is under explicit authority.
   The authority latch is set in `controlSetAgentState` (`casper status set`);
   its release is deferred (option B). The sidebar status icon lives on
   `WorkspaceRow` (monochrome outline SF Symbols in the chevron column, animated

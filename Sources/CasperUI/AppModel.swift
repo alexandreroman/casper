@@ -743,6 +743,12 @@ final class AppModel {
         (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readViewportText()
     }
 
+    /// OSC window title of a live terminal surface, or nil if it has no live
+    /// Ghostty view. Read-only; used by agent-state detection.
+    func surfaceOSCTitle(_ surfaceID: UUID) -> String? {
+        (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readOSCTitle()
+    }
+
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
     /// created on first use and loaded with the surface's URL. Cached by
     /// `Surface.id` so navigation state and the web view survive layout churn.
@@ -1058,7 +1064,13 @@ final class AppModel {
                 }
                 let signals = terminalIDs.compactMap { id -> AgentSignal? in
                     guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
-                    return AgentDetectionRuleSet.claudeCode.signal(fromViewport: text)
+                    let rules = AgentDetectionRuleSet.claudeCode
+                    let viewport = rules.signal(fromViewport: text)
+                    let title = surfaceOSCTitle(id).map { rules.signal(fromTitle: $0) } ?? .absent
+                    // Roll the viewport and title signals together (blocked > working > idle >
+                    // absent): the title carries the primary "working" spinner, the viewport
+                    // carries "blocked" prompts, and blocked wins if both are present.
+                    return AgentSignal.aggregate([viewport, title])
                 }
                 if signals.isEmpty { continue }  // nothing readable ⇒ leave W's state untouched
 

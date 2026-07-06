@@ -161,6 +161,16 @@ func casperGhosttyAction(
         let visible = action.action.mouse_visibility == GHOSTTY_MOUSE_VISIBLE
         MainActor.assumeIsolated { view.setCursorVisibility(visible) }
         return true
+    case GHOSTTY_ACTION_SET_TITLE:
+        // Capture the OSC window title per-surface, then fall through (no `return`)
+        // so the existing app-level `onAction` still runs — AppDelegate sets
+        // `NSApp.keyWindow?.title` from it, and that behavior must be preserved.
+        if let view = surfaceView(from: target) {
+            let title = action.action.set_title.title.map { String(cString: $0) } ?? ""
+            MainActor.assumeIsolated {
+                view.updateOSCTitle(title)
+            }
+        }
     default:
         break
     }

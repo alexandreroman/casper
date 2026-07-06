@@ -44,6 +44,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // user gets an explanation instead of a silently blank pane.
     private var errorOverlay: NSView?
 
+    // Latest OSC window title libghostty decoded for this surface (the
+    // GHOSTTY_ACTION_SET_TITLE payload), captured per-surface so agent-state
+    // detection can read it. Current Claude Code signals "working" only through
+    // this title (a Braille spinner glyph prefix), no longer via the viewport text.
+    private(set) var latestOSCTitle: String?
+
     public init(
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
         surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
@@ -153,6 +159,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// isn't live. Used by agent-state detection — see
     /// `.superpowers/themes/agent-state-detection.md`.
     public func readViewportText() -> String? { surface?.readText(scrollback: false) }
+
+    /// The latest OSC window title libghostty decoded for this surface, or nil if
+    /// none has arrived yet. Used by agent-state detection alongside
+    /// `readViewportText()` — see `.superpowers/themes/agent-state-detection.md`.
+    public func readOSCTitle() -> String? { latestOSCTitle }
+
+    /// Store the OSC title libghostty just decoded (GHOSTTY_ACTION_SET_TITLE), so
+    /// `readOSCTitle()` can surface it to detection. Called from the action
+    /// trampoline on the main thread.
+    func updateOSCTitle(_ title: String) { latestOSCTitle = title }
 
     // MARK: Debug accessors (compiled only into debug builds)
 

@@ -45,11 +45,23 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     public var workingAllOf: [[String]]
     /// Any group whose every substring is present ⇒ `blocked`.
     public var blockedAllOf: [[String]]
+    /// Unicode scalar range whose prefix in the OSC title ⇒ `working`.
+    public var titleWorkingScalars: ClosedRange<UInt32>
+    /// Single Unicode scalar whose prefix in the OSC title ⇒ `idle`.
+    public var titleIdleScalar: UInt32?
 
-    public init(workingContains: [String], workingAllOf: [[String]], blockedAllOf: [[String]]) {
+    public init(
+        workingContains: [String],
+        workingAllOf: [[String]],
+        blockedAllOf: [[String]],
+        titleWorkingScalars: ClosedRange<UInt32> = 0x2800...0x28FF,
+        titleIdleScalar: UInt32? = 0x2733
+    ) {
         self.workingContains = workingContains
         self.workingAllOf = workingAllOf
         self.blockedAllOf = blockedAllOf
+        self.titleWorkingScalars = titleWorkingScalars
+        self.titleIdleScalar = titleIdleScalar
     }
 
     /// Classifies a viewport snapshot. Matching is case-insensitive and,
@@ -69,8 +81,22 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         return isWorking ? .working : .idle
     }
 
+    /// Classifies the terminal's OSC title. Current Claude Code encodes its live
+    /// state there: an animated Braille spinner (U+2800–U+28FF) prefix while
+    /// working, a ✳ (U+2733) prefix at rest. The shell also sets the title (to
+    /// the running command or cwd) between agent runs; such titles have neither
+    /// prefix and yield `.absent`, so they never produce a false `working`.
+    public func signal(fromTitle title: String) -> AgentSignal {
+        guard let first = title.unicodeScalars.first(where: { $0 != " " }) else { return .absent }
+        if titleWorkingScalars.contains(first.value) { return .working }
+        if first.value == titleIdleScalar { return .idle }
+        return .absent
+    }
+
     /// Claude Code's on-screen affordances. Substrings are already lowercase so
-    /// they compare directly against the lowercased viewport.
+    /// they compare directly against the lowercased viewport. The OSC-title
+    /// convention (Braille spinner U+2800–U+28FF = working, ✳ U+2733 = idle)
+    /// comes from the initializer's defaults.
     public static let claudeCode = AgentDetectionRuleSet(
         workingContains: [
             "esc to interrupt",

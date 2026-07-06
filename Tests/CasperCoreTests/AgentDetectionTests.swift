@@ -50,6 +50,36 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromViewport: ""), .idle)
     }
 
+    // MARK: - OSC-title matcher
+
+    func testTitleBraillePrefixIsWorking() {
+        XCTAssertEqual(rules.signal(fromTitle: "\u{2802} Doing something"), .working)
+    }
+
+    func testTitleBrailleRangeBoundaryIsWorking() {
+        XCTAssertEqual(rules.signal(fromTitle: "\u{28FF} x"), .working)
+    }
+
+    func testTitleAsteriskPrefixIsIdle() {
+        XCTAssertEqual(rules.signal(fromTitle: "\u{2733} Ready"), .idle)
+    }
+
+    func testPlainShellTitleIsAbsent() {
+        XCTAssertEqual(rules.signal(fromTitle: "alex@host:/tmp/casper"), .absent)
+    }
+
+    func testEmptyTitleIsAbsent() {
+        XCTAssertEqual(rules.signal(fromTitle: ""), .absent)
+    }
+
+    func testWhitespaceOnlyTitleIsAbsent() {
+        XCTAssertEqual(rules.signal(fromTitle: "   "), .absent)
+    }
+
+    func testLeadingSpacesBeforeBrailleIsWorking() {
+        XCTAssertEqual(rules.signal(fromTitle: "  \u{2802} x"), .working)
+    }
+
     // MARK: - Aggregation
 
     func testAggregateEmptyIsAbsent() {
