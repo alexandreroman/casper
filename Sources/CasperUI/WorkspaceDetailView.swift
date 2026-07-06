@@ -73,7 +73,11 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
-            ToolbarItem(placement: .primaryAction) { inspectorToggle }
+            if workspace.inspector.collapsed {
+                ToolbarItem(placement: .primaryAction) { inspectorToggle }
+            } else {
+                ToolbarItem(placement: .primaryAction) { inspectorToggle }.flatToolbarItem()
+            }
         }
         .task(id: model.selectedWorkspaceID) {
             diff = model.diffSummary(for: workspace)
