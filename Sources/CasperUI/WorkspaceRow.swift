@@ -135,11 +135,11 @@ private struct AgentStatusIcon: View {
             case .working:
                 SpinningIcon(isSelected: isSelected)
             case .blocked:
-                icon("exclamationmark.circle.fill")
+                icon("exclamationmark.circle")
             case .done:
-                icon("checkmark.circle.fill")
+                icon("checkmark.circle")
             case .error:
-                icon("xmark.octagon.fill")
+                icon("xmark.octagon")
             case .idle, .unknown:
                 Color.clear
             }
