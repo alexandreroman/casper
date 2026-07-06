@@ -88,6 +88,7 @@ final class AppModel {
 
     @ObservationIgnored private let sessionStore: SessionStore
     @ObservationIgnored private var portAllocator: PortAllocator
+    @ObservationIgnored let sessionIdentity: SessionIdentity
 
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
 
@@ -142,26 +143,33 @@ final class AppModel {
 
     @MainActor
     static func makeShared() -> AppModel {
+        let identity = AppLaunch.sessionIdentity
+        let allocator = PortAllocator(startBase: PortAllocator.randomStartBase())
         do {
-            let url = try SessionStore.defaultURL()
+            let url = try SessionStore.defaultURL(session: identity)
             let store = SessionStore(fileURL: url)
             let session = try store.load()
-            return AppModel(sessionStore: store, session: session)
+            return AppModel(sessionStore: store, portAllocator: allocator,
+                            session: session, sessionIdentity: identity)
         } catch {
             CasperLog.app.failure("failed to load session, starting fresh", error)
             let fallback = SessionStore(
-                fileURL: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("casper-session.json"))
-            return AppModel(sessionStore: fallback)
+                fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("casper-session\(identity.pathSuffix).json"))
+            return AppModel(sessionStore: fallback, portAllocator: allocator,
+                            sessionIdentity: identity)
         }
     }
 
     init(
         sessionStore: SessionStore,
         portAllocator: PortAllocator = PortAllocator(),
-        session: Session = Session()
+        session: Session = Session(),
+        sessionIdentity: SessionIdentity = .default
     ) {
         self.sessionStore = sessionStore
         self.portAllocator = portAllocator
+        self.sessionIdentity = sessionIdentity
         self.spaces = session.spaces
         // Restore the persisted selection when it still resolves to a live
         // workspace; otherwise fall back to the first workspace of the first
@@ -884,7 +892,8 @@ final class AppModel {
             portBase: workspace.portBase,
             casperDirectory: casperDirectory,
             basePath: ProcessInfo.processInfo.environment["PATH"],
-            controlSocketPath: controlSocketPath
+            controlSocketPath: controlSocketPath,
+            sessionName: sessionIdentity.name
         )
         return config
     }
