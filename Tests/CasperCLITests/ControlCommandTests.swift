@@ -44,4 +44,22 @@ final class ControlCommandTests: XCTestCase {
         let command = try clear.makeCommand()
         XCTAssertEqual(command.verb, .progressClear)
     }
+
+    func testNotifyBuildsCommand() throws {
+        var notify = NotifyCommand()
+        notify.message = "look here"
+        notify.target.workspace = "feature"
+        let command = try notify.makeCommand()
+        XCTAssertEqual(command.verb, .notify)
+        XCTAssertEqual(command.message, "look here")
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testNotifyWithoutMessage() throws {
+        var notify = NotifyCommand()
+        notify.target.workspace = "feature"
+        let command = try notify.makeCommand()
+        XCTAssertEqual(command.verb, .notify)
+        XCTAssertNil(command.message)
+    }
 }
