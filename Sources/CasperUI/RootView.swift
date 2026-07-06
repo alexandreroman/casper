@@ -3,25 +3,41 @@ import SwiftUI
 
 struct RootView: View {
     @Bindable var model: AppModel
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 400)
-        } detail: {
-            if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
-                // Give the detail a per-workspace identity so SwiftUI recreates the
-                // `.inspector` on a workspace switch. Otherwise SwiftUI retains a single
-                // scene-level inspector width and carries it across workspaces; a fresh
-                // identity forces the column width to re-seed from this workspace's
-                // persisted `inspector.width`.
-                WorkspaceDetailView(model: model, workspace: workspace)
-                    .id(id)
-            } else {
+        Group {
+            if model.spaces.isEmpty {
+                // No space configured: show only the empty state — no
+                // NavigationSplitView, so there is no sidebar and no sidebar
+                // toggle in the toolbar at all.
                 EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
+            } else {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarView(model: model)
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 400)
+                } detail: {
+                    if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
+                        // Give the detail a per-workspace identity so SwiftUI recreates the
+                        // `.inspector` on a workspace switch. Otherwise SwiftUI retains a single
+                        // scene-level inspector width and carries it across workspaces; a fresh
+                        // identity forces the column width to re-seed from this workspace's
+                        // persisted `inspector.width`.
+                        WorkspaceDetailView(model: model, workspace: workspace)
+                            .id(id)
+                    } else {
+                        EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
+                    }
+                }
             }
         }
         .background(WindowConfigurator())
+        .onChange(of: model.spaces.isEmpty) { _, empty in
+            // When the first space is added, expand the sidebar by default. Only
+            // reacts to the empty↔non-empty transition, so manual sidebar toggling
+            // during normal multi-space use isn't overridden.
+            if !empty { columnVisibility = .all }
+        }
     }
 }
 
