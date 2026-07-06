@@ -14,16 +14,6 @@ public struct WorktreeInfo: Equatable, Sendable {
     }
 }
 
-/// Thrown by `worktreeInfo(name:)` when no worktree with the given name is
-/// registered (libgit2 `GIT_ENOTFOUND`), distinct from a real lookup failure.
-public struct WorktreeNotFoundError: Error, Equatable, Sendable {
-    public let name: String
-
-    public init(name: String) {
-        self.name = name
-    }
-}
-
 extension Repository {
     /// Create a worktree named `name` at `path`, checked out to a new branch
     /// (also named `name`) based on `basedOn` (a branch/tag/commit-ish) or HEAD.
@@ -89,29 +79,18 @@ extension Repository {
         }
     }
 
-    /// Look up a single worktree by name. Throws `WorktreeNotFoundError` when no
-    /// worktree with that name is registered, so callers can distinguish a
-    /// missing worktree from a genuine libgit2 failure.
+    /// Look up a single worktree by name. Throws a `GitError` (`GIT_ENOTFOUND`)
+    /// when no worktree with that name is registered.
     public func worktreeInfo(name: String) throws -> WorktreeInfo {
         var worktree: OpaquePointer?
         let code = git_worktree_lookup(&worktree, pointer, name)
         defer { git_worktree_free(worktree) }
-        if code == GIT_ENOTFOUND.rawValue { throw WorktreeNotFoundError(name: name) }
+        if code == GIT_ENOTFOUND.rawValue {
+            throw GitError(code: GIT_ENOTFOUND.rawValue, message: "worktree not found: \(name)")
+        }
         try gitCheck(code)
         let handle = try requireNonNull(worktree, "worktree")
         return try worktreeInfo(fromPointer: handle, name: name)
-    }
-
-    /// Whether the worktree named `name` is structurally valid (its gitdir and
-    /// working directory still exist and agree). Returns `false` when no worktree
-    /// with that name is registered.
-    public func isWorktreeValid(name: String) throws -> Bool {
-        var worktree: OpaquePointer?
-        let code = git_worktree_lookup(&worktree, pointer, name)
-        defer { git_worktree_free(worktree) }
-        if code == GIT_ENOTFOUND.rawValue { return false }
-        try gitCheck(code)
-        return git_worktree_validate(worktree) == 0
     }
 
     /// Prune the worktree named `name`, removing both its admin entry and its

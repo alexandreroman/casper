@@ -78,7 +78,7 @@ public final class GhosttyRuntime {
     }
 
     /// Drain libghostty's pending work. Main thread only; no-op without an app.
-    public func tick() {
+    func tick() {
         guard let app else { return }
         ghostty_app_tick(app)
     }

@@ -792,19 +792,6 @@ final class AppModel {
     /// debounced via `scheduleSave()` and skipped entirely when the committed URL
     /// already matches the stored one — a page load must not thrash the session file.
     func setBrowserURL(_ surfaceID: UUID, _ url: URL) {
-        if let at = locateSurface(surfaceID) {
-            var changed = false
-            let updated = LayoutTree.mapSurface(
-                spaces[at.space].workspaces[at.workspace].layout, id: surfaceID) { s in
-                    guard case .browser(let current) = s.kind, current != url else { return s }
-                    changed = true
-                    return Surface(id: s.id, kind: .browser(url: url))
-                }
-            guard changed else { return }
-            spaces[at.space].workspaces[at.workspace].layout = updated
-            scheduleSave()
-            return
-        }
         if let at = indexPair(where: { $0.inspector.browser.id == surfaceID }) {
             if case .browser(let current) = spaces[at.space].workspaces[at.workspace].inspector.browser.kind,
                current == url { return }

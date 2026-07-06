@@ -50,7 +50,7 @@ final class ControlServer {
         }
         switch command.verb {
         case .statusSet:
-            guard let raw = command.state, let state = AgentState(rawValue: raw), state != .unknown else {
+            guard let raw = command.state, let state = AgentState(rawValue: raw) else {
                 return .failure("invalid state: \(command.state ?? "nil")")
             }
             return model.controlSetAgentState(state, for: id)

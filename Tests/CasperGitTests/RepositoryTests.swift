@@ -37,17 +37,6 @@ final class RepositoryTests: XCTestCase {
         XCTAssertThrowsError(try Repository.open(atPath: tempDir.path))
     }
 
-    func testDiscoverFromSubdirectory() throws {
-        _ = try Repository.initialize(atPath: tempDir.path)
-        let sub = tempDir.appendingPathComponent("a/b/c")
-        try FileManager.default.createDirectory(
-            at: sub, withIntermediateDirectories: true)
-        let repo = try Repository.discover(startingAt: sub.path)
-        XCTAssertEqual(
-            URL(fileURLWithPath: repo.workdirPath!).standardizedFileURL.path,
-            tempDir.standardizedFileURL.path)
-    }
-
     func testHeadBranchNameAfterFixture() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
         let branch = try repo.headBranchName()

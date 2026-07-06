@@ -17,7 +17,7 @@ struct StatusCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            guard let parsed = AgentState(rawValue: state), parsed != .unknown else {
+            guard let parsed = AgentState(rawValue: state) else {
                 throw exitWithError("invalid state '\(state)' (expected running|waiting|done|error|idle)")
             }
             let selector = try requireSelector(target)

@@ -90,8 +90,6 @@ struct SurfaceHostView: View {
             PersistentNSViewHost(view: view).id(surface.id)
         } else if case .terminal = surface.kind {
             Color.black  // runtime not ready yet
-        } else if case .browser = surface.kind {
-            BrowserSurfaceView(model: model, surface: surface)
         } else {
             ContentUnavailableView(
                 "Unsupported surface", systemImage: "rectangle.dashed",

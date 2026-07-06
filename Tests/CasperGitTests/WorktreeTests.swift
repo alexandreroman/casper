@@ -51,13 +51,6 @@ final class WorktreeTests: XCTestCase {
         XCTAssertThrowsError(try repo.worktreeInfo(name: "ghost"))
     }
 
-    func testValidateWorktree() throws {
-        let repo = try GitFixture.repository(at: repoDir.path)
-        let wtPath = root.appendingPathComponent("feature").path
-        _ = try repo.addWorktree(name: "feature", atPath: wtPath, basedOn: nil)
-        XCTAssertTrue(try repo.isWorktreeValid(name: "feature"))
-    }
-
     func testAddWorktreeBasedOnExplicitRef() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let base = try repo.headBranchName()  // the fixture's default branch
@@ -70,17 +63,6 @@ final class WorktreeTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: wtPath))
         XCTAssertTrue(try repo.branchExists("from-base"))
         XCTAssertTrue(try repo.isBranchCheckedOut("from-base"))
-    }
-
-    func testValidateReturnsFalseForBrokenWorktree() throws {
-        let repo = try GitFixture.repository(at: repoDir.path)
-        let wtPath = root.appendingPathComponent("feature").path
-        _ = try repo.addWorktree(name: "feature", atPath: wtPath, basedOn: nil)
-
-        // Remove the working-tree directory out from under the worktree.
-        try FileManager.default.removeItem(atPath: wtPath)
-
-        XCTAssertFalse(try repo.isWorktreeValid(name: "feature"))
     }
 
     func testAddWorktreeRollsBackBranchWhenAddFails() throws {

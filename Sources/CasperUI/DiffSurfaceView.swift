@@ -377,7 +377,7 @@ private struct DiffLineRow: View {
             Text(highlightedContent)
         } else {
             Text(DiffLineStyle.prefix(for: line.kind) + line.content)
-                .foregroundStyle(DiffLineStyle.color(for: line.kind))
+                .foregroundStyle(Color.primary)
         }
     }
 

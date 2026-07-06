@@ -20,10 +20,6 @@ enum DiffLineStyle {
         }
     }
 
-    /// Diff-line text stays neutral — the row background and leading accent
-    /// stripe carry the add/delete signal, mirroring the reference viewer.
-    static func color(for kind: GitDiffLine.Kind) -> Color { .primary }
-
     /// Dark, theme-aware row wash: the accent hue at low opacity reads as a
     /// dark green/red band over the dark UI.
     static func background(for kind: GitDiffLine.Kind) -> Color {

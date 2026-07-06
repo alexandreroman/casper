@@ -1,7 +1,7 @@
 import Foundation
 
 public enum AgentState: String, Codable, Sendable {
-    case idle, running, waiting, done, error, unknown
+    case idle, running, waiting, done, error
 }
 
 public enum TodoStatus: String, Codable, Sendable {

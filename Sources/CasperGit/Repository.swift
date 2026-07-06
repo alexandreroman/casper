@@ -23,20 +23,11 @@ public final class Repository {
     }
 
     /// Open the repository at `path` (either a working directory or a `.git`
-    /// directory). Does not search parent directories — use `discover` for that.
+    /// directory). Does not search parent directories.
     public static func open(atPath path: String) throws -> Repository {
         Libgit2.ensureInit()
         var repo: OpaquePointer?
         try gitCheck(git_repository_open(&repo, path))
-        return Repository(pointer: try requireNonNull(repo, "repository"))
-    }
-
-    /// Open the repository that owns `path`, searching upward through parents.
-    public static func discover(startingAt path: String) throws -> Repository {
-        Libgit2.ensureInit()
-        var repo: OpaquePointer?
-        // flags 0 → search parent directories; no ceiling dirs.
-        try gitCheck(git_repository_open_ext(&repo, path, 0, nil))
         return Repository(pointer: try requireNonNull(repo, "repository"))
     }
 
