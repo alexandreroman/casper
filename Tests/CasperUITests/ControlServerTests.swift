@@ -36,7 +36,7 @@ final class ControlServerTests: XCTestCase {
     func testStatusSetDispatch() throws {
         let (server, id) = try seededServer()
         let response = server.handle(
-            ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "waiting"))
+            ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "blocked"))
         XCTAssertTrue(response.ok)
     }
 

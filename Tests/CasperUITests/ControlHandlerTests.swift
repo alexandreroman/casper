@@ -257,8 +257,8 @@ final class ControlHandlerTests: XCTestCase {
 
     func testSetAgentState() {
         let (model, id) = seededModel()
-        XCTAssertTrue(model.controlSetAgentState(.waiting, for: id))
-        XCTAssertEqual(model.workspace(id: id)?.agentState, .waiting)
+        XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
     }
 
     func testSetProgressSynthesizesTodos() throws {

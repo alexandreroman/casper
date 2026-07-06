@@ -4,10 +4,10 @@ import CasperCore
 
 final class ControlCommandTests: XCTestCase {
     func testStatusSetBuildsCommand() throws {
-        let set = try StatusCommand.Set.parse(["waiting", "--workspace", "feature"])
+        let set = try StatusCommand.Set.parse(["blocked", "--workspace", "feature"])
         let command = try set.makeCommand()
         XCTAssertEqual(command.verb, .statusSet)
-        XCTAssertEqual(command.state, "waiting")
+        XCTAssertEqual(command.state, "blocked")
         XCTAssertEqual(command.workspace, "feature")
     }
 

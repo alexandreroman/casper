@@ -13,14 +13,14 @@ final class ControlSocketTests: XCTestCase {
         let server = ControlSocketServer(socketPath: path)
         server.onCommand = { command, reply in
             XCTAssertEqual(command.verb, .statusSet)
-            XCTAssertEqual(command.state, "running")
+            XCTAssertEqual(command.state, "working")
             reply(.success(text: "ok"))
         }
         try server.start()
         defer { server.stop() }
 
         let response = try ControlSocketClient.send(
-            ControlCommand(verb: .statusSet, workspace: "w", state: "running"),
+            ControlCommand(verb: .statusSet, workspace: "w", state: "working"),
             toSocketAt: path)
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.text, "ok")

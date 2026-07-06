@@ -7,8 +7,8 @@ import XCTest
 final class JSONOutputTests: XCTestCase {
     func testStatus() {
         XCTAssertEqual(
-            jsonLine(StatusOut(status: "waiting", workspace: "W")),
-            #"{"status":"waiting","workspace":"W"}"#)
+            jsonLine(StatusOut(status: "blocked", workspace: "W")),
+            #"{"status":"blocked","workspace":"W"}"#)
     }
 
     func testProgressBody() {

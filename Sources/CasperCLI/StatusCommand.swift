@@ -10,15 +10,16 @@ struct StatusCommand: ParsableCommand {
 
     struct Set: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Set the agent state (running|waiting|done|error|idle).")
+            abstract: "Set the agent state (working|blocked|idle|done|unknown|error).")
 
-        @Argument(help: "Agent state: running, waiting, done, error, or idle.")
+        @Argument(help: "Agent state: working, blocked, idle, done, unknown, or error.")
         var state: String
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
             guard let parsed = AgentState(rawValue: state) else {
-                throw exitWithError("invalid state '\(state)' (expected running|waiting|done|error|idle)")
+                throw exitWithError(
+                    "invalid state '\(state)' (expected working|blocked|idle|done|unknown|error)")
             }
             let selector = try requireSelector(target)
             return ControlCommand(verb: .statusSet, workspace: selector, state: parsed.rawValue)

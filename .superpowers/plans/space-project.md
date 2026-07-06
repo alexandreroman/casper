@@ -92,7 +92,7 @@ final class ModelsTests: XCTestCase {
         let feature = Workspace(
             name: "feat-x", kind: .linked,
             worktreePath: "/repo/wt", branch: "feat-x", baseBranch: "main",
-            agentState: .running,
+            agentState: .working,
             todos: [Todo(content: "wire up", status: .inProgress)],
             pendingNotification: false, portBase: 40010, layout: layout
         )

@@ -135,6 +135,22 @@ final class AppModel {
     /// web page and address alive across SwiftUI rebuilds.
     @ObservationIgnored private var browserCoordinators: [UUID: BrowserCoordinator] = [:]
 
+    /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
+    /// agent detector. `AgentStateResolver` is a value type carried across ticks,
+    /// so each workspace owns its own copy. Runtime-only; never persisted.
+    @ObservationIgnored private var agentResolvers: [UUID: AgentStateResolver] = [:]
+
+    /// Workspaces where `casper status set` took over: detection is suppressed
+    /// for them and the explicit value is authoritative. Transient — an in-memory
+    /// set, never persisted, so it naturally resets to "detection" on relaunch.
+    @ObservationIgnored private var explicitAuthority: Set<UUID> = []
+
+    /// The repeating driver for `runAgentDetectionTick()`. GUI-only: started from
+    /// the app lifecycle (`AppDelegate`), never from `init`, so unit tests that
+    /// build an `AppModel` directly don't spin a background loop. Stored so it can
+    /// be cancelled on teardown and so a second `startAgentDetection()` is a no-op.
+    @ObservationIgnored private var agentDetectionTask: Task<Void, Never>?
+
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
     /// AppKit lifecycle (`AppDelegate`). Loads the persisted session from its
     /// default location, falling back to a fresh, temp-backed store if the
@@ -203,6 +219,7 @@ final class AppModel {
     deinit {
         worktreeWatcher?.stop()
         gitMetaWatcher?.stop()
+        agentDetectionTask?.cancel()
     }
 
     var isEmpty: Bool { spaces.allSatisfy { $0.workspaces.isEmpty } }
@@ -716,6 +733,12 @@ final class AppModel {
         return view
     }
 
+    /// Visible viewport text of a live terminal surface, or nil if it has no
+    /// live Ghostty view. Read-only; used by agent-state detection.
+    func surfaceViewportText(_ surfaceID: UUID) -> String? {
+        (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readViewportText()
+    }
+
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
     /// created on first use and loaded with the surface's URL. Cached by
     /// `Surface.id` so navigation state and the web view survive layout churn.
@@ -987,6 +1010,75 @@ final class AppModel {
         var description: String { message }
     }
 
+    // MARK: - Agent-state detection
+    //
+    // The implicit producer of `agentState`: Casper owns each terminal's PTY, so
+    // it scrapes the visible viewport and infers what the agent is doing. The pure
+    // policy lives in CasperCore (`AgentDetectionRuleSet`, `AgentSignal`,
+    // `AgentStateResolver`); this is only the wiring. It complements — and always
+    // yields to — the explicit `casper status set` path (see the authority latch
+    // in `controlSetAgentState`). See `.superpowers/themes/agent-state-detection.md`.
+
+    /// Start the periodic terminal-scraping detector on a ~0.25s cadence.
+    /// Idempotent: a second call while a loop is already running is a no-op.
+    func startAgentDetection() {
+        guard agentDetectionTask == nil else { return }
+        agentDetectionTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                self?.runAgentDetectionTick()
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+
+    /// Stop the periodic detector (app teardown).
+    func stopAgentDetection() {
+        agentDetectionTask?.cancel()
+        agentDetectionTask = nil
+    }
+
+    /// One detection pass over every workspace. For each workspace not under
+    /// explicit authority, scrape its live terminal viewports, aggregate the raw
+    /// signals, run the resolver, and write the result. A workspace with nothing
+    /// readable this tick (no live surface view) is left untouched rather than
+    /// forced to `unknown`, so switching a workspace off-screen doesn't wipe its
+    /// last known state.
+    func runAgentDetectionTick() {
+        for space in spaces {
+            for ws in space.workspaces {
+                if explicitAuthority.contains(ws.id) { continue }  // detection stopped for W
+
+                let terminalIDs = LayoutTree.surfaces(ws.layout).compactMap { surface -> UUID? in
+                    guard case .terminal = surface.kind else { return nil }
+                    return surface.id
+                }
+                let signals = terminalIDs.compactMap { id -> AgentSignal? in
+                    guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
+                    return AgentDetectionRuleSet.claudeCode.signal(fromViewport: text)
+                }
+                if signals.isEmpty { continue }  // nothing readable ⇒ leave W's state untouched
+
+                let aggregated = AgentSignal.aggregate(signals)
+                let seen = (selectedWorkspaceID == ws.id)
+                var resolver = agentResolvers[ws.id] ?? AgentStateResolver()
+                let state = resolver.resolve(signal: aggregated, seen: seen)
+                agentResolvers[ws.id] = resolver  // persist the mutated resolver back
+                setDetectedAgentState(state, for: ws.id)
+            }
+        }
+    }
+
+    /// Write a *detected* agent state. Distinct from the explicit
+    /// `controlSetAgentState`: it must NOT grant authority. Writes and persists
+    /// only when the value actually changes, so a steady detection stream doesn't
+    /// thrash the store.
+    private func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
+        guard let at = locate(workspaceID),
+              spaces[at.space].workspaces[at.workspace].agentState != state else { return }
+        spaces[at.space].workspaces[at.workspace].agentState = state
+        persist()
+    }
+
     // MARK: - CLI control handlers
     //
     // Explicit, agent-agnostic state reporting and UI driving for the `casper`
@@ -998,8 +1090,18 @@ final class AppModel {
     func controlSetAgentState(_ state: AgentState, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
         spaces[at.space].workspaces[at.workspace].agentState = state
+        // The explicit CLI path is the ONLY place authority is granted: once an
+        // agent reports its own state, terminal-scraping detection steps aside for
+        // this workspace (release-on-childExited is a later lot).
+        explicitAuthority.insert(workspaceID)
         persist()
         return true
+    }
+
+    /// Whether `workspaceID` is under explicit (CLI) authority, which suppresses
+    /// terminal-scraping detection for it. Test seam for the authority latch.
+    func isUnderExplicitAuthority(_ workspaceID: UUID) -> Bool {
+        explicitAuthority.contains(workspaceID)
     }
 
     @discardableResult

@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             model.runtime = runtime
             runtime.actionHandler = LayoutActionHandler(model: model)
+            // Terminal-scraping agent-state detection is GUI-only, so start its
+            // timer here (never from `AppModel.init`, which also runs in tests).
+            model.startAgentDetection()
         } catch {
             CasperLog.ghostty.failure("ghostty init failed", error)
             NSApp.terminate(nil)
@@ -78,6 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
+        AppModel.shared.stopAgentDetection()
         controlServer?.stop()
         #if DEBUG
         debugServer?.stop()

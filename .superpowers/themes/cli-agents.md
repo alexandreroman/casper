@@ -40,7 +40,7 @@ handful of verbs:
 
 Every workspace-scoped command shares a `--workspace <id-or-name>` option,
 defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is
-why plain `casper status set running` works with no flags inside a Casper
+why plain `casper status set working` works with no flags inside a Casper
 terminal but needs `--workspace` from anywhere else.
 
 Each command sends a `ControlCommand` to the running app over a Unix domain
@@ -55,8 +55,8 @@ separate, `#if DEBUG`-only channel — never present in a release build. See
 
 Every command is machine-readable. On **success** it prints a JSON object (or
 array) to stdout and exits 0, describing the resulting resource state and always
-including the affected `workspace` id — e.g. `status set waiting` →
-`{"status":"waiting","workspace":"<id>"}`; verbs with no meaningful state
+including the affected `workspace` id — e.g. `status set blocked` →
+`{"status":"blocked","workspace":"<id>"}`; verbs with no meaningful state
 (`progress clear`, `notify`, `browser open`, `diff open`) → `{"workspace":"<id>"}`.
 `terminal new`/`list` carry `working-dir` (always) and `command` (when
 non-default); `workspace new`/`list`/`current` carry the worktree `path`

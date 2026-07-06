@@ -20,7 +20,7 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 ## Design
 
 - **Sidebar** — one row per workspace, grouped by repository (the Space, see
-  `space-project.md`). Each row: state badge (running ● / waiting ◐ / done ✓ /
+  `space-project.md`). Each row: state badge (working ● / blocked ◐ / done ✓ /
   error ✕ / idle ○), name, Git branch/worktree label, todo progress
   (`completed/total` + current `in_progress` label), pending-notification dot,
   and the `+/−` diff summary.

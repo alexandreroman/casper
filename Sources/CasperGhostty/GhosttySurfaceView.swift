@@ -148,6 +148,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         errorOverlay = nil
     }
 
+    /// The current visible viewport text (no scrollback), or nil if the surface
+    /// isn't live. Used by agent-state detection — see
+    /// `.superpowers/themes/agent-state-detection.md`.
+    public func readViewportText() -> String? { surface?.readText(scrollback: false) }
+
     // MARK: Debug accessors (compiled only into debug builds)
 
     #if DEBUG

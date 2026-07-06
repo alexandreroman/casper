@@ -204,7 +204,7 @@ final class ModelsTests: XCTestCase {
         // must reset to their defaults on load.
         let ws = Workspace(
             name: "feat", worktreePath: "/r", branch: "feat",
-            agentState: .running,
+            agentState: .working,
             todos: [Todo(content: "x", status: .inProgress)],
             pendingNotification: true,
             portBase: 40000,
@@ -230,7 +230,7 @@ final class ModelsTests: XCTestCase {
         // ignore them and reset to defaults, not restore the on-disk values.
         let json = """
         { "id": "\(UUID().uuidString)", "name": "legacy", "worktreePath": "/r",
-          "branch": "main", "agentState": "running",
+          "branch": "main", "agentState": "working",
           "todos": [ { "content": "x", "status": "in_progress" } ],
           "pendingNotification": true, "portBase": 40000,
           "layout": { "leaf": { "_0": { "id": "\(UUID().uuidString)",
