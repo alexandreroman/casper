@@ -35,7 +35,7 @@ make test    # run the test suite
 make release # size-optimized release build (arm64)
 make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)
 make dist    # package Casper.app into a downloadable .zip + .sha256 (release artifact)
-casper       # (no args) open a one-terminal Ghostty window (Plan 4 demo)
+casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
 
 `make bundle`/`make dist` need `brew install dylibbundler` (embeds the libgit2

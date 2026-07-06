@@ -19,6 +19,7 @@ per workspace, and bundles a native browser and diff viewer.
 
 - **Worktree = workspace** — each workspace maps to a Git worktree; creating one
   opens a plain Ghostty terminal in that worktree (no agent is auto-launched).
+  ⌘-click a link in the terminal to open it in your browser.
 - **Agent state & progress** — each workspace carries an agent state
   (`working` / `blocked` / `idle` / `done` / `unknown` / `error`) and a
   `completed / total` todo progress bar, surfaced in the sidebar with
@@ -135,11 +136,11 @@ prepends its own binary directory to `PATH`. The CLI is organized by domain,
 targeting the workspace behind the current terminal by default:
 
 ```bash
-casper status set running                    # set the agent state
+casper status set working                    # set the agent state (working|blocked|idle|done|unknown|error)
 casper progress set --total 5 --current 2 --label "run tests"
 casper progress clear
 casper notify --message "needs review"       # raise the attention flag + notify
-casper terminal new --command "npm test"     # open a terminal (split right)
+casper terminal new                          # open a terminal (split right)
 casper terminal list                         # list the workspace's terminals
 casper terminal close <id>                   # close a terminal by id
 casper browser open https://example.com      # load a URL in the inspector browser

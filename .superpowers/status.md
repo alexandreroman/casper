@@ -76,6 +76,10 @@ the `domain-cli-control-channel` memory note for the current surface.
   (App/Edit/View/Window); `macos-option-as-alt` wired (inert in the pinned
   binary). ⌘-key/menu paths confirmed by structure + live keypress (the debug
   channel bypasses `performKeyEquivalent`).
+- **Mouse — cmd+click opens URLs — ✅.** libghostty forwards the ⌘ modifier and
+  emits `GHOSTTY_ACTION_OPEN_URL` when a terminal link is cmd+clicked; the action
+  decodes into `GhosttyAction.openURL` and opens via `NSWorkspace`, matching
+  upstream Ghostty (any parsable URL, no scheme restriction).
 - Remaining for CasperUI: splits/tabs layout composition (actions are decoded
   and routed through `GhosttyActionDispatcher`, but not composed into a layout —
   **UI-3**; UI-1 renders only the single-terminal case); clipboard
