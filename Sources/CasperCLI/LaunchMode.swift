@@ -1,5 +1,3 @@
-import Foundation
-
 /// How the single binary was invoked. A genuine CLI invocation starts with a
 /// subcommand token (a non-dash word) or an explicit help/version flag; empty
 /// argv or AppKit/system-injected launch flags (which all start with `-`, e.g.

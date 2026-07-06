@@ -1,5 +1,4 @@
 import CasperCore
-import Foundation
 
 /// The extension seam for libghostty app-level actions (new tab/window/split, close).
 /// A handler claims an action by returning true; unclaimed actions fall back to

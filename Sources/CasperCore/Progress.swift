@@ -1,5 +1,3 @@
-import Foundation
-
 public extension Workspace {
     var progress: (completed: Int, total: Int) {
         let completed = todos.filter { $0.status == .completed }.count

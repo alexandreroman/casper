@@ -103,8 +103,8 @@ public struct DebugSurfaceHandle {
     }
 }
 
-/// Supplies the current set of surfaces to the debug server. `GhosttyDemo`
-/// conforms today; the Plan 5 app conforms later.
+/// Supplies the current set of surfaces to the debug server. `CasperUI`'s
+/// `DebugSurfaceBridge` (an `AppModel` extension) is the conformer.
 @MainActor
 public protocol DebugSurfaceProvider: AnyObject {
     func debugSurfaces() -> [DebugSurfaceHandle]

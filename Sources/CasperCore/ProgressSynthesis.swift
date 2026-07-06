@@ -1,5 +1,3 @@
-import Foundation
-
 /// Builds a `[Todo]` that realizes an explicit `current`/`total`/`label` progress
 /// report. The app has no stored progress field — `Workspace.progress` and
 /// `.currentTask` are derived from `todos` (see `Progress.swift`) — so an explicit

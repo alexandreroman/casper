@@ -6,11 +6,10 @@ final class ModelsTests: XCTestCase {
     private func sampleSession() -> Session {
         let term = Surface(kind: .terminal(cwd: "/repo/wt", command: nil))
         let browser = Surface(kind: .browser(url: URL(string: "http://localhost:40000")!))
-        let diff = Surface(kind: .diff(againstHead: true))
         let layout = LayoutNode.split(
             orientation: .horizontal,
-            children: [.leaf(term), .leaf(browser), .leaf(diff)],
-            ratios: [0.4, 0.3, 0.3]
+            children: [.leaf(term), .leaf(browser)],
+            ratios: [0.6, 0.4]
         )
         // Transient runtime fields (agentState/todos/pendingNotification) are left
         // at their defaults: they are intentionally not persisted, so a non-default

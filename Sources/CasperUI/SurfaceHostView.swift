@@ -81,8 +81,6 @@ struct SurfaceHostView: View {
             return name.isEmpty ? "Terminal" : name
         case .browser(let url):
             return url.host ?? "Browser"
-        case .diff:
-            return "Diff"
         }
     }
 
@@ -94,8 +92,6 @@ struct SurfaceHostView: View {
             Color.black  // runtime not ready yet
         } else if case .browser = surface.kind {
             BrowserSurfaceView(model: model, surface: surface)
-        } else if case .diff = surface.kind {
-            DiffSurfaceView(model: model, workspace: workspace)
         } else {
             ContentUnavailableView(
                 "Unsupported surface", systemImage: "rectangle.dashed",

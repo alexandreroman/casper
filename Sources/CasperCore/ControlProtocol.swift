@@ -1,5 +1,3 @@
-import Foundation
-
 /// A single command sent from the `casper` CLI to the running app over the
 /// release control socket. One flat struct (not an enum with associated values)
 /// keeps the JSON wire form trivial and stable across the CLI/app boundary —

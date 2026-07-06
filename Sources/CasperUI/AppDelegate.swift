@@ -71,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
 
         // Bare SPM executable launched from a terminal: macOS does not foreground
-        // us automatically, so activate explicitly (mirrors GhosttyDemo).
+        // us automatically, so activate explicitly.
         NSApp.activate(ignoringOtherApps: true)
     }
 

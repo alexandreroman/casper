@@ -23,7 +23,6 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: Codable, Equatable, Sendable {
         case terminal(cwd: String, command: String?)
         case browser(url: URL)
-        case diff(againstHead: Bool)
     }
 
     public var id: UUID
@@ -252,7 +251,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
 
     /// Encodes every persisted field, deliberately omitting the three transient
     /// runtime fields (`agentState`, `todos`, `pendingNotification`): they are
-    /// driven by live hooks and the `casper` CLI, never restored from disk.
+    /// driven by the `casper` CLI (control channel), never restored from disk.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)

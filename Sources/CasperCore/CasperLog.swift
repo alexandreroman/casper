@@ -11,7 +11,6 @@ public enum CasperLog {
 
     public static let app = Logger(subsystem: subsystem, category: "app")
     public static let ghostty = Logger(subsystem: subsystem, category: "ghostty")
-    public static let hooks = Logger(subsystem: subsystem, category: "hooks")
     public static let debug = Logger(subsystem: subsystem, category: "debug")
 }
 

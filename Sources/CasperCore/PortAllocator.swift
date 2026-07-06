@@ -28,8 +28,6 @@ public struct PortAllocator: Equatable, Sendable {
         self.used = []
     }
 
-    public var allocatedBases: Set<Int> { used }
-
     @discardableResult
     public mutating func reserve(_ base: Int) -> Bool {
         guard base >= rangeStart, base <= rangeEnd,

@@ -1,5 +1,3 @@
-import Foundation
-
 /// Resolves a `--workspace` selector (a workspace id string or a workspace name)
 /// against the running app's workspaces. Id match wins over name match.
 public enum ControlTargeting {
