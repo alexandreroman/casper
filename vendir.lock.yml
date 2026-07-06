@@ -1,7 +1,7 @@
 apiVersion: vendir.k14s.io/v1alpha1
 directories:
 - contents:
-  - http: {}
+  - directory: {}
     path: ghostty
   path: Vendor
 kind: LockConfig

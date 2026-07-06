@@ -4,11 +4,17 @@ minimumRequiredVersion: 0.40.0
 directories:
   - path: Vendor
     contents:
-      # Pinned libghostty header — the source of truth for every ghostty_* symbol
-      # used by CasperGhostty. Ghostty tag v1.3.1, SHA
-      # 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28. NOT compiled (the module comes
-      # from the GhosttyKit xcframework); vendored for reference only.
+      # Vendored libghostty header — the reference for every ghostty_* symbol
+      # used by CasperGhostty. It mirrors the header shipped INSIDE the pinned
+      # GhosttyKit xcframework (libghostty-spm 1.2.8, a sandbox/host-managed fork
+      # — NOT upstream Ghostty, whose struct layout differs). There is no public
+      # URL for this header (it is a build artifact), so it is synced from the
+      # extracted xcframework: run `make vendor` AFTER a build has downloaded and
+      # extracted the framework (the `.build/artifacts/...` path below must
+      # exist). NOT compiled — CasperGhostty compiles against GhosttyKit's own
+      # copy of this header; this vendored copy is reference only.
       - path: ghostty
-        http:
-          url: https://raw.githubusercontent.com/ghostty-org/ghostty/v1.3.1/include/ghostty.h
-          sha256: a619c107e9ab8841f71f91d06bf2bcea7b7c64bf6df252b151812cb932ac9b61
+        directory:
+          path: .build/artifacts/libghostty-spm/libghostty/GhosttyKit.xcframework/macos-arm64_x86_64/Headers
+        includePaths:
+          - ghostty.h
