@@ -115,6 +115,7 @@ final class AppModel {
     var runtime: GhosttyRuntime?
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var socketPath: String?
+    @ObservationIgnored var controlSocketPath: String?
 
     /// Live surface views, keyed by surface id. Holds terminal
     /// (`GhosttySurfaceView`) and browser (`WKWebView`) views. Persisting these
@@ -930,7 +931,8 @@ final class AppModel {
                 workspaceId: workspace.id,
                 portBase: workspace.portBase,
                 casperDirectory: casperDirectory,
-                basePath: ProcessInfo.processInfo.environment["PATH"]
+                basePath: ProcessInfo.processInfo.environment["PATH"],
+                controlSocketPath: controlSocketPath
             )
         }
         return config

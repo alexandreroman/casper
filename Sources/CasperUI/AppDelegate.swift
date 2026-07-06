@@ -21,6 +21,7 @@ enum HookSocketPathProvider {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var socketServer: HookSocketServer?
+    private var controlServer: ControlServer?
     private var heartbeatTimer: Timer?
     #if DEBUG
     private var debugServer: DebugServer?
@@ -73,6 +74,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CasperLog.app.failure("hook socket failed to start", error)
         }
 
+        // Release control socket: the `casper` CLI's command channel, distinct
+        // from the DEBUG-only debug channel below — this one ships in release.
+        let controlPath = ControlSocketPath.default
+        let control = ControlServer(socketPath: controlPath, model: model)
+        do {
+            try control.start()
+            self.controlServer = control
+            model.controlSocketPath = controlPath
+        } catch {
+            CasperLog.app.failure("control server failed to start", error)
+        }
+
         // Heartbeat timer (main run loop).
         let timer = Timer(timeInterval: 5, repeats: true) { _ in
             Task { @MainActor in AppModel.shared.tickHeartbeat(now: Date()) }
@@ -96,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         heartbeatTimer?.invalidate()
         socketServer?.stop()  // stop BEFORE the final save (no post-save onMessage)
+        controlServer?.stop()
         #if DEBUG
         debugServer?.stop()
         #endif
