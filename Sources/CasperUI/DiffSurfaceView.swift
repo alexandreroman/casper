@@ -309,6 +309,7 @@ private struct DiffFileView: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .background(Color.secondary.opacity(0.12))
+            .background(Color(nsColor: .windowBackgroundColor))
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
                 .frame(height: 1)
