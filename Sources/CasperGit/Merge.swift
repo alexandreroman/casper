@@ -72,6 +72,19 @@ extension Repository {
         return .merged(commitOID: oidString)
     }
 
+    /// Force the working tree and index to match the current HEAD commit,
+    /// discarding any difference between them — but never touches HEAD or refs
+    /// itself. Used to resync a sibling worktree after `mergeBranchHeadless`
+    /// advanced the branch it has checked out (that method never runs
+    /// `git_checkout`, by design), once the caller has confirmed it's safe to
+    /// discard whatever is currently on disk there (e.g. the worktree is clean).
+    public func forceCheckoutHead() throws {
+        var options = git_checkout_options()
+        try gitCheck(git_checkout_options_init(&options, UInt32(GIT_CHECKOUT_OPTIONS_VERSION)))
+        options.checkout_strategy = GIT_CHECKOUT_FORCE.rawValue
+        try gitCheck(git_checkout_head(pointer, &options))
+    }
+
     /// Resolve local branch `name` to its tip commit object. Throws `GitError`
     /// (`GIT_ENOTFOUND`) when the branch does not exist.
     private func commit(forBranch name: String) throws -> OpaquePointer {

@@ -144,4 +144,24 @@ final class MergeTests: XCTestCase {
         XCTAssertThrowsError(
             try repo.mergeBranchHeadless("feature", into: "ghost-branch", message: "merge"))
     }
+
+    func testForceCheckoutHeadSyncsWorkdirToNewHead() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let main = try repo.headBranchName()
+        let wtInfo = try repo.addWorktree(
+            name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
+        let featureRepo = try Repository.open(atPath: wtInfo.path)
+        try commit(featureRepo, filename: "feature.txt", content: "new\n", message: "add feature")
+
+        _ = try repo.mergeBranchHeadless("feature", into: main, message: "merge feature")
+        // Confirms the precondition: right after a headless merge, the target's
+        // working directory has NOT picked up the new file yet.
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: repoDir.appendingPathComponent("feature.txt").path))
+
+        try repo.forceCheckoutHead()
+
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: repoDir.appendingPathComponent("feature.txt").path))
+    }
 }

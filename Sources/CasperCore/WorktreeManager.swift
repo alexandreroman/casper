@@ -108,6 +108,14 @@ public enum WorktreeManager {
         }
     }
 
+    /// Force the working tree at `repoPath` to match its current HEAD commit.
+    /// Used to resync a sibling worktree after a headless merge (`merge(...)`)
+    /// advanced the branch it has checked out.
+    public static func resyncWorkingTree(repoPath: String) throws {
+        let repo = try openRepo(repoPath)
+        try mapGitError { try repo.forceCheckoutHead() }
+    }
+
     /// Whether the working tree of the repository at `repoPath` is clean.
     public static func isClean(repoPath: String) throws -> Bool {
         let repo = try openRepo(repoPath)

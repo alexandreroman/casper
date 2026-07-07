@@ -144,6 +144,24 @@ final class WorktreeManagerTests: XCTestCase {
             XCTAssertEqual((error as? WorktreeError)?.reason, .mergeConflict)
         }
     }
+
+    func testResyncWorkingTreeSyncsToNewHead() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try commitFile(
+            atPath: wtPath, filename: "feature.txt", content: "new\n", message: "add feature")
+        _ = try WorktreeManager.merge(
+            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: repoDir.appendingPathComponent("feature.txt").path))
+
+        try WorktreeManager.resyncWorkingTree(repoPath: repoDir.path)
+
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: repoDir.appendingPathComponent("feature.txt").path))
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`

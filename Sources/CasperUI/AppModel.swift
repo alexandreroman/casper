@@ -1382,6 +1382,13 @@ final class AppModel {
         else {
             return .mergeFailed(message: "workspace not found or has no base branch")
         }
+        // Decide whether to resync the base branch's sibling worktree BEFORE the
+        // merge runs. The headless merge advances the base branch's ref without a
+        // checkout, which makes a clean sibling's `git status` report the merged
+        // files as `deleted:` — so a cleanliness check taken *after* the merge
+        // would see every sibling as dirty and never resync. Captured here, it
+        // reflects the user's real uncommitted state.
+        let worktreeToResync = cleanBaseBranchWorktree(baseBranch: baseBranch, in: space)
         do {
             _ = try WorktreeManager.merge(
                 repoPath: space.folderPath, branch: ws.branch, into: baseBranch,
@@ -1399,7 +1406,35 @@ final class AppModel {
                 message: "The merge succeeded, but the worktree or branch could not be removed "
                     + "from disk: \(error.message)")
         }
+        // Resync is best-effort: a failure is logged but never downgrades the
+        // successful close — the merge and cleanup have already happened.
+        if let worktreeToResync {
+            do {
+                try WorktreeManager.resyncWorkingTree(repoPath: worktreeToResync)
+            } catch {
+                CasperLog.app.failure("close workspace: base branch worktree resync failed", error)
+            }
+        }
         return .success
+    }
+
+    /// The worktree path of the base branch's sibling workspace in the same
+    /// Space, but only when that worktree is currently clean; nil otherwise.
+    /// Used by `closeWorkspace` to decide, BEFORE its headless merge, whether to
+    /// later force that sibling to pick up the merge commit. `mergeBranchHeadless`
+    /// never runs `git_checkout`, so without a resync the sibling's `git status`
+    /// would show the just-merged files as `deleted:` until someone checks out
+    /// manually. This must be evaluated pre-merge: once the merge advances the
+    /// ref, even a clean worktree looks dirty. A dirty sibling is returned as nil
+    /// (skip the resync) — never clobber someone's uncommitted work as a side
+    /// effect of closing an unrelated workspace. Scoped to `space.workspaces`
+    /// (same Space only): Git allows one worktree per branch, and a global
+    /// by-name lookup could force-checkout an unrelated repo sharing the branch
+    /// name.
+    private func cleanBaseBranchWorktree(baseBranch: String, in space: Space) -> String? {
+        guard let sibling = space.workspaces.first(where: { $0.branch == baseBranch }) else { return nil }
+        guard (try? WorktreeManager.isClean(repoPath: sibling.worktreePath)) == true else { return nil }
+        return sibling.worktreePath
     }
 
     /// Delete a linked workspace from disk without merging: prune its worktree,
