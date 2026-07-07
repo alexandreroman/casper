@@ -181,13 +181,19 @@ private struct AgentStatusIcon: View {
 private struct SpinningIcon: View {
     let isSelected: Bool
     @State private var spin = false
+    @State private var delay: Double = 0
+
+    private static let period: TimeInterval = 1
 
     var body: some View {
         Image(systemName: "arrow.triangle.2.circlepath")
             .imageScale(.medium)
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
-            .onAppear { spin = true }
+            .animation(.linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay), value: spin)
+            .onAppear {
+                delay = AnimationClock.phaseDelay(period: Self.period)
+                spin = true
+            }
     }
 }
