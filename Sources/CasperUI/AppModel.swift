@@ -182,6 +182,16 @@ final class AppModel {
         }
     }
 
+    /// Spaces sorted by `name` (locale-aware, case-insensitive), matching the
+    /// comparator `Space.orderedWorkspaces` already uses for its own workspaces.
+    /// Keeping `spaces` sorted here — rather than computing a separate display
+    /// order — means every other reader (sidebar, `allWorkspaces`,
+    /// `workspaceShortcutNumbers`, and `session.json` on persist) gets
+    /// alphabetical order for free.
+    private static func sortedByName(_ spaces: [Space]) -> [Space] {
+        spaces.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     init(
         sessionStore: SessionStore,
         portAllocator: PortAllocator = PortAllocator(),
@@ -191,7 +201,7 @@ final class AppModel {
         self.sessionStore = sessionStore
         self.portAllocator = portAllocator
         self.sessionIdentity = sessionIdentity
-        self.spaces = session.spaces
+        self.spaces = Self.sortedByName(session.spaces)
         // Restore the persisted selection when it still resolves to a live
         // workspace; otherwise fall back to the first workspace of the first
         // Space (fresh-session behavior).
