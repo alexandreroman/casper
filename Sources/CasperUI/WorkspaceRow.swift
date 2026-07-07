@@ -102,15 +102,21 @@ private struct ProgressBar: View {
 /// Trailing notification indicator: a filled dot when pending, otherwise hidden.
 /// The call site reserves the trailing space so the row's edge stays anchored even
 /// when nothing renders. Selection-aware so it reads on the accent selection background.
+/// While pending, the dot pulses continuously (a breathing fade-and-scale) to draw the eye.
 private struct NotificationBubble: View {
     let on: Bool
     let isSelected: Bool
+    @State private var pulse = false
 
     var body: some View {
         if on {
             Circle()
                 .fill(isSelected ? Color.white : Color.blue)
                 .frame(width: 9, height: 9)
+                .opacity(pulse ? 0.5 : 1.0)
+                .scaleEffect(pulse ? 1.3 : 1.0)
+                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                .onAppear { pulse = true }
         } else {
             EmptyView()
         }
