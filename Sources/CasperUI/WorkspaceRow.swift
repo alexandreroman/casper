@@ -4,8 +4,10 @@ import SwiftUI
 /// A workspace row: a leading agent-state icon sitting under the Space header's
 /// chevron column, then the Git/folder glyph (aligned under the Space name) and
 /// the branch label with optional agent progress, and a trailing notification
-/// bubble. Draws its own selection pill so the accent stays visible even when the
-/// sidebar is not first responder.
+/// bubble. The caption line beneath shows a pending notification message when
+/// one exists, falling back to the progress task label otherwise. Draws its own
+/// selection pill so the accent stays visible even when the sidebar is not
+/// first responder.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let isSelected: Bool
@@ -28,14 +30,16 @@ struct WorkspaceRow: View {
                 NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
                     .frame(width: 20)
             }
-            if workspace.progress.total > 0 {
+            if workspace.progress.total > 0 || captionLabel != nil {
                 VStack(alignment: .leading, spacing: 6) {
-                    ProgressBar(
-                        fraction: workspace.progressFraction,
-                        complete: workspace.isComplete,
-                        isSelected: isSelected)
-                    if let task = taskLabel {
-                        Text(task)
+                    if workspace.progress.total > 0 {
+                        ProgressBar(
+                            fraction: workspace.progressFraction,
+                            complete: workspace.isComplete,
+                            isSelected: isSelected)
+                    }
+                    if let caption = captionLabel {
+                        Text(caption)
                             .font(.caption)
                             .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
                             .lineLimit(1)
@@ -61,6 +65,16 @@ struct WorkspaceRow: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+    }
+
+    /// The caption line under the branch label. A pending notification message
+    /// takes priority over the progress task label — it's the more urgent
+    /// signal — and stays shown until the notification clears (the workspace
+    /// becomes focused, per `AppModel.clearNotificationForFocusedWorkspace`).
+    /// Falls back to the progress task label so existing progress captions are
+    /// unaffected once there is no pending message.
+    private var captionLabel: String? {
+        workspace.pendingNotificationMessage ?? taskLabel
     }
 
     private var taskLabel: String? {
