@@ -69,6 +69,24 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.selectedWorkspaceID, existing.spaces[0].workspaces[0].id)
     }
 
+    func testIsWorkspaceGitBackedReflectsOwningSpace() {
+        let gitWorkspace = Workspace(name: "g", worktreePath: "/g", branch: "main",
+                                     portBase: 40000,
+                                     layout: .leaf(Surface(kind: .terminal(cwd: "/g", command: nil))))
+        let plainWorkspace = Workspace(name: "p", worktreePath: "/p", branch: "",
+                                       portBase: 40010,
+                                       layout: .leaf(Surface(kind: .terminal(cwd: "/p", command: nil))))
+        let existing = Session(spaces: [
+            Space(name: "g", folderPath: "/g", isGitRepo: true, workspaces: [gitWorkspace]),
+            Space(name: "p", folderPath: "/p", isGitRepo: false, workspaces: [plainWorkspace]),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+
+        XCTAssertTrue(model.isWorkspaceGitBacked(gitWorkspace))
+        XCTAssertFalse(model.isWorkspaceGitBacked(plainWorkspace))
+    }
+
     func testFreshModelSeedsFocusedSurfaceIDToFirstSurfaceOfSelectedWorkspace() {
         let surface = Surface(kind: .terminal(cwd: "/a", command: nil))
         let existing = Session(spaces: [

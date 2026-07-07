@@ -141,12 +141,24 @@ struct WorkspaceDetailView: View {
 
     private var title: some View {
         HStack(spacing: 7) {
-            Octicon(.gitBranch).foregroundStyle(.secondary)
-            Text(workspace.branchLabel)
-                .fontWeight(.bold)
-            Text(spaceName).foregroundStyle(.secondary)
+            // Mirror WorkspaceRow: git-branch glyph + branch label for a
+            // Git-backed Space, folder glyph + Space name for a degenerate one.
+            if isGitRepo {
+                Octicon(.gitBranch).foregroundStyle(.secondary)
+                Text(workspace.branchLabel)
+                    .fontWeight(.bold)
+                Text(spaceName).foregroundStyle(.secondary)
+            } else {
+                Octicon(.fileDirectory).foregroundStyle(.secondary)
+                Text(spaceName)
+                    .fontWeight(.bold)
+            }
         }
         .padding(.horizontal, 10)
+    }
+
+    private var isGitRepo: Bool {
+        model.isWorkspaceGitBacked(workspace)
     }
 
     private var spaceName: String {
