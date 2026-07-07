@@ -43,8 +43,13 @@ struct SidebarView: View {
         .onTapGesture { model.selectWorkspace(workspace.id) }
         .contextMenu {
             if workspace.kind == .linked {
-                Button("Remove workspace", role: .destructive) {
-                    model.removeWorkspace(id: workspace.id)
+                if let base = workspace.baseBranch, !base.isEmpty {
+                    Button("Close workspace…") {
+                        model.presentCloseWorkspaceConfirmation(id: workspace.id)
+                    }
+                }
+                Button("Delete workspace…", role: .destructive) {
+                    model.presentDeleteWorkspaceConfirmation(id: workspace.id)
                 }
             }
         }
