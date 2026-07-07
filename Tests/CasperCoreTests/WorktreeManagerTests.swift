@@ -82,6 +82,8 @@ final class WorktreeManagerTests: XCTestCase {
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
         XCTAssertEqual(try WorktreeManager.list(repoPath: repoDir.path).count, 0)
+        let repo = try Repository.open(atPath: repoDir.path)
+        XCTAssertFalse(try repo.branchExists("feature"))
     }
 
     func testCreateRejectsCheckedOutBranch() throws {
