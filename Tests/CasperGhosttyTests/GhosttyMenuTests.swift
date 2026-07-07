@@ -4,12 +4,14 @@ import XCTest
 
 @MainActor
 final class GhosttyMenuTests: XCTestCase {
-    func testMenuHasEditViewWindow() {
+    func testMenuHasEditAndWindow() {
         let menu = buildMainMenu()
         let titles = menu.items.compactMap { $0.submenu?.title }
         XCTAssertTrue(titles.contains("Edit"))
-        XCTAssertTrue(titles.contains("View"))
         XCTAssertTrue(titles.contains("Window"))
+        // The View menu is assembled in CasperUI (it depends on AppModel), so
+        // buildMainMenu() must not build one of its own.
+        XCTAssertFalse(titles.contains("View"))
     }
 
     func testEditMenuHasCopyPasteSelectAll() {

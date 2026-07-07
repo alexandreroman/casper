@@ -1,19 +1,17 @@
 import AppKit
 
-/// Builds the standard macOS App/Edit/View/Window menu bar.
+/// Builds the standard macOS App/Edit/Window menu bar.
 ///
-/// Edit and View items carry no explicit `target`: AppKit walks the responder
-/// chain from the key window's first responder to find an object that
-/// implements the selector. Whenever a `GhosttySurfaceView` is focused, it is
-/// that first responder, so its `copy(_:)`/`paste(_:)`/`selectAll(_:)` and
-/// custom font-size selectors (see `GhosttySurfaceView`) fire automatically —
-/// no manual "which surface is focused" bookkeeping needed here.
+/// Edit items carry no explicit `target`: AppKit walks the responder chain from
+/// the key window's first responder to find an object that implements the
+/// selector. Whenever a `GhosttySurfaceView` is focused, it is that first
+/// responder, so its `copy(_:)`/`paste(_:)`/`selectAll(_:)` fire automatically
+/// — no manual "which surface is focused" bookkeeping needed here.
 @MainActor
 public func buildMainMenu() -> NSMenu {
     let menu = NSMenu()
     menu.addItem(appMenuItem())
     menu.addItem(editMenuItem())
-    menu.addItem(viewMenuItem())
     menu.addItem(windowMenuItem())
     return menu
 }
@@ -41,21 +39,6 @@ private func editMenuItem() -> NSMenuItem {
     submenu.addItem(commandItem(title: "Paste", selector: #selector(NSText.paste(_:)), key: "v"))
     submenu.addItem(commandItem(
         title: "Select All", selector: #selector(NSText.selectAll(_:)), key: "a"))
-    return menuBarItem(submenu: submenu)
-}
-
-@MainActor
-private func viewMenuItem() -> NSMenuItem {
-    let submenu = NSMenu(title: "View")
-    submenu.addItem(commandItem(
-        title: "Increase Font Size",
-        selector: #selector(GhosttySurfaceView.increaseFontSize(_:)), key: "="))
-    submenu.addItem(commandItem(
-        title: "Decrease Font Size",
-        selector: #selector(GhosttySurfaceView.decreaseFontSize(_:)), key: "-"))
-    submenu.addItem(commandItem(
-        title: "Reset Font Size",
-        selector: #selector(GhosttySurfaceView.resetFontSize(_:)), key: "0"))
     return menuBarItem(submenu: submenu)
 }
 
