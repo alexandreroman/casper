@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Release control socket: the `casper` CLI's command channel, distinct
         // from the DEBUG-only debug channel below — this one ships in release.
-        let controlPath = ControlSocketPath.resolve(for: model.sessionIdentity)
+        let controlPath = ControlSocketPath.listenPath(for: model.sessionIdentity)
         let control = ControlServer(socketPath: controlPath, model: model)
         do {
             try control.start()
@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Debug channel for the `debug-casper` harness. Compiled out of release
         // builds entirely — see the `nm` gating check in the task report.
         #if DEBUG
-        let debug = DebugServer(socketPath: DebugSocketPath.resolve(for: AppModel.shared.sessionIdentity),
+        let debug = DebugServer(socketPath: DebugSocketPath.listenPath(for: AppModel.shared.sessionIdentity),
                                 provider: AppModel.shared)
         do { try debug.start(); self.debugServer = debug }
         catch { CasperLog.debug.error("debug server failed to start: \(String(describing: error))") }
