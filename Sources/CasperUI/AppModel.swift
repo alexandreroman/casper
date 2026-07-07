@@ -78,6 +78,11 @@ final class AppModel {
     /// the split items stuck at their initial enabled state.
     var viewMenuDelegate: ViewMenuDelegate?
 
+    /// Retains the File menu's `NSMenuDelegate` bridge — same reasoning as
+    /// `viewMenuDelegate`, but for the merge/delete workspace items instead of
+    /// the pane splits.
+    var fileMenuDelegate: FileMenuDelegate?
+
     func beginPaneDrag(_ surfaceID: UUID) { draggingSurfaceID = surfaceID }
     func endPaneDrag() { draggingSurfaceID = nil; dropHoverTarget = nil; dropHoverZone = nil }
     func setDropHover(target: UUID, zone: LayoutTree.DropZone) {
@@ -1386,8 +1391,8 @@ final class AppModel {
     /// leaves the workspace intact and retryable. Pruning must precede the branch
     /// delete (a checked-out branch cannot be deleted); pruning is skipped when the
     /// worktree is already gone, and the branch delete is idempotent. Shared by the
-    /// `casper workspace delete` control-channel verb and the sidebar's "Close
-    /// workspace…"/"Delete workspace…" actions.
+    /// `casper workspace delete` control-channel verb and the sidebar's "Merge and
+    /// Close Workspace…"/"Delete Workspace…" actions.
     @discardableResult
     private func pruneWorkspaceFromDisk(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
         guard let at = locate(workspaceID) else {
@@ -1417,27 +1422,41 @@ final class AppModel {
     }
 
     /// Merge a linked workspace's branch into its recorded `baseBranch`, then
-    /// prune it from disk exactly like `deleteWorkspace`. If the merge can't be
-    /// resolved automatically (conflicts, or the base branch no longer exists),
-    /// returns `.mergeFailed` before touching anything — no disk cleanup, no UI
-    /// removal. Never presents UI itself: the confirmation presenter owns
+    /// prune it from disk exactly like `deleteWorkspace`. Refuses to touch
+    /// anything unless BOTH the workspace being closed and the Space's
+    /// primary workspace are clean — checked before the merge runs, since a
+    /// headless merge advances the primary's branch ref without checking it
+    /// out, which would make even a clean primary look dirty afterward if
+    /// checked post-merge. A linked workspace's `baseBranch` is always the
+    /// primary's branch in the app UI, but `casper workspace new --base
+    /// <ref>` can fork a linked workspace from another linked workspace's
+    /// branch instead — that stacked case is NOT covered here by design; a
+    /// merge into a stacked, non-primary base is not blocked even if that
+    /// base's worktree is dirty. If the merge can't be resolved
+    /// automatically (conflicts, or the base branch no longer exists),
+    /// returns `.mergeFailed` before touching anything — no disk cleanup, no
+    /// UI removal. Never presents UI itself: the confirmation presenter owns
     /// showing any failure alert, which keeps this safe to call from tests
     /// without spawning a real `NSAlert`.
     @discardableResult
     func closeWorkspace(id workspaceID: UUID) -> WorkspaceCloseOutcome {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked,
               let space = space(for: ws), space.isGitRepo,
-              let baseBranch = ws.baseBranch, !baseBranch.isEmpty
+              let baseBranch = ws.baseBranch, !baseBranch.isEmpty,
+              let primary = space.workspaces.first(where: { $0.kind == .primary })
         else {
             return .mergeFailed(message: "workspace not found or has no base branch")
         }
-        // Decide whether to resync the base branch's sibling worktree BEFORE the
-        // merge runs. The headless merge advances the base branch's ref without a
-        // checkout, which makes a clean sibling's `git status` report the merged
-        // files as `deleted:` — so a cleanliness check taken *after* the merge
-        // would see every sibling as dirty and never resync. Captured here, it
-        // reflects the user's real uncommitted state.
-        let worktreeToResync = cleanBaseBranchWorktree(baseBranch: baseBranch, in: space)
+        guard (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == true else {
+            return .mergeFailed(
+                message: "\u{201c}\(ws.name)\u{201d} has uncommitted changes. Commit or discard "
+                    + "them before merging.")
+        }
+        guard (try? WorktreeManager.isClean(repoPath: primary.worktreePath)) == true else {
+            return .mergeFailed(
+                message: "\u{201c}\(primary.name)\u{201d} (branch \u{201c}\(baseBranch)\u{201d}) has "
+                    + "uncommitted changes. Commit or discard them there before merging.")
+        }
         do {
             _ = try WorktreeManager.merge(
                 repoPath: space.folderPath, branch: ws.branch, into: baseBranch,
@@ -1455,35 +1474,16 @@ final class AppModel {
                 message: "The merge succeeded, but the worktree or branch could not be removed "
                     + "from disk: \(error.message)")
         }
-        // Resync is best-effort: a failure is logged but never downgrades the
-        // successful close — the merge and cleanup have already happened.
-        if let worktreeToResync {
-            do {
-                try WorktreeManager.resyncWorkingTree(repoPath: worktreeToResync)
-            } catch {
-                CasperLog.app.failure("close workspace: base branch worktree resync failed", error)
-            }
+        // The primary is guaranteed clean at this point (checked above), so the
+        // resync is unconditional: mergeBranchHeadless never runs git_checkout,
+        // so without this the primary's `git status` would show the just-merged
+        // files as `deleted:` until someone checks out manually.
+        do {
+            try WorktreeManager.resyncWorkingTree(repoPath: primary.worktreePath)
+        } catch {
+            CasperLog.app.failure("close workspace: primary worktree resync failed", error)
         }
         return .success
-    }
-
-    /// The worktree path of the base branch's sibling workspace in the same
-    /// Space, but only when that worktree is currently clean; nil otherwise.
-    /// Used by `closeWorkspace` to decide, BEFORE its headless merge, whether to
-    /// later force that sibling to pick up the merge commit. `mergeBranchHeadless`
-    /// never runs `git_checkout`, so without a resync the sibling's `git status`
-    /// would show the just-merged files as `deleted:` until someone checks out
-    /// manually. This must be evaluated pre-merge: once the merge advances the
-    /// ref, even a clean worktree looks dirty. A dirty sibling is returned as nil
-    /// (skip the resync) — never clobber someone's uncommitted work as a side
-    /// effect of closing an unrelated workspace. Scoped to `space.workspaces`
-    /// (same Space only): Git allows one worktree per branch, and a global
-    /// by-name lookup could force-checkout an unrelated repo sharing the branch
-    /// name.
-    private func cleanBaseBranchWorktree(baseBranch: String, in space: Space) -> String? {
-        guard let sibling = space.workspaces.first(where: { $0.branch == baseBranch }) else { return nil }
-        guard (try? WorktreeManager.isClean(repoPath: sibling.worktreePath)) == true else { return nil }
-        return sibling.worktreePath
     }
 
     /// Delete a linked workspace from disk without merging: prune its worktree,
@@ -1499,20 +1499,22 @@ final class AppModel {
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
     /// workspace has no recorded base branch (nothing to merge into) — the
-    /// sidebar only offers this action in that case anyway.
+    /// sidebar only offers this action in that case anyway. Per Apple HIG,
+    /// the consequential "Merge and Close" button is never the Return-key
+    /// default (compare Finder's "Empty Trash": Cancel stays the safe
+    /// default, the destructive button just loses its Return binding).
     func presentCloseWorkspaceConfirmation(id workspaceID: UUID) {
         guard let ws = workspace(id: workspaceID), let baseBranch = ws.baseBranch, !baseBranch.isEmpty
         else { return }
-        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
         let alert = NSAlert()
-        alert.messageText = "Close \u{201c}\(ws.name)\u{201d}?"
-        var text = "This merges branch \u{201c}\(ws.branch)\u{201d} into \u{201c}\(baseBranch)\u{201d}, "
-            + "then deletes the worktree and its folder on disk. This can\u{2019}t be undone."
-        if dirty { text += " This workspace has uncommitted changes that will be lost." }
-        alert.informativeText = text
-        alert.addButton(withTitle: "Close")
+        alert.messageText = "Merge and Close \u{201c}\(ws.name)\u{201d}?"
+        alert.informativeText = "This merges branch \u{201c}\(ws.branch)\u{201d} into "
+            + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
+            + "This can\u{2019}t be undone."
+        let mergeButton = alert.addButton(withTitle: "Merge and Close")
         alert.addButton(withTitle: "Cancel")
-        alert.buttons.first?.hasDestructiveAction = true
+        mergeButton.hasDestructiveAction = true
+        mergeButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         switch closeWorkspace(id: workspaceID) {
         case .success:
@@ -1526,7 +1528,10 @@ final class AppModel {
         }
     }
 
-    /// A confirmation, then `deleteWorkspace(id:)` on confirm.
+    /// A confirmation, then `deleteWorkspace(id:)` on confirm. Unlike
+    /// `closeWorkspace`, this never merges, so uncommitted changes in `ws`
+    /// really are discarded — the warning below stays. Same HIG-correct
+    /// default-button treatment as `presentCloseWorkspaceConfirmation`.
     func presentDeleteWorkspaceConfirmation(id workspaceID: UUID) {
         guard let ws = workspace(id: workspaceID) else { return }
         let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
@@ -1536,9 +1541,10 @@ final class AppModel {
             + "\u{201c}\(ws.branch)\u{201d} without merging. This can\u{2019}t be undone."
         if dirty { text += " This workspace has uncommitted changes that will be lost." }
         alert.informativeText = text
-        alert.addButton(withTitle: "Delete")
+        let deleteButton = alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
-        alert.buttons.first?.hasDestructiveAction = true
+        deleteButton.hasDestructiveAction = true
+        deleteButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         if case .failure(let error) = deleteWorkspace(id: workspaceID) {
             presentWorkspaceOperationFailureAlert(

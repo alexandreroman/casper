@@ -46,12 +46,15 @@ struct SidebarView: View {
         .contextMenu {
             if workspace.kind == .linked {
                 if let base = workspace.baseBranch, !base.isEmpty {
-                    Button("Close workspace…") {
+                    Button("Merge and Close Workspace…") {
                         model.presentCloseWorkspaceConfirmation(id: workspace.id)
                     }
                 }
-                Button("Delete workspace…", role: .destructive) {
+                Button(role: .destructive) {
                     model.presentDeleteWorkspaceConfirmation(id: workspace.id)
+                } label: {
+                    Label("Delete Workspace…", systemImage: "trash")
+                        .foregroundStyle(.red)
                 }
             }
         }
