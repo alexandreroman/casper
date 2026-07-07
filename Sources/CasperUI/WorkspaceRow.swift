@@ -4,8 +4,10 @@ import SwiftUI
 /// A workspace row: a leading agent-state icon sitting under the Space header's
 /// chevron column, then the Git/folder glyph (aligned under the Space name) and
 /// the branch label with optional agent progress, and a trailing notification
-/// bubble. Draws its own selection pill so the accent stays visible even when the
-/// sidebar is not first responder.
+/// bubble. The caption line beneath shows a pending notification message when
+/// one exists, falling back to the progress task label otherwise. Draws its own
+/// selection pill so the accent stays visible even when the sidebar is not
+/// first responder.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let isSelected: Bool
@@ -45,9 +47,16 @@ struct WorkspaceRow: View {
                             .lineLimit(1)
                     }
                 }
+                // Align under the branch label: status slot (16) + spacing (8) +
+                // Octicon (16) + spacing (8).
                 .padding(.leading, 48)
             }
         }
+        // No extra leading indent: the row's content edge already matches the
+        // header's content edge (both inset by pill 8 + outer 6). The leading
+        // status slot (16) lines up under the header chevron, and the HStack's
+        // 16 + 8 spacing lands the Octicon under the Space name — the exact
+        // position it held before the status icon existed.
         .padding(.vertical, 8)
         .padding(.horizontal, 8)
         .background(
@@ -70,6 +79,12 @@ struct WorkspaceRow: View {
             caption: captionLabel)
     }
 
+    /// The caption line under the branch label. A pending notification message
+    /// takes priority over the progress task label — it's the more urgent
+    /// signal — and stays shown until the notification clears (the workspace
+    /// becomes focused, per `AppModel.clearNotificationForFocusedWorkspace`).
+    /// Falls back to the progress task label so existing progress captions are
+    /// unaffected once there is no pending message.
     private var captionLabel: String? {
         workspace.pendingNotificationMessage ?? taskLabel
     }
