@@ -1175,7 +1175,9 @@ final class AppModel {
 
     /// Raise a workspace notification. The persistent attention bubble is suppressed
     /// when the target is focused (selected AND the window is key); the macOS
-    /// notification (when a message is given) is always delivered.
+    /// notification (when a message is given) is always delivered. When raised, the
+    /// message (if any) is also stored on the workspace so the sidebar can display it,
+    /// mirrored by `clearNotificationForFocusedWorkspace`.
     ///
     /// Returns `false` when no such workspace exists, `true` otherwise. The
     /// attention bubble is only raised when the target is not already focused; the
@@ -1190,6 +1192,7 @@ final class AppModel {
         let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
         if !focused {
             spaces[at.space].workspaces[at.workspace].pendingNotification = true
+            spaces[at.space].workspaces[at.workspace].pendingNotificationMessage = message
         }
         // A notification means "look at this workspace". If its owning Space is
         // collapsed, the workspace row (and any attention bubble) is hidden, so expand
@@ -1217,6 +1220,7 @@ final class AppModel {
         guard let id = selectedWorkspaceID, isWindowKey(), let at = locate(id) else { return }
         guard spaces[at.space].workspaces[at.workspace].pendingNotification else { return }
         spaces[at.space].workspaces[at.workspace].pendingNotification = false
+        spaces[at.space].workspaces[at.workspace].pendingNotificationMessage = nil
         persist()
     }
 

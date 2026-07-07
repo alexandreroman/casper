@@ -342,6 +342,43 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
     }
 
+    func testRaiseNotificationStoresMessageWhenBubbleSet() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        model.deliverNotification = { _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Task finished")
+    }
+
+    func testRaiseNotificationOnFocusedWorkspaceLeavesMessageNil() {
+        let (model, id) = seededModel()   // id is the selected workspace
+        model.isWindowKey = { true }      // and the window is key → focused
+        model.deliverNotification = { _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
+        XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+    }
+
+    func testRaiseNotificationWithNilMessageClearsPreviousMessage() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        model.deliverNotification = { _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        _ = model.controlRaiseNotification(message: "first", for: id)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "first")
+        _ = model.controlRaiseNotification(message: nil, for: id)  // bare re-notify
+        XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)  // bubble stays set
+    }
+
+    func testForegroundClearsMessageAlongsideBubble() {
+        let (model, id) = seededModel()          // id is selected
+        model.isWindowKey = { false }            // app backgrounded
+        model.deliverNotification = { _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        _ = model.controlRaiseNotification(message: "Waiting for your input", for: id)
+        model.isWindowKey = { true }             // app returns to foreground
+        model.clearNotificationForFocusedWorkspace()
+        XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+    }
+
     func testResolveByNameAndSelectedFallback() {
         let (model, id) = seededModel()
         XCTAssertEqual(model.controlResolveWorkspaceID(selector: "main"), id)
