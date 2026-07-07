@@ -72,6 +72,11 @@ final class AppModel {
     var dropHoverTarget: UUID?
     var dropHoverZone: LayoutTree.DropZone?
 
+    /// Retains the File menu's `NSMenuDelegate` bridge — `NSMenu.delegate` is
+    /// unowned, so without this the delegate would be deallocated right after
+    /// `fileMenuItem()` returns and `menuNeedsUpdate` would never fire.
+    var fileMenuDelegate: FileMenuDelegate?
+
     func beginPaneDrag(_ surfaceID: UUID) { draggingSurfaceID = surfaceID }
     func endPaneDrag() { draggingSurfaceID = nil; dropHoverTarget = nil; dropHoverZone = nil }
     func setDropHover(target: UUID, zone: LayoutTree.DropZone) {
