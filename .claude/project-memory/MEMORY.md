@@ -51,3 +51,5 @@
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — after mergeBranchHeadless the base worktree reports deleted files; capture cleanliness before merging to decide any resync
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_CONTROL_SOCKET/CASPER_DEBUG_SOCKET/CASPER_SESSION so a Casper-opened terminal's live env never leaks into swift test
 - [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — App must bind via `listenPath(for:)` (session-only); `resolve(for:)`/`.default` (env-override) is dial-only or it hijacks a running instance's socket
+- [libghostty Control-combo encoding is keycode-dependent](references/ghostty-control-combo-azerty-keycode.md) — bare Ctrl-letter combos break on AZERTY (physical keycode, not codepoint); fix normalizes to QWERTY-position keycode
+- [Real in-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — real keyDown->interpretKeyEvents->shell test recipe; fixed settle(0.6)/(0.4), not adaptive polling

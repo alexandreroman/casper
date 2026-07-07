@@ -29,7 +29,10 @@ func ghosttyKeyEvent(
     key.action = action
     key.mods = ghosttyMods(from: event.modifierFlags)
     key.consumed_mods = consumedMods
-    key.keycode = UInt32(event.keyCode)
+    // For a Control-letter combo, send the letter's QWERTY-position keycode rather than
+    // the real physical keycode (see `ghosttyControlComboKeycode`); every other key
+    // keeps its real `event.keyCode`.
+    key.keycode = ghosttyControlComboKeycode(for: event) ?? UInt32(event.keyCode)
     key.composing = false
     key.text = nil
     key.unshifted_codepoint = ghosttyUnshiftedCodepoint(from: event)
@@ -109,6 +112,84 @@ private func ghosttyUnshiftedCodepoint(from event: NSEvent) -> UInt32 {
     return scalar.value
 }
 
+/// For a Control + ASCII-letter combo, the QWERTY-position virtual keycode to send in
+/// place of the event's real physical keycode; nil for every other event, which then
+/// keeps its real `event.keyCode`.
+///
+/// libghostty encodes a bare (text-less) Control-letter combo from the *physical*
+/// keycode, and the pinned binary mis-encodes combos struck on non-QWERTY positions:
+/// on an AZERTY keyboard 'a' sits at the QWERTY 'Q' position (keycode 12), and Ctrl-A
+/// there wipes the line instead of moving to its start. Substituting the letter's
+/// QWERTY keycode makes the intended control character encode correctly regardless of
+/// the user's physical layout. Only `keycode` is normalized — `unshifted_codepoint`
+/// still carries the real produced letter. Scoped to Control combos on mapped letters
+/// (a–z); digits, punctuation, and combos like Ctrl-[ or Ctrl-Space keep their real
+/// keycode, since there is no evidence they are affected and no safe remap target.
+private func ghosttyControlComboKeycode(for event: NSEvent) -> UInt32? {
+    guard event.modifierFlags.contains(.control),
+        let base = event.charactersIgnoringModifiers?.lowercased().first,
+        let keycode = qwertyLetterKeyCodes[base]
+    else { return nil }
+    return keycode
+}
+
+/// macOS ANSI virtual keycodes (`kVK_ANSI_*`) named rather than inlined so the maps
+/// below read as key names, not magic numbers. Values match Carbon's HIToolbox
+/// constants.
+private enum VirtualKeyCode {
+    static let a: UInt32 = 0
+    static let s: UInt32 = 1
+    static let d: UInt32 = 2
+    static let f: UInt32 = 3
+    static let h: UInt32 = 4
+    static let g: UInt32 = 5
+    static let z: UInt32 = 6
+    static let x: UInt32 = 7
+    static let c: UInt32 = 8
+    static let v: UInt32 = 9
+    static let b: UInt32 = 11
+    static let q: UInt32 = 12
+    static let w: UInt32 = 13
+    static let e: UInt32 = 14
+    static let r: UInt32 = 15
+    static let y: UInt32 = 16
+    static let t: UInt32 = 17
+    static let o: UInt32 = 31
+    static let u: UInt32 = 32
+    static let i: UInt32 = 34
+    static let p: UInt32 = 35
+    static let l: UInt32 = 37
+    static let j: UInt32 = 38
+    static let k: UInt32 = 40
+    static let n: UInt32 = 45
+    static let m: UInt32 = 46
+    static let one: UInt32 = 18
+    static let two: UInt32 = 19
+    static let three: UInt32 = 20
+    static let four: UInt32 = 21
+    static let five: UInt32 = 23
+    static let six: UInt32 = 22
+    static let seven: UInt32 = 26
+    static let eight: UInt32 = 28
+    static let nine: UInt32 = 25
+    static let zero: UInt32 = 29
+    static let space: UInt32 = 49
+}
+
+/// QWERTY-position virtual keycode for each ASCII letter, used to normalize
+/// Control-letter combos (see `ghosttyControlComboKeycode`).
+private let qwertyLetterKeyCodes: [Character: UInt32] = [
+    "a": VirtualKeyCode.a, "b": VirtualKeyCode.b, "c": VirtualKeyCode.c,
+    "d": VirtualKeyCode.d, "e": VirtualKeyCode.e, "f": VirtualKeyCode.f,
+    "g": VirtualKeyCode.g, "h": VirtualKeyCode.h, "i": VirtualKeyCode.i,
+    "j": VirtualKeyCode.j, "k": VirtualKeyCode.k, "l": VirtualKeyCode.l,
+    "m": VirtualKeyCode.m, "n": VirtualKeyCode.n, "o": VirtualKeyCode.o,
+    "p": VirtualKeyCode.p, "q": VirtualKeyCode.q, "r": VirtualKeyCode.r,
+    "s": VirtualKeyCode.s, "t": VirtualKeyCode.t, "u": VirtualKeyCode.u,
+    "v": VirtualKeyCode.v, "w": VirtualKeyCode.w, "x": VirtualKeyCode.x,
+    "y": VirtualKeyCode.y, "z": VirtualKeyCode.z,
+]
+
 /// macOS virtual keycode for Return (kVK_Return). Used to synthesize a
 /// line-submission key event when no NSEvent is available (debug channel).
 let ghosttyReturnKeyCode: UInt32 = 36
@@ -181,67 +262,17 @@ struct GhosttyInjectedKey: Equatable, Sendable {
     public let needsShift: Bool
 }
 
-/// macOS ANSI virtual keycodes (`kVK_ANSI_*`) for the printable keys the debug
-/// `send-keys` verb can synthesize. Values match Carbon's HIToolbox constants;
-/// named rather than inlined so the map below reads as key names, not magic numbers.
-private enum VirtualKeyCode {
-    static let a: UInt32 = 0
-    static let s: UInt32 = 1
-    static let d: UInt32 = 2
-    static let f: UInt32 = 3
-    static let h: UInt32 = 4
-    static let g: UInt32 = 5
-    static let z: UInt32 = 6
-    static let x: UInt32 = 7
-    static let c: UInt32 = 8
-    static let v: UInt32 = 9
-    static let b: UInt32 = 11
-    static let q: UInt32 = 12
-    static let w: UInt32 = 13
-    static let e: UInt32 = 14
-    static let r: UInt32 = 15
-    static let y: UInt32 = 16
-    static let t: UInt32 = 17
-    static let o: UInt32 = 31
-    static let u: UInt32 = 32
-    static let i: UInt32 = 34
-    static let p: UInt32 = 35
-    static let l: UInt32 = 37
-    static let j: UInt32 = 38
-    static let k: UInt32 = 40
-    static let n: UInt32 = 45
-    static let m: UInt32 = 46
-    static let one: UInt32 = 18
-    static let two: UInt32 = 19
-    static let three: UInt32 = 20
-    static let four: UInt32 = 21
-    static let five: UInt32 = 23
-    static let six: UInt32 = 22
-    static let seven: UInt32 = 26
-    static let eight: UInt32 = 28
-    static let nine: UInt32 = 25
-    static let zero: UInt32 = 29
-    static let space: UInt32 = 49
-}
-
-/// Virtual keycode for each supported *unshifted* character. Uppercase letters are
-/// not listed: they resolve to their lowercase entry plus Shift (see the resolver).
-private let unshiftedKeyCodes: [Character: UInt32] = [
-    "a": VirtualKeyCode.a, "b": VirtualKeyCode.b, "c": VirtualKeyCode.c,
-    "d": VirtualKeyCode.d, "e": VirtualKeyCode.e, "f": VirtualKeyCode.f,
-    "g": VirtualKeyCode.g, "h": VirtualKeyCode.h, "i": VirtualKeyCode.i,
-    "j": VirtualKeyCode.j, "k": VirtualKeyCode.k, "l": VirtualKeyCode.l,
-    "m": VirtualKeyCode.m, "n": VirtualKeyCode.n, "o": VirtualKeyCode.o,
-    "p": VirtualKeyCode.p, "q": VirtualKeyCode.q, "r": VirtualKeyCode.r,
-    "s": VirtualKeyCode.s, "t": VirtualKeyCode.t, "u": VirtualKeyCode.u,
-    "v": VirtualKeyCode.v, "w": VirtualKeyCode.w, "x": VirtualKeyCode.x,
-    "y": VirtualKeyCode.y, "z": VirtualKeyCode.z,
+/// Virtual keycode for each supported *unshifted* character: the shared letter table
+/// plus the digits and space the debug `send-keys` verb can synthesize. Uppercase
+/// letters are not listed: they resolve to their lowercase entry plus Shift (see the
+/// resolver).
+private let unshiftedKeyCodes: [Character: UInt32] = qwertyLetterKeyCodes.merging([
     "0": VirtualKeyCode.zero, "1": VirtualKeyCode.one, "2": VirtualKeyCode.two,
     "3": VirtualKeyCode.three, "4": VirtualKeyCode.four, "5": VirtualKeyCode.five,
     "6": VirtualKeyCode.six, "7": VirtualKeyCode.seven, "8": VirtualKeyCode.eight,
     "9": VirtualKeyCode.nine,
     " ": VirtualKeyCode.space,
-]
+]) { current, _ in current }
 
 /// Resolve a `Character` to the physical key a real keyboard would press to type
 /// it, or nil when the character is outside the supported set (letters, digits,
