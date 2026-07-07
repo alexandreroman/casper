@@ -183,14 +183,19 @@ private struct AgentStatusIcon: View {
             switch state {
             case .working:
                 SpinningIcon(isSelected: isSelected)
+                    .transition(.opacity)
             case .blocked:
                 icon("exclamationmark.circle")
+                    .transition(.opacity)
             case .done:
                 icon("checkmark.circle")
+                    .transition(.opacity)
             case .error:
                 icon("xmark.octagon")
+                    .transition(.opacity)
             case .idle, .unknown:
                 Color.clear
+                    .transition(.opacity)
             }
         }
         .frame(width: 16)
