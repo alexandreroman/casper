@@ -31,6 +31,11 @@ extension AppModel {
     /// disabled while no pane is focused (see `FileMenuDelegate`).
     func fileMenuItem() -> NSMenuItem {
         let submenu = NSMenu(title: "File")
+        // This menu manages its own items via `FileMenuDelegate`, so autoenabling must
+        // stay off — otherwise AppKit's automatic validation pass re-enables the split
+        // items right after `menuNeedsUpdate` disables them (unlike the Edit/View menus
+        // in `GhosttyMenu.swift`, which rely on autoenabling + `validateMenuItem`).
+        submenu.autoenablesItems = false
         submenu.addItem(ClosureMenuItem(title: "Add folder…", systemImage: "plus") {
             [weak self] in self?.presentAddFolderPanel()
         })
