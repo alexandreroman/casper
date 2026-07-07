@@ -39,7 +39,7 @@ extension AppModel {
         // stay off — otherwise AppKit's automatic validation pass re-enables the merge/
         // delete items right after `menuNeedsUpdate` disables them.
         submenu.autoenablesItems = false
-        submenu.addItem(ClosureMenuItem(title: "Add folder…", systemImage: "plus") {
+        submenu.addItem(ClosureMenuItem(title: "Add Folder…", systemImage: "plus") {
             [weak self] in self?.presentAddFolderPanel()
         })
         submenu.addItem(.separator())

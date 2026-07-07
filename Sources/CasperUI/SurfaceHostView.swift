@@ -104,16 +104,16 @@ struct SurfaceHostView: View {
     @ViewBuilder
     private var paneMenu: some View {
         Button { model.applySplit(from: surface.id, direction: .up) } label: {
-            Label("Split up", systemImage: "rectangle.tophalf.filled")
+            Label("Split Up", systemImage: "rectangle.tophalf.filled")
         }
         Button { model.applySplit(from: surface.id, direction: .down) } label: {
-            Label("Split down", systemImage: "rectangle.bottomhalf.filled")
+            Label("Split Down", systemImage: "rectangle.bottomhalf.filled")
         }
         Button { model.applySplit(from: surface.id, direction: .left) } label: {
-            Label("Split left", systemImage: "rectangle.lefthalf.filled")
+            Label("Split Left", systemImage: "rectangle.lefthalf.filled")
         }
         Button { model.applySplit(from: surface.id, direction: .right) } label: {
-            Label("Split right", systemImage: "rectangle.righthalf.filled")
+            Label("Split Right", systemImage: "rectangle.righthalf.filled")
         }
         Divider()
         Button { dispatch(#selector(NSText.copy(_:))) } label: {
@@ -126,7 +126,7 @@ struct SurfaceHostView: View {
         .keyboardShortcut("v", modifiers: .command)
         Divider()
         Button(role: .destructive) { model.applyCloseSurface(surface.id) } label: {
-            Label("Close pane", systemImage: "xmark")
+            Label("Close Pane", systemImage: "xmark")
         }
         .keyboardShortcut("w", modifiers: .command)
     }

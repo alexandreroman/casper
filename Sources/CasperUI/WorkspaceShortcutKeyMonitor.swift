@@ -74,7 +74,7 @@ final class WorkspaceShortcutKeyMonitor {
     func handle(_ event: NSEvent) -> NSEvent? {
         // Only bare Cmd (no Shift/Option/Control) triggers the hold-reveal
         // and Cmd+digit switch, so this never fires mid-combo with an
-        // unrelated shortcut like Cmd+Shift+D ("Split down", `FileMenu.swift`).
+        // unrelated shortcut like Cmd+Shift+D ("Split Down", `FileMenu.swift`).
         let relevantFlags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         switch event.type {
         case .flagsChanged:

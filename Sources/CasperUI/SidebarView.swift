@@ -11,7 +11,7 @@ struct SidebarView: View {
                     ForEach(model.spaces) { space in
                         SpaceHeaderView(model: model, space: space)
                             .contextMenu {
-                                Button("Remove space", role: .destructive) {
+                                Button("Remove Space", role: .destructive) {
                                     model.removeSpace(id: space.id)
                                 }
                             }
@@ -46,9 +46,12 @@ struct SidebarView: View {
         .contextMenu {
             if workspace.kind == .linked {
                 if let base = workspace.baseBranch, !base.isEmpty {
-                    Button("Merge and Close Workspace…") {
+                    Button {
                         model.presentCloseWorkspaceConfirmation(id: workspace.id)
+                    } label: {
+                        Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")
                     }
+                    Divider()
                 }
                 Button(role: .destructive) {
                     model.presentDeleteWorkspaceConfirmation(id: workspace.id)
