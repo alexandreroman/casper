@@ -199,14 +199,15 @@ final class ModelsTests: XCTestCase {
     // MARK: - Transient runtime fields are not persisted
 
     func testWorkspaceDoesNotPersistTransientRuntimeFields() throws {
-        // agentState / todos / pendingNotification are live runtime state, driven
-        // by hooks and the CLI. They must never be written to `session.json`, and
-        // must reset to their defaults on load.
+        // agentState / todos / pendingNotification / pendingNotificationMessage
+        // are live runtime state, driven by hooks and the CLI. They must never be
+        // written to `session.json`, and must reset to their defaults on load.
         let ws = Workspace(
             name: "feat", worktreePath: "/r", branch: "feat",
             agentState: .working,
             todos: [Todo(content: "x", status: .inProgress)],
             pendingNotification: true,
+            pendingNotificationMessage: "Task finished",
             portBase: 40000,
             layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))))
 
@@ -215,11 +216,13 @@ final class ModelsTests: XCTestCase {
         XCTAssertFalse(json.contains("\"agentState\""))
         XCTAssertFalse(json.contains("\"todos\""))
         XCTAssertFalse(json.contains("\"pendingNotification\""))
+        XCTAssertFalse(json.contains("\"pendingNotificationMessage\""))
 
         let decoded = try JSONDecoder().decode(Workspace.self, from: data)
         XCTAssertEqual(decoded.agentState, .idle)
         XCTAssertTrue(decoded.todos.isEmpty)
         XCTAssertFalse(decoded.pendingNotification)
+        XCTAssertNil(decoded.pendingNotificationMessage)
         // The persisted fields still round-trip.
         XCTAssertEqual(decoded.name, "feat")
         XCTAssertEqual(decoded.portBase, 40000)
@@ -241,6 +244,7 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.agentState, .idle)
         XCTAssertTrue(decoded.todos.isEmpty)
         XCTAssertFalse(decoded.pendingNotification)
+        XCTAssertNil(decoded.pendingNotificationMessage)
         XCTAssertEqual(decoded.name, "legacy")  // persisted fields still decode
     }
 

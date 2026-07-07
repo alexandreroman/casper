@@ -206,6 +206,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var agentState: AgentState
     public var todos: [Todo]
     public var pendingNotification: Bool
+    public var pendingNotificationMessage: String?
     public var portBase: Int
     public var layout: LayoutNode
     public var kind: WorkspaceKind
@@ -220,6 +221,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         agentState: AgentState = .idle,
         todos: [Todo] = [],
         pendingNotification: Bool = false,
+        pendingNotificationMessage: String? = nil,
         portBase: Int,
         layout: LayoutNode,
         kind: WorkspaceKind = .primary,
@@ -233,6 +235,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.agentState = agentState
         self.todos = todos
         self.pendingNotification = pendingNotification
+        self.pendingNotificationMessage = pendingNotificationMessage
         self.portBase = portBase
         self.layout = layout
         self.kind = kind
@@ -242,23 +245,27 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
 
     // Full case set required now that both `init(from:)` and `encode(to:)` are
     // hand-rolled; case names match the property names so the on-disk keys stay
-    // stable. The three transient cases (agentState, todos, pendingNotification)
-    // remain listed but are neither read nor written — see the coders below.
+    // stable. The four transient cases (agentState, todos, pendingNotification,
+    // pendingNotificationMessage) remain listed but are neither read nor written — see
+    // the coders below.
     private enum CodingKeys: String, CodingKey {
         case id, name, worktreePath, branch, agentState, todos
-        case pendingNotification, portBase, layout, kind, baseBranch, inspector
+        case pendingNotification, pendingNotificationMessage
+        case portBase, layout, kind, baseBranch, inspector
     }
 
-    /// Encodes every persisted field, deliberately omitting the three transient
-    /// runtime fields (`agentState`, `todos`, `pendingNotification`): they are
-    /// driven by the `casper` CLI (control channel), never restored from disk.
+    /// Encodes every persisted field, deliberately omitting the four transient
+    /// runtime fields (`agentState`, `todos`, `pendingNotification`,
+    /// `pendingNotificationMessage`): they are driven by the `casper` CLI (control
+    /// channel), never restored from disk.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(name, forKey: .name)
         try c.encode(worktreePath, forKey: .worktreePath)
         try c.encode(branch, forKey: .branch)
-        // agentState / todos / pendingNotification are transient runtime state — never persisted.
+        // agentState / todos / pendingNotification / pendingNotificationMessage
+        // are transient runtime state — never persisted.
         try c.encode(portBase, forKey: .portBase)
         try c.encode(layout, forKey: .layout)
         try c.encode(kind, forKey: .kind)
@@ -268,10 +275,11 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
 
     /// Decodes every persisted field normally and defaults `inspector` when it's
     /// absent, so legacy `session.json` files (written before the inspector
-    /// existed) load with a collapsed, default inspector. The three transient
-    /// runtime fields (`agentState`, `todos`, `pendingNotification`) are never
-    /// read from disk — they always reset to their defaults on load, whether the
-    /// file omits them (current shape) or still carries them (legacy shape).
+    /// existed) load with a collapsed, default inspector. The four transient
+    /// runtime fields (`agentState`, `todos`, `pendingNotification`,
+    /// `pendingNotificationMessage`) are never read from disk — they always reset
+    /// to their defaults on load, whether the file omits them (current shape) or
+    /// still carries them (legacy shape).
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
@@ -281,6 +289,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.agentState = .idle
         self.todos = []
         self.pendingNotification = false
+        self.pendingNotificationMessage = nil
         self.portBase = try container.decode(Int.self, forKey: .portBase)
         self.layout = try container.decode(LayoutNode.self, forKey: .layout)
         self.kind = try container.decode(WorkspaceKind.self, forKey: .kind)
