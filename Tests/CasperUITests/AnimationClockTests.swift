@@ -31,4 +31,11 @@ final class AnimationClockTests: XCTestCase {
             XCTAssertLessThanOrEqual(delay, 0)
         }
     }
+
+    func testNowBeforeEpochReturnsZeroDelay() {
+        let epoch = Date()
+        let now = epoch.addingTimeInterval(-0.5)
+        let delay = AnimationClock.phaseDelay(period: 1, now: now, epoch: epoch)
+        XCTAssertEqual(delay, 0, accuracy: 0.0001)
+    }
 }

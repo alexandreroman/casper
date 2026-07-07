@@ -14,7 +14,7 @@ enum AnimationClock {
     /// length — `duration` for `autoreverses: false`, `2 * duration` for
     /// `autoreverses: true`) to `epoch`.
     static func phaseDelay(period: TimeInterval, now: Date = Date(), epoch: Date = AnimationClock.epoch) -> Double {
-        let elapsed = now.timeIntervalSince(epoch)
+        let elapsed = max(0, now.timeIntervalSince(epoch))
         return -elapsed.truncatingRemainder(dividingBy: period)
     }
 }

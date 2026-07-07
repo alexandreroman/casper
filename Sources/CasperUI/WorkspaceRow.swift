@@ -190,6 +190,7 @@ private struct SpinningIcon: View {
     @State private var spin = false
     @State private var delay: Double = 0
 
+    /// Full rotation cycle: duration, since autoreverses: false.
     private static let period: TimeInterval = 1
 
     var body: some View {
