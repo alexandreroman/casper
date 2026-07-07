@@ -43,6 +43,47 @@ final class WorktreeManagerTests: XCTestCase {
             URL(fileURLWithPath: wtPath).standardizedFileURL.path)
     }
 
+    func testCreateCopiesDefaultPatternFilesIntoNewWorktree() throws {
+        try "SECRET=1\n".write(
+            to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+        let wtPath = root.appendingPathComponent("feature").path
+
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        XCTAssertEqual(
+            try String(
+                contentsOf: URL(fileURLWithPath: wtPath).appendingPathComponent(".env"),
+                encoding: .utf8),
+            "SECRET=1\n")
+    }
+
+    func testCreateRollsBackWorktreeAndBranchOnCopyFailure() throws {
+        try "SECRET=1\n".write(
+            to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: repoDir.appendingPathComponent(".env").path)
+        defer {
+            // Restore read access so tearDown's directory removal doesn't fail.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: repoDir.appendingPathComponent(".env").path)
+        }
+        let wtPath = root.appendingPathComponent("feature").path
+
+        XCTAssertThrowsError(
+            try WorktreeManager.create(
+                repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        ) { error in
+            guard case .fileCopyFailed = (error as? WorktreeError)?.reason else {
+                return XCTFail("expected .fileCopyFailed, got \(error)")
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+        XCTAssertEqual(try WorktreeManager.list(repoPath: repoDir.path).count, 0)
+    }
+
     func testCreateRejectsCheckedOutBranch() throws {
         let repo = try Repository.open(atPath: repoDir.path)
         let head = try repo.headBranchName()

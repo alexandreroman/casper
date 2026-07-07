@@ -9,6 +9,7 @@ struct WorktreeError: Error, Equatable, Sendable {
         case branchAlreadyCheckedOut
         case worktreePathExists
         case mergeConflict
+        case fileCopyFailed(String)
         case gitFailure(String)
     }
 
@@ -49,7 +50,11 @@ public enum WorktreeManager {
     }
 
     /// Create a worktree named `name` (on a new branch of the same name, based
-    /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`.
+    /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`. After
+    /// the git-level worktree is created, copies files matching
+    /// `WorkspaceFileCopier.defaultPatterns` from `repoPath` into `worktreePath`; a
+    /// copy failure rolls back the worktree and branch so nothing is left
+    /// half-created on disk.
     public static func create(
         repoPath: String, name: String, worktreePath: String, base: String?
     ) throws -> CreatedWorktree {
@@ -64,6 +69,14 @@ public enum WorktreeManager {
 
         let info = try mapGitError {
             try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
+        }
+
+        do {
+            _ = try WorkspaceFileCopier.copy(from: repoPath, to: worktreePath)
+        } catch {
+            try? remove(repoPath: repoPath, name: name)
+            try? deleteBranch(repoPath: repoPath, name: name)
+            throw WorktreeError(.fileCopyFailed("\(error)"))
         }
 
         return CreatedWorktree(
