@@ -28,7 +28,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let runtime = try GhosttyRuntime()
             runtime.onAction = { action in
                 switch action {
-                case .setTitle(let title): NSApp.keyWindow?.title = title
                 case .openURL(let string):
                     if let url = URL(string: string) { NSWorkspace.shared.open(url) }
                 case .quit: NSApp.terminate(nil)
