@@ -144,6 +144,7 @@ private struct NotificationBubble: View {
     let isSelected: Bool
     @State private var pulse = false
     @State private var delay: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Full out-and-back cycle length: `2 * duration`, since `autoreverses: true`.
     private static let period: TimeInterval = 0.8 * 2
@@ -155,10 +156,14 @@ private struct NotificationBubble: View {
                 .frame(width: 9, height: 9)
                 .opacity(pulse ? 0.5 : 1.0)
                 .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay), value: pulse)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay),
+                    value: pulse)
                 .onAppear {
-                    delay = AnimationClock.phaseDelay(period: Self.period)
-                    pulse = true
+                    if !reduceMotion {
+                        delay = AnimationClock.phaseDelay(period: Self.period)
+                        pulse = true
+                    }
                 }
         } else {
             EmptyView()
@@ -216,6 +221,7 @@ private struct SpinningIcon: View {
     let isSelected: Bool
     @State private var spin = false
     @State private var delay: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Full rotation cycle: duration, since autoreverses: false.
     private static let period: TimeInterval = 1
@@ -225,10 +231,14 @@ private struct SpinningIcon: View {
             .imageScale(.medium)
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(.linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay), value: spin)
+            .animation(
+                reduceMotion ? nil : .linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay),
+                value: spin)
             .onAppear {
-                delay = AnimationClock.phaseDelay(period: Self.period)
-                spin = true
+                if !reduceMotion {
+                    delay = AnimationClock.phaseDelay(period: Self.period)
+                    spin = true
+                }
             }
     }
 }
