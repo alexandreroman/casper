@@ -66,10 +66,11 @@ struct DiffSurfaceView: View {
             } else {
                 let scrollsVertically = contentNaturalHeight > contentHeight
                 ScrollView(scrollsVertically ? [.vertical, .horizontal] : .horizontal) {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         ForEach(diff.files) { file in
                             DiffFileView(
-                                file: file, contentWidth: contentWidth, highlight: highlights[file.id])
+                                file: file, contentWidth: contentWidth, highlight: highlights[file.id],
+                                isLastFile: file.id == diff.files.last?.id)
                         }
                     }
                     .padding(.bottom, 24)
@@ -202,34 +203,41 @@ private struct DiffFileView: View {
     let file: GitDiffFile
     let contentWidth: CGFloat
     let highlight: FileHighlight?
+    /// True for the diff's last file, so its trailing gap isn't doubled up
+    /// with the outer scroll content's own bottom padding.
+    let isLastFile: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
-            if file.isBinary {
-                Text("Binary file")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
-            } else {
-                ForEach(visibleHunks) { entry in
-                    Text(entry.hunk.header)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(.top, 6).padding(.bottom, 2)
-                    ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
-                        DiffLineRow(
-                            line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
-                            maxDigits: maxDigits, highlighted: highlightedLine(for: line))
+        Section {
+            VStack(alignment: .leading, spacing: 0) {
+                if file.isBinary {
+                    Text("Binary file")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                } else {
+                    ForEach(visibleHunks) { entry in
+                        Text(entry.hunk.header)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.top, 6).padding(.bottom, 2)
+                        ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
+                            DiffLineRow(
+                                line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
+                                maxDigits: maxDigits, highlighted: highlightedLine(for: line))
+                        }
+                    }
+                    if hiddenLineCount > 0 {
+                        Text("Diff too large — \(hiddenLineCount) more lines hidden")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
                     }
                 }
-                if hiddenLineCount > 0 {
-                    Text("Diff too large — \(hiddenLineCount) more lines hidden")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.vertical, 6)
-                }
             }
+            .padding(.bottom, isLastFile ? 0 : 14)
+        } header: {
+            header
         }
     }
 
@@ -284,21 +292,28 @@ private struct DiffFileView: View {
     }
 
     /// Full-bleed header band: file path + status on the left, the +N −N line
-    /// summary pushed to the right, over a subtly elevated fill.
+    /// summary pushed to the right, over a subtly elevated fill. Pinned as the
+    /// enclosing `Section`'s sticky header, so a 1pt hairline marks its bottom
+    /// edge against the file content scrolling underneath it.
     private var header: some View {
-        HStack(alignment: .lastTextBaseline, spacing: 8) {
-            Text(title).font(.system(.body, design: .monospaced)).bold()
-            Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                Text("+\(insertions)").foregroundStyle(DiffLineStyle.insertionTint)
-                Text("\u{2212}\(deletions)").foregroundStyle(DiffLineStyle.deletionTint)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
+                Text(title).font(.system(.body, design: .monospaced)).bold()
+                Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                HStack(spacing: 8) {
+                    Text("+\(insertions)").foregroundStyle(DiffLineStyle.insertionTint)
+                    Text("\u{2212}\(deletions)").foregroundStyle(DiffLineStyle.deletionTint)
+                }
+                .font(.callout.monospacedDigit().bold())
             }
-            .font(.callout.monospacedDigit().bold())
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.12))
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(height: 1)
         }
-        .padding(.horizontal, 8).padding(.vertical, 6)
         .frame(minWidth: contentWidth, alignment: .leading)
-        .background(Color.secondary.opacity(0.12))
     }
 
     private var title: String {
