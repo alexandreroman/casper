@@ -510,7 +510,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // No surface means nothing to forward and nothing to show a menu for.
         guard let surface else { return }
         if !surface.mouseCaptured() || shift, let menu = onContextMenu?(event) {
+            // `popUp` blocks on AppKit's modal menu-tracking loop and the pointer never
+            // leaves this view, so `mouseExited` never fires to clear the terminal's
+            // I-beam. Reset to the arrow for the menu, then restore our resting cursor.
+            NSCursor.arrow.set()
             menu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
+            lastCursor.set()
             rightButtonDownSent = false  // The press was consumed by the menu, not forwarded.
             return
         }
