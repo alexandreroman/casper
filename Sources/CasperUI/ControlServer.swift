@@ -85,15 +85,15 @@ final class ControlServer {
                 ? .success(workspace: id.uuidString) : .failure("cannot open browser")
         case .browserClose:
             return model.controlCloseBrowser(in: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")
-        case .diffClose:
-            return model.controlCloseDiff(in: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")
+                ? .success(workspace: id.uuidString) : .failure("cannot close browser")
         case .diffOpen:
             switch model.controlOpenDiff(in: id, file: command.target) {
             case .success: return .success(workspace: id.uuidString)
             case .failure(let error): return .failure(error.message)
             }
+        case .diffClose:
+            return model.controlCloseDiff(in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot close diff")
         case .workspaceDelete:
             switch model.controlDeleteWorkspace(id: id) {
             case .success: return .success(workspace: id.uuidString)
