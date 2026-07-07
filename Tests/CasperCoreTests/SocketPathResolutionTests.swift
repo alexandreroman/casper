@@ -22,6 +22,22 @@ final class SocketPathResolutionTests: XCTestCase {
         XCTAssertFalse(path.contains("casper-control-"), path)
     }
 
+    func testControlListenPathUsesSessionDerivedPath() {
+        let path = ControlSocketPath.listenPath(for: SessionIdentity(name: "dev")!)
+        XCTAssertTrue(path.hasSuffix("casper-control-dev.sock"), path)
+    }
+
+    func testControlListenPathIgnoresEnvOverride() {
+        // The root cause: the App must bind its listener to the session-derived
+        // path even when it inherited a CASPER_CONTROL_SOCKET from a terminal a
+        // *different* running instance opened. This asserts the override is
+        // ignored, so `listenPath` cannot be a naive alias for `resolve(for:)`.
+        setenv("CASPER_CONTROL_SOCKET", "/tmp/should-not-be-used.sock", 1)
+        defer { unsetenv("CASPER_CONTROL_SOCKET") }
+        let path = ControlSocketPath.listenPath(for: SessionIdentity(name: "dev")!)
+        XCTAssertTrue(path.hasSuffix("casper-control-dev.sock"), path)
+    }
+
     #if DEBUG
     func testDebugResolveNamedSession() {
         XCTAssertEqual(DebugSocketPath.resolve(for: SessionIdentity(name: "dev")!),
@@ -30,6 +46,18 @@ final class SocketPathResolutionTests: XCTestCase {
 
     func testDebugResolveDefaultSession() {
         XCTAssertEqual(DebugSocketPath.resolve(for: .default), "/tmp/casper-debug.sock")
+    }
+
+    func testDebugListenPathUsesSessionDerivedPath() {
+        XCTAssertEqual(DebugSocketPath.listenPath(for: SessionIdentity(name: "dev")!),
+                       "/tmp/casper-debug-dev.sock")
+    }
+
+    func testDebugListenPathIgnoresEnvOverride() {
+        setenv("CASPER_DEBUG_SOCKET", "/tmp/should-not-be-used.sock", 1)
+        defer { unsetenv("CASPER_DEBUG_SOCKET") }
+        XCTAssertEqual(DebugSocketPath.listenPath(for: SessionIdentity(name: "dev")!),
+                       "/tmp/casper-debug-dev.sock")
     }
     #endif
 }

@@ -23,6 +23,15 @@ public enum DebugSocketPath {
     public static func resolve(for session: SessionIdentity) -> String {
         ProcessInfo.processInfo.environment["CASPER_DEBUG_SOCKET"] ?? session.debugSocketPath
     }
+
+    /// The path the App itself must bind its listener to: always the
+    /// session-derived path, ignoring any ambient `CASPER_DEBUG_SOCKET` the
+    /// process may have inherited from a terminal a *different* running instance
+    /// opened. Never call `resolve(for:)` for this — that intentionally honors
+    /// the env override for CLI dial use.
+    public static func listenPath(for session: SessionIdentity) -> String {
+        session.debugSocketPath
+    }
 }
 
 /// A transport failure on the debug channel.

@@ -50,3 +50,4 @@
 - [libghostty macOS config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — bundled Casper.app misses the user's Ghostty config (empty com.alexandreroman.casper dir) → vanilla gray; hence the baked-in default theme
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — after mergeBranchHeadless the base worktree reports deleted files; capture cleanliness before merging to decide any resync
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_CONTROL_SOCKET/CASPER_DEBUG_SOCKET/CASPER_SESSION so a Casper-opened terminal's live env never leaks into swift test
+- [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — App must bind via `listenPath(for:)` (session-only); `resolve(for:)`/`.default` (env-override) is dial-only or it hijacks a running instance's socket
