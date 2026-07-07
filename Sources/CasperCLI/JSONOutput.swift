@@ -107,15 +107,17 @@ struct CurrentOut: Encodable {
     let path: String?
 }
 
-/// `{"workspace":"<new id>","name":"...","branch":"...","path":"..."}` — the
-/// created workspace for `workspace new`. The new id is keyed as `workspace`
+/// `{"workspace":"<new id>","name":"...","branch":"...","path":"...","command":"..."}` —
+/// the created workspace for `workspace new`. The new id is keyed as `workspace`
 /// (matching the affected-workspace convention), not `id`. `branch` is omitted
-/// when unknown, matching `WorkspaceOut`.
+/// when unknown, matching `WorkspaceOut`; `command` is echoed only when specified,
+/// matching `TerminalNewOut`.
 struct WorkspaceNewOut: Encodable {
     let workspace: String
     let name: String
     let branch: String?
     let path: String
+    let command: String?
 }
 
 /// `{"error":"<message>"}` — the sole error shape, written to stderr.

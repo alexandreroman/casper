@@ -31,7 +31,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var target: String?      // diffOpen: file path to scroll to; terminalClose: terminal id
     public var branch: String?      // workspaceNew
     public var base: String?        // workspaceNew
-    public var command: String?     // terminalNew: optional command to run
+    public var command: String?     // terminalNew / workspaceNew: optional command to run
     public var cwd: String?         // terminalNew: optional working directory
 
     public init(

@@ -34,14 +34,14 @@ enum WorkspaceFactory {
 
     static func makeLinkedWorkspace(
         name: String, worktreePath: String, branch: String,
-        baseBranch: String, portBase: Int
+        baseBranch: String, portBase: Int, command: String? = nil
     ) -> Workspace {
         Workspace(
             name: name,
             worktreePath: worktreePath,
             branch: branch,
             portBase: portBase,
-            layout: .leaf(.terminal(cwd: worktreePath)),
+            layout: .leaf(.terminal(cwd: worktreePath, command: command)),
             kind: .linked,
             baseBranch: baseBranch)
     }
