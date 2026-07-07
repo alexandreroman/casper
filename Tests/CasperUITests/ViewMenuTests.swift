@@ -94,6 +94,6 @@ final class ViewMenuTests: XCTestCase {
         let model = AppModel(sessionStore: makeStore())
         let item = model.viewMenuItem()
         let titles = item.submenu?.items.map(\.title)
-        XCTAssertEqual(titles, ["Split up", "Split down", "Split left", "Split right"])
+        XCTAssertEqual(titles, ["Split Up", "Split Down", "Split Left", "Split Right"])
     }
 }

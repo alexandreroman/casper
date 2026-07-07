@@ -39,10 +39,10 @@ extension AppModel {
 
         let splits: [(title: String, systemImage: String, direction: GhosttySplitDirectionLike,
                        key: String, keyModifiers: NSEvent.ModifierFlags)] = [
-            ("Split up", "rectangle.tophalf.filled", .up, "", []),
-            ("Split down", "rectangle.bottomhalf.filled", .down, "d", [.command, .shift]),
-            ("Split left", "rectangle.lefthalf.filled", .left, "", []),
-            ("Split right", "rectangle.righthalf.filled", .right, "d", [.command]),
+            ("Split Up", "rectangle.tophalf.filled", .up, "", []),
+            ("Split Down", "rectangle.bottomhalf.filled", .down, "d", [.command, .shift]),
+            ("Split Left", "rectangle.lefthalf.filled", .left, "", []),
+            ("Split Right", "rectangle.righthalf.filled", .right, "d", [.command]),
         ]
         let splitItems = splits.map { entry -> NSMenuItem in
             let item = ClosureMenuItem(title: entry.title, systemImage: entry.systemImage) {

@@ -34,16 +34,16 @@ extension AppModel {
     /// splits, copy/paste, and close.
     func paneContextMenu(for surfaceID: UUID) -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(title: "Split up", systemImage: "rectangle.tophalf.filled") {
+        menu.addItem(ClosureMenuItem(title: "Split Up", systemImage: "rectangle.tophalf.filled") {
             [weak self] in self?.applySplit(from: surfaceID, direction: .up)
         })
-        menu.addItem(ClosureMenuItem(title: "Split down", systemImage: "rectangle.bottomhalf.filled") {
+        menu.addItem(ClosureMenuItem(title: "Split Down", systemImage: "rectangle.bottomhalf.filled") {
             [weak self] in self?.applySplit(from: surfaceID, direction: .down)
         })
-        menu.addItem(ClosureMenuItem(title: "Split left", systemImage: "rectangle.lefthalf.filled") {
+        menu.addItem(ClosureMenuItem(title: "Split Left", systemImage: "rectangle.lefthalf.filled") {
             [weak self] in self?.applySplit(from: surfaceID, direction: .left)
         })
-        menu.addItem(ClosureMenuItem(title: "Split right", systemImage: "rectangle.righthalf.filled") {
+        menu.addItem(ClosureMenuItem(title: "Split Right", systemImage: "rectangle.righthalf.filled") {
             [weak self] in self?.applySplit(from: surfaceID, direction: .right)
         })
         menu.addItem(.separator())
@@ -56,7 +56,7 @@ extension AppModel {
             NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
         })
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(title: "Close pane", systemImage: "xmark") {
+        menu.addItem(ClosureMenuItem(title: "Close Pane", systemImage: "xmark") {
             [weak self] in self?.applyCloseSurface(surfaceID)
         })
         return menu
