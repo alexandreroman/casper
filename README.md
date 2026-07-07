@@ -144,7 +144,9 @@ casper terminal new                          # open a terminal (split right)
 casper terminal list                         # list the workspace's terminals
 casper terminal close <id>                   # close a terminal by id
 casper browser open https://example.com      # load a URL in the inspector browser
+casper browser close                         # collapse the inspector if the browser is showing
 casper diff open Sources/App/Main.swift      # open the diff, scroll to a file
+casper diff close                            # collapse the inspector if the diff is showing
 casper workspace list                        # enumerate workspaces
 casper workspace current                     # print the current workspace + path
 casper workspace new --branch feature/x      # create a Git worktree workspace
