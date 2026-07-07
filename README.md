@@ -79,7 +79,7 @@ Common tasks are exposed through the `Makefile`:
 ```bash
 make          # debug build (default target)
 make help     # list available targets
-make dev      # recompile and launch the app (swift run casper)
+make dev      # recompile and launch the app under a per-branch dev session
 make build    # debug build
 make test     # run the full test suite
 make all      # build then test

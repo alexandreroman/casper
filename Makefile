@@ -11,13 +11,21 @@
 SHORT_VERSION ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); echo $${v:-0.0.0})
 BUNDLE_VERSION ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 
+# Per-branch dev session name: sanitize the current branch to SessionIdentity's
+# charset ([A-Za-z0-9._-], max 32 chars) so two worktrees on different branches
+# get independent, non-colliding dev sessions. Falls back to "dev".
+DEV_SESSION := $(shell br=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
+	name=$$(printf '%s' "$$br" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-32); \
+	echo "$${name:-dev}")
+
 ## build: compile the debug build
 build:
 	swift build
 
-## dev: recompile and launch the app
+## dev: recompile and launch the app under a per-branch isolated dev session
 dev:
-	swift run casper
+	@echo "==> dev session: $(DEV_SESSION)"
+	swift run casper -- --session $(DEV_SESSION)
 
 ## test: run the full test suite
 test:
