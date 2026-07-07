@@ -28,14 +28,6 @@ struct DiffSurfaceView: View {
     /// Visible width of the content area, measured once laid out. Drives the
     /// full-bleed row/header backgrounds (see `DiffFileView`/`DiffLineRow`).
     @State private var contentWidth: CGFloat = 0
-    /// Visible height of the content area. Lets a short diff fill the viewport so
-    /// its files top-align instead of being vertically centered by the ScrollView.
-    @State private var contentHeight: CGFloat = 0
-    /// Natural (unpinned) height of the stacked files, measured so the vertical
-    /// scroll axis is enabled only when the diff actually overflows the viewport.
-    /// Without this, the horizontal scrollbar steals a strip of height and the
-    /// full-height pin makes a short diff report a spurious vertical scrollbar.
-    @State private var contentNaturalHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,11 +35,8 @@ struct DiffSurfaceView: View {
             // full available area (top-aligned file list) and hands us its width.
             GeometryReader { proxy in
                 content
-                    .onAppear { contentWidth = proxy.size.width; contentHeight = proxy.size.height }
-                    .onChange(of: proxy.size) { _, size in
-                        contentWidth = size.width
-                        contentHeight = size.height
-                    }
+                    .onAppear { contentWidth = proxy.size.width }
+                    .onChange(of: proxy.size) { _, size in contentWidth = size.width }
             }
         }
         .onAppear { if !loaded { refresh() } }
@@ -64,8 +53,7 @@ struct DiffSurfaceView: View {
                     systemImage: "checkmark.circle", title: "No changes",
                     message: "The working tree matches HEAD.")
             } else {
-                let scrollsVertically = contentNaturalHeight > contentHeight
-                ScrollView(scrollsVertically ? [.vertical, .horizontal] : .horizontal) {
+                ScrollView([.vertical, .horizontal]) {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         ForEach(diff.files) { file in
                             DiffFileView(
@@ -74,10 +62,12 @@ struct DiffSurfaceView: View {
                         }
                     }
                     .padding(.bottom, 24)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentNaturalHeight = $0 }
-                    .frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)
+                    .frame(minWidth: contentWidth)
                     .scrollTargetLayout()
                 }
+                // Rest an undersized diff at the top instead of letting a dual-axis
+                // ScrollView vertically center it.
+                .defaultScrollAnchor(.top)
                 .scrollPosition(id: $scrolledFileID, anchor: .top)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
