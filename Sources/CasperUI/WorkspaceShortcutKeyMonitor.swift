@@ -1,6 +1,6 @@
 import AppKit
 
-/// Watches for Cmd being held ≥1s to reveal the sidebar's `Cmd+N` shortcut
+/// Watches for Cmd being held ≥250ms to reveal the sidebar's `Cmd+N` shortcut
 /// hints (see `WorkspaceRow`), and handles `Cmd+1…9` itself so the workspace
 /// switch works even before the hint appears. Installed once from
 /// `AppDelegate.applicationDidFinishLaunching`, the same place `FileMenu`'s
@@ -8,12 +8,20 @@ import AppKit
 /// fires while a Casper window is key and needs no Accessibility permission.
 @MainActor
 final class WorkspaceShortcutKeyMonitor {
+    /// Physical number-row keys (ANSI virtual keycodes) mapped to their digit.
+    /// Deliberately excludes the numeric keypad's keycodes so Cmd+(numpad 1)
+    /// does not switch workspaces — only the top-row digit keys do.
+    private static let digitKeyCodes: [UInt16: Int] = [
+        0x12: 1, 0x13: 2, 0x14: 3, 0x15: 4, 0x17: 5,
+        0x16: 6, 0x1A: 7, 0x1C: 8, 0x19: 9,
+    ]
+
     private let model: AppModel
     private let tracker: CommandHoldTracker
     private var eventMonitor: Any?
     private var resignActiveObserver: NSObjectProtocol?
 
-    init(model: AppModel, holdDuration: TimeInterval = 1.0) {
+    init(model: AppModel, holdDuration: TimeInterval = 0.25) {
         self.model = model
         self.tracker = CommandHoldTracker(holdDuration: holdDuration) { show in
             model.showWorkspaceShortcutHints = show
@@ -72,12 +80,12 @@ final class WorkspaceShortcutKeyMonitor {
             }
             return event
         case .keyDown:
+            // Match the physical key position, not the character: on an AZERTY
+            // layout the number-row keys emit "& é …" unshifted, so matching by
+            // `charactersIgnoringModifiers` would miss Cmd+1…9 there.
             guard
                 relevantFlags == .command,
-                let characters = event.charactersIgnoringModifiers,
-                characters.count == 1,
-                let digit = Int(characters),
-                (1...9).contains(digit),
+                let digit = Self.digitKeyCodes[event.keyCode],
                 model.workspaceShortcutNumbers.values.contains(digit)
             else {
                 return event
