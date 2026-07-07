@@ -45,6 +45,8 @@ struct WorkspaceRow: View {
                             .font(.caption)
                             .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
                             .lineLimit(1)
+                            .contentTransition(.opacity)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 // Align under the branch label: status slot (16) + spacing (8) +
