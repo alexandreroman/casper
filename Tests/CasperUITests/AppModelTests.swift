@@ -43,6 +43,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(model.allWorkspaces[0].portBase, model.allWorkspaces[1].portBase)
     }
 
+    func testAddSpaceInsertsAtAlphabeticalPosition() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/zebra"), probe: { _ in nil })
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/alpha"), probe: { _ in nil })
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/mango"), probe: { _ in nil })
+        XCTAssertEqual(model.spaces.map(\.name), ["alpha", "mango", "zebra"])
+    }
+
     func testRemoveDeletesEntryAndFixesSelection() throws {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
@@ -67,6 +76,26 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store, session: existing)
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, existing.spaces[0].workspaces[0].id)
+    }
+
+    func testRestoredSessionSortsSpacesAlphabetically() {
+        let existing = Session(spaces: [
+            Space(name: "zebra", folderPath: "/z", isGitRepo: false, workspaces: [
+                Workspace(name: "zebra", worktreePath: "/z", branch: "", portBase: 40000,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/z", command: nil)))),
+            ]),
+            Space(name: "alpha", folderPath: "/a", isGitRepo: false, workspaces: [
+                Workspace(name: "alpha", worktreePath: "/a", branch: "", portBase: 40010,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+            ]),
+            Space(name: "Mango", folderPath: "/m", isGitRepo: false, workspaces: [
+                Workspace(name: "mango", worktreePath: "/m", branch: "", portBase: 40020,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/m", command: nil)))),
+            ]),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: existing)
+        XCTAssertEqual(model.spaces.map(\.name), ["alpha", "Mango", "zebra"])
     }
 
     func testIsWorkspaceGitBackedReflectsOwningSpace() {
