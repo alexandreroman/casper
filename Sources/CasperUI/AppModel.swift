@@ -1391,8 +1391,8 @@ final class AppModel {
     /// leaves the workspace intact and retryable. Pruning must precede the branch
     /// delete (a checked-out branch cannot be deleted); pruning is skipped when the
     /// worktree is already gone, and the branch delete is idempotent. Shared by the
-    /// `casper workspace delete` control-channel verb and the sidebar's "Close
-    /// workspace…"/"Delete workspace…" actions.
+    /// `casper workspace delete` control-channel verb and the sidebar's "Merge and
+    /// Close Workspace…"/"Delete Workspace…" actions.
     @discardableResult
     private func pruneWorkspaceFromDisk(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
         guard let at = locate(workspaceID) else {
