@@ -316,6 +316,7 @@ final class AppModel {
         let space = WorkspaceFactory.makeSpace(
             folderURL: folderURL, probe: probe, portBase: portBase)
         spaces.append(space)
+        spaces = Self.sortedByName(spaces)
         selectWorkspace(space.workspaces.first?.id)
         persist()
     }

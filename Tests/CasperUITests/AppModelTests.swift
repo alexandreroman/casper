@@ -43,6 +43,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(model.allWorkspaces[0].portBase, model.allWorkspaces[1].portBase)
     }
 
+    func testAddSpaceInsertsAtAlphabeticalPosition() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/zebra"), probe: { _ in nil })
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/alpha"), probe: { _ in nil })
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/mango"), probe: { _ in nil })
+        XCTAssertEqual(model.spaces.map(\.name), ["alpha", "mango", "zebra"])
+    }
+
     func testRemoveDeletesEntryAndFixesSelection() throws {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
