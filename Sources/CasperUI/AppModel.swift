@@ -232,6 +232,31 @@ final class AppModel {
     /// All workspaces across every Space, in sidebar order.
     var allWorkspaces: [Workspace] { spaces.flatMap(\.workspaces) }
 
+    /// Maps eligible workspaces to their `Cmd+N` shortcut (1-9), following
+    /// sidebar display order: `spaces` in list order, collapsed spaces
+    /// skipped entirely (their workspaces aren't visible, so they get no
+    /// shortcut while hidden), each visible space's workspaces in
+    /// `orderedWorkspaces` order. Feeds both the sidebar hint label and
+    /// `selectWorkspace(atShortcutNumber:)` — the two can never drift apart
+    /// since they share this one lookup.
+    var workspaceShortcutNumbers: [UUID: Int] {
+        var numbers: [UUID: Int] = [:]
+        var next = 1
+        for space in spaces where !space.isCollapsed {
+            for workspace in space.orderedWorkspaces {
+                guard next <= 9 else { return numbers }
+                numbers[workspace.id] = next
+                next += 1
+            }
+        }
+        return numbers
+    }
+
+    /// Whether the sidebar should show the `Cmd+N` shortcut hint in place of
+    /// the notification bubble. Set by `WorkspaceShortcutKeyMonitor` while
+    /// Cmd is held past the reveal delay.
+    var showWorkspaceShortcutHints: Bool = false
+
     /// Look up a workspace by id across all Spaces.
     func workspace(id: UUID) -> Workspace? {
         for space in spaces {
@@ -425,6 +450,14 @@ final class AppModel {
         focusActiveSurfaceView()
         clearNotificationForFocusedWorkspace()
         persist()
+    }
+
+    /// Switches to the workspace at `number` (1-9) in `workspaceShortcutNumbers`
+    /// order. A number with no matching workspace (e.g. `Cmd+7` with only four
+    /// workspaces) is a no-op.
+    func selectWorkspace(atShortcutNumber number: Int) {
+        guard let match = workspaceShortcutNumbers.first(where: { $0.value == number })?.key else { return }
+        selectWorkspace(match)
     }
 
     /// Reconcile the current selection's Git backing (promote-only — safe at
