@@ -1494,20 +1494,22 @@ final class AppModel {
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
     /// workspace has no recorded base branch (nothing to merge into) — the
-    /// sidebar only offers this action in that case anyway.
+    /// sidebar only offers this action in that case anyway. Per Apple HIG,
+    /// the consequential "Merge and Close" button is never the Return-key
+    /// default (compare Finder's "Empty Trash": Cancel stays the safe
+    /// default, the destructive button just loses its Return binding).
     func presentCloseWorkspaceConfirmation(id workspaceID: UUID) {
         guard let ws = workspace(id: workspaceID), let baseBranch = ws.baseBranch, !baseBranch.isEmpty
         else { return }
-        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
         let alert = NSAlert()
-        alert.messageText = "Close \u{201c}\(ws.name)\u{201d}?"
-        var text = "This merges branch \u{201c}\(ws.branch)\u{201d} into \u{201c}\(baseBranch)\u{201d}, "
-            + "then deletes the worktree and its folder on disk. This can\u{2019}t be undone."
-        if dirty { text += " This workspace has uncommitted changes that will be lost." }
-        alert.informativeText = text
-        alert.addButton(withTitle: "Close")
+        alert.messageText = "Merge and Close \u{201c}\(ws.name)\u{201d}?"
+        alert.informativeText = "This merges branch \u{201c}\(ws.branch)\u{201d} into "
+            + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
+            + "This can\u{2019}t be undone."
+        let mergeButton = alert.addButton(withTitle: "Merge and Close")
         alert.addButton(withTitle: "Cancel")
-        alert.buttons.first?.hasDestructiveAction = true
+        mergeButton.hasDestructiveAction = true
+        mergeButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         switch closeWorkspace(id: workspaceID) {
         case .success:
@@ -1521,7 +1523,10 @@ final class AppModel {
         }
     }
 
-    /// A confirmation, then `deleteWorkspace(id:)` on confirm.
+    /// A confirmation, then `deleteWorkspace(id:)` on confirm. Unlike
+    /// `closeWorkspace`, this never merges, so uncommitted changes in `ws`
+    /// really are discarded — the warning below stays. Same HIG-correct
+    /// default-button treatment as `presentCloseWorkspaceConfirmation`.
     func presentDeleteWorkspaceConfirmation(id workspaceID: UUID) {
         guard let ws = workspace(id: workspaceID) else { return }
         let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
@@ -1531,9 +1536,10 @@ final class AppModel {
             + "\u{201c}\(ws.branch)\u{201d} without merging. This can\u{2019}t be undone."
         if dirty { text += " This workspace has uncommitted changes that will be lost." }
         alert.informativeText = text
-        alert.addButton(withTitle: "Delete")
+        let deleteButton = alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
-        alert.buttons.first?.hasDestructiveAction = true
+        deleteButton.hasDestructiveAction = true
+        deleteButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         if case .failure(let error) = deleteWorkspace(id: workspaceID) {
             presentWorkspaceOperationFailureAlert(
