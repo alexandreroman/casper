@@ -41,25 +41,11 @@ jobs:
       - name: Build
         run: swift build
 
-      # DIAGNOSTIC: `swift test` reliably aborts with SIGABRT (signal 6) mid-suite
-      # on the headless runner, always at CasperUITests.WorkspaceShortcutKeyMonitorTests.
-      # No crash report shows up under ~/Library/Logs/DiagnosticReports because
-      # ReportCrash isn't running without a GUI login session, so ask the Swift
-      # runtime itself to print a backtrace to stderr on crash.
+      # ReportCrash doesn't run on this headless runner (no GUI login session),
+      # so no crash report ever lands under ~/Library/Logs/DiagnosticReports on
+      # a test-process abort. Ask the Swift runtime itself to print a backtrace
+      # to stderr instead — cheap defense-in-depth for any future crash.
       - name: Test
         run: swift test
         env:
-          SWIFT_BACKTRACE: enable=yes,cleanupOnSigterm=yes,interactive=no
-
-      - name: Dump crash reports (diagnostic)
-        if: always()
-        run: |
-          echo "--- ~/Library/Logs/DiagnosticReports ---"
-          ls -la ~/Library/Logs/DiagnosticReports 2>&1 || true
-          for f in ~/Library/Logs/DiagnosticReports/*.ips ~/Library/Logs/DiagnosticReports/*.crash; do
-            [ -e "$f" ] || continue
-            echo "=== $f ==="
-            cat "$f"
-          done
-          echo "--- log show (last 10m, process CasperPackageTests) ---"
-          log show --last 10m --predicate 'process CONTAINS "CasperPackageTests" OR process CONTAINS "swift"' --style syslog 2>&1 | tail -500 || true
+          SWIFT_BACKTRACE: enable=yes
