@@ -87,6 +87,92 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isWorkspaceGitBacked(plainWorkspace))
     }
 
+    func testWorkspaceShortcutNumbersFollowSidebarOrderAndSkipCollapsedSpaces() {
+        let spaceAPrimary = Workspace(name: "a-primary", worktreePath: "/a", branch: "main",
+                                       portBase: 40000,
+                                       layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil))),
+                                       kind: .primary)
+        let spaceALinked = Workspace(name: "a-linked", worktreePath: "/a-linked", branch: "feature",
+                                      portBase: 40010,
+                                      layout: .leaf(Surface(kind: .terminal(cwd: "/a-linked", command: nil))),
+                                      kind: .linked)
+        let spaceA = Space(name: "a", folderPath: "/a", isGitRepo: true,
+                            workspaces: [spaceALinked, spaceAPrimary])
+
+        let hiddenOne = Workspace(name: "hidden-1", worktreePath: "/b1", branch: "",
+                                   portBase: 40020,
+                                   layout: .leaf(Surface(kind: .terminal(cwd: "/b1", command: nil))))
+        let hiddenTwo = Workspace(name: "hidden-2", worktreePath: "/b2", branch: "",
+                                   portBase: 40030,
+                                   layout: .leaf(Surface(kind: .terminal(cwd: "/b2", command: nil))))
+        let spaceB = Space(name: "b", folderPath: "/b", isGitRepo: false, isCollapsed: true,
+                            workspaces: [hiddenOne, hiddenTwo])
+
+        let spaceCWorkspace = Workspace(name: "c", worktreePath: "/c", branch: "",
+                                         portBase: 40040,
+                                         layout: .leaf(Surface(kind: .terminal(cwd: "/c", command: nil))))
+        let spaceC = Space(name: "c", folderPath: "/c", isGitRepo: false, workspaces: [spaceCWorkspace])
+
+        let session = Session(spaces: [spaceA, spaceB, spaceC])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+
+        let numbers = model.workspaceShortcutNumbers
+        XCTAssertEqual(numbers[spaceAPrimary.id], 1)
+        XCTAssertEqual(numbers[spaceALinked.id], 2)
+        XCTAssertNil(numbers[hiddenOne.id])
+        XCTAssertNil(numbers[hiddenTwo.id])
+        XCTAssertEqual(numbers[spaceCWorkspace.id], 3)
+    }
+
+    func testWorkspaceShortcutNumbersCapAtNine() {
+        let workspaces = (1...11).map { index in
+            Workspace(name: String(format: "w%02d", index), worktreePath: "/w\(index)", branch: "",
+                      portBase: 40000 + index * 10,
+                      layout: .leaf(Surface(kind: .terminal(cwd: "/w\(index)", command: nil))))
+        }
+        let space = Space(name: "many", folderPath: "/many", isGitRepo: false, workspaces: workspaces)
+        let session = Session(spaces: [space])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+
+        let numbers = model.workspaceShortcutNumbers
+        XCTAssertEqual(numbers.count, 9)
+        let ordered = space.orderedWorkspaces
+        for (index, workspace) in ordered.enumerated() {
+            if index < 9 {
+                XCTAssertEqual(numbers[workspace.id], index + 1)
+            } else {
+                XCTAssertNil(numbers[workspace.id])
+            }
+        }
+    }
+
+    func testSelectWorkspaceAtShortcutNumberSelectsMatchingWorkspace() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/second"), probe: { _ in nil })
+        let second = model.allWorkspaces.last!.id
+        let numberForSecond = model.workspaceShortcutNumbers[second]!
+
+        model.selectWorkspace(atShortcutNumber: numberForSecond)
+
+        XCTAssertEqual(model.selectedWorkspaceID, second)
+    }
+
+    func testSelectWorkspaceAtShortcutNumberOutOfRangeIsNoOp() {
+        let (model, workspaceID) = modelWithOnePlainWorkspace()
+        model.selectedWorkspaceID = workspaceID
+
+        model.selectWorkspace(atShortcutNumber: 7)
+
+        XCTAssertEqual(model.selectedWorkspaceID, workspaceID)
+    }
+
+    func testShowWorkspaceShortcutHintsDefaultsFalse() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        XCTAssertFalse(model.showWorkspaceShortcutHints)
+    }
+
     func testFreshModelSeedsFocusedSurfaceIDToFirstSurfaceOfSelectedWorkspace() {
         let surface = Surface(kind: .terminal(cwd: "/a", command: nil))
         let existing = Session(spaces: [

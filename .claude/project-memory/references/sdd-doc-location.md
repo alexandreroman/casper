@@ -24,3 +24,10 @@ old specs are recoverable only from Git history, distilled into
 `.superpowers/sdd/YYYY-MM-DD-<topic>-plan.md`. Do not commit them. Keep the
 authoritative distilled design in `.superpowers/architecture.md` + `themes/` and
 durable facts in `.claude/project-memory/`.
+
+**Watch out for `.superpowers/plans/`:** this directory also exists, is
+tracked in Git, and holds a couple of legacy plan docs (`github-release.md`,
+`space-project.md`) kept for reference. Its name and sibling position next to
+`.superpowers/sdd/` make it an easy false target — do not write new SDD design
+or plan docs there. New output always goes in the gitignored
+`.superpowers/sdd/`, never `.superpowers/plans/` or `docs/superpowers/specs/`.

@@ -4,14 +4,17 @@ import SwiftUI
 /// A workspace row: a leading agent-state icon sitting under the Space header's
 /// chevron column, then the Git/folder glyph (aligned under the Space name) and
 /// the branch label with optional agent progress, and a trailing notification
-/// bubble. The caption line beneath shows a pending notification message when
-/// one exists, falling back to the progress task label otherwise. Draws its own
-/// selection pill so the accent stays visible even when the sidebar is not
-/// first responder.
+/// bubble (or, while Cmd is held, a `⌘N` shortcut hint) — see
+/// `WorkspaceShortcutHint`. The caption line beneath shows a pending
+/// notification message when one exists, falling back to the progress task
+/// label otherwise. Draws its own selection pill so the accent stays visible
+/// even when the sidebar is not first responder.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let isSelected: Bool
     let isGitRepo: Bool
+    let shortcutNumber: Int?
+    let showShortcutHints: Bool
 
     @State private var isHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,8 +31,17 @@ struct WorkspaceRow: View {
                     .truncationMode(.middle)
                     .foregroundStyle(isSelected ? Color.white : Color.primary)
                 Spacer(minLength: 6)
-                NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
-                    .frame(width: 20)
+                Group {
+                    if showShortcutHints, let shortcutNumber {
+                        WorkspaceShortcutHint(number: shortcutNumber, isSelected: isSelected)
+                            .transition(.opacity)
+                    } else {
+                        NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(width: 20)
+                .animation(.easeInOut(duration: 0.15), value: showShortcutHints)
             }
             if workspace.progress.total > 0 || captionLabel != nil {
                 VStack(alignment: .leading, spacing: 6) {
@@ -132,6 +144,23 @@ private struct ProgressBar: View {
             return isSelected ? Color.green.opacity(0.9) : Color.green
         }
         return isSelected ? Color.white : Color.accentColor
+    }
+}
+
+/// The `Cmd+N` hint shown in the notification bubble's slot while Cmd is held
+/// past the reveal delay (see `WorkspaceShortcutKeyMonitor`). Selection-aware,
+/// matching every other trailing/leading glyph in this row.
+private struct WorkspaceShortcutHint: View {
+    let number: Int
+    let isSelected: Bool
+
+    var body: some View {
+        Text("⌘\(number)")
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(isSelected ? Color.white : Color.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
     }
 }
 

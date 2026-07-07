@@ -10,6 +10,7 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controlServer: ControlServer?
     private var keyWindowObserver: NSObjectProtocol?
+    private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
     #if DEBUG
     private var debugServer: DebugServer?
     #endif
@@ -23,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.appearance = NSAppearance(named: .darkAqua)
         NSApp.mainMenu = buildMainMenu()
         NSApp.mainMenu?.insertItem(model.fileMenuItem(), at: 1)
+
+        let shortcutMonitor = WorkspaceShortcutKeyMonitor(model: model)
+        shortcutMonitor.start()
+        workspaceShortcutMonitor = shortcutMonitor
 
         // The Ghostty runtime is created once and shared by every surface.
         do {
