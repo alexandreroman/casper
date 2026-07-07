@@ -1025,6 +1025,15 @@ final class AppModel {
         var description: String { message }
     }
 
+    /// The outcome of `closeWorkspace(id:)`, distinguishing a merge failure (nothing
+    /// touched) from a cleanup failure (the merge succeeded, but disk cleanup didn't) —
+    /// the confirmation presenter shows a different title/message for each.
+    enum WorkspaceCloseOutcome: Equatable, Sendable {
+        case success
+        case mergeFailed(message: String)
+        case cleanupFailed(message: String)
+    }
+
     // MARK: - Agent-state detection
     //
     // The implicit producer of `agentState`: Casper owns each terminal's PTY, so
@@ -1361,43 +1370,47 @@ final class AppModel {
     /// Merge a linked workspace's branch into its recorded `baseBranch`, then
     /// prune it from disk exactly like `deleteWorkspace`. If the merge can't be
     /// resolved automatically (conflicts, or the base branch no longer exists),
-    /// aborts before touching anything and shows an error alert.
-    func closeWorkspace(id workspaceID: UUID) {
+    /// returns `.mergeFailed` before touching anything — no disk cleanup, no UI
+    /// removal. Never presents UI itself: the confirmation presenter owns
+    /// showing any failure alert, which keeps this safe to call from tests
+    /// without spawning a real `NSAlert`.
+    @discardableResult
+    func closeWorkspace(id workspaceID: UUID) -> WorkspaceCloseOutcome {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked,
               let space = space(for: ws), space.isGitRepo,
               let baseBranch = ws.baseBranch, !baseBranch.isEmpty
-        else { return }
+        else {
+            return .mergeFailed(message: "workspace not found or has no base branch")
+        }
         do {
             _ = try WorktreeManager.merge(
                 repoPath: space.folderPath, branch: ws.branch, into: baseBranch,
                 message: "Merge branch '\(ws.branch)' into \(baseBranch)")
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
-            presentWorkspaceOperationFailureAlert(
-                title: "Could not close \u{201c}\(ws.name)\u{201d}",
+            return .mergeFailed(
                 message: "The merge into \u{201c}\(baseBranch)\u{201d} could not be completed "
                     + "automatically. Resolve it manually (e.g. in a terminal), then try again. "
                     + "Nothing was deleted.")
-            return
         }
         if case .failure(let error) = pruneWorkspaceFromDisk(id: workspaceID) {
             CasperLog.app.failure("close workspace: disk cleanup failed", error)
-            presentWorkspaceOperationFailureAlert(
-                title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up",
+            return .cleanupFailed(
                 message: "The merge succeeded, but the worktree or branch could not be removed "
                     + "from disk: \(error.message)")
         }
+        return .success
     }
 
     /// Delete a linked workspace from disk without merging: prune its worktree,
-    /// delete its branch, then drop it from the UI.
-    func deleteWorkspace(id workspaceID: UUID) {
-        guard let ws = workspace(id: workspaceID), ws.kind == .linked else { return }
-        if case .failure(let error) = pruneWorkspaceFromDisk(id: workspaceID) {
-            CasperLog.app.failure("delete workspace failed", error)
-            presentWorkspaceOperationFailureAlert(
-                title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+    /// delete its branch, then drop it from the UI. Never presents UI itself —
+    /// see `closeWorkspace`.
+    @discardableResult
+    func deleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
+            return .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
+        return pruneWorkspaceFromDisk(id: workspaceID)
     }
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
@@ -1417,7 +1430,16 @@ final class AppModel {
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        closeWorkspace(id: workspaceID)
+        switch closeWorkspace(id: workspaceID) {
+        case .success:
+            break
+        case .mergeFailed(let message):
+            presentWorkspaceOperationFailureAlert(
+                title: "Could not close \u{201c}\(ws.name)\u{201d}", message: message)
+        case .cleanupFailed(let message):
+            presentWorkspaceOperationFailureAlert(
+                title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up", message: message)
+        }
     }
 
     /// A confirmation, then `deleteWorkspace(id:)` on confirm.
@@ -1434,7 +1456,10 @@ final class AppModel {
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        deleteWorkspace(id: workspaceID)
+        if case .failure(let error) = deleteWorkspace(id: workspaceID) {
+            presentWorkspaceOperationFailureAlert(
+                title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+        }
     }
 
     /// A generic error alert for a failed close/delete operation.

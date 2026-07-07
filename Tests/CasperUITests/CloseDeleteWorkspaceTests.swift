@@ -105,7 +105,7 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         else { return XCTFail("setup failed") }
         try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
 
-        model.closeWorkspace(id: created.id)
+        XCTAssertEqual(model.closeWorkspace(id: created.id), .success)
 
         XCTAssertNil(model.workspace(id: created.id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: created.worktreePath))
@@ -123,7 +123,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         try commitFile(atPath: created.worktreePath, filename: "README.md", content: "from feature\n")
         try commitFile(atPath: repoPath, filename: "README.md", content: "from main\n")
 
-        model.closeWorkspace(id: created.id)
+        guard case .mergeFailed = model.closeWorkspace(id: created.id) else {
+            return XCTFail("expected a merge failure")
+        }
 
         // Nothing touched: workspace, worktree, and branch all still present.
         XCTAssertNotNil(model.workspace(id: created.id))
@@ -139,7 +141,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         else { return XCTFail("setup failed") }
         try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
 
-        model.deleteWorkspace(id: created.id)
+        guard case .success = model.deleteWorkspace(id: created.id) else {
+            return XCTFail("expected delete to succeed")
+        }
 
         XCTAssertNil(model.workspace(id: created.id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: created.worktreePath))
