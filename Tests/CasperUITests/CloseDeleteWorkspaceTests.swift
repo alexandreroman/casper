@@ -169,7 +169,7 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
             atPath: URL(fileURLWithPath: repoPath).appendingPathComponent("feature.txt").path))
     }
 
-    func testCloseWorkspaceSkipsResyncWhenPrimaryIsDirty() throws {
+    func testCloseWorkspaceBlocksMergeWhenPrimaryIsDirty() throws {
         let (model, primaryID, repoPath) = try seededGitModel()
         guard case .success(let created) = model.createLinkedWorkspace(
             spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
@@ -179,15 +179,38 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         let dirtyPath = URL(fileURLWithPath: repoPath).appendingPathComponent("dirty.txt")
         try "uncommitted\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
 
-        XCTAssertEqual(model.closeWorkspace(id: created.id), .success)
+        guard case .mergeFailed = model.closeWorkspace(id: created.id) else {
+            return XCTFail("expected a merge failure")
+        }
 
-        // Merge still succeeded (it's independent of the primary's cleanliness)…
-        XCTAssertEqual(
-            try Repository.open(atPath: repoPath).fileTextAtHead(path: "feature.txt"), "new\n")
-        // …but the primary's dirty file is untouched, and the merged file was
-        // NOT force-checked-out into its working directory.
+        // Nothing touched: workspace, worktree, and branch all still present,
+        // and the merge never ran (feature.txt never reaches the primary's HEAD).
+        XCTAssertNotNil(model.workspace(id: created.id))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.worktreePath))
+        XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(created.branch))
+        XCTAssertNil(try Repository.open(atPath: repoPath).fileTextAtHead(path: "feature.txt"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: dirtyPath.path))
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: URL(fileURLWithPath: repoPath).appendingPathComponent("feature.txt").path))
+    }
+
+    func testCloseWorkspaceBlocksMergeWhenClosingWorkspaceIsDirty() throws {
+        let (model, primaryID, repoPath) = try seededGitModel()
+        guard case .success(let created) = model.createLinkedWorkspace(
+            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
+            name: "feature", base: nil)
+        else { return XCTFail("setup failed") }
+        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let dirtyPath = URL(fileURLWithPath: created.worktreePath).appendingPathComponent("dirty.txt")
+        try "uncommitted\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
+
+        guard case .mergeFailed = model.closeWorkspace(id: created.id) else {
+            return XCTFail("expected a merge failure")
+        }
+
+        // Nothing touched: workspace, worktree, and branch all still present,
+        // and the merge never ran.
+        XCTAssertNotNil(model.workspace(id: created.id))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.worktreePath))
+        XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(created.branch))
+        XCTAssertNil(try Repository.open(atPath: repoPath).fileTextAtHead(path: "feature.txt"))
     }
 }
