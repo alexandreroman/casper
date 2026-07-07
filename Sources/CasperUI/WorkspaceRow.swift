@@ -121,6 +121,10 @@ private struct NotificationBubble: View {
     let on: Bool
     let isSelected: Bool
     @State private var pulse = false
+    @State private var delay: Double = 0
+
+    /// Full out-and-back cycle length: `2 * duration`, since `autoreverses: true`.
+    private static let period: TimeInterval = 0.8 * 2
 
     var body: some View {
         if on {
@@ -129,8 +133,11 @@ private struct NotificationBubble: View {
                 .frame(width: 9, height: 9)
                 .opacity(pulse ? 0.5 : 1.0)
                 .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
-                .onAppear { pulse = true }
+                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay), value: pulse)
+                .onAppear {
+                    delay = AnimationClock.phaseDelay(period: Self.period)
+                    pulse = true
+                }
         } else {
             EmptyView()
         }
@@ -181,13 +188,20 @@ private struct AgentStatusIcon: View {
 private struct SpinningIcon: View {
     let isSelected: Bool
     @State private var spin = false
+    @State private var delay: Double = 0
+
+    /// Full rotation cycle: duration, since autoreverses: false.
+    private static let period: TimeInterval = 1
 
     var body: some View {
         Image(systemName: "arrow.triangle.2.circlepath")
             .imageScale(.medium)
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: spin)
-            .onAppear { spin = true }
+            .animation(.linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay), value: spin)
+            .onAppear {
+                delay = AnimationClock.phaseDelay(period: Self.period)
+                spin = true
+            }
     }
 }
