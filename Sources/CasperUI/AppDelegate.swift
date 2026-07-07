@@ -22,8 +22,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Open/Save dialogs). The Ghostty terminal is Metal-rendered with its own
         // palette, so it is unaffected.
         NSApp.appearance = NSAppearance(named: .darkAqua)
+        // buildMainMenu() yields App(0)/Edit(1)/Window(2); insert File before Edit
+        // and View after Edit to land on App, File, Edit, View, Window.
         NSApp.mainMenu = buildMainMenu()
         NSApp.mainMenu?.insertItem(model.fileMenuItem(), at: 1)
+        NSApp.mainMenu?.insertItem(model.viewMenuItem(), at: 3)
 
         let shortcutMonitor = WorkspaceShortcutKeyMonitor(model: model)
         shortcutMonitor.start()
