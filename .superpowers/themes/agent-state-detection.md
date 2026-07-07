@@ -1,7 +1,8 @@
 # Theme: Agent State Detection (CasperGhostty + CasperCore + CasperUI)
 
 **Modules:** CasperGhostty, CasperCore, CasperUI · **Status:** ◐ built —
-detection (working/blocked/idle) is live and verified; the process-exit
+detection (working/blocked/idle) is live and verified, and `blocked`/`done`
+transitions now raise notifications (see "Notifications"); the process-exit
 `done`/`error` path is **not** implemented (unsupported by the embedded
 libghostty — see "Process lifecycle") · **Code:** `Sources/CasperGhostty/`,
 `Sources/CasperCore/`, `Sources/CasperUI/`
@@ -220,11 +221,20 @@ state lives only at the workspace level.
   `WorkspaceRow` (monochrome outline SF Symbols in the chevron column, animated
   `working`).
 
+### Notifications
+
+`setDetectedAgentState` raises a notification on a transition into an attention
+state — `blocked` → `"Waiting for your input"`, `done` → `"Task finished"` — by
+calling `controlRaiseNotification(message:for:)`, the same mechanism `casper
+notify` uses. This is what makes notification + sidebar-dot support work **with
+no Claude Code hook**: it is driven purely by Casper's own OSC/viewport scraping
+rather than an explicit CLI call. The write is edge-triggered (the "only on
+change" guard), so a steady detection stream notifies once per transition, and
+`controlRaiseNotification`'s focus semantics still apply (the dot is suppressed
+for a focused workspace, but the macOS notification is always delivered).
+
 ## Deferred / out of scope
 
-- **Notifications.** `blocked` and `done` are the future triggers for
-  `casper notify` + `pendingNotification`; not wired here. This theme produces
-  **states only**.
 - **`.render`-driven trigger** — replace the ~250 ms timer poll with a
   throttled re-read on `GHOSTTY_ACTION_RENDER` (decoded as `.render`, currently
   discarded).

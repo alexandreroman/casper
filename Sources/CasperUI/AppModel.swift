@@ -1087,12 +1087,32 @@ final class AppModel {
     /// Write a *detected* agent state. Distinct from the explicit
     /// `controlSetAgentState`: it must NOT grant authority. Writes only when the
     /// value actually changes, so a steady detection stream doesn't thrash the UI.
-    private func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
+    /// Exposed (internal, not private) as a test seam so the notify-wiring can be
+    /// unit-tested directly, like `isUnderExplicitAuthority` / `runAgentDetectionTick`.
+    func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID),
               spaces[at.space].workspaces[at.workspace].agentState != state else { return }
         // agentState is transient (deliberately not encoded by Session's Codable),
         // so the @Observable mutation refreshes the sidebar with no need to persist.
         spaces[at.space].workspaces[at.workspace].agentState = state
+        // A detected transition into an attention state raises the same notification
+        // `casper notify` would — a real macOS notification plus the sidebar dot — so
+        // the user is alerted without installing any agent hook. Reached only on an
+        // actual change thanks to the guard above (edge-triggered, no extra dedup).
+        if let message = Self.notificationMessage(for: state) {
+            controlRaiseNotification(message: message, for: workspaceID)
+        }
+    }
+
+    /// The notification text for a detected state, or `nil` when the state needs
+    /// no attention. Only `blocked` and `done` alert the user; the rest are silent.
+    /// Exhaustive by design so a new `AgentState` case forces a decision here.
+    private static func notificationMessage(for state: AgentState) -> String? {
+        switch state {
+        case .blocked: return "Waiting for your input"
+        case .done: return "Task finished"
+        case .working, .idle, .unknown, .error: return nil
+        }
     }
 
     // MARK: - CLI control handlers
