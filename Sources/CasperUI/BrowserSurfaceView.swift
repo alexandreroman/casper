@@ -44,7 +44,8 @@ struct BrowserSurfaceView: View {
     /// Returns nil when neither is available, e.g. a fresh surface still at
     /// `about:blank` with an empty address.
     static func externalURL(webViewURL: URL?, address: String) -> URL? {
-        webViewURL ?? normalize(address)
+        let committed = webViewURL == .aboutBlank ? nil : webViewURL
+        return committed ?? normalize(address)
     }
 }
 

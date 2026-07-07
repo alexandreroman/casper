@@ -30,5 +30,9 @@ final class BrowserSurfaceViewTests: XCTestCase {
             "http://localhost:3000")
         // No committed URL and no valid address (e.g. still at about:blank, empty address).
         XCTAssertNil(BrowserSurfaceView.externalURL(webViewURL: nil, address: ""))
+        // A fresh surface's initial about:blank load commits in WKWebView (webView.url
+        // becomes non-nil "about:blank"), but that must still count as "no URL" — not
+        // an openable page — so the button stays disabled until a real navigation.
+        XCTAssertNil(BrowserSurfaceView.externalURL(webViewURL: URL(string: "about:blank"), address: ""))
     }
 }
