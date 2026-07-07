@@ -27,7 +27,8 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     }
 
     private func keyDownEvent(
-        characters: String, command: Bool, extraModifiers: NSEvent.ModifierFlags = []
+        keyCode: UInt16, command: Bool, characters: String = "",
+        extraModifiers: NSEvent.ModifierFlags = []
     ) -> NSEvent {
         var flags = extraModifiers
         if command { flags.insert(.command) }
@@ -41,7 +42,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
             characters: characters,
             charactersIgnoringModifiers: characters,
             isARepeat: false,
-            keyCode: 0
+            keyCode: keyCode
         )!
     }
 
@@ -57,7 +58,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         model.selectedWorkspaceID = nil
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
 
-        let passthrough = monitor.handle(keyDownEvent(characters: "1", command: true))
+        let passthrough = monitor.handle(keyDownEvent(keyCode: 0x12, command: true))
 
         XCTAssertNil(passthrough, "a handled Cmd+digit must consume the event")
         XCTAssertEqual(model.selectedWorkspaceID, target)
@@ -67,7 +68,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         let model = AppModel(sessionStore: makeStore())
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
 
-        let passthrough = monitor.handle(keyDownEvent(characters: "1", command: true, extraModifiers: .shift))
+        let passthrough = monitor.handle(keyDownEvent(keyCode: 0x12, command: true, extraModifiers: .shift))
 
         XCTAssertNotNil(passthrough, "Cmd+Shift+digit is a different shortcut and must pass through")
     }
@@ -105,9 +106,47 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         let previousSelection = model.selectedWorkspaceID
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
 
-        let passthrough = monitor.handle(keyDownEvent(characters: "9", command: true))
+        let passthrough = monitor.handle(keyDownEvent(keyCode: 0x19, command: true))
 
         XCTAssertNotNil(passthrough, "an unmapped Cmd+digit must not be consumed")
+        XCTAssertEqual(model.selectedWorkspaceID, previousSelection)
+    }
+
+    func testCmdDigitMatchesPhysicalKeyRegardlessOfLayoutCharacters() {
+        let session = Session(spaces: [
+            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
+                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+            ]),
+        ])
+        let model = AppModel(sessionStore: makeStore(), session: session)
+        let target = model.allWorkspaces[0].id
+        model.selectedWorkspaceID = nil
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+
+        // Physical "1" key (0x12) reported as "&" — what an AZERTY layout emits
+        // for that key when Shift is not held. Must still switch workspaces.
+        let passthrough = monitor.handle(keyDownEvent(keyCode: 0x12, command: true, characters: "&"))
+
+        XCTAssertNil(passthrough, "the physical digit key must switch regardless of the layout's character")
+        XCTAssertEqual(model.selectedWorkspaceID, target)
+    }
+
+    func testCmdNumpadDigitDoesNotTriggerShortcut() {
+        let session = Session(spaces: [
+            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
+                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+            ]),
+        ])
+        let model = AppModel(sessionStore: makeStore(), session: session)
+        let previousSelection = model.selectedWorkspaceID
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+
+        // Numpad "1" (kVK_ANSI_Keypad1, 0x53) must not switch workspaces.
+        let passthrough = monitor.handle(keyDownEvent(keyCode: 0x53, command: true, characters: "1"))
+
+        XCTAssertNotNil(passthrough, "a numpad digit must not be consumed")
         XCTAssertEqual(model.selectedWorkspaceID, previousSelection)
     }
 
