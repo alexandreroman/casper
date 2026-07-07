@@ -100,8 +100,9 @@ final class DebugSocketTests: XCTestCase {
         // override is present. `.default` reads both CASPER_DEBUG_SOCKET and
         // CASPER_SESSION, so assert the clean-env contract only when neither is
         // set (a CASPER_SESSION-exporting shell, e.g. the debug-casper harness,
-        // would otherwise fail this spuriously). The env-independent derivation
-        // is covered hermetically by SocketPathResolutionTests.
+        // would otherwise fail this spuriously). SocketPathResolutionTests covers
+        // the session-derived paths, guarding itself against CASPER_CONTROL_SOCKET
+        // the same way.
         let env = ProcessInfo.processInfo.environment
         guard env["CASPER_DEBUG_SOCKET"] == nil, env["CASPER_SESSION"] == nil else { return }
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
