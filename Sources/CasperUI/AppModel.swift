@@ -1327,9 +1327,11 @@ final class AppModel {
     /// primary workspace. Git cleanup runs BEFORE the UI removal so a git failure
     /// leaves the workspace intact and retryable. Pruning must precede the branch
     /// delete (a checked-out branch cannot be deleted); pruning is skipped when the
-    /// worktree is already gone, and the branch delete is idempotent.
+    /// worktree is already gone, and the branch delete is idempotent. Shared by the
+    /// `casper workspace delete` control-channel verb and the sidebar's "Close
+    /// workspace…"/"Delete workspace…" actions.
     @discardableResult
-    func controlDeleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+    private func pruneWorkspaceFromDisk(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
         guard let at = locate(workspaceID) else {
             return .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
@@ -1349,5 +1351,97 @@ final class AppModel {
         }
         removeWorkspace(id: workspaceID)   // drops from UI, releases port, discards views
         return .success(())
+    }
+
+    @discardableResult
+    func controlDeleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+        pruneWorkspaceFromDisk(id: workspaceID)
+    }
+
+    /// Merge a linked workspace's branch into its recorded `baseBranch`, then
+    /// prune it from disk exactly like `deleteWorkspace`. If the merge can't be
+    /// resolved automatically (conflicts, or the base branch no longer exists),
+    /// aborts before touching anything and shows an error alert.
+    func closeWorkspace(id workspaceID: UUID) {
+        guard let ws = workspace(id: workspaceID), ws.kind == .linked,
+              let space = space(for: ws), space.isGitRepo,
+              let baseBranch = ws.baseBranch, !baseBranch.isEmpty
+        else { return }
+        do {
+            _ = try WorktreeManager.merge(
+                repoPath: space.folderPath, branch: ws.branch, into: baseBranch,
+                message: "Merge branch '\(ws.branch)' into \(baseBranch)")
+        } catch {
+            CasperLog.app.failure("close workspace: merge failed", error)
+            presentWorkspaceOperationFailureAlert(
+                title: "Could not close \u{201c}\(ws.name)\u{201d}",
+                message: "The merge into \u{201c}\(baseBranch)\u{201d} could not be completed "
+                    + "automatically. Resolve it manually (e.g. in a terminal), then try again. "
+                    + "Nothing was deleted.")
+            return
+        }
+        if case .failure(let error) = pruneWorkspaceFromDisk(id: workspaceID) {
+            CasperLog.app.failure("close workspace: disk cleanup failed", error)
+            presentWorkspaceOperationFailureAlert(
+                title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up",
+                message: "The merge succeeded, but the worktree or branch could not be removed "
+                    + "from disk: \(error.message)")
+        }
+    }
+
+    /// Delete a linked workspace from disk without merging: prune its worktree,
+    /// delete its branch, then drop it from the UI.
+    func deleteWorkspace(id workspaceID: UUID) {
+        guard let ws = workspace(id: workspaceID), ws.kind == .linked else { return }
+        if case .failure(let error) = pruneWorkspaceFromDisk(id: workspaceID) {
+            CasperLog.app.failure("delete workspace failed", error)
+            presentWorkspaceOperationFailureAlert(
+                title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+        }
+    }
+
+    /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
+    /// workspace has no recorded base branch (nothing to merge into) — the
+    /// sidebar only offers this action in that case anyway.
+    func presentCloseWorkspaceConfirmation(id workspaceID: UUID) {
+        guard let ws = workspace(id: workspaceID), let baseBranch = ws.baseBranch, !baseBranch.isEmpty
+        else { return }
+        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
+        let alert = NSAlert()
+        alert.messageText = "Close \u{201c}\(ws.name)\u{201d}?"
+        var text = "This merges branch \u{201c}\(ws.branch)\u{201d} into \u{201c}\(baseBranch)\u{201d}, "
+            + "then deletes the worktree and its folder on disk. This can\u{2019}t be undone."
+        if dirty { text += " This workspace has uncommitted changes that will be lost." }
+        alert.informativeText = text
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        closeWorkspace(id: workspaceID)
+    }
+
+    /// A confirmation, then `deleteWorkspace(id:)` on confirm.
+    func presentDeleteWorkspaceConfirmation(id workspaceID: UUID) {
+        guard let ws = workspace(id: workspaceID) else { return }
+        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
+        let alert = NSAlert()
+        alert.messageText = "Delete \u{201c}\(ws.name)\u{201d}?"
+        var text = "This deletes the worktree, its folder on disk, and branch "
+            + "\u{201c}\(ws.branch)\u{201d} without merging. This can\u{2019}t be undone."
+        if dirty { text += " This workspace has uncommitted changes that will be lost." }
+        alert.informativeText = text
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        deleteWorkspace(id: workspaceID)
+    }
+
+    /// A generic error alert for a failed close/delete operation.
+    private func presentWorkspaceOperationFailureAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.runModal()
     }
 }
