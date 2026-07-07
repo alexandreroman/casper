@@ -132,7 +132,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         XCTAssertEqual(model.selectedWorkspaceID, target)
     }
 
-    func testCmdNumpadDigitDoesNotTriggerShortcut() {
+    func testCmdNumpadDigitSelectsWorkspaceAndConsumesEvent() {
         let session = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
@@ -140,14 +140,15 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
             ]),
         ])
         let model = AppModel(sessionStore: makeStore(), session: session)
-        let previousSelection = model.selectedWorkspaceID
+        let target = model.allWorkspaces[0].id
+        model.selectedWorkspaceID = nil
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
 
-        // Numpad "1" (kVK_ANSI_Keypad1, 0x53) must not switch workspaces.
+        // Numpad "1" (kVK_ANSI_Keypad1, 0x53) switches like the top-row "1".
         let passthrough = monitor.handle(keyDownEvent(keyCode: 0x53, command: true, characters: "1"))
 
-        XCTAssertNotNil(passthrough, "a numpad digit must not be consumed")
-        XCTAssertEqual(model.selectedWorkspaceID, previousSelection)
+        XCTAssertNil(passthrough, "a handled Cmd+numpad digit must consume the event")
+        XCTAssertEqual(model.selectedWorkspaceID, target)
     }
 
     func testResignActiveHidesHintsEvenAfterExternalCommandRelease() {
