@@ -36,6 +36,10 @@ final class ControlSocketTests: XCTestCase {
     }
 
     func testDefaultPathHonorsEnvOverride() {
+        // `.default` returns CASPER_CONTROL_SOCKET verbatim when set, so assert the
+        // clean-env contract only when it is unset (a terminal opened by a running
+        // Casper.app exports it and would otherwise fail this spuriously).
+        guard ProcessInfo.processInfo.environment["CASPER_CONTROL_SOCKET"] == nil else { return }
         // With no override, the default lives under the temp dir.
         XCTAssertTrue(ControlSocketPath.default.hasSuffix("casper-control.sock"))
     }

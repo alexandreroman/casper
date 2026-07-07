@@ -28,8 +28,12 @@ dev:
 	swift run casper -- --session $(DEV_SESSION)
 
 ## test: run the full test suite
+# Strip the ambient CASPER_* socket/session vars: running tests inside a terminal
+# that Casper itself opened would otherwise leak that instance's real control/debug
+# socket paths into the test process, masking tests that assert env-independent
+# path derivation.
 test:
-	swift test
+	env -u CASPER_CONTROL_SOCKET -u CASPER_DEBUG_SOCKET -u CASPER_SESSION swift test
 
 ## all: build then test
 all: build test
