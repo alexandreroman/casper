@@ -60,6 +60,7 @@ final class CommandHoldTracker {
     }
 
     func commandKeyUp() {
+        if case .idle = state { return }
         if case .pending(let token) = state {
             token.cancel()
         }

@@ -106,4 +106,13 @@ final class CommandHoldTrackerTests: XCTestCase {
         XCTAssertEqual(scheduleCount, 1)
         XCTAssertEqual(revealed, [true])
     }
+
+    func testCommandKeyUpWhileIdleDoesNotCallOnRevealChange() {
+        var revealed: [Bool] = []
+        let tracker = CommandHoldTracker(holdDuration: 1.0) { revealed.append($0) }
+
+        tracker.commandKeyUp()
+
+        XCTAssertTrue(revealed.isEmpty)
+    }
 }

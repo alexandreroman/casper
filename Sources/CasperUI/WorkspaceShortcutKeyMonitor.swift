@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// Watches for Cmd being held ≥1s to reveal the sidebar's `Cmd+N` shortcut
 /// hints (see `WorkspaceRow`), and handles `Cmd+1…9` itself so the workspace
@@ -12,13 +11,12 @@ final class WorkspaceShortcutKeyMonitor {
     private let model: AppModel
     private let tracker: CommandHoldTracker
     private var eventMonitor: Any?
+    private var resignActiveObserver: NSObjectProtocol?
 
     init(model: AppModel, holdDuration: TimeInterval = 1.0) {
         self.model = model
         self.tracker = CommandHoldTracker(holdDuration: holdDuration) { show in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                model.showWorkspaceShortcutHints = show
-            }
+            model.showWorkspaceShortcutHints = show
         }
     }
 
@@ -26,7 +24,20 @@ final class WorkspaceShortcutKeyMonitor {
     /// `deinit`.
     func start() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
-            self?.handle(event)
+            self?.handle(event) ?? event
+        }
+
+        // A local monitor only sees events while Casper is the key app: if the
+        // user holds Cmd until hints reveal, then Cmd+Tabs away while still
+        // physically holding it, the release `flagsChanged` never reaches us.
+        // Force the tracker back to released as soon as we lose active status
+        // so the hints don't stay stuck visible indefinitely.
+        resignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.tracker.commandKeyUp()
+            }
         }
     }
 
@@ -37,6 +48,9 @@ final class WorkspaceShortcutKeyMonitor {
     isolated deinit {
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
+        }
+        if let resignActiveObserver {
+            NotificationCenter.default.removeObserver(resignActiveObserver)
         }
     }
 
@@ -63,7 +77,8 @@ final class WorkspaceShortcutKeyMonitor {
                 let characters = event.charactersIgnoringModifiers,
                 characters.count == 1,
                 let digit = Int(characters),
-                (1...9).contains(digit)
+                (1...9).contains(digit),
+                model.workspaceShortcutNumbers.values.contains(digit)
             else {
                 return event
             }

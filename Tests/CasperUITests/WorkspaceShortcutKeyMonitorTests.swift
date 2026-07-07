@@ -93,4 +93,44 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
 
         XCTAssertFalse(model.showWorkspaceShortcutHints)
     }
+
+    func testCmdDigitWithNoMatchingWorkspacePassesThroughUnconsumed() {
+        let session = Session(spaces: [
+            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
+                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+            ]),
+        ])
+        let model = AppModel(sessionStore: makeStore(), session: session)
+        let previousSelection = model.selectedWorkspaceID
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+
+        let passthrough = monitor.handle(keyDownEvent(characters: "9", command: true))
+
+        XCTAssertNotNil(passthrough, "an unmapped Cmd+digit must not be consumed")
+        XCTAssertEqual(model.selectedWorkspaceID, previousSelection)
+    }
+
+    func testResignActiveHidesHintsEvenAfterExternalCommandRelease() {
+        let model = AppModel(sessionStore: makeStore())
+        let monitor = WorkspaceShortcutKeyMonitor(model: model, holdDuration: 0.05)
+        monitor.start()
+        _ = monitor.handle(flagsChangedEvent(command: true))
+
+        let revealed = expectation(description: "hints revealed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            XCTAssertTrue(model.showWorkspaceShortcutHints)
+            revealed.fulfill()
+        }
+        wait(for: [revealed], timeout: 1.0)
+
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: nil)
+
+        let hidden = expectation(description: "hints hidden after resigning active, even without a matching flagsChanged release")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            XCTAssertFalse(model.showWorkspaceShortcutHints)
+            hidden.fulfill()
+        }
+        wait(for: [hidden], timeout: 1.0)
+    }
 }

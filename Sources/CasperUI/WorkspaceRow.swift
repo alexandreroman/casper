@@ -4,10 +4,11 @@ import SwiftUI
 /// A workspace row: a leading agent-state icon sitting under the Space header's
 /// chevron column, then the Git/folder glyph (aligned under the Space name) and
 /// the branch label with optional agent progress, and a trailing notification
-/// bubble. The caption line beneath shows a pending notification message when
-/// one exists, falling back to the progress task label otherwise. Draws its own
-/// selection pill so the accent stays visible even when the sidebar is not
-/// first responder.
+/// bubble (or, while Cmd is held, a `⌘N` shortcut hint) — see
+/// `WorkspaceShortcutHint`. The caption line beneath shows a pending
+/// notification message when one exists, falling back to the progress task
+/// label otherwise. Draws its own selection pill so the accent stays visible
+/// even when the sidebar is not first responder.
 struct WorkspaceRow: View {
     let workspace: Workspace
     let isSelected: Bool
