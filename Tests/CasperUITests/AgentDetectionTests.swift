@@ -60,4 +60,76 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertNil(model.workspace(id: linked.id), "workspace is gone")
         XCTAssertFalse(model.isUnderExplicitAuthority(linked.id), "authority pruned on removal")
     }
+
+    /// A detected transition into `blocked` fires a real macOS notification (via
+    /// the injected `deliverNotification`) and raises the sidebar attention dot,
+    /// with no agent hook involved — this is the notify-without-a-hook feature.
+    func testDetectedBlockedDeliversNotificationAndRaisesDot() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }  // not focused ⇒ dot may raise
+        var delivered: [(title: String, body: String)] = []
+        model.deliverNotification = { title, body in delivered.append((title, body)) }
+
+        model.setDetectedAgentState(.blocked, for: id)
+
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
+        XCTAssertEqual(delivered.count, 1)
+        XCTAssertEqual(delivered.first?.title, "main")
+        XCTAssertEqual(delivered.first?.body, "Waiting for your input")
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+    }
+
+    /// A detected transition into `done` likewise fires a notification.
+    func testDetectedDoneDeliversNotification() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        var delivered: [(title: String, body: String)] = []
+        model.deliverNotification = { title, body in delivered.append((title, body)) }
+
+        model.setDetectedAgentState(.done, for: id)
+
+        XCTAssertEqual(delivered.count, 1)
+        XCTAssertEqual(delivered.first?.body, "Task finished")
+    }
+
+    /// Non-attention states (`working`, `idle`) never notify.
+    func testDetectedWorkingOrIdleDoesNotNotify() {
+        let (model, id) = seededModel()
+        var delivered = 0
+        model.deliverNotification = { _, _ in delivered += 1 }
+
+        model.setDetectedAgentState(.working, for: id)
+        model.setDetectedAgentState(.idle, for: id)
+
+        XCTAssertEqual(delivered, 0, "working/idle must not raise a notification")
+    }
+
+    /// The "only on change" guard means a repeated same-state write notifies once.
+    func testRepeatedBlockedNotifiesOnce() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        var delivered = 0
+        model.deliverNotification = { _, _ in delivered += 1 }
+
+        model.setDetectedAgentState(.blocked, for: id)
+        model.setDetectedAgentState(.blocked, for: id)
+
+        XCTAssertEqual(delivered, 1, "no repeat notification while the state is unchanged")
+    }
+
+    /// A `blocked` transition while the workspace is focused (selected + window key)
+    /// still delivers the notification but suppresses the attention dot — the focus
+    /// semantics come for free from `controlRaiseNotification`.
+    func testDetectedBlockedWhileFocusedNotifiesButNoDot() {
+        let (model, id) = seededModel()  // seeded session selects this workspace
+        model.isWindowKey = { true }
+        var delivered = 0
+        model.deliverNotification = { _, _ in delivered += 1 }
+
+        model.setDetectedAgentState(.blocked, for: id)
+
+        XCTAssertEqual(delivered, 1, "an explicit message is delivered even when focused")
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false,
+                       "the attention dot is suppressed for a focused workspace")
+    }
 }
