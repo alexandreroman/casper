@@ -1,6 +1,6 @@
 ---
 name: "Dual-axis ScrollView centers undersized content"
-description: "A SwiftUI ScrollView with both axes vertically centers content smaller than its viewport; pin it top-leading"
+description: "A SwiftUI ScrollView with both axes vertically centers content smaller than its viewport; anchor it to .top"
 type: reference
 ---
 
@@ -17,10 +17,17 @@ floated in the vertical middle. Single-axis scroll views top-align by default, s
 this only bites when both axes are enabled (needed here for horizontal scrolling
 of long, non-wrapped diff lines).
 
-**How to access:** Fix by measuring the viewport size with a `GeometryReader`
-(store width AND height in `@State`) and pinning the scroll content to at least
-that size, top-leading:
-`.frame(minWidth: contentWidth, minHeight: contentHeight, alignment: .topLeading)`
-on the inner `LazyVStack`. Short content then fills the viewport and anchors to
-the top; taller content keeps its intrinsic size and still scrolls. See
+**How to fix:** Add `.defaultScrollAnchor(.top)` on the ScrollView (macOS 14+).
+It directly controls where undersized content rests, so a short diff anchors to
+the top while taller content keeps its intrinsic size and still scrolls — no
+manual height pinning needed. Prefer this over the older workaround of measuring
+the viewport height with a `GeometryReader` and pinning the inner content to
+`minHeight: contentHeight`; that pin let the horizontal scrollbar steal a strip
+of height and made a short diff report a spurious vertical scrollbar. See
 [DiffSurfaceView.swift](../../../Sources/CasperUI/DiffSurfaceView.swift).
+
+**Do not toggle the axes across renders:** dynamically switching a ScrollView's
+`axes` parameter (e.g. `.horizontal` vs `[.vertical, .horizontal]`) between
+renders is unreliable for scroller visibility on macOS — a horizontal scrollbar
+may fail to show. Always pass a constant axis set and control positioning with
+`.defaultScrollAnchor(.top)` instead.
