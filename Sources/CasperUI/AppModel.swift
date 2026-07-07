@@ -78,6 +78,11 @@ final class AppModel {
     /// the split items stuck at their initial enabled state.
     var viewMenuDelegate: ViewMenuDelegate?
 
+    /// Retains the File menu's `NSMenuDelegate` bridge — same reasoning as
+    /// `viewMenuDelegate`, but for the merge/delete workspace items instead of
+    /// the pane splits.
+    var fileMenuDelegate: FileMenuDelegate?
+
     func beginPaneDrag(_ surfaceID: UUID) { draggingSurfaceID = surfaceID }
     func endPaneDrag() { draggingSurfaceID = nil; dropHoverTarget = nil; dropHoverZone = nil }
     func setDropHover(target: UUID, zone: LayoutTree.DropZone) {
