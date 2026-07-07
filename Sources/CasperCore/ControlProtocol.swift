@@ -12,7 +12,9 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case terminalList
         case terminalClose
         case browserOpen
+        case browserClose
         case diffOpen
+        case diffClose
         case workspaceList
         case workspaceNew
         case workspaceDelete

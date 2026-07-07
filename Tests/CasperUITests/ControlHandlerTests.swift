@@ -165,6 +165,62 @@ final class ControlHandlerTests: XCTestCase {
         else { XCTFail("inspector browser surface is not a browser kind") }
     }
 
+    func testCloseBrowserCollapsesWhenBrowserTabActive() throws {
+        let (model, id) = seededModel()
+        let url = URL(string: "https://example.com")!
+        XCTAssertTrue(model.controlOpenBrowser(url: url, in: id))
+        XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
+
+        XCTAssertTrue(model.controlCloseBrowser(in: id))
+        XCTAssertTrue(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
+    }
+
+    func testCloseBrowserNoOpsWhenDiffTabActive() throws {
+        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        guard case .success = model.controlOpenDiff(in: id) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
+
+        XCTAssertTrue(model.controlCloseBrowser(in: id))  // still succeeds
+        let ws = try XCTUnwrap(model.workspace(id: id))
+        XCTAssertEqual(ws.inspector.tab, .diff)   // untouched
+        XCTAssertFalse(ws.inspector.collapsed)    // untouched — diff still showing
+    }
+
+    func testCloseBrowserFailsForUnknownWorkspace() {
+        let (model, _) = seededModel()
+        XCTAssertFalse(model.controlCloseBrowser(in: UUID()))
+    }
+
+    func testCloseDiffCollapsesWhenDiffTabActive() throws {
+        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        guard case .success = model.controlOpenDiff(in: id) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
+
+        XCTAssertTrue(model.controlCloseDiff(in: id))
+        XCTAssertTrue(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
+    }
+
+    func testCloseDiffNoOpsWhenBrowserTabActive() throws {
+        let (model, id) = seededModel()
+        let url = URL(string: "https://example.com")!
+        XCTAssertTrue(model.controlOpenBrowser(url: url, in: id))
+        XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
+
+        XCTAssertTrue(model.controlCloseDiff(in: id))  // still succeeds
+        let ws = try XCTUnwrap(model.workspace(id: id))
+        XCTAssertEqual(ws.inspector.tab, .browser)  // untouched
+        XCTAssertFalse(ws.inspector.collapsed)      // untouched — browser still showing
+    }
+
+    func testCloseDiffFailsForUnknownWorkspace() {
+        let (model, _) = seededModel()
+        XCTAssertFalse(model.controlCloseDiff(in: UUID()))
+    }
+
     func testOpenDiffSelectsInspectorTab() throws {
         let (model, id, _) = try seededGitModel(primaryBranch: "main")
         guard case .success = model.controlOpenDiff(in: id) else {
