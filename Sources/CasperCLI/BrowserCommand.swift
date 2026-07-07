@@ -2,12 +2,13 @@ import ArgumentParser
 import CasperCore
 import Foundation
 
-/// `casper browser open <url>` — open a URL in the workspace's browser panel.
+/// `casper browser open <url>` / `casper browser close` — open a URL in, or
+/// collapse, the workspace's browser panel.
 struct BrowserCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "browser",
-        abstract: "Open URLs in a workspace's browser.",
-        subcommands: [Open.self])
+        abstract: "Open or close a workspace's browser panel.",
+        subcommands: [Open.self, Close.self])
 
     struct Open: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Open a URL in the browser panel.")
@@ -23,6 +24,22 @@ struct BrowserCommand: ParsableCommand {
             }
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserOpen, workspace: selector, url: url)
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct Close: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Collapse the inspector if the browser panel is showing.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .browserClose, workspace: try requireSelector(target))
         }
 
         func run() throws {

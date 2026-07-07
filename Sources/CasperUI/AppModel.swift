@@ -1372,6 +1372,30 @@ final class AppModel {
         return .success(())
     }
 
+    /// Collapse the inspector if `workspaceID`'s active tab is `.browser`.
+    /// No-op (still succeeds) if the diff tab is active or the panel is
+    /// already collapsed — the caller's goal ("browser not showing") already
+    /// holds either way.
+    @discardableResult
+    func controlCloseBrowser(in workspaceID: UUID) -> Bool {
+        guard let ws = workspace(id: workspaceID) else { return false }
+        if ws.inspector.tab == .browser {
+            setInspectorCollapsed(true, for: workspaceID)
+        }
+        return true
+    }
+
+    /// Collapse the inspector if `workspaceID`'s active tab is `.diff`.
+    /// Mirrors `controlCloseBrowser`.
+    @discardableResult
+    func controlCloseDiff(in workspaceID: UUID) -> Bool {
+        guard let ws = workspace(id: workspaceID) else { return false }
+        if ws.inspector.tab == .diff {
+            setInspectorCollapsed(true, for: workspaceID)
+        }
+        return true
+    }
+
     /// Create a linked workspace in the Space that owns `workspaceID` (the control
     /// channel's "create workspace" verb, targetable from any workspace in that
     /// Space, not just the primary).

@@ -101,6 +101,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try dottedHost.makeCommand())
     }
 
+    func testBrowserCloseBuildsCommand() throws {
+        let close = try BrowserCommand.Close.parse(["--workspace", "feature"])
+        let command = try close.makeCommand()
+        XCTAssertEqual(command.verb, .browserClose)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
     func testDiffOpenBuildsCommand() throws {
         let open = try DiffCommand.Open.parse(["--workspace", "feature"])
         let command = try open.makeCommand()
@@ -113,6 +120,13 @@ final class ControlCommandTests: XCTestCase {
         let command = try open.makeCommand()
         XCTAssertEqual(command.verb, .diffOpen)
         XCTAssertEqual(command.target, "Sources/Foo.swift")
+    }
+
+    func testDiffCloseBuildsCommand() throws {
+        let close = try DiffCommand.Close.parse(["--workspace", "feature"])
+        let command = try close.makeCommand()
+        XCTAssertEqual(command.verb, .diffClose)
+        XCTAssertEqual(command.workspace, "feature")
     }
 
     func testWorkspaceNewBuildsCommand() throws {

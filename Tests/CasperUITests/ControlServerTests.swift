@@ -61,4 +61,20 @@ final class ControlServerTests: XCTestCase {
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspaces?.count, 1)
     }
+
+    func testBrowserCloseDispatch() throws {
+        let (server, id) = try seededServer()
+        let response = server.handle(
+            ControlCommand(verb: .browserClose, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testDiffCloseDispatch() throws {
+        let (server, id) = try seededServer()
+        let response = server.handle(
+            ControlCommand(verb: .diffClose, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
 }
