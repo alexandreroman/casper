@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // palette, so it is unaffected.
         NSApp.appearance = NSAppearance(named: .darkAqua)
         NSApp.mainMenu = buildMainMenu()
+        NSApp.mainMenu?.insertItem(model.fileMenuItem(), at: 1)
 
         // The Ghostty runtime is created once and shared by every surface.
         do {
