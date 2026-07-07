@@ -37,6 +37,16 @@ struct BrowserSurfaceView: View {
         }
         return URL(string: "http://" + trimmed)
     }
+
+    /// The URL to hand off to the system default browser: the page actually
+    /// committed in the web view when there is one, else the normalized
+    /// address-bar text (covers the rare case a load hasn't committed yet).
+    /// Returns nil when neither is available, e.g. a fresh surface still at
+    /// `about:blank` with an empty address.
+    static func externalURL(webViewURL: URL?, address: String) -> URL? {
+        let committed = webViewURL == .aboutBlank ? nil : webViewURL
+        return committed ?? normalize(address)
+    }
 }
 
 /// The body of a browser surface, observing its coordinator so the address bar
@@ -67,6 +77,11 @@ private struct BrowserSurfaceContentView: View {
                     onFocusChange: { coordinator.isEditingAddress = $0 }
                 )
                 .frame(maxWidth: .infinity)
+                Button(action: openExternally) {
+                    Image(systemName: "arrow.up.forward.square")
+                }
+                .help("Open in default browser")
+                .disabled(externalURL == nil)
             }
             .padding(6)
             .buttonStyle(.borderless)
@@ -95,6 +110,15 @@ private struct BrowserSurfaceContentView: View {
         guard let url = BrowserSurfaceView.normalize(coordinator.address) else { return }
         coordinator.load(url)
         model.setBrowserURL(surface.id, url)
+    }
+
+    private var externalURL: URL? {
+        BrowserSurfaceView.externalURL(webViewURL: coordinator.webView.url, address: coordinator.address)
+    }
+
+    private func openExternally() {
+        guard let externalURL else { return }
+        NSWorkspace.shared.open(externalURL)
     }
 }
 
