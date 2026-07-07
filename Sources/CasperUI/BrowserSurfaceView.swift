@@ -37,6 +37,15 @@ struct BrowserSurfaceView: View {
         }
         return URL(string: "http://" + trimmed)
     }
+
+    /// The URL to hand off to the system default browser: the page actually
+    /// committed in the web view when there is one, else the normalized
+    /// address-bar text (covers the rare case a load hasn't committed yet).
+    /// Returns nil when neither is available, e.g. a fresh surface still at
+    /// `about:blank` with an empty address.
+    static func externalURL(webViewURL: URL?, address: String) -> URL? {
+        webViewURL ?? normalize(address)
+    }
 }
 
 /// The body of a browser surface, observing its coordinator so the address bar
