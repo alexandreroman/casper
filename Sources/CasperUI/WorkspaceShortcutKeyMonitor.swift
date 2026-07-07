@@ -8,12 +8,17 @@ import AppKit
 /// fires while a Casper window is key and needs no Accessibility permission.
 @MainActor
 final class WorkspaceShortcutKeyMonitor {
-    /// Physical number-row keys (ANSI virtual keycodes) mapped to their digit.
-    /// Deliberately excludes the numeric keypad's keycodes so Cmd+(numpad 1)
-    /// does not switch workspaces — only the top-row digit keys do.
+    /// Physical digit keys (ANSI virtual keycodes) mapped to their digit, for
+    /// both the number row and the numeric keypad. Matching by physical keycode
+    /// means each digit has one position per cluster — a top-row key and its
+    /// numeric-keypad counterpart both switch to the same workspace.
     private static let digitKeyCodes: [UInt16: Int] = [
+        // Number row.
         0x12: 1, 0x13: 2, 0x14: 3, 0x15: 4, 0x17: 5,
         0x16: 6, 0x1A: 7, 0x1C: 8, 0x19: 9,
+        // Numeric keypad (kVK_ANSI_Keypad1…9).
+        0x53: 1, 0x54: 2, 0x55: 3, 0x56: 4, 0x57: 5,
+        0x58: 6, 0x59: 7, 0x5B: 8, 0x5C: 9,
     ]
 
     private let model: AppModel
