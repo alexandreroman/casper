@@ -8,6 +8,7 @@ struct WorktreeError: Error, Equatable, Sendable {
         case repositoryNotFound
         case branchAlreadyCheckedOut
         case worktreePathExists
+        case mergeConflict
         case gitFailure(String)
     }
 
@@ -88,6 +89,23 @@ public enum WorktreeManager {
     public static func deleteBranch(repoPath: String, name: String) throws {
         let repo = try openRepo(repoPath)
         try mapGitError { try repo.deleteBranch(name) }
+    }
+
+    /// Merge `branch` into `targetBranch` in the repository at `repoPath`,
+    /// writing a merge commit and advancing `targetBranch`. Throws
+    /// `WorktreeError(.mergeConflict)` when the merge can't be resolved
+    /// automatically — nothing is written to the repository in that case.
+    public static func merge(
+        repoPath: String, branch: String, into targetBranch: String, message: String
+    ) throws -> MergeOutcome {
+        let repo = try openRepo(repoPath)
+        do {
+            return try repo.mergeBranchHeadless(branch, into: targetBranch, message: message)
+        } catch is MergeConflictError {
+            throw WorktreeError(.mergeConflict)
+        } catch let error as GitError {
+            throw WorktreeError(.gitFailure(error.message))
+        }
     }
 
     /// Whether the working tree of the repository at `repoPath` is clean.

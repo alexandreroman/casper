@@ -98,6 +98,52 @@ final class WorktreeManagerTests: XCTestCase {
         try "x".write(to: extra, atomically: true, encoding: .utf8)
         XCTAssertFalse(try WorktreeManager.isClean(repoPath: repoDir.path))
     }
+
+    func testMergeMergesFeatureIntoBaseBranch() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try commitFile(
+            atPath: wtPath, filename: "feature.txt", content: "new\n", message: "add feature")
+
+        let outcome = try WorktreeManager.merge(
+            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+
+        guard case .merged = outcome else { return XCTFail("expected a merge commit") }
+        XCTAssertEqual(
+            try Repository.open(atPath: repoDir.path).fileTextAtHead(path: "feature.txt"), "new\n")
+    }
+
+    func testMergeAlreadyUpToDateReturnsNoCommit() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        let outcome = try WorktreeManager.merge(
+            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+
+        XCTAssertEqual(outcome, .upToDate)
+    }
+
+    func testMergeConflictThrowsMergeConflictReason() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try commitFile(
+            atPath: wtPath, filename: "README.md", content: "from feature\n", message: "feature readme")
+        try commitFile(
+            atPath: repoDir.path, filename: "README.md", content: "from main\n", message: "main readme")
+
+        XCTAssertThrowsError(
+            try WorktreeManager.merge(
+                repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+        ) { error in
+            XCTAssertEqual((error as? WorktreeError)?.reason, .mergeConflict)
+        }
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`
@@ -138,4 +184,45 @@ private func makeInitialCommit(repo: Repository, path: String) throws {
     try check(git_commit_create(
         &commitOid, repo.pointer, "HEAD",
         signature, signature, nil, "Initial commit", tree, 0, nil))
+}
+
+/// Commit `content` to `filename` in the working tree at `repoPath`, onto its
+/// current HEAD. Used to simulate independent commits on a linked worktree and
+/// on the primary repo path for merge-scenario setup.
+private func commitFile(
+    atPath repoPath: String, filename: String, content: String, message: String
+) throws {
+    let repo = try Repository.open(atPath: repoPath)
+    try content.write(
+        to: URL(fileURLWithPath: repoPath).appendingPathComponent(filename),
+        atomically: true, encoding: .utf8)
+
+    var index: OpaquePointer?
+    try check(git_repository_index(&index, repo.pointer))
+    defer { git_index_free(index) }
+    try check(git_index_add_bypath(index, filename))
+    try check(git_index_write(index))
+
+    var treeOid = git_oid()
+    try check(git_index_write_tree(&treeOid, index))
+    var tree: OpaquePointer?
+    try check(git_tree_lookup(&tree, repo.pointer, &treeOid))
+    defer { git_tree_free(tree) }
+
+    var headRef: OpaquePointer?
+    try check(git_repository_head(&headRef, repo.pointer))
+    defer { git_reference_free(headRef) }
+    var parent: OpaquePointer?
+    try check(git_reference_peel(&parent, headRef, GIT_OBJECT_COMMIT))
+    defer { git_object_free(parent) }
+
+    var signature: UnsafeMutablePointer<git_signature>?
+    try check(git_signature_now(&signature, "Casper Test", "test@casper.local"))
+    defer { git_signature_free(signature) }
+
+    var commitOid = git_oid()
+    var parentPointer = parent
+    try check(git_commit_create(
+        &commitOid, repo.pointer, "HEAD",
+        signature, signature, nil, message, tree, 1, &parentPointer))
 }
