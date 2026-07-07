@@ -38,7 +38,9 @@ struct SidebarView: View {
         WorkspaceRow(
             workspace: workspace,
             isSelected: workspace.id == model.selectedWorkspaceID,
-            isGitRepo: space.isGitRepo
+            isGitRepo: space.isGitRepo,
+            shortcutNumber: model.workspaceShortcutNumbers[workspace.id],
+            showShortcutHints: model.showWorkspaceShortcutHints
         )
         .onTapGesture { model.selectWorkspace(workspace.id) }
         .contextMenu {
