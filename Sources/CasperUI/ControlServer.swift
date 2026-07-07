@@ -36,7 +36,8 @@ final class ControlServer {
                 return .failure(Self.targetError(command.workspace))
             }
             guard let branch = command.branch else { return .failure("missing branch") }
-            switch model.controlCreateWorkspace(inSpaceOf: id, branch: branch, base: command.base) {
+            switch model.controlCreateWorkspace(
+                inSpaceOf: id, branch: branch, base: command.base, command: command.command) {
             case .success(let info): return .success(text: info.id, workspaces: [info])
             case .failure(let error): return .failure(error.message)
             }

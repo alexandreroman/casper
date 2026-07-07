@@ -51,12 +51,21 @@ struct WorkspaceCommand: ParsableCommand {
         @Option(name: .long, help: "New branch name for the worktree.") var branch: String = ""
         @Option(name: .long, help: "Base ref to fork from (defaults to the space's base branch).")
         var base: String?
+        @Option(name: .long, help: "Command to run in the workspace's initial terminal.") var command: String?
         @OptionGroup var target: WorkspaceTargetOption
+
+        /// The command normalized so an empty string means "no command", mirroring
+        /// the `--branch` empty-check.
+        private var effectiveCommand: String? {
+            command.flatMap { $0.isEmpty ? nil : $0 }
+        }
 
         func makeCommand() throws -> ControlCommand {
             guard !branch.isEmpty else { throw exitWithError("missing --branch") }
             let selector = try requireSelector(target)
-            return ControlCommand(verb: .workspaceNew, workspace: selector, branch: branch, base: base)
+            return ControlCommand(
+                verb: .workspaceNew, workspace: selector, branch: branch, base: base,
+                command: effectiveCommand)
         }
 
         func run() throws {
@@ -66,7 +75,8 @@ struct WorkspaceCommand: ParsableCommand {
             }
             emit(WorkspaceNewOut(
                 workspace: info.id, name: info.name,
-                branch: info.branch.isEmpty ? nil : info.branch, path: info.path))
+                branch: info.branch.isEmpty ? nil : info.branch, path: info.path,
+                command: effectiveCommand))
         }
     }
 

@@ -12,6 +12,18 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.verb, .progressSet)
     }
 
+    func testWorkspaceNewRoundTripsBranchBaseAndCommand() throws {
+        let command = ControlCommand(
+            verb: .workspaceNew, workspace: "primary",
+            branch: "feature-x", base: "main", command: "npm run dev")
+        let data = try JSONEncoder().encode(command)
+        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
+        XCTAssertEqual(decoded, command)
+        XCTAssertEqual(decoded.branch, "feature-x")
+        XCTAssertEqual(decoded.base, "main")
+        XCTAssertEqual(decoded.command, "npm run dev")
+    }
+
     func testVerbRawValuesAreStable() {
         XCTAssertEqual(ControlCommand.Verb.statusSet.rawValue, "statusSet")
         XCTAssertEqual(ControlCommand.Verb.workspaceNew.rawValue, "workspaceNew")

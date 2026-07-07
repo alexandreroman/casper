@@ -281,6 +281,22 @@ final class ControlHandlerTests: XCTestCase {
         }
     }
 
+    func testCreateWorkspaceHonorsCommand() throws {
+        let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
+        switch model.controlCreateWorkspace(
+            inSpaceOf: primaryID, branch: "feature-cmd", base: nil, command: "npm test") {
+        case .success(let info):
+            let ws = try XCTUnwrap(model.workspace(id: try XCTUnwrap(UUID(uuidString: info.id))))
+            let match = surfaces(in: ws.layout).contains { surface in
+                if case .terminal(_, let command) = surface.kind { return command == "npm test" }
+                return false
+            }
+            XCTAssertTrue(match, "expected the workspace's terminal surface to carry the command")
+        case .failure(let error):
+            XCTFail("expected success, got \(error.message)")
+        }
+    }
+
     func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() throws {
         let (model, primaryID, repoPath) = try seededGitModel(primaryBranch: "main")
         let info: ControlWorkspaceInfo

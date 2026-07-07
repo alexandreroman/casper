@@ -24,10 +24,10 @@ final class JSONOutputTests: XCTestCase {
 
     func testWorkspaceNew() {
         XCTAssertEqual(
-            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: "b", path: "p")),
-            #"{"branch":"b","name":"n","path":"p","workspace":"i"}"#)
+            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: "b", path: "p", command: "npm test")),
+            #"{"branch":"b","command":"npm test","name":"n","path":"p","workspace":"i"}"#)
         XCTAssertEqual(
-            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: nil, path: "p")),
+            jsonLine(WorkspaceNewOut(workspace: "i", name: "n", branch: nil, path: "p", command: nil)),
             #"{"name":"n","path":"p","workspace":"i"}"#)
     }
 

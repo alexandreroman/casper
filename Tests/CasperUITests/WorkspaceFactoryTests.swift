@@ -60,9 +60,21 @@ final class WorkspaceFactoryTests: XCTestCase {
         XCTAssertEqual(ws.baseBranch, "main")
         XCTAssertEqual(ws.worktreePath, "/r/.casper/worktrees/feat-x")
         guard case .leaf(let surface) = ws.layout,
-              case .terminal(let cwd, _) = surface.kind else {
+              case .terminal(let cwd, let command) = surface.kind else {
             return XCTFail("expected one terminal")
         }
         XCTAssertEqual(cwd, "/r/.casper/worktrees/feat-x")
+        XCTAssertNil(command)
+    }
+
+    func testMakeLinkedWorkspaceCarriesCommand() {
+        let ws = WorkspaceFactory.makeLinkedWorkspace(
+            name: "feat-x", worktreePath: "/r/.casper/worktrees/feat-x",
+            branch: "feat-x", baseBranch: "main", portBase: 40010, command: "npm run dev")
+        guard case .leaf(let surface) = ws.layout,
+              case .terminal(_, let command) = surface.kind else {
+            return XCTFail("expected one terminal")
+        }
+        XCTAssertEqual(command, "npm run dev")
     }
 }

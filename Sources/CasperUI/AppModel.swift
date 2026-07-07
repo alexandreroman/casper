@@ -383,7 +383,7 @@ final class AppModel {
     /// primary workspace's branch (the prior behavior). Returns the new workspace or
     /// a human-readable error.
     func createLinkedWorkspace(
-        spaceID: UUID, name: String, base baseOverride: String?
+        spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil
     ) -> Result<Workspace, WorkspaceCreationError> {
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
             return .failure(WorkspaceCreationError(message: "space not found"))
@@ -418,7 +418,7 @@ final class AppModel {
         }
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
-            baseBranch: base, portBase: portBase)
+            baseBranch: base, portBase: portBase, command: command)
         spaces[si].workspaces.append(ws)
         selectWorkspace(ws.id)
         persist()
@@ -1400,12 +1400,12 @@ final class AppModel {
     /// channel's "create workspace" verb, targetable from any workspace in that
     /// Space, not just the primary).
     func controlCreateWorkspace(
-        inSpaceOf workspaceID: UUID, branch: String, base: String?
+        inSpaceOf workspaceID: UUID, branch: String, base: String?, command: String? = nil
     ) -> Result<ControlWorkspaceInfo, WorkspaceCreationError> {
         guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
             return .failure(WorkspaceCreationError(message: "no target workspace"))
         }
-        return createLinkedWorkspace(spaceID: space.id, name: branch, base: base)
+        return createLinkedWorkspace(spaceID: space.id, name: branch, base: base, command: command)
             .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 

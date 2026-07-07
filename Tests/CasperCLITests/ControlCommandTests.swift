@@ -136,6 +136,22 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.verb, .workspaceNew)
         XCTAssertEqual(command.branch, "feature-x")
         XCTAssertEqual(command.base, "main")
+        XCTAssertNil(command.command)
+    }
+
+    func testWorkspaceNewCarriesCommand() throws {
+        let new = try WorkspaceCommand.New.parse(
+            ["--branch", "feature-x", "--command", "npm test", "--workspace", "primary"])
+        let command = try new.makeCommand()
+        XCTAssertEqual(command.verb, .workspaceNew)
+        XCTAssertEqual(command.command, "npm test")
+    }
+
+    func testWorkspaceNewTreatsEmptyCommandAsNil() throws {
+        let new = try WorkspaceCommand.New.parse(
+            ["--branch", "feature-x", "--command", "", "--workspace", "primary"])
+        let command = try new.makeCommand()
+        XCTAssertNil(command.command)
     }
 
     func testWorkspaceNewRequiresBranch() throws {
