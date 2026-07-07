@@ -23,8 +23,13 @@ final class WorkspaceShortcutKeyMonitor {
 
     private let model: AppModel
     private let tracker: CommandHoldTracker
-    private var eventMonitor: Any?
-    private var resignActiveObserver: NSObjectProtocol?
+    // `nonisolated(unsafe)` is safe here: both are only ever mutated from
+    // `start()` on the main actor, and by the time `deinit` runs no other
+    // reference to the object exists, so there's no concurrent access to race
+    // with. This lets `deinit` read them without a main-actor hop — avoiding
+    // the `isolated deinit` back-deployment shim that SIGABRTs on the CI runner.
+    nonisolated(unsafe) private var eventMonitor: Any?
+    nonisolated(unsafe) private var resignActiveObserver: NSObjectProtocol?
 
     init(model: AppModel, holdDuration: TimeInterval = 0.25) {
         self.model = model
@@ -54,11 +59,7 @@ final class WorkspaceShortcutKeyMonitor {
         }
     }
 
-    // `isolated` (SE-0371): `eventMonitor` is `Any?`, which is not `Sendable`,
-    // so a plain (nonisolated) deinit cannot read it on a `@MainActor` class
-    // under Swift 6 strict concurrency checking — this hops deinit onto the
-    // main actor instead.
-    isolated deinit {
+    deinit {
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
         }

@@ -41,15 +41,11 @@ jobs:
       - name: Build
         run: swift build
 
-      # Retry once: `swift test` rarely aborts with SIGABRT (signal 6) mid-suite
-      # on the headless runner during AppKit/NSEvent-heavy tests, with no real
-      # test failure. Not reproducible locally; retry is the accepted mitigation.
+      # ReportCrash doesn't run on this headless runner (no GUI login session),
+      # so no crash report ever lands under ~/Library/Logs/DiagnosticReports on
+      # a test-process abort. Ask the Swift runtime itself to print a backtrace
+      # to stderr instead — cheap defense-in-depth for any future crash.
       - name: Test
-        run: |
-          for attempt in 1 2; do
-            echo "swift test (attempt $attempt/2)"
-            if swift test; then
-              exit 0
-            fi
-          done
-          exit 1
+        run: swift test
+        env:
+          SWIFT_BACKTRACE: enable=yes
