@@ -225,7 +225,7 @@ private struct DiffFileView: View {
                         ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
                             DiffLineRow(
                                 line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
-                                maxDigits: maxDigits, highlighted: highlightedLine(for: line))
+                                highlighted: highlightedLine(for: line))
                         }
                     }
                     if hiddenLineCount > 0 {
@@ -341,9 +341,9 @@ private struct DiffFileView: View {
         return max(String(widest).count, 1)
     }
 
-    /// Two line numbers plus inter-number spacing, with a sensible minimum width.
+    /// One line number plus trailing padding, with a sensible minimum width.
     private var gutterWidth: CGFloat {
-        max(CGFloat(maxDigits * 2 * 9 + 24), 60)
+        max(CGFloat(maxDigits * 9 + 12), 36)
     }
 }
 
@@ -351,7 +351,6 @@ private struct DiffLineRow: View {
     let line: GitDiffLine
     let gutterWidth: CGFloat
     let contentWidth: CGFloat
-    let maxDigits: Int
     let highlighted: AttributedString?
 
     var body: some View {
@@ -361,20 +360,12 @@ private struct DiffLineRow: View {
                 .fill(DiffLineStyle.accent(for: line.kind))
                 .frame(width: 3)
             HStack(spacing: 8) {
-                // Two independent right-aligned columns so the old- and
-                // new-number columns line up on every row, even when one side is
-                // empty (added or deleted lines).
-                HStack(spacing: 8) {
-                    Text(line.oldLineNumber.map(String.init) ?? "")
-                        .frame(width: CGFloat(maxDigits * 9), alignment: .trailing)
-                    Text(line.newLineNumber.map(String.init) ?? "")
-                        .frame(width: CGFloat(maxDigits * 9), alignment: .trailing)
-                }
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .monospacedDigit()
-                .lineLimit(1)
-                .frame(width: gutterWidth, alignment: .trailing)
+                Text(DiffLineStyle.lineNumber(for: line).map(String.init) ?? "")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(numberColor)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .frame(width: gutterWidth, alignment: .trailing)
                 codeText
                     .font(.system(size: 14, design: .monospaced))
                     .lineLimit(1)
@@ -385,26 +376,34 @@ private struct DiffLineRow: View {
         .background(DiffLineStyle.background(for: line.kind))
     }
 
+    /// Context lines keep the neutral gray gutter; changed lines pick up the
+    /// same accent as the stripe, matching Claude Code's tinted line numbers.
+    private var numberColor: AnyShapeStyle {
+        line.kind == .context ? AnyShapeStyle(.tertiary) : AnyShapeStyle(DiffLineStyle.accent(for: line.kind))
+    }
+
     /// The code column. When a highlight is available its runs carry their own
     /// syntax colors (fonts stripped, so the monospaced font above applies
-    /// uniformly), prefixed by the neutral diff marker. Otherwise it falls back
-    /// to plain text with a uniform `.primary` foreground.
+    /// uniformly); the prefixed diff marker is tinted with the line's accent
+    /// color regardless of highlight availability. Falls back to plain text
+    /// with a uniform `.primary` foreground for the code when there is no
+    /// highlight.
     @ViewBuilder private var codeText: some View {
         if let highlightedContent {
             Text(highlightedContent)
         } else {
-            Text(DiffLineStyle.prefix(for: line.kind) + line.content)
-                .foregroundStyle(Color.primary)
+            Text(DiffLineStyle.prefix(for: line.kind)).foregroundStyle(DiffLineStyle.accent(for: line.kind))
+                + Text(line.content).foregroundStyle(Color.primary)
         }
     }
 
-    /// The diff marker prepended to the highlighted content, or nil when there is
-    /// no highlight to show. The marker inherits `.primary`; the appended runs
-    /// keep their syntax colors.
+    /// The diff marker prepended to the highlighted content, tinted with the
+    /// line's accent color; the appended runs keep their syntax colors.
     private var highlightedContent: AttributedString? {
         guard let highlighted else { return nil }
-        var content = AttributedString(DiffLineStyle.prefix(for: line.kind))
-        content.append(highlighted)
-        return content
+        var prefix = AttributedString(DiffLineStyle.prefix(for: line.kind))
+        prefix.foregroundColor = DiffLineStyle.accent(for: line.kind)
+        prefix.append(highlighted)
+        return prefix
     }
 }
