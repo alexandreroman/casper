@@ -18,10 +18,22 @@ extension Timer: HoldTimerToken {
 /// scheduler (see `CommandHoldTrackerTests`).
 @MainActor
 final class CommandHoldTracker {
+    /// A single hold moves idle → pending → revealed, and any release snaps it
+    /// back to idle. Modelling all three states (rather than a lone
+    /// `pendingToken`) lets `commandKeyDown()` stay a no-op both while the timer
+    /// is pending *and* after it has fired, so a stray key-down mid-hold — e.g.
+    /// an unrelated modifier's `flagsChanged` while Cmd is still held — can't
+    /// re-arm the timer or reveal twice for the same hold.
+    private enum State {
+        case idle
+        case pending(HoldTimerToken)
+        case revealed
+    }
+
     private let holdDuration: TimeInterval
     private let scheduleTimer: (TimeInterval, @escaping () -> Void) -> HoldTimerToken
     private let onRevealChange: (Bool) -> Void
-    private var pendingToken: HoldTimerToken?
+    private var state: State = .idle
 
     init(
         holdDuration: TimeInterval = 1.0,
@@ -40,16 +52,18 @@ final class CommandHoldTracker {
     }
 
     func commandKeyDown() {
-        guard pendingToken == nil else { return }
-        pendingToken = scheduleTimer(holdDuration) { [weak self] in
-            self?.pendingToken = nil
+        guard case .idle = state else { return }
+        state = .pending(scheduleTimer(holdDuration) { [weak self] in
+            self?.state = .revealed
             self?.onRevealChange(true)
-        }
+        })
     }
 
     func commandKeyUp() {
-        pendingToken?.cancel()
-        pendingToken = nil
+        if case .pending(let token) = state {
+            token.cancel()
+        }
+        state = .idle
         onRevealChange(false)
     }
 }

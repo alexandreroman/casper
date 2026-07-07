@@ -82,4 +82,28 @@ final class CommandHoldTrackerTests: XCTestCase {
 
         XCTAssertEqual(scheduleCount, 1)
     }
+
+    func testSecondKeyDownAfterRevealDoesNotRescheduleOrRevealAgain() {
+        var scheduleCount = 0
+        var revealed: [Bool] = []
+        var firedClosure: (() -> Void)?
+        let tracker = CommandHoldTracker(
+            holdDuration: 1.0,
+            scheduleTimer: { _, fire in
+                scheduleCount += 1
+                firedClosure = fire
+                return FakeToken()
+            },
+            onRevealChange: { revealed.append($0) }
+        )
+
+        tracker.commandKeyDown()
+        firedClosure?()
+        // A stray key-down (e.g. an unrelated modifier's flagsChanged) while
+        // Cmd is still held must not re-arm the timer or reveal a second time.
+        tracker.commandKeyDown()
+
+        XCTAssertEqual(scheduleCount, 1)
+        XCTAssertEqual(revealed, [true])
+    }
 }
