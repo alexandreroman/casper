@@ -14,6 +14,7 @@ struct WorkspaceRow: View {
     let isGitRepo: Bool
 
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -37,12 +38,15 @@ struct WorkspaceRow: View {
                             fraction: workspace.progressFraction,
                             complete: workspace.isComplete,
                             isSelected: isSelected)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                     if let caption = captionLabel {
                         Text(caption)
                             .font(.caption)
                             .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
                             .lineLimit(1)
+                            .contentTransition(.opacity)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 // Align under the branch label: status slot (16) + spacing (8) +
@@ -65,6 +69,16 @@ struct WorkspaceRow: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: rowAnimationState)
+    }
+
+    private var rowAnimationState: RowAnimationState {
+        RowAnimationState(
+            agentState: workspace.agentState,
+            showsProgress: workspace.progress.total > 0,
+            progressFraction: workspace.progressFraction,
+            isComplete: workspace.isComplete,
+            caption: captionLabel)
     }
 
     /// The caption line under the branch label. A pending notification message
@@ -80,6 +94,14 @@ struct WorkspaceRow: View {
     private var taskLabel: String? {
         workspace.currentTask ?? (workspace.isComplete ? "Done" : nil)
     }
+}
+
+private struct RowAnimationState: Equatable {
+    let agentState: AgentState
+    let showsProgress: Bool
+    let progressFraction: Double
+    let isComplete: Bool
+    let caption: String?
 }
 
 /// A full-width thin progress bar: accent while running, green once complete.
@@ -122,6 +144,7 @@ private struct NotificationBubble: View {
     let isSelected: Bool
     @State private var pulse = false
     @State private var delay: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Full out-and-back cycle length: `2 * duration`, since `autoreverses: true`.
     private static let period: TimeInterval = 0.8 * 2
@@ -133,10 +156,14 @@ private struct NotificationBubble: View {
                 .frame(width: 9, height: 9)
                 .opacity(pulse ? 0.5 : 1.0)
                 .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay), value: pulse)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay),
+                    value: pulse)
                 .onAppear {
-                    delay = AnimationClock.phaseDelay(period: Self.period)
-                    pulse = true
+                    if !reduceMotion {
+                        delay = AnimationClock.phaseDelay(period: Self.period)
+                        pulse = true
+                    }
                 }
         } else {
             EmptyView()
@@ -161,14 +188,19 @@ private struct AgentStatusIcon: View {
             switch state {
             case .working:
                 SpinningIcon(isSelected: isSelected)
+                    .transition(.opacity)
             case .blocked:
                 icon("exclamationmark.circle")
+                    .transition(.opacity)
             case .done:
                 icon("checkmark.circle")
+                    .transition(.opacity)
             case .error:
                 icon("xmark.octagon")
+                    .transition(.opacity)
             case .idle, .unknown:
                 Color.clear
+                    .transition(.opacity)
             }
         }
         .frame(width: 16)
@@ -189,6 +221,7 @@ private struct SpinningIcon: View {
     let isSelected: Bool
     @State private var spin = false
     @State private var delay: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Full rotation cycle: duration, since autoreverses: false.
     private static let period: TimeInterval = 1
@@ -198,10 +231,14 @@ private struct SpinningIcon: View {
             .imageScale(.medium)
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(.linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay), value: spin)
+            .animation(
+                reduceMotion ? nil : .linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay),
+                value: spin)
             .onAppear {
-                delay = AnimationClock.phaseDelay(period: Self.period)
-                spin = true
+                if !reduceMotion {
+                    delay = AnimationClock.phaseDelay(period: Self.period)
+                    spin = true
+                }
             }
     }
 }
