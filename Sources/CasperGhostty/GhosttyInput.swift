@@ -190,6 +190,7 @@ private let qwertyLetterKeyCodes: [Character: UInt32] = [
     "y": VirtualKeyCode.y, "z": VirtualKeyCode.z,
 ]
 
+#if DEBUG
 /// macOS virtual keycode for Return (kVK_Return). Used to synthesize a
 /// line-submission key event when no NSEvent is available (debug channel).
 let ghosttyReturnKeyCode: UInt32 = 36
@@ -212,7 +213,6 @@ func ghosttyKeyEvent(
     return key
 }
 
-#if DEBUG
 /// Build a libghostty key event carrying a character payload, for debug-channel
 /// injection that must look like genuine keyboard typing (`send-keys`). Unlike the
 /// text/paste path, this populates `text` (the committed character, press only)

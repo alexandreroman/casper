@@ -10,7 +10,6 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(id.layoutFileName, "session.json")
         XCTAssertEqual(id.debugSocketPath, "/tmp/casper-debug.sock")
         XCTAssertEqual(id.controlSocketPath(temporaryDirectory: "/tmp"), "/tmp/casper-control.sock")
-        XCTAssertTrue(id.environment.isEmpty)
     }
 
     func testNamedSessionPaths() {
@@ -20,7 +19,6 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(id.layoutFileName, "session-dev.json")
         XCTAssertEqual(id.debugSocketPath, "/tmp/casper-debug-dev.sock")
         XCTAssertEqual(id.controlSocketPath(temporaryDirectory: "/tmp"), "/tmp/casper-control-dev.sock")
-        XCTAssertEqual(id.environment, ["CASPER_SESSION": "dev"])
     }
 
     func testValidation() {

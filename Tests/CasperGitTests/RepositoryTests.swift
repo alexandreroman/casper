@@ -57,10 +57,9 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(try repo.isBranchCheckedOut("no-such-branch"))
     }
 
-    func testCleanRepositoryHasNoStatusEntries() throws {
+    func testCleanRepositoryIsClean() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
         XCTAssertTrue(try repo.isClean())
-        XCTAssertEqual(try repo.status(), [])
     }
 
     func testUntrackedFileMakesRepositoryDirty() throws {
@@ -69,31 +68,9 @@ final class RepositoryTests: XCTestCase {
         try "x".write(to: extra, atomically: true, encoding: .utf8)
 
         XCTAssertFalse(try repo.isClean())
-        let status = try repo.status()
-        XCTAssertEqual(status.count, 1)
-        XCTAssertEqual(status.first?.path, "scratch.txt")
-        XCTAssertTrue(status.first?.isUntracked ?? false)
     }
 
-    func testStagedModificationIsReportedAsModified() throws {
-        let repo = try GitFixture.repository(at: tempDir.path)
-        let readme = tempDir.appendingPathComponent("README.md")
-        try "casper fixture changed\n".write(
-            to: readme, atomically: true, encoding: .utf8)
-
-        // Stage the modification via the index.
-        var index: OpaquePointer?
-        try gitCheck(git_repository_index(&index, repo.pointer))
-        defer { git_index_free(index) }
-        try gitCheck(git_index_add_bypath(index, "README.md"))
-        try gitCheck(git_index_write(index))
-
-        XCTAssertFalse(try repo.isClean())
-        let entry = try repo.status().first { $0.path == "README.md" }
-        XCTAssertEqual(entry?.isModified, true)
-    }
-
-    func testDeletedFileIsReportedAndKeepsRepositoryDirty() throws {
+    func testDeletedFileMakesRepositoryDirty() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
 
         // Delete the committed file in the working tree.
@@ -101,9 +78,6 @@ final class RepositoryTests: XCTestCase {
             at: tempDir.appendingPathComponent("README.md"))
 
         XCTAssertFalse(try repo.isClean())
-        let entry = try repo.status().first { $0.path == "README.md" }
-        XCTAssertNotNil(entry)
-        XCTAssertEqual(entry?.isDeleted, true)
     }
 
     func testRemoteURL() throws {

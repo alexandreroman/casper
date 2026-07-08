@@ -35,7 +35,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
   view with two tabs (Browser | Diff), per workspace and persisted
   (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
-  replacing them; the tmux `.browser`/`.diff` paths coexist. See `../status.md` →
+  replacing them. The `.diff` layout-leaf surface kind was **removed** — the
+  diff view now lives **only** in the inspector; the `.browser` tmux-pane path
+  still exists, `.diff` does not. See `../status.md` →
   "Right inspector panel" for the as-built model, chrome, and title-bar changes
   (globe button removed, panel toggle added, `+/−` summary opens the Diff tab).
 - **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
@@ -98,15 +100,18 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   hold any `NSView`), so it survives layout restructuring like terminals; its URL
   is persisted via the address bar (link-follow write-back through
   `WKNavigationDelegate` is a deferred follow-up).
-- **UI-5 — ✅ built.** A read-only diff surface renders `.diff` layout leaves over
-  CasperGit's `diffWorkdirToHead()`: per-file sections (path + status, binary
+- **UI-5 — ✅ built.** A read-only diff surface over CasperGit's
+  `diffWorkdirToHead()`: per-file sections (path + status, binary
   files noted), hunk headers, and monospaced line rows colored by kind
   (green addition / red deletion / neutral context) with old/new line-number
   gutters and a `+`/`-`/space prefix cue. Computed on open and **live-refreshed**:
   a native FSEvents watcher on the selected workspace's folder (debounced ~200 ms,
   `.git` + Git-ignored top-level dirs excluded) bumps an observable revision that
-  both the diff surface and the title-bar `+/−` badge react to. Created via the
-  tab-bar "+" menu (New diff).
+  both the diff surface and the title-bar `+/−` badge react to. Originally
+  rendered as a `.diff` layout leaf (created via the tab-bar "+" menu); that
+  surface kind was later **removed** — the diff view now lives **only** in the
+  right inspector panel (`Workspace.inspector`). The rendering above is
+  unchanged, just hosted by the inspector instead of a layout leaf.
 
 ## Next action
 

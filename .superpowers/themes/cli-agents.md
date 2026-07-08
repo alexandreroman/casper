@@ -34,8 +34,10 @@ handful of verbs:
   the shell instead. (This is why agent-state detection has no agent-as-command
   path — see `agent-state-detection.md`.)
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
-  workspace's single **inspector** browser surface and select the browser tab
-  (there are no browser layout panels; layout panels are terminal-only).
+  workspace's single **inspector** browser surface and select the browser tab.
+  Browser surfaces can also be layout panes (`Surface.Kind.browser`, the "New
+  browser" split), but this verb specifically targets the inspector browser, not
+  a layout pane.
 - `diff open [<file>]` — open the diff view and scroll to `<file>` (which must
   exist on disk and be inside the worktree, else an error).
 - `workspace list` / `workspace current` / `workspace new --branch [--base]` /

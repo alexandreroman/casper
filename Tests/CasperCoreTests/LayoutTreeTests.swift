@@ -106,16 +106,6 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertNil(focus)
     }
 
-    func testMapSurfaceReplacesByID() {
-        let a = term()
-        let root = LayoutNode.leaf(a)
-        let out = LayoutTree.mapSurface(root, id: a.id) { _ in
-            Surface(id: a.id, kind: .browser(url: URL(string: "http://x")!))
-        }
-        guard case .leaf(let s) = out, case .browser = s.kind else { return XCTFail() }
-        XCTAssertEqual(s.id, a.id)  // id preserved
-    }
-
     func testDirectionMapping() {
         XCTAssertEqual(LayoutTree.orientationAndSide(for: .right).0, .horizontal)
         XCTAssertEqual(LayoutTree.orientationAndSide(for: .right).1, .after)

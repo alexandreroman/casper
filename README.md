@@ -95,9 +95,9 @@ libgit2 dylib chain so the bundled `Casper.app` runs on a clean Mac.
 
 ### Continuous integration
 
-Tests run on every push and pull request via GitHub Actions on `macos-14`
-([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)). Tagging a `v*`
-release builds and publishes `Casper.app` as a GitHub Release
+Tests run on every push to `main` and every pull request via GitHub Actions on
+`macos-15` ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)). Tagging a
+`v*` release builds and publishes `Casper.app` as a GitHub Release
 ([`.github/workflows/release.yml`](./.github/workflows/release.yml)).
 
 ## Architecture
@@ -122,7 +122,7 @@ flowchart TD
 | `CasperCore`    | Models, session store, port allocator, control-channel protocol + socket (pure Swift) |
 | `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                               |
 | `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                  |
-| `CasperAgents`  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_SESSION`, …) |
+| `CasperAgents`  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …) |
 | `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
 | `CasperCLI`     | Domain subcommands, sharing the single app binary (swift-argument-parser)             |
 

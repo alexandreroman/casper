@@ -1,7 +1,7 @@
 # Diff View: Match Claude Code's Colors — Design
 
 **Date:** 2026-07-07
-**Status:** Approved (pending written-spec review)
+**Status:** Done — shipped (HighlightSwift + `DiffHighlighter.swift` merged)
 **Scope:** Restyle `DiffSurfaceView`'s line rendering so it visually matches the
 reference screenshot of Claude Code's own diff rendering — full-bleed saturated
 row backgrounds, a tinted `+`/`-` prefix and line number, and a single

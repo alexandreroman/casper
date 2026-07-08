@@ -187,9 +187,11 @@ func casperGhosttyAction(
         MainActor.assumeIsolated { view.setCursorVisibility(visible) }
         return true
     case GHOSTTY_ACTION_SET_TITLE:
-        // Capture the OSC window title per-surface, then fall through (no `return`)
-        // so the existing app-level `onAction` still runs — AppDelegate sets
-        // `NSApp.keyWindow?.title` from it, and that behavior must be preserved.
+        // Capture the OSC window title per-surface, then fall through (no `return`).
+        // The fall-through currently reaches no `setTitle` consumer: the app-level
+        // `onAction` closure handles only `.openURL`/`.quit`/`.closeWindow`, so
+        // title-to-window wiring is unimplemented. The capture above is what
+        // agent-state detection reads via `readOSCTitle()`.
         if let view = surfaceView(from: target) {
             let title = action.action.set_title.title.map { String(cString: $0) } ?? ""
             MainActor.assumeIsolated {

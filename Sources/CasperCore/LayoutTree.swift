@@ -110,20 +110,6 @@ public enum LayoutTree {
         }
     }
 
-    /// Return a copy of the tree with the surface `id` replaced by `transform(s)`.
-    public static func mapSurface(
-        _ node: LayoutNode, id: UUID, _ transform: (Surface) -> Surface
-    ) -> LayoutNode {
-        switch node {
-        case .leaf(let surface):
-            return .leaf(surface.id == id ? transform(surface) : surface)
-        case .split(let o, let children, let ratios):
-            return .split(
-                orientation: o, children: children.map { mapSurface($0, id: id, transform) },
-                ratios: ratios)
-        }
-    }
-
     /// Relocate the leaf holding `surfaceID` to sit beside `targetID` on the
     /// side implied by `direction`. Removes the source (reusing `closeSurface`'s
     /// removal + single-child collapse), then reinserts the *same* `Surface`

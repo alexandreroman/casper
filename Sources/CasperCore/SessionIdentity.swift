@@ -40,10 +40,6 @@ public struct SessionIdentity: Sendable, Equatable {
 
     public var debugSocketPath: String { "/tmp/casper-debug\(pathSuffix).sock" }
 
-    public var environment: [String: String] {
-        name.map { ["CASPER_SESSION": $0] } ?? [:]
-    }
-
     public enum ParseError: Error, Equatable {
         case missingValue
         case invalidName(String)

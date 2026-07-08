@@ -145,8 +145,13 @@ headers, and monospaced line rows colored by kind (addition/deletion/context)
 with old/new line-number gutters; computed on open and **live-refreshed** by a
 native FSEvents watcher on the selected workspace's folder (debounced ~200 ms;
 `.git` + Git-ignored top-level dirs excluded) that bumps an observable revision
-driving both the diff surface and the title-bar `+/−` badge; created via
-the tab-bar "+" menu (New diff).
+driving both the diff surface and the title-bar `+/−` badge.
+
+> **Superseded:** the `.diff` layout-leaf surface kind (and its "New diff"
+> tab-bar menu item) was later **removed** — the diff view now lives **only** in
+> the right inspector panel (`Workspace.inspector`, see below). The `.browser`
+> layout-leaf path still exists; `.diff` does not. The diff rendering described
+> above is unchanged, just hosted by the inspector instead of a layout leaf.
 
 All five CasperUI sub-projects are built. **Live GUI check: done.** Terminals
 render on a restored session and tab switching preserves content — verified via
@@ -228,9 +233,10 @@ is now the intended behaviour, not a stopgap.
 ## Right inspector panel — ✅ (live check done)
 
 A collapsible right-side panel on the workspace detail view exposes a **browser**
-and the **Git diff** as two tabs, per workspace — an alternative to placing them
-in a tmux pane. Coexists with the `.browser`/`.diff` surface paths (those stay;
-only the title-bar globe "New browser" button is removed).
+and the **Git diff** as two tabs, per workspace. The `.diff` layout-leaf surface
+kind was **removed** — the diff view now lives **only** in this inspector panel.
+The `.browser` layout-leaf path still exists (a browser can still be a tmux
+pane); `.diff` does not. The title-bar globe "New browser" button is removed.
 
 **Model.** `Workspace` gained `inspector: InspectorState` (`collapsed`, `tab:
 InspectorTab{browser,diff}`, and a dedicated `browser: Surface`). A hand-written
@@ -241,8 +247,8 @@ persisted.
 
 **UI.** `WorkspaceDetailView` lays the detail out as an `HStack`: the tmux
 `LayoutNodeView` (`maxWidth: .infinity`), a `Divider()` (system separator, matching
-the sidebar/content edge), then `InspectorPanel` at a state-driven `width` (default 360,
-clamped 240–720) shown only when expanded. The `Divider()` doubles as a drag handle
+the sidebar/content edge), then `InspectorPanel` at a state-driven `width` (default 480,
+clamped 240–1400) shown only when expanded. The `Divider()` doubles as a drag handle
 (transparent 10 pt hit area, left-right resize cursor) that resizes the panel; the
 width lives in view `@State`, so it is **preserved across collapse/expand** and,
 because the left region stays `maxWidth: .infinity`, **unaffected by adding

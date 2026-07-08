@@ -1,7 +1,7 @@
 # Close Inspector (`browser close` / `diff close`) — Design
 
 **Date:** 2026-07-07
-**Status:** Approved (pending written-spec review)
+**Status:** Done — shipped (browser/diff close CLI verbs merged)
 **Scope:** Add `casper browser close` and `casper diff close` CLI subcommands
 that collapse the shared inspector panel, mirroring the existing
 `casper browser open <url>` / `casper diff open [<file>]` commands.

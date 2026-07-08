@@ -13,7 +13,6 @@ private struct FileHighlight { var new: [AttributedString]?; var old: [Attribute
 struct DiffSurfaceView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
-    @Environment(\.colorScheme) private var colorScheme
     @State private var diff: GitDiff?
     @State private var loaded = false
     /// Syntax highlights keyed by `GitDiffFile.id`; populated progressively as
@@ -30,7 +29,6 @@ struct DiffSurfaceView: View {
     var body: some View {
         content
             .onAppear { if !loaded { refresh() } }
-            .onChange(of: colorScheme) { _, _ in if diff != nil { startHighlighting() } }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
             .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
             .onDisappear { highlightTask?.cancel() }
@@ -107,8 +105,7 @@ struct DiffSurfaceView: View {
     /// instead of being re-highlighted: value-equality means the file's hunks
     /// vs HEAD are byte-identical, which for the working-tree diff implies the
     /// text used for highlighting is unchanged, so its cached highlight is still
-    /// valid within the same color scheme. Callers reacting to a color-scheme
-    /// change pass no reuse args, forcing a full re-highlight (colors differ).
+    /// valid.
     private func startHighlighting(
         reusing previousFiles: [GitDiffFile] = [], _ previousHighlights: [String: FileHighlight] = [:]
     ) {
@@ -126,7 +123,6 @@ struct DiffSurfaceView: View {
         }
         highlights = carried
 
-        let dark = colorScheme == .dark
         highlightTask = Task {
             for file in files {
                 if Task.isCancelled { return }
@@ -136,8 +132,8 @@ struct DiffSurfaceView: View {
                 let newText = model.worktreeFileText(for: workspace, path: file.newPath)
                 let oldText = model.headFileText(for: workspace, path: file.oldPath)
 
-                let newLines = await highlight(newText, path: file.newPath, dark: dark)
-                let oldLines = await highlight(oldText, path: file.oldPath, dark: dark)
+                let newLines = await highlight(newText, path: file.newPath)
+                let oldLines = await highlight(oldText, path: file.oldPath)
                 if Task.isCancelled { return }
 
                 highlights[file.id] = FileHighlight(new: newLines, old: oldLines)
@@ -148,10 +144,10 @@ struct DiffSurfaceView: View {
     /// Highlights one file's text, or returns nil when absent. The library trims
     /// trailing whitespace, so a single trailing newline is stripped first to
     /// keep its line count aligned with the source.
-    private func highlight(_ text: String?, path: String, dark: Bool) async -> [AttributedString]? {
+    private func highlight(_ text: String?, path: String) async -> [AttributedString]? {
         guard let text else { return nil }
         let trimmed = text.hasSuffix("\n") ? String(text.dropLast()) : text
-        return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path, dark: dark)
+        return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path)
     }
 }
 

@@ -22,10 +22,4 @@ public final class Debouncer {
         pending = item
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
-
-    /// Cancel the pending action, if any.
-    public func cancel() {
-        pending?.cancel()
-        pending = nil
-    }
 }

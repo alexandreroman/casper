@@ -53,41 +53,44 @@ public final class Repository {
         return String(cString: shorthand)
     }
 
-    /// Whether a local branch named `name` exists.
-    public func branchExists(_ name: String) throws -> Bool {
+    /// Look up local branch `name` and run `body` with its resolved reference,
+    /// freeing the reference afterward. Returns `ifMissing` when the branch does
+    /// not exist. The reference is valid only for the duration of `body`.
+    private func withLocalBranch<T>(
+        _ name: String, ifMissing: T, _ body: (OpaquePointer) throws -> T
+    ) throws -> T {
         var ref: OpaquePointer?
         let code = git_branch_lookup(&ref, pointer, name, GIT_BRANCH_LOCAL)
         defer { git_reference_free(ref) }
-        if code == GIT_ENOTFOUND.rawValue { return false }
+        if code == GIT_ENOTFOUND.rawValue { return ifMissing }
         try gitCheck(code)
-        return true
+        return try body(try requireNonNull(ref, "branch reference"))
+    }
+
+    /// Whether a local branch named `name` exists.
+    public func branchExists(_ name: String) throws -> Bool {
+        try withLocalBranch(name, ifMissing: false) { _ in true }
     }
 
     /// Delete the local branch `name`. A missing branch is a no-op (idempotent).
     public func deleteBranch(_ name: String) throws {
-        var ref: OpaquePointer?
-        let code = git_branch_lookup(&ref, pointer, name, GIT_BRANCH_LOCAL)
-        defer { git_reference_free(ref) }
-        if code == GIT_ENOTFOUND.rawValue { return }
-        try gitCheck(code)
-        try gitCheck(git_branch_delete(ref))
+        try withLocalBranch(name, ifMissing: ()) { ref in
+            try gitCheck(git_branch_delete(ref))
+        }
     }
 
     /// Whether local branch `name` is checked out in any working tree. Returns
     /// false if the branch does not exist.
     public func isBranchCheckedOut(_ name: String) throws -> Bool {
-        var ref: OpaquePointer?
-        let code = git_branch_lookup(&ref, pointer, name, GIT_BRANCH_LOCAL)
-        defer { git_reference_free(ref) }
-        if code == GIT_ENOTFOUND.rawValue { return false }
-        try gitCheck(code)
-        let rc = git_branch_is_checked_out(ref)
-        if rc < 0 { try gitCheck(rc) }
-        return rc == 1
+        try withLocalBranch(name, ifMissing: false) { ref in
+            let rc = git_branch_is_checked_out(ref)
+            if rc < 0 { try gitCheck(rc) }
+            return rc == 1
+        }
     }
 
-    /// Working-tree status entries (index + worktree), untracked files included.
-    public func status() throws -> [FileStatus] {
+    /// Whether the working tree and index are clean (no changes, no untracked).
+    public func isClean() throws -> Bool {
         var options = git_status_options()
         try gitCheck(git_status_options_init(
             &options, UInt32(GIT_STATUS_OPTIONS_VERSION)))
@@ -100,36 +103,7 @@ public final class Repository {
         try gitCheck(git_status_list_new(&list, pointer, &options))
         defer { git_status_list_free(list) }
 
-        let count = git_status_list_entrycount(list)
-        var result: [FileStatus] = []
-        result.reserveCapacity(count)
-        for index in 0..<count {
-            guard let entry = git_status_byindex(list, index) else { continue }
-            let bits = entry.pointee.status
-            guard let delta = entry.pointee.index_to_workdir ?? entry.pointee.head_to_index
-            else { continue }
-            // For a deleted entry `new_file.path` can be NULL; fall back to
-            // `old_file.path` so the deletion is not silently dropped.
-            guard let cPath = delta.pointee.new_file.path ?? delta.pointee.old_file.path
-            else { continue }
-            let path = String(cString: cPath)
-            result.append(FileStatus(
-                path: path,
-                isNew: bits.rawValue & GIT_STATUS_INDEX_NEW.rawValue != 0,
-                isModified: bits.rawValue
-                    & (GIT_STATUS_INDEX_MODIFIED.rawValue
-                       | GIT_STATUS_WT_MODIFIED.rawValue) != 0,
-                isDeleted: bits.rawValue
-                    & (GIT_STATUS_INDEX_DELETED.rawValue
-                       | GIT_STATUS_WT_DELETED.rawValue) != 0,
-                isUntracked: bits.rawValue & GIT_STATUS_WT_NEW.rawValue != 0))
-        }
-        return result
-    }
-
-    /// Whether the working tree and index are clean (no changes, no untracked).
-    public func isClean() throws -> Bool {
-        try status().isEmpty
+        return git_status_list_entrycount(list) == 0
     }
 
     /// Whether `path` (relative to the working directory) is ignored per Git's own
@@ -365,31 +339,5 @@ public final class Repository {
             kind: kind, content: trimmed,
             oldLineNumber: line.old_lineno >= 0 ? Int(line.old_lineno) : nil,
             newLineNumber: line.new_lineno >= 0 ? Int(line.new_lineno) : nil)
-    }
-}
-
-/// Per-path working-tree status, reduced to the flags Casper needs.
-///
-/// The four booleans are not exhaustive: merge-conflicted paths
-/// (`GIT_STATUS_CONFLICTED`), type changes, and renames are represented only by
-/// the entry being present with all four flags `false`. `status()`/`isClean()`
-/// still report such a tree as dirty; consumers must not assume these flags
-/// cover every change kind.
-public struct FileStatus: Equatable, Sendable {
-    public let path: String
-    public let isNew: Bool
-    public let isModified: Bool
-    public let isDeleted: Bool
-    public let isUntracked: Bool
-
-    public init(
-        path: String, isNew: Bool, isModified: Bool,
-        isDeleted: Bool, isUntracked: Bool
-    ) {
-        self.path = path
-        self.isNew = isNew
-        self.isModified = isModified
-        self.isDeleted = isDeleted
-        self.isUntracked = isUntracked
     }
 }
