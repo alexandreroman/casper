@@ -91,4 +91,47 @@ final class GhosttyFontSizeTests: XCTestCase {
         view.resetFontSize(nil)
         XCTAssertEqual(firedCount, 0)
     }
+
+    /// Regression test for the actual bug: font-size changes triggered by a
+    /// REAL Cmd-combo keypress (not an explicit call to `increaseFontSize()`)
+    /// must still be captured. Constructs a genuine Cmd+Equal NSEvent and
+    /// drives it through `performKeyEquivalent` — the exact method AppKit
+    /// calls for a real physical Cmd+ keypress — rather than calling
+    /// `increaseFontSize()` directly.
+    @MainActor
+    func testRealCommandEqualKeypressThroughPerformKeyEquivalentReportsChange() throws {
+        let runtime = try GhosttyRuntime()
+        var reported: (UUID, Float)?
+        let surfaceID = UUID()
+        let view = GhosttySurfaceView(
+            runtime: runtime, configuration: GhosttySurfaceConfiguration(), surfaceID: surfaceID,
+            onFontSizeChange: { id, size in reported = (id, size) })
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+
+        let deadline = Date().addingTimeInterval(10)
+        while view.surface == nil, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        guard view.surface != nil else {
+            throw XCTSkip("libghostty could not create a surface in this environment")
+        }
+        XCTAssertTrue(window.makeFirstResponder(view))
+
+        // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
+        // ANSI keyboard. This is a genuine NSEvent built the same way a real
+        // keypress arrives, not a synthetic debug-only path.
+        let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "=",
+            charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24)!
+        _ = view.performKeyEquivalent(with: event)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        let (reportedID, reportedSize) = try XCTUnwrap(reported)
+        XCTAssertEqual(reportedID, surfaceID)
+        XCTAssertGreaterThan(reportedSize, 0)
+    }
 }

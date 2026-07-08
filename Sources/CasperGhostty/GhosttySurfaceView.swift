@@ -528,7 +528,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         guard window?.firstResponder === self else { return false }
         // ⌘ combos carry no committed text; return libghostty's consumed flag so unbound
         // ⌘ combos fall through to the menu / system.
-        return surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+        let consumed = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+        // A consumed ⌘ combo may have been one of libghostty's own default
+        // keybindings — including ⌘+/⌘-/⌘0's font-size resize, which libghostty
+        // resolves and applies entirely internally here, never going through
+        // increaseFontSize()/decreaseFontSize()/resetFontSize() below (those are
+        // for an explicit caller, e.g. a future menu item — nothing wires them to
+        // a physical keypress today). Check back so a real keypress-driven resize
+        // still gets captured and persisted, not just an explicit call.
+        if consumed { reportFontSizeIfChanged() }
+        return consumed
     }
 
     // MARK: Mouse
