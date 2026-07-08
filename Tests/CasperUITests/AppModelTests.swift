@@ -868,6 +868,40 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(saves, 1)
     }
 
+    // MARK: - Terminal font-size persistence
+
+    func testSurfaceConfigurationPassesPersistedFontSizeOrDefaultsToZero() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let workspace = model.spaces[0].workspaces[0]
+        let sized = Surface(kind: .terminal(cwd: workspace.worktreePath, command: nil), fontSize: 22)
+        let unsized = Surface(kind: .terminal(cwd: workspace.worktreePath, command: nil))
+
+        XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: sized).fontSize, 22)
+        XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: unsized).fontSize, 0)
+    }
+
+    func testUpdateSurfaceFontSizeUpdatesLayoutAndSchedulesSave() {
+        let (model, surfaceID) = modelWithOnePlainWorkspace()
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        model.updateSurfaceFontSize(surfaceID, size: 20)
+
+        let surface = LayoutTree.surfaces(model.spaces[0].workspaces[0].layout)
+            .first { $0.id == surfaceID }
+        XCTAssertEqual(surface?.fontSize, 20)
+
+        model.flushPendingSave()  // debounced; flush so the assertion is deterministic
+        XCTAssertEqual(saves, 1)
+    }
+
+    func testUpdateSurfaceFontSizeUnknownSurfaceIsNoOp() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let layoutBefore = model.spaces[0].workspaces[0].layout
+        model.updateSurfaceFontSize(UUID(), size: 20)
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+    }
+
     // MARK: - Diff surfaces (UI-5 Task 1)
 
     func testComputeDiffReturnsChangesForDirtyWorktree() throws {
