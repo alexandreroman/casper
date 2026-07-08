@@ -35,14 +35,6 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // of a `keyDown`; `insertText` appends to it when set, else sends directly.
     private var keyTextAccumulator: [String]?
 
-    // The text-editing selector Cocoa resolved this `keyDown` to, if any (e.g.
-    // Ctrl-A -> `moveToBeginningOfParagraph:`). `interpretKeyEvents` reports such
-    // keys through `doCommand(by:)` instead of committing text; we record — but
-    // deliberately never execute — the selector so `keyDown` can recognise "an
-    // editing command fired, no text" and forward the raw keystroke to the shell,
-    // matching Ghostty's reference AppKit handler. Non-nil only within a `keyDown`.
-    private var interpretedCommandSelector: Selector?
-
     // Surface creation can transiently return null (see the
     // e2e-surface-creation-flakiness note): retry a bounded number of times before
     // giving up, so a single null does not permanently kill the pane.
@@ -402,11 +394,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // text; libghostty wants that text attached to the key event, not sent via
         // the separate `ghostty_surface_text` path (which renders the cursor wrong).
         keyTextAccumulator = []
-        interpretedCommandSelector = nil
-        defer {
-            keyTextAccumulator = nil
-            interpretedCommandSelector = nil
-        }
+        defer { keyTextAccumulator = nil }
         interpretKeyEvents([translationEvent])
 
         // Whether Option was left in place for the event Cocoa just composed from: if
@@ -424,8 +412,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             // No committed text. This is the bare-key path for arrows, Return, Backspace
             // and Ctrl-combos — including the Control-letter shortcuts (Ctrl-A/E/K/L…)
             // that Cocoa's key-binding table resolves to a text-editing selector, which
-            // `doCommand(by:)` recorded into `interpretedCommandSelector` and discarded.
-            // We forward the raw keystroke and let the keycode drive libghostty's own
+            // `doCommand(by:)` swallows without executing. We forward the raw keystroke
+            // and let the keycode drive libghostty's own
             // encoding, so the shell's line editor (zle/readline) handles those combos
             // itself — matching Ghostty's reference handler, which likewise replays the
             // original key rather than running the Cocoa command. Omit `consumedMods`
@@ -760,11 +748,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     ) -> NSRect { .zero }
     public override func doCommand(by selector: Selector) {
         // Cocoa resolved this key to a text-editing command (e.g. Ctrl-A ->
-        // `moveToBeginningOfParagraph:`). Record it so `keyDown` knows an editing
-        // command fired but do NOT run it: a terminal forwards the raw keystroke and
-        // lets the shell's own line editor handle these combos (Ghostty is the
-        // reference). Running the Cocoa command here would swallow the shortcut.
-        interpretedCommandSelector = selector
+        // `moveToBeginningOfParagraph:`). Deliberately a no-op: overriding with an empty
+        // body suppresses Cocoa's default execute/beep so `keyDown` can forward the raw
+        // keystroke and let the shell's own line editor handle these combos (Ghostty is
+        // the reference). Running the Cocoa command here would swallow the shortcut.
     }
 }
 

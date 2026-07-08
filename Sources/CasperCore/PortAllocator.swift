@@ -1,8 +1,8 @@
 import Foundation
 
 struct PortAllocationError: Error, Equatable {
-    public let reason: String
-    public init(reason: String) { self.reason = reason }
+    let reason: String
+    init(reason: String) { self.reason = reason }
 }
 
 public struct PortAllocator: Equatable, Sendable {

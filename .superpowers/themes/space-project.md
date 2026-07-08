@@ -65,7 +65,7 @@ ships.
 
 ## Unchanged from the base design
 
-Ports remain **per workspace** (`CASPER_PORT`), not per Space. Hooks stay global.
+Ports remain **per workspace** (`CASPER_PORT`), not per Space.
 No `CASPER_PROJECT` env in v1. `SessionStore` serializes the full
 `Session → Space → Workspace` tree.
 

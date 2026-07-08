@@ -19,10 +19,11 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 1. **Native & performant** — macOS-native UI; GPU-accelerated terminal rendering
    via libghostty.
 2. **Prefer built-in macOS frameworks** over third-party code.
-3. **Minimum dependencies** — only three external deps (GhosttyKit,
-   swift-argument-parser, and libgit2 behind the in-house `CasperGit`);
-   everything else uses system frameworks. See [[dependency-policy]] for the full
-   rule, rationale, and the arm64 / `-Osize` build stance.
+3. **Minimum dependencies** — only four external deps (GhosttyKit,
+   swift-argument-parser, libgit2 behind the in-house `CasperGit`, and
+   HighlightSwift for diff syntax highlighting); everything else uses system
+   frameworks. See [[dependency-policy]] for the full rule, rationale, and the
+   arm64 / `-Osize` build stance.
 4. **No notarization.**
 
 ## Locked decisions
@@ -45,7 +46,7 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 | --- | --- | --- |
 | **CasperGit** | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base | `themes/git-worktrees.md` |
 | **CasperCore** | Models, `SessionStore`, `WorktreeManager`, `PortAllocator`, control-channel protocol + socket. Pure Swift, no UI | `themes/core.md` |
-| **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits/tabs. The only module touching the unstable API | `themes/terminal.md` |
+| **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API | `themes/terminal.md` |
 | **CasperAgents** | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals | `themes/cli-agents.md` |
 | **CasperCLI** | `casper` subcommand dispatch (swift-argument-parser) | `themes/cli-agents.md` |
 | **CasperUI** | SwiftUI sidebar, chrome, diff, browser + AppKit bridges | `themes/app-ui.md` |
@@ -66,11 +67,17 @@ Session
          ├─ todos: [Todo{content, status: pending|in_progress|completed}]
          ├─ pendingNotification: Bool
          ├─ portBase: Int                        // 10-port block; env CASPER_PORT
-         └─ layout: LayoutNode
+         ├─ layout: LayoutNode
+         └─ inspector: InspectorState            // right panel: collapsed, tab, browser, width
 
-LayoutNode = Split(orientation, children, ratios) | TabGroup(surfaces, activeIndex)
-Surface    = Terminal(cwd, command?) | Browser(url) | Diff(target)
+LayoutNode = Split(orientation, children, ratios) | Leaf(Surface)
+Surface    = Terminal(cwd, command?) | Browser(url)
 ```
+
+The diff view is **not** a layout-tree surface kind — it lives in the
+per-workspace inspector panel (`Workspace.inspector`), alongside the inspector
+browser. `LayoutNode.tabGroup` survives only as a legacy-decode migration path
+(older `session.json` folds into leaves), not a live case.
 
 The **Space** layer and `kind`/`baseBranch` shipped with CasperUI UI-2
 (`themes/space-project.md`); the once-planned derived `diffStat` is **dropped**
@@ -88,7 +95,7 @@ their target, `portBase` is restored as-is.
 | PTY dies | Surface marked closed, restartable |
 | App crash | Agents lost (accepted); relaunch restores layout cold |
 | Agent never calls the CLI | State inferred from the terminal; `unknown` only when unreadable |
-| Binary size creep | Three justified externals only; arm64-only; `-Osize` + LTO |
+| Binary size creep | Four justified externals only; arm64-only; `-Osize` + LTO |
 
 ## Testing strategy
 
@@ -101,7 +108,7 @@ their target, `portBase` is restored as-is.
 
 ## v1 scope
 
-**In:** worktree=workspace, free-form splits/tabs, terminal + browser + diff
+**In:** worktree=workspace, free-form splits, terminal + browser + diff
 surfaces, per-workspace 10-port reservation, Claude Code state + todo progress,
 enriched sidebar, session persistence, single GUI+CLI binary, arm64-only.
 

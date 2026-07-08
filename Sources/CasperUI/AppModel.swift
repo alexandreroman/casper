@@ -243,8 +243,6 @@ final class AppModel {
         agentDetectionTask?.cancel()
     }
 
-    var isEmpty: Bool { spaces.allSatisfy { $0.workspaces.isEmpty } }
-
     /// All workspaces across every Space, in sidebar order.
     var allWorkspaces: [Workspace] { spaces.flatMap(\.workspaces) }
 
@@ -514,16 +512,7 @@ final class AppModel {
         }
         // FSEventStreamSetExclusionPaths accepts at most 8 paths; .git stays first.
         if exclusions.count > 8 { exclusions = Array(exclusions.prefix(8)) }
-        worktreeWatcher = makeWorktreeWatcher(path, exclusions) { [weak self] in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.diffDebouncer.schedule { [weak self] in
-                        self?.handleSelectedWorktreeChange()
-                    }
-                }
-            }
-        }
+        worktreeWatcher = makeWorktreeWatcher(path, exclusions, makeWorktreeChangeHandler())
         // Commit detection: watch the resolved gitdir's reflog directory, which the
         // `.git`-excluded worktree watcher above can't see. `gitDirPath` carries a
         // trailing slash and, for a linked worktree, resolves to
@@ -534,13 +523,19 @@ final class AppModel {
         // opened or the logs dir can't be watched.
         if spaces[at.space].isGitRepo, let repo = try? Repository.open(atPath: path) {
             let logsPath = repo.gitDirPath + "logs"
-            gitMetaWatcher = makeWorktreeWatcher(logsPath, []) { [weak self] in
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        guard let self else { return }
-                        self.diffDebouncer.schedule { [weak self] in
-                            self?.handleSelectedWorktreeChange()
-                        }
+            gitMetaWatcher = makeWorktreeWatcher(logsPath, [], makeWorktreeChangeHandler())
+        }
+    }
+
+    /// The debounced watcher callback shared by both worktree watchers: hop to the
+    /// main actor and, after the debounce window, drive `handleSelectedWorktreeChange`.
+    private func makeWorktreeChangeHandler() -> @Sendable () -> Void {
+        { [weak self] in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.diffDebouncer.schedule { [weak self] in
+                        self?.handleSelectedWorktreeChange()
                     }
                 }
             }
@@ -650,10 +645,6 @@ final class AppModel {
         indexPair { LayoutTree.surfaceIDs($0.layout).contains(surfaceID) }
     }
 
-    private func newTerminalSurface(cwd: String) -> Surface {
-        Surface.terminal(cwd: cwd)
-    }
-
     /// Shared tail of every split-based surface addition: split the leaf holding
     /// `focused` in workspace `at` to insert `surface` along `orientation`/`side`,
     /// move focus to the new surface, persist, and re-anchor AppKit first
@@ -678,7 +669,7 @@ final class AppModel {
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
         insertSurfaceBySplitting(
             at: at, focused: target, orientation: .horizontal, side: .after,
-            surface: newTerminalSurface(cwd: cwd))
+            surface: Surface.terminal(cwd: cwd))
     }
 
     /// Split the given surface with a new terminal in `direction` (the pane
@@ -689,7 +680,7 @@ final class AppModel {
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(
             at: at, focused: surfaceID, orientation: orientation, side: side,
-            surface: newTerminalSurface(cwd: cwd))
+            surface: Surface.terminal(cwd: cwd))
     }
 
     func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
@@ -698,7 +689,7 @@ final class AppModel {
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(
             at: at, focused: focus, orientation: orientation, side: side,
-            surface: newTerminalSurface(cwd: cwd))
+            surface: Surface.terminal(cwd: cwd))
     }
 
     func applyCloseFocusedSurface() {
@@ -740,7 +731,7 @@ final class AppModel {
             // The primary anchors the Space and its linked workspaces depend on it,
             // so removing the whole Space would destroy them too. Keep the Space and
             // re-seed the primary with a fresh terminal to keep it alive.
-            let fresh = newTerminalSurface(cwd: ws.worktreePath)
+            let fresh = Surface.terminal(cwd: ws.worktreePath)
             spaces[at.space].workspaces[at.workspace].layout = .leaf(fresh)
             if wasFocused || selectedWorkspaceID == ws.id { focusedSurfaceID = fresh.id }
             persist()
@@ -897,9 +888,8 @@ final class AppModel {
     }
 
     /// Rewrite a browser surface's persisted URL (address-bar navigation).
-    /// Searches the layout trees first; when the surface isn't in any layout, it
-    /// falls back to each workspace's inspector browser, which lives outside the
-    /// tree.
+    /// Browsers live exclusively in each workspace's inspector, so this matches the
+    /// surface against the inspector browsers alone — there is no layout-tree search.
     ///
     /// `syncNav` fires on both `didCommit` and `didFinish`, so persistence is
     /// debounced via `scheduleSave()` and skipped entirely when the committed URL

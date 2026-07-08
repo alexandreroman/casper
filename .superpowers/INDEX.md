@@ -8,7 +8,7 @@ Layout:
 
 - [`architecture.md`](architecture.md) — cross-cutting foundation
 - `themes/` — one merged doc per area (design + as-built status)
-- `plans/` — active (unbuilt) implementation plans
+- `plans/` — implementation plans (active and shipped, marked in place)
 
 ## Foundation
 
@@ -31,13 +31,23 @@ Layout:
 Per-theme status markers appear in each doc's header; the authoritative aggregate
 is [`status.md`](status.md).
 
-## Active plans
+## Plans
 
 - [`plans/space-project.md`](plans/space-project.md) — Space + workspace diff
   summary (**superseded 2026-07-06**: model landed in UI-2; the diff summary is
   dropped). Kept for reference only.
-- *CasperUI / app — plan not written yet (the current milestone).*
+- [`plans/close-inspector.md`](plans/close-inspector.md) +
+  [`plans/close-inspector-plan.md`](plans/close-inspector-plan.md) — `casper
+  browser close` / `diff close` CLI verbs (**shipped**).
+- [`plans/diff-view-claude-code-colors.md`](plans/diff-view-claude-code-colors.md) +
+  [`plans/diff-view-claude-code-colors-plan.md`](plans/diff-view-claude-code-colors-plan.md)
+  — diff view restyled to match Claude Code's colors, via HighlightSwift +
+  `DiffHighlighter.swift` (**shipped**).
+- [`plans/github-release.md`](plans/github-release.md) — GitHub release workflow
+  publishing a downloadable `Casper.app` (`.github/workflows/release.yml`)
+  (**shipped**).
 
-The original design specs and completed build plans are not kept here — they are
-recoverable from Git history (tracked under the now-removed `docs/superpowers/`
-tree before being distilled into `architecture.md` + `themes/`).
+Completed plans are marked done in place here until they are cleaned up; the
+original design specs are recoverable from Git history (tracked under the
+now-removed `docs/superpowers/` tree before being distilled into
+`architecture.md` + `themes/`).

@@ -30,8 +30,7 @@ struct SpaceHeaderView: View {
             trailingSlot
         }
         .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 14)
         // The "+" button intercepts its own tap; the rest of the row toggles collapse.
         .contentShape(Rectangle())
         .onTapGesture { model.toggleSpaceCollapsed(id: space.id) }

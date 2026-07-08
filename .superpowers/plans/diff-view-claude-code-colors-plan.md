@@ -1,5 +1,9 @@
 # Diff View: Match Claude Code's Colors Implementation Plan
 
+> **✅ DONE — shipped.** The diff-view restyle (HighlightSwift +
+> `DiffHighlighter.swift`) is implemented and merged. This plan is retained for
+> reference.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan
 > task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

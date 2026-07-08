@@ -79,10 +79,13 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
+            // Expanded: strip the glass so the toggle doesn't merge into the diff
+            // badge's capsule (a macOS 26 glass-merge artifact). Collapsed: keep it.
+            let inspectorItem = ToolbarItem(placement: .primaryAction) { inspectorToggle }
             if workspace.inspector.collapsed {
-                ToolbarItem(placement: .primaryAction) { inspectorToggle }
+                inspectorItem
             } else {
-                ToolbarItem(placement: .primaryAction) { inspectorToggle }.flatToolbarItem()
+                inspectorItem.flatToolbarItem()
             }
         }
         .task(id: model.selectedWorkspaceID) {

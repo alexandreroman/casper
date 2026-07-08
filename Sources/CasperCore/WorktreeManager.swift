@@ -4,7 +4,7 @@ import Foundation
 /// A worktree-creation failure expressed in Casper's own vocabulary, so the UI
 /// never sees a raw libgit2 code.
 struct WorktreeError: Error, Equatable, Sendable {
-    public enum Reason: Equatable, Sendable {
+    enum Reason: Equatable, Sendable {
         case repositoryNotFound
         case branchAlreadyCheckedOut
         case worktreePathExists
@@ -13,8 +13,8 @@ struct WorktreeError: Error, Equatable, Sendable {
         case gitFailure(String)
     }
 
-    public let reason: Reason
-    public init(_ reason: Reason) { self.reason = reason }
+    let reason: Reason
+    init(_ reason: Reason) { self.reason = reason }
 }
 
 /// The result of creating a worktree: enough to build a `Workspace`.

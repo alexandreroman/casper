@@ -39,16 +39,13 @@ enum DiffHighlighter {
     /// Returns `nil` when the language is unknown, the text is empty,
     /// highlighting throws, or the resulting line count does not match
     /// `text`'s — in every such case the caller falls back to neutral text.
-    static func highlightedLines(
-        of text: String, forPath path: String, dark: Bool
-    ) async -> [AttributedString]? {
+    static func highlightedLines(of text: String, forPath path: String) async -> [AttributedString]? {
         guard let language = language(forPath: path), !text.isEmpty else {
             return nil
         }
 
-        // GitHub reads well in both appearances; the diff view picks the
-        // variant from the current color scheme via `dark`.
-        let colors: HighlightColors = dark ? .dark(.github) : .light(.github)
+        // The app forces global dark appearance, so the diff view is always dark.
+        let colors: HighlightColors = .dark(.github)
 
         let highlighted: AttributedString
         do {

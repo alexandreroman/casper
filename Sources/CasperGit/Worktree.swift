@@ -1,5 +1,4 @@
 import Clibgit2
-import Foundation
 
 /// Value description of a git worktree.
 public struct WorktreeInfo: Equatable, Sendable {

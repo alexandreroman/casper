@@ -1,5 +1,4 @@
 import Clibgit2
-import Foundation
 
 /// The result of `Repository.mergeBranchHeadless`.
 public enum MergeOutcome: Equatable, Sendable {
@@ -67,8 +66,7 @@ extension Repository {
 
         var oidBuffer = [Int8](repeating: 0, count: 41)
         git_oid_tostr(&oidBuffer, 41, &newCommitOid)
-        let oidBytes = oidBuffer.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }
-        let oidString = String(decoding: oidBytes, as: UTF8.self)
+        let oidString = oidBuffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
         return .merged(commitOID: oidString)
     }
 

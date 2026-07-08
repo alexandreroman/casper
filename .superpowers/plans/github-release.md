@@ -1,7 +1,7 @@
 # GitHub Release Workflow with Downloadable `.app` — Design
 
 **Date:** 2026-07-05
-**Status:** Approved (pending written-spec review)
+**Status:** Done — shipped (`.github/workflows/release.yml` merged)
 **Scope:** A GitHub Actions workflow that publishes a downloadable, self-contained
 `Casper.app` on each version tag — **without** code signing or notarization — and
 lays the groundwork so a Sparkle-based auto-update mechanism can plug in later

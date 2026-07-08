@@ -21,7 +21,7 @@ final class AppModelTests: XCTestCase {
     func testStartsEmptyWhenSessionEmpty() {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
-        XCTAssertTrue(model.isEmpty)
+        XCTAssertTrue(model.spaces.isEmpty)
         XCTAssertNil(model.selectedWorkspaceID)
     }
 

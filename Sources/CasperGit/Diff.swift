@@ -1,5 +1,3 @@
-import Foundation
-
 /// A structured diff of a working tree against a base tree. Plain value data —
 /// no libgit2 handles escape here.
 public struct GitDiff: Equatable, Sendable {
