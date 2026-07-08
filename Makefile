@@ -32,8 +32,9 @@ DEV_APP := Casper-dev.app
 build:
 	swift build
 	@rm -rf $(DEV_APP)
-	@mkdir -p $(DEV_APP)/Contents/MacOS
+	@mkdir -p $(DEV_APP)/Contents/MacOS $(DEV_APP)/Contents/Resources
 	@cp .build/debug/casper $(DEV_APP)/Contents/MacOS/casper
+	@cp Packaging/Sounds/NotificationAlert.aiff $(DEV_APP)/Contents/Resources/NotificationAlert.aiff
 	@sed -e "s/__DEV_BUNDLE_ID__/$(DEV_BUNDLE_ID)/g" \
 		Packaging/Info-dev.plist > $(DEV_APP)/Contents/Info.plist
 	@if [ -n "$(CODESIGN_IDENTITY)" ]; then \
