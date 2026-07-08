@@ -31,6 +31,9 @@ sed -e "s/__SHORT_VERSION__/${SHORT_VERSION}/g" \
     -e "s/__BUNDLE_VERSION__/${BUNDLE_VERSION}/g" \
     "$ROOT/Packaging/Info.plist" > "$APP/Contents/Info.plist"
 
+# UNNotificationSound(named:) resolves the file from the bundle's Resources dir.
+cp "$ROOT/Packaging/Sounds/NotificationAlert.aiff" "$APP/Contents/Resources/NotificationAlert.aiff"
+
 # Copy non-system dylibs into Contents/Frameworks and rewrite load commands to
 # @executable_path/../Frameworks (recurses into transitive dependencies).
 dylibbundler \

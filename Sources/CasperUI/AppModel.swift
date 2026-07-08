@@ -137,7 +137,7 @@ final class AppModel {
         // banner, no sound), so the system ignores any sound we set. Only attach a
         // sound for levels that actually surface it, rather than storing dead state.
         if level != .passive {
-            content.sound = .default
+            content.sound = UNNotificationSound(named: UNNotificationSoundName("NotificationAlert.aiff"))
         }
         let request = UNNotificationRequest(
             identifier: workspaceID.uuidString, content: content, trigger: nil)
