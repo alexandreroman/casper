@@ -179,6 +179,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // live surface. Stays nil when the text was filtered out.
     private(set) var debugLastBulkText: String?
 
+    // Test seam: records the last focus state `pushFocus` sent to libghostty
+    // (`ghostty_surface_set_focus`), which is set-only and exposes no getter to
+    // read back. Lets a unit test assert `blurForLayoutChange()` fired without a
+    // live surface or real OS focus. Stays nil until the first focus transition.
+    private(set) var debugLastFocusValue: Bool?
+
     public var debugHasSurface: Bool { surface != nil }
 
     public func debugReadText(scrollback: Bool) -> String? {
@@ -330,14 +336,36 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // MARK: Focus
 
     public override func becomeFirstResponder() -> Bool {
-        surface?.setFocus(true)
+        pushFocus(true)
         onFocus(surfaceID)
         return super.becomeFirstResponder()
     }
 
     public override func resignFirstResponder() -> Bool {
-        surface?.setFocus(false)
+        pushFocus(false)
         return super.resignFirstResponder()
+    }
+
+    /// Tell libghostty this surface lost focus without going through AppKit's
+    /// first-responder chain. A layout restructure that reparents this view's
+    /// container (e.g. splitting in a new terminal) can silently detach it from
+    /// the window before `resignFirstResponder()` would normally fire —
+    /// `removeFromSuperview()`, whether called directly or via an ancestor,
+    /// never invokes it — leaving libghostty's focus state (and the solid
+    /// caret it renders) stuck on this surface. Call this explicitly, before
+    /// the restructure, on whichever surface currently holds focus.
+    public func blurForLayoutChange() {
+        pushFocus(false)
+    }
+
+    // Single point that pushes focus state into libghostty, so every
+    // focus transition (AppKit-driven or the explicit pre-restructure blur)
+    // records what was last sent — libghostty exposes no getter to read it back.
+    private func pushFocus(_ focused: Bool) {
+        surface?.setFocus(focused)
+        #if DEBUG
+        debugLastFocusValue = focused
+        #endif
     }
 
     /// Ask the host to close this surface. Invoked by libghostty's

@@ -653,6 +653,16 @@ final class AppModel {
         at: (space: Int, workspace: Int), focused: UUID,
         orientation: LayoutNode.Orientation, side: LayoutTree.InsertSide, surface: Surface
     ) {
+        // Blur the surface that actually currently holds focus before the layout
+        // restructure. Note this is `focusedSurfaceID`, NOT the `focused` split
+        // anchor — a context-menu split can target a pane other than the focused
+        // one. The SwiftUI re-render this triggers can silently detach the focused
+        // view from the window (reparenting an ancestor container) before AppKit
+        // fires `resignFirstResponder`, so libghostty would otherwise keep
+        // rendering a solid caret on it even though the new surface holds focus.
+        if let currentlyFocused = focusedSurfaceID {
+            (surfaceViews[currentlyFocused] as? GhosttySurfaceView)?.blurForLayoutChange()
+        }
         let (layout, newFocus) = LayoutTree.split(
             spaces[at.space].workspaces[at.workspace].layout,
             focused: focused, orientation: orientation, side: side, surface: surface)

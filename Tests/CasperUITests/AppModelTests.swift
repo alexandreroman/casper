@@ -2,6 +2,7 @@ import Clibgit2
 import XCTest
 import CasperAgents
 import CasperCore
+@testable import CasperGhostty
 @testable import CasperGit
 @testable import CasperUI
 
@@ -685,6 +686,45 @@ final class AppModelTests: XCTestCase {
         let focus = model.focusedSurfaceID!
         XCTAssertNotEqual(focus, first)
         XCTAssertTrue(surfaceKindIsTerminal(layout, focus))
+    }
+
+    /// Adding a terminal by splitting must blur the previously-focused surface's
+    /// cached view up front, or libghostty keeps rendering a solid caret on the
+    /// old surface after focus has moved to the new one (the layout restructure
+    /// silently detaches the old view before `resignFirstResponder` would fire).
+    func testApplyNewTerminalBlursPreviouslyFocusedSurface() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.runtime = try GhosttyRuntime()
+
+        let workspace = model.spaces[0].workspaces[0]
+        let surface = LayoutTree.surfaces(workspace.layout).first { $0.id == first }!
+        let view = model.surfaceView(for: surface, in: workspace)!
+
+        model.applyNewTerminal()
+
+        XCTAssertEqual(view.debugLastFocusValue, false)
+    }
+
+    /// A context-menu split can target a pane other than the focused one. The
+    /// blur must follow the surface that actually holds the caret, not the split
+    /// anchor, otherwise the focused pane keeps a solid caret while focus moves.
+    func testApplySplitFromNonFocusedSurfaceBlursTheFocusedSurface() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.runtime = try GhosttyRuntime()
+
+        // Split once so there are two surfaces; focus moves to the new one.
+        model.applyNewSplit(.right)
+        let focused = model.focusedSurfaceID!
+        XCTAssertNotEqual(focused, first)  // `first` is now the unfocused pane
+
+        let workspace = model.spaces[0].workspaces[0]
+        let focusedSurface = LayoutTree.surfaces(workspace.layout).first { $0.id == focused }!
+        let focusedView = model.surfaceView(for: focusedSurface, in: workspace)!
+
+        // Split FROM the non-focused pane (`first`), as a context-menu action does.
+        model.applySplit(from: first, direction: .down)
+
+        XCTAssertEqual(focusedView.debugLastFocusValue, false)
     }
 
     func testCloseLastSurfaceOfPrimaryRemovesSpace() throws {
