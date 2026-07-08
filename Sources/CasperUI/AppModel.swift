@@ -641,9 +641,15 @@ final class AppModel {
     /// live in a window: at cold launch (and after a workspace switch) nothing else
     /// pushes first responder to the terminal, so AppKit's key-view loop would
     /// otherwise hand it to the inspector's URL field. The `focusedSurfaceID` guard
-    /// keeps a freshly mounted background surface from stealing focus.
+    /// keeps a freshly mounted background surface from stealing focus — and, since
+    /// libghostty gives a brand-new surface no defined initial focus state, every
+    /// non-focused pane needs an explicit blur to render correctly, not just an
+    /// early return, or it would keep libghostty's default (solid-caret) state.
     private func focusSurfaceViewIfActive(_ id: UUID) {
-        guard id == focusedSurfaceID else { return }
+        guard id == focusedSurfaceID else {
+            (surfaceViews[id] as? GhosttySurfaceView)?.blurForLayoutChange()
+            return
+        }
         focusActiveSurfaceView()
     }
 
