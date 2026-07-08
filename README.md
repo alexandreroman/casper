@@ -93,6 +93,36 @@ make clean    # remove build artifacts
 `make bundle`/`make dist` also need `brew install dylibbundler` to embed the
 libgit2 dylib chain so the bundled `Casper.app` runs on a clean Mac.
 
+### Debug build code signing (optional)
+
+`make build` assembles a minimal `Casper-dev.app` bundle around the debug
+binary and signs it with a local **Apple Development** identity whenever one is
+available in your keychain. This keeps the Screen Recording permission that the
+`debug-casper` skill relies on (for screenshot capture) across rebuilds, instead
+of macOS re-prompting after every recompile. The `.app` wrapper is required: a
+bare signed executable never registers with macOS's privacy database (TCC) at
+all, so only a real bundle can be granted the permission. Without an identity
+everything still works — the bundle stays ad-hoc signed and you get the usual
+re-prompt-on-rebuild behavior.
+
+To create a free identity once (no paid Developer Program membership needed):
+
+1. Xcode → Settings → Accounts → **+** → Apple ID → sign in with any Apple ID.
+2. Select the resulting team → **Manage Certificates…** → **+** →
+   **Apple Development**.
+3. `make build` picks it up automatically from then on — no configuration
+   required.
+
+If `security find-identity -v -p codesigning` still reports 0 identities after
+creating the certificate, the Apple WWDR intermediate certificate is likely
+missing (`codesign` fails with "unable to build chain to self-signed root").
+Download the current intermediate from
+<https://www.apple.com/certificateauthority/> (e.g. `AppleWWDRCAG3.cer`) and
+install it with `security add-certificates -k login.keychain-db AppleWWDRCAG3.cer`.
+
+See [`.superpowers/plans/screenshot-capture-permissions.md`](./.superpowers/plans/screenshot-capture-permissions.md)
+for the full rationale.
+
 ### Continuous integration
 
 Tests run on every push to `main` and every pull request via GitHub Actions on

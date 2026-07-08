@@ -29,7 +29,7 @@ char, `[A-Za-z0-9._-]` limit:
 make build
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
 export CASPER_SESSION="test-${branch:-x}-$$"   # e.g. test-my-feature-51377
-.build/debug/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
+Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
 ```
 
 The GUI then binds its debug socket at `/tmp/casper-debug-$CASPER_SESSION.sock`.

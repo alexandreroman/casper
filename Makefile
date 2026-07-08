@@ -22,20 +22,25 @@ DEV_SESSION := $(shell br=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 # persistence — see .superpowers/plans/screenshot-capture-permissions.md).
 # Auto-detects the first "Apple Development" identity in the keychain;
 # override with `make build CODESIGN_IDENTITY="Apple Development: ..."`.
-# Empty means "no identity available" — falls back to the toolchain's
-# default ad-hoc signature.
+# Empty means "no identity available" — falls back to an ad-hoc signature.
 CODESIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null \
 	| grep -m1 'Apple Development' | sed -E 's/.*"(Apple Development[^"]*)".*/\1/')
-DEV_BUNDLE_ID := com.alexandreroman.casper.dev
+DEV_BUNDLE_ID := com.github.alexandreroman.casper.dev
+DEV_APP := Casper-dev.app
 
-## build: compile the debug build
+## build: compile the debug build and assemble the signed dev app bundle
 build:
 	swift build
+	@rm -rf $(DEV_APP)
+	@mkdir -p $(DEV_APP)/Contents/MacOS
+	@cp .build/debug/casper $(DEV_APP)/Contents/MacOS/casper
+	@sed -e "s/__DEV_BUNDLE_ID__/$(DEV_BUNDLE_ID)/g" \
+		Packaging/Info-dev.plist > $(DEV_APP)/Contents/Info.plist
 	@if [ -n "$(CODESIGN_IDENTITY)" ]; then \
-		codesign --force --sign "$(CODESIGN_IDENTITY)" \
-			--identifier $(DEV_BUNDLE_ID) .build/debug/casper; \
+		codesign --force --sign "$(CODESIGN_IDENTITY)" $(DEV_APP); \
 	else \
-		echo "note: no Apple Development signing identity found — casper" \
+		codesign --force --sign - $(DEV_APP); \
+		echo "note: no Apple Development signing identity found — $(DEV_APP)" \
 			"stays ad-hoc signed and Screen Recording permission will" \
 			"reset on rebuild. Setup: .superpowers/plans/screenshot-capture-permissions.md"; \
 	fi
@@ -43,7 +48,7 @@ build:
 ## dev: recompile and launch the app under a per-branch isolated dev session
 dev: build
 	@echo "==> dev session: $(DEV_SESSION)"
-	.build/debug/casper --session $(DEV_SESSION)
+	$(DEV_APP)/Contents/MacOS/casper --session $(DEV_SESSION)
 
 ## test: run the full test suite
 # Strip the ambient CASPER_* socket/session vars: running tests inside a terminal
@@ -72,7 +77,7 @@ dist: bundle
 
 ## clean: remove build artifacts
 clean:
-	rm -rf .build
+	rm -rf .build $(DEV_APP)
 
 ## vendor: re-sync vendored files (pinned libghostty header) via Carvel vendir
 vendor:
