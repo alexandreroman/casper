@@ -2,12 +2,13 @@ import AppKit
 import CasperCore
 import CasperGhostty
 import Foundation
+import UserNotifications
 
 /// Carries lifecycle work that a SwiftUI `App` scene does not express: start the
 /// control server, set the AppKit menu, and save on terminate. Shares the one
 /// `AppModel` with the SwiftUI scene via `AppModel.shared`.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate {
     private var controlServer: ControlServer?
     private var keyWindowObserver: NSObjectProtocol?
     private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
@@ -71,6 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CasperLog.app.failure("control server failed to start", error)
         }
 
+        setupNotifications()
+
         // When a window becomes key (the app returns to the foreground), dismiss
         // the attention bubble of the now-focused workspace. Mirrors the
         // selection-time clear in `selectWorkspace`.
@@ -92,6 +95,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Bare SPM executable launched from a terminal: macOS does not foreground
         // us automatically, so activate explicitly.
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Register as the notification delegate and request authorization once, at
+    /// launch. Without an explicit `requestAuthorization` call macOS silently drops
+    /// every `UNNotificationRequest`, so this is what makes `casper notify` visible.
+    private func setupNotifications() {
+        // `UNUserNotificationCenter.current()` aborts (does not no-op) when the
+        // process has no bundle identifier — e.g. the bare `swift run` executable
+        // under `make dev`. Same guard the `deliverNotification` closure uses.
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if let error {
+                CasperLog.app.failure("notification authorization request failed", error)
+            } else if !granted {
+                // Not an error, but worth a diagnostic trail: with authorization denied,
+                // macOS drops every request, so `casper notify` silently does nothing.
+                CasperLog.app.debug("notification authorization denied by the user")
+            }
+        }
+    }
+
+    /// Present notifications as banners (with sound) even while Casper is frontmost;
+    /// otherwise macOS would suppress them for the foreground app.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .list])
+    }
+
+    /// Route a notification tap back to its workspace. The request identifier is the
+    /// workspace id (set by `deliverNotification`), so parsing it here is what lets a
+    /// tap select the originating workspace before bringing Casper to the front.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Guard on the workspace still existing: `selectWorkspace` sets the selection
+        // unconditionally, so tapping a notification for a since-deleted workspace
+        // would otherwise leave a dangling selection.
+        if let workspaceID = UUID(uuidString: response.notification.request.identifier),
+           AppModel.shared.workspace(id: workspaceID) != nil {
+            AppModel.shared.selectWorkspace(workspaceID)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        completionHandler()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

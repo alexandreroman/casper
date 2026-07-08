@@ -67,8 +67,10 @@ final class AgentDetectionTests: XCTestCase {
     func testDetectedBlockedDeliversNotificationAndRaisesDot() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }  // not focused ⇒ dot may raise
-        var delivered: [(title: String, body: String)] = []
-        model.deliverNotification = { title, body in delivered.append((title, body)) }
+        var delivered: [(title: String, body: String, workspaceID: UUID)] = []
+        model.deliverNotification = { title, body, workspaceID in
+            delivered.append((title, body, workspaceID))
+        }
 
         model.setDetectedAgentState(.blocked, for: id)
 
@@ -76,6 +78,9 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(delivered.count, 1)
         XCTAssertEqual(delivered.first?.title, "main")
         XCTAssertEqual(delivered.first?.body, "Waiting for your input")
+        // The third argument is the routing key: the AppDelegate uses it as the
+        // notification's request identifier to select the right workspace on tap.
+        XCTAssertEqual(delivered.first?.workspaceID, id)
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 
@@ -84,7 +89,7 @@ final class AgentDetectionTests: XCTestCase {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
         var delivered: [(title: String, body: String)] = []
-        model.deliverNotification = { title, body in delivered.append((title, body)) }
+        model.deliverNotification = { title, body, _ in delivered.append((title, body)) }
 
         model.setDetectedAgentState(.done, for: id)
 
@@ -96,7 +101,7 @@ final class AgentDetectionTests: XCTestCase {
     func testDetectedWorkingOrIdleDoesNotNotify() {
         let (model, id) = seededModel()
         var delivered = 0
-        model.deliverNotification = { _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _ in delivered += 1 }
 
         model.setDetectedAgentState(.working, for: id)
         model.setDetectedAgentState(.idle, for: id)
@@ -109,7 +114,7 @@ final class AgentDetectionTests: XCTestCase {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
         var delivered = 0
-        model.deliverNotification = { _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _ in delivered += 1 }
 
         model.setDetectedAgentState(.blocked, for: id)
         model.setDetectedAgentState(.blocked, for: id)
@@ -118,17 +123,18 @@ final class AgentDetectionTests: XCTestCase {
     }
 
     /// A `blocked` transition while the workspace is focused (selected + window key)
-    /// still delivers the notification but suppresses the attention dot — the focus
-    /// semantics come for free from `controlRaiseNotification`.
-    func testDetectedBlockedWhileFocusedNotifiesButNoDot() {
+    /// suppresses both the macOS notification and the attention dot — the user is
+    /// already looking at it. The focus semantics come for free from
+    /// `controlRaiseNotification`.
+    func testDetectedBlockedWhileFocusedDoesNotNotifyOrRaiseDot() {
         let (model, id) = seededModel()  // seeded session selects this workspace
         model.isWindowKey = { true }
         var delivered = 0
-        model.deliverNotification = { _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _ in delivered += 1 }
 
         model.setDetectedAgentState(.blocked, for: id)
 
-        XCTAssertEqual(delivered, 1, "an explicit message is delivered even when focused")
+        XCTAssertEqual(delivered, 0, "no notification is delivered while the workspace is focused")
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false,
                        "the attention dot is suppressed for a focused workspace")
     }

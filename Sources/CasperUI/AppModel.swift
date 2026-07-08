@@ -114,19 +114,25 @@ final class AppModel {
     /// Test hook fired after each successful/attempted persist. nil in production.
     @ObservationIgnored var onPersistForTest: (() -> Void)?
 
-    /// Delivers a local notification. Injectable for tests; the default posts a
-    /// best-effort `UserNotifications` request. Skipped entirely when the process
-    /// has no bundle identifier (a bare `swift run` executable): on macOS 26
-    /// `UNUserNotificationCenter.current()` aborts rather than no-ops without a
-    /// bundle, so guarding here keeps `make dev` runs from crashing on the first
-    /// hook notification.
-    @ObservationIgnored var deliverNotification: (String, String) -> Void = { title, body in
+    /// Delivers a local notification for a workspace. Injectable for tests; the
+    /// default posts a best-effort `UserNotifications` request. Skipped entirely when
+    /// the process has no bundle identifier (a bare `swift run` executable): on macOS
+    /// 26 `UNUserNotificationCenter.current()` aborts rather than no-ops without a
+    /// bundle, so guarding here keeps `make dev` runs from crashing on the first hook
+    /// notification.
+    ///
+    /// The request identifier is the workspace id (not a random UUID) so the
+    /// `AppDelegate`'s `didReceive` can route a tap back to the right workspace. It
+    /// also means a second notification for the same workspace replaces the first in
+    /// Notification Center instead of piling up — matching how
+    /// `pendingNotificationMessage` only ever holds the latest message per workspace.
+    @ObservationIgnored var deliverNotification: (String, String, UUID) -> Void = { title, body, workspaceID in
         guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         let request = UNNotificationRequest(
-            identifier: UUID().uuidString, content: content, trigger: nil)
+            identifier: workspaceID.uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
 
@@ -1223,22 +1229,21 @@ final class AppModel {
         return true
     }
 
-    /// Raise a workspace notification. The persistent attention bubble is suppressed
-    /// when the target is focused (selected AND the window is key); the macOS
-    /// notification (when a message is given) is always delivered. When raised, the
-    /// message (if any) is also stored on the workspace so the sidebar can display it,
-    /// mirrored by `clearNotificationForFocusedWorkspace`.
+    /// Raise a workspace notification. Both the persistent attention bubble and the
+    /// macOS notification (when a message is given) are suppressed when the target is
+    /// focused (selected AND the window is key) — the user is already looking at it.
+    /// When raised, the message (if any) is also stored on the workspace so the
+    /// sidebar can display it, mirrored by `clearNotificationForFocusedWorkspace`.
     ///
-    /// Returns `false` when no such workspace exists, `true` otherwise. The
-    /// attention bubble is only raised when the target is not already focused; the
-    /// macOS notification (when a message is given) is always delivered.
+    /// Returns `false` when no such workspace exists, `true` otherwise. The attention
+    /// bubble and the macOS notification are only delivered when the target is not
+    /// already focused.
     @discardableResult
     func controlRaiseNotification(message: String?, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
-        // The attention bubble draws the eye to a workspace you are NOT looking
-        // at. If the target is already focused (selected AND the window is key),
-        // raising it is noise, so skip it. The macOS notification (with a message)
-        // is still delivered so an explicit `--message` is never silently dropped.
+        // The attention bubble and the macOS notification both draw the eye to a
+        // workspace you are NOT looking at. If the target is already focused
+        // (selected AND the window is key), raising either is noise, so skip both.
         let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
         if !focused {
             spaces[at.space].workspaces[at.workspace].pendingNotification = true
@@ -1252,8 +1257,8 @@ final class AppModel {
         if spaces[at.space].isCollapsed {
             withAnimation(.snappy) { spaces[at.space].isCollapsed = false }
         }
-        if let message {
-            deliverNotification(spaces[at.space].workspaces[at.workspace].name, message)
+        if let message, !focused {
+            deliverNotification(spaces[at.space].workspaces[at.workspace].name, message, workspaceID)
         }
         persist()
         return true
