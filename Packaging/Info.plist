@@ -9,7 +9,7 @@
     <key>CFBundleExecutable</key>
     <string>casper</string>
     <key>CFBundleIdentifier</key>
-    <string>com.alexandreroman.casper</string>
+    <string>com.github.alexandreroman.casper</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

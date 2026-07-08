@@ -118,10 +118,12 @@ DEV_BUNDLE_ID := com.github.alexandreroman.casper.dev
 DEV_APP := Casper-dev.app
 ```
 
-(`com.github.alexandreroman.casper.dev` matches the existing `CasperLog`
-subsystem identifier already used throughout the codebase, rather than
-introducing a third naming variant alongside it and the release bundle's
-`com.alexandreroman.casper`.)
+(`com.github.alexandreroman.casper.dev` is the `.dev`-suffixed variant of
+`com.github.alexandreroman.casper` — the single identifier now used
+everywhere in the project: the `CasperLog` subsystem, and, following a
+cleanup prompted by this work, the release bundle's `CFBundleIdentifier`
+too (`Packaging/Info.plist`, previously the inconsistent
+`com.alexandreroman.casper`). One name, one convention, no third variant.)
 
 Extend `build` to assemble and sign `Casper-dev.app` after compiling:
 

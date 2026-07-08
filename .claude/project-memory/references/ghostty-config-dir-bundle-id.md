@@ -13,16 +13,22 @@ directory `~/Library/Application Support/<CFBundleIdentifier>/` from the
 
 **Consequence for Casper:**
 
-- **Bundled `Casper.app`** (bundle id `com.alexandreroman.casper`) looks in
-  `~/Library/Application Support/com.alexandreroman.casper/` — empty — so it
-  gets none of the user's real Ghostty config and falls back to libghostty's
-  compiled vanilla default (`background = #282c34`, a gray). Verify the vanilla
-  default with `ghostty +show-config --default`.
-- **Dev (`swift run casper` / `make dev`)** is a bare binary with no bundle id,
-  so libghostty falls back to Ghostty's own `com.mitchellh.ghostty` dir and
-  *accidentally* picks up the user's real Ghostty theme (hence dev looked
-  darker than the bundle). The XDG `~/.config/ghostty/config` (HOME-based, not
-  bundle-scoped) is read by both dev and bundle.
+- **Bundled `Casper.app`** (bundle id `com.github.alexandreroman.casper`) looks
+  in `~/Library/Application Support/com.github.alexandreroman.casper/` — empty
+  — so it gets none of the user's real Ghostty config and falls back to
+  libghostty's compiled vanilla default (`background = #282c34`, a gray).
+  Verify the vanilla default with `ghostty +show-config --default`.
+- **Dev (`make dev`)** now also launches through a real bundle
+  (`Casper-dev.app`, bundle id `com.github.alexandreroman.casper.dev` — see
+  [[screenshot-capture-permissions]]), so it behaves the same as the release
+  bundle: an empty, bundle-id-scoped config dir, baked-in default theme. This
+  reverses the *older* behavior this note originally described, from before
+  `make dev` wrapped the binary in a bundle: back then `swift run casper` was
+  a bare binary with no bundle id, so libghostty fell back to Ghostty's own
+  `com.mitchellh.ghostty` dir and *accidentally* picked up the user's real
+  Ghostty theme (hence dev used to look darker than the bundle). The XDG
+  `~/.config/ghostty/config` (HOME-based, not bundle-scoped) is read by both
+  dev and bundle either way.
 
 **Why:** this explains why `Sources/CasperGhostty/GhosttyDefaultConfig.swift`
 exists — Casper bakes in a self-contained default theme (inline colors, no

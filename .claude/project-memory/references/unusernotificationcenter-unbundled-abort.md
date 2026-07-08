@@ -28,3 +28,11 @@ misattribute. Same family as other macOS-26 unbundled/abort gotchas (native
 **How to access:** any new `UserNotifications` call path must keep the bundle-id
 guard (or run only under a real bundle). To reproduce/observe, run `make dev` and
 `casper notify --message test` from a Casper terminal.
+
+**Needs re-verification:** `make dev` now launches through a real bundle
+(`Casper-dev.app`, see [[screenshot-capture-permissions]]), so
+`Bundle.main.bundleIdentifier` is no longer nil under `make dev` — the guard
+above will now let `casper notify` reach `UNUserNotificationCenter.current()`
+instead of skipping it. Whether that actually delivers a notification cleanly
+under `make dev`, or hits a different unbundled-adjacent abort, is untested;
+confirm before relying on notifications working in dev builds.
