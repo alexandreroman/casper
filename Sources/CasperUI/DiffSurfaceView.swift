@@ -8,7 +8,8 @@ import SwiftUI
 private struct FileHighlight { var new: [AttributedString]?; var old: [AttributedString]? }
 
 /// Read-only diff surface: the workspace's working tree vs HEAD, per-file, with
-/// +/- line coloring. Refreshes on open and on the button.
+/// +/- line coloring. Refreshes on open and on the button. Long code lines wrap
+/// rather than requiring horizontal scrolling.
 struct DiffSurfaceView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
@@ -25,25 +26,14 @@ struct DiffSurfaceView: View {
     /// Nonce of the last `model.diffScrollTarget` this view acted on, so a target
     /// is applied once (not re-applied on every unrelated body re-evaluation).
     @State private var appliedScrollNonce = 0
-    /// Visible width of the content area, measured once laid out. Drives the
-    /// full-bleed row/header backgrounds (see `DiffFileView`/`DiffLineRow`).
-    @State private var contentWidth: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            // GeometryReader is greedy, so it anchors the content region to the
-            // full available area (top-aligned file list) and hands us its width.
-            GeometryReader { proxy in
-                content
-                    .onAppear { contentWidth = proxy.size.width }
-                    .onChange(of: proxy.size) { _, size in contentWidth = size.width }
-            }
-        }
-        .onAppear { if !loaded { refresh() } }
-        .onChange(of: colorScheme) { _, _ in if diff != nil { startHighlighting() } }
-        .onChange(of: model.diffRevision) { _, _ in refresh() }
-        .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
-        .onDisappear { highlightTask?.cancel() }
+        content
+            .onAppear { if !loaded { refresh() } }
+            .onChange(of: colorScheme) { _, _ in if diff != nil { startHighlighting() } }
+            .onChange(of: model.diffRevision) { _, _ in refresh() }
+            .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
+            .onDisappear { highlightTask?.cancel() }
     }
 
     @ViewBuilder private var content: some View {
@@ -53,20 +43,21 @@ struct DiffSurfaceView: View {
                     systemImage: "checkmark.circle", title: "No changes",
                     message: "The working tree matches HEAD.")
             } else {
-                ScrollView([.vertical, .horizontal]) {
+                ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         ForEach(diff.files) { file in
-                            DiffFileView(
-                                file: file, contentWidth: contentWidth, highlight: highlights[file.id],
-                                isLastFile: file.id == diff.files.last?.id)
+                            Section {
+                                DiffFileView(
+                                    file: file, highlight: highlights[file.id],
+                                    isLastFile: file.id == diff.files.last?.id)
+                            } header: {
+                                DiffFileHeaderBar(file: file)
+                            }
                         }
                     }
                     .padding(.bottom, 24)
-                    .frame(minWidth: contentWidth)
                     .scrollTargetLayout()
                 }
-                // Rest an undersized diff at the top instead of letting a dual-axis
-                // ScrollView vertically center it.
                 .defaultScrollAnchor(.top)
                 .scrollPosition(id: $scrolledFileID, anchor: .top)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -189,46 +180,87 @@ private struct DiffEmptyState: View {
     }
 }
 
+/// Per-file header band, used as each file's pinned `Section` header (see
+/// `pinnedViews: [.sectionHeaders]` in `DiffSurfaceView.content`): file path +
+/// status on the left, the +N −N line summary pushed to the right via a
+/// flexible spacer, sized to the diff panel's own width (`maxWidth: .infinity`)
+/// since there's no horizontal scrolling to diverge from. A 1pt hairline marks
+/// its bottom edge against the file content scrolling underneath it.
+private struct DiffFileHeaderBar: View {
+    let file: GitDiffFile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
+                Text(title).font(.system(.body, design: .monospaced)).bold()
+                Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                HStack(spacing: 8) {
+                    Text("+\(insertions)").foregroundStyle(DiffLineStyle.insertionTint)
+                    Text("\u{2212}\(deletions)").foregroundStyle(DiffLineStyle.deletionTint)
+                }
+                .font(.callout.monospacedDigit().bold())
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.12))
+            .background(Color(nsColor: .windowBackgroundColor))
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(height: 1)
+        }
+    }
+
+    private var title: String {
+        if file.oldPath.isEmpty { return file.newPath }
+        if file.newPath.isEmpty { return file.oldPath }
+        return file.oldPath == file.newPath
+            ? file.newPath : "\(file.oldPath) → \(file.newPath)"
+    }
+
+    private var insertions: Int {
+        file.hunks.flatMap(\.lines).filter { $0.kind == .addition }.count
+    }
+
+    private var deletions: Int {
+        file.hunks.flatMap(\.lines).filter { $0.kind == .deletion }.count
+    }
+}
+
 private struct DiffFileView: View {
     let file: GitDiffFile
-    let contentWidth: CGFloat
     let highlight: FileHighlight?
     /// True for the diff's last file, so its trailing gap isn't doubled up
     /// with the outer scroll content's own bottom padding.
     let isLastFile: Bool
 
     var body: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 0) {
-                if file.isBinary {
-                    Text("Binary file")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.vertical, 4)
-                } else {
-                    ForEach(visibleHunks) { entry in
-                        Text(entry.hunk.header)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .padding(.top, 6).padding(.bottom, 2)
-                        ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
-                            DiffLineRow(
-                                line: line, gutterWidth: gutterWidth, contentWidth: contentWidth,
-                                highlighted: highlightedLine(for: line))
-                        }
-                    }
-                    if hiddenLineCount > 0 {
-                        Text("Diff too large — \(hiddenLineCount) more lines hidden")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.vertical, 6)
+        VStack(alignment: .leading, spacing: 0) {
+            if file.isBinary {
+                Text("Binary file")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(visibleHunks) { entry in
+                    Text(entry.hunk.header)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.top, 6).padding(.bottom, 2)
+                    ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
+                        DiffLineRow(
+                            line: line, gutterWidth: gutterWidth,
+                            highlighted: highlightedLine(for: line))
                     }
                 }
+                if hiddenLineCount > 0 {
+                    Text("Diff too large — \(hiddenLineCount) more lines hidden")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .padding(.vertical, 6)
+                }
             }
-            .padding(.bottom, isLastFile ? 0 : 14)
-        } header: {
-            header
         }
+        .padding(.bottom, isLastFile ? 0 : 14)
     }
 
     /// Per-file cap on rendered diff rows. A single pathologically large file
@@ -281,47 +313,6 @@ private struct DiffFileView: View {
         return lines[number - 1]
     }
 
-    /// Full-bleed header band: file path + status on the left, the +N −N line
-    /// summary pushed to the right, over a subtly elevated fill. Pinned as the
-    /// enclosing `Section`'s sticky header, so a 1pt hairline marks its bottom
-    /// edge against the file content scrolling underneath it.
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .lastTextBaseline, spacing: 8) {
-                Text(title).font(.system(.body, design: .monospaced)).bold()
-                Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
-                Spacer(minLength: 12)
-                HStack(spacing: 8) {
-                    Text("+\(insertions)").foregroundStyle(DiffLineStyle.insertionTint)
-                    Text("\u{2212}\(deletions)").foregroundStyle(DiffLineStyle.deletionTint)
-                }
-                .font(.callout.monospacedDigit().bold())
-            }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.12))
-            .background(Color(nsColor: .windowBackgroundColor))
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(height: 1)
-        }
-        .frame(minWidth: contentWidth, alignment: .leading)
-    }
-
-    private var title: String {
-        if file.oldPath.isEmpty { return file.newPath }
-        if file.newPath.isEmpty { return file.oldPath }
-        return file.oldPath == file.newPath
-            ? file.newPath : "\(file.oldPath) → \(file.newPath)"
-    }
-
-    private var insertions: Int {
-        file.hunks.flatMap(\.lines).filter { $0.kind == .addition }.count
-    }
-
-    private var deletions: Int {
-        file.hunks.flatMap(\.lines).filter { $0.kind == .deletion }.count
-    }
-
     /// Widest line number across the file's hunks, so the gutter never truncates
     /// (e.g. 5-digit line numbers in a large file).
     private var maxDigits: Int {
@@ -340,16 +331,15 @@ private struct DiffFileView: View {
 private struct DiffLineRow: View {
     let line: GitDiffLine
     let gutterWidth: CGFloat
-    let contentWidth: CGFloat
     let highlighted: AttributedString?
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             // Leading accent stripe hugs the very left edge (clear for context).
             Rectangle()
                 .fill(DiffLineStyle.accent(for: line.kind))
                 .frame(width: 3)
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Text(DiffLineStyle.lineNumber(for: line).map(String.init) ?? "")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(numberColor)
@@ -358,11 +348,10 @@ private struct DiffLineRow: View {
                     .frame(width: gutterWidth, alignment: .trailing)
                 codeText
                     .font(.system(size: 14, design: .monospaced))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(minWidth: contentWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(DiffLineStyle.background(for: line.kind))
     }
 
@@ -377,7 +366,7 @@ private struct DiffLineRow: View {
     /// uniformly); the prefixed diff marker is tinted with the line's accent
     /// color regardless of highlight availability. Falls back to plain text
     /// with a uniform `.primary` foreground for the code when there is no
-    /// highlight.
+    /// highlight. Wraps naturally instead of requiring horizontal scrolling.
     @ViewBuilder private var codeText: some View {
         if let highlightedContent {
             Text(highlightedContent)

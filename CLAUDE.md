@@ -16,7 +16,10 @@ and the map (`INDEX.md`). The `.superpowers/sdd/` scratch stays out of Git.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),
   **swift-argument-parser**, **libgit2**, and **HighlightSwift** (syntax
   highlighting for the diff view). Everything else uses built-in macOS
-  frameworks.
+  frameworks. (`swiftui-introspect` was tried for the diff view's frozen file
+  header but dropped — its `.introspect(.scrollView, on: .macOS(.v26))`
+  closure fires unreliably on macOS 26, a currently open upstream bug:
+  https://github.com/siteline/swiftui-introspect/issues/465.)
 
 ## Build & run
 
