@@ -705,6 +705,47 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(view.debugLastFocusValue, false)
     }
 
+    /// Full wiring, real libghostty surface: adjusting font size through the
+    /// live view must update the exact matching `Surface` in the model and
+    /// schedule a save — the whole capture path (Task 4's
+    /// `onFontSizeChange` -> Task 5's `updateSurfaceFontSize` -> Task 3's
+    /// `LayoutTree.updateSurface`) exercised together, not just unit-by-unit.
+    @MainActor
+    func testLiveFontSizeChangeFlowsFromViewIntoModelAndSchedulesSave() throws {
+        let (model, surfaceID) = try modelWithOneGitWorkspace()
+        model.runtime = try GhosttyRuntime()
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        let workspace = model.spaces[0].workspaces[0]
+        let surface = LayoutTree.surfaces(workspace.layout).first { $0.id == surfaceID }!
+        let view = try XCTUnwrap(model.surfaceView(for: surface, in: workspace))
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
+
+        let deadline = Date().addingTimeInterval(10)
+        while view.surface == nil, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        guard view.surface != nil else {
+            throw XCTSkip("libghostty could not create a surface in this environment")
+        }
+
+        view.increaseFontSize(nil)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        let updated = LayoutTree.surfaces(model.spaces[0].workspaces[0].layout)
+            .first { $0.id == surfaceID }
+        let updatedFontSize = try XCTUnwrap(updated?.fontSize)
+        XCTAssertGreaterThan(updatedFontSize, 0)
+
+        model.flushPendingSave()
+        XCTAssertGreaterThanOrEqual(saves, 1)
+    }
+
     /// A context-menu split can target a pane other than the focused one. The
     /// blur must follow the surface that actually holds the caret, not the split
     /// anchor, otherwise the focused pane keeps a solid caret while focus moves.
@@ -866,6 +907,40 @@ final class AppModelTests: XCTestCase {
         // save fires synchronously instead of after the 0.5s debounce delay.
         model.flushPendingSave()
         XCTAssertEqual(saves, 1)
+    }
+
+    // MARK: - Terminal font-size persistence
+
+    func testSurfaceConfigurationPassesPersistedFontSizeOrDefaultsToZero() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let workspace = model.spaces[0].workspaces[0]
+        let sized = Surface(kind: .terminal(cwd: workspace.worktreePath, command: nil), fontSize: 22)
+        let unsized = Surface(kind: .terminal(cwd: workspace.worktreePath, command: nil))
+
+        XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: sized).fontSize, 22)
+        XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: unsized).fontSize, 0)
+    }
+
+    func testUpdateSurfaceFontSizeUpdatesLayoutAndSchedulesSave() {
+        let (model, surfaceID) = modelWithOnePlainWorkspace()
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        model.updateSurfaceFontSize(surfaceID, size: 20)
+
+        let surface = LayoutTree.surfaces(model.spaces[0].workspaces[0].layout)
+            .first { $0.id == surfaceID }
+        XCTAssertEqual(surface?.fontSize, 20)
+
+        model.flushPendingSave()  // debounced; flush so the assertion is deterministic
+        XCTAssertEqual(saves, 1)
+    }
+
+    func testUpdateSurfaceFontSizeUnknownSurfaceIsNoOp() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let layoutBefore = model.spaces[0].workspaces[0].layout
+        model.updateSurfaceFontSize(UUID(), size: 20)
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
     }
 
     // MARK: - Diff surfaces (UI-5 Task 1)

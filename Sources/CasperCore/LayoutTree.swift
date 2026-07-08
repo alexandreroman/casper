@@ -27,6 +27,25 @@ public enum LayoutTree {
         }
     }
 
+    /// Replace the surface with `id` in the tree by applying `transform` to
+    /// it in place. Leaves the tree structurally unchanged (same shape,
+    /// values equal) if `id` is not found — the `Surface`-mutating twin of
+    /// `surfaceIDs`/`surfaces`, walking the same cases.
+    public static func updateSurface(
+        _ node: LayoutNode, id: UUID, _ transform: (inout Surface) -> Void
+    ) -> LayoutNode {
+        switch node {
+        case .leaf(var surface):
+            if surface.id == id { transform(&surface) }
+            return .leaf(surface)
+        case .split(let orientation, let children, let ratios):
+            return .split(
+                orientation: orientation,
+                children: children.map { updateSurface($0, id: id, transform) },
+                ratios: ratios)
+        }
+    }
+
     /// Map a Ghostty split direction to an orientation and insertion side.
     public static func orientationAndSide(
         for direction: GhosttySplitDirectionLike

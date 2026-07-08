@@ -795,7 +795,8 @@ final class AppModel {
             onFocus: { [weak self] id in self?.focusSurface(id) },
             onAttach: { [weak self] id in self?.focusSurfaceViewIfActive(id) },
             onClose: { [weak self] id in self?.applyCloseSurface(id) },
-            onContextMenu: { [weak self, id = surface.id] _ in self?.paneContextMenu(for: id) })
+            onContextMenu: { [weak self, id = surface.id] _ in self?.paneContextMenu(for: id) },
+            onFontSizeChange: { [weak self] id, size in self?.updateSurfaceFontSize(id, size: size) })
         surfaceViews[surface.id] = view
         return view
     }
@@ -958,6 +959,18 @@ final class AppModel {
         scheduleSave()
     }
 
+    /// Record a terminal surface's live font size (reported after a
+    /// Cmd+/Cmd-/Cmd0 change forwarded to libghostty) into its persisted
+    /// `Surface`, and schedule the existing debounced save — mirrors
+    /// `setInspectorWidth`'s drag-persistence pattern.
+    func updateSurfaceFontSize(_ surfaceID: UUID, size: Float) {
+        guard let at = locateSurface(surfaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].layout = LayoutTree.updateSurface(
+            spaces[at.space].workspaces[at.workspace].layout, id: surfaceID
+        ) { $0.fontSize = size }
+        scheduleSave()
+    }
+
     /// Drop cached views and browser coordinators for the given surface ids
     /// (their PTYs or `WKWebView`s are freed on deinit).
     private func discardSurfaceViews(_ ids: [UUID]) {
@@ -998,7 +1011,8 @@ final class AppModel {
         guard case .terminal(let cwd, let command) = terminal.kind else {
             return GhosttySurfaceConfiguration()
         }
-        var config = GhosttySurfaceConfiguration(workingDirectory: cwd, command: command)
+        var config = GhosttySurfaceConfiguration(
+            workingDirectory: cwd, command: command, fontSize: terminal.fontSize ?? 0)
         config.environment = ClaudeCodeAdapter.surfaceEnvironment(
             workspaceId: workspace.id,
             portBase: workspace.portBase,

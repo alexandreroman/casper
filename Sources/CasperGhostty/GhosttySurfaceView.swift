@@ -24,6 +24,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // (i.e. the terminal is not capturing the mouse). Returns nil to decline, in
     // which case the right-click is forwarded to libghostty as usual.
     var onContextMenu: ((NSEvent) -> NSMenu?)?
+    // Fired after a font-size action (increase/decrease/reset) changes this
+    // surface's live font size, reading back via `GhosttySurface.currentFontSize()`
+    // — libghostty exposes no getter to read a size change any other way.
+    var onFontSizeChange: (UUID, Float) -> Void
+    // The last font size reported to `onFontSizeChange`, so a font-size action
+    // that libghostty clamped to a no-op (e.g. reset when already at default,
+    // or increase past its max) does not re-report the same value.
+    private var lastReportedFontSize: Float?
     // Internal (not private): the clipboard callback trampolines in
     // `GhosttyRuntime` recover this view from libghostty's userdata and need
     // its surface.
@@ -55,13 +63,15 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
         onAttach: @escaping (UUID) -> Void = { _ in },
         onClose: @escaping (UUID) -> Void = { _ in },
-        onContextMenu: ((NSEvent) -> NSMenu?)? = nil
+        onContextMenu: ((NSEvent) -> NSMenu?)? = nil,
+        onFontSizeChange: @escaping (UUID, Float) -> Void = { _, _ in }
     ) {
         self.surfaceID = surfaceID
         self.onFocus = onFocus
         self.onAttach = onAttach
         self.onClose = onClose
         self.onContextMenu = onContextMenu
+        self.onFontSizeChange = onFontSizeChange
         self.runtime = runtime
         self.configuration = configuration
         super.init(frame: .zero)
@@ -397,14 +407,29 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     @objc func increaseFontSize(_ sender: Any?) {
         surface?.bindingAction("increase_font_size:1")
+        reportFontSizeIfChanged()
     }
 
     @objc func decreaseFontSize(_ sender: Any?) {
         surface?.bindingAction("decrease_font_size:1")
+        reportFontSizeIfChanged()
     }
 
     @objc func resetFontSize(_ sender: Any?) {
         surface?.bindingAction("reset_font_size")
+        reportFontSizeIfChanged()
+    }
+
+    // Read the surface's live font size back after a binding-action font-size
+    // change and forward it to `onFontSizeChange` only when it actually moved,
+    // so `AppModel` is never asked to persist a no-op change.
+    private func reportFontSizeIfChanged() {
+        guard let surface else { return }
+        let size = surface.currentFontSize()
+        if size != lastReportedFontSize {
+            lastReportedFontSize = size
+            onFontSizeChange(surfaceID, size)
+        }
     }
 
     // MARK: Keyboard
@@ -503,7 +528,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         guard window?.firstResponder === self else { return false }
         // ⌘ combos carry no committed text; return libghostty's consumed flag so unbound
         // ⌘ combos fall through to the menu / system.
-        return surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+        let consumed = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+        // A consumed ⌘ combo may have been one of libghostty's own default
+        // keybindings — including ⌘+/⌘-/⌘0's font-size resize, which libghostty
+        // resolves and applies entirely internally here, never going through
+        // increaseFontSize()/decreaseFontSize()/resetFontSize() below (those are
+        // for an explicit caller, e.g. a future menu item — nothing wires them to
+        // a physical keypress today). Check back so a real keypress-driven resize
+        // still gets captured and persisted, not just an explicit call.
+        if consumed { reportFontSizeIfChanged() }
+        return consumed
     }
 
     // MARK: Mouse

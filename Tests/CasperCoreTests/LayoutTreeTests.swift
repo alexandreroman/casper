@@ -28,6 +28,41 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(surfaces.map(\.id), LayoutTree.surfaceIDs(root))  // mirrors the id walk
     }
 
+    // MARK: - updateSurface
+
+    func testUpdateSurfaceMutatesMatchingLeaf() {
+        let a = term(); let b = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        let out = LayoutTree.updateSurface(root, id: a.id) { $0.fontSize = 18 }
+        guard case .split(_, let children, _) = out else { return XCTFail() }
+        guard case .leaf(let updated) = children[0], case .leaf(let untouched) = children[1] else {
+            return XCTFail()
+        }
+        XCTAssertEqual(updated.fontSize, 18)
+        XCTAssertNil(untouched.fontSize)
+        XCTAssertEqual(updated.id, a.id)  // identity preserved
+    }
+
+    func testUpdateSurfaceUnknownIDIsNoOp() {
+        let a = term()
+        let root = leaf(a)
+        let out = LayoutTree.updateSurface(root, id: UUID()) { $0.fontSize = 18 }
+        XCTAssertEqual(out, root)
+    }
+
+    func testUpdateSurfaceRecursesIntoNestedSplits() {
+        let a = term(); let b = term(); let c = term()
+        let nested = LayoutNode.split(
+            orientation: .vertical, children: [leaf(b), leaf(c)], ratios: [0.5, 0.5])
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), nested], ratios: [0.5, 0.5])
+        let out = LayoutTree.updateSurface(root, id: c.id) { $0.fontSize = 22 }
+        let surfaces = LayoutTree.surfaces(out)
+        XCTAssertEqual(surfaces.first { $0.id == c.id }?.fontSize, 22)
+        XCTAssertNil(surfaces.first { $0.id == b.id }?.fontSize)
+    }
+
     func testSplitFromRootLeafWrapsInSplit() {
         let a = term(); let root = leaf(a); let b = term()
         let (out, focus) = LayoutTree.split(

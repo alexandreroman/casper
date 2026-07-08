@@ -27,10 +27,32 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
 
     public var id: UUID
     public var kind: Kind
+    /// The terminal's live font size, captured after a runtime Cmd+/Cmd-/Cmd0
+    /// change; `nil` means "not customized — use libghostty's own default."
+    /// Only meaningful for `.terminal` surfaces; ignored for `.browser`.
+    public var fontSize: Float?
 
-    public init(id: UUID = UUID(), kind: Kind) {
+    public init(id: UUID = UUID(), kind: Kind, fontSize: Float? = nil) {
         self.id = id
         self.kind = kind
+        self.fontSize = fontSize
+    }
+
+    // Full case set is required once `init(from:)` is hand-rolled; case names
+    // match the property names so the synthesized `encode(to:)` keeps the same
+    // on-disk keys.
+    private enum CodingKeys: String, CodingKey { case id, kind, fontSize }
+
+    /// Decodes `fontSize` as optional so legacy `session.json` files (written
+    /// before font size was persisted) default it to nil, leaving that
+    /// terminal at libghostty's own default — unchanged from today's
+    /// behavior. `encode(to:)` stays synthesized, keeping the on-disk shape
+    /// stable and forward-writing the new field.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(UUID.self, forKey: .id)
+        self.kind = try c.decode(Kind.self, forKey: .kind)
+        self.fontSize = try c.decodeIfPresent(Float.self, forKey: .fontSize)
     }
 }
 

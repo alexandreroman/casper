@@ -149,4 +149,11 @@ final class GhosttySurface {
             cellWidthPixels: Int(size.cell_width_px),
             cellHeightPixels: Int(size.cell_height_px))
     }
+
+    /// The surface's current live font size, read via libghostty's
+    /// inherited-config mechanism (the same path it uses to propagate the
+    /// current, possibly runtime-adjusted, font size to a new child split).
+    func currentFontSize() -> Float {
+        ghostty_surface_inherited_config(surface, GHOSTTY_SURFACE_CONTEXT_WINDOW).font_size
+    }
 }

@@ -131,6 +131,32 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(WorkspaceKind.linked.rawValue, "linked")
     }
 
+    // MARK: - Terminal font-size persistence
+
+    func testSurfaceFontSizeDefaultsToNilAndRoundTrips() throws {
+        let withSize = Surface(kind: .terminal(cwd: "/w", command: nil), fontSize: 18.5)
+        let data = try JSONEncoder().encode(withSize)
+        let decoded = try JSONDecoder().decode(Surface.self, from: data)
+        XCTAssertEqual(decoded, withSize)
+        XCTAssertEqual(decoded.fontSize, 18.5)
+
+        let withoutSize = Surface(kind: .terminal(cwd: "/w", command: nil))
+        XCTAssertNil(withoutSize.fontSize)
+    }
+
+    func testSurfaceLegacyDecodeWithoutFontSizeDefaultsToNil() throws {
+        // A `session.json` written before font-size persistence existed has no
+        // `fontSize` key; decoding must default it to nil (libghostty's own
+        // default), matching today's unpersisted behavior.
+        let sid = UUID()
+        let json = """
+        { "id": "\(sid.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } }
+        """
+        let decoded = try JSONDecoder().decode(Surface.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.fontSize)
+        XCTAssertEqual(decoded.id, sid)
+    }
+
     // MARK: - Inspector state (Right Inspector Panel)
 
     func testInspectorStateDefaults() {
