@@ -131,6 +131,7 @@ final class AppModel {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
+        content.sound = .default
         let request = UNNotificationRequest(
             identifier: workspaceID.uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
