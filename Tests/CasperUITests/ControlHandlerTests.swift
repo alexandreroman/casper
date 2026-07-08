@@ -1,6 +1,7 @@
 import XCTest
 import CasperCore
 import Clibgit2
+import UserNotifications
 @testable import CasperGit
 @testable import CasperUI
 
@@ -417,7 +418,7 @@ final class ControlHandlerTests: XCTestCase {
     func testRaiseNotificationStoresMessageWhenBubbleSet() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
-        model.deliverNotification = { _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
         XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
         XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Task finished")
     }
@@ -425,7 +426,7 @@ final class ControlHandlerTests: XCTestCase {
     func testRaiseNotificationOnFocusedWorkspaceLeavesMessageNil() {
         let (model, id) = seededModel()   // id is the selected workspace
         model.isWindowKey = { true }      // and the window is key → focused
-        model.deliverNotification = { _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
         XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
         XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
     }
@@ -434,7 +435,7 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()   // id is the selected workspace
         model.isWindowKey = { true }      // and the window is key → focused
         var delivered = 0
-        model.deliverNotification = { _, _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _, _ in delivered += 1 }
         XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
         XCTAssertEqual(delivered, 0, "no macOS notification is delivered while the workspace is focused")
     }
@@ -442,7 +443,7 @@ final class ControlHandlerTests: XCTestCase {
     func testRaiseNotificationWithNilMessageClearsPreviousMessage() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
-        model.deliverNotification = { _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
         _ = model.controlRaiseNotification(message: "first", for: id)
         XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "first")
         _ = model.controlRaiseNotification(message: nil, for: id)  // bare re-notify
@@ -453,11 +454,67 @@ final class ControlHandlerTests: XCTestCase {
     func testForegroundClearsMessageAlongsideBubble() {
         let (model, id) = seededModel()          // id is selected
         model.isWindowKey = { false }            // app backgrounded
-        model.deliverNotification = { _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
         _ = model.controlRaiseNotification(message: "Waiting for your input", for: id)
         model.isWindowKey = { true }             // app returns to foreground
         model.clearNotificationForFocusedWorkspace()
         XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+    }
+
+    /// Captures the message (body) and interruption level a detected transition
+    /// into `state` passes to `deliverNotification`. Returns nil when nothing is
+    /// delivered. The workspace is left unfocused (window not key) so delivery is
+    /// not suppressed by the focus check.
+    private func deliveredNotification(
+        forDetected state: AgentState) -> (body: String, level: UNNotificationInterruptionLevel)? {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }  // unfocused → delivery not suppressed
+        var captured: (String, UNNotificationInterruptionLevel)?
+        model.deliverNotification = { _, body, _, level in captured = (body, level) }
+        model.setDetectedAgentState(state, for: id)
+        return captured.map { (body: $0.0, level: $0.1) }
+    }
+
+    func testDetectedBlockedDeliversActiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .blocked))
+        XCTAssertEqual(delivered.body, "Waiting for your input")
+        XCTAssertEqual(delivered.level, .active)
+    }
+
+    func testDetectedDoneDeliversPassiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .done))
+        XCTAssertEqual(delivered.body, "Task finished")
+        XCTAssertEqual(delivered.level, .passive)
+    }
+
+    func testDetectedErrorDeliversActiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .error))
+        XCTAssertEqual(delivered.body, "Something went wrong")
+        XCTAssertEqual(delivered.level, .active)
+    }
+
+    func testDetectedWorkingDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .working))
+    }
+
+    func testDetectedIdleDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .idle))
+    }
+
+    func testDetectedUnknownDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .unknown))
+    }
+
+    func testDedupCooldownSuppressesSecondRapidNotification() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }  // unfocused → delivery not suppressed by focus
+        var delivered = 0
+        model.deliverNotification = { _, _, _, _ in delivered += 1 }
+        // Two rapid calls for the same workspace within the cooldown window: the race
+        // between an explicit `casper notify` and a near-simultaneous detection tick.
+        _ = model.controlRaiseNotification(message: "Task finished", for: id)
+        _ = model.controlRaiseNotification(message: "Task finished", for: id)
+        XCTAssertEqual(delivered, 1, "the second notification within the cooldown is suppressed")
     }
 
     func testResolveByNameAndSelectedFallback() {
