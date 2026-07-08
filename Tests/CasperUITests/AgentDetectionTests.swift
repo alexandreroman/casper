@@ -68,7 +68,7 @@ final class AgentDetectionTests: XCTestCase {
         let (model, id) = seededModel()
         model.isWindowKey = { false }  // not focused ⇒ dot may raise
         var delivered: [(title: String, body: String, workspaceID: UUID)] = []
-        model.deliverNotification = { title, body, workspaceID in
+        model.deliverNotification = { title, body, workspaceID, _ in
             delivered.append((title, body, workspaceID))
         }
 
@@ -89,7 +89,7 @@ final class AgentDetectionTests: XCTestCase {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
         var delivered: [(title: String, body: String)] = []
-        model.deliverNotification = { title, body, _ in delivered.append((title, body)) }
+        model.deliverNotification = { title, body, _, _ in delivered.append((title, body)) }
 
         model.setDetectedAgentState(.done, for: id)
 
@@ -101,7 +101,7 @@ final class AgentDetectionTests: XCTestCase {
     func testDetectedWorkingOrIdleDoesNotNotify() {
         let (model, id) = seededModel()
         var delivered = 0
-        model.deliverNotification = { _, _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _, _ in delivered += 1 }
 
         model.setDetectedAgentState(.working, for: id)
         model.setDetectedAgentState(.idle, for: id)
@@ -114,7 +114,7 @@ final class AgentDetectionTests: XCTestCase {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
         var delivered = 0
-        model.deliverNotification = { _, _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _, _ in delivered += 1 }
 
         model.setDetectedAgentState(.blocked, for: id)
         model.setDetectedAgentState(.blocked, for: id)
@@ -130,7 +130,7 @@ final class AgentDetectionTests: XCTestCase {
         let (model, id) = seededModel()  // seeded session selects this workspace
         model.isWindowKey = { true }
         var delivered = 0
-        model.deliverNotification = { _, _, _ in delivered += 1 }
+        model.deliverNotification = { _, _, _, _ in delivered += 1 }
 
         model.setDetectedAgentState(.blocked, for: id)
 

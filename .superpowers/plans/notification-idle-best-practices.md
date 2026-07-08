@@ -1,7 +1,7 @@
 # Notification Idle Best Practices — Design
 
 **Date:** 2026-07-08
-**Status:** Draft — pending implementation plan
+**Status:** Done — shipped (both repos; see commits in each)
 **Scope:** Stop Casper (and the `casper-claude-plugin` hooks that drive it)
 from raising a macOS notification for ordinary idle/turn-end events. Only
 `blocked` (waiting on the user mid-task) and unseen `done` (task finished)

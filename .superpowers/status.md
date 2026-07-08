@@ -314,7 +314,13 @@ monochrome outline SF Symbols in the chevron column, animated `working`). Live
 GUI check confirmed idle→working→idle, driven by the real OSC-title spinner
 (current Claude Code's `working` marker), plus `blocked` from the viewport.
 
-`done` is produced by the resolver's own `working → idle` derivation.
+`done` is produced by the resolver's own `working → idle` derivation. `blocked`/
+`done` (and `error`, for the explicit-only path) are wired to `casper notify` +
+`pendingNotification` (`AppModel.controlRaiseNotification`), with an
+interruption level (`.passive` for `done`, `.active` for `blocked`/`error`) and
+a per-workspace 3s de-dup cooldown against near-simultaneous explicit/detected
+notifies for the same event. See
+`plans/notification-idle-best-practices.md`.
 
 **Not implemented (by decision):** a process-exit (`childExited`) `done`/`error`
 producer + authority release. It only fits an *agent-as-command* surface, which
@@ -325,10 +331,9 @@ has no detected producer and authority release is deferred to the timeout
 mechanism (option B). The initial implementation was removed. See the theme's
 "Process lifecycle" section.
 
-**Deferred:** `.render`-driven trigger (timer poll for now); wiring `blocked`/
-`done` to `casper notify` + `pendingNotification` (with option-B timeout authority
-release); per-surface status (option B); agents beyond Claude Code (per-agent
-rule sets).
+**Deferred:** `.render`-driven trigger (timer poll for now); option-B timeout
+authority release; per-surface status (option B); agents beyond Claude Code
+(per-agent rule sets).
 
 ## Remaining work — dependency-ordered
 

@@ -35,7 +35,7 @@ is [`status.md`](status.md).
 
 - [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
-  `done` should raise a notification (**draft** — spans this repo and
+  `done` should raise a notification (**shipped** — spans this repo and
   `casper-claude-plugin`).
 - [`plans/space-project.md`](plans/space-project.md) — Space + workspace diff
   summary (**superseded 2026-07-06**: model landed in UI-2; the diff summary is

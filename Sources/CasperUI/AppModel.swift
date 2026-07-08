@@ -126,12 +126,19 @@ final class AppModel {
     /// also means a second notification for the same workspace replaces the first in
     /// Notification Center instead of piling up — matching how
     /// `pendingNotificationMessage` only ever holds the latest message per workspace.
-    @ObservationIgnored var deliverNotification: (String, String, UUID) -> Void = { title, body, workspaceID in
+    @ObservationIgnored var deliverNotification:
+        (String, String, UUID, UNNotificationInterruptionLevel) -> Void = { title, body, workspaceID, level in
         guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = .default
+        content.interruptionLevel = level
+        // A `.passive` notification is a silent addition to Notification Center (no
+        // banner, no sound), so the system ignores any sound we set. Only attach a
+        // sound for levels that actually surface it, rather than storing dead state.
+        if level != .passive {
+            content.sound = .default
+        }
         let request = UNNotificationRequest(
             identifier: workspaceID.uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
@@ -162,6 +169,17 @@ final class AppModel {
     /// for them and the explicit value is authoritative. Transient — an in-memory
     /// set, never persisted, so it naturally resets to "detection" on relaunch.
     @ObservationIgnored private var explicitAuthority: Set<UUID> = []
+
+    /// When each workspace last delivered a macOS notification. Drives a short
+    /// per-workspace de-dup cooldown (`notificationCooldown`) so a single real-world
+    /// event can't produce two notifications when an explicit `casper notify` and a
+    /// detection tick observe it near-simultaneously. Transient, never persisted.
+    @ObservationIgnored var lastNotifiedAt: [UUID: Date] = [:]
+
+    /// How long after a delivered notification a repeat for the same workspace is
+    /// suppressed. Long enough to absorb the ~250ms detection tick racing an
+    /// explicit `casper notify`, short enough not to swallow genuinely distinct events.
+    static let notificationCooldown: TimeInterval = 3
 
     /// The repeating driver for `runAgentDetectionTick()`. GUI-only: started from
     /// the app lifecycle (`AppDelegate`), never from `init`, so unit tests that
@@ -1202,8 +1220,19 @@ final class AppModel {
         switch state {
         case .blocked: return "Waiting for your input"
         case .done: return "Task finished"
-        case .working, .idle, .unknown, .error: return nil
+        case .error: return "Something went wrong"
+        case .working, .idle, .unknown: return nil
         }
+    }
+
+    /// The interruption level for a notification raised from a given state. `done`
+    /// is informational — the user finished task arrives quietly in Notification
+    /// Center (`.passive`: no banner, no sound). Every state that reaches delivery
+    /// with a message (`blocked`, `error`) requires action, so it interrupts
+    /// (`.active`: banner + sound). States that never notify still map to `.active`
+    /// as a harmless default; only `done` needs the quieter treatment.
+    private static func interruptionLevel(for state: AgentState) -> UNNotificationInterruptionLevel {
+        state == .done ? .passive : .active
     }
 
     // MARK: - CLI control handlers
@@ -1278,11 +1307,26 @@ final class AppModel {
         if spaces[at.space].isCollapsed {
             withAnimation(.snappy) { spaces[at.space].isCollapsed = false }
         }
-        if let message, !focused {
-            deliverNotification(spaces[at.space].workspaces[at.workspace].name, message, workspaceID)
+        if let message, !focused, !isWithinNotificationCooldown(workspaceID) {
+            // The interruption level follows the workspace's current agent state: the
+            // detection path sets it just before calling here, and the explicit CLI
+            // path (`casper notify`) reflects whatever the last `casper status set`
+            // reported — so the workspace state is the single source of truth for both.
+            let state = spaces[at.space].workspaces[at.workspace].agentState
+            deliverNotification(
+                spaces[at.space].workspaces[at.workspace].name, message, workspaceID,
+                Self.interruptionLevel(for: state))
+            lastNotifiedAt[workspaceID] = Date()
         }
         persist()
         return true
+    }
+
+    /// Whether `workspaceID` delivered a notification within the last
+    /// `notificationCooldown`, in which case a repeat should be suppressed.
+    private func isWithinNotificationCooldown(_ workspaceID: UUID) -> Bool {
+        guard let last = lastNotifiedAt[workspaceID] else { return false }
+        return Date().timeIntervalSince(last) < Self.notificationCooldown
     }
 
     /// Dismiss the attention bubble of the selected workspace once it is focused
