@@ -18,14 +18,32 @@ DEV_SESSION := $(shell br=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 	name=$$(printf '%s' "$$br" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-32); \
 	echo "$${name:-dev}")
 
+# Local code-signing identity for debug builds (Screen Recording TCC
+# persistence — see .superpowers/plans/screenshot-capture-permissions.md).
+# Auto-detects the first "Apple Development" identity in the keychain;
+# override with `make build CODESIGN_IDENTITY="Apple Development: ..."`.
+# Empty means "no identity available" — falls back to the toolchain's
+# default ad-hoc signature.
+CODESIGN_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null \
+	| grep -m1 'Apple Development' | sed -E 's/.*"(Apple Development[^"]*)".*/\1/')
+DEV_BUNDLE_ID := com.alexandreroman.casper.dev
+
 ## build: compile the debug build
 build:
 	swift build
+	@if [ -n "$(CODESIGN_IDENTITY)" ]; then \
+		codesign --force --sign "$(CODESIGN_IDENTITY)" \
+			--identifier $(DEV_BUNDLE_ID) .build/debug/casper; \
+	else \
+		echo "note: no Apple Development signing identity found — casper" \
+			"stays ad-hoc signed and Screen Recording permission will" \
+			"reset on rebuild. Setup: .superpowers/plans/screenshot-capture-permissions.md"; \
+	fi
 
 ## dev: recompile and launch the app under a per-branch isolated dev session
-dev:
+dev: build
 	@echo "==> dev session: $(DEV_SESSION)"
-	swift run casper -- --session $(DEV_SESSION)
+	.build/debug/casper --session $(DEV_SESSION)
 
 ## test: run the full test suite
 # Strip the ambient CASPER_* socket/session vars: running tests inside a terminal
