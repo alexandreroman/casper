@@ -50,6 +50,9 @@ is [`status.md`](status.md).
 - [`plans/github-release.md`](plans/github-release.md) — GitHub release workflow
   publishing a downloadable `Casper.app` (`.github/workflows/release.yml`)
   (**shipped**).
+- [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
+  — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
+  skill's Screen Recording grant survives rebuilds (**shipped**).
 
 Completed plans are marked done in place here until they are cleaned up; the
 original design specs are recoverable from Git history (tracked under the

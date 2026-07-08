@@ -65,7 +65,7 @@ downloadable artifact** and the release automation to publish it.
 | --- | --- |
 | `CFBundleName` | `Casper` |
 | `CFBundleExecutable` | `casper` |
-| `CFBundleIdentifier` | `com.alexandreroman.casper` |
+| `CFBundleIdentifier` | `com.github.alexandreroman.casper` |
 | `CFBundlePackageType` | `APPL` |
 | `CFBundleShortVersionString` | `__SHORT_VERSION__` (marketing, e.g. `0.1.0`) |
 | `CFBundleVersion` | `__BUNDLE_VERSION__` (monotonic integer, see below) |
@@ -216,7 +216,7 @@ git push tag v0.1.0
 
 ## Open Question Resolved
 
-- **Bundle identifier:** `com.alexandreroman.casper` (adjustable during review).
+- **Bundle identifier:** `com.github.alexandreroman.casper` (adjustable during review).
 - **otool self-check:** hard failure (not a warning) — it is the correctness gate
   for "runs on a clean Mac".
 - **Auto-update target:** Sparkle-compatible `appcast.xml` (free, least app code

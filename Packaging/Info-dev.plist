@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>__DEV_BUNDLE_ID__</string>
+    <key>CFBundleExecutable</key>
+    <string>casper</string>
+    <key>CFBundleName</key>
+    <string>Casper (dev)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>The debug-casper skill captures a screenshot of the running app to verify UI changes during development.</string>
+</dict>
+</plist>

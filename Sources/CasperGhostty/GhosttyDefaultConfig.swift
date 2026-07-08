@@ -5,7 +5,7 @@
 /// It exists because, on macOS, libghostty resolves the user's config directory
 /// from the running app's bundle identifier
 /// (`~/Library/Application Support/<CFBundleIdentifier>/`). A bundled `Casper.app`
-/// is keyed on `com.alexandreroman.casper`, whose config dir is empty, so without
+/// is keyed on `com.github.alexandreroman.casper`, whose config dir is empty, so without
 /// this embedded default the bundle would render libghostty's vanilla `#282c34`
 /// gray instead of the theme the dev build shows.
 ///
