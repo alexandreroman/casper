@@ -705,6 +705,32 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(view.debugLastFocusValue, false)
     }
 
+    /// A pane that is not the model's focused surface must be blurred the moment
+    /// its view attaches to a window, or libghostty renders a solid caret on it.
+    /// A brand-new surface defaults to "focused", and `onAttach` only pushes
+    /// focus to the pane matching `focusedSurfaceID` — so at cold launch or the
+    /// first mount of a multi-pane workspace, every other pane is created fresh
+    /// and never told it lacks focus. Attaching a non-focused pane's view must
+    /// push an explicit `false`.
+    func testAttachingANonFocusedSurfaceViewBlursIt() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.runtime = try GhosttyRuntime()
+
+        model.applyNewSplit(.right)  // now two surfaces; focus moved to the new one
+        let workspace = model.spaces[0].workspaces[0]
+        let surface = LayoutTree.surfaces(workspace.layout).first { $0.id == first }!
+        let view = model.surfaceView(for: surface, in: workspace)!
+
+        // `first`'s view was never created before the split, so this simulates a
+        // pane's view attaching to a window for the first time in a fresh process
+        // (cold launch / session restore) while it is NOT the model's focused
+        // surface — exactly what `GhosttySurfaceView.viewDidMoveToWindow` triggers
+        // via `onAttach`.
+        view.onAttach(first)
+
+        XCTAssertEqual(view.debugLastFocusValue, false)
+    }
+
     /// Full wiring, real libghostty surface: adjusting font size through the
     /// live view must update the exact matching `Surface` in the model and
     /// schedule a save — the whole capture path (Task 4's
