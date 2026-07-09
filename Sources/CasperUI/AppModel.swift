@@ -1126,6 +1126,9 @@ final class AppModel {
             controlSocketPath: controlSocketPath,
             sessionName: sessionIdentity.name
         )
+        // Export a UTF-8 LANG so terminals decode UTF-8 instead of Latin-1; keep
+        // Casper's own vars on any collision (there are none today).
+        config.environment.merge(TerminalLocale.environment()) { existing, _ in existing }
         return config
     }
 
