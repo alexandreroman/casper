@@ -265,6 +265,7 @@ struct WorkspaceDetailView: View {
             // compositing. Use an explicit, unconditional background instead so the
             // pill stays visible on every macOS version.
             .background(Color.secondary.opacity(0.15), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
             .contentShape(Capsule())
             .help("Open in Editor")
     }
