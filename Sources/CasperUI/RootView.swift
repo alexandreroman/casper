@@ -61,6 +61,7 @@ private struct WindowConfigurator: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         nsView.window?.titleVisibility = .hidden
+        nsView.window?.toolbar?.allowsDisplayModeCustomization = false
     }
 
     final class Coordinator {
@@ -69,12 +70,19 @@ private struct WindowConfigurator: NSViewRepresentable {
         @MainActor
         func attach(to window: NSWindow) {
             window.titleVisibility = .hidden
+            // Removes the "Icon and Text / Icon Only" toolbar display-mode context
+            // menu that AppKit shows on a right-/control-click of the toolbar.
+            window.toolbar?.allowsDisplayModeCustomization = false
             guard observer == nil else { return }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
             ) { [weak window] _ in
                 MainActor.assumeIsolated {
-                    guard let window, window.titleVisibility != .hidden else { return }
+                    guard let window else { return }
+                    // The toolbar can be recreated on updates, so re-apply this
+                    // unconditionally rather than behind the title-visibility guard.
+                    window.toolbar?.allowsDisplayModeCustomization = false
+                    guard window.titleVisibility != .hidden else { return }
                     window.titleVisibility = .hidden
                 }
             }
