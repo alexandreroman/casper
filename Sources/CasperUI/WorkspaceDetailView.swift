@@ -79,6 +79,9 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
+            if !model.availableEditors.isEmpty {
+                ToolbarItem(placement: .primaryAction) { editorButton }
+            }
             // Expanded: strip the glass so the toggle doesn't merge into the diff
             // badge's capsule (a macOS 26 glass-merge artifact). Collapsed: keep it.
             let inspectorItem = ToolbarItem(placement: .primaryAction) { inspectorToggle }
@@ -87,6 +90,14 @@ struct WorkspaceDetailView: View {
             } else {
                 inspectorItem.flatToolbarItem()
             }
+        }
+        .alert("Couldn't Open Editor", isPresented: Binding(
+            get: { model.editorLaunchError != nil },
+            set: { if !$0 { model.editorLaunchError = nil } }
+        )) {
+            Button("OK") { model.editorLaunchError = nil }
+        } message: {
+            Text(model.editorLaunchError ?? "")
         }
         .task(id: model.selectedWorkspaceID) {
             diff = model.diffSummary(for: workspace)
@@ -207,6 +218,37 @@ struct WorkspaceDetailView: View {
             Image(systemName: "sidebar.right")
         }
         .help("Toggle panel")
+    }
+
+    private var editorButton: some View {
+        let current = workspace.lastUsedEditor ?? model.availableEditors.first
+        return Menu {
+            ForEach(model.availableEditors, id: \.self) { kind in
+                Button {
+                    model.openInEditor(kind, for: workspace.id)
+                } label: {
+                    editorLabel(kind)
+                }
+            }
+        } label: {
+            if let current {
+                editorLabel(current)
+            } else {
+                Text("Editor")
+            }
+        } primaryAction: {
+            model.openInEditor(nil, for: workspace.id)
+        }
+        .help("Open in Editor")
+    }
+
+    @ViewBuilder
+    private func editorLabel(_ kind: EditorKind) -> some View {
+        if let icon = EditorLauncher.icon(for: kind) {
+            Label { Text(kind.displayName) } icon: { Image(nsImage: icon) }
+        } else {
+            Text(kind.displayName)
+        }
     }
 
 }
