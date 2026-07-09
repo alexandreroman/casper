@@ -5,26 +5,23 @@ import XCTest
 @testable import CasperGhostty
 
 /// End-to-end proof that the vendored libghostty fork honors `initial_input`:
-/// with `command: nil`, it launches the user's real login shell (zsh) and
-/// queues the given text into the PTY as if typed — unlike `command`, which
-/// the fork execs through `bash -l -c` regardless of `$SHELL` (see the
-/// `surface-command-bash-exec` memory note). This is the mechanism
-/// `AppModel.surfaceView(for:in:)` relies on to run a terminal's launch
-/// command reliably.
+/// with only `initialInput` (no explicit command), it launches the user's real
+/// login shell (zsh) and queues the given text into the PTY as if typed. This is
+/// the mechanism `AppModel.surfaceView(for:in:)` relies on to run a terminal's
+/// launch command reliably.
 ///
 /// Follows the real-surface e2e harness pattern (real `GhosttyRuntime()`,
 /// offscreen `NSWindow`, poll for `view.surface != nil` with `XCTSkip`
 /// fallback, fixed `settle(0.6)` then `settle(0.4)` — see the
 /// `ghostty-real-surface-e2e-harness` note).
 final class GhosttyInitialInputVerificationTests: XCTestCase {
-    /// With `command: nil` and `initialInput` carrying a probe, the grid must show
-    /// the real login shell ran (`$0` starts with `-`, the login-shell marker,
+    /// With only `initialInput` carrying a probe (no explicit command), the grid must
+    /// show the real login shell ran (`$0` starts with `-`, the login-shell marker,
     /// and contains `zsh`) and its dotfiles were sourced (Homebrew's
     /// `/opt/homebrew/bin` on PATH, added only by `~/.zprofile`/`~/.zshrc`).
     @MainActor
     func testInitialInputRunsRealLoginShellWithZshPath() throws {
         let configuration = GhosttySurfaceConfiguration(
-            command: nil,
             initialInput: "echo INVOKER=$0 SHELL=$SHELL; echo PATH=$PATH\n")
         let grid = try captureGrid(configuration: configuration)
 
@@ -46,7 +43,6 @@ final class GhosttyInitialInputVerificationTests: XCTestCase {
     @MainActor
     func testInitialInputExecMarkerAppears() throws {
         let configuration = GhosttySurfaceConfiguration(
-            command: nil,
             initialInput: "exec echo EXEC_MARKER_$$\n")
         let grid = try captureGrid(configuration: configuration)
 
@@ -63,7 +59,6 @@ final class GhosttyInitialInputVerificationTests: XCTestCase {
     @MainActor
     func testCompoundCommandRunsInFull() throws {
         let configuration = GhosttySurfaceConfiguration(
-            command: nil,
             initialInput: "echo PART_A; echo PART_B; echo PART_C\n")
         let grid = try captureGrid(configuration: configuration)
 

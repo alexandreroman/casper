@@ -10,7 +10,7 @@ struct Octicon: View {
     enum Name: String { case gitBranch, fileDirectory }
 
     let name: Name
-    var size: CGFloat
+    let size: CGFloat
 
     init(_ name: Name, size: CGFloat = 16) {
         self.name = name

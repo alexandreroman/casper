@@ -64,9 +64,10 @@ extension Repository {
                 tree, 2, buf.baseAddress)
         })
 
-        var oidBuffer = [Int8](repeating: 0, count: 41)
-        git_oid_tostr(&oidBuffer, 41, &newCommitOid)
-        let oidString = oidBuffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
+        // `git_oid_tostr_s` returns libgit2's internal buffer, already sized for
+        // the repo's object format (SHA-1 or SHA-256), so the hex string is never
+        // truncated the way a fixed 41-byte buffer would truncate a SHA-256 OID.
+        let oidString = String(cString: git_oid_tostr_s(&newCommitOid))
         return .merged(commitOID: oidString)
     }
 

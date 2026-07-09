@@ -1,7 +1,10 @@
 import Foundation
 
-/// Socket path for the control channel. The env var only selects the path; this
-/// channel ships in release and is always available.
+/// Listen-side socket path for the control channel, derived purely from the
+/// session. Unlike `DebugSocketPath`, this type honors no environment variable:
+/// the `CASPER_CONTROL_SOCKET` override is resolved on the dial side, by the
+/// `casper` CLI (`CasperCLI/ControlClient.swift`). This channel ships in release
+/// and is always available.
 public enum ControlSocketPath {
     /// The path the App itself must bind its listener to: always the
     /// session-derived path, ignoring any ambient `CASPER_CONTROL_SOCKET` the

@@ -95,6 +95,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
+        // Re-parenting into a window while the surface never came up (all prior
+        // attempts failed) begins a fresh creation cycle: restore the retry budget
+        // and clear the error overlay so this attachment gets a clean chance instead
+        // of inheriting an already-exhausted count and giving up after a single try.
+        // The budget stays bounded — it resets at most once per window entry, and
+        // the nominal path (surface already created) skips this entirely.
+        if surface == nil {
+            surfaceCreationAttempts = 0
+            removeErrorOverlay()
+        }
         createSurfaceIfNeeded()
         // On re-parent the surface already exists and `viewDidChangeBackingProperties`
         // may not fire, so reconcile the Metal layer scale here too: a re-parent into a

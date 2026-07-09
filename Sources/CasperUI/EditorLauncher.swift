@@ -4,8 +4,9 @@ import Foundation
 
 /// Detects and launches external code editors (VS Code, IntelliJ IDEA,
 /// Xcode) for a workspace's worktree. Stateless — detection is cheap enough
-/// (three short-lived shell processes) to call once at app startup and cache
-/// the result on `AppModel`, rather than caching inside this type.
+/// (it only resolves app bundle identifiers, spawning no processes) to call
+/// once at app startup and cache the result on `AppModel`, rather than
+/// caching inside this type.
 enum EditorLauncher {
     /// Editors whose app bundle resolves via a known bundle identifier. The
     /// CLI shim is *not* required: some editors (IntelliJ IDEA) don't

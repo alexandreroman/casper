@@ -147,7 +147,7 @@ flowchart TD
     Git --> LG[libgit2]
 ```
 
-| Module          | Description                                                                            |
+| Module          | Description                                                                           |
 | --------------- | ------------------------------------------------------------------------------------- |
 | `CasperCore`    | Models, session store, port allocator, control-channel protocol + socket (pure Swift) |
 | `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                               |
@@ -195,7 +195,7 @@ destructive (it removes the worktree folder and its branch) and refuses the
 primary workspace.
 
 Casper has no agent-hook integration: an agent reports its state by calling these
-commands itself (e.g. `casper status set running`), so the surface is explicit
+commands itself (e.g. `casper status set working`), so the surface is explicit
 and agent-agnostic.
 
 ## License

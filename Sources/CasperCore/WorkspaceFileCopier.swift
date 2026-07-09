@@ -25,7 +25,8 @@ enum WorkspaceFileCopier {
         let sourceURL = URL(fileURLWithPath: sourceRoot)
 
         // Standardize once up front so relative paths are computed against a
-        // symlink-resolved, trailing-slash-terminated source prefix.
+        // path-normalized (`.`/`..`/redundant slashes resolved, but symlinks left
+        // intact), trailing-slash-terminated source prefix.
         let sourceStd = URL(fileURLWithPath: sourceRoot, isDirectory: true).standardizedFileURL
         let sourcePath = sourceStd.path.hasSuffix("/") ? sourceStd.path : sourceStd.path + "/"
 

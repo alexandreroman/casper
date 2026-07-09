@@ -31,8 +31,9 @@ struct BrowserSurfaceView: View {
     static func normalize(_ raw: String) -> URL? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
-        if let components = URLComponents(string: trimmed), let scheme = components.scheme, components.host != nil {
-            guard scheme.lowercased() == "http" || scheme.lowercased() == "https" else { return nil }
+        if let components = URLComponents(string: trimmed), let rawScheme = components.scheme, components.host != nil {
+            let scheme = rawScheme.lowercased()
+            guard scheme == "http" || scheme == "https" else { return nil }
             return URL(string: trimmed)
         }
         return URL(string: "http://" + trimmed)

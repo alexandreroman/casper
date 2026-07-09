@@ -110,8 +110,8 @@ public struct ControlResponse: Codable, Equatable, Sendable {
     }
 
     public static func success(
-        text: String? = nil, workspaces: [ControlWorkspaceInfo]? = nil,
-        workspace: String? = nil, terminals: [ControlTerminalInfo]? = nil
+        text: String? = nil, workspace: String? = nil,
+        workspaces: [ControlWorkspaceInfo]? = nil, terminals: [ControlTerminalInfo]? = nil
     ) -> ControlResponse {
         ControlResponse(
             ok: true, text: text, workspace: workspace, workspaces: workspaces,

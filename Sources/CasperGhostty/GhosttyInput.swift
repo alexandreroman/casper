@@ -163,6 +163,9 @@ private enum VirtualKeyCode {
     static let k: UInt32 = 40
     static let n: UInt32 = 45
     static let m: UInt32 = 46
+    // Digits and space are referenced only by the debug-only `send-keys` key table
+    // (`unshiftedKeyCodes`), so they compile in DEBUG builds alone.
+    #if DEBUG
     static let one: UInt32 = 18
     static let two: UInt32 = 19
     static let three: UInt32 = 20
@@ -174,6 +177,7 @@ private enum VirtualKeyCode {
     static let nine: UInt32 = 25
     static let zero: UInt32 = 29
     static let space: UInt32 = 49
+    #endif
 }
 
 /// QWERTY-position virtual keycode for each ASCII letter, used to normalize

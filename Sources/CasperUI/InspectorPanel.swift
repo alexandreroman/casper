@@ -15,9 +15,11 @@ import SwiftUI
 /// The panel is ALWAYS mounted by `WorkspaceDetailView` (which reveals it by
 /// animating a clip width so the selector never lags a transition). The chrome
 /// — top separator, segmented selector, `Divider` — therefore stays live at all
-/// times, but the heavy `content` (the diff computation and the browser
-/// `WKWebView`) is gated on the inspector being expanded so those resources are
-/// torn down while it is collapsed.
+/// times, while the heavy `content` is gated on the inspector being expanded.
+/// On collapse only the diff is genuinely torn down (its view is unmounted and
+/// its `highlightTask` cancelled); the browser `WKWebView` survives on purpose
+/// — its `BrowserCoordinator` is cached by `Surface.id` in `AppModel` and only
+/// detached from the view hierarchy here, so the page and history persist.
 struct InspectorPanel: View {
     let model: AppModel
     let workspace: Workspace
@@ -49,8 +51,10 @@ struct InspectorPanel: View {
 
     @ViewBuilder private var content: some View {
         // The panel is mounted even while collapsed (clipped to zero width), so
-        // only spin up the diff or the browser `WKWebView` when it is actually
-        // visible; an empty filler keeps the collapsed panel inert.
+        // only mount the diff or the browser view when it is actually visible; an
+        // empty filler keeps the collapsed panel inert. Collapsing unmounts the
+        // diff, but the browser's cached `WKWebView` (keyed by `Surface.id`)
+        // survives and is merely detached from the view hierarchy.
         if workspace.inspector.collapsed {
             Color.clear
         } else {
