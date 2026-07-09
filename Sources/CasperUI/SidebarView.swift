@@ -63,7 +63,7 @@ struct SidebarView: View {
     }
 }
 
-/// The pinned "Add folder…" button below the scrolling list, always reachable
+/// The pinned "Add Folder…" button below the scrolling list, always reachable
 /// (unlike the empty-state affordance) and never scrolling away.
 private struct AddFolderFooter: View {
     let onAdd: () -> Void
@@ -74,7 +74,7 @@ private struct AddFolderFooter: View {
         Button(action: onAdd) {
             HStack(spacing: 7) {
                 Image(systemName: "plus")
-                Text("Add folder…")
+                Text("Add Folder…")
                 Spacer(minLength: 0)
             }
         }
@@ -85,7 +85,7 @@ private struct AddFolderFooter: View {
 
 /// Borderless-looking style that layers a hover highlight over a deeper neutral
 /// pressed state (a stronger grey fill in the same hue family as hover) so the
-/// "Add folder…" click reads unmistakably through color — `.borderless` alone
+/// "Add Folder…" click reads unmistakably through color — `.borderless` alone
 /// never surfaces `configuration.isPressed`.
 private struct AddFolderButtonStyle: ButtonStyle {
     let isHovered: Bool

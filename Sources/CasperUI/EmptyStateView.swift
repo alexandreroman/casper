@@ -17,6 +17,7 @@ struct EmptyStateView: View {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
                 }
+                .accessibilityHidden(true)
 
             VStack(spacing: 8) {
                 Text("Casper")
@@ -74,6 +75,7 @@ private struct OnboardingStep: View {
                 Image(systemName: systemImage)
                     .font(.body)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
             Text(title)
                 .font(.subheadline.weight(.semibold))
