@@ -6,9 +6,14 @@ public enum GhosttySplitDirection: Equatable, Sendable {
 }
 
 /// A libghostty runtime action, decoded from the C `action_cb` callback into a
-/// Swift-native value. `CasperGhostty` handles the surface-level actions
-/// (title, pwd, bell, render, notifications); layout actions (split/tab/window)
-/// are decoded here but acted on by CasperUI in Plan 5.
+/// Swift-native value. Decoding is total (see `decode`), but consumption is
+/// partial. CasperGhostty acts only on the OSC title (`.setTitle`, driving
+/// agent-state detection) and on mouse shape/visibility (delivered outside this
+/// enum). Layout actions (splits, tabs, close) are already dispatched by the
+/// runtime's layout handler, and the AppDelegate's `onAction` handles
+/// `.openURL`, `.quit`, and `.closeWindow`. The remaining cases — `.setTabTitle`,
+/// `.pwd`, `.ringBell`, `.render`, `.newWindow`, `.childExited`,
+/// `.desktopNotification` — are decoded but not yet acted on.
 public enum GhosttyAction: Equatable {
     case setTitle(String)
     case setTabTitle(String)
@@ -43,10 +48,12 @@ public enum GhosttyAction: Equatable {
         case GHOSTTY_ACTION_RENDER:
             return .render
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-            // Truncating (not trapping) conversion: exit_code is external C data,
-            // and `Int32(UInt32)` would crash for any value above Int32.max.
+            // Decoded but not handled in v1 (like the clipboard `confirm` flag and
+            // marked-text). Truncating (not trapping) conversion: exit_code is external
+            // C data, and `Int32(UInt32)` would crash for any value above Int32.max.
             return .childExited(exitCode: Int32(truncatingIfNeeded: c.action.child_exited.exit_code))
         case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            // Decoded but not handled in v1.
             return .desktopNotification(
                 title: Self.string(c.action.desktop_notification.title),
                 body: Self.string(c.action.desktop_notification.body))

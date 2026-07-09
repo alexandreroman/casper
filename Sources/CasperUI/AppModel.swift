@@ -10,7 +10,8 @@ import UserNotifications
 
 /// The single owner of runtime UI state and the bridge from the non-observable
 /// core types to SwiftUI. Membership changes (add/remove folder) persist
-/// synchronously; high-frequency agent-state changes (Task 4) debounce.
+/// synchronously; high-frequency edits (inspector width, surface font size)
+/// debounce via `scheduleSave`.
 @MainActor
 @Observable
 final class AppModel {
@@ -381,7 +382,9 @@ final class AppModel {
         let removed = spaces.remove(at: index)
         for ws in removed.workspaces {
             portAllocator.release(ws.portBase)
-            discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
+            // The inspector browser lives outside the layout tree, so its coordinator
+            // must be discarded explicitly alongside the terminal surfaces.
+            discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
@@ -484,7 +487,9 @@ final class AppModel {
         guard spaces[at.space].workspaces[at.workspace].kind == .linked else { return }
         let ws = spaces[at.space].workspaces.remove(at: at.workspace)
         portAllocator.release(ws.portBase)
-        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
+        // The inspector browser lives outside the layout tree, so its coordinator
+        // must be discarded explicitly alongside the terminal surfaces.
+        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
         // Prune the transient agent-state maps so they don't grow unbounded across a
         // long session (both the close and control-destroy paths funnel through here).
         explicitAuthority.remove(id)
@@ -569,10 +574,13 @@ final class AppModel {
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
         let ws = spaces[at.space].workspaces[at.workspace]
         let path = ws.worktreePath
+        // Open the repo once (when the Space is a Git repo) and reuse the same handle
+        // for both the ignored-directory exclusions and the reflog watcher below.
+        let repo = spaces[at.space].isGitRepo ? try? Repository.open(atPath: path) : nil
         var exclusions: [String] = []
         if spaces[at.space].isGitRepo {
             exclusions.append(path + "/.git")
-            if let repo = try? Repository.open(atPath: path) {
+            if let repo {
                 exclusions.append(contentsOf: (try? repo.ignoredTopLevelDirectories()) ?? [])
             }
         }
@@ -587,7 +595,7 @@ final class AppModel {
         // test injection seam) with no exclusions, routing through the same debounced
         // hop as the primary watcher. Degrades gracefully to nil if the repo can't be
         // opened or the logs dir can't be watched.
-        if spaces[at.space].isGitRepo, let repo = try? Repository.open(atPath: path) {
+        if let repo {
             let logsPath = repo.gitDirPath + "logs"
             gitMetaWatcher = makeWorktreeWatcher(logsPath, [], makeWorktreeChangeHandler())
         }
@@ -1518,7 +1526,11 @@ final class AppModel {
     @discardableResult
     func controlOpenBrowser(url: URL, in workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
-        spaces[at.space].workspaces[at.workspace].inspector.browser = Surface(kind: .browser(url: url))
+        // Reuse the existing browser surface id (like `setBrowserURL`) so the cached
+        // `BrowserCoordinator`/`WKWebView` keyed on it is preserved rather than leaked,
+        // keeping the page and its history across reopens.
+        let existingID = spaces[at.space].workspaces[at.workspace].inspector.browser.id
+        spaces[at.space].workspaces[at.workspace].inspector.browser = Surface(id: existingID, kind: .browser(url: url))
         setInspectorTab(.browser, for: workspaceID)   // selects the browser tab, expands, persists
         return true
     }

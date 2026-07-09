@@ -8,7 +8,7 @@ import Foundation
 enum DiffFileMatch {
     static func match(_ target: String, in files: [GitDiffFile]) -> String? {
         if let exact = files.first(where: { $0.id == target }) { return exact.id }
-        if let suffix = files.first(where: { $0.id == target || $0.id.hasSuffix("/" + target) }) { return suffix.id }
+        if let suffix = files.first(where: { $0.id.hasSuffix("/" + target) }) { return suffix.id }
         let base = (target as NSString).lastPathComponent
         if let byBase = files.first(where: { ($0.id as NSString).lastPathComponent == base }) { return byBase.id }
         return nil

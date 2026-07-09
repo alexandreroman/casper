@@ -31,13 +31,13 @@ final class CommandHoldTracker {
     }
 
     private let holdDuration: TimeInterval
-    private let scheduleTimer: (TimeInterval, @escaping () -> Void) -> HoldTimerToken
+    private let scheduleTimer: (TimeInterval, @escaping @Sendable () -> Void) -> HoldTimerToken
     private let onRevealChange: (Bool) -> Void
     private var state: State = .idle
 
     init(
         holdDuration: TimeInterval = 1.0,
-        scheduleTimer: @escaping (TimeInterval, @escaping () -> Void) -> HoldTimerToken = { interval, fire in
+        scheduleTimer: @escaping (TimeInterval, @escaping @Sendable () -> Void) -> HoldTimerToken = { interval, fire in
             let timer = Timer(timeInterval: interval, repeats: false) { _ in fire() }
             // `.common` so the timer still fires while the run loop is in
             // event-tracking mode (e.g. a context menu is open).
@@ -54,8 +54,10 @@ final class CommandHoldTracker {
     func commandKeyDown() {
         guard case .idle = state else { return }
         state = .pending(scheduleTimer(holdDuration) { [weak self] in
-            self?.state = .revealed
-            self?.onRevealChange(true)
+            MainActor.assumeIsolated {
+                self?.state = .revealed
+                self?.onRevealChange(true)
+            }
         })
     }
 

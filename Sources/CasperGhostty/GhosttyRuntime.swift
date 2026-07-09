@@ -247,11 +247,11 @@ func casperGhosttyReadClipboard(
     guard location == GHOSTTY_CLIPBOARD_STANDARD, let view = clipboardView(from: userdata) else {
         return false
     }
-    let text = NSPasteboard.general.string(forType: .string) ?? ""
     // Cross the actor boundary as a trivial address (Sendable), like
     // `casperGhosttyWakeup`, rather than sending the raw pointer itself.
     let stateAddress = UInt(bitPattern: state)
     MainActor.assumeIsolated {
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
         view.surface?.completeClipboardRequest(
             text, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
     }
@@ -268,7 +268,8 @@ func casperGhosttyConfirmReadClipboard(
     _ state: UnsafeMutableRawPointer?,
     _ request: ghostty_clipboard_request_e
 ) {
-    // Both guards below "should never happen"; they exist defensively.
+    // The view guard and the string check below "should never happen"; they exist
+    // defensively.
     guard let view = clipboardView(from: userdata) else {
         // No view means nothing to complete the request against — the one case
         // that leaves libghostty's paste unresolved.

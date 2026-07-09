@@ -52,9 +52,12 @@ private struct WindowConfigurator: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
+        // `Context` is only guaranteed valid during this call, so capture the
+        // retained coordinator before hopping onto the escaping async block.
+        let coordinator = context.coordinator
         DispatchQueue.main.async { [weak view] in
             guard let window = view?.window else { return }
-            MainActor.assumeIsolated { context.coordinator.attach(to: window) }
+            MainActor.assumeIsolated { coordinator.attach(to: window) }
         }
         return view
     }

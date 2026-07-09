@@ -21,7 +21,7 @@ Layout:
 | --- | --- |
 | Core (CasperCore) | [`themes/core.md`](themes/core.md) |
 | Git & worktrees (CasperGit) | [`themes/git-worktrees.md`](themes/git-worktrees.md) |
-| CLI & agent hooks (CasperCLI + CasperAgents) | [`themes/cli-agents.md`](themes/cli-agents.md) |
+| CLI & agent environment (CasperCLI + CasperAgents) | [`themes/cli-agents.md`](themes/cli-agents.md) |
 | Terminal embedding (CasperGhostty) | [`themes/terminal.md`](themes/terminal.md) |
 | App & UI (CasperUI) | [`themes/app-ui.md`](themes/app-ui.md) |
 | Agent state detection | [`themes/agent-state-detection.md`](themes/agent-state-detection.md) |
