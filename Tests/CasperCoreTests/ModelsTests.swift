@@ -182,6 +182,32 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded, ws)
     }
 
+    func testWorkspaceCodableRoundTripWithLastUsedEditor() throws {
+        let ws = Workspace(
+            name: "feat", worktreePath: "/r", branch: "feat", portBase: 40011,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))),
+            lastUsedEditor: .intellijIdea)
+        let data = try JSONEncoder().encode(ws)
+        let decoded = try JSONDecoder().decode(Workspace.self, from: data)
+        XCTAssertEqual(decoded, ws)
+        XCTAssertEqual(decoded.lastUsedEditor, .intellijIdea)
+    }
+
+    func testWorkspaceLegacyDecodeWithoutLastUsedEditorDefaultsToNil() throws {
+        // A `session.json` written before this field existed has no
+        // `lastUsedEditor` key; decoding it must default to nil, not throw.
+        let ws = Workspace(
+            name: "legacy", worktreePath: "/r", branch: "main", portBase: 40001,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))))
+        let data = try JSONEncoder().encode(ws)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "lastUsedEditor")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(Workspace.self, from: legacyData)
+        XCTAssertNil(decoded.lastUsedEditor)
+    }
+
     func testInspectorStateLegacyDecodeWithoutWidthDefaultsIt() throws {
         // A `session.json` written before the panel width was persisted has an
         // `inspector` object with no `width` key; decoding must fall back to the
