@@ -336,6 +336,34 @@ final class AppModelTests: XCTestCase {
         assertSelectionValidOrNil(model)
     }
 
+    func testRemovingSelectedLinkedWorkspacePrefersSiblingInSameSpace() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let gitSpaceID = model.spaces[0].id
+        _ = model.addLinkedWorkspace(spaceID: gitSpaceID, name: "Feature One")
+        _ = model.addLinkedWorkspace(spaceID: gitSpaceID, name: "Feature Two")
+        // Alphabetically before the repo's temp-dir name ("casper-test-…"), so
+        // this Space becomes `spaces[0]` and the Git Space becomes `spaces[1]`.
+        model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/aaa-first-space"), probe: { _ in nil })
+
+        XCTAssertEqual(model.spaces[0].name, "aaa-first-space")
+        let gitSpace = try XCTUnwrap(model.spaces.first(where: { $0.id == gitSpaceID }))
+        let featureTwoID = try XCTUnwrap(
+            gitSpace.workspaces.first(where: { $0.branch == "feature-two" })?.id)
+        let gitSpacePrimaryID = gitSpace.workspaces[0].id
+
+        model.selectWorkspace(featureTwoID)
+        model.removeWorkspace(id: featureTwoID)
+
+        // Must land on the remaining workspace in the SAME Space (its primary,
+        // since "feature-one" and the primary both sort after "feature-two" is
+        // gone, and primary sorts first in display order) — not jump to the
+        // alphabetically-first Space overall ("aaa-first-space"'s primary).
+        XCTAssertEqual(model.selectedWorkspaceID, gitSpacePrimaryID)
+    }
+
     func testAddAfterRestoreDoesNotReuseRestoredPortBlock() {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
