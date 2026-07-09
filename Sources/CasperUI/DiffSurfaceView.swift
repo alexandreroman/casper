@@ -74,10 +74,44 @@ struct DiffSurfaceView: View {
     private func refresh() {
         let previousFiles = diff?.files ?? []
         let previousHighlights = highlights
+        let started = Date()
         diff = model.computeDiff(for: workspace)
+        let computeMs = Int(Date().timeIntervalSince(started) * 1000)
+        logDiffShape(computeMs: computeMs)
         applyPendingScroll()
         loaded = true
         startHighlighting(reusing: previousFiles, previousHighlights)
+    }
+
+    /// Logs the freshly computed diff's shape so a diff-view freeze is
+    /// diagnosable from the last line before the hang: the culprit is usually a
+    /// file with a huge single line (`maxLineLen`, e.g. a minified bundle).
+    /// Computed with plain loops to avoid materializing every line of a large
+    /// diff into intermediate arrays.
+    private func logDiffShape(computeMs: Int) {
+        guard let diff, !diff.files.isEmpty else { return }
+        var totalLines = 0
+        var maxFileLines = 0
+        var maxLineLen = 0
+        for file in diff.files {
+            var fileLines = 0
+            for hunk in file.hunks {
+                fileLines += hunk.lines.count
+                for line in hunk.lines {
+                    maxLineLen = max(maxLineLen, line.content.count)
+                }
+            }
+            totalLines += fileLines
+            maxFileLines = max(maxFileLines, fileLines)
+        }
+        CasperLog.app.notice(
+            """
+            diff refresh: files=\(diff.files.count, privacy: .public) \
+            lines=\(totalLines, privacy: .public) \
+            maxFileLines=\(maxFileLines, privacy: .public) \
+            maxLineLen=\(maxLineLen, privacy: .public) \
+            computeMs=\(computeMs, privacy: .public)
+            """)
     }
 
     /// Apply a pending `model.diffScrollTarget` for this workspace once its file
@@ -231,7 +265,11 @@ private struct DiffFileView: View {
     let isLastFile: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // The inner stack must be lazy too: the enclosing ScrollView only
+        // virtualizes rows when every container down to the rows is lazy. A
+        // plain VStack here would instantiate all of a large file's rows at
+        // once, defeating the outer LazyVStack and forcing whole-file layouts.
+        LazyVStack(alignment: .leading, spacing: 0) {
             if file.isBinary {
                 Text("Binary file")
                     .font(.caption).foregroundStyle(.secondary)
