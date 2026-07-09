@@ -258,18 +258,15 @@ struct WorkspaceDetailView: View {
         // chrome renders its disclosure chevron OUTSIDE the label view, so styling only
         // the label (the previous attempt) never produces a visible enclosing pill.
         .frame(height: 36)
-        return Group {
-            if #available(macOS 26.0, *) {
-                content
-                    .glassEffect(in: .capsule)
-                    .contentShape(Capsule())
-            } else {
-                content
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
-                    .contentShape(Capsule())
-            }
-        }
-        .help("Open in Editor")
+        return content
+            // Unlike diffBadge, .glassEffect(in: .capsule) renders this pill nearly
+            // invisible when the HStack contains a nested borderless-style Menu — the
+            // native control mid-hierarchy interferes with the glass material's
+            // compositing. Use an explicit, unconditional background instead so the
+            // pill stays visible on every macOS version.
+            .background(Color.secondary.opacity(0.15), in: Capsule())
+            .contentShape(Capsule())
+            .help("Open in Editor")
     }
 
     @ViewBuilder
