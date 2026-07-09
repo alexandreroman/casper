@@ -114,6 +114,20 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertEqual(try repo.fileTextAtHead(path: "feature.txt"), "new\n")
     }
 
+    func testCloseWorkspaceReselectsPrimaryWhenClosingSelectedLinkedWorkspace() throws {
+        let (model, primaryID, _) = try seededGitModel()
+        guard case .success(let created) = model.createLinkedWorkspace(
+            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
+            name: "feature", base: nil)
+        else { return XCTFail("setup failed") }
+        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        model.selectWorkspace(created.id)
+
+        XCTAssertEqual(model.closeWorkspace(id: created.id), .success)
+
+        XCTAssertEqual(model.selectedWorkspaceID, primaryID)
+    }
+
     func testCloseWorkspaceAbortsOnConflictAndDeletesNothing() throws {
         let (model, primaryID, repoPath) = try seededGitModel()
         guard case .success(let created) = model.createLinkedWorkspace(
@@ -151,6 +165,21 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertFalse(try repo.branchExists(created.branch))
         // Never merged: the file committed only on the branch never reaches the base.
         XCTAssertNil(try repo.fileTextAtHead(path: "feature.txt"))
+    }
+
+    func testDeleteWorkspaceReselectsPrimaryWhenDeletingSelectedLinkedWorkspace() throws {
+        let (model, primaryID, _) = try seededGitModel()
+        guard case .success(let created) = model.createLinkedWorkspace(
+            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
+            name: "feature", base: nil)
+        else { return XCTFail("setup failed") }
+        model.selectWorkspace(created.id)
+
+        guard case .success = model.deleteWorkspace(id: created.id) else {
+            return XCTFail("expected delete to succeed")
+        }
+
+        XCTAssertEqual(model.selectedWorkspaceID, primaryID)
     }
 
     func testCloseWorkspaceResyncsCleanPrimaryWorktree() throws {
