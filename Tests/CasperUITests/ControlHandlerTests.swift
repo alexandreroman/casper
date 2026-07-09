@@ -334,6 +334,32 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
     }
 
+    func testSetAgentStateDoneRaisesNotificationBubble() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }  // not focused, so the bubble should arm
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        XCTAssertTrue(model.controlSetAgentState(.done, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .done)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Task finished")
+    }
+
+    func testSetAgentStateBlockedDoesNotRaiseNotificationBubble() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
+    func testSetAgentStateErrorDoesNotRaiseNotificationBubble() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        XCTAssertTrue(model.controlSetAgentState(.error, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .error)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
     func testSetProgressSynthesizesTodos() throws {
         let (model, id) = seededModel()
         XCTAssertTrue(model.controlSetProgress(total: 4, current: 2, label: "step", for: id))

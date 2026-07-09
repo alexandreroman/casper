@@ -1251,6 +1251,18 @@ final class AppModel {
         // this workspace. Robust authority release is deferred to a later timeout
         // mechanism.
         explicitAuthority.insert(workspaceID)
+        // `done` is the one explicit state detection can never produce for a
+        // hook-driven workspace (it's already under explicit authority by the
+        // time a Stop hook fires — see
+        // `.superpowers/themes/agent-state-detection.md` § Authority), so this
+        // is the only place that can raise its attention bubble/notification.
+        // `blocked`/`error` are deliberately excluded: both already get an
+        // explicit `casper notify` from their own callers (`notification.py`,
+        // the `casper-status` skill), so mirroring this for them would double
+        // the notification.
+        if state == .done {
+            controlRaiseNotification(message: Self.notificationMessage(for: .done), for: workspaceID)
+        }
         persist()
         return true
     }
