@@ -275,6 +275,40 @@ the three `AppModel` inspector mutators, and the inspector-browser URL write-bac
 survival across collapse/expand and workspace switch, and a terminal pane not
 blanked when toggling the panel (see `persistent-nsview-host-sharing`).
 
+## Open in Editor — ✅
+
+A split-button in the title bar, immediately left of the inspector-panel toggle,
+launches the workspace's worktree in VS Code, IntelliJ IDEA, or Xcode via each
+editor's CLI shim (`code`/`idea`/`xed`). The button's primary action launches
+whichever editor is currently selected; its attached menu lists every detected
+editor, and picking one only changes which editor is current (reflected on the
+primary button's label) — it does not launch anything itself.
+
+**Detection.** `EditorLauncher.detectInstalled()` runs once at `AppModel`
+startup (not live) and populates `availableEditors`: an editor counts as
+detected as soon as its app bundle resolves via `NSWorkspace`
+bundle-identifier lookup — the CLI shim is no longer required, since not
+every editor installs one automatically. **Launch fallback.** `launch(_:at:)`
+still tries the CLI shim first when it resolves on the user's **login
+shell** `PATH` (`$SHELL -lc 'which <command>'`, since Casper is launched
+from Finder/Dock and lacks shell-profile `PATH` additions) — it's faster and
+reuses an already-open window better. When the shim is missing, it falls
+back to `NSWorkspace.shared.open(_:withApplicationAt:configuration:)` on the
+resolved app bundle, so an editor installed without its optional
+command-line launcher (e.g. IntelliJ IDEA, which doesn't auto-install `idea`
+on `PATH` the way VS Code does `code`) still launches.
+
+**Resolution & persistence.** `Workspace.lastUsedEditor` is a per-workspace
+preference. Picking a row in the dropdown (`AppModel.selectEditor`) updates it
+immediately without launching anything; the primary button's launch
+(`AppModel.openInEditor`) also updates it, to the editor it just launched.
+`AppModel.resolvedEditor` picks, in order: an explicit kind → the workspace's
+remembered `lastUsedEditor`, **but only if it is still present in
+`availableEditors`** → the first detected editor. A remembered editor that is
+no longer installed is never returned (it is not cleared either — if
+reinstalled later, the original preference is honored again); the primary
+button falls back to a working editor instead of guaranteeing a launch error.
+
 ## Developer tooling (`#if DEBUG`)
 
 - **Debug & observability channel — ✅.** `DebugProtocol`/`DebugSocket`/

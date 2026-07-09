@@ -182,6 +182,32 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded, ws)
     }
 
+    func testWorkspaceCodableRoundTripWithLastUsedEditor() throws {
+        let ws = Workspace(
+            name: "feat", worktreePath: "/r", branch: "feat", portBase: 40011,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))),
+            lastUsedEditor: .intellijIdea)
+        let data = try JSONEncoder().encode(ws)
+        let decoded = try JSONDecoder().decode(Workspace.self, from: data)
+        XCTAssertEqual(decoded, ws)
+        XCTAssertEqual(decoded.lastUsedEditor, .intellijIdea)
+    }
+
+    func testWorkspaceLegacyDecodeWithoutLastUsedEditorDefaultsToNil() throws {
+        // A `session.json` written before this field existed has no
+        // `lastUsedEditor` key; decoding it must default to nil, not throw.
+        let ws = Workspace(
+            name: "legacy", worktreePath: "/r", branch: "main", portBase: 40001,
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))))
+        let data = try JSONEncoder().encode(ws)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "lastUsedEditor")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(Workspace.self, from: legacyData)
+        XCTAssertNil(decoded.lastUsedEditor)
+    }
+
     func testInspectorStateLegacyDecodeWithoutWidthDefaultsIt() throws {
         // A `session.json` written before the panel width was persisted has an
         // `inspector` object with no `width` key; decoding must fall back to the
@@ -220,6 +246,32 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.inspector.collapsed, expected.collapsed)
         XCTAssertEqual(decoded.inspector.tab, expected.tab)
         XCTAssertEqual(decoded.inspector.browser.kind, expected.browser.kind)
+    }
+
+    // MARK: - EditorKind
+
+    func testEditorKindPriorityOrderIsVSCodeThenIntelliJThenXcode() {
+        XCTAssertEqual(EditorKind.priorityOrder, [.vscode, .intellijIdea, .xcode])
+    }
+
+    func testEditorKindMetadataIsDistinctPerCase() {
+        for kind in EditorKind.allCases {
+            XCTAssertFalse(kind.cliCommand.isEmpty)
+            XCTAssertFalse(kind.bundleIdentifiers.isEmpty)
+            XCTAssertFalse(kind.displayName.isEmpty)
+        }
+        XCTAssertEqual(EditorKind.vscode.cliCommand, "code")
+        XCTAssertEqual(EditorKind.intellijIdea.cliCommand, "idea")
+        XCTAssertEqual(EditorKind.xcode.cliCommand, "xed")
+        XCTAssertEqual(EditorKind.intellijIdea.bundleIdentifiers,
+                       ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"])
+    }
+
+    func testEditorKindCodableRoundTrip() throws {
+        for kind in EditorKind.allCases {
+            let data = try JSONEncoder().encode(kind)
+            XCTAssertEqual(try JSONDecoder().decode(EditorKind.self, from: data), kind)
+        }
     }
 
     // MARK: - Transient runtime fields are not persisted

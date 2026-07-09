@@ -220,6 +220,43 @@ public struct InspectorState: Codable, Equatable, Sendable {
     }
 }
 
+public enum EditorKind: String, Codable, CaseIterable, Sendable {
+    case vscode
+    case intellijIdea
+    case xcode
+
+    /// Priority order used both as the dropdown's display order and as the
+    /// fallback when a workspace has no `lastUsedEditor` yet.
+    public static let priorityOrder: [EditorKind] = [.vscode, .intellijIdea, .xcode]
+
+    public var cliCommand: String {
+        switch self {
+        case .vscode: "code"
+        case .intellijIdea: "idea"
+        case .xcode: "xed"
+        }
+    }
+
+    /// Candidate bundle identifiers, most-specific first. IntelliJ IDEA ships
+    /// two distinct bundle IDs depending on edition (Ultimate vs. Community);
+    /// the others have exactly one.
+    public var bundleIdentifiers: [String] {
+        switch self {
+        case .vscode: ["com.microsoft.VSCode"]
+        case .intellijIdea: ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"]
+        case .xcode: ["com.apple.dt.Xcode"]
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .vscode: "Visual Studio Code"
+        case .intellijIdea: "IntelliJ IDEA"
+        case .xcode: "Xcode"
+        }
+    }
+}
+
 public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
@@ -234,6 +271,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var kind: WorkspaceKind
     public var baseBranch: String?
     public var inspector: InspectorState
+    public var lastUsedEditor: EditorKind?
 
     public init(
         id: UUID = UUID(),
@@ -248,7 +286,8 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         layout: LayoutNode,
         kind: WorkspaceKind = .primary,
         baseBranch: String? = nil,
-        inspector: InspectorState = InspectorState()
+        inspector: InspectorState = InspectorState(),
+        lastUsedEditor: EditorKind? = nil
     ) {
         self.id = id
         self.name = name
@@ -263,6 +302,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.kind = kind
         self.baseBranch = baseBranch
         self.inspector = inspector
+        self.lastUsedEditor = lastUsedEditor
     }
 
     // Full case set required now that both `init(from:)` and `encode(to:)` are
@@ -273,7 +313,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, name, worktreePath, branch, agentState, todos
         case pendingNotification, pendingNotificationMessage
-        case portBase, layout, kind, baseBranch, inspector
+        case portBase, layout, kind, baseBranch, inspector, lastUsedEditor
     }
 
     /// Encodes every persisted field, deliberately omitting the four transient
@@ -293,6 +333,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         try c.encode(kind, forKey: .kind)
         try c.encodeIfPresent(baseBranch, forKey: .baseBranch)
         try c.encode(inspector, forKey: .inspector)
+        try c.encodeIfPresent(lastUsedEditor, forKey: .lastUsedEditor)
     }
 
     /// Decodes every persisted field normally and defaults `inspector` when it's
@@ -318,6 +359,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.baseBranch = try container.decodeIfPresent(String.self, forKey: .baseBranch)
         self.inspector = try container.decodeIfPresent(InspectorState.self, forKey: .inspector)
             ?? InspectorState()
+        self.lastUsedEditor = try container.decodeIfPresent(EditorKind.self, forKey: .lastUsedEditor)
     }
 }
 

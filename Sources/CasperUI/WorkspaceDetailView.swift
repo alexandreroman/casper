@@ -79,6 +79,9 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
+            if !model.availableEditors.isEmpty {
+                ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
+            }
             // Expanded: strip the glass so the toggle doesn't merge into the diff
             // badge's capsule (a macOS 26 glass-merge artifact). Collapsed: keep it.
             let inspectorItem = ToolbarItem(placement: .primaryAction) { inspectorToggle }
@@ -87,6 +90,14 @@ struct WorkspaceDetailView: View {
             } else {
                 inspectorItem.flatToolbarItem()
             }
+        }
+        .alert("Couldn't Open Editor", isPresented: Binding(
+            get: { model.editorLaunchError != nil },
+            set: { if !$0 { model.editorLaunchError = nil } }
+        )) {
+            Button("OK") { model.editorLaunchError = nil }
+        } message: {
+            Text(model.editorLaunchError ?? "")
         }
         .task(id: model.selectedWorkspaceID) {
             diff = model.diffSummary(for: workspace)
@@ -207,6 +218,65 @@ struct WorkspaceDetailView: View {
             Image(systemName: "sidebar.right")
         }
         .help("Toggle panel")
+    }
+
+    private var editorButton: some View {
+        let current = model.resolvedEditor(nil, for: workspace)
+        let content = HStack(spacing: 4) {
+            Button {
+                model.openInEditor(nil, for: workspace.id)
+            } label: {
+                if let current {
+                    editorLabel(current)
+                } else {
+                    Text("Editor")
+                }
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                ForEach(model.availableEditors, id: \.self) { kind in
+                    Button {
+                        model.selectEditor(kind, for: workspace.id)
+                    } label: {
+                        editorLabel(kind)
+                    }
+                }
+            } label: {
+                // .menuStyle(.borderlessButton) always appends its own disclosure chevron
+                // after the label, so a label chevron here would render twice (⌄⌄). Keep
+                // the label empty and let the style's own arrow be the only visible one.
+                Color.clear.frame(width: 4, height: 20)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .padding(.horizontal, 10)
+        // Match the branch capsule / diff badge: same Liquid Glass material and same
+        // height, drawn around the WHOLE HStack (primary button + chevron menu) so the
+        // capsule is one visible shape enclosing both regions — Menu's own primaryAction
+        // chrome renders its disclosure chevron OUTSIDE the label view, so styling only
+        // the label (the previous attempt) never produces a visible enclosing pill.
+        .frame(height: 36)
+        return content
+            // Unlike diffBadge, .glassEffect(in: .capsule) renders this pill nearly
+            // invisible when the HStack contains a nested borderless-style Menu — the
+            // native control mid-hierarchy interferes with the glass material's
+            // compositing. Use an explicit, unconditional background instead so the
+            // pill stays visible on every macOS version.
+            .background(Color.secondary.opacity(0.15), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .contentShape(Capsule())
+            .help("Open in Editor")
+    }
+
+    @ViewBuilder
+    private func editorLabel(_ kind: EditorKind) -> some View {
+        if let icon = EditorLauncher.icon(for: kind) {
+            Label { Text(kind.displayName) } icon: { Image(nsImage: icon) }
+        } else {
+            Text(kind.displayName)
+        }
     }
 
 }
