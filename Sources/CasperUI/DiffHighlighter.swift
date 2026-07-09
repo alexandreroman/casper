@@ -32,15 +32,44 @@ enum DiffHighlighter {
         }
     }
 
+    /// Makes HighlightSwift's resource bundle reachable from where its
+    /// generated `Bundle.module` accessor looks — the `.app` bundle root
+    /// (`Bundle.main.bundleURL`), a sibling of `Contents/`. That accessor
+    /// calls `fatalError` when the bundle is missing, so we mirror it there
+    /// from `Contents/Resources/` (where packaging ships it as a sealed
+    /// resource) once, before the first highlight call reaches into the
+    /// library. Code signing only seals `Contents/`, so the root copy must be
+    /// created at runtime rather than baked into the shipped bundle.
+    ///
+    /// Best-effort: any failure (missing source, read-only/translocated first
+    /// launch before the app is moved to /Applications) leaves the flag
+    /// `false` and `highlightedLines` falls back to neutral text instead of
+    /// crashing. Static-let initialization is lazy and runs exactly once even
+    /// under concurrent highlight calls.
+    private static let resourceBundleReady: Bool = {
+        let fileManager = FileManager.default
+        let bundleName = "HighlightSwift_HighlightSwift.bundle"
+        let target = Bundle.main.bundleURL.appendingPathComponent(bundleName)
+        if fileManager.fileExists(atPath: target.path) {
+            return true
+        }
+        if let source = Bundle.main.resourceURL?.appendingPathComponent(bundleName) {
+            try? fileManager.copyItem(at: source, to: target)
+        }
+        return fileManager.fileExists(atPath: target.path)
+    }()
+
     /// Highlights `text` as a whole (full-file context matters, so lines are
     /// never highlighted in isolation) and returns one `AttributedString` per
     /// source line, indexable by 1-based line number.
     ///
-    /// Returns `nil` when the language is unknown, the text is empty,
-    /// highlighting throws, or the resulting line count does not match
-    /// `text`'s — in every such case the caller falls back to neutral text.
+    /// Returns `nil` when the language is unknown, the text is empty, the
+    /// HighlightSwift resource bundle cannot be made available (see
+    /// `resourceBundleReady`), highlighting throws, or the resulting line count
+    /// does not match `text`'s — in every such case the caller falls back to
+    /// neutral text.
     static func highlightedLines(of text: String, forPath path: String) async -> [AttributedString]? {
-        guard let language = language(forPath: path), !text.isEmpty else {
+        guard let language = language(forPath: path), !text.isEmpty, resourceBundleReady else {
             return nil
         }
 

@@ -35,6 +35,7 @@ build:
 	@mkdir -p $(DEV_APP)/Contents/MacOS $(DEV_APP)/Contents/Resources
 	@cp .build/debug/casper $(DEV_APP)/Contents/MacOS/casper
 	@cp Packaging/Sounds/NotificationAlert.aiff $(DEV_APP)/Contents/Resources/NotificationAlert.aiff
+	@cp -R .build/debug/HighlightSwift_HighlightSwift.bundle $(DEV_APP)/Contents/Resources/HighlightSwift_HighlightSwift.bundle
 	@sed -e "s/__DEV_BUNDLE_ID__/$(DEV_BUNDLE_ID)/g" \
 		Packaging/Info-dev.plist > $(DEV_APP)/Contents/Info.plist
 	@if [ -n "$(CODESIGN_IDENTITY)" ]; then \

@@ -34,6 +34,10 @@ sed -e "s/__SHORT_VERSION__/${SHORT_VERSION}/g" \
 # UNNotificationSound(named:) resolves the file from the bundle's Resources dir.
 cp "$ROOT/Packaging/Sounds/NotificationAlert.aiff" "$APP/Contents/Resources/NotificationAlert.aiff"
 
+# HighlightSwift's generated Bundle.module ships as an ordinary sealed resource;
+# DiffHighlighter mirrors it to the app root at runtime (where Bundle.module looks).
+cp -R "$BIN_DIR/HighlightSwift_HighlightSwift.bundle" "$APP/Contents/Resources/HighlightSwift_HighlightSwift.bundle"
+
 # Copy non-system dylibs into Contents/Frameworks and rewrite load commands to
 # @executable_path/../Frameworks (recurses into transitive dependencies).
 dylibbundler \

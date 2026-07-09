@@ -56,3 +56,4 @@
 - [libghostty Control-combo encoding is keycode-dependent](references/ghostty-control-combo-azerty-keycode.md) — bare Ctrl-letter combos break on AZERTY (physical keycode, not codepoint); fix normalizes to QWERTY-position keycode
 - [Real in-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — real keyDown->interpretKeyEvents->shell test recipe; fixed settle(0.6)/(0.4), not adaptive polling
 - [SwiftUI/AppKit main-menu resync on miniaturize](references/swiftui-mainmenu-miniaturize-resync.md) — NSApp.mainMenu.items mutated in place on window minimize, same object identity; no public API stops it, reassert after the event
+- [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module wants it at the .app root; copy it AFTER every codesign step or signing fails on unsealed root content
