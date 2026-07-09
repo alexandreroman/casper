@@ -265,11 +265,13 @@ private struct DiffFileView: View {
     let isLastFile: Bool
 
     var body: some View {
-        // The inner stack must be lazy too: the enclosing ScrollView only
-        // virtualizes rows when every container down to the rows is lazy. A
-        // plain VStack here would instantiate all of a large file's rows at
-        // once, defeating the outer LazyVStack and forcing whole-file layouts.
-        LazyVStack(alignment: .leading, spacing: 0) {
+        // A plain VStack, not a nested LazyVStack: a lazy stack nested as a
+        // Section's content inside the outer LazyVStack/ScrollView can't report
+        // an exact height, so it over-reserves vertical space and leaves large
+        // empty gaps between files. The outer LazyVStack still virtualizes at
+        // the per-file level, and `maxRenderedLines` caps how many rows a
+        // realized file lays out.
+        VStack(alignment: .leading, spacing: 0) {
             if file.isBinary {
                 Text("Binary file")
                     .font(.caption).foregroundStyle(.secondary)

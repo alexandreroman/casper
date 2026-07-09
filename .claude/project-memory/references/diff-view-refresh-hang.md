@@ -1,6 +1,6 @@
 ---
 name: "Diff-view main-thread hang on refresh (open incident)"
-description: "Unreproduced SwiftUI-layout hang in the diff view triggered on refresh; lazy rendering + a diagnostic log line are in place to capture the next occurrence"
+description: "Unreproduced SwiftUI-layout hang in the diff view triggered on refresh; a diagnostic log line is in place to capture the next occurrence (the lazy-rendering mitigation was reverted — it broke layout)"
 type: project
 ---
 
@@ -29,8 +29,16 @@ hang recurs, read that LAST line before the freeze — `maxLineLen` (longest
 `GitDiffLine.content`) is the key signal for a huge-single-line culprit. Capture
 it with `/usr/bin/log show --predicate 'subsystem ==
 "com.github.alexandreroman.casper"' --info` (or the `debug-casper` stream).
-Mitigation already in place: `DiffFileView`'s inner container is a `LazyVStack`
-(only on-screen rows lay out). Batching the per-file highlight publication was
-tried and deliberately reverted to keep progressive coloring — once rows render
-lazily, per-file `@State` updates only re-lay-out visible rows, so batching was
-unproven and not worth the UX cost. Do not re-add batching without a real repro.
+
+**The `LazyVStack` mitigation was reverted.** `DiffFileView`'s inner container
+was briefly a nested `LazyVStack` (commit 339334e) to virtualize rows, but a
+lazy stack nested as a `Section`'s content inside the outer `LazyVStack`/
+`ScrollView` cannot report an exact height: it over-reserves vertical space and
+leaves large empty gaps between files. It is back to a plain `VStack`. Row count
+is still bounded by `DiffFileView.maxRenderedLines` (3000), and the outer
+`LazyVStack` still virtualizes at the per-file level. The correct guard for the
+huge-single-line hang, when reproduced, is a per-line content-length cap in the
+render path (bounding `StyledText.sizeThatFits`) — NOT a nested lazy stack.
+
+Batching the per-file highlight publication was tried and deliberately reverted
+to keep progressive coloring; do not re-add it without a real repro.
