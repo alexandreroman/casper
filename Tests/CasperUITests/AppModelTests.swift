@@ -1002,6 +1002,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(saves, 1)
     }
 
+    // MARK: - Open in Editor
+
+    func testResolvedEditorPrefersExplicitKindOverWorkspaceOverAvailable() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        var workspace = model.spaces[0].workspaces[0]
+        workspace.lastUsedEditor = .intellijIdea
+        XCTAssertEqual(model.resolvedEditor(.xcode, for: workspace), .xcode)
+    }
+
+    func testResolvedEditorFallsBackToWorkspaceLastUsedEditor() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        var workspace = model.spaces[0].workspaces[0]
+        workspace.lastUsedEditor = .intellijIdea
+        XCTAssertEqual(model.resolvedEditor(nil, for: workspace), .intellijIdea)
+    }
+
+    func testResolvedEditorFallsBackToFirstAvailableEditor() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let workspace = model.spaces[0].workspaces[0]
+        XCTAssertNil(workspace.lastUsedEditor)
+        XCTAssertEqual(model.resolvedEditor(nil, for: workspace), model.availableEditors.first)
+    }
+
     // MARK: - Terminal font-size persistence
 
     func testSurfaceConfigurationPassesPersistedFontSizeOrDefaultsToZero() {

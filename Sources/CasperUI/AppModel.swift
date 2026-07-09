@@ -22,6 +22,15 @@ final class AppModel {
     /// giving them a live refresh without knowing about the filesystem watcher.
     private(set) var diffRevision = 0
 
+    /// Editors detected as launchable at startup (CLI shim on `PATH` and app
+    /// bundle resolvable), in `EditorKind.priorityOrder`. Never re-detected
+    /// while the app is running.
+    private(set) var availableEditors: [EditorKind] = []
+
+    /// Set when `openInEditor` fails to launch; drives a `.alert` in
+    /// `WorkspaceDetailView`. Not part of any persisted model.
+    var editorLaunchError: String?
+
     /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
     /// makes repeated requests for the same file distinct so the view re-scrolls.
     struct DiffScrollTarget: Equatable {
@@ -268,6 +277,7 @@ final class AppModel {
         // heartbeat poll. Then arm the watcher for the restored selection (set
         // directly above, not through selectWorkspace).
         resolveGitBacking()
+        self.availableEditors = EditorLauncher.detectInstalled()
         reconfigureWorktreeWatcher()
     }
 
@@ -1001,6 +1011,30 @@ final class AppModel {
         guard let at = locate(workspaceID) else { return }
         spaces[at.space].workspaces[at.workspace].inspector.collapsed = collapsed
         persist()
+    }
+
+    /// Resolves which editor a click should launch: an explicit `kind` (from
+    /// picking a dropdown row) wins, else the workspace's remembered default,
+    /// else the first detected editor. Pure and side-effect-free so it is
+    /// unit-testable without touching `EditorLauncher`/`Process`.
+    func resolvedEditor(_ kind: EditorKind?, for workspace: Workspace) -> EditorKind? {
+        kind ?? workspace.lastUsedEditor ?? availableEditors.first
+    }
+
+    /// Launches `kind` (or the workspace's remembered/default editor when
+    /// nil) on the workspace's worktree, and remembers it as this
+    /// workspace's default for next time.
+    func openInEditor(_ kind: EditorKind?, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        let workspace = spaces[at.space].workspaces[at.workspace]
+        guard let resolved = resolvedEditor(kind, for: workspace) else { return }
+        do {
+            try EditorLauncher.launch(resolved, at: workspace.worktreePath)
+            spaces[at.space].workspaces[at.workspace].lastUsedEditor = resolved
+            persist()
+        } catch {
+            editorLaunchError = error.localizedDescription
+        }
     }
 
     /// Persist the inspector panel's width for a workspace. Called from the panel's
