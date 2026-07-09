@@ -243,9 +243,10 @@ struct WorkspaceDetailView: View {
                     }
                 }
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                // .menuStyle(.borderlessButton) always appends its own disclosure chevron
+                // after the label, so a label chevron here would render twice (⌄⌄). Keep
+                // the label empty and let the style's own arrow be the only visible one.
+                Color.clear.frame(width: 4, height: 20)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
