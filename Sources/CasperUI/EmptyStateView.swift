@@ -41,13 +41,13 @@ struct EmptyStateView: View {
             HStack(alignment: .top, spacing: 14) {
                 OnboardingStep(
                     index: 1, systemImage: "folder.badge.plus", title: "Add a folder",
-                    detail: "Adopt any repo — Casper groups it as a Space.", tint: .blue)
+                    detail: "Adopt any repo — Casper groups it as a Space.")
                 OnboardingStep(
                     index: 2, systemImage: "arrow.triangle.branch", title: "Branch a worktree",
-                    detail: "Each gets its own isolated terminal workspace.", tint: .green)
+                    detail: "Each gets its own isolated terminal workspace.")
                 OnboardingStep(
                     index: 3, systemImage: "sparkles", title: "Run your agent",
-                    detail: "Live state, diff & browser preview alongside.", tint: .orange)
+                    detail: "Live state, diff & browser preview alongside.")
             }
             .padding(.top, 8)
         }
@@ -63,16 +63,15 @@ private struct OnboardingStep: View {
     let systemImage: String
     let title: String
     let detail: String
-    let tint: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("\(index)")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.secondary)
                     .frame(width: 20, height: 20)
-                    .background(tint, in: Circle())
+                    .background(.quaternary, in: Circle())
                 Image(systemName: systemImage)
                     .font(.body)
                     .foregroundStyle(.secondary)
