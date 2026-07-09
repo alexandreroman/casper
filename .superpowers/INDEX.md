@@ -33,6 +33,11 @@ is [`status.md`](status.md).
 
 ## Plans
 
+- [`plans/stop-hook-explicit-done.md`](plans/stop-hook-explicit-done.md) —
+  `Stop` hook reports `done` explicitly instead of `idle`, since every
+  hook-driven workspace is permanently under `explicitAuthority` and never
+  gets a detected `done`; selecting a `done` workspace collapses it back to
+  `idle` (**design**, spans this repo and `casper-claude-plugin`).
 - [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
   `done` should raise a notification (**shipped** — spans this repo and

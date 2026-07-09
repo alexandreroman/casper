@@ -163,6 +163,31 @@ enum AgentAuthority: Sendable { case detection, explicit }
 Rationale: an agent that reports its own state is more precise than any scrape;
 once it opts in, detection steps aside.
 
+**In practice, this is permanent for any `casper-claude-plugin`-driven
+workspace.** `hooks/user-prompt-submit.sh` and `hooks/pre-tool-use.sh` call
+`casper status set working` on the very first Claude Code turn, which grants
+explicit authority immediately — and since authority release isn't
+implemented (see Deferred), the scraper never runs again for that workspace
+for the rest of the session. Its `working → idle (unseen) → done` derivation
+(Resolver, point 4) therefore never fires for a hook-driven workspace; only
+an explicit `casper status set done` can produce `done` for it. See
+`plans/stop-hook-explicit-done.md` for the consequence (the `Stop` hook must
+report `done` itself) and the matching explicit-authority `done → idle`
+collapse on selection (next section).
+
+### Explicit-authority `done` → `idle` collapse (on selection)
+
+The resolver's own seen-gated unlatch (point 4 above) only runs inside
+`runAgentDetectionTick`, which is skipped entirely for a workspace under
+explicit authority. So for a hook-driven workspace, nothing ever collapses
+an explicit `done` back to `idle` on its own — `AppModel.selectWorkspace`
+does it explicitly instead: selecting a workspace whose `agentState == .done`
+sets it to `.idle`, mirroring the resolver's own "seen" definition
+(`selectedWorkspaceID` pointing at it — not gated on `isWindowKey()`, unlike
+the sibling bubble-clear in `clearNotificationForFocusedWorkspace()`). Only
+`done` collapses this way; `blocked`/`error` are untouched by selection in
+either the detected or explicit path. See `plans/stop-hook-explicit-done.md`.
+
 ## Process lifecycle: `done` / `error` — not implemented
 
 `done` and `error` are in the `AgentState` model, but there is **no detected
@@ -232,6 +257,15 @@ rather than an explicit CLI call. The write is edge-triggered (the "only on
 change" guard), so a steady detection stream notifies once per transition, and
 `controlRaiseNotification`'s focus semantics still apply (the dot is suppressed
 for a focused workspace, but the macOS notification is always delivered).
+
+`controlSetAgentState` (the explicit CLI path) mirrors this for `.done`
+only — an explicit `casper status set done` also raises the bubble +
+passive notification, since a hook-driven workspace can never reach `done`
+through detection (see Authority above). It deliberately does **not** do
+the same for `blocked`/`error`: both already get an explicit `casper notify`
+from their own callers (`hooks/notification.py`, the `casper-status`
+skill), so mirroring `setDetectedAgentState` there would double the
+notification. See `plans/stop-hook-explicit-done.md`.
 
 ## Deferred / out of scope
 
