@@ -46,8 +46,9 @@ enum EditorLauncher {
     /// Casper's own process `PATH` — Casper is launched from Finder/Dock, so
     /// its environment lacks shell-profile `PATH` additions (Homebrew, `nvm`,
     /// JetBrains Toolbox shims, etc.) where `code`/`idea`/`xed` commonly live.
-    /// Runs `$SHELL -lc 'which <command>'`, discarding stderr, and trims the
-    /// captured stdout; `nil` on a non-zero exit or empty output.
+    /// Runs `$SHELL -lc 'which <command>'`, discarding stderr, and returns the
+    /// last non-empty line of stdout (profile banners print before `which`, so
+    /// the resolved path is last); `nil` on a non-zero exit or empty output.
     private static func resolveCLIPath(_ command: String) -> String? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let process = Process()
@@ -61,8 +62,16 @@ enum EditorLauncher {
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
             let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            let path = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            return path.isEmpty ? nil : path
+            // A login shell (`-lc`) sources `~/.zprofile`/`~/.zlogin`, which may
+            // print banner/status text (Homebrew shellenv, nvm/pyenv/conda,
+            // direnv, MOTD hooks) to stdout at startup — before `which` runs.
+            // The resolved path is therefore the last non-empty line, not the
+            // whole blob.
+            let resolvedPath = String(decoding: data, as: UTF8.self)
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .last { !$0.isEmpty }
+            return resolvedPath
         } catch {
             return nil
         }
