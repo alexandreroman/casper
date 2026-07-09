@@ -1285,9 +1285,11 @@ final class AppModel {
     func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID),
               spaces[at.space].workspaces[at.workspace].agentState != state else { return }
+        let previous = spaces[at.space].workspaces[at.workspace].agentState
         // agentState is transient (deliberately not encoded by Session's Codable),
         // so the @Observable mutation refreshes the sidebar with no need to persist.
         spaces[at.space].workspaces[at.workspace].agentState = state
+        clearNotificationOnResume(from: previous, to: state, at: at)
         // A detected transition into an attention state raises the same notification
         // `casper notify` would — a real macOS notification plus the sidebar dot — so
         // the user is alerted without installing any agent hook. Reached only on an
@@ -1295,6 +1297,17 @@ final class AppModel {
         if let message = Self.notificationMessage(for: state) {
             controlRaiseNotification(message: message, for: workspaceID)
         }
+    }
+
+    /// On a `done → working` resume, clear the stale "Done" notification entirely:
+    /// both the caption (`pendingNotificationMessage`) and the LED
+    /// (`pendingNotification`), so the sidebar bubble goes away once the agent picks
+    /// the task back up. A no-op for any other transition.
+    private func clearNotificationOnResume(
+        from previous: AgentState, to state: AgentState, at: (space: Int, workspace: Int)) {
+        guard previous == .done, state == .working else { return }
+        spaces[at.space].workspaces[at.workspace].pendingNotificationMessage = nil
+        spaces[at.space].workspaces[at.workspace].pendingNotification = false
     }
 
     /// The notification text for a detected state, or `nil` when the state needs
@@ -1329,7 +1342,9 @@ final class AppModel {
     @discardableResult
     func controlSetAgentState(_ state: AgentState, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
+        let previous = spaces[at.space].workspaces[at.workspace].agentState
         spaces[at.space].workspaces[at.workspace].agentState = state
+        clearNotificationOnResume(from: previous, to: state, at: at)
         // The explicit CLI path is the ONLY place authority is granted: once an
         // agent reports its own state, terminal-scraping detection steps aside for
         // this workspace. Robust authority release is deferred to a later timeout
