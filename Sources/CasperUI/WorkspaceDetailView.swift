@@ -80,7 +80,7 @@ struct WorkspaceDetailView: View {
                 ToolbarSpacer(.flexible)
             }
             if !model.availableEditors.isEmpty {
-                ToolbarItem(placement: .primaryAction) { editorButton }
+                ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
             }
             // Expanded: strip the glass so the toggle doesn't merge into the diff
             // badge's capsule (a macOS 26 glass-merge artifact). Collapsed: keep it.
@@ -231,14 +231,35 @@ struct WorkspaceDetailView: View {
                 }
             }
         } label: {
-            if let current {
-                editorLabel(current)
+            let content = Group {
+                if let current {
+                    editorLabel(current)
+                } else {
+                    Text("Editor")
+                }
+            }
+            .padding(.horizontal, 8)
+            // Draw the split-button's OWN capsule to match the other toolbar pills
+            // (branch title, diff badge): the native split-button chrome renders flat
+            // and undecorated, so mirror diffBadge — same 36 pt height, same Liquid
+            // Glass material, and its toolbar item is flattened so it doesn't merge
+            // into a neighbouring capsule's shared glass.
+            .frame(height: 36)
+            if #available(macOS 26.0, *) {
+                content
+                    .glassEffect(in: .capsule)
+                    .contentShape(Capsule())
             } else {
-                Text("Editor")
+                content
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                    .contentShape(Capsule())
             }
         } primaryAction: {
             model.openInEditor(nil, for: workspace.id)
         }
+        // Strip the native bordered/split-button chrome so only our capsule shows;
+        // this is appearance-only — the primaryAction / dropdown split stays intact.
+        .menuStyle(.borderlessButton)
         .help("Open in Editor")
     }
 
