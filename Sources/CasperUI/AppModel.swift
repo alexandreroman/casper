@@ -359,6 +359,13 @@ final class AppModel {
         persist()
     }
 
+    /// The workspace selection should fall back to after a removal: the first
+    /// remaining workspace of `space` in display order if it still has one,
+    /// otherwise the first workspace of the first remaining Space overall.
+    private func fallbackSelection(preferring space: Space?) -> UUID? {
+        space?.orderedWorkspaces.first?.id ?? spaces.first?.orderedWorkspaces.first?.id
+    }
+
     func removeSpace(id: UUID) {
         guard let index = spaces.firstIndex(where: { $0.id == id }) else { return }
         let removed = spaces.remove(at: index)
@@ -367,7 +374,7 @@ final class AppModel {
             discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
-            selectWorkspace(spaces.first?.workspaces.first?.id)
+            selectWorkspace(fallbackSelection(preferring: nil))
         }
         persist()
     }
@@ -473,7 +480,7 @@ final class AppModel {
         explicitAuthority.remove(id)
         agentResolvers[id] = nil
         if selectedWorkspaceID == id {
-            selectWorkspace(spaces.first?.workspaces.first?.id)
+            selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }
         persist()
     }

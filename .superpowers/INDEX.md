@@ -58,6 +58,11 @@ is [`status.md`](status.md).
 - [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
   — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
   skill's Screen Recording grant survives rebuilds (**shipped**).
+- [`plans/workspace-close-selection.md`](plans/workspace-close-selection.md) +
+  [`plans/workspace-close-selection-plan.md`](plans/workspace-close-selection-plan.md)
+  — closing/deleting/merging a workspace reselects a sibling in the same Space
+  first, falling back to the first workspace of the first remaining Space
+  (**design**).
 
 Completed plans are marked done in place here until they are cleaned up; the
 original design specs are recoverable from Git history (tracked under the
