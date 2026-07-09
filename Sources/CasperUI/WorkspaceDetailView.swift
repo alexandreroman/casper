@@ -222,29 +222,42 @@ struct WorkspaceDetailView: View {
 
     private var editorButton: some View {
         let current = model.resolvedEditor(nil, for: workspace)
-        return Menu {
-            ForEach(model.availableEditors, id: \.self) { kind in
-                Button {
-                    model.openInEditor(kind, for: workspace.id)
-                } label: {
-                    editorLabel(kind)
-                }
-            }
-        } label: {
-            let content = Group {
+        let content = HStack(spacing: 4) {
+            Button {
+                model.openInEditor(nil, for: workspace.id)
+            } label: {
                 if let current {
                     editorLabel(current)
                 } else {
                     Text("Editor")
                 }
             }
-            .padding(.horizontal, 8)
-            // Draw the split-button's OWN capsule to match the other toolbar pills
-            // (branch title, diff badge): the native split-button chrome renders flat
-            // and undecorated, so mirror diffBadge — same 36 pt height, same Liquid
-            // Glass material, and its toolbar item is flattened so it doesn't merge
-            // into a neighbouring capsule's shared glass.
-            .frame(height: 36)
+            .buttonStyle(.plain)
+
+            Menu {
+                ForEach(model.availableEditors, id: \.self) { kind in
+                    Button {
+                        model.openInEditor(kind, for: workspace.id)
+                    } label: {
+                        editorLabel(kind)
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .padding(.horizontal, 10)
+        // Match the branch capsule / diff badge: same Liquid Glass material and same
+        // height, drawn around the WHOLE HStack (primary button + chevron menu) so the
+        // capsule is one visible shape enclosing both regions — Menu's own primaryAction
+        // chrome renders its disclosure chevron OUTSIDE the label view, so styling only
+        // the label (the previous attempt) never produces a visible enclosing pill.
+        .frame(height: 36)
+        return Group {
             if #available(macOS 26.0, *) {
                 content
                     .glassEffect(in: .capsule)
@@ -254,12 +267,7 @@ struct WorkspaceDetailView: View {
                     .background(Color.secondary.opacity(0.12), in: Capsule())
                     .contentShape(Capsule())
             }
-        } primaryAction: {
-            model.openInEditor(nil, for: workspace.id)
         }
-        // Strip the native bordered/split-button chrome so only our capsule shows;
-        // this is appearance-only — the primaryAction / dropdown split stays intact.
-        .menuStyle(.borderlessButton)
         .help("Open in Editor")
     }
 
