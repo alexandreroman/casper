@@ -22,7 +22,7 @@ struct EmptyStateView: View {
             VStack(spacing: 8) {
                 Text("Casper")
                     .font(.system(size: 30, weight: .semibold))
-                Text("A dedicated, agent-aware terminal workspace for every Git worktree.")
+                Text("An agent-aware terminal workspace for every Git worktree.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -41,13 +41,13 @@ struct EmptyStateView: View {
             HStack(alignment: .top, spacing: 14) {
                 OnboardingStep(
                     index: 1, systemImage: "folder.badge.plus", title: "Add a folder",
-                    detail: "Adopt any repo — Casper groups it as a Space.")
+                    detail: "Adopt any repo — Casper groups it as a Space.", tint: .blue)
                 OnboardingStep(
                     index: 2, systemImage: "arrow.triangle.branch", title: "Branch a worktree",
-                    detail: "Each gets its own isolated terminal workspace.")
+                    detail: "Each gets its own isolated terminal workspace.", tint: .green)
                 OnboardingStep(
                     index: 3, systemImage: "sparkles", title: "Run your agent",
-                    detail: "Live state, diff & browser preview alongside.")
+                    detail: "Live state, diff & browser preview alongside.", tint: .orange)
             }
             .padding(.top, 8)
         }
@@ -63,15 +63,16 @@ private struct OnboardingStep: View {
     let systemImage: String
     let title: String
     let detail: String
+    let tint: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text("\(index)")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white)
                     .frame(width: 20, height: 20)
-                    .background(.quaternary, in: Circle())
+                    .background(tint, in: Circle())
                 Image(systemName: systemImage)
                     .font(.body)
                     .foregroundStyle(.secondary)
