@@ -1039,6 +1039,15 @@ final class AppModel {
         }
     }
 
+    /// Changes the workspace's remembered default editor without launching it —
+    /// used by the dropdown's picker rows, which only set the selection; only the
+    /// split-button's primary action (`openInEditor`) actually launches.
+    func selectEditor(_ kind: EditorKind, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].lastUsedEditor = kind
+        persist()
+    }
+
     /// Persist the inspector panel's width for a workspace. Called from the panel's
     /// live width measurement as the user drags the divider; clamps to the allowed
     /// range and no-ops when the (rounded) width is unchanged so a drag does not

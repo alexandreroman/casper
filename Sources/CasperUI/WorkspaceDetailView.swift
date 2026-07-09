@@ -237,7 +237,7 @@ struct WorkspaceDetailView: View {
             Menu {
                 ForEach(model.availableEditors, id: \.self) { kind in
                     Button {
-                        model.openInEditor(kind, for: workspace.id)
+                        model.selectEditor(kind, for: workspace.id)
                     } label: {
                         editorLabel(kind)
                     }

@@ -1041,6 +1041,18 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.resolvedEditor(nil, for: workspace), model.availableEditors.first)
     }
 
+    func testSelectEditorChangesDefaultWithoutLaunching() throws {
+        let (model, _) = modelWithOnePlainWorkspace()
+        guard let kind = model.availableEditors.first else {
+            throw XCTSkip("no available editor to test with on this machine")
+        }
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+        model.selectEditor(kind, for: model.spaces[0].workspaces[0].id)
+        XCTAssertEqual(model.spaces[0].workspaces[0].lastUsedEditor, kind)
+        XCTAssertEqual(saves, 1)
+    }
+
     // MARK: - Terminal font-size persistence
 
     func testSurfaceConfigurationPassesPersistedFontSizeOrDefaultsToZero() {
