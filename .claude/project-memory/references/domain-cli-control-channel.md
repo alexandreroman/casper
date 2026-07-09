@@ -23,7 +23,7 @@ Every workspace-scoped command accepts `--workspace <id-or-name>`, defaulting to
 `$CASPER_WORKSPACE_ID` (set in every Casper terminal). Each command sends a
 `ControlCommand` to the running app over a Unix domain socket named by
 `$CASPER_CONTROL_SOCKET` (per-surface env, alongside `$CASPER_WORKSPACE_ID`,
-`$CASPER_PORT[_0..9]`, and — under `--session <name>`, a DEBUG-build-only flag
+`$CASPER_PORT`, and — under `--session <name>`, a DEBUG-build-only flag
 — `$CASPER_SESSION`) and gets back a `ControlResponse`. This control channel
 **ships in every release build** — unlike the `#if DEBUG`-only `casper debug`
 channel ([[debug-channel-gating]]) and the `#if DEBUG`-only `--session` flag
@@ -79,7 +79,7 @@ socket, no `hooks` CLI. A workspace's agent state (status / progress /
 notification) is set **only** by the explicit CLI verbs above; an agent (or any
 tool) calls `casper status set …` / `progress set …` / `notify …` itself. The
 only agent-facing runtime coupling is the per-surface environment
-(`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT*`, and
+(`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT`, and
 `CASPER_SESSION` under a named session) that `ClaudeCodeAdapter.surfaceEnvironment`
 injects into every Casper terminal.
 
