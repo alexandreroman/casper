@@ -453,6 +453,23 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.agentState, .idle)
     }
 
+    func testSelectingDoneWorkspaceWhileUnfocusedCollapsesStateButLeavesBubbleArmed() {
+        let (model, id) = seededModel()
+        model.selectedWorkspaceID = UUID()  // a different workspace is selected first
+        model.isWindowKey = { false }       // app backgrounded throughout
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        _ = model.controlSetAgentState(.done, for: id)
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .done)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+
+        model.selectWorkspace(id)  // still backgrounded — selection alone is "seen", not "focused"
+        // The state collapses (selection is enough to mean "seen")...
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .idle)
+        // ...but the bubble stays armed until the window is actually key — the
+        // deliberate "seen" (selection) vs "focused" (selection + key window) split.
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+    }
+
     func testSelectingBlockedWorkspaceLeavesStateUnchanged() {
         let (model, id) = seededModel()
         model.selectedWorkspaceID = UUID()
