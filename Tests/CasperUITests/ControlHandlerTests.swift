@@ -340,6 +340,32 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Done")
     }
 
+    func testSetAgentStateDoneThenWorkingClearsCaptionAndLED() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }  // not focused, so the bubble arms
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        XCTAssertTrue(model.controlSetAgentState(.done, for: id))
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Done")
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+        // Resuming clears the stale "Done" notification entirely — caption and LED.
+        XCTAssertTrue(model.controlSetAgentState(.working, for: id))
+        XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
+    func testDetectedDoneThenWorkingClearsCaptionAndLED() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }  // not focused, so the bubble arms
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        model.setDetectedAgentState(.done, for: id)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Done")
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
+        // Resuming clears the stale "Done" notification entirely — caption and LED.
+        model.setDetectedAgentState(.working, for: id)
+        XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
     func testSetAgentStateBlockedDoesNotRaiseNotificationBubble() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
