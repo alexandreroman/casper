@@ -50,7 +50,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         let session = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
         let model = AppModel(sessionStore: makeStore(), session: session)
@@ -99,7 +99,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         let session = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
         let model = AppModel(sessionStore: makeStore(), session: session)
@@ -116,7 +116,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         let session = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
         let model = AppModel(sessionStore: makeStore(), session: session)
@@ -136,7 +136,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         let session = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
         let model = AppModel(sessionStore: makeStore(), session: session)

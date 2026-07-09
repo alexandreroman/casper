@@ -7,6 +7,13 @@ import GhosttyKit
 public struct GhosttySurfaceConfiguration {
     public var workingDirectory: String?
     public var command: String?
+    /// Text queued into the PTY at surface creation, consumed by the shell once
+    /// it starts reading — as if typed. Unlike `command` (which the vendored
+    /// fork always execs via a hardcoded `bash -l -c`, ignoring the user's real
+    /// login shell), `initial_input` is fed to whatever shell libghostty
+    /// actually launches, so it inherits the user's real `$SHELL`/PATH. See the
+    /// `surface-command-bash-exec` project memory note.
+    public var initialInput: String?
     public var environment: [String: String]
     public var scaleFactor: Double
     public var fontSize: Float
@@ -14,20 +21,22 @@ public struct GhosttySurfaceConfiguration {
     public init(
         workingDirectory: String? = nil,
         command: String? = nil,
+        initialInput: String? = nil,
         environment: [String: String] = [:],
         scaleFactor: Double = 1.0,
         fontSize: Float = 0  // 0 → libghostty default
     ) {
         self.workingDirectory = workingDirectory
         self.command = command
+        self.initialInput = initialInput
         self.environment = environment
         self.scaleFactor = scaleFactor
         self.fontSize = fontSize
     }
 
-    /// Build a `ghostty_surface_config_s` valid for the duration of `body`. All
-    /// other fields (`initial_input`, `wait_after_command`, `context`) are left
-    /// at libghostty's intended default from `ghostty_surface_config_new()`.
+    /// Build a `ghostty_surface_config_s` valid for the duration of `body`. The
+    /// `wait_after_command` and `context` fields are left at libghostty's
+    /// intended default from `ghostty_surface_config_new()`.
     ///
     /// `userdata` is handed back verbatim to libghostty's clipboard/close
     /// callbacks, so the caller can recover the owning view from it.
@@ -55,12 +64,15 @@ public struct GhosttySurfaceConfiguration {
                 }
                 return withOptionalCString(workingDirectory) { wd in
                     withOptionalCString(command) { cmd in
-                        c.working_directory = wd
-                        c.command = cmd
-                        return envVars.withUnsafeMutableBufferPointer { buf in
-                            c.env_vars = buf.baseAddress
-                            c.env_var_count = buf.count
-                            return body(&c)
+                        withOptionalCString(initialInput) { input in
+                            c.working_directory = wd
+                            c.command = cmd
+                            c.initial_input = input
+                            return envVars.withUnsafeMutableBufferPointer { buf in
+                                c.env_vars = buf.baseAddress
+                                c.env_var_count = buf.count
+                                return body(&c)
+                            }
                         }
                     }
                 }

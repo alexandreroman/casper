@@ -160,6 +160,15 @@ final class AppModel {
     /// web page and address alive across SwiftUI rebuilds.
     @ObservationIgnored private var browserCoordinators: [UUID: BrowserCoordinator] = [:]
 
+    /// Command to type into a terminal surface the first time its view is
+    /// materialized (from `terminal new --command` / `workspace new --command`).
+    /// Populated at creation (`controlOpenTerminal`, `createLinkedWorkspace`),
+    /// consumed and removed on first `surfaceView(for:in:)` for that surface id
+    /// — never replayed after. Never persisted: restoring `session.json` starts
+    /// with an empty map, so a restored terminal never re-runs its original
+    /// launch command (see the `surface-command-bash-exec` project memory note).
+    @ObservationIgnored private var pendingInitialInput: [UUID: String] = [:]
+
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
     /// agent detector. `AgentStateResolver` is a value type carried across ticks,
     /// so each workspace owns its own copy. Runtime-only; never persisted.
@@ -441,7 +450,10 @@ final class AppModel {
         }
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
-            baseBranch: base, portBase: portBase, command: command)
+            baseBranch: base, portBase: portBase)
+        if let command, let terminalID = LayoutTree.surfaceIDs(ws.layout).first {
+            pendingInitialInput[terminalID] = command
+        }
         spaces[si].workspaces.append(ws)
         selectWorkspace(ws.id)
         persist()
@@ -824,9 +836,13 @@ final class AppModel {
         if let existing = surfaceViews[surface.id] as? GhosttySurfaceView {
             return existing
         }
+        var configuration = surfaceConfiguration(for: workspace, terminal: surface)
+        if let command = pendingInitialInput.removeValue(forKey: surface.id) {
+            configuration.initialInput = command + "\n"
+        }
         let view = GhosttySurfaceView(
             runtime: runtime,
-            configuration: surfaceConfiguration(for: workspace, terminal: surface),
+            configuration: configuration,
             surfaceID: surface.id,
             onFocus: { [weak self] id in self?.focusSurface(id) },
             onAttach: { [weak self] id in self?.focusSurfaceViewIfActive(id) },
@@ -1013,6 +1029,7 @@ final class AppModel {
         for id in ids {
             surfaceViews[id] = nil
             browserCoordinators[id] = nil
+            pendingInitialInput[id] = nil
         }
     }
 
@@ -1044,11 +1061,11 @@ final class AppModel {
     func surfaceConfiguration(
         for workspace: Workspace, terminal: Surface
     ) -> GhosttySurfaceConfiguration {
-        guard case .terminal(let cwd, let command) = terminal.kind else {
+        guard case .terminal(let cwd) = terminal.kind else {
             return GhosttySurfaceConfiguration()
         }
         var config = GhosttySurfaceConfiguration(
-            workingDirectory: cwd, command: command, fontSize: terminal.fontSize ?? 0)
+            workingDirectory: cwd, fontSize: terminal.fontSize ?? 0)
         config.environment = ClaudeCodeAdapter.surfaceEnvironment(
             workspaceId: workspace.id,
             portBase: workspace.portBase,
@@ -1394,10 +1411,11 @@ final class AppModel {
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
               let at = locateSurface(anchor) else { return nil }
         let resolvedCwd = cwd ?? ws.worktreePath
-        let surface = Surface.terminal(cwd: resolvedCwd, command: command)
+        let surface = Surface.terminal(cwd: resolvedCwd)
+        if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
-        return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd, command: command)
+        return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
     }
 
     /// List the terminal surfaces of `workspaceID` in visual (depth-first) order.
@@ -1406,8 +1424,8 @@ final class AppModel {
     func controlListTerminals(in workspaceID: UUID) -> [ControlTerminalInfo] {
         guard let ws = workspace(id: workspaceID) else { return [] }
         return LayoutTree.surfaces(ws.layout).compactMap { surface in
-            guard case .terminal(let cwd, let command) = surface.kind else { return nil }
-            return ControlTerminalInfo(id: surface.id.uuidString, cwd: cwd, command: command)
+            guard case .terminal(let cwd) = surface.kind else { return nil }
+            return ControlTerminalInfo(id: surface.id.uuidString, cwd: cwd)
         }
     }
 

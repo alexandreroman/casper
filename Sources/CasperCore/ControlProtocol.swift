@@ -72,16 +72,14 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
     }
 }
 
-/// A terminal surface summary returned by `terminalList`.
+/// A terminal surface summary returned by `terminalNew`/`terminalList`.
 public struct ControlTerminalInfo: Codable, Equatable, Sendable {
     public var id: String
     public var cwd: String
-    public var command: String?
 
-    public init(id: String, cwd: String, command: String? = nil) {
+    public init(id: String, cwd: String) {
         self.id = id
         self.cwd = cwd
-        self.command = command
     }
 }
 

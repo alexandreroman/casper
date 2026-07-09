@@ -4,7 +4,7 @@ import XCTest
 
 final class ModelsTests: XCTestCase {
     private func sampleSession() -> Session {
-        let term = Surface(kind: .terminal(cwd: "/repo/wt", command: nil))
+        let term = Surface(kind: .terminal(cwd: "/repo/wt"))
         let browser = Surface(kind: .browser(url: URL(string: "http://localhost:40000")!))
         let layout = LayoutNode.split(
             orientation: .horizontal,
@@ -45,12 +45,12 @@ final class ModelsTests: XCTestCase {
         let primary = Workspace(
             name: "app", worktreePath: "/r", branch: "main",
             portBase: 40000,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))),
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))),
             kind: .primary)
         let linked = Workspace(
             name: "feat", worktreePath: "/r/.casper/worktrees/feat", branch: "feat",
             portBase: 40010,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/r/.casper/worktrees/feat", command: nil))),
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r/.casper/worktrees/feat"))),
             kind: .linked, baseBranch: "main")
         // `isGitRepo` is not persisted (resolved at runtime), so use `false` here
         // for the round-trip equality to hold; see testIsGitRepoIsNotPersisted.
@@ -134,13 +134,13 @@ final class ModelsTests: XCTestCase {
     // MARK: - Terminal font-size persistence
 
     func testSurfaceFontSizeDefaultsToNilAndRoundTrips() throws {
-        let withSize = Surface(kind: .terminal(cwd: "/w", command: nil), fontSize: 18.5)
+        let withSize = Surface(kind: .terminal(cwd: "/w"), fontSize: 18.5)
         let data = try JSONEncoder().encode(withSize)
         let decoded = try JSONDecoder().decode(Surface.self, from: data)
         XCTAssertEqual(decoded, withSize)
         XCTAssertEqual(decoded.fontSize, 18.5)
 
-        let withoutSize = Surface(kind: .terminal(cwd: "/w", command: nil))
+        let withoutSize = Surface(kind: .terminal(cwd: "/w"))
         XCTAssertNil(withoutSize.fontSize)
     }
 
@@ -175,7 +175,7 @@ final class ModelsTests: XCTestCase {
             browser: Surface(kind: .browser(url: URL(string: "http://localhost:5173")!)))
         let ws = Workspace(
             name: "feat", worktreePath: "/r", branch: "feat", portBase: 40010,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))),
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))),
             inspector: inspector)
         let data = try JSONEncoder().encode(ws)
         let decoded = try JSONDecoder().decode(Workspace.self, from: data)
@@ -206,7 +206,7 @@ final class ModelsTests: XCTestCase {
         // key; decoding it must fall back to a default (collapsed) InspectorState.
         let ws = Workspace(
             name: "legacy", worktreePath: "/r", branch: "main", portBase: 40000,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))),
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))),
             inspector: InspectorState(collapsed: false, tab: .browser))
         let data = try JSONEncoder().encode(ws)
         var object = try XCTUnwrap(
@@ -235,7 +235,7 @@ final class ModelsTests: XCTestCase {
             pendingNotification: true,
             pendingNotificationMessage: "Task finished",
             portBase: 40000,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/r", command: nil))))
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r"))))
 
         let data = try JSONEncoder().encode(ws)
         let json = try XCTUnwrap(String(data: data, encoding: .utf8))

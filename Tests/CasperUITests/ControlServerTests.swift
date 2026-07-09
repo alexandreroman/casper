@@ -22,7 +22,7 @@ final class ControlServerTests: XCTestCase {
     private func seededServer() throws -> (ControlServer, UUID) {
         let ws = Workspace(
             name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
         let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
         let url = URL(fileURLWithPath:
             (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))

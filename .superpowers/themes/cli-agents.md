@@ -28,11 +28,15 @@ handful of verbs:
 - `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
   split right (cwd defaults to the worktree); `terminal list` — list the
   workspace's terminals; `terminal close <id>` — close a terminal by id.
-  **Known limitation:** `--command` is currently **inert** — the embedded
-  libghostty (a sandbox/host-managed fork) does not honor a surface's `command`
-  at spawn, so a plain login shell launches regardless. Run the command inside
-  the shell instead. (This is why agent-state detection has no agent-as-command
-  path — see `agent-state-detection.md`.)
+  `--command` types the given text into the newly opened terminal's real login
+  shell once it starts (via `ghostty_surface_config_s.initial_input`, not the
+  vendored fork's broken `command`/`bash -l -c "exec"` path — see
+  [[surface-command-bash-exec]]), so it inherits the user's actual `$SHELL`
+  and PATH (Homebrew, mise, etc., from `~/.zprofile`/`~/.zshrc` for a zsh
+  user). It is typed as plain text, not `exec`'d: after the command exits, the
+  terminal returns to an interactive shell prompt rather than closing, and a
+  compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
+  instruction, not persisted — restoring a saved session never re-runs it.
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
   workspace's single **inspector** browser surface and select the browser tab.
   Browser surfaces can also be layout panes (`Surface.Kind.browser`, the "New
@@ -65,8 +69,11 @@ array) to stdout and exits 0, describing the resulting resource state and always
 including the affected `workspace` id — e.g. `status set blocked` →
 `{"status":"blocked","workspace":"<id>"}`; verbs with no meaningful state
 (`progress clear`, `notify`, `browser open`, `diff open`) → `{"workspace":"<id>"}`.
-`terminal new`/`list` carry `working-dir` (always) and `command` (when
-non-default); `workspace new`/`list`/`current` carry the worktree `path`
+`terminal new` carries `working-dir` (always) and `command` (when given);
+`terminal list` carries only `working-dir` (it no longer carries `command` —
+a terminal's launch command is a one-shot instruction, not durable state, see
+[[surface-command-bash-exec]]); `workspace new`/`list`/`current` carry the
+worktree `path`
 (`branch` omitted for a degenerate, non-Git space). On **error** it prints
 `{"error":"<msg>"}` to stderr and exits **non-zero** — a command in error never
 returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's

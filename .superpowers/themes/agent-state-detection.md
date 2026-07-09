@@ -194,16 +194,20 @@ either the detected or explicit path. See `plans/stop-hook-explicit-done.md`.
 producer** for them, by decision. The obvious source — a process-exit event
 (`GHOSTTY_ACTION_SHOW_CHILD_EXITED`) mapping exit `0 → done` / `≠0 → error` —
 was implemented and then **removed**, because it only makes sense for an
-*agent-as-command* surface (`Surface.terminal(command: "claude")`) and that
-scenario does not exist in Casper today:
+*agent-as-command* surface and that scenario does not exist in Casper today:
 
-**The embedded libghostty does not spawn a surface's `command`.** The pinned
-binary (`libghostty-spm`, a sandbox/host-managed-oriented fork) does not honor
-`ghostty_surface_config_s.command` — both `casper terminal new --command X` and
-restored command-surfaces launch a plain login shell instead. So agents always
-run **inside a shell** (`command == nil`, the user types `claude`); the shell
-survives when the agent exits, and no agent-scoped exit event is available. See
-the CasperGhostty note in `themes/cli-agents.md`.
+**`--command` does not create an agent-as-command surface.** It was believed
+that the embedded libghostty simply didn't honor a surface's `command` at all;
+that turned out to be wrong — the pinned fork (`libghostty-spm`, a
+sandbox/host-managed-oriented fork) does run it, but via a hardcoded
+`bash -l -c "exec <command>"` that ignored the user's real shell (see
+[[surface-command-bash-exec]]). The shipped fix (`terminal new --command`) now
+runs reliably, but deliberately via `ghostty_surface_config_s.initial_input`
+typed as plain text — not `exec`'d, and not using `command` at all — so it does
+not replace the shell process. Agents therefore still always run **inside a
+shell** (the user types `claude`, or `--command claude` types it for them); the
+shell survives when the agent exits, and no agent-scoped exit event is
+available. See the CasperGhostty note in `themes/cli-agents.md`.
 
 Given the shell-hosted reality:
 - **`done`** is still produced by the resolver's own `working → idle` derivation
@@ -275,8 +279,10 @@ notification. See `plans/stop-hook-explicit-done.md`.
 - **Timeout-based authority release** for shell-hosted agents (option B),
   wired with `casper notify`.
 - **A real `error` signal** and the **agent-as-command** `done`/`error` path —
-  both blocked on the embedded libghostty honoring a surface's `command` at
-  spawn (see "Process lifecycle").
+  the `--command` reliability fix shipped (see "Process lifecycle"), but
+  deliberately without `exec` semantics, so it does not itself create an
+  agent-as-command surface; re-evaluating that path is a separate, unscoped
+  project.
 - **Per-surface status** field + pane-chrome indicator (option B).
 - **Agents beyond Claude Code** — the rule set is per-agent.
 

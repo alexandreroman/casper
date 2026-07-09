@@ -69,15 +69,16 @@ struct TerminalNewOut: Encodable {
     }
 }
 
-/// `{"id":"...","working-dir":"...","command":"..."}` — one terminal descriptor,
-/// used as an array element for `terminal list`. `command` is omitted when unset.
+/// `{"id":"...","working-dir":"..."}` — one terminal descriptor, used as an
+/// array element for `terminal list`. No longer carries `command`: a
+/// terminal's launch command is a one-shot instruction, not durable state
+/// (see the `surface-command-bash-exec` project memory note).
 struct TerminalInfoOut: Encodable {
     let id: String
     let workingDir: String
-    let command: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, command
+        case id
         case workingDir = "working-dir"
     }
 }

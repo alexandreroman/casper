@@ -21,7 +21,7 @@ public struct Todo: Codable, Equatable, Sendable {
 
 public struct Surface: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: Codable, Equatable, Sendable {
-        case terminal(cwd: String, command: String?)
+        case terminal(cwd: String)
         case browser(url: URL)
     }
 
@@ -57,9 +57,9 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
 }
 
 extension Surface {
-    /// A terminal surface rooted at `cwd`, optionally launching `command`.
-    public static func terminal(cwd: String, command: String? = nil) -> Surface {
-        Surface(kind: .terminal(cwd: cwd, command: command))
+    /// A terminal surface rooted at `cwd`.
+    public static func terminal(cwd: String) -> Surface {
+        Surface(kind: .terminal(cwd: cwd))
     }
 
     /// A browser surface showing the blank start page.

@@ -76,7 +76,7 @@ struct SurfaceHostView: View {
     /// browser host, or a static tag for other surfaces.
     private var dragLabel: String {
         switch surface.kind {
-        case .terminal(let cwd, _):
+        case .terminal(let cwd):
             let name = (cwd as NSString).lastPathComponent
             return name.isEmpty ? "Terminal" : name
         case .browser(let url):

@@ -6,7 +6,7 @@ final class ProgressTests: XCTestCase {
         Workspace(
             name: "w", worktreePath: "/r/w", branch: "b",
             todos: todos, portBase: 40000,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/r/w", command: nil)))
+            layout: .leaf(Surface(kind: .terminal(cwd: "/r/w")))
         )
     }
 
