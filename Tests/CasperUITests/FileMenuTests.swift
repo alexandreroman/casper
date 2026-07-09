@@ -77,6 +77,14 @@ final class FileMenuTests: XCTestCase {
         XCTAssertEqual(deleteItem?.isEnabled, false)
     }
 
+    func testAddFolderItemHasCommandOShortcut() {
+        let model = AppModel(sessionStore: makeStore())
+        let submenu = model.fileMenuItem().submenu!
+        let addItem = submenu.items.first { $0.title == "Add Folder…" }
+        XCTAssertEqual(addItem?.keyEquivalent, "o")
+        XCTAssertEqual(addItem?.keyEquivalentModifierMask, .command)
+    }
+
     func testFileMenuItemBuildsExpectedTitlesInOrder() {
         let model = AppModel(sessionStore: makeStore())
         let item = model.fileMenuItem()
