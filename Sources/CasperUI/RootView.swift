@@ -26,7 +26,12 @@ struct RootView: View {
                         WorkspaceDetailView(model: model, workspace: workspace)
                             .id(id)
                     } else {
-                        EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
+                        // Unreachable in practice: a non-empty `spaces` always has a selected,
+                        // resolvable workspace (AppModel selection invariant — see `addSpace`,
+                        // `fallbackSelection`, and session restore; locked by `AppModelTests`).
+                        // Kept only to satisfy the `detail` closure's exhaustiveness, and so the
+                        // misleading "No workspace yet." never renders where workspaces exist.
+                        Color.clear
                     }
                 }
             }
