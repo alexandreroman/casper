@@ -44,22 +44,21 @@ struct SidebarView: View {
         )
         .onTapGesture { model.selectWorkspace(workspace.id) }
         .contextMenu {
-            if workspace.kind == .linked {
-                if let base = workspace.baseBranch, !base.isEmpty {
-                    Button {
-                        model.presentCloseWorkspaceConfirmation(id: workspace.id)
-                    } label: {
-                        Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")
-                    }
-                    Divider()
-                }
-                Button(role: .destructive) {
-                    model.presentDeleteWorkspaceConfirmation(id: workspace.id)
-                } label: {
-                    Label("Delete Workspace…", systemImage: "trash")
-                        .foregroundStyle(.red)
-                }
+            let isLinked = workspace.kind == .linked
+            let canMerge = isLinked && !(workspace.baseBranch?.isEmpty ?? true)
+            Button {
+                model.presentCloseWorkspaceConfirmation(id: workspace.id)
+            } label: {
+                Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")
             }
+            .disabled(!canMerge)
+            Divider()
+            Button(role: .destructive) {
+                model.presentDeleteWorkspaceConfirmation(id: workspace.id)
+            } label: {
+                Label("Delete Workspace…", systemImage: "trash")
+            }
+            .disabled(!isLinked)
         }
     }
 }
