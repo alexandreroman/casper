@@ -5,15 +5,17 @@ import CasperCore
 final class ControlCommandTests: XCTestCase {
     func testStatusSetBuildsCommand() throws {
         let set = try StatusCommand.Set.parse(["blocked", "--workspace", "feature"])
+        XCTAssertEqual(set.state, .blocked)
         let command = try set.makeCommand()
         XCTAssertEqual(command.verb, .statusSet)
         XCTAssertEqual(command.state, "blocked")
         XCTAssertEqual(command.workspace, "feature")
     }
 
-    func testStatusSetRejectsBadState() throws {
-        let set = try StatusCommand.Set.parse(["bogus", "--workspace", "feature"])
-        XCTAssertThrowsError(try set.makeCommand())
+    func testStatusSetRejectsBadState() {
+        // The typed `AgentState` argument makes ArgumentParser reject an unknown
+        // value at parse time (exit 64), before `makeCommand()` ever runs.
+        XCTAssertThrowsError(try StatusCommand.Set.parse(["bogus", "--workspace", "feature"]))
     }
 
     func testProgressSetBuildsCommand() throws {
@@ -62,6 +64,11 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.workspace, "feature")
         XCTAssertEqual(command.command, "npm test")
         XCTAssertEqual(command.cwd, "/some/dir")
+    }
+
+    func testTerminalNewTreatsEmptyCommandAsNil() throws {
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--command", ""])
+        XCTAssertNil(try new.makeCommand().command)
     }
 
     func testTerminalListBuildsCommand() throws {
@@ -130,8 +137,9 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testWorkspaceNewBuildsCommand() throws {
-        let new = try WorkspaceCommand.New.parse(
-            ["--branch", "feature-x", "--base", "main", "--workspace", "primary"])
+        // The branch is now the required positional subject (not `--branch`).
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--base", "main", "--workspace", "primary"])
+        XCTAssertEqual(new.branch, "feature-x")
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .workspaceNew)
         XCTAssertEqual(command.branch, "feature-x")
@@ -140,23 +148,21 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testWorkspaceNewCarriesCommand() throws {
-        let new = try WorkspaceCommand.New.parse(
-            ["--branch", "feature-x", "--command", "npm test", "--workspace", "primary"])
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--command", "npm test", "--workspace", "primary"])
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .workspaceNew)
         XCTAssertEqual(command.command, "npm test")
     }
 
     func testWorkspaceNewTreatsEmptyCommandAsNil() throws {
-        let new = try WorkspaceCommand.New.parse(
-            ["--branch", "feature-x", "--command", "", "--workspace", "primary"])
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--command", "", "--workspace", "primary"])
         let command = try new.makeCommand()
         XCTAssertNil(command.command)
     }
 
-    func testWorkspaceNewRequiresBranch() throws {
-        let new = try WorkspaceCommand.New.parse(["--workspace", "primary"])
-        XCTAssertThrowsError(try new.makeCommand())
+    func testWorkspaceNewRequiresBranch() {
+        // The branch is a required positional; ArgumentParser rejects its absence at parse time.
+        XCTAssertThrowsError(try WorkspaceCommand.New.parse(["--workspace", "primary"]))
     }
 
     func testWorkspaceDeleteBuildsCommand() throws {
@@ -175,5 +181,12 @@ final class ControlCommandTests: XCTestCase {
         let current = try WorkspaceCommand.Current.parse([])
         XCTAssertEqual(current.resolve(environment: ["CASPER_WORKSPACE_ID": "abc"]), "abc")
         XCTAssertNil(current.resolve(environment: [:]))
+    }
+
+    func testNormalizedCommand() {
+        // Shared by `terminal new` and `workspace new`: empty string means "no command".
+        XCTAssertNil(normalizedCommand(nil))
+        XCTAssertNil(normalizedCommand(""))
+        XCTAssertEqual(normalizedCommand("npm test"), "npm test")
     }
 }

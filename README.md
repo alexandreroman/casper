@@ -179,7 +179,7 @@ casper diff open Sources/App/Main.swift      # open the diff, scroll to a file
 casper diff close                            # collapse the inspector if the diff is showing
 casper workspace list                        # enumerate workspaces
 casper workspace current                     # print the current workspace + path
-casper workspace new --branch feature/x      # create a Git worktree workspace
+casper workspace new feature/x               # create a Git worktree workspace
 casper workspace delete                      # destroy a workspace (worktree + branch)
 ```
 

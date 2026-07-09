@@ -15,6 +15,12 @@ struct WorkspaceTargetOption: ParsableArguments {
     }
 }
 
+/// Normalize a `--command` option so an empty string means "no command",
+/// keeping `terminal new` and `workspace new` consistent.
+func normalizedCommand(_ command: String?) -> String? {
+    command.flatMap { $0.isEmpty ? nil : $0 }
+}
+
 /// Resolve a required target selector or exit with a clear message.
 func requireSelector(_ option: WorkspaceTargetOption) throws -> String {
     guard let selector = option.resolvedSelector() else {

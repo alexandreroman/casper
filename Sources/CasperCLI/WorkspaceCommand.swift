@@ -6,7 +6,7 @@ import Foundation
 struct WorkspaceCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "workspace",
-        abstract: "List, identify, and create workspaces.",
+        abstract: "List, identify, create, and delete workspaces.",
         subcommands: [List.self, Current.self, New.self, Delete.self])
 
     struct List: ParsableCommand {
@@ -18,7 +18,7 @@ struct WorkspaceCommand: ParsableCommand {
             let response = try sendControl(makeCommand(), retriable: true)
             emit(response.workspaces?.map {
                 WorkspaceOut(
-                    id: $0.id, name: $0.name,
+                    workspace: $0.id, name: $0.name,
                     branch: $0.branch.isEmpty ? nil : $0.branch, path: $0.path)
             } ?? [])
         }
@@ -41,31 +41,26 @@ struct WorkspaceCommand: ParsableCommand {
             // if the socket is unset/unreachable.
             let response = try sendControl(ControlCommand(verb: .workspaceList), retriable: true)
             let match = response.workspaces?.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
-            emit(CurrentOut(workspace: match?.id ?? id, path: match?.path))
+            emit(CurrentOut(
+                workspace: match?.id ?? id, name: match?.name,
+                branch: (match?.branch).flatMap { $0.isEmpty ? nil : $0 }, path: match?.path))
         }
     }
 
     struct New: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Create a new Git worktree workspace.")
-        @Option(name: .long, help: "New branch name for the worktree.") var branch: String = ""
+        @Argument(help: "New branch name for the worktree.") var branch: String
         @Option(name: .long, help: "Base ref to fork from (defaults to the space's base branch).")
         var base: String?
         @Option(name: .long, help: "Command to run in the workspace's initial terminal.") var command: String?
         @OptionGroup var target: WorkspaceTargetOption
 
-        /// The command normalized so an empty string means "no command", mirroring
-        /// the `--branch` empty-check.
-        private var effectiveCommand: String? {
-            command.flatMap { $0.isEmpty ? nil : $0 }
-        }
-
         func makeCommand() throws -> ControlCommand {
-            guard !branch.isEmpty else { throw exitWithError("missing --branch") }
             let selector = try requireSelector(target)
             return ControlCommand(
                 verb: .workspaceNew, workspace: selector, branch: branch, base: base,
-                command: effectiveCommand)
+                command: normalizedCommand(command))
         }
 
         func run() throws {
@@ -76,7 +71,7 @@ struct WorkspaceCommand: ParsableCommand {
             emit(WorkspaceNewOut(
                 workspace: info.id, name: info.name,
                 branch: info.branch.isEmpty ? nil : info.branch, path: info.path,
-                command: effectiveCommand))
+                command: normalizedCommand(command)))
         }
     }
 

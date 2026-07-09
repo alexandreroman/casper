@@ -16,14 +16,14 @@ struct TerminalCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
         @Option(name: .long, help: "Command to run in the new terminal.") var command: String?
         @Option(
-            name: .customLong("working-dir"),
+            name: .long,
             help: "Working directory for the new terminal (defaults to the workspace's worktree).")
         var workingDir: String?
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .terminalNew, workspace: try requireSelector(target),
-                command: command, cwd: workingDir)
+                command: normalizedCommand(command), cwd: workingDir)
         }
 
         func run() throws {
@@ -31,7 +31,7 @@ struct TerminalCommand: ParsableCommand {
             guard let info = response.terminals?.first else { throw exitWithError("no terminal returned") }
             emit(TerminalNewOut(
                 terminal: info.id, workspace: response.workspace ?? "",
-                command: command, workingDir: info.cwd))
+                command: normalizedCommand(command), workingDir: info.cwd))
         }
     }
 
@@ -48,7 +48,7 @@ struct TerminalCommand: ParsableCommand {
         func run() throws {
             let r = try sendControl(makeCommand(), retriable: true)
             emit((r.terminals ?? []).map {
-                TerminalInfoOut(id: $0.id, workingDir: $0.cwd)
+                TerminalInfoOut(terminal: $0.id, workingDir: $0.cwd)
             })
         }
     }

@@ -14,11 +14,11 @@ struct DiffCommand: ParsableCommand {
 
         @Argument(help: "File path to scroll the diff view to (optional).")
         var file: String?
-        @OptionGroup var workspaceTarget: WorkspaceTargetOption
+        @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
-                verb: .diffOpen, workspace: try requireSelector(workspaceTarget), target: file)
+                verb: .diffOpen, workspace: try requireSelector(target), target: file)
         }
 
         func run() throws {
@@ -31,10 +31,10 @@ struct DiffCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Collapse the inspector if the diff view is showing.")
 
-        @OptionGroup var workspaceTarget: WorkspaceTargetOption
+        @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            ControlCommand(verb: .diffClose, workspace: try requireSelector(workspaceTarget))
+            ControlCommand(verb: .diffClose, workspace: try requireSelector(target))
         }
 
         func run() throws {
