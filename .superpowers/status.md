@@ -323,13 +323,15 @@ notifies for the same event. See
 `plans/notification-idle-best-practices.md`.
 
 **Not implemented (by decision):** a process-exit (`childExited`) `done`/`error`
-producer + authority release. It only fits an *agent-as-command* surface, which
-Casper can't create — the embedded libghostty (a sandbox/host-managed fork) does
-not spawn a surface's `command` (a plain shell launches; this also makes `casper
-terminal new --command X` inert). Agents therefore run inside a shell; `error`
-has no detected producer and authority release is deferred to the timeout
-mechanism (option B). The initial implementation was removed. See the theme's
-"Process lifecycle" section.
+producer + authority release. It was believed to only fit an *agent-as-command*
+surface that Casper couldn't create — but `command` is not actually inert: the
+embedded libghostty (a sandbox/host-managed fork) execs it via a hardcoded
+`bash -l -c "exec <command>"`, regardless of the user's real login shell, which
+does replace the shell process (see [[surface-command-bash-exec]]). This
+reopens the *agent-as-command* option; it hasn't been re-evaluated since.
+Agents currently still run inside a shell; `error` has no detected producer and
+authority release is deferred to the timeout mechanism (option B). The initial
+implementation was removed. See the theme's "Process lifecycle" section.
 
 **Deferred:** `.render`-driven trigger (timer poll for now); option-B timeout
 authority release; per-surface status (option B); agents beyond Claude Code
