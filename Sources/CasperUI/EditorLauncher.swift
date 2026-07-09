@@ -59,9 +59,9 @@ enum EditorLauncher {
         process.standardError = FileHandle.nullDevice
         do {
             try process.run()
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
             // A login shell (`-lc`) sources `~/.zprofile`/`~/.zlogin`, which may
             // print banner/status text (Homebrew shellenv, nvm/pyenv/conda,
             // direnv, MOTD hooks) to stdout at startup — before `which` runs.

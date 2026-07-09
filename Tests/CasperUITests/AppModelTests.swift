@@ -1011,17 +1011,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.resolvedEditor(.xcode, for: workspace), .xcode)
     }
 
-    func testResolvedEditorFallsBackToWorkspaceLastUsedEditor() {
+    func testResolvedEditorFallsBackToWorkspaceLastUsedEditor() throws {
         let (model, _) = modelWithOnePlainWorkspace()
+        // Pick a remembered editor that is available but not availableEditors.first, so
+        // this stays distinguishable from the "falls back to first available" test case.
+        guard let remembered = model.availableEditors.dropFirst().first else {
+            throw XCTSkip("need at least two available editors to distinguish lastUsedEditor from availableEditors.first")
+        }
         var workspace = model.spaces[0].workspaces[0]
-        workspace.lastUsedEditor = .intellijIdea
-        XCTAssertEqual(model.resolvedEditor(nil, for: workspace), .intellijIdea)
+        workspace.lastUsedEditor = remembered
+        XCTAssertEqual(model.resolvedEditor(nil, for: workspace), remembered)
     }
 
     func testResolvedEditorFallsBackToFirstAvailableEditor() {
         let (model, _) = modelWithOnePlainWorkspace()
         let workspace = model.spaces[0].workspaces[0]
         XCTAssertNil(workspace.lastUsedEditor)
+        XCTAssertEqual(model.resolvedEditor(nil, for: workspace), model.availableEditors.first)
+    }
+
+    func testResolvedEditorIgnoresStaleLastUsedEditorNotInAvailableEditors() throws {
+        let (model, _) = modelWithOnePlainWorkspace()
+        guard let stale = EditorKind.allCases.first(where: { !model.availableEditors.contains($0) }) else {
+            throw XCTSkip("no uninstalled editor to test with on this machine")
+        }
+        var workspace = model.spaces[0].workspaces[0]
+        workspace.lastUsedEditor = stale
+        XCTAssertNotEqual(model.resolvedEditor(nil, for: workspace), stale)
         XCTAssertEqual(model.resolvedEditor(nil, for: workspace), model.availableEditors.first)
     }
 

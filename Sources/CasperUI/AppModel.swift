@@ -1018,7 +1018,8 @@ final class AppModel {
     /// else the first detected editor. Pure and side-effect-free so it is
     /// unit-testable without touching `EditorLauncher`/`Process`.
     func resolvedEditor(_ kind: EditorKind?, for workspace: Workspace) -> EditorKind? {
-        kind ?? workspace.lastUsedEditor ?? availableEditors.first
+        let remembered = workspace.lastUsedEditor.flatMap { availableEditors.contains($0) ? $0 : nil }
+        return kind ?? remembered ?? availableEditors.first
     }
 
     /// Launches `kind` (or the workspace's remembered/default editor when
@@ -1030,6 +1031,7 @@ final class AppModel {
         guard let resolved = resolvedEditor(kind, for: workspace) else { return }
         do {
             try EditorLauncher.launch(resolved, at: workspace.worktreePath)
+            editorLaunchError = nil
             spaces[at.space].workspaces[at.workspace].lastUsedEditor = resolved
             persist()
         } catch {

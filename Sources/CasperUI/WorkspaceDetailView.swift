@@ -221,7 +221,7 @@ struct WorkspaceDetailView: View {
     }
 
     private var editorButton: some View {
-        let current = workspace.lastUsedEditor ?? model.availableEditors.first
+        let current = model.resolvedEditor(nil, for: workspace)
         return Menu {
             ForEach(model.availableEditors, id: \.self) { kind in
                 Button {

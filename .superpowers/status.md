@@ -275,6 +275,30 @@ the three `AppModel` inspector mutators, and the inspector-browser URL write-bac
 survival across collapse/expand and workspace switch, and a terminal pane not
 blanked when toggling the panel (see `persistent-nsview-host-sharing`).
 
+## Open in Editor — ✅
+
+A split-button in the title bar, immediately left of the inspector-panel toggle,
+launches the workspace's worktree in VS Code, IntelliJ IDEA, or Xcode via each
+editor's CLI shim (`code`/`idea`/`xed`). The button's primary action
+quick-launches the remembered/default editor; its attached menu lists every
+detected editor for a one-off choice.
+
+**Detection.** `EditorLauncher.detectInstalled()` runs once at `AppModel`
+startup (not live) and populates `availableEditors`: an editor counts as
+detected only when both its CLI shim resolves on the user's **login shell**
+`PATH` (`$SHELL -lc 'which <command>'`, since Casper is launched from
+Finder/Dock and lacks shell-profile `PATH` additions) and its app bundle
+resolves via `NSWorkspace` bundle-identifier lookup.
+
+**Resolution & persistence.** `Workspace.lastUsedEditor` is a per-workspace
+preference, updated after each successful launch. `AppModel.resolvedEditor`
+picks, in order: an explicit kind (menu selection) → the workspace's
+remembered `lastUsedEditor`, **but only if it is still present in
+`availableEditors`** → the first detected editor. A remembered editor that is
+no longer installed is never returned (it is not cleared either — if
+reinstalled later, the original preference is honored again); the quick-launch
+button falls back to a working editor instead of guaranteeing a launch error.
+
 ## Developer tooling (`#if DEBUG`)
 
 - **Debug & observability channel — ✅.** `DebugProtocol`/`DebugSocket`/
