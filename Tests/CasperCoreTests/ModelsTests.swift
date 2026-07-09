@@ -35,6 +35,36 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(original, decoded)
     }
 
+    func testDraggedRatiosSurviveSessionRoundTrip() throws {
+        // A nested split so we exercise addressing a non-root split by path.
+        let a = Surface(kind: .terminal(cwd: "/w"))
+        let b = Surface(kind: .terminal(cwd: "/w"))
+        let c = Surface(kind: .terminal(cwd: "/w"))
+        let nested = LayoutNode.split(
+            orientation: .vertical, children: [.leaf(b), .leaf(c)], ratios: [0.5, 0.5])
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [.leaf(a), nested], ratios: [0.5, 0.5])
+        // Simulate two divider drags: the root and the nested split.
+        var layout = LayoutTree.updateRatios(in: root, at: [], ratios: [0.35, 0.65])
+        layout = LayoutTree.updateRatios(in: layout, at: [1], ratios: [0.2, 0.8])
+
+        let ws = Workspace(
+            name: "feat-x", worktreePath: "/repo/wt", branch: "feat-x",
+            portBase: 40010, layout: layout)
+        let space = Space(
+            name: "repo", folderPath: "/repo", isGitRepo: false, workspaces: [ws])
+        let session = Session(spaces: [space])
+
+        let data = try JSONEncoder().encode(session)
+        let decoded = try JSONDecoder().decode(Session.self, from: data)
+
+        let decodedLayout = decoded.spaces.first?.workspaces.first?.layout
+        guard case .split(_, let children, let rootRatios)? = decodedLayout else { return XCTFail() }
+        XCTAssertEqual(rootRatios, [0.35, 0.65])
+        guard case .split(_, _, let nestedRatios) = children[1] else { return XCTFail() }
+        XCTAssertEqual(nestedRatios, [0.2, 0.8])
+    }
+
     func testTodoStatusRawValuesMatchClaudeCode() {
         XCTAssertEqual(TodoStatus.pending.rawValue, "pending")
         XCTAssertEqual(TodoStatus.inProgress.rawValue, "in_progress")

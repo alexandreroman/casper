@@ -46,6 +46,32 @@ public enum LayoutTree {
         }
     }
 
+    /// Replace the `ratios` of the `.split` node reached by walking `path` — the
+    /// sequence of child indices from the root (`[]` targets the root itself).
+    /// Returns the tree unchanged when the path does not resolve to a node, the
+    /// target is not a `.split`, or the target's child count differs from
+    /// `ratios.count`. Follows the functional style of the other operations here:
+    /// a new tree, never an in-place mutation.
+    public static func updateRatios(
+        in tree: LayoutNode, at path: [Int], ratios: [Double]
+    ) -> LayoutNode {
+        guard let index = path.first else {
+            // Empty path: `tree` is the target split whose ratios we replace.
+            guard case .split(let orientation, let children, _) = tree,
+                  children.count == ratios.count else {
+                return tree
+            }
+            return .split(orientation: orientation, children: children, ratios: ratios)
+        }
+        guard case .split(let orientation, var children, let currentRatios) = tree,
+              children.indices.contains(index) else {
+            return tree
+        }
+        children[index] = updateRatios(
+            in: children[index], at: Array(path.dropFirst()), ratios: ratios)
+        return .split(orientation: orientation, children: children, ratios: currentRatios)
+    }
+
     /// Map a Ghostty split direction to an orientation and insertion side.
     public static func orientationAndSide(
         for direction: GhosttySplitDirectionLike

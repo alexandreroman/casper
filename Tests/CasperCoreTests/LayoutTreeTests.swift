@@ -63,6 +63,65 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertNil(surfaces.first { $0.id == b.id }?.fontSize)
     }
 
+    // MARK: - updateRatios
+
+    func testUpdateRatiosUpdatesChildSplitByPath() {
+        let a = term(); let b = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        let out = LayoutTree.updateRatios(in: root, at: [], ratios: [0.3, 0.7])
+        guard case .split(_, _, let ratios) = out else { return XCTFail() }
+        XCTAssertEqual(ratios, [0.3, 0.7])
+    }
+
+    func testUpdateRatiosUpdatesNestedSplitByDeepPath() {
+        let a = term(); let b = term(); let c = term()
+        let nested = LayoutNode.split(
+            orientation: .vertical, children: [leaf(b), leaf(c)], ratios: [0.5, 0.5])
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), nested], ratios: [0.5, 0.5])
+        // Child index 1 is the nested split.
+        let out = LayoutTree.updateRatios(in: root, at: [1], ratios: [0.25, 0.75])
+        guard case .split(_, let children, let rootRatios) = out else { return XCTFail() }
+        XCTAssertEqual(rootRatios, [0.5, 0.5])  // root untouched
+        guard case .split(_, _, let nestedRatios) = children[1] else { return XCTFail() }
+        XCTAssertEqual(nestedRatios, [0.25, 0.75])
+    }
+
+    func testUpdateRatiosMismatchedChildCountIsNoOp() {
+        let a = term(); let b = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        // Three ratios for a two-child split: rejected, tree unchanged.
+        let out = LayoutTree.updateRatios(in: root, at: [], ratios: [0.2, 0.3, 0.5])
+        XCTAssertEqual(out, root)
+    }
+
+    func testUpdateRatiosNonSplitTargetIsNoOp() {
+        let a = term(); let b = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        // Path [0] resolves to a leaf, not a split: rejected, tree unchanged.
+        let out = LayoutTree.updateRatios(in: root, at: [0], ratios: [0.3, 0.7])
+        XCTAssertEqual(out, root)
+    }
+
+    func testUpdateRatiosOutOfRangePathIsNoOp() {
+        let a = term(); let b = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+        // Child index 5 does not exist: stale/invalid path, tree unchanged.
+        let out = LayoutTree.updateRatios(in: root, at: [5], ratios: [0.3, 0.7])
+        XCTAssertEqual(out, root)
+    }
+
+    func testUpdateRatiosEmptyPathOnLeafIsNoOp() {
+        let a = term()
+        let root = leaf(a)
+        let out = LayoutTree.updateRatios(in: root, at: [], ratios: [0.3, 0.7])
+        XCTAssertEqual(out, root)
+    }
+
     func testSplitFromRootLeafWrapsInSplit() {
         let a = term(); let root = leaf(a); let b = term()
         let (out, focus) = LayoutTree.split(

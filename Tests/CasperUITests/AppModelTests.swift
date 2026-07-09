@@ -1087,6 +1087,56 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
     }
 
+    // MARK: - Split ratio persistence
+
+    /// A single-pane plain workspace split once into a two-pane horizontal split
+    /// (even `[0.5, 0.5]` ratios), returning the model and its workspace id.
+    private func modelWithTwoPaneSplit() -> (AppModel, UUID) {
+        let (model, _) = modelWithOnePlainWorkspace()
+        model.applyNewSplit(.right)  // leaf -> horizontal split of two panes
+        return (model, model.spaces[0].workspaces[0].id)
+    }
+
+    func testSetSplitRatiosUpdatesTargetWorkspaceAndSchedulesSave() {
+        let (model, wsID) = modelWithTwoPaneSplit()
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        model.setSplitRatios(at: [], ratios: [0.25, 0.75], for: wsID)
+
+        guard case .split(_, _, let ratios) = model.spaces[0].workspaces[0].layout else {
+            return XCTFail("workspace layout must remain a split")
+        }
+        XCTAssertEqual(ratios, [0.25, 0.75])
+
+        model.flushPendingSave()  // debounced; flush so the assertion is deterministic
+        XCTAssertGreaterThanOrEqual(saves, 1)
+    }
+
+    func testSetSplitRatiosNonPositiveSumIsNoOp() {
+        let (model, wsID) = modelWithTwoPaneSplit()
+        let layoutBefore = model.spaces[0].workspaces[0].layout
+        model.setSplitRatios(at: [], ratios: [0, 0], for: wsID)  // sum 0 -> rejected
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+    }
+
+    func testSetSplitRatiosUnchangedRatiosIsNoOp() {
+        let (model, wsID) = modelWithTwoPaneSplit()
+        let layoutBefore = model.spaces[0].workspaces[0].layout
+        // The split is already even, so normalizing [0.5, 0.5] reproduces the
+        // current ratios and the write must be skipped.
+        model.setSplitRatios(at: [], ratios: [0.5, 0.5], for: wsID)
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+    }
+
+    func testSetSplitRatiosInvalidPathIsNoOp() {
+        let (model, wsID) = modelWithTwoPaneSplit()
+        let layoutBefore = model.spaces[0].workspaces[0].layout
+        // A stale child index does not resolve to a node -> tree unchanged.
+        model.setSplitRatios(at: [9], ratios: [0.3, 0.7], for: wsID)
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+    }
+
     // MARK: - Diff surfaces (UI-5 Task 1)
 
     func testComputeDiffReturnsChangesForDirtyWorktree() throws {
