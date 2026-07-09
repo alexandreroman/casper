@@ -3,7 +3,7 @@ import XCTest
 
 final class LayoutTreeTests: XCTestCase {
     private func term() -> Surface {
-        Surface(kind: .terminal(cwd: "/w", command: nil))
+        Surface(kind: .terminal(cwd: "/w"))
     }
     private func leaf(_ surface: Surface) -> LayoutNode {
         .leaf(surface)

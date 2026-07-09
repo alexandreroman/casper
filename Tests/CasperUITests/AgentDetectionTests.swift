@@ -10,7 +10,7 @@ final class AgentDetectionTests: XCTestCase {
     private func seededModel() -> (AppModel, UUID) {
         let ws = Workspace(
             name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 42000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
+            portBase: 42000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
         let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
         let url = URL(fileURLWithPath:
             (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
@@ -42,10 +42,10 @@ final class AgentDetectionTests: XCTestCase {
     func testRemoveWorkspacePrunesExplicitAuthority() {
         let primary = Workspace(
             name: "main", worktreePath: "/wt", branch: "main", portBase: 42200,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
+            layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
         let linked = Workspace(
             name: "feature", worktreePath: "/wt-feature", branch: "feature", portBase: 42210,
-            layout: .leaf(Surface(kind: .terminal(cwd: "/wt-feature", command: nil))), kind: .linked)
+            layout: .leaf(Surface(kind: .terminal(cwd: "/wt-feature"))), kind: .linked)
         let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [primary, linked])
         let url = URL(fileURLWithPath:
             (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))

@@ -31,7 +31,7 @@ struct TerminalCommand: ParsableCommand {
             guard let info = response.terminals?.first else { throw exitWithError("no terminal returned") }
             emit(TerminalNewOut(
                 terminal: info.id, workspace: response.workspace ?? "",
-                command: info.command, workingDir: info.cwd))
+                command: command, workingDir: info.cwd))
         }
     }
 
@@ -48,7 +48,7 @@ struct TerminalCommand: ParsableCommand {
         func run() throws {
             let r = try sendControl(makeCommand(), retriable: true)
             emit((r.terminals ?? []).map {
-                TerminalInfoOut(id: $0.id, workingDir: $0.cwd, command: $0.command)
+                TerminalInfoOut(id: $0.id, workingDir: $0.cwd)
             })
         }
     }

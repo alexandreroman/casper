@@ -70,7 +70,7 @@ final class AppModelTests: XCTestCase {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
         let (store, _) = makeStore()
@@ -83,15 +83,15 @@ final class AppModelTests: XCTestCase {
         let existing = Session(spaces: [
             Space(name: "zebra", folderPath: "/z", isGitRepo: false, workspaces: [
                 Workspace(name: "zebra", worktreePath: "/z", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/z", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/z")))),
             ]),
             Space(name: "alpha", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "alpha", worktreePath: "/a", branch: "", portBase: 40010,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
             Space(name: "Mango", folderPath: "/m", isGitRepo: false, workspaces: [
                 Workspace(name: "mango", worktreePath: "/m", branch: "", portBase: 40020,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/m", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/m")))),
             ]),
         ])
         let (store, _) = makeStore()
@@ -102,10 +102,10 @@ final class AppModelTests: XCTestCase {
     func testIsWorkspaceGitBackedReflectsOwningSpace() {
         let gitWorkspace = Workspace(name: "g", worktreePath: "/g", branch: "main",
                                      portBase: 40000,
-                                     layout: .leaf(Surface(kind: .terminal(cwd: "/g", command: nil))))
+                                     layout: .leaf(Surface(kind: .terminal(cwd: "/g"))))
         let plainWorkspace = Workspace(name: "p", worktreePath: "/p", branch: "",
                                        portBase: 40010,
-                                       layout: .leaf(Surface(kind: .terminal(cwd: "/p", command: nil))))
+                                       layout: .leaf(Surface(kind: .terminal(cwd: "/p"))))
         let existing = Session(spaces: [
             Space(name: "g", folderPath: "/g", isGitRepo: true, workspaces: [gitWorkspace]),
             Space(name: "p", folderPath: "/p", isGitRepo: false, workspaces: [plainWorkspace]),
@@ -120,27 +120,27 @@ final class AppModelTests: XCTestCase {
     func testWorkspaceShortcutNumbersFollowSidebarOrderAndSkipCollapsedSpaces() {
         let spaceAPrimary = Workspace(name: "a-primary", worktreePath: "/a", branch: "main",
                                        portBase: 40000,
-                                       layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil))),
+                                       layout: .leaf(Surface(kind: .terminal(cwd: "/a"))),
                                        kind: .primary)
         let spaceALinked = Workspace(name: "a-linked", worktreePath: "/a-linked", branch: "feature",
                                       portBase: 40010,
-                                      layout: .leaf(Surface(kind: .terminal(cwd: "/a-linked", command: nil))),
+                                      layout: .leaf(Surface(kind: .terminal(cwd: "/a-linked"))),
                                       kind: .linked)
         let spaceA = Space(name: "a", folderPath: "/a", isGitRepo: true,
                             workspaces: [spaceALinked, spaceAPrimary])
 
         let hiddenOne = Workspace(name: "hidden-1", worktreePath: "/b1", branch: "",
                                    portBase: 40020,
-                                   layout: .leaf(Surface(kind: .terminal(cwd: "/b1", command: nil))))
+                                   layout: .leaf(Surface(kind: .terminal(cwd: "/b1"))))
         let hiddenTwo = Workspace(name: "hidden-2", worktreePath: "/b2", branch: "",
                                    portBase: 40030,
-                                   layout: .leaf(Surface(kind: .terminal(cwd: "/b2", command: nil))))
+                                   layout: .leaf(Surface(kind: .terminal(cwd: "/b2"))))
         let spaceB = Space(name: "b", folderPath: "/b", isGitRepo: false, isCollapsed: true,
                             workspaces: [hiddenOne, hiddenTwo])
 
         let spaceCWorkspace = Workspace(name: "c", worktreePath: "/c", branch: "",
                                          portBase: 40040,
-                                         layout: .leaf(Surface(kind: .terminal(cwd: "/c", command: nil))))
+                                         layout: .leaf(Surface(kind: .terminal(cwd: "/c"))))
         let spaceC = Space(name: "c", folderPath: "/c", isGitRepo: false, workspaces: [spaceCWorkspace])
 
         let session = Session(spaces: [spaceA, spaceB, spaceC])
@@ -159,7 +159,7 @@ final class AppModelTests: XCTestCase {
         let workspaces = (1...11).map { index in
             Workspace(name: String(format: "w%02d", index), worktreePath: "/w\(index)", branch: "",
                       portBase: 40000 + index * 10,
-                      layout: .leaf(Surface(kind: .terminal(cwd: "/w\(index)", command: nil))))
+                      layout: .leaf(Surface(kind: .terminal(cwd: "/w\(index)"))))
         }
         let space = Space(name: "many", folderPath: "/many", isGitRepo: false, workspaces: workspaces)
         let session = Session(spaces: [space])
@@ -204,7 +204,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testFreshModelSeedsFocusedSurfaceIDToFirstSurfaceOfSelectedWorkspace() {
-        let surface = Surface(kind: .terminal(cwd: "/a", command: nil))
+        let surface = Surface(kind: .terminal(cwd: "/a"))
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "",
@@ -217,8 +217,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSelectWorkspaceUpdatesFocusedSurfaceToFirstSurfaceOfNewWorkspace() {
-        let surface1 = Surface(kind: .terminal(cwd: "/a", command: nil))
-        let surface2 = Surface(kind: .terminal(cwd: "/b", command: nil))
+        let surface1 = Surface(kind: .terminal(cwd: "/a"))
+        let surface2 = Surface(kind: .terminal(cwd: "/b"))
         let existing = Session(spaces: [
             Space(name: "s", folderPath: "/s", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "",
@@ -245,8 +245,8 @@ final class AppModelTests: XCTestCase {
     private func twoWorkspaceSession(
         isCollapsed: Bool = false, selecting selected: UUID? = nil
     ) -> (Session, Workspace, Surface, Workspace, Surface) {
-        let surface1 = Surface(kind: .terminal(cwd: "/a", command: nil))
-        let surface2 = Surface(kind: .terminal(cwd: "/b", command: nil))
+        let surface1 = Surface(kind: .terminal(cwd: "/a"))
+        let surface2 = Surface(kind: .terminal(cwd: "/b"))
         let ws1 = Workspace(name: "a", worktreePath: "/a", branch: "",
                             portBase: 40000, layout: .leaf(surface1))
         let ws2 = Workspace(name: "b", worktreePath: "/b", branch: "",
@@ -340,7 +340,7 @@ final class AppModelTests: XCTestCase {
         let existing = Session(spaces: [
             Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
                 Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a", command: nil)))),
+                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
         let (store, _) = makeStore()
@@ -940,8 +940,8 @@ final class AppModelTests: XCTestCase {
     func testSurfaceConfigurationPassesPersistedFontSizeOrDefaultsToZero() {
         let (model, _) = modelWithOnePlainWorkspace()
         let workspace = model.spaces[0].workspaces[0]
-        let sized = Surface(kind: .terminal(cwd: workspace.worktreePath, command: nil), fontSize: 22)
-        let unsized = Surface(kind: .terminal(cwd: workspace.worktreePath, command: nil))
+        let sized = Surface(kind: .terminal(cwd: workspace.worktreePath), fontSize: 22)
+        let unsized = Surface(kind: .terminal(cwd: workspace.worktreePath))
 
         XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: sized).fontSize, 22)
         XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: unsized).fontSize, 0)

@@ -15,7 +15,7 @@ final class ControlHandlerTests: XCTestCase {
     private func seededModel() -> (AppModel, UUID) {
         let ws = Workspace(
             name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt", command: nil))))
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
         let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
         let url = URL(fileURLWithPath:
             (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
@@ -93,22 +93,18 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(LayoutTree.surfaceIDs(ws.layout).contains(newID))
         // No cwd passed → the resolved cwd is the workspace's worktree.
         XCTAssertEqual(info.cwd, ws.worktreePath)
-        XCTAssertNil(info.command)
     }
 
-    func testOpenTerminalHonorsCommandAndCwd() throws {
+    func testOpenTerminalHonorsCwd() throws {
         let (model, id) = seededModel()
         let info = try XCTUnwrap(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
         XCTAssertEqual(info.cwd, "/some/dir")
-        XCTAssertEqual(info.command, "npm test")
         let ws = try XCTUnwrap(model.workspace(id: id))
         let match = surfaces(in: ws.layout).contains { surface in
-            if case .terminal(let cwd, let command) = surface.kind {
-                return cwd == "/some/dir" && command == "npm test"
-            }
+            if case .terminal(let cwd) = surface.kind { return cwd == "/some/dir" }
             return false
         }
-        XCTAssertTrue(match, "expected a terminal surface with the given cwd and command")
+        XCTAssertTrue(match, "expected a terminal surface with the given cwd")
     }
 
     func testListTerminalsReportsOpenTerminals() throws {
@@ -118,8 +114,8 @@ final class ControlHandlerTests: XCTestCase {
         let terminals = model.controlListTerminals(in: id)
         XCTAssertEqual(terminals.count, 2)
         XCTAssertTrue(
-            terminals.contains { $0.cwd == "/tmp" && $0.command == "htop" },
-            "expected a listed terminal with the opened cwd and command")
+            terminals.contains { $0.cwd == "/tmp" },
+            "expected a listed terminal with the opened cwd")
     }
 
     func testCloseTerminalRemovesItById() throws {
@@ -288,11 +284,11 @@ final class ControlHandlerTests: XCTestCase {
             inSpaceOf: primaryID, branch: "feature-cmd", base: nil, command: "npm test") {
         case .success(let info):
             let ws = try XCTUnwrap(model.workspace(id: try XCTUnwrap(UUID(uuidString: info.id))))
-            let match = surfaces(in: ws.layout).contains { surface in
-                if case .terminal(_, let command) = surface.kind { return command == "npm test" }
+            let hasTerminal = surfaces(in: ws.layout).contains { surface in
+                if case .terminal = surface.kind { return true }
                 return false
             }
-            XCTAssertTrue(match, "expected the workspace's terminal surface to carry the command")
+            XCTAssertTrue(hasTerminal, "expected the new workspace to have a terminal surface")
         case .failure(let error):
             XCTFail("expected success, got \(error.message)")
         }

@@ -26,7 +26,7 @@ final class SessionStoreTests: XCTestCase {
                 Workspace(
                     name: "w", worktreePath: "/r/w", branch: "b",
                     portBase: 40000,
-                    layout: .leaf(Surface(kind: .terminal(cwd: "/r/w", command: nil))))
+                    layout: .leaf(Surface(kind: .terminal(cwd: "/r/w"))))
             ])
         ])
         try store.save(session)

@@ -44,10 +44,7 @@ final class JSONOutputTests: XCTestCase {
 
     func testTerminalInfoArray() {
         XCTAssertEqual(
-            jsonLine([TerminalInfoOut(id: "t", workingDir: "d", command: "c")]),
-            #"[{"command":"c","id":"t","working-dir":"d"}]"#)
-        XCTAssertEqual(
-            jsonLine([TerminalInfoOut(id: "t", workingDir: "d", command: nil)]),
+            jsonLine([TerminalInfoOut(id: "t", workingDir: "d")]),
             #"[{"id":"t","working-dir":"d"}]"#)
     }
 
