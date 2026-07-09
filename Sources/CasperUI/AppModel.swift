@@ -1248,7 +1248,7 @@ final class AppModel {
     private static func notificationMessage(for state: AgentState) -> String? {
         switch state {
         case .blocked: return "Waiting for your input"
-        case .done: return "Task finished"
+        case .done: return "Done"
         case .error: return "Something went wrong"
         case .working, .idle, .unknown: return nil
         }

@@ -233,7 +233,7 @@ final class ModelsTests: XCTestCase {
             agentState: .working,
             todos: [Todo(content: "x", status: .inProgress)],
             pendingNotification: true,
-            pendingNotificationMessage: "Task finished",
+            pendingNotificationMessage: "Done",
             portBase: 40000,
             layout: .leaf(Surface(kind: .terminal(cwd: "/r"))))
 

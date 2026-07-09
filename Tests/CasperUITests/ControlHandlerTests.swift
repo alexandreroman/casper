@@ -337,7 +337,7 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(model.controlSetAgentState(.done, for: id))
         XCTAssertEqual(model.workspace(id: id)?.agentState, .done)
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
-        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Task finished")
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Done")
     }
 
     func testSetAgentStateBlockedDoesNotRaiseNotificationBubble() {
@@ -490,15 +490,15 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
         model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
-        XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
-        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Task finished")
+        XCTAssertTrue(model.controlRaiseNotification(message: "Done", for: id))
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotificationMessage, "Done")
     }
 
     func testRaiseNotificationOnFocusedWorkspaceLeavesMessageNil() {
         let (model, id) = seededModel()   // id is the selected workspace
         model.isWindowKey = { true }      // and the window is key → focused
         model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
-        XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
+        XCTAssertTrue(model.controlRaiseNotification(message: "Done", for: id))
         XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
     }
 
@@ -507,7 +507,7 @@ final class ControlHandlerTests: XCTestCase {
         model.isWindowKey = { true }      // and the window is key → focused
         var delivered = 0
         model.deliverNotification = { _, _, _, _ in delivered += 1 }
-        XCTAssertTrue(model.controlRaiseNotification(message: "Task finished", for: id))
+        XCTAssertTrue(model.controlRaiseNotification(message: "Done", for: id))
         XCTAssertEqual(delivered, 0, "no macOS notification is delivered while the workspace is focused")
     }
 
@@ -554,7 +554,7 @@ final class ControlHandlerTests: XCTestCase {
 
     func testDetectedDoneDeliversPassiveNotification() throws {
         let delivered = try XCTUnwrap(deliveredNotification(forDetected: .done))
-        XCTAssertEqual(delivered.body, "Task finished")
+        XCTAssertEqual(delivered.body, "Done")
         XCTAssertEqual(delivered.level, .passive)
     }
 
@@ -583,8 +583,8 @@ final class ControlHandlerTests: XCTestCase {
         model.deliverNotification = { _, _, _, _ in delivered += 1 }
         // Two rapid calls for the same workspace within the cooldown window: the race
         // between an explicit `casper notify` and a near-simultaneous detection tick.
-        _ = model.controlRaiseNotification(message: "Task finished", for: id)
-        _ = model.controlRaiseNotification(message: "Task finished", for: id)
+        _ = model.controlRaiseNotification(message: "Done", for: id)
+        _ = model.controlRaiseNotification(message: "Done", for: id)
         XCTAssertEqual(delivered, 1, "the second notification within the cooldown is suppressed")
     }
 

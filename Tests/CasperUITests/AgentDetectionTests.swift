@@ -94,7 +94,7 @@ final class AgentDetectionTests: XCTestCase {
         model.setDetectedAgentState(.done, for: id)
 
         XCTAssertEqual(delivered.count, 1)
-        XCTAssertEqual(delivered.first?.body, "Task finished")
+        XCTAssertEqual(delivered.first?.body, "Done")
     }
 
     /// Non-attention states (`working`, `idle`) never notify.
