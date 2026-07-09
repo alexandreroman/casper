@@ -9,12 +9,15 @@ struct LayoutNodeView: View {
     @Bindable var model: AppModel
     let workspace: Workspace
     let node: LayoutNode
+    /// Child-index path from the workspace's root layout to `node` (root = `[]`).
+    /// Threaded so a split can persist its dragged ratios back to the model.
+    var path: [Int] = []
 
     var body: some View {
         switch node {
         case .split(let orientation, let children, let ratios):
             SplitContainerView(
-                model: model, workspace: workspace,
+                model: model, workspace: workspace, path: path,
                 orientation: orientation, children: children, ratios: ratios)
         case .leaf(let surface):
             SurfaceHostView(model: model, workspace: workspace, surface: surface)

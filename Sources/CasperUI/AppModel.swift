@@ -1071,6 +1071,25 @@ final class AppModel {
         scheduleSave()
     }
 
+    /// Persist a split's divider positions for the given workspace after the user
+    /// drags a divider or double-clicks to equalize. `path` is the child-index path
+    /// from that workspace's root layout to the target `.split` node (`[]` is the
+    /// root). Defensively re-normalizes `ratios` to sum to 1 (no-op on a
+    /// non-positive sum), applies `LayoutTree.updateRatios`, and schedules the
+    /// debounced save — mirroring `setInspectorWidth`'s drag-persistence pattern.
+    /// No-op when the workspace or path is stale/invalid or nothing changed.
+    func setSplitRatios(at path: [Int], ratios: [Double], for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        let sum = ratios.reduce(0, +)
+        guard sum > 0 else { return }
+        let normalized = ratios.map { $0 / sum }
+        let current = spaces[at.space].workspaces[at.workspace].layout
+        let updated = LayoutTree.updateRatios(in: current, at: path, ratios: normalized)
+        guard updated != current else { return }
+        spaces[at.space].workspaces[at.workspace].layout = updated
+        scheduleSave()
+    }
+
     /// Record a terminal surface's live font size (reported after a
     /// Cmd+/Cmd-/Cmd0 change forwarded to libghostty) into its persisted
     /// `Surface`, and schedule the existing debounced save — mirrors

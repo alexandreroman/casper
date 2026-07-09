@@ -23,11 +23,16 @@ import SwiftUI
 /// in the app — sidebar edge, inspector edge, and the terminal splits — reads as
 /// the same colour.
 ///
-/// Resize lives in local `@State` only and is not persisted to the model, matching
-/// the v1 behavior where split ratios aren't written back to `session.json`.
+/// A resize drives the live drag via local `@State fractions`, and additionally
+/// writes the new fractions back to the model (`AppModel.setSplitRatios`) so the
+/// dragged (or double-click-equalized) divider positions persist to `session.json`
+/// and survive an app restart.
 struct SplitContainerView: View {
     let model: AppModel
     let workspace: Workspace
+    /// Child-index path from the workspace's root layout to this split node
+    /// (root = `[]`), used to address it in `AppModel.setSplitRatios`.
+    let path: [Int]
     let orientation: LayoutNode.Orientation
     let children: [LayoutNode]
     let ratios: [Double]
@@ -65,7 +70,7 @@ struct SplitContainerView: View {
         if children.count < 2 {
             // A split always has ≥2 children; render the sole child defensively.
             if let only = children.first {
-                LayoutNodeView(model: model, workspace: workspace, node: only)
+                LayoutNodeView(model: model, workspace: workspace, node: only, path: path + [0])
             }
         } else {
             let fracs = displayFractions()
@@ -109,7 +114,7 @@ struct SplitContainerView: View {
         axisLength: CGFloat, crossLength: CGFloat
     ) -> some View {
         let frame = paneAxisFrame(index: index, boundaries: boundaries, axisLength: axisLength)
-        let view = LayoutNodeView(model: model, workspace: workspace, node: node)
+        let view = LayoutNodeView(model: model, workspace: workspace, node: node, path: path + [index])
         switch orientation {
         case .horizontal:
             view
@@ -173,11 +178,17 @@ struct SplitContainerView: View {
                 orientation: orientation,
                 boundary: boundary,
                 onResize: { target in
-                    fractions = Self.resizedFractions(
+                    let resized = Self.resizedFractions(
                         displayFractions(), dividerIndex: index, boundaryTarget: target,
                         axisLength: axisLength, minLength: Self.minPaneLength)
+                    fractions = resized  // drives the live drag feel
+                    model.setSplitRatios(at: path, ratios: resized, for: workspace.id)  // persists it
                 },
-                onEqualize: { fractions = LayoutNode.evenRatios(children.count) })
+                onEqualize: {
+                    let even = LayoutNode.evenRatios(children.count)
+                    fractions = even
+                    model.setSplitRatios(at: path, ratios: even, for: workspace.id)
+                })
                 .frame(
                     width: orientation == .horizontal ? hitThickness : crossLength,
                     height: orientation == .horizontal ? crossLength : hitThickness)
