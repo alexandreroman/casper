@@ -220,6 +220,43 @@ public struct InspectorState: Codable, Equatable, Sendable {
     }
 }
 
+public enum EditorKind: String, Codable, CaseIterable, Sendable {
+    case vscode
+    case intellijIdea
+    case xcode
+
+    /// Priority order used both as the dropdown's display order and as the
+    /// fallback when a workspace has no `lastUsedEditor` yet.
+    public static let priorityOrder: [EditorKind] = [.vscode, .intellijIdea, .xcode]
+
+    public var cliCommand: String {
+        switch self {
+        case .vscode: "code"
+        case .intellijIdea: "idea"
+        case .xcode: "xed"
+        }
+    }
+
+    /// Candidate bundle identifiers, most-specific first. IntelliJ IDEA ships
+    /// two distinct bundle IDs depending on edition (Ultimate vs. Community);
+    /// the others have exactly one.
+    public var bundleIdentifiers: [String] {
+        switch self {
+        case .vscode: ["com.microsoft.VSCode"]
+        case .intellijIdea: ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"]
+        case .xcode: ["com.apple.dt.Xcode"]
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .vscode: "Visual Studio Code"
+        case .intellijIdea: "IntelliJ IDEA"
+        case .xcode: "Xcode"
+        }
+    }
+}
+
 public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String

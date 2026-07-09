@@ -222,6 +222,32 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.inspector.browser.kind, expected.browser.kind)
     }
 
+    // MARK: - EditorKind
+
+    func testEditorKindPriorityOrderIsVSCodeThenIntelliJThenXcode() {
+        XCTAssertEqual(EditorKind.priorityOrder, [.vscode, .intellijIdea, .xcode])
+    }
+
+    func testEditorKindMetadataIsDistinctPerCase() {
+        for kind in EditorKind.allCases {
+            XCTAssertFalse(kind.cliCommand.isEmpty)
+            XCTAssertFalse(kind.bundleIdentifiers.isEmpty)
+            XCTAssertFalse(kind.displayName.isEmpty)
+        }
+        XCTAssertEqual(EditorKind.vscode.cliCommand, "code")
+        XCTAssertEqual(EditorKind.intellijIdea.cliCommand, "idea")
+        XCTAssertEqual(EditorKind.xcode.cliCommand, "xed")
+        XCTAssertEqual(EditorKind.intellijIdea.bundleIdentifiers,
+                       ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"])
+    }
+
+    func testEditorKindCodableRoundTrip() throws {
+        for kind in EditorKind.allCases {
+            let data = try JSONEncoder().encode(kind)
+            XCTAssertEqual(try JSONDecoder().decode(EditorKind.self, from: data), kind)
+        }
+    }
+
     // MARK: - Transient runtime fields are not persisted
 
     func testWorkspaceDoesNotPersistTransientRuntimeFields() throws {
