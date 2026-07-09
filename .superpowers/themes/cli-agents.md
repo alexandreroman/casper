@@ -28,15 +28,15 @@ handful of verbs:
 - `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
   split right (cwd defaults to the worktree); `terminal list` — list the
   workspace's terminals; `terminal close <id>` — close a terminal by id.
-  **Known limitation:** `--command` reaches libghostty and does run, but the
-  embedded fork (a sandbox/host-managed libghostty) always execs it via
-  `bash -l -c "exec <command>"`, regardless of the user's actual login shell.
-  A command that depends on `PATH` entries added only by the user's real shell
-  profile (e.g. Homebrew/mise via `~/.zprofile`/`~/.zshrc` for a zsh user) can
-  fail to resolve even though it works fine typed into a plain (commandless)
-  terminal. See [[surface-command-bash-exec]]. (Agent-state detection still has
-  no agent-as-command path — see `agent-state-detection.md` — but this reopens
-  that question; it hasn't been re-evaluated since.)
+  `--command` types the given text into the newly opened terminal's real login
+  shell once it starts (via `ghostty_surface_config_s.initial_input`, not the
+  vendored fork's broken `command`/`bash -l -c "exec"` path — see
+  [[surface-command-bash-exec]]), so it inherits the user's actual `$SHELL`
+  and PATH (Homebrew, mise, etc., from `~/.zprofile`/`~/.zshrc` for a zsh
+  user). It is typed as plain text, not `exec`'d: after the command exits, the
+  terminal returns to an interactive shell prompt rather than closing, and a
+  compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
+  instruction, not persisted — restoring a saved session never re-runs it.
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
   workspace's single **inspector** browser surface and select the browser tab.
   Browser surfaces can also be layout panes (`Surface.Kind.browser`, the "New

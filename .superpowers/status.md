@@ -328,7 +328,10 @@ surface that Casper couldn't create — but `command` is not actually inert: the
 embedded libghostty (a sandbox/host-managed fork) execs it via a hardcoded
 `bash -l -c "exec <command>"`, regardless of the user's real login shell, which
 does replace the shell process (see [[surface-command-bash-exec]]). This
-reopens the *agent-as-command* option; it hasn't been re-evaluated since.
+reopens the *agent-as-command* option; it hasn't been re-evaluated since. The
+`--command` reliability fix itself (typed via `initial_input`, no `exec`) has
+shipped; it deliberately does not use `exec`, so it does not itself enable an
+agent-as-command surface.
 Agents currently still run inside a shell; `error` has no detected producer and
 authority release is deferred to the timeout mechanism (option B). The initial
 implementation was removed. See the theme's "Process lifecycle" section.

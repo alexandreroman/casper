@@ -4,6 +4,11 @@ description: "ghostty_surface_config_s.command is not inert — it execs through
 type: project
 ---
 
+**Fixed** — `--command` now runs via `initial_input` (typed into the real
+login shell, no `exec`), not the broken `bash -l -c "exec"` path described
+below. See `.superpowers/sdd/2026-07-09-terminal-command-initial-input-design.md`
+for the fix design. The root-cause analysis below remains accurate history.
+
 # Surface command execution runs via a hardcoded bash exec, not the user's shell
 
 `GhosttySurfaceConfiguration.command` (set from `terminal new --command` /
