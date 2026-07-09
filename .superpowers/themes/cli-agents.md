@@ -56,7 +56,7 @@ terminal but needs `--workspace` from anywhere else.
 
 Each command sends a `ControlCommand` to the running app over a Unix domain
 socket named by `$CASPER_CONTROL_SOCKET` (also per-surface env, alongside
-`$CASPER_WORKSPACE_ID` and `$CASPER_PORT[_0..9]`); the app replies with a
+`$CASPER_WORKSPACE_ID` and `$CASPER_PORT`); the app replies with a
 `ControlResponse`. If `$CASPER_CONTROL_SOCKET` is unset, the CLI exits with a
 "Casper is not running" error instead of hanging. `casper debug …` is a
 separate, `#if DEBUG`-only channel — never present in a release build. See
@@ -90,7 +90,7 @@ agent**; the user runs their agent manually.
 
 The only agent-facing runtime coupling is the per-surface environment
 `ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal:
-`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT[_0..9]`, and — when
+`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT`, and — when
 a debug build runs under `--session <name>` (a `#if DEBUG`-only flag) —
 `CASPER_SESSION`. A CLI command reads `CASPER_WORKSPACE_ID` for its default
 target and `CASPER_CONTROL_SOCKET` to reach the app; state changes flow straight

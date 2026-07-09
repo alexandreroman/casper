@@ -5,8 +5,7 @@ import Foundation
 public enum ClaudeCodeAdapter {
     /// Environment injected into every terminal surface of a workspace so that the
     /// `casper` CLI can reach the app's control channel and the agent can bind its
-    /// reserved ports. `CASPER_PORT` is the block base; `CASPER_PORT_0…9` expose
-    /// the whole reserved block for convenience. When `controlSocketPath` is
+    /// reserved ports. `CASPER_PORT` is the block base. When `controlSocketPath` is
     /// given, it is exposed as `CASPER_CONTROL_SOCKET` so the terminal can reach
     /// the control socket. When `sessionName` is given, it is exposed as
     /// `CASPER_SESSION`.
@@ -17,16 +16,9 @@ public enum ClaudeCodeAdapter {
     /// `casperDirectory` and the terminal's inherited `PATH` as `basePath`. This
     /// function stays pure: it never reads `ProcessInfo` itself, only the values
     /// passed in.
-    ///
-    /// - Important: `blockSize` MUST equal the `PortAllocator` block size (fixed
-    ///   at 10 by the spec). It controls how many `CASPER_PORT_0…(blockSize-1)`
-    ///   variables are advertised; a larger value would spill past the
-    ///   workspace's reserved block and collide with the neighboring
-    ///   workspace's ports.
     public static func surfaceEnvironment(
         workspaceId: UUID,
         portBase: Int,
-        blockSize: Int = 10,
         casperDirectory: String? = nil,
         basePath: String? = nil,
         controlSocketPath: String? = nil,
@@ -36,9 +28,6 @@ public enum ClaudeCodeAdapter {
             "CASPER_WORKSPACE_ID": workspaceId.uuidString,
             "CASPER_PORT": String(portBase),
         ]
-        for offset in 0..<blockSize {
-            env["CASPER_PORT_\(offset)"] = String(portBase + offset)
-        }
         if let controlSocketPath {
             env["CASPER_CONTROL_SOCKET"] = controlSocketPath
         }

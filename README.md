@@ -186,7 +186,7 @@ casper workspace delete                      # destroy a workspace (worktree + b
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
 workspace other than the current one. Commands talk to the running app over a
 Unix domain socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal
-alongside `$CASPER_WORKSPACE_ID` and `$CASPER_PORT[_0..9]`.
+alongside `$CASPER_WORKSPACE_ID` and `$CASPER_PORT`.
 
 Every command is machine-readable: on success it prints a JSON object (or array)
 to stdout describing the affected `workspace` and any resulting state; on error
