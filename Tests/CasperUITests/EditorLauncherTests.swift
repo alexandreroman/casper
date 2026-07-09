@@ -17,13 +17,17 @@ final class EditorLauncherTests: XCTestCase {
         }
     }
 
-    func testLaunchThrowsShimNotFoundForAnUnresolvableCommand() {
-        // Whether or not VS Code's `code` shim happens to be on this test
-        // machine's PATH, launching into a directory that doesn't exist must
-        // throw: either `resolveCLIPath` fails to resolve the shim
-        // (`.shimNotFound`), or it resolves and `Process.run()` itself throws
-        // because `currentDirectoryURL` doesn't exist. Either way, this
-        // proves `launch()` propagates failure rather than swallowing it.
-        XCTAssertThrowsError(try EditorLauncher.launch(.vscode, at: "/nonexistent-\(UUID().uuidString)"))
+    /// `launch(_:at:)` now falls back to an async, fire-and-forget bundle
+    /// open when the CLI shim is missing, so it no longer throws
+    /// synchronously just because the target directory doesn't exist. The
+    /// contract that still holds: launching throws if and only if the
+    /// editor isn't actually installed (per `detectInstalled()`) on the
+    /// machine running the test.
+    func testLaunchThrowsForAnEditorNotInstalledOnThisMachine() throws {
+        let detected = EditorLauncher.detectInstalled()
+        guard let notInstalled = EditorKind.allCases.first(where: { !detected.contains($0) }) else {
+            throw XCTSkip("all three editors are installed on this machine")
+        }
+        XCTAssertThrowsError(try EditorLauncher.launch(notInstalled, at: "/tmp"))
     }
 }

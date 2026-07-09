@@ -7,14 +7,16 @@ import Foundation
 /// (three short-lived shell processes) to call once at app startup and cache
 /// the result on `AppModel`, rather than caching inside this type.
 enum EditorLauncher {
-    /// Editors whose CLI shim resolves on the user's `PATH` *and* whose app
-    /// bundle resolves via a known bundle identifier. Both must hold — the
-    /// icon lookup needs the bundle, and the launch needs the shim — so an
-    /// editor with only one of the two is omitted rather than shown
-    /// half-working. Preserves `EditorKind.priorityOrder`.
+    /// Editors whose app bundle resolves via a known bundle identifier. The
+    /// CLI shim is *not* required: some editors (IntelliJ IDEA) don't
+    /// auto-install theirs, leaving it missing on most users' `PATH` even
+    /// though the editor itself is installed. `launch(_:at:)` falls back to
+    /// opening the bundle directly when the shim is absent, so bundle
+    /// resolution alone is enough to guarantee a working launch.
+    /// Preserves `EditorKind.priorityOrder`.
     static func detectInstalled() -> [EditorKind] {
         EditorKind.priorityOrder.filter { kind in
-            resolveCLIPath(kind.cliCommand) != nil && resolveBundleURL(kind) != nil
+            resolveBundleURL(kind) != nil
         }
     }
 
@@ -22,18 +24,37 @@ enum EditorLauncher {
         resolveBundleURL(kind).map { NSWorkspace.shared.icon(forFile: $0.path) }
     }
 
-    /// Launches `kind`'s CLI shim with `path` as its sole argument, run with
-    /// `path` as the working directory. Throws on spawn failure (missing
-    /// shim, permissions) so the caller can surface it.
+    /// Launches `kind` for `path`, preferring its CLI shim when one resolves:
+    /// spawning it via `Process` is faster and reuses an already-open window
+    /// better than a bundle open does. When the shim isn't found (e.g.
+    /// IntelliJ IDEA's `idea` shim, which isn't installed automatically),
+    /// falls back to opening `kind`'s app bundle via
+    /// `NSWorkspace.shared.open(_:withApplicationAt:configuration:completionHandler:)`.
+    /// That fallback is fire-and-forget: its completion handler runs
+    /// asynchronously, so a failure there is logged rather than thrown. This
+    /// function only throws when neither mechanism resolves at all, which
+    /// should be rare now that `detectInstalled()` requires the bundle.
     static func launch(_ kind: EditorKind, at path: String) throws {
-        guard let cliPath = resolveCLIPath(kind.cliCommand) else {
-            throw EditorLaunchError.shimNotFound(kind)
+        if let cliPath = resolveCLIPath(kind.cliCommand) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: cliPath)
+            process.arguments = [path]
+            process.currentDirectoryURL = URL(fileURLWithPath: path)
+            try process.run()
+            return
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: cliPath)
-        process.arguments = [path]
-        process.currentDirectoryURL = URL(fileURLWithPath: path)
-        try process.run()
+        guard let bundleURL = resolveBundleURL(kind) else {
+            throw EditorLaunchError.notFound(kind)
+        }
+        NSWorkspace.shared.open(
+            [URL(fileURLWithPath: path)],
+            withApplicationAt: bundleURL,
+            configuration: NSWorkspace.OpenConfiguration()
+        ) { _, error in
+            if let error {
+                CasperLog.app.failure("failed to open \(kind.displayName) via bundle", error)
+            }
+        }
     }
 
     private static func resolveBundleURL(_ kind: EditorKind) -> URL? {
@@ -79,12 +100,13 @@ enum EditorLauncher {
 }
 
 enum EditorLaunchError: LocalizedError {
-    case shimNotFound(EditorKind)
+    case notFound(EditorKind)
 
     var errorDescription: String? {
         switch self {
-        case .shimNotFound(let kind):
-            "\(kind.displayName)'s `\(kind.cliCommand)` command is no longer on your PATH."
+        case .notFound(let kind):
+            "\(kind.displayName) could not be launched — its command-line launcher and app " +
+                "bundle were both unavailable. It may have been uninstalled."
         }
     }
 }

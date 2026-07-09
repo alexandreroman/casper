@@ -286,10 +286,17 @@ primary button's label) — it does not launch anything itself.
 
 **Detection.** `EditorLauncher.detectInstalled()` runs once at `AppModel`
 startup (not live) and populates `availableEditors`: an editor counts as
-detected only when both its CLI shim resolves on the user's **login shell**
-`PATH` (`$SHELL -lc 'which <command>'`, since Casper is launched from
-Finder/Dock and lacks shell-profile `PATH` additions) and its app bundle
-resolves via `NSWorkspace` bundle-identifier lookup.
+detected as soon as its app bundle resolves via `NSWorkspace`
+bundle-identifier lookup — the CLI shim is no longer required, since not
+every editor installs one automatically. **Launch fallback.** `launch(_:at:)`
+still tries the CLI shim first when it resolves on the user's **login
+shell** `PATH` (`$SHELL -lc 'which <command>'`, since Casper is launched
+from Finder/Dock and lacks shell-profile `PATH` additions) — it's faster and
+reuses an already-open window better. When the shim is missing, it falls
+back to `NSWorkspace.shared.open(_:withApplicationAt:configuration:)` on the
+resolved app bundle, so an editor installed without its optional
+command-line launcher (e.g. IntelliJ IDEA, which doesn't auto-install `idea`
+on `PATH` the way VS Code does `code`) still launches.
 
 **Resolution & persistence.** `Workspace.lastUsedEditor` is a per-workspace
 preference. Picking a row in the dropdown (`AppModel.selectEditor`) updates it
