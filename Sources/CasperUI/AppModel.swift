@@ -489,6 +489,18 @@ final class AppModel {
         focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
         focusActiveSurfaceView()
         clearNotificationForFocusedWorkspace()
+        // A `done` workspace is "finished, not yet seen"; selecting it is
+        // exactly the "seen" event, so collapse it back to `idle` here —
+        // mirroring the resolver's own seen-gated unlatch
+        // (`AgentStateResolver`), but for the explicit-authority path the
+        // resolver never runs for (see
+        // `.superpowers/themes/agent-state-detection.md` § Authority). Not
+        // gated on `isWindowKey()`, unlike the bubble clear above: the
+        // resolver's own "seen" test is selection alone. `blocked`/`error`
+        // are untouched — selection has no power over them.
+        if let at = locate(id), spaces[at.space].workspaces[at.workspace].agentState == .done {
+            spaces[at.space].workspaces[at.workspace].agentState = .idle
+        }
         persist()
     }
 

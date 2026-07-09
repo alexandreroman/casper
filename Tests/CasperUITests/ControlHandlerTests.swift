@@ -441,6 +441,38 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
     }
 
+    func testSelectingDoneWorkspaceCollapsesToIdle() {
+        let (model, id) = seededModel()
+        model.selectedWorkspaceID = UUID()  // a different workspace is selected first
+        model.isWindowKey = { false }
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        _ = model.controlSetAgentState(.done, for: id)
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .done)
+
+        model.selectWorkspace(id)
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .idle)
+    }
+
+    func testSelectingBlockedWorkspaceLeavesStateUnchanged() {
+        let (model, id) = seededModel()
+        model.selectedWorkspaceID = UUID()
+        model.isWindowKey = { false }
+        _ = model.controlSetAgentState(.blocked, for: id)
+
+        model.selectWorkspace(id)
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
+    }
+
+    func testSelectingErrorWorkspaceLeavesStateUnchanged() {
+        let (model, id) = seededModel()
+        model.selectedWorkspaceID = UUID()
+        model.isWindowKey = { false }
+        _ = model.controlSetAgentState(.error, for: id)
+
+        model.selectWorkspace(id)
+        XCTAssertEqual(model.workspace(id: id)?.agentState, .error)
+    }
+
     func testRaiseNotificationStoresMessageWhenBubbleSet() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }
