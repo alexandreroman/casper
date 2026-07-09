@@ -16,8 +16,8 @@ with a handful of verbs. Full surface:
   `terminal close <id>`
 - `browser open <url>` (the url must be absolute — scheme **and** host)
 - `diff open [<file>]`
-- `workspace list` / `workspace current` / `workspace new --branch [--base]` /
-  `workspace delete`
+- `workspace list` / `workspace current` / `workspace new <branch> [--base]
+  [--command]` / `workspace delete` (the branch is a required positional)
 
 Every workspace-scoped command accepts `--workspace <id-or-name>`, defaulting to
 `$CASPER_WORKSPACE_ID` (set in every Casper terminal). Each command sends a
@@ -36,13 +36,18 @@ itself. The socket path is **per-session**: default `casper-control.sock`, or
 
 - **Success** → a JSON object/array on stdout, exit 0, describing the resulting
   resource state and always including the affected `workspace` id. Examples:
-  `status set waiting` → `{"status":"waiting","workspace":"<id>"}`;
+  `status set blocked` → `{"status":"blocked","workspace":"<id>"}`;
   `progress set` → `{"progress":{"total":..,"current":..,"label":".."},"workspace":".."}`;
   verbs with no meaningful state (`progress clear`, `notify`, `browser open`,
-  `diff open`) → `{"workspace":"<id>"}`. `terminal new`/`terminal list` carry
-  `working-dir` (always) and `command` (only when non-default). `workspace
-  new`/`list`/`current` carry `path` (the worktree); `branch` is omitted when
-  empty (a degenerate, non-Git space). `workspace list` is a bare JSON array.
+  `diff open`) → `{"workspace":"<id>"}`. **Every entity id is keyed by its type
+  name — never a bare `id`.** `terminal new` carries `terminal`, `working-dir`
+  (always), and `command` (only when specified); `terminal list` elements are
+  `{"terminal","working-dir"}` (no `command` — a launch command is a one-shot
+  instruction, not durable state). `workspace new`/`list`/`current` elements are
+  keyed `workspace` and carry `path` (the worktree) plus `name`; `branch` is
+  omitted when empty (a degenerate, non-Git space). `workspace current` returns
+  the full descriptor when the id resolves, else the bare `{"workspace"}`.
+  `workspace list` is a bare JSON array.
 - **Error** → `{"error":"<msg>"}` on stderr with a **non-zero** exit code. Every
   error path (validation, unknown workspace/terminal, invalid url, missing/outside
   file, deleting a primary, …) must exit non-zero — a command in error never

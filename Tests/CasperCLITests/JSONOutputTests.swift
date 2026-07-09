@@ -44,8 +44,8 @@ final class JSONOutputTests: XCTestCase {
 
     func testTerminalInfoArray() {
         XCTAssertEqual(
-            jsonLine([TerminalInfoOut(id: "t", workingDir: "d")]),
-            #"[{"id":"t","working-dir":"d"}]"#)
+            jsonLine([TerminalInfoOut(terminal: "t", workingDir: "d")]),
+            #"[{"terminal":"t","working-dir":"d"}]"#)
     }
 
     func testTerminalClose() {
@@ -56,19 +56,24 @@ final class JSONOutputTests: XCTestCase {
 
     func testWorkspaceArray() {
         XCTAssertEqual(
-            jsonLine([WorkspaceOut(id: "i", name: "n", branch: "b", path: "p")]),
-            #"[{"branch":"b","id":"i","name":"n","path":"p"}]"#)
+            jsonLine([WorkspaceOut(workspace: "i", name: "n", branch: "b", path: "p")]),
+            #"[{"branch":"b","name":"n","path":"p","workspace":"i"}]"#)
         XCTAssertEqual(
-            jsonLine([WorkspaceOut(id: "i", name: "n", branch: nil, path: "p")]),
-            #"[{"id":"i","name":"n","path":"p"}]"#)
+            jsonLine([WorkspaceOut(workspace: "i", name: "n", branch: nil, path: "p")]),
+            #"[{"name":"n","path":"p","workspace":"i"}]"#)
     }
 
     func testCurrent() {
+        // Full descriptor when the id resolves; each of name/branch/path is
+        // omitted when nil, down to the bare `{"workspace"}` fallback.
         XCTAssertEqual(
-            jsonLine(CurrentOut(workspace: "i", path: "p")),
+            jsonLine(CurrentOut(workspace: "i", name: "n", branch: "b", path: "p")),
+            #"{"branch":"b","name":"n","path":"p","workspace":"i"}"#)
+        XCTAssertEqual(
+            jsonLine(CurrentOut(workspace: "i", name: nil, branch: nil, path: "p")),
             #"{"path":"p","workspace":"i"}"#)
         XCTAssertEqual(
-            jsonLine(CurrentOut(workspace: "i", path: nil)),
+            jsonLine(CurrentOut(workspace: "i", name: nil, branch: nil, path: nil)),
             #"{"workspace":"i"}"#)
     }
 

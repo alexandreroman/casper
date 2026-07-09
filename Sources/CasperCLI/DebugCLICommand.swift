@@ -93,7 +93,6 @@ extension DebugCLICommand {
 
     struct SendKeys: ParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "send-keys",
             abstract: "Inject text as real per-character key events (press + release).")
         @OptionGroup var socket: SocketOption
         @Argument(help: "Text to type as key events.") var text: String
@@ -111,7 +110,6 @@ extension DebugCLICommand {
 
     struct SendKey: ParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "send-key",
             abstract: "Inject a key with modifiers as a real key event (press + release).")
         @OptionGroup var socket: SocketOption
         @Argument(help: "Character to send, e.g. c") var text: String
@@ -130,7 +128,6 @@ extension DebugCLICommand {
 
     struct SendAction: ParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "send-action",
             abstract: "Trigger a libghostty keybinding action by name (e.g. copy_to_clipboard).")
         @OptionGroup var socket: SocketOption
         @Argument(help: "Action name, e.g. copy_to_clipboard") var text: String
@@ -148,7 +145,6 @@ extension DebugCLICommand {
 
     struct MouseMove: ParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "mouse-move",
             abstract: "Inject a mouse position (libghostty top-left coordinates) into a surface.")
         @OptionGroup var socket: SocketOption
         @Argument(help: "X position, in libghostty top-left coordinates.") var x: Double

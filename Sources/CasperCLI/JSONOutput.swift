@@ -69,16 +69,17 @@ struct TerminalNewOut: Encodable {
     }
 }
 
-/// `{"id":"...","working-dir":"..."}` — one terminal descriptor, used as an
-/// array element for `terminal list`. No longer carries `command`: a
-/// terminal's launch command is a one-shot instruction, not durable state
-/// (see the `surface-command-bash-exec` project memory note).
+/// `{"terminal":"...","working-dir":"..."}` — one terminal descriptor, used as
+/// an array element for `terminal list`. The id is keyed by its type name
+/// (`terminal`), matching the entity-keyed-by-type-name convention. No longer
+/// carries `command`: a terminal's launch command is a one-shot instruction, not
+/// durable state (see the `surface-command-bash-exec` project memory note).
 struct TerminalInfoOut: Encodable {
-    let id: String
+    let terminal: String
     let workingDir: String
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case terminal
         case workingDir = "working-dir"
     }
 }
@@ -90,21 +91,27 @@ struct TerminalCloseOut: Encodable {
     let workspace: String
 }
 
-/// `{"id":"...","name":"...","branch":"...","path":"..."}` — one workspace
-/// descriptor, used as an array element for `workspace list`. `branch` is omitted
-/// when unknown (a degenerate space stores it as an empty string).
+/// `{"workspace":"...","name":"...","branch":"...","path":"..."}` — one workspace
+/// descriptor, used as an array element for `workspace list`. The id is keyed by
+/// its type name (`workspace`), matching the entity-keyed-by-type-name
+/// convention. `branch` is omitted when unknown (a degenerate space stores it as
+/// an empty string).
 struct WorkspaceOut: Encodable {
-    let id: String
+    let workspace: String
     let name: String
     let branch: String?
     let path: String
 }
 
-/// `{"path":"...","workspace":"<id>"}` — the current workspace for
-/// `workspace current`. `path` is omitted when the id isn't found in the app's
-/// workspace list, so the caller still gets the id.
+/// `{"workspace":"<id>","name":"...","branch":"...","path":"..."}` — the current
+/// workspace for `workspace current`. Mirrors a `workspace list` descriptor: when
+/// the id resolves in the app's workspace list, `name`/`branch`/`path` are
+/// populated; each is omitted when unknown, so an unresolved id still yields the
+/// bare `{"workspace"}`.
 struct CurrentOut: Encodable {
     let workspace: String
+    let name: String?
+    let branch: String?
     let path: String?
 }
 
