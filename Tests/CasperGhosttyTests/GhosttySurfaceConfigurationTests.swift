@@ -35,4 +35,27 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
             }
         }
     }
+
+    func testMarshalsInitialInput() {
+        var config = GhosttySurfaceConfiguration()
+        config.initialInput = "echo hi\n"
+
+        var sentinel = 0
+        withUnsafeMutablePointer(to: &sentinel) { raw in
+            let nsview = UnsafeMutableRawPointer(raw)
+            config.withCValue(nsview: nsview, userdata: nil) { c in
+                XCTAssertEqual(String(cString: c.initial_input), "echo hi\n")
+            }
+        }
+    }
+
+    func testNilInitialInputLeavesNullPointer() {
+        let config = GhosttySurfaceConfiguration()
+        var sentinel = 0
+        withUnsafeMutablePointer(to: &sentinel) { raw in
+            config.withCValue(nsview: UnsafeMutableRawPointer(raw), userdata: nil) { c in
+                XCTAssertNil(c.initial_input)
+            }
+        }
+    }
 }
