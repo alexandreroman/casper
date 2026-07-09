@@ -772,6 +772,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(saves, 1)
     }
 
+    /// Full wiring, real libghostty surface: a terminal opened with `--command`
+    /// must have that command actually typed into and run by the real shell once
+    /// its view is materialized — the end-to-end proof of the `initial_input`
+    /// fix (replacing the vendored fork's broken `bash -l -c "exec"` path).
+    @MainActor
+    func testOpenTerminalWithCommandRunsItInTheRealShell() throws {
+        let (model, _) = try modelWithOneGitWorkspace()
+        model.runtime = try GhosttyRuntime()
+        let workspaceID = model.spaces[0].workspaces[0].id
+
+        let info = try XCTUnwrap(
+            model.controlOpenTerminal(in: workspaceID, command: "echo COMMAND_RAN_$$"))
+        let newID = try XCTUnwrap(UUID(uuidString: info.id))
+        let workspace = model.spaces[0].workspaces[0]
+        let surface = try XCTUnwrap(LayoutTree.surfaces(workspace.layout).first { $0.id == newID })
+        let view = try XCTUnwrap(model.surfaceView(for: surface, in: workspace))
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
+
+        let deadline = Date().addingTimeInterval(10)
+        while view.surface == nil, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        guard view.surface != nil else {
+            throw XCTSkip("libghostty could not create a surface in this environment")
+        }
+
+        // Let the shell reach an interactive prompt and consume the queued command.
+        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+
+        let text = model.surfaceViewportText(newID) ?? ""
+        XCTAssertTrue(
+            text.contains("COMMAND_RAN_"),
+            "expected the opened terminal's command to have run; viewport was:\n\(text)")
+    }
+
     /// A context-menu split can target a pane other than the focused one. The
     /// blur must follow the surface that actually holds the caret, not the split
     /// anchor, otherwise the focused pane keeps a solid caret while focus moves.
