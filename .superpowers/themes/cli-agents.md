@@ -69,8 +69,11 @@ array) to stdout and exits 0, describing the resulting resource state and always
 including the affected `workspace` id — e.g. `status set blocked` →
 `{"status":"blocked","workspace":"<id>"}`; verbs with no meaningful state
 (`progress clear`, `notify`, `browser open`, `diff open`) → `{"workspace":"<id>"}`.
-`terminal new`/`list` carry `working-dir` (always) and `command` (when
-non-default); `workspace new`/`list`/`current` carry the worktree `path`
+`terminal new` carries `working-dir` (always) and `command` (when given);
+`terminal list` carries only `working-dir` (it no longer carries `command` —
+a terminal's launch command is a one-shot instruction, not durable state, see
+[[surface-command-bash-exec]]); `workspace new`/`list`/`current` carry the
+worktree `path`
 (`branch` omitted for a degenerate, non-Git space). On **error** it prints
 `{"error":"<msg>"}` to stderr and exits **non-zero** — a command in error never
 returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's
