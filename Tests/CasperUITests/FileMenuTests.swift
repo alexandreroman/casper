@@ -90,7 +90,7 @@ final class FileMenuTests: XCTestCase {
         let item = model.fileMenuItem()
         let titles = item.submenu?.items.map(\.title)
         XCTAssertEqual(titles, [
-            "Add Folder…", NSMenuItem.separator().title,
+            "Add Folder…", "Create Workspace…", NSMenuItem.separator().title,
             "Merge and Close Workspace…", "Delete Workspace…",
         ])
     }
