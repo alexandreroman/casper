@@ -115,6 +115,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         NSApp.mainMenu = buildMainMenu()
         NSApp.mainMenu?.insertItem(AppModel.shared.fileMenuItem(), at: 1)
         NSApp.mainMenu?.insertItem(AppModel.shared.viewMenuItem(), at: 3)
+        if let editMenu = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "Edit" })?.submenu {
+            editMenu.insertItem(.separator(), at: 0)
+            editMenu.insertItem(AppModel.shared.copyBranchNameMenuItem(), at: 0)
+            editMenu.insertItem(AppModel.shared.copyWorkspacePathMenuItem(), at: 0)
+        }
     }
 
     /// Register as the notification delegate and request authorization once, at

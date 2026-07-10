@@ -5,11 +5,14 @@ import CasperCore
 /// separate target object has to be kept alive. Mirrors SwiftUI `Button` actions
 /// for the AppKit context menu built by `AppModel.paneContextMenu(for:)`.
 @MainActor
-final class ClosureMenuItem: NSMenuItem {
+final class ClosureMenuItem: NSMenuItem, NSMenuItemValidation {
     private let handler: () -> Void
+    private let isEnabledProvider: (() -> Bool)?
 
-    init(title: String, systemImage: String? = nil, tint: NSColor? = nil, handler: @escaping () -> Void) {
+    init(title: String, systemImage: String? = nil, tint: NSColor? = nil,
+         isEnabled: (() -> Bool)? = nil, handler: @escaping () -> Void) {
         self.handler = handler
+        self.isEnabledProvider = isEnabled
         super.init(title: title, action: #selector(fire), keyEquivalent: "")
         target = self
         if let systemImage {
@@ -25,6 +28,8 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError("not supported") }
 
     @objc private func fire() { handler() }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { isEnabledProvider?() ?? true }
 }
 
 extension AppModel {
