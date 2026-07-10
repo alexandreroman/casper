@@ -1203,7 +1203,7 @@ final class AppModel {
     /// field; no-op on cancel or empty input.
     func presentAddLinkedWorkspacePanel(spaceID: UUID) {
         let alert = NSAlert()
-        alert.messageText = "New workspace"
+        alert.messageText = "Create Workspace"
         alert.informativeText = "Name for the new branch and worktree:"
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
