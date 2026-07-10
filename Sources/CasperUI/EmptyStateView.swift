@@ -7,29 +7,31 @@ struct EmptyStateView: View {
     var onAddFolder: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "terminal.fill")
-                .font(.system(size: 34, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 76, height: 76)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-                }
-                .accessibilityHidden(true)
-
-            VStack(spacing: 8) {
-                Text("Casper")
-                    .font(.system(size: 30, weight: .semibold))
-                Text("An agent-aware terminal workspace for every Git worktree.")
-                    .font(.callout)
+        VStack(spacing: 32) {
+            VStack(spacing: 16) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 34, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
+                    .frame(width: 76, height: 76)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+                    }
+                    .accessibilityHidden(true)
+
+                VStack(spacing: 12) {
+                    Text("Casper")
+                        .font(.system(size: 30, weight: .semibold))
+                    Text("An agent-aware terminal workspace for every Git worktree.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 360)
+                }
             }
 
-            VStack(spacing: 6) {
+            VStack(spacing: 10) {
                 Button("Add Folder…", action: onAddFolder)
                     .controlSize(.large)
                     .buttonStyle(.borderedProminent)
@@ -38,7 +40,7 @@ struct EmptyStateView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 20) {
                 OnboardingStep(
                     index: 1, systemImage: "folder.badge.plus", title: "Add a folder",
                     detail: "Adopt any repo — Casper groups it as a Space.")
@@ -49,10 +51,10 @@ struct EmptyStateView: View {
                     index: 3, systemImage: "sparkles", title: "Run your agent",
                     detail: "Live state, diff & browser preview alongside.")
             }
-            .padding(.top, 8)
+            .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+        .padding(48)
     }
 }
 
@@ -65,7 +67,7 @@ private struct OnboardingStep: View {
     let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("\(index)")
                     .font(.caption.weight(.semibold))
@@ -84,8 +86,8 @@ private struct OnboardingStep: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .frame(width: 180, alignment: .leading)
+        .padding(18)
+        .frame(width: 200, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
