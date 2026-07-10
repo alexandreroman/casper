@@ -3,9 +3,9 @@ import AppKit
 /// Watches for Cmd being held ≥250ms to reveal the sidebar's `Cmd+N` shortcut
 /// hints (see `WorkspaceRow`), and handles `Cmd+1…9` itself so the workspace
 /// switch works even before the hint appears. Installed once from
-/// `AppDelegate.applicationDidFinishLaunching`, the same place `FileMenu`'s
-/// menu wiring happens — a local (not global) `NSEvent` monitor, so this only
-/// fires while a Casper window is key and needs no Accessibility permission.
+/// `AppDelegate.applicationDidFinishLaunching` — a local (not global) `NSEvent`
+/// monitor, so this only fires while a Casper window is key and needs no
+/// Accessibility permission.
 @MainActor
 final class WorkspaceShortcutKeyMonitor {
     /// Physical digit keys (ANSI virtual keycodes) mapped to their digit, for
@@ -75,7 +75,8 @@ final class WorkspaceShortcutKeyMonitor {
     func handle(_ event: NSEvent) -> NSEvent? {
         // Only bare Cmd (no Shift/Option/Control) triggers the hold-reveal
         // and Cmd+digit switch, so this never fires mid-combo with an
-        // unrelated shortcut like Cmd+Shift+D ("Split Down", `FileMenu.swift`).
+        // unrelated shortcut like Cmd+Shift+D ("Split Down", `CasperCommands`
+        // in MenuCommands.swift).
         let relevantFlags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         switch event.type {
         case .flagsChanged:

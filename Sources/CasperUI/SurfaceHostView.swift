@@ -128,11 +128,12 @@ struct SurfaceHostView: View {
         Button(role: .destructive) { model.applyCloseSurface(surface.id) } label: {
             Label("Close Pane", systemImage: "xmark")
         }
-        .keyboardShortcut("w", modifiers: .command)
     }
 
     /// Fire an Edit-menu selector through the responder chain, reaching the
-    /// focused `GhosttySurfaceView` (mirrors `GhosttyMenu`'s nil-target items).
+    /// focused `GhosttySurfaceView` (mirrors the Edit-menu Copy/Paste in
+    /// `CasperCommands` (MenuCommands.swift), which also dispatch through the
+    /// responder chain).
     private func dispatch(_ selector: Selector) {
         NSApp.sendAction(selector, to: nil, from: nil)
     }
