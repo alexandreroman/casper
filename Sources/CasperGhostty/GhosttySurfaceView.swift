@@ -17,17 +17,17 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // the host claim AppKit first responder for the surface it already considers
     // focused, which a SwiftUI `.onAppear` cannot do because the view may not yet
     // be attached to a window when `.onAppear` runs.
-    var onAttach: (UUID) -> Void
+    let onAttach: (UUID) -> Void
     // Fired when this surface should be torn down (child exit or a close request).
-    var onClose: (UUID) -> Void
+    let onClose: (UUID) -> Void
     // Builds the pane context menu for a right-click AppKit is allowed to handle
     // (i.e. the terminal is not capturing the mouse). Returns nil to decline, in
     // which case the right-click is forwarded to libghostty as usual.
-    var onContextMenu: ((NSEvent) -> NSMenu?)?
+    let onContextMenu: ((NSEvent) -> NSMenu?)?
     // Fired after a font-size action (increase/decrease/reset) changes this
     // surface's live font size, reading back via `GhosttySurface.currentFontSize()`
     // — libghostty exposes no getter to read a size change any other way.
-    var onFontSizeChange: (UUID, Float) -> Void
+    let onFontSizeChange: (UUID, Float) -> Void
     // The last font size reported to `onFontSizeChange`, so a font-size action
     // that libghostty clamped to a no-op (e.g. reset when already at default,
     // or increase past its max) does not re-report the same value.

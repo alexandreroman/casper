@@ -87,7 +87,7 @@ enum DiffHighlighter {
         // line number; any mismatch (e.g. the library trimming edge
         // whitespace) falls back to neutral rather than misaligning colors.
         let lines = splitLines(highlighted)
-        guard lines.count == text.components(separatedBy: "\n").count else {
+        guard lines.count == 1 + text.lazy.filter({ $0 == "\n" }).count else {
             return nil
         }
         return lines

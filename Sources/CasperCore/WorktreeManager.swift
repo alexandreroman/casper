@@ -22,13 +22,11 @@ public struct CreatedWorktree: Equatable, Sendable {
     public let name: String
     public let path: String
     public let branch: String
-    public let repoPath: String
 
-    public init(name: String, path: String, branch: String, repoPath: String) {
+    public init(name: String, path: String, branch: String) {
         self.name = name
         self.path = path
         self.branch = branch
-        self.repoPath = repoPath
     }
 }
 
@@ -79,9 +77,7 @@ public enum WorktreeManager {
             throw WorktreeError(.fileCopyFailed("\(error)"))
         }
 
-        return CreatedWorktree(
-            name: info.name, path: info.path, branch: name,
-            repoPath: repo.workdirPath ?? repoPath)
+        return CreatedWorktree(name: info.name, path: info.path, branch: name)
     }
 
     /// List worktrees of the repository at `repoPath`.

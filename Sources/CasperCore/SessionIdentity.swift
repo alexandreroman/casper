@@ -21,11 +21,12 @@ public struct SessionIdentity: Sendable, Equatable {
         self.name = name
     }
 
+    private static let allowedNameCharacters = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+
     public static func isValid(_ name: String) -> Bool {
         guard (1...32).contains(name.count) else { return false }
-        let allowed = CharacterSet(
-            charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
-        return name.unicodeScalars.allSatisfy { allowed.contains($0) }
+        return name.unicodeScalars.allSatisfy { allowedNameCharacters.contains($0) }
     }
 
     /// `""` for the default session, `"-<name>"` otherwise. The single source of

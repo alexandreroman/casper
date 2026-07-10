@@ -128,7 +128,10 @@ final class GhosttySurface {
     }
 
     /// Full readback of `ghostty_surface_size`: grid dimensions plus the pixel
-    /// geometry libghostty derives from them. Used for debug/diagnostics only.
+    /// geometry libghostty derives from them. Used for debug/diagnostics only,
+    /// so it is compiled only into debug builds (matching its sole consumer,
+    /// `GhosttySurfaceView.debugGeometry()`).
+    #if DEBUG
     public struct Geometry: Equatable, Sendable {
         public let columns: Int
         public let rows: Int
@@ -149,6 +152,7 @@ final class GhosttySurface {
             cellWidthPixels: Int(size.cell_width_px),
             cellHeightPixels: Int(size.cell_height_px))
     }
+    #endif
 
     /// The surface's current live font size, read via libghostty's
     /// inherited-config mechanism (the same path it uses to propagate the

@@ -8,8 +8,8 @@ enum DiffLineStyle {
     /// Accent hues for the leading stripe, the +/- prefix, the gutter line
     /// number, and the +N -N stat badges. Sampled from Claude Code's own diff
     /// rendering so Casper's diff view reads the same way.
-    static var insertionTint: Color { Color(red: 0.529, green: 0.757, blue: 0.388) }
-    static var deletionTint: Color { Color(red: 0.725, green: 0.416, blue: 0.369) }
+    static let insertionTint = Color(red: 0.529, green: 0.757, blue: 0.388)
+    static let deletionTint = Color(red: 0.725, green: 0.416, blue: 0.369)
 
     static func prefix(for kind: GitDiffLine.Kind) -> String {
         switch kind {

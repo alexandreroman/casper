@@ -3,7 +3,7 @@ import Clibgit2
 /// The result of `Repository.mergeBranchHeadless`.
 public enum MergeOutcome: Equatable, Sendable {
     case upToDate
-    case merged(commitOID: String)
+    case merged
 }
 
 /// Thrown when a headless merge can't be resolved automatically. Nothing is
@@ -64,11 +64,7 @@ extension Repository {
                 tree, 2, buf.baseAddress)
         })
 
-        // `git_oid_tostr_s` returns libgit2's internal buffer, already sized for
-        // the repo's object format (SHA-1 or SHA-256), so the hex string is never
-        // truncated the way a fixed 41-byte buffer would truncate a SHA-256 OID.
-        let oidString = String(cString: git_oid_tostr_s(&newCommitOid))
-        return .merged(commitOID: oidString)
+        return .merged
     }
 
     /// Force the working tree and index to match the current HEAD commit,

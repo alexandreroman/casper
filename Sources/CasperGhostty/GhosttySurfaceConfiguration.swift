@@ -51,13 +51,15 @@ public struct GhosttySurfaceConfiguration {
         c.font_size = fontSize
 
         // Flatten the env dict into parallel C-string storage, then an array of
-        // ghostty_env_var_s pointing into it.
-        let pairs = environment.map { ($0.key, $0.value) }
-        return withCStrings(pairs.map { $0.0 }) { keys in
-            withCStrings(pairs.map { $0.1 }) { values in
+        // ghostty_env_var_s pointing into it. `keys` and `values` iterate in
+        // corresponding order, so they line up index-for-index.
+        let envKeys = Array(environment.keys)
+        let envValues = Array(environment.values)
+        return withCStrings(envKeys) { keys in
+            withCStrings(envValues) { values in
                 var envVars = [ghostty_env_var_s]()
-                envVars.reserveCapacity(pairs.count)
-                for i in pairs.indices {
+                envVars.reserveCapacity(environment.count)
+                for i in envKeys.indices {
                     envVars.append(ghostty_env_var_s(key: keys[i], value: values[i]))
                 }
                 return withOptionalCString(workingDirectory) { wd in

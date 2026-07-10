@@ -11,7 +11,7 @@ private struct FileHighlight { var new: [AttributedString]?; var old: [Attribute
 /// +/- line coloring. Refreshes on open and on the button. Long code lines wrap
 /// rather than requiring horizontal scrolling.
 struct DiffSurfaceView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     let workspace: Workspace
     @State private var diff: GitDiff?
     @State private var loaded = false
@@ -141,7 +141,7 @@ struct DiffSurfaceView: View {
     /// text used for highlighting is unchanged, so its cached highlight is still
     /// valid.
     private func startHighlighting(
-        reusing previousFiles: [GitDiffFile] = [], _ previousHighlights: [String: FileHighlight] = [:]
+        reusing previousFiles: [GitDiffFile], _ previousHighlights: [String: FileHighlight]
     ) {
         highlightTask?.cancel()
         guard let files = diff?.files else { highlights = [:]; return }

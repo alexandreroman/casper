@@ -10,11 +10,13 @@ struct Octicon: View {
     enum Name: String { case gitBranch, fileDirectory }
 
     let name: Name
-    let size: CGFloat
 
-    init(_ name: Name, size: CGFloat = 16) {
+    /// Every glyph uses Primer's native 16px viewBox; no caller renders at
+    /// another size.
+    private static let size: CGFloat = 16
+
+    init(_ name: Name) {
         self.name = name
-        self.size = size
     }
 
     // Primer Octicons' 16px glyphs (viewBox "0 0 16 16"), verbatim.
@@ -42,12 +44,12 @@ struct Octicon: View {
             Image(nsImage: image)
                 .resizable()
                 .renderingMode(.template)
-                .frame(width: size, height: size)
+                .frame(width: Self.size, height: Self.size)
         } else {
             // Defensive: decoding never fails on macOS 15, but keep layout
             // stable if it ever does rather than crashing.
             Color.clear
-                .frame(width: size, height: size)
+                .frame(width: Self.size, height: Self.size)
         }
     }
 }
