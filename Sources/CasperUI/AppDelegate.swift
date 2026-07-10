@@ -160,12 +160,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// SwiftUI's `.commands` cannot remove an entire top-level menu — an emptied
     /// `CommandGroup` (Casper empties `.textFormatting` and `.help`) leaves the
     /// menu's title on the bar with no items. Strip every empty top-level menu
-    /// here. `applicationWillUpdate(_:)` runs before each UI update, so this
-    /// re-applies right after SwiftUI rebuilds the menu — self-healing. Unlike the
-    /// old AppKit menu approach, it never touches File/Edit/View (SwiftUI owns
-    /// those and always populates them), so it cannot cause menus to disappear.
-    /// Testing empties (rather than titles) keeps it locale-independent.
-    func applicationWillUpdate(_ notification: Notification) {
+    /// here. `applicationDidUpdate(_:)` runs AFTER SwiftUI rebuilds the menu, so
+    /// it strips the empty Format/Help stubs on the same cycle SwiftUI re-inserts
+    /// them, before the bar is displayed — fixing the intermittent case where the
+    /// empty Format/Help menus briefly appeared. It never touches
+    /// File/Edit/View/App/Window (always populated), so it cannot cause menus to
+    /// disappear, and it cannot loop: once the stubs are stripped, a subsequent
+    /// `didUpdate` finds nothing to remove. Testing empties (rather than titles)
+    /// keeps it locale-independent.
+    func applicationDidUpdate(_ notification: Notification) {
         guard let mainMenu = NSApp.mainMenu else { return }
         for item in mainMenu.items where item.submenu?.numberOfItems == 0 {
             mainMenu.removeItem(item)

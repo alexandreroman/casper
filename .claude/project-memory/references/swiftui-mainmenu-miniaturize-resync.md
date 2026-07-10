@@ -1,6 +1,6 @@
 ---
 name: "SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe"
-description: "SwiftUI re-syncs NSApp.mainMenu on scene-lifecycle events, so Casper's menu bar is defined entirely in .commands; empty top-level stubs are stripped in applicationWillUpdate"
+description: "SwiftUI re-syncs NSApp.mainMenu on scene-lifecycle events, so Casper's menu bar is defined entirely in .commands; empty top-level stubs are stripped in applicationDidUpdate"
 type: reference
 ---
 
@@ -36,10 +36,14 @@ this app — express menus in `.commands`. One genuine SwiftUI limitation remain
 `.commands` cannot remove an entire default top-level menu — an emptied
 `CommandGroup(replacing: .textFormatting)` / `.help` leaves the empty "Format" /
 "Help" title on the bar (confirmed via Apple Developer Forums). Casper strips
-those in `AppDelegate.applicationWillUpdate(_:)`, which removes every empty
-top-level menu (`item.submenu?.numberOfItems == 0`). This is safe — it runs
-before each UI update (self-healing after any SwiftUI rebuild), never touches
-File/Edit/View/App/Window (always populated), and cannot loop. If you must own
+those in `AppDelegate.applicationDidUpdate(_:)`, which removes every empty
+top-level menu (`item.submenu?.numberOfItems == 0`). It must be `didUpdate`, not
+`willUpdate`: SwiftUI re-inserts the empty Format/Help stubs *during* the update,
+so stripping *before* the update (`willUpdate`) leaves the re-inserted stubs
+visible until a later cycle — the intermittent "Format/Help swap in" bug. Running
+*after* the rebuild strips them on the same cycle, before the bar is displayed.
+This is safe — it never touches File/Edit/View/App/Window (always populated), and
+cannot loop (once stripped, the next `didUpdate` finds nothing to remove). If you must own
 other window-lifecycle-sensitive AppKit chrome that SwiftUI also manages, prefer
 the SwiftUI-declared route + an `applicationWillUpdate` reconcile over
 reasserting on individual notifications.
