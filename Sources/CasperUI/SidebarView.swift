@@ -2,7 +2,7 @@ import CasperCore
 import SwiftUI
 
 struct SidebarView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -125,12 +125,6 @@ private struct AddFolderButtonStyle: ButtonStyle {
     }
 
     private func foregroundColor(isPressed: Bool) -> Color {
-        if isPressed {
-            return Color.primary
-        }
-        if isHovered {
-            return Color.primary
-        }
-        return Color.secondary
+        return (isPressed || isHovered) ? .primary : .secondary
     }
 }

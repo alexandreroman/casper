@@ -5,13 +5,13 @@ public struct GitDiff: Equatable, Sendable {
     public init(files: [GitDiffFile]) { self.files = files }
 
     /// Total added lines across every hunk — the diff summary's "+" count.
-    public var insertions: Int {
-        files.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == .addition }.count
-    }
+    public var insertions: Int { lineCount(of: .addition) }
 
     /// Total removed lines across every hunk — the diff summary's "−" count.
-    public var deletions: Int {
-        files.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == .deletion }.count
+    public var deletions: Int { lineCount(of: .deletion) }
+
+    private func lineCount(of kind: GitDiffLine.Kind) -> Int {
+        files.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == kind }.count
     }
 }
 

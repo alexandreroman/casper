@@ -6,7 +6,7 @@ import SwiftUI
 /// `SplitContainerView` (system `Divider()` separators, so all separators in the
 /// app match), and each leaf as a single pane via `SurfaceHostView`.
 struct LayoutNodeView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     let workspace: Workspace
     let node: LayoutNode
     /// Child-index path from the workspace's root layout to `node` (root = `[]`).

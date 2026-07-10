@@ -3,7 +3,7 @@ import CasperGhostty
 import SwiftUI
 
 struct WorkspaceDetailView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     let workspace: Workspace
 
     /// Cached diff summary so it isn't recomputed on every render; refreshed when

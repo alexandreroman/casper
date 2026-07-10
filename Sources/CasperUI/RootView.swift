@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct RootView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {

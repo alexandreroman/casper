@@ -6,7 +6,7 @@ import SwiftUI
 /// linked workspace. The "+" lives in the same 20pt trailing slot as each row's
 /// notification bubble so both align on one vertical column.
 struct SpaceHeaderView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     let space: Space
 
     var body: some View {

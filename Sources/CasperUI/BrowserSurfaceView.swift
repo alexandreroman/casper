@@ -7,7 +7,7 @@ import SwiftUI
 /// persistent `WKWebView` owned by a `BrowserCoordinator` cached by `Surface.id`.
 /// Aimed at previewing a `localhost:PORT` app started by the agent.
 struct BrowserSurfaceView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     let surface: Surface
 
     var body: some View {

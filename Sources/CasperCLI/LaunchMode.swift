@@ -7,10 +7,12 @@ public enum LaunchMode: Equatable {
     case gui
     case cli
 
+    private static let helpFlags: Set<String> = ["-h", "--help", "--version"]
+
     public static func detect(arguments: [String]) -> LaunchMode {
         guard let first = arguments.dropFirst().first else { return .gui }
         if first.hasPrefix("-") {
-            return ["-h", "--help", "--version"].contains(first) ? .cli : .gui
+            return helpFlags.contains(first) ? .cli : .gui
         }
         return .cli
     }

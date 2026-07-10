@@ -8,7 +8,7 @@ import SwiftUI
 /// close. Surface identity anchors on `Surface.id`, so the persistent view
 /// cache in `AppModel` keeps each PTY / web page alive across layout churn.
 struct SurfaceHostView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     let workspace: Workspace
     let surface: Surface
 

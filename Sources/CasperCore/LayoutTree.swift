@@ -8,16 +8,10 @@ public enum LayoutTree {
 
     /// All surface ids in visual (depth-first) order.
     public static func surfaceIDs(_ node: LayoutNode) -> [UUID] {
-        switch node {
-        case .leaf(let surface):
-            return [surface.id]
-        case .split(_, let children, _):
-            return children.flatMap { surfaceIDs($0) }
-        }
+        surfaces(node).map(\.id)
     }
 
-    /// All surfaces in visual (depth-first) order — the `Surface`-valued twin of
-    /// `surfaceIDs`, walking the same cases.
+    /// All surfaces in visual (depth-first) order.
     public static func surfaces(_ node: LayoutNode) -> [Surface] {
         switch node {
         case .leaf(let surface):

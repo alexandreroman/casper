@@ -129,14 +129,16 @@ public final class Repository {
     public func ignoredTopLevelDirectories() throws -> [String] {
         guard let workdir = workdirPath else { return [] }
         let fm = FileManager.default
-        let entries = (try? fm.contentsOfDirectory(atPath: workdir)) ?? []
+        let workdirURL = URL(fileURLWithPath: workdir)
+        let entries = (try? fm.contentsOfDirectory(
+            at: workdirURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         var result: [String] = []
-        for name in entries.sorted() where name != ".git" {
-            let abs = URL(fileURLWithPath: workdir).appendingPathComponent(name).path
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: abs, isDirectory: &isDir), isDir.boolValue else { continue }
+        for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let name = url.lastPathComponent
+            guard name != ".git" else { continue }
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
             if (try? isPathIgnored(name)) == true {
-                result.append(abs)
+                result.append(url.path)
             }
         }
         return result

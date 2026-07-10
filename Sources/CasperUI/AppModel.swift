@@ -76,7 +76,9 @@ final class AppModel {
     var focusedSurfaceID: UUID?
 
     /// The surface currently being dragged by its grip, or nil. Set on drag begin/end.
-    var draggingSurfaceID: UUID?
+    /// Only ever read internally (the `setDropHover` guard); no view observes it, so
+    /// tracking it would needlessly invalidate views on every drag.
+    @ObservationIgnored private var draggingSurfaceID: UUID?
     /// The pane currently under the drag and the zone the drop would use. One at a
     /// time; cleared whenever the drag ends so no highlight can get stuck.
     var dropHoverTarget: UUID?
