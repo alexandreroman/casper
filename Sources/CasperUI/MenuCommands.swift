@@ -40,6 +40,14 @@ struct CasperCommands: Commands {
                 Divider()
                 Button {
                     guard let id = model.selectedWorkspaceID else { return }
+                    model.openInFinder(id: id)
+                } label: {
+                    Label("Open in Finder", systemImage: "folder")
+                }
+                .disabled(!model.hasSelectedWorkspace)
+                Divider()
+                Button {
+                    guard let id = model.selectedWorkspaceID else { return }
                     model.presentCloseWorkspaceConfirmation(id: id)
                 } label: {
                     Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")

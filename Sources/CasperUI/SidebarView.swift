@@ -47,6 +47,12 @@ struct SidebarView: View {
             let isLinked = workspace.kind == .linked
             let canMerge = isLinked && !(workspace.baseBranch?.isEmpty ?? true)
             Button {
+                model.openInFinder(id: workspace.id)
+            } label: {
+                Label("Open in Finder", systemImage: "folder")
+            }
+            Divider()
+            Button {
                 model.copyWorkspacePath(id: workspace.id)
             } label: {
                 Label("Copy Workspace Path", systemImage: "doc.on.doc")
