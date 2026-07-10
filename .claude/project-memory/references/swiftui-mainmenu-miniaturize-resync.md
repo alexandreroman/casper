@@ -1,39 +1,45 @@
 ---
-name: "SwiftUI/AppKit main-menu resync on window miniaturize"
-description: "NSApp.mainMenu.items gets mutated in place during window miniaturize; no public API prevents it, so the custom menu must be reasserted afterward"
+name: "SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe"
+description: "SwiftUI re-syncs NSApp.mainMenu on scene-lifecycle events, so Casper's menu bar is defined entirely in .commands; empty top-level stubs are stripped in applicationWillUpdate"
 type: reference
 ---
 
-# SwiftUI/AppKit main-menu resync on window miniaturize
+# SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe
 
-`CasperApp` is a SwiftUI `App` (`WindowGroup`, no proper `.commands`-driven menu
-of its own) whose `AppDelegate.applicationDidFinishLaunching` builds and installs
-the entire menu bar imperatively via AppKit (`NSApp.mainMenu = buildMainMenu()` +
-inserting Casper's own File/View menus). When the app's window is minimized,
-something internal to AppKit/SwiftUI's main-menu management mutates
-`NSApp.mainMenu.items` **in place** — same `NSMenu` object identity, contents
-replaced with a generic default menu (drops File/Edit, injects a stray Help
-menu, sometimes a Format menu depending on responder state).
+Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands` in
+`Sources/CasperUI/MenuCommands.swift`, wired via `CasperApp.body`'s
+`.commands { CasperCommands(model: model) }`). File ← `.newItem`, Edit ←
+`.pasteboard`, View ← `.sidebar`; App/Window use SwiftUI defaults. Edit
+Copy/Paste/Select All carry no target — `NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)`
+routes through the responder chain to the focused `GhosttySurfaceView` (and to
+text fields), so they stay always-enabled by design. Menu enable/disable lives in
+testable `@Observable` computed props on `AppModel` (`canCreateWorkspace`,
+`canCloseSelectedWorkspace`, `canDeleteSelectedWorkspace`, `canSplitFocusedSurface`,
+`hasSelectedWorkspace`), bound via `.disabled(...)` and covered by
+`Tests/CasperUITests/MenuStateTests.swift`.
 
-Confirmed via live instrumentation: logging `ObjectIdentifier(NSApp.mainMenu)`
-and `NSApp.mainMenu?.items.map(\.title)` around `NSWindow.willMiniaturizeNotification`
-/ `didMiniaturizeNotification` showed the identical object identity throughout,
-with the item titles already corrupted by the time `didMiniaturizeNotification`
-fires (the mutation happens during the miniaturize genie-animation window).
-Adding a SwiftUI `.commands { CommandGroup(replacing: ...) {} }` modifier to
-neutralize SwiftUI's default command groups had **no effect** on this — the
-resync is not driven by the public Commands API, and there is no public API to
-suppress it.
+**Why:** an earlier design built the whole bar imperatively in AppKit
+(`NSApp.mainMenu = buildMainMenu()` + inserting File/View), but SwiftUI's
+`WindowGroup` re-synchronises `NSApp.mainMenu` on scene-lifecycle events
+(miniaturize, app-switch, key-window change, fullscreen, …), mutating
+`NSApp.mainMenu.items` **in place** (same `NSMenu` object identity) and wiping
+the custom File/Edit/View while re-injecting SwiftUI's Format/Help — the
+intermittent "File/Edit disappeared" bug. This is closed-source internal
+behaviour with no public API to suppress; reasserting the custom menu only on
+specific notifications (the old miniaturize/deminiaturize observers) was
+whack-a-mole that missed every other trigger. Letting SwiftUI **own** the menu
+makes the resync harmless: SwiftUI re-applies the same `.commands` on every
+resync, so the important menus can no longer vanish.
 
-**Why:** this is closed-source SwiftUI/AppKit internal behavior; whack-a-mole
-neutralizing more `CommandGroup` placements does not stop it.
-
-**How to apply:** any window-lifecycle-sensitive AppKit customization on
-`NSApp.mainMenu` (or, likely, other AppKit chrome SwiftUI also manages) must be
-**reasserted after the fact** rather than assumed to survive scene-lifecycle
-events. `AppDelegate` now reinstalls the custom menu via
-`NSWindow.didMiniaturizeNotification` and `didDeminiaturizeNotification`
-observers calling a shared `installCustomMainMenu()` helper — this pattern
-(reassert-after-corrupting-event, confirmed via object-identity diagnostic
-logging) is the template to reach for if similar AppKit-chrome corruption shows
-up on other window-lifecycle transitions (fullscreen toggle, tab merging, etc.).
+**How to apply:** never mutate `NSApp.mainMenu` imperatively to define menus in
+this app — express menus in `.commands`. One genuine SwiftUI limitation remains:
+`.commands` cannot remove an entire default top-level menu — an emptied
+`CommandGroup(replacing: .textFormatting)` / `.help` leaves the empty "Format" /
+"Help" title on the bar (confirmed via Apple Developer Forums). Casper strips
+those in `AppDelegate.applicationWillUpdate(_:)`, which removes every empty
+top-level menu (`item.submenu?.numberOfItems == 0`). This is safe — it runs
+before each UI update (self-healing after any SwiftUI rebuild), never touches
+File/Edit/View/App/Window (always populated), and cannot loop. If you must own
+other window-lifecycle-sensitive AppKit chrome that SwiftUI also manages, prefer
+the SwiftUI-declared route + an `applicationWillUpdate` reconcile over
+reasserting on individual notifications.

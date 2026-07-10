@@ -395,13 +395,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     // MARK: Menu actions
 
-    // Edit/View menu items built by `buildMainMenu()` carry no `target`, so
-    // AppKit dispatches them up the responder chain; these fire whenever this
-    // view is the focused (first-responder) surface. `copy(_:)`/`paste(_:)` are
-    // plain selectors AppKit's Edit menu convention expects (not declared by
-    // `NSResponder`); `selectAll(_:)` overrides the one `NSResponder` does
-    // declare. The font-size selectors are custom, referenced directly by
-    // `buildMainMenu()`.
+    // The Edit menu's Copy/Paste/Select All (built in SwiftUI by `CasperCommands`)
+    // and the pane context menu (`PaneContextMenu.swift`) carry no `target`, so
+    // AppKit dispatches them up the responder chain; these fire whenever this view
+    // is the focused (first-responder) surface. `copy(_:)`/`paste(_:)` are plain
+    // selectors AppKit's Edit menu convention expects (not declared by
+    // `NSResponder`); `selectAll(_:)` overrides the one `NSResponder` does declare.
+    // The font-size selectors are custom, not currently wired to any menu.
 
     @objc func copy(_ sender: Any?) {
         surface?.bindingAction("copy_to_clipboard")
@@ -828,9 +828,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 }
 
 extension GhosttySurfaceView: NSMenuItemValidation {
-    // The Edit/View menu items built by `buildMainMenu()` all target this view
-    // via the responder chain; enable them only while it hosts a live surface.
-    // Copy additionally requires a selection to copy.
+    // The Edit menu's items (built in SwiftUI by `CasperCommands`) and the pane
+    // context menu all target this view via the responder chain; enable them only
+    // while it hosts a live surface. Copy additionally requires a selection to copy.
     public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let surface else { return false }
         if menuItem.action == #selector(copy(_:)) {

@@ -11,11 +11,18 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate {
     private var controlServer: ControlServer?
     private var keyWindowObserver: NSObjectProtocol?
-    private var menuReapplyObservers: [NSObjectProtocol] = []
     private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
     #if DEBUG
     private var debugServer: DebugServer?
     #endif
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Casper is single-window; disabling automatic window tabbing removes the
+        // tab-management items AppKit injects into the View menu ("Show Tab Bar",
+        // "Show All Tabs") and Window menu ("Show Previous/Next Tab", "Move Tab to
+        // Next Window", "Merge All Windows").
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel.shared
@@ -24,7 +31,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         // Open/Save dialogs). The Ghostty terminal is Metal-rendered with its own
         // palette, so it is unaffected.
         NSApp.appearance = NSAppearance(named: .darkAqua)
-        AppDelegate.installCustomMainMenu()
 
         let shortcutMonitor = WorkspaceShortcutKeyMonitor(model: model)
         shortcutMonitor.start()
@@ -80,16 +86,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             Task { @MainActor in AppModel.shared.clearNotificationForFocusedWorkspace() }
         }
 
-        // AppKit/SwiftUI's internal main-menu management mutates NSApp.mainMenu.items
-        // in place during the window miniaturize lifecycle, dropping our File/Edit/View
-        // menus (there is no public API to suppress that resync). Reassert Casper's own
-        // menu after each miniaturize and deminiaturize to restore it.
-        menuReapplyObservers = [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification].map { name in
-            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
-                Task { @MainActor in AppDelegate.installCustomMainMenu() }
-            }
-        }
-
         // Debug channel for the `debug-casper` harness. Compiled out of release
         // builds entirely — see the `nm` gating check in the task report.
         #if DEBUG
@@ -102,24 +98,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         // Bare SPM executable launched from a terminal: macOS does not foreground
         // us automatically, so activate explicitly.
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    /// Build Casper's custom AppKit menu bar and install it as `NSApp.mainMenu`.
-    ///
-    /// `buildMainMenu()` yields App(0)/Edit(1)/Window(2); insert File before Edit
-    /// and View after Edit to land on App, File, Edit, View, Window. Safe to call
-    /// repeatedly — both menu items are freshly built on each call — which is what
-    /// lets the miniaturize/deminiaturize observers reassert the menu after
-    /// AppKit/SwiftUI's internal resync corrupts it.
-    private static func installCustomMainMenu() {
-        NSApp.mainMenu = buildMainMenu()
-        NSApp.mainMenu?.insertItem(AppModel.shared.fileMenuItem(), at: 1)
-        NSApp.mainMenu?.insertItem(AppModel.shared.viewMenuItem(), at: 3)
-        if let editMenu = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "Edit" })?.submenu {
-            editMenu.insertItem(.separator(), at: 0)
-            editMenu.insertItem(AppModel.shared.copyBranchNameMenuItem(), at: 0)
-            editMenu.insertItem(AppModel.shared.copyWorkspacePathMenuItem(), at: 0)
-        }
     }
 
     /// Register as the notification delegate and request authorization once, at
@@ -169,7 +147,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
     func applicationWillTerminate(_ notification: Notification) {
         if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
-        for observer in menuReapplyObservers { NotificationCenter.default.removeObserver(observer) }
         AppModel.shared.stopAgentDetection()
         controlServer?.stop()
         #if DEBUG
@@ -179,4 +156,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// SwiftUI's `.commands` cannot remove an entire top-level menu — an emptied
+    /// `CommandGroup` (Casper empties `.textFormatting` and `.help`) leaves the
+    /// menu's title on the bar with no items. Strip every empty top-level menu
+    /// here. `applicationWillUpdate(_:)` runs before each UI update, so this
+    /// re-applies right after SwiftUI rebuilds the menu — self-healing. Unlike the
+    /// old AppKit menu approach, it never touches File/Edit/View (SwiftUI owns
+    /// those and always populates them), so it cannot cause menus to disappear.
+    /// Testing empties (rather than titles) keeps it locale-independent.
+    func applicationWillUpdate(_ notification: Notification) {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        for item in mainMenu.items where item.submenu?.numberOfItems == 0 {
+            mainMenu.removeItem(item)
+        }
+    }
 }
