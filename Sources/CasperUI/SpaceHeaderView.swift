@@ -48,7 +48,7 @@ struct SpaceHeaderView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("Add a workspace")
+                .help("Create a workspace")
             }
         }
         .frame(width: 20)

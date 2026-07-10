@@ -47,6 +47,17 @@ struct SidebarView: View {
             let isLinked = workspace.kind == .linked
             let canMerge = isLinked && !(workspace.baseBranch?.isEmpty ?? true)
             Button {
+                model.copyWorkspacePath(id: workspace.id)
+            } label: {
+                Label("Copy Workspace Path", systemImage: "doc.on.doc")
+            }
+            Button {
+                model.copyBranchName(id: workspace.id)
+            } label: {
+                Label("Copy Branch Name", systemImage: "doc.on.doc")
+            }
+            Divider()
+            Button {
                 model.presentCloseWorkspaceConfirmation(id: workspace.id)
             } label: {
                 Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")

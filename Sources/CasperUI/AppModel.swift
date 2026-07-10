@@ -330,6 +330,35 @@ final class AppModel {
         spaces.first { $0.workspaces.contains { $0.id == workspace.id } }
     }
 
+    /// Copy a workspace's worktree path to the general pasteboard. Backs the
+    /// "Copy Workspace Path" items in the sidebar context menu and the Edit menu.
+    func copyWorkspacePath(id: UUID) {
+        guard let workspace = workspace(id: id) else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(workspace.worktreePath, forType: .string)
+    }
+
+    /// Copy a workspace's branch name to the general pasteboard. Backs the
+    /// "Copy Branch Name" items in the sidebar context menu and the Edit menu.
+    func copyBranchName(id: UUID) {
+        guard let workspace = workspace(id: id) else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(workspace.branch, forType: .string)
+    }
+
+    /// The Space a File-menu "Create Workspace" action targets: the selected
+    /// workspace's Space when it is a Git repo, otherwise the first Git Space.
+    /// nil when no Git Space exists (the menu item is then disabled).
+    func targetSpaceForNewWorkspace() -> Space? {
+        if let id = selectedWorkspaceID, let workspace = workspace(id: id),
+           let space = space(for: workspace), space.isGitRepo {
+            return space
+        }
+        return spaces.first(where: { $0.isGitRepo })
+    }
+
     /// Resolve the (space, workspace) index pair of the first workspace matching
     /// `predicate`, for in-place mutation.
     private func indexPair(where predicate: (Workspace) -> Bool) -> (space: Int, workspace: Int)? {
