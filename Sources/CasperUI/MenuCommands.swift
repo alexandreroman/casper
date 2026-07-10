@@ -52,9 +52,6 @@ struct CasperCommands: Commands {
                     Label("Delete Workspace…", systemImage: "trash")
                 }
                 .disabled(!model.canDeleteSelectedWorkspace)
-                Divider()
-                Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
-                    .keyboardShortcut("w", modifiers: .command)
             }
             CommandGroup(replacing: .saveItem) {}
             CommandGroup(replacing: .importExport) {}
@@ -119,6 +116,7 @@ struct CasperCommands: Commands {
             }
             .keyboardShortcut("d", modifiers: .command)
             .disabled(!model.canSplitFocusedSurface)
+            Divider()
         }
         CommandGroup(replacing: .toolbar) {}
 
