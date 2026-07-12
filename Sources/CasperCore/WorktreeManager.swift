@@ -18,6 +18,27 @@ struct WorktreeError: Error, Equatable, Sendable {
     init(_ reason: Reason) { self.reason = reason }
 }
 
+extension WorktreeError: LocalizedError {
+    var errorDescription: String? {
+        switch reason {
+        case .repositoryNotFound:
+            return "Repository not found."
+        case .branchAlreadyCheckedOut:
+            return "That branch is already checked out in another worktree."
+        case .worktreePathExists:
+            return "The worktree path already exists."
+        case .mergeConflict:
+            return "The merge could not be completed automatically due to conflicts."
+        case .fileCopyFailed(let message):
+            return "Failed to copy workspace files: \(message)"
+        case .configInvalid(let message):
+            return "Invalid .casper.json: \(message)"
+        case .gitFailure(let message):
+            return "Git error: \(message)"
+        }
+    }
+}
+
 /// The result of creating a worktree: enough to build a `Workspace`.
 public struct CreatedWorktree: Equatable, Sendable {
     public let name: String

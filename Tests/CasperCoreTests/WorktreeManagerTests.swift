@@ -261,6 +261,11 @@ final class WorktreeManagerTests: XCTestCase {
         let branches = try WorktreeManager.list(repoPath: repoDir.path).map(\.name)
         XCTAssertFalse(branches.contains("feature"))
     }
+
+    func testConfigInvalidErrorMessageMentionsFile() throws {
+        let error = WorktreeError(.configInvalid("bad token at line 1"))
+        XCTAssertEqual(error.localizedDescription, "Invalid .casper.json: bad token at line 1")
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`

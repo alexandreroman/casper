@@ -492,8 +492,7 @@ final class AppModel {
         } catch {
             portAllocator.release(portBase)
             CasperLog.app.failure("worktree creation failed", error)
-            return .failure(
-                WorkspaceCreationError(message: "worktree creation failed: \(error.localizedDescription)"))
+            return .failure(WorkspaceCreationError(message: error.localizedDescription))
         }
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
