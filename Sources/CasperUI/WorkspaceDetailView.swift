@@ -244,6 +244,7 @@ struct WorkspaceDetailView: View {
                 if let current { model.runScript(current.name, for: workspace.id) }
             } label: {
                 Label(current?.displayName ?? "Run", systemImage: "play.fill")
+                    .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.plain)
 
