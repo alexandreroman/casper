@@ -238,6 +238,23 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(decoded.lastUsedEditor)
     }
 
+    func testWorkspaceRoundTripsLastUsedScript() throws {
+        var ws = Workspace(
+            name: "main", worktreePath: "/wt", branch: "main",
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
+        ws.lastUsedScript = "test"
+        let data = try JSONEncoder().encode(ws)
+        let decoded = try JSONDecoder().decode(Workspace.self, from: data)
+        XCTAssertEqual(decoded.lastUsedScript, "test")
+    }
+
+    func testWorkspaceLastUsedScriptDefaultsNil() throws {
+        let ws = Workspace(
+            name: "main", worktreePath: "/wt", branch: "main",
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
+        XCTAssertNil(ws.lastUsedScript)
+    }
+
     func testInspectorStateLegacyDecodeWithoutWidthDefaultsIt() throws {
         // A `session.json` written before the panel width was persisted has an
         // `inspector` object with no `width` key; decoding must fall back to the
