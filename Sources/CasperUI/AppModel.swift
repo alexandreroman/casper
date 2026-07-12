@@ -1524,6 +1524,11 @@ final class AppModel {
         }
     }
 
+/// Why a `casper run <name>` request could not launch a command.
+struct ControlRunError: Error, Equatable {
+    let message: String
+}
+
     /// Open a new terminal in `workspaceID` by splitting its top-left surface to
     /// the right. Mirrors the toolbar's "new terminal" action, but targeted at an
     /// arbitrary (non-selected) workspace, and allows overriding the working
@@ -1539,6 +1544,36 @@ final class AppModel {
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
+    }
+
+    /// Run the named command `name` (defaulting to `run`) from the workspace's
+    /// `.casper.json` in a new visible terminal. Refuses reserved lifecycle names
+    /// and unknown commands with a clear message.
+    func controlRun(name: String?, in workspaceID: UUID) -> Result<ControlTerminalInfo, ControlRunError> {
+        guard let ws = workspace(id: workspaceID) else {
+            return .failure(ControlRunError(message: "workspace not found"))
+        }
+        let requested = name ?? "run"
+        let config: RepoConfig
+        do {
+            guard let loaded = try RepoConfig.load(fromRepoRoot: ws.worktreePath) else {
+                return .failure(ControlRunError(message: "no .casper.json in this workspace"))
+            }
+            config = loaded
+        } catch let error as RepoConfigError {
+            return .failure(ControlRunError(message: "Invalid .casper.json: \(error.reason)"))
+        } catch {
+            return .failure(ControlRunError(message: error.localizedDescription))
+        }
+        switch config.resolveRunCommand(requested) {
+        case .denied(let message):
+            return .failure(ControlRunError(message: message))
+        case .command(let command):
+            guard let info = controlOpenTerminal(in: workspaceID, command: command, cwd: nil) else {
+                return .failure(ControlRunError(message: "cannot open terminal"))
+            }
+            return .success(info)
+        }
     }
 
     /// List the terminal surfaces of `workspaceID` in visual (depth-first) order.

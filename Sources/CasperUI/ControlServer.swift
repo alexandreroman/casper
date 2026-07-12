@@ -101,7 +101,12 @@ final class ControlServer {
             case .failure(let error): return .failure(error.message)
             }
         case .run:
-            return .failure("run is not yet supported")
+            switch model.controlRun(name: command.name, in: id) {
+            case .success(let info):
+                return .success(workspace: id.uuidString, terminals: [info])
+            case .failure(let error):
+                return .failure(error.message)
+            }
         case .workspaceList, .workspaceNew:
             return .failure("unreachable")  // handled above
         }

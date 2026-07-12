@@ -628,4 +628,66 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(list.first?.id, id.uuidString)
         XCTAssertEqual(list.first?.name, "main")
     }
+
+    private func modelWithWorktree(configJSON: String?) throws -> (AppModel, UUID) {
+        let wt = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("casper-run-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: wt, withIntermediateDirectories: true)
+        if let configJSON {
+            try configJSON.write(
+                to: URL(fileURLWithPath: wt).appendingPathComponent(".casper.json"),
+                atomically: true, encoding: .utf8)
+        }
+        let ws = Workspace(
+            name: "main", worktreePath: wt, branch: "main",
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: wt))))
+        let space = Space(name: "main", folderPath: wt, isGitRepo: false, workspaces: [ws])
+        let url = URL(fileURLWithPath:
+            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
+        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
+        return (AppModel(sessionStore: SessionStore(fileURL: url), session: session), ws.id)
+    }
+
+    func testControlRunLaunchesNamedCommand() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test"}}}"#)
+        guard case .success(let info) = model.controlRun(name: "test", in: wsID) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertFalse(info.id.isEmpty)
+    }
+
+    func testControlRunDefaultsToRun() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"run":"npm run dev"}}}"#)
+        guard case .success = model.controlRun(name: nil, in: wsID) else {
+            return XCTFail("expected success for default 'run'")
+        }
+    }
+
+    func testControlRunRejectsReservedName() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"setup":"npm i"}}}"#)
+        guard case .failure(let error) = model.controlRun(name: "setup", in: wsID) else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("reserved"), "message was: \(error.message)")
+    }
+
+    func testControlRunUnknownCommand() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test"}}}"#)
+        guard case .failure(let error) = model.controlRun(name: "nope", in: wsID) else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("nope"), "message was: \(error.message)")
+    }
+
+    func testControlRunNoConfig() throws {
+        let (model, wsID) = try modelWithWorktree(configJSON: nil)
+        guard case .failure(let error) = model.controlRun(name: "run", in: wsID) else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains(".casper.json"), "message was: \(error.message)")
+    }
 }
