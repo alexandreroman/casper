@@ -57,6 +57,18 @@ struct SidebarView: View {
             } label: {
                 Label("Copy Workspace Path", systemImage: "doc.on.doc")
             }
+            let namedCommands = model.namedCommands(for: workspace.id)
+            if !namedCommands.isEmpty {
+                Menu {
+                    ForEach(namedCommands, id: \.name) { command in
+                        Button(command.name) {
+                            model.runScript(command.name, for: workspace.id)
+                        }
+                    }
+                } label: {
+                    Label("Run Script", systemImage: "play")
+                }
+            }
             Button {
                 model.copyBranchName(id: workspace.id)
             } label: {
