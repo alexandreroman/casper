@@ -51,12 +51,6 @@ struct SidebarView: View {
             } label: {
                 Label("Open in Finder", systemImage: "folder")
             }
-            Divider()
-            Button {
-                model.copyWorkspacePath(id: workspace.id)
-            } label: {
-                Label("Copy Workspace Path", systemImage: "doc.on.doc")
-            }
             let namedCommands = model.namedCommands(for: workspace.id)
             if !namedCommands.isEmpty {
                 Menu {
@@ -68,6 +62,12 @@ struct SidebarView: View {
                 } label: {
                     Label("Run Script", systemImage: "play")
                 }
+            }
+            Divider()
+            Button {
+                model.copyWorkspacePath(id: workspace.id)
+            } label: {
+                Label("Copy Workspace Path", systemImage: "doc.on.doc")
             }
             Button {
                 model.copyBranchName(id: workspace.id)

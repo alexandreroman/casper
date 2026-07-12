@@ -123,6 +123,9 @@ final class RepoConfigTests: XCTestCase {
         XCTAssertEqual(RepoNamedCommand(name: "run_server", command: "x").displayName, "Run Server")
         XCTAssertEqual(RepoNamedCommand(name: "run-server.sh", command: "x").displayName, "Run Server")
         XCTAssertEqual(RepoNamedCommand(name: "test", command: "x").displayName, "Test")
+        XCTAssertEqual(RepoNamedCommand(name: "build-app.sh", command: "x").displayName, "Build App")
+        XCTAssertEqual(
+            RepoNamedCommand(name: "scripts/build-app.sh", command: "x").displayName, "Build App")
     }
 
     func testEmptyCommandIsSkipped() throws {

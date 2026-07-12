@@ -107,11 +107,12 @@ public struct RepoNamedCommand: Equatable, Sendable {
 }
 
 extension RepoNamedCommand {
-    /// A human-readable label: the name without a file extension, with `-`/`_`
-    /// turned into spaces and each word capitalized. E.g. `run-server.sh` → `Run Server`.
+    /// A human-readable label: the file's basename without extension, with `-`/`_`
+    /// turned into spaces and each word capitalized. E.g. `scripts/build-app.sh` → `Build App`.
     public var displayName: String {
-        let base = (name as NSString).deletingPathExtension
-        let stem = base.isEmpty ? name : base
+        let file = (name as NSString).lastPathComponent
+        let base = (file as NSString).deletingPathExtension
+        let stem = base.isEmpty ? file : base
         let words = stem.split(whereSeparator: { $0 == "-" || $0 == "_" })
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
         return words.isEmpty ? name : words.joined(separator: " ")
