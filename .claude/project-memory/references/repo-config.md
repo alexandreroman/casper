@@ -37,7 +37,16 @@ does not persist — this note is the durable record for resuming. Progress ledg
   - Toolbar split-button in `WorkspaceDetailView` mirroring `editorButton`; and a
     "Run Script ▸" submenu on the sidebar workspace context menu (`SidebarView`).
   - Verified live: `casper run`/`run test` open splits; `run setup` refused;
-    `run bogus` lists available. Toolbar/menu await human visual verification.
+    `run bogus` lists available; script labels show `displayName` (key with `-`/`_`
+    → spaces, capitalized, e.g. `build-app` → `Build App`); `casper run` commands
+    run in a subshell `(\n<cmd>\n)` so a script `exit` keeps the terminal open.
+  - **Script order is NOT file order.** `workspace.scripts` is a JSON object
+    (`[String: String]`), and Swift's `JSONDecoder` does not preserve object key
+    order (proven: `allKeys` returns hash order, not document order). The menu is
+    therefore **alphabetical** (`namedCommands()` sorts). File-order would require
+    reformatting `scripts` to an array `[{name, command}]` — deliberately NOT done.
+    Default selected script (toolbar primary button) = remembered `lastUsedScript`
+    → `run` if present → first alphabetical.
 
 ## Remaining phases (settled design, NOT yet built)
 
