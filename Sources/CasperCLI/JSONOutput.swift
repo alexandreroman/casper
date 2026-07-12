@@ -128,6 +128,14 @@ struct WorkspaceNewOut: Encodable {
     let command: String?
 }
 
+/// `{"command":"<name>","terminal":"<id>","workspace":"<id>"}` — the launched
+/// named command for `casper run`.
+struct RunOut: Encodable {
+    let command: String
+    let terminal: String
+    let workspace: String
+}
+
 /// `{"error":"<message>"}` — the sole error shape, written to stderr.
 struct ErrorOut: Encodable {
     let error: String

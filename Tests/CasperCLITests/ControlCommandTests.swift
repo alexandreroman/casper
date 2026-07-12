@@ -189,4 +189,18 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertNil(normalizedCommand(""))
         XCTAssertEqual(normalizedCommand("npm test"), "npm test")
     }
+
+    func testRunDefaultsToRunCommand() throws {
+        let run = try RunCommand.parse(["--workspace", "feature"])
+        let command = try run.makeCommand()
+        XCTAssertEqual(command.verb, .run)
+        XCTAssertEqual(command.name, "run")
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testRunTakesExplicitName() throws {
+        let run = try RunCommand.parse(["test", "--workspace", "feature"])
+        let command = try run.makeCommand()
+        XCTAssertEqual(command.name, "test")
+    }
 }

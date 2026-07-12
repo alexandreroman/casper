@@ -15,7 +15,7 @@ public struct CasperCommand: ParsableCommand {
             var subs: [ParsableCommand.Type] = [
                 StatusCommand.self, ProgressCommand.self, NotifyCommand.self,
                 TerminalCommand.self, BrowserCommand.self, DiffCommand.self,
-                WorkspaceCommand.self,
+                WorkspaceCommand.self, RunCommand.self,
             ]
             #if DEBUG
             subs.append(DebugCLICommand.self)
