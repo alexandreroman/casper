@@ -691,6 +691,13 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(error.message.contains(".casper.json"), "message was: \(error.message)")
     }
 
+    func testScriptCommandIsSubshellWrapped() {
+        // A script that calls `exit` must not close the interactive terminal, so
+        // the command runs in a subshell.
+        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("exit 1"), "( exit 1 )")
+        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("npm test"), "( npm test )")
+    }
+
     func testNamedCommandsLoadedFromConfig() throws {
         let (model, wsID) = try modelWithWorktree(
             configJSON: #"{"workspace":{"scripts":{"test":"npm test","run":"npm run dev","setup":"x"}}}"#)

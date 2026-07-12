@@ -1611,6 +1611,14 @@ final class AppModel {
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
     }
 
+    /// Wrap a `casper run` command in a subshell so a script that calls `exit`
+    /// (or fails under `set -e`) terminates only the subshell — the interactive
+    /// terminal stays open with the script's output visible, instead of the
+    /// shell exiting and the pane closing.
+    static func subshellWrappedScriptCommand(_ command: String) -> String {
+        "( \(command) )"
+    }
+
     /// Run the named command `name` (defaulting to `run`) from the workspace's
     /// `.casper.json` in a new visible terminal. Refuses reserved lifecycle names
     /// and unknown commands with a clear message.
@@ -1634,7 +1642,9 @@ final class AppModel {
         case .denied(let message):
             return .failure(ControlRunError(message: message))
         case .command(let command):
-            guard let info = controlOpenTerminal(in: workspaceID, command: command, cwd: nil) else {
+            guard let info = controlOpenTerminal(
+                in: workspaceID, command: Self.subshellWrappedScriptCommand(command), cwd: nil)
+            else {
                 return .failure(ControlRunError(message: "cannot open terminal"))
             }
             return .success(info)
