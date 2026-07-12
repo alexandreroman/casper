@@ -79,6 +79,9 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
+            if !model.namedCommands(for: workspace.id).isEmpty {
+                ToolbarItem(placement: .primaryAction) { scriptButton }.flatToolbarItem()
+            }
             if !model.availableEditors.isEmpty {
                 ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
             }
@@ -98,6 +101,14 @@ struct WorkspaceDetailView: View {
             Button("OK") { model.editorLaunchError = nil }
         } message: {
             Text(model.editorLaunchError ?? "")
+        }
+        .alert("Couldn't Run Script", isPresented: Binding(
+            get: { model.scriptRunError != nil },
+            set: { if !$0 { model.scriptRunError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.scriptRunError ?? "")
         }
         .task(id: model.selectedWorkspaceID) {
             diff = model.diffSummary(for: workspace)
@@ -218,6 +229,40 @@ struct WorkspaceDetailView: View {
             Image(systemName: "sidebar.right")
         }
         .help("Toggle panel")
+    }
+
+    private var scriptButton: some View {
+        let commands = model.namedCommands(for: workspace.id)
+        let current = model.resolvedScript(for: workspace)
+        let content = HStack(spacing: 4) {
+            Button {
+                if let current { model.runScript(current.name, for: workspace.id) }
+            } label: {
+                Label(current?.name ?? "Run", systemImage: "play.fill")
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                ForEach(commands, id: \.name) { command in
+                    Button {
+                        model.runScript(command.name, for: workspace.id)
+                    } label: {
+                        Text(command.name)
+                    }
+                }
+            } label: {
+                Color.clear.frame(width: 4, height: 20)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        return content
+            .background(Color.secondary.opacity(0.15), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .contentShape(Capsule())
+            .help("Run Script")
     }
 
     private var editorButton: some View {
