@@ -12,8 +12,14 @@ public struct RepoConfig: Codable, Equatable, Sendable {
         /// explicit empty array means "copy nothing".
         public var copyPatterns: [String]?
 
-        public init(copyPatterns: [String]? = nil) {
+        /// Named shell scripts attached to the workspace. Reserved names `setup`
+        /// and `teardown` are lifecycle hooks; every other name is a user-invocable
+        /// command. An empty command string is treated as no script.
+        public var scripts: [String: String]?
+
+        public init(copyPatterns: [String]? = nil, scripts: [String: String]? = nil) {
             self.copyPatterns = copyPatterns
+            self.scripts = scripts
         }
     }
 
@@ -78,5 +84,52 @@ public struct RepoConfigError: Error, Equatable, Sendable {
     public init(path: String, reason: String) {
         self.path = path
         self.reason = reason
+    }
+}
+
+/// A user-invocable named command from `workspace.scripts` (a non-reserved key).
+public struct RepoNamedCommand: Equatable, Sendable {
+    public let name: String
+    public let command: String
+
+    public init(name: String, command: String) {
+        self.name = name
+        self.command = command
+    }
+}
+
+/// Reserved `workspace.scripts` keys that are lifecycle hooks rather than
+/// user-invocable named commands.
+public enum RepoScripts {
+    public static let reservedNames: Set<String> = ["setup", "teardown"]
+}
+
+extension RepoConfig {
+    /// The `setup` lifecycle hook command, or nil when absent or empty.
+    public func setupScript() -> String? { nonEmptyScript(named: "setup") }
+
+    /// The `teardown` lifecycle hook command, or nil when absent or empty.
+    public func teardownScript() -> String? { nonEmptyScript(named: "teardown") }
+
+    /// A user-invocable named command by name, or nil when the name is reserved,
+    /// absent, or maps to an empty command.
+    public func namedCommand(_ name: String) -> String? {
+        guard !RepoScripts.reservedNames.contains(name) else { return nil }
+        return nonEmptyScript(named: name)
+    }
+
+    /// All user-invocable named commands (non-reserved, non-empty), sorted by name.
+    public func namedCommands() -> [RepoNamedCommand] {
+        (workspace?.scripts ?? [:])
+            .compactMap { key, value in
+                RepoScripts.reservedNames.contains(key) || value.isEmpty
+                    ? nil : RepoNamedCommand(name: key, command: value)
+            }
+            .sorted { $0.name < $1.name }
+    }
+
+    private func nonEmptyScript(named name: String) -> String? {
+        guard let command = workspace?.scripts?[name], !command.isEmpty else { return nil }
+        return command
     }
 }

@@ -85,4 +85,58 @@ final class RepoConfigTests: XCTestCase {
             XCTAssertTrue(reason.contains("copyPatterns"), "reason was: \(reason)")
         }
     }
+
+    func testScriptsDecodeAndLookup() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"setup":"npm i","run":"npm run dev"}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertEqual(config.setupScript(), "npm i")
+        XCTAssertEqual(config.namedCommand("run"), "npm run dev")
+    }
+
+    func testTeardownScriptLookup() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"teardown":"docker compose down"}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertEqual(config.teardownScript(), "docker compose down")
+    }
+
+    func testNamedCommandRejectsReservedNames() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"setup":"npm i","teardown":"x"}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertNil(config.namedCommand("setup"))
+        XCTAssertNil(config.namedCommand("teardown"))
+    }
+
+    func testNamedCommandsExcludeReservedAndSortByName() throws {
+        try writeConfig(#"""
+        {"workspace":{"scripts":{"zeta":"z","setup":"s","alpha":"a","teardown":"t"}}}
+        """#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertEqual(
+            config.namedCommands(),
+            [RepoNamedCommand(name: "alpha", command: "a"),
+             RepoNamedCommand(name: "zeta", command: "z")])
+    }
+
+    func testEmptyCommandIsSkipped() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"setup":"","run":""}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertNil(config.setupScript())
+        XCTAssertNil(config.namedCommand("run"))
+        XCTAssertEqual(config.namedCommands(), [])
+    }
+
+    func testNoScriptsSectionYieldsNoScripts() throws {
+        try writeConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertNil(config.setupScript())
+        XCTAssertNil(config.teardownScript())
+        XCTAssertNil(config.namedCommand("run"))
+        XCTAssertEqual(config.namedCommands(), [])
+        // copyPatterns still works alongside a missing scripts section.
+        XCTAssertEqual(config.copyPatterns(default: [".env", ".env.local"]), [".env"])
+    }
+
+    func testReservedNamesConstant() throws {
+        XCTAssertEqual(RepoScripts.reservedNames, ["setup", "teardown"])
+    }
 }
