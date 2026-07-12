@@ -243,7 +243,7 @@ struct WorkspaceDetailView: View {
             Button {
                 if let current { model.runScript(current.name, for: workspace.id) }
             } label: {
-                Label(current?.name ?? "Run", systemImage: "play.fill")
+                Label(current?.displayName ?? "Run", systemImage: "play.fill")
             }
             .buttonStyle(.plain)
 
@@ -253,9 +253,9 @@ struct WorkspaceDetailView: View {
                         model.selectScript(command.name, for: workspace.id)
                     } label: {
                         if command.name == current?.name {
-                            Label(command.name, systemImage: "checkmark")
+                            Label(command.displayName, systemImage: "checkmark")
                         } else {
-                            Text(command.name)
+                            Text(command.displayName)
                         }
                     }
                 }

@@ -117,6 +117,14 @@ final class RepoConfigTests: XCTestCase {
              RepoNamedCommand(name: "zeta", command: "z")])
     }
 
+    func testNamedCommandDisplayName() {
+        XCTAssertEqual(RepoNamedCommand(name: "run", command: "x").displayName, "Run")
+        XCTAssertEqual(RepoNamedCommand(name: "build-app", command: "x").displayName, "Build App")
+        XCTAssertEqual(RepoNamedCommand(name: "run_server", command: "x").displayName, "Run Server")
+        XCTAssertEqual(RepoNamedCommand(name: "run-server.sh", command: "x").displayName, "Run Server")
+        XCTAssertEqual(RepoNamedCommand(name: "test", command: "x").displayName, "Test")
+    }
+
     func testEmptyCommandIsSkipped() throws {
         try writeConfig(#"{"workspace":{"scripts":{"setup":"","run":""}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))

@@ -61,7 +61,7 @@ struct SidebarView: View {
             if !namedCommands.isEmpty {
                 Menu {
                     ForEach(namedCommands, id: \.name) { command in
-                        Button(command.name) {
+                        Button(command.displayName) {
                             model.runScript(command.name, for: workspace.id)
                         }
                     }

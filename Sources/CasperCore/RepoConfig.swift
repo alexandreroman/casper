@@ -106,6 +106,18 @@ public struct RepoNamedCommand: Equatable, Sendable {
     }
 }
 
+extension RepoNamedCommand {
+    /// A human-readable label: the name without a file extension, with `-`/`_`
+    /// turned into spaces and each word capitalized. E.g. `run-server.sh` → `Run Server`.
+    public var displayName: String {
+        let base = (name as NSString).deletingPathExtension
+        let stem = base.isEmpty ? name : base
+        let words = stem.split(whereSeparator: { $0 == "-" || $0 == "_" })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        return words.isEmpty ? name : words.joined(separator: " ")
+    }
+}
+
 /// Reserved `workspace.scripts` keys that are lifecycle hooks rather than
 /// user-invocable named commands.
 public enum RepoScripts {
