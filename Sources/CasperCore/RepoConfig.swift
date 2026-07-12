@@ -39,12 +39,33 @@ public struct RepoConfig: Codable, Equatable, Sendable {
         do {
             data = try Data(contentsOf: url)
         } catch {
-            throw RepoConfigError(path: url.path, reason: error.localizedDescription)
+            throw RepoConfigError(path: url.path, reason: readableReason(for: error))
         }
         do {
             return try JSONDecoder().decode(RepoConfig.self, from: data)
         } catch {
-            throw RepoConfigError(path: url.path, reason: "\(error)")
+            throw RepoConfigError(path: url.path, reason: readableReason(for: error))
+        }
+    }
+
+    /// A concise, user-facing reason for a load failure. `DecodingError`'s default
+    /// string interpolation dumps its full internal structure; extract just the
+    /// human-readable description (and the offending key path when available)
+    /// instead. Non-decoding errors already have a clean `localizedDescription`.
+    private static func readableReason(for error: Error) -> String {
+        guard let decodingError = error as? DecodingError else {
+            return error.localizedDescription
+        }
+        switch decodingError {
+        case .dataCorrupted(let context):
+            return context.debugDescription
+        case .keyNotFound(let key, let context):
+            return "missing key '\(key.stringValue)': \(context.debugDescription)"
+        case .typeMismatch(_, let context), .valueNotFound(_, let context):
+            let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+            return path.isEmpty ? context.debugDescription : "\(path): \(context.debugDescription)"
+        @unknown default:
+            return error.localizedDescription
         }
     }
 }

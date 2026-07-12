@@ -71,8 +71,8 @@ public enum WorktreeManager {
 
     /// Create a worktree named `name` (on a new branch of the same name, based
     /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`.
-    /// Before any Git mutation, loads `<repoPath>/.casper.json`; a malformed file
-    /// throws `WorktreeError(.configInvalid)` so nothing is created. After the
+    /// Before any Git mutation, loads `<repoPath>/.casper.json`; a malformed or
+    /// unreadable file throws `WorktreeError(.configInvalid)` so nothing is created. After the
     /// git-level worktree is created, copies files matching the config's
     /// `workspace.copyPatterns` (or `WorkspaceFileCopier.defaultPatterns` when the
     /// file is absent or does not specify them) from `repoPath` into

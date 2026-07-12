@@ -67,4 +67,22 @@ final class RepoConfigTests: XCTestCase {
             XCTAssertTrue(error is RepoConfigError)
         }
     }
+
+    func testDecodeFailureReasonIsUserFriendly() throws {
+        try writeConfig("not json at all")
+        XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in
+            let reason = (error as? RepoConfigError)?.reason ?? ""
+            XCTAssertFalse(reason.isEmpty)
+            XCTAssertFalse(reason.contains("DecodingError"))
+            XCTAssertFalse(reason.contains("Context("))
+        }
+    }
+
+    func testTypeMismatchReasonMentionsKeyPath() throws {
+        try writeConfig(#"{"workspace":{"copyPatterns":5}}"#)
+        XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in
+            let reason = (error as? RepoConfigError)?.reason ?? ""
+            XCTAssertTrue(reason.contains("copyPatterns"), "reason was: \(reason)")
+        }
+    }
 }
