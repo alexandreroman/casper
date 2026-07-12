@@ -1524,10 +1524,10 @@ final class AppModel {
         }
     }
 
-/// Why a `casper run <name>` request could not launch a command.
-struct ControlRunError: Error, Equatable {
-    let message: String
-}
+    /// Why a `casper run <name>` request could not launch a command.
+    struct ControlRunError: Error, Equatable {
+        let message: String
+    }
 
     /// Open a new terminal in `workspaceID` by splitting its top-left surface to
     /// the right. Mirrors the toolbar's "new terminal" action, but targeted at an
