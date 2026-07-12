@@ -80,7 +80,11 @@ struct WorkspaceDetailView: View {
                 ToolbarSpacer(.flexible)
             }
             if !model.namedCommands(for: workspace.id).isEmpty {
-                ToolbarItem(placement: .primaryAction) { scriptButton }.flatToolbarItem()
+                ToolbarItem(placement: .primaryAction) {
+                    scriptButton
+                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                }
+                .flatToolbarItem()
             }
             if !model.availableEditors.isEmpty {
                 ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
@@ -94,6 +98,7 @@ struct WorkspaceDetailView: View {
                 inspectorItem.flatToolbarItem()
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: model.namedCommands(for: workspace.id).isEmpty)
         .alert("Couldn't Open Editor", isPresented: Binding(
             get: { model.editorLaunchError != nil },
             set: { if !$0 { model.editorLaunchError = nil } }
@@ -245,9 +250,13 @@ struct WorkspaceDetailView: View {
             Menu {
                 ForEach(commands, id: \.name) { command in
                     Button {
-                        model.runScript(command.name, for: workspace.id)
+                        model.selectScript(command.name, for: workspace.id)
                     } label: {
-                        Text(command.name)
+                        if command.name == current?.name {
+                            Label(command.name, systemImage: "checkmark")
+                        } else {
+                            Text(command.name)
+                        }
                     }
                 }
             } label: {

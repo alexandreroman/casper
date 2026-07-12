@@ -1124,6 +1124,14 @@ final class AppModel {
         return commands.first
     }
 
+    /// Remember a workspace's script without running it — the toolbar menu's
+    /// action (mirrors `selectEditor`); the primary button runs the remembered one.
+    func selectScript(_ name: String, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].lastUsedScript = name
+        persist()
+    }
+
     /// Run a named command in a visible terminal and remember it. On failure,
     /// sets `scriptRunError` (surfaced by an alert).
     func runScript(_ name: String, for workspaceID: UUID) {

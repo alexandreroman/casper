@@ -724,4 +724,15 @@ final class ControlHandlerTests: XCTestCase {
         model.runScript("nope", for: wsID)
         XCTAssertNotNil(model.scriptRunError)
     }
+
+    func testSelectScriptRemembersWithoutRunning() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"echo t","run":"echo r"}}}"#)
+        model.selectScript("test", for: wsID)
+        XCTAssertEqual(model.workspace(id: wsID)?.lastUsedScript, "test")
+        XCTAssertNil(model.scriptRunError)
+        // The remembered command becomes the resolved (primary-button) command.
+        XCTAssertEqual(
+            model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "test")
+    }
 }
