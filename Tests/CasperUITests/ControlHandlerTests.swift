@@ -690,4 +690,38 @@ final class ControlHandlerTests: XCTestCase {
         }
         XCTAssertTrue(error.message.contains(".casper.json"), "message was: \(error.message)")
     }
+
+    func testNamedCommandsLoadedFromConfig() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test","run":"npm run dev","setup":"x"}}}"#)
+        let names = model.namedCommands(for: wsID).map(\.name)
+        XCTAssertEqual(names, ["run", "test"])  // sorted, reserved excluded
+    }
+
+    func testResolvedScriptPrefersRunThenAlphabetical() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"zeta":"z","run":"r"}}}"#)
+        XCTAssertEqual(model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "run")
+
+        let (model2, wsID2) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"zeta":"z","alpha":"a"}}}"#)
+        XCTAssertEqual(model2.resolvedScript(for: try XCTUnwrap(model2.workspace(id: wsID2)))?.name, "alpha")
+    }
+
+    func testRunScriptRemembersLastUsed() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"echo t","run":"echo r"}}}"#)
+        model.runScript("test", for: wsID)
+        XCTAssertEqual(model.workspace(id: wsID)?.lastUsedScript, "test")
+        XCTAssertNil(model.scriptRunError)
+        // Resolution now prefers the remembered command over the "run" default.
+        XCTAssertEqual(model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "test")
+    }
+
+    func testRunScriptUnknownSetsError() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"run":"echo r"}}}"#)
+        model.runScript("nope", for: wsID)
+        XCTAssertNotNil(model.scriptRunError)
+    }
 }

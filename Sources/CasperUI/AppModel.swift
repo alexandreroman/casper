@@ -32,6 +32,9 @@ final class AppModel {
     /// `WorkspaceDetailView`. Not part of any persisted model.
     var editorLaunchError: String?
 
+    /// Set when `runScript` fails to launch; drives a `.alert` in WorkspaceDetailView.
+    var scriptRunError: String?
+
     /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
     /// makes repeated requests for the same file distinct so the view re-scrolls.
     struct DiffScrollTarget: Equatable {
@@ -169,6 +172,10 @@ final class AppModel {
     /// with an empty map, so a restored terminal never re-runs its original
     /// launch command (see the `surface-command-bash-exec` project memory note).
     @ObservationIgnored private var pendingInitialInput: [UUID: String] = [:]
+
+    /// Per-workspace named commands from `.casper.json`, refreshed on selection so
+    /// SwiftUI never reads the file during `body`.
+    @ObservationIgnored private var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
 
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
     /// agent detector. `AgentStateResolver` is a value type carried across ticks,
@@ -539,6 +546,7 @@ final class AppModel {
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
         guard let id, let ws = workspace(id: id) else { return }
+        refreshNamedCommands(for: id)
         // A selected workspace must be visible: expand its owning Space if it was
         // collapsed. Only mutate when actually collapsed, so an already-expanded
         // Space doesn't run a redundant no-op animation.
@@ -1080,6 +1088,54 @@ final class AppModel {
         guard let at = locate(workspaceID) else { return }
         spaces[at.space].workspaces[at.workspace].lastUsedEditor = kind
         persist()
+    }
+
+    /// The workspace's named commands (`.casper.json`, non-reserved, sorted).
+    /// Cached; a cache miss loads and stores lazily.
+    func namedCommands(for workspaceID: UUID) -> [RepoNamedCommand] {
+        if let cached = namedCommandsCache[workspaceID] { return cached }
+        let commands = loadNamedCommands(for: workspaceID)
+        namedCommandsCache[workspaceID] = commands
+        return commands
+    }
+
+    private func loadNamedCommands(for workspaceID: UUID) -> [RepoNamedCommand] {
+        guard let ws = workspace(id: workspaceID),
+              let config = (try? RepoConfig.load(fromRepoRoot: ws.worktreePath)) ?? nil
+        else { return [] }
+        return config.namedCommands()
+    }
+
+    /// Re-read a workspace's named commands (e.g. after it becomes selected).
+    private func refreshNamedCommands(for workspaceID: UUID) {
+        namedCommandsCache[workspaceID] = loadNamedCommands(for: workspaceID)
+    }
+
+    /// The command the toolbar's primary button runs: the remembered last-used
+    /// command if still defined, else `run`, else the first alphabetically.
+    func resolvedScript(for workspace: Workspace) -> RepoNamedCommand? {
+        let commands = namedCommands(for: workspace.id)
+        if let last = workspace.lastUsedScript,
+           let match = commands.first(where: { $0.name == last }) {
+            return match
+        }
+        if let run = commands.first(where: { $0.name == "run" }) { return run }
+        return commands.first
+    }
+
+    /// Run a named command in a visible terminal and remember it. On failure,
+    /// sets `scriptRunError` (surfaced by an alert).
+    func runScript(_ name: String, for workspaceID: UUID) {
+        switch controlRun(name: name, in: workspaceID) {
+        case .success:
+            if let at = locate(workspaceID) {
+                spaces[at.space].workspaces[at.workspace].lastUsedScript = name
+            }
+            scriptRunError = nil
+            persist()
+        case .failure(let error):
+            scriptRunError = error.message
+        }
     }
 
     /// Persist the inspector panel's width for a workspace. Called from the panel's
