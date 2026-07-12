@@ -1614,9 +1614,11 @@ final class AppModel {
     /// Wrap a `casper run` command in a subshell so a script that calls `exit`
     /// (or fails under `set -e`) terminates only the subshell — the interactive
     /// terminal stays open with the script's output visible, instead of the
-    /// shell exiting and the pane closing.
+    /// shell exiting and the pane closing. The command sits on its own line
+    /// (between newlines) so a trailing `#` comment in it cannot swallow the
+    /// closing paren.
     static func subshellWrappedScriptCommand(_ command: String) -> String {
-        "( \(command) )"
+        "(\n\(command)\n)"
     }
 
     /// Run the named command `name` (defaulting to `run`) from the workspace's

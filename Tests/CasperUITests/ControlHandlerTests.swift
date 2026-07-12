@@ -693,9 +693,11 @@ final class ControlHandlerTests: XCTestCase {
 
     func testScriptCommandIsSubshellWrapped() {
         // A script that calls `exit` must not close the interactive terminal, so
-        // the command runs in a subshell.
-        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("exit 1"), "( exit 1 )")
-        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("npm test"), "( npm test )")
+        // the command runs in a subshell. The closing paren is on its own line so
+        // a trailing `#` comment cannot swallow it.
+        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("exit 1"), "(\nexit 1\n)")
+        XCTAssertEqual(
+            AppModel.subshellWrappedScriptCommand("npm test # smoke"), "(\nnpm test # smoke\n)")
     }
 
     func testNamedCommandsLoadedFromConfig() throws {
