@@ -81,8 +81,7 @@ struct WorkspaceDetailView: View {
             }
             if !model.namedCommands(for: workspace.id).isEmpty {
                 ToolbarItem(placement: .primaryAction) {
-                    scriptButton
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    ScriptToolbarButton(model: model, workspace: workspace)
                 }
                 .flatToolbarItem()
             }
@@ -98,7 +97,6 @@ struct WorkspaceDetailView: View {
                 inspectorItem.flatToolbarItem()
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: model.namedCommands(for: workspace.id).isEmpty)
         .alert("Couldn't Open Editor", isPresented: Binding(
             get: { model.editorLaunchError != nil },
             set: { if !$0 { model.editorLaunchError = nil } }
@@ -236,45 +234,6 @@ struct WorkspaceDetailView: View {
         .help("Toggle panel")
     }
 
-    private var scriptButton: some View {
-        let commands = model.namedCommands(for: workspace.id)
-        let current = model.resolvedScript(for: workspace)
-        let content = HStack(spacing: 4) {
-            Button {
-                if let current { model.runScript(current.name, for: workspace.id) }
-            } label: {
-                Label(current?.displayName ?? "Run", systemImage: "play.fill")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.plain)
-
-            Menu {
-                ForEach(commands, id: \.name) { command in
-                    Button {
-                        model.selectScript(command.name, for: workspace.id)
-                    } label: {
-                        if command.name == current?.name {
-                            Label(command.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(command.displayName)
-                        }
-                    }
-                }
-            } label: {
-                Color.clear.frame(width: 4, height: 20)
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
-        return content
-            .background(Color.secondary.opacity(0.15), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-            .contentShape(Capsule())
-            .help("Run Script")
-    }
-
     private var editorButton: some View {
         let current = model.resolvedEditor(nil, for: workspace)
         let content = HStack(spacing: 4) {
@@ -334,6 +293,56 @@ struct WorkspaceDetailView: View {
         }
     }
 
+}
+
+/// The "Run Script" toolbar split-button. A separate view so it carries its own
+/// `@State`: `WorkspaceDetailView` is recreated per workspace (`.id`), so this
+/// mounts fresh on each switch and plays an entrance animation via `onAppear`.
+private struct ScriptToolbarButton: View {
+    let model: AppModel
+    let workspace: Workspace
+    @State private var appeared = false
+
+    var body: some View {
+        let commands = model.namedCommands(for: workspace.id)
+        let current = model.resolvedScript(for: workspace)
+        return HStack(spacing: 4) {
+            Button {
+                if let current { model.runScript(current.name, for: workspace.id) }
+            } label: {
+                Label(current?.displayName ?? "Run", systemImage: "play.fill")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.plain)
+
+            Menu {
+                ForEach(commands, id: \.name) { command in
+                    Button {
+                        model.selectScript(command.name, for: workspace.id)
+                    } label: {
+                        if command.name == current?.name {
+                            Label(command.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(command.displayName)
+                        }
+                    }
+                }
+            } label: {
+                Color.clear.frame(width: 4, height: 20)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(Color.secondary.opacity(0.15), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .contentShape(Capsule())
+        .help("Run Script")
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared ? 1 : 0.85)
+        .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }
+    }
 }
 
 private extension Comparable {
