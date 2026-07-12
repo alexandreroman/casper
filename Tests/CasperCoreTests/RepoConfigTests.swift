@@ -139,4 +139,39 @@ final class RepoConfigTests: XCTestCase {
     func testReservedNamesConstant() throws {
         XCTAssertEqual(RepoScripts.reservedNames, ["setup", "teardown"])
     }
+
+    func testResolveRunCommandReturnsCommand() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"test":"npm test"}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        XCTAssertEqual(config.resolveRunCommand("test"), .success("npm test"))
+    }
+
+    func testResolveRunCommandRejectsReservedName() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"setup":"npm i"}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        guard case .failure(let message) = config.resolveRunCommand("setup") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(message.contains("reserved"), "message was: \(message)")
+    }
+
+    func testResolveRunCommandUnknownListsAvailable() throws {
+        try writeConfig(#"{"workspace":{"scripts":{"test":"npm test","lint":"eslint ."}}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        guard case .failure(let message) = config.resolveRunCommand("nope") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(message.contains("nope"), "message was: \(message)")
+        XCTAssertTrue(message.contains("lint"), "message was: \(message)")
+        XCTAssertTrue(message.contains("test"), "message was: \(message)")
+    }
+
+    func testResolveRunCommandNoCommandsHint() throws {
+        try writeConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
+        guard case .failure(let message) = config.resolveRunCommand("run") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(message.contains("no named commands"), "message was: \(message)")
+    }
 }

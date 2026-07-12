@@ -18,6 +18,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case workspaceList
         case workspaceNew
         case workspaceDelete
+        case run
     }
 
     public var verb: Verb
@@ -33,13 +34,14 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var base: String?        // workspaceNew
     public var command: String?     // terminalNew / workspaceNew: optional command to run
     public var cwd: String?         // terminalNew: optional working directory
+    public var name: String?        // run: named command from .casper.json
 
     public init(
         verb: Verb, workspace: String? = nil, state: String? = nil,
         total: Int? = nil, current: Int? = nil, label: String? = nil,
         message: String? = nil, url: String? = nil, target: String? = nil,
         branch: String? = nil, base: String? = nil,
-        command: String? = nil, cwd: String? = nil
+        command: String? = nil, cwd: String? = nil, name: String? = nil
     ) {
         self.verb = verb
         self.workspace = workspace
@@ -54,6 +56,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         self.base = base
         self.command = command
         self.cwd = cwd
+        self.name = name
     }
 }
 

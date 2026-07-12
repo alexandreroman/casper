@@ -128,8 +128,29 @@ extension RepoConfig {
             .sorted { $0.name < $1.name }
     }
 
+    /// Resolve a `casper run <name>` request to a command, or a user-facing reason
+    /// why it can't run. Reserved lifecycle names are refused; an unknown name
+    /// lists the available named commands.
+    public func resolveRunCommand(_ name: String) -> Result<String, String> {
+        if RepoScripts.reservedNames.contains(name) {
+            return .failure("'\(name)' is a reserved lifecycle hook, not a runnable command")
+        }
+        if let command = namedCommand(name) { return .success(command) }
+        let available = namedCommands().map(\.name)
+        let hint = available.isEmpty
+            ? "no named commands defined in .casper.json"
+            : "available commands: \(available.joined(separator: ", "))"
+        return .failure("no command '\(name)' (\(hint))")
+    }
+
     private func nonEmptyScript(named name: String) -> String? {
         guard let command = workspace?.scripts?[name], !command.isEmpty else { return nil }
         return command
     }
 }
+
+/// Lets a plain, user-facing `String` be the `Failure` of a `Result` (see
+/// `resolveRunCommand`). `Result.Failure` must conform to `Error`, and the
+/// failure strings here are already end-user text, so a dedicated error type
+/// would only add indirection.
+extension String: @retroactive Error {}

@@ -100,6 +100,8 @@ final class ControlServer {
             case .success: return .success(workspace: id.uuidString)
             case .failure(let error): return .failure(error.message)
             }
+        case .run:
+            return .failure("run is not yet supported")
         case .workspaceList, .workspaceNew:
             return .failure("unreachable")  // handled above
         }
