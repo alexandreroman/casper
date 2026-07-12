@@ -87,6 +87,14 @@ public struct RepoConfigError: Error, Equatable, Sendable {
     }
 }
 
+/// The outcome of resolving a `casper run <name>` request.
+public enum RunResolution: Equatable, Sendable {
+    /// The shell command to run.
+    case command(String)
+    /// A user-facing reason the request was refused (reserved or unknown name).
+    case denied(String)
+}
+
 /// A user-invocable named command from `workspace.scripts` (a non-reserved key).
 public struct RepoNamedCommand: Equatable, Sendable {
     public let name: String
@@ -131,16 +139,16 @@ extension RepoConfig {
     /// Resolve a `casper run <name>` request to a command, or a user-facing reason
     /// why it can't run. Reserved lifecycle names are refused; an unknown name
     /// lists the available named commands.
-    public func resolveRunCommand(_ name: String) -> Result<String, String> {
+    public func resolveRunCommand(_ name: String) -> RunResolution {
         if RepoScripts.reservedNames.contains(name) {
-            return .failure("'\(name)' is a reserved lifecycle hook, not a runnable command")
+            return .denied("'\(name)' is a reserved lifecycle hook, not a runnable command")
         }
-        if let command = namedCommand(name) { return .success(command) }
+        if let command = namedCommand(name) { return .command(command) }
         let available = namedCommands().map(\.name)
         let hint = available.isEmpty
             ? "no named commands defined in .casper.json"
             : "available commands: \(available.joined(separator: ", "))"
-        return .failure("no command '\(name)' (\(hint))")
+        return .denied("no command '\(name)' (\(hint))")
     }
 
     private func nonEmptyScript(named name: String) -> String? {
@@ -148,9 +156,3 @@ extension RepoConfig {
         return command
     }
 }
-
-/// Lets a plain, user-facing `String` be the `Failure` of a `Result` (see
-/// `resolveRunCommand`). `Result.Failure` must conform to `Error`, and the
-/// failure strings here are already end-user text, so a dedicated error type
-/// would only add indirection.
-extension String: @retroactive Error {}

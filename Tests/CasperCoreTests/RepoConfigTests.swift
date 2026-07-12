@@ -143,14 +143,14 @@ final class RepoConfigTests: XCTestCase {
     func testResolveRunCommandReturnsCommand() throws {
         try writeConfig(#"{"workspace":{"scripts":{"test":"npm test"}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertEqual(config.resolveRunCommand("test"), .success("npm test"))
+        XCTAssertEqual(config.resolveRunCommand("test"), .command("npm test"))
     }
 
     func testResolveRunCommandRejectsReservedName() throws {
         try writeConfig(#"{"workspace":{"scripts":{"setup":"npm i"}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        guard case .failure(let message) = config.resolveRunCommand("setup") else {
-            return XCTFail("expected failure")
+        guard case .denied(let message) = config.resolveRunCommand("setup") else {
+            return XCTFail("expected denial")
         }
         XCTAssertTrue(message.contains("reserved"), "message was: \(message)")
     }
@@ -158,8 +158,8 @@ final class RepoConfigTests: XCTestCase {
     func testResolveRunCommandUnknownListsAvailable() throws {
         try writeConfig(#"{"workspace":{"scripts":{"test":"npm test","lint":"eslint ."}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        guard case .failure(let message) = config.resolveRunCommand("nope") else {
-            return XCTFail("expected failure")
+        guard case .denied(let message) = config.resolveRunCommand("nope") else {
+            return XCTFail("expected denial")
         }
         XCTAssertTrue(message.contains("nope"), "message was: \(message)")
         XCTAssertTrue(message.contains("lint"), "message was: \(message)")
@@ -169,8 +169,8 @@ final class RepoConfigTests: XCTestCase {
     func testResolveRunCommandNoCommandsHint() throws {
         try writeConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        guard case .failure(let message) = config.resolveRunCommand("run") else {
-            return XCTFail("expected failure")
+        guard case .denied(let message) = config.resolveRunCommand("run") else {
+            return XCTFail("expected denial")
         }
         XCTAssertTrue(message.contains("no named commands"), "message was: \(message)")
     }
