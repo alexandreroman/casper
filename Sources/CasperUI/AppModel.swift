@@ -527,6 +527,7 @@ final class AppModel {
         // long session (both the close and control-destroy paths funnel through here).
         explicitAuthority.remove(id)
         agentResolvers[id] = nil
+        namedCommandsCache[id] = nil
         if selectedWorkspaceID == id {
             selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }
