@@ -30,4 +30,32 @@ final class DiffLineStyleTests: XCTestCase {
         XCTAssertEqual(DiffLineStyle.lineNumber(for: addition), 31)
         XCTAssertEqual(DiffLineStyle.lineNumber(for: context), 5)
     }
+
+    func testTruncatedForDisplayLeavesShortStringUnchanged() {
+        let short = String(repeating: "a", count: 42)
+        let result = DiffLineStyle.truncatedForDisplay(short)
+        XCTAssertEqual(result.text, short)
+        XCTAssertFalse(result.truncated)
+    }
+
+    func testTruncatedForDisplayLeavesExactlyCapLengthUnchanged() {
+        let exact = String(repeating: "a", count: DiffLineStyle.maxDisplayLineLength)
+        let result = DiffLineStyle.truncatedForDisplay(exact)
+        XCTAssertEqual(result.text, exact)
+        XCTAssertFalse(result.truncated)
+    }
+
+    func testTruncatedForDisplayTruncatesOnePastCap() {
+        let overCap = String(repeating: "a", count: DiffLineStyle.maxDisplayLineLength + 1)
+        let result = DiffLineStyle.truncatedForDisplay(overCap)
+        XCTAssertTrue(result.truncated)
+        XCTAssertEqual(result.text.count, DiffLineStyle.maxDisplayLineLength)
+    }
+
+    func testTruncatedForDisplayTruncatesMultiMegabyteLine() {
+        let huge = String(repeating: "a", count: 5_000_000)
+        let result = DiffLineStyle.truncatedForDisplay(huge)
+        XCTAssertTrue(result.truncated)
+        XCTAssertEqual(result.text.count, DiffLineStyle.maxDisplayLineLength)
+    }
 }

@@ -16,6 +16,27 @@ enum DiffLineStyle {
     /// concrete color per line kind without erasing to `AnyShapeStyle`.
     static let contextNumberTint = Color(nsColor: .tertiaryLabelColor)
 
+    /// Caps a single diff row's width in characters, complementing
+    /// `DiffFileView.maxRenderedLines` (which caps the row *count*). Without it,
+    /// a multi-megabyte single line — a minified JS/CSS bundle, a one-line
+    /// lockfile, or an inlined base64 blob — makes TextKit line-wrapping run on
+    /// the main thread and freezes the app. Real source lines are far shorter
+    /// (the 120-column convention), so this only ever trims generated content.
+    static let maxDisplayLineLength = 2000
+
+    /// Caps `content` to `maxDisplayLineLength` characters for display. Returns
+    /// the original string and `false` when it fits; otherwise the leading
+    /// `maxDisplayLineLength` characters and `true`. Exactly the cap length is
+    /// *not* truncated. Runs in O(cap) — it walks at most `maxDisplayLineLength`
+    /// indices rather than counting the (possibly megabyte-long) string.
+    static func truncatedForDisplay(_ content: String) -> (text: String, truncated: Bool) {
+        let cap = content.index(content.startIndex, offsetBy: maxDisplayLineLength, limitedBy: content.endIndex)
+        guard let cap, cap < content.endIndex else {
+            return (content, false)
+        }
+        return (String(content[content.startIndex..<cap]), true)
+    }
+
     static func prefix(for kind: GitDiffLine.Kind) -> String {
         switch kind {
         case .addition: return "+"

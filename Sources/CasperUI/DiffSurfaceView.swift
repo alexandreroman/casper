@@ -452,7 +452,16 @@ private struct DiffLineRow: View {
     /// with a uniform `.primary` foreground for the code when there is no
     /// highlight. Wraps naturally instead of requiring horizontal scrolling.
     @ViewBuilder private var codeText: some View {
-        if let highlightedContent {
+        let display = DiffLineStyle.truncatedForDisplay(line.content)
+        if display.truncated {
+            // Pathological single line (minified bundle, one-line lockfile, inlined
+            // base64): render a capped slice + marker and skip highlight, so TextKit
+            // never wraps a multi-megabyte string on the main thread — the diff-view
+            // freeze this guards against.
+            Text(DiffLineStyle.prefix(for: line.kind)).foregroundStyle(DiffLineStyle.accent(for: line.kind))
+                + Text(display.text).foregroundStyle(Color.primary)
+                + Text("  … (line truncated)").foregroundStyle(.secondary)
+        } else if let highlightedContent {
             Text(highlightedContent)
         } else {
             Text(DiffLineStyle.prefix(for: line.kind)).foregroundStyle(DiffLineStyle.accent(for: line.kind))
