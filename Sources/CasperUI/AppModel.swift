@@ -645,6 +645,10 @@ final class AppModel {
     func createLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil
     ) -> Result<Workspace, WorkspaceCreationError> {
+        // Carry over the editor selected in the currently-active workspace (nil is
+        // fine — it keeps the same resolved default). Captured before any selection
+        // change so it reflects the workspace active when creation was requested.
+        let inheritedEditor = selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
             return .failure(WorkspaceCreationError(message: "space not found"))
         }
@@ -675,9 +679,10 @@ final class AppModel {
             CasperLog.app.failure("worktree creation failed", error)
             return .failure(WorkspaceCreationError(message: error.localizedDescription))
         }
-        let ws = WorkspaceFactory.makeLinkedWorkspace(
+        var ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
             baseBranch: base, portBase: portBase)
+        ws.lastUsedEditor = inheritedEditor
         if let command, let terminalID = LayoutTree.surfaceIDs(ws.layout).first {
             pendingInitialInput[terminalID] = command
         }
