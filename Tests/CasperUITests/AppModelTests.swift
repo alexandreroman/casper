@@ -1249,6 +1249,67 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary?.deletions, 0)
     }
 
+    // MARK: - Named-command live refresh (scriptsRevision)
+
+    /// Write `.casper.json` into `dir` with the given `scripts` object body,
+    /// e.g. `#"{"run":"npm run dev"}"#`, matching `RepoConfigTests`' JSON shape.
+    private func writeCasperScripts(at dir: URL, _ scriptsJSON: String) throws {
+        let json = #"{"workspace":{"scripts":\#(scriptsJSON)}}"#
+        try json.write(
+            to: dir.appendingPathComponent(".casper.json"), atomically: true, encoding: .utf8)
+    }
+
+    /// A Git-backed model whose single workspace already has a `.casper.json`
+    /// with the given `scripts` body. Returns the model, its workspace id, and
+    /// the worktree URL so the test can rewrite/delete the config on disk.
+    private func gitModelWithScripts(_ scriptsJSON: String) throws -> (AppModel, UUID, URL) {
+        let repo = try makeTempGitRepo()
+        try writeCasperScripts(at: repo, scriptsJSON)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        return (model, model.spaces[0].workspaces[0].id, repo)
+    }
+
+    func testRefreshReflectsChangedScriptSetAndBumpsRevisionOnce() throws {
+        let (model, wsID, worktree) = try gitModelWithScripts(#"{"run":"npm run dev"}"#)
+        XCTAssertEqual(model.namedCommands(for: wsID).map(\.name), ["run"])  // primes the cache
+        let revisionBefore = model.scriptsRevision
+
+        // Rewrite to a different set (rename `run` away, add two new commands).
+        try writeCasperScripts(at: worktree, #"{"serve":"npm run serve","test":"npm test"}"#)
+        model.refreshNamedCommandsIfChanged(for: wsID)
+
+        XCTAssertEqual(model.namedCommands(for: wsID).map(\.name), ["serve", "test"])
+        XCTAssertEqual(model.scriptsRevision, revisionBefore + 1)
+    }
+
+    func testRefreshOnUnchangedFileIsNoOp() throws {
+        let (model, wsID, worktree) = try gitModelWithScripts(#"{"run":"npm run dev"}"#)
+        _ = model.namedCommands(for: wsID)  // primes the cache
+
+        // First refresh reflects a real change and bumps the revision.
+        try writeCasperScripts(at: worktree, #"{"serve":"npm run serve"}"#)
+        model.refreshNamedCommandsIfChanged(for: wsID)
+        let revisionAfterChange = model.scriptsRevision
+
+        // Second refresh sees the same file: no cache churn, no revision bump.
+        model.refreshNamedCommandsIfChanged(for: wsID)
+        XCTAssertEqual(model.scriptsRevision, revisionAfterChange)
+    }
+
+    func testRefreshAfterDeletionHidesScriptsAndBumpsRevision() throws {
+        let (model, wsID, worktree) = try gitModelWithScripts(#"{"run":"npm run dev"}"#)
+        XCTAssertFalse(model.namedCommands(for: wsID).isEmpty)  // primes the cache
+        let revisionBefore = model.scriptsRevision
+
+        try FileManager.default.removeItem(at: worktree.appendingPathComponent(".casper.json"))
+        model.refreshNamedCommandsIfChanged(for: wsID)
+
+        XCTAssertTrue(model.namedCommands(for: wsID).isEmpty)
+        XCTAssertEqual(model.scriptsRevision, revisionBefore + 1)
+    }
+
     // Helpers: walk the layout to find a surface by id and inspect its kind.
     private func surface(_ node: LayoutNode, _ id: UUID) -> Surface? {
         switch node {

@@ -37,6 +37,10 @@ struct WorkspaceDetailView: View {
     private static let inspectorDragSpace = "inspectorDrag"
 
     var body: some View {
+        // Observe the scripts revision so a live `.casper.json` change re-runs the
+        // `.toolbar` content — re-evaluating the Run Script visibility gate, its
+        // menu list, and the resolved default (see `AppModel.scriptsRevision`).
+        let _ = model.scriptsRevision
         GeometryReader { proxy in
             let range = inspectorRange(container: proxy.size.width)
             let width = (inspectorWidth ?? workspace.inspector.width)

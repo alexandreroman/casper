@@ -23,6 +23,13 @@ final class AppModel {
     /// giving them a live refresh without knowing about the filesystem watcher.
     private(set) var diffRevision = 0
 
+    /// Observable revision token bumped when the selected workspace's
+    /// `.casper.json` named commands change on disk (see
+    /// `refreshNamedCommandsIfChanged`). The Run Script toolbar button re-reads
+    /// its state on its change, giving it a live refresh without knowing about
+    /// the filesystem watcher.
+    private(set) var scriptsRevision = 0
+
     /// Editors detected as launchable at startup (CLI shim on `PATH` and app
     /// bundle resolvable), in `EditorKind.priorityOrder`. Never re-detected
     /// while the app is running.
@@ -807,6 +814,7 @@ final class AppModel {
             : promoteSpaceIfGitInitialized(spaceIndex: at.space)
         if flipped { armWorktreeWatcher() }   // backing changed → exclusions changed → re-arm
         diffRevision += 1
+        refreshNamedCommandsIfChanged(for: id)
     }
 
     /// Determine every Space's Git backing at load time. `isGitRepo` is no longer
@@ -1298,6 +1306,19 @@ final class AppModel {
     /// Re-read a workspace's named commands (e.g. after it becomes selected).
     private func refreshNamedCommands(for workspaceID: UUID) {
         namedCommandsCache[workspaceID] = loadNamedCommands(for: workspaceID)
+    }
+
+    /// Re-read a workspace's named commands from `.casper.json` in reaction to a
+    /// filesystem change, updating the cache and bumping `scriptsRevision` only
+    /// when the list actually changed. Idempotent on an unchanged file: the
+    /// watcher has no `IgnoreSelf`, so Casper's own writes into the worktree also
+    /// wake it, and an unchanged file must not churn the UI. A broken or missing
+    /// file yields an empty list (same tolerance as `loadNamedCommands`).
+    func refreshNamedCommandsIfChanged(for workspaceID: UUID) {
+        let fresh = loadNamedCommands(for: workspaceID)
+        guard fresh != namedCommandsCache[workspaceID] else { return }
+        namedCommandsCache[workspaceID] = fresh
+        scriptsRevision += 1
     }
 
     /// The command the toolbar's primary button runs: the remembered last-used
