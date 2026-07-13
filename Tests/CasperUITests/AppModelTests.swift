@@ -698,6 +698,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(watcherCreated)
     }
 
+    func testApplyWatcherVisibilityIsNoOpWhenUnchanged() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)  // isWindowVisible defaults to true
+        let revisionBefore = model.diffRevision
+        // No transition (still visible), so the guard blocks both calls.
+        model.applyWatcherVisibility()
+        model.applyWatcherVisibility()
+        XCTAssertEqual(model.diffRevision, revisionBefore)
+    }
+
+    func testApplyWatcherVisibilityBumpsOnceOnRealTransition() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        var watcherCreated = false
+        model.makeWorktreeWatcher = { _, _, _ in
+            watcherCreated = true
+            return StubDirectoryWatcher()
+        }
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)  // selects a worktree
+
+        // Real true→false transition: stops the watchers (no re-arm on this path).
+        model.isWindowVisible = false
+        model.applyWatcherVisibility()
+
+        watcherCreated = false
+        let revisionBefore = model.diffRevision
+
+        // Real false→true transition: re-arms and bumps the diff exactly once.
+        model.isWindowVisible = true
+        model.applyWatcherVisibility()
+        XCTAssertTrue(watcherCreated)
+        XCTAssertEqual(model.diffRevision, revisionBefore + 1)
+
+        // No further transition: the guard blocks the repeat.
+        model.applyWatcherVisibility()
+        XCTAssertEqual(model.diffRevision, revisionBefore + 1)
+    }
+
     /// Spin the main runloop for `seconds` so debounced main-queue work can run.
     private func expectAfter(_ seconds: TimeInterval) {
         let done = expectation(description: "waited \(seconds)s")

@@ -62,6 +62,12 @@ final class AppModel {
     /// commit signal with no storm. Reconfigured on every selection change.
     @ObservationIgnored private var gitMetaWatcher: DirectoryWatching?
 
+    /// Last window-visibility state `applyWatcherVisibility` acted on, so it can
+    /// react only to real transitions. Starts `true` because `init` already armed
+    /// the watchers as visible before any window seed arrives — matching that
+    /// makes the first seed from a visible window a no-op.
+    @ObservationIgnored private var lastAppliedWindowVisible = true
+
     /// Builds the watcher for the selected worktree. Injectable so tests can
     /// substitute a stub; the default builds the real FSEvents-backed watcher.
     @ObservationIgnored
@@ -754,6 +760,12 @@ final class AppModel {
     /// `diffRevision` once so the diff/summary catches up on anything missed
     /// while hidden.
     func applyWatcherVisibility() {
+        // Act only on an actual visibility transition. The initial `true` matches
+        // `init`, which already armed the watchers as visible — so the first seed
+        // from a visible window is a no-op (no redundant re-arm or diff bump), and
+        // repeated same-state occlusion notifications do nothing.
+        guard lastAppliedWindowVisible != isWindowVisible else { return }
+        lastAppliedWindowVisible = isWindowVisible
         if isWindowVisible {
             reconfigureWorktreeWatcher()
             diffRevision += 1

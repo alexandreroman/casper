@@ -82,14 +82,21 @@ private struct WindowConfigurator: NSViewRepresentable {
 
         init(model: AppModel) { self.model = model }
 
+        /// Push the window's current visibility to the model and reconcile
+        /// watchers. Single source of the occlusion predicate for both the
+        /// initial seed and the occlusion-change observer.
+        private func refreshVisibility(_ window: NSWindow) {
+            model.isWindowVisible = window.occlusionState.contains(.visible)
+            model.applyWatcherVisibility()
+        }
+
         func attach(to window: NSWindow) {
             window.titleVisibility = .hidden
             // Removes the "Icon and Text / Icon Only" toolbar display-mode context
             // menu that AppKit shows on a right-/control-click of the toolbar.
             window.toolbar?.allowsDisplayModeCustomization = false
             // Seed the visibility signal from the window's current state.
-            model.isWindowVisible = window.occlusionState.contains(.visible)
-            model.applyWatcherVisibility()
+            refreshVisibility(window)
             guard observer == nil else { return }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
@@ -111,8 +118,7 @@ private struct WindowConfigurator: NSViewRepresentable {
             ) { [weak self, weak window] _ in
                 MainActor.assumeIsolated {
                     guard let window else { return }
-                    self?.model.isWindowVisible = window.occlusionState.contains(.visible)
-                    self?.model.applyWatcherVisibility()
+                    self?.refreshVisibility(window)
                 }
             }
         }
