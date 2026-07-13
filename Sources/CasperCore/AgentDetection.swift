@@ -1,3 +1,5 @@
+import Foundation
+
 // Pure, testable agent-state detection engine.
 //
 // This file owns only the *policy*: turning terminal viewport text into a raw
@@ -70,14 +72,15 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     /// question is what actually needs the user. Never returns `.absent` — the
     /// caller supplies that when no agent is present.
     public func signal(fromViewport text: String) -> AgentSignal {
-        let haystack = text.lowercased()
-
-        if blockedAllOf.contains(where: { haystack.containsAll($0) }) {
+        // Match the fixed lowercase-ASCII needles case-insensitively against the
+        // raw text: this avoids allocating a full lowercased copy of the viewport
+        // on every tick per surface, yet yields the same matches as before.
+        if blockedAllOf.contains(where: { text.containsAll($0) }) {
             return .blocked
         }
         let isWorking =
-            workingContains.contains(where: { haystack.contains($0) })
-            || workingAllOf.contains(where: { haystack.containsAll($0) })
+            workingContains.contains(where: { text.range(of: $0, options: .caseInsensitive) != nil })
+            || workingAllOf.contains(where: { text.containsAll($0) })
         return isWorking ? .working : .idle
     }
 
@@ -93,10 +96,10 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         return .absent
     }
 
-    /// Claude Code's on-screen affordances. Substrings are already lowercase so
-    /// they compare directly against the lowercased viewport. The OSC-title
-    /// convention (Braille spinner U+2800–U+28FF = working, ✳ U+2733 = idle)
-    /// comes from the initializer's defaults.
+    /// Claude Code's on-screen affordances. Substrings are lowercase ASCII and are
+    /// matched case-insensitively against the raw viewport text (no lowercased copy
+    /// is allocated). The OSC-title convention (Braille spinner U+2800–U+28FF =
+    /// working, ✳ U+2733 = idle) comes from the initializer's defaults.
     public static let claudeCode = AgentDetectionRuleSet(
         workingContains: [
             "esc to interrupt",
@@ -112,9 +115,10 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
 }
 
 extension String {
-    /// True when every substring in `needles` is present.
+    /// True when every needle appears in the string, matched case-insensitively so
+    /// callers can test raw viewport text without allocating a lowercased copy.
     fileprivate func containsAll(_ needles: [String]) -> Bool {
-        needles.allSatisfy { contains($0) }
+        needles.allSatisfy { range(of: $0, options: .caseInsensitive) != nil }
     }
 }
 

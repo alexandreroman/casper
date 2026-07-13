@@ -32,7 +32,8 @@ final class AppModelTests: XCTestCase {
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/plain"), probe: { _ in nil })
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces[0].id)
-        // Persisted synchronously.
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 1)
     }
 
@@ -63,6 +64,8 @@ final class AppModelTests: XCTestCase {
         model.removeSpace(id: containingSpaceID(model, workspace: second))
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces[0].id)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 1)
     }
 
@@ -301,6 +304,8 @@ final class AppModelTests: XCTestCase {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store, session: session)
         model.selectWorkspace(ws2.id)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertEqual(try store.load().selectedWorkspaceID, ws2.id)
     }
 
@@ -318,6 +323,8 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store, session: session)
         model.removeSpace(id: model.spaces[0].id)  // the only Space holds the selection
         XCTAssertNil(model.selectedWorkspaceID)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertNil(try store.load().selectedWorkspaceID)
         assertSelectionValidOrNil(model)
     }
@@ -383,6 +390,8 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/roundtrip"), probe: { _ in nil })
 
+        // The disk write is backgrounded; flush so the reload below sees it.
+        model.flushPendingSave()
         let reloadedStore = SessionStore(fileURL: url)
         let reloadedSession = try reloadedStore.load()
         let reloadedModel = AppModel(sessionStore: reloadedStore, session: reloadedSession)
@@ -1208,7 +1217,7 @@ final class AppModelTests: XCTestCase {
 
     // MARK: - Diff surfaces (UI-5 Task 1)
 
-    func testComputeDiffReturnsChangesForDirtyWorktree() throws {
+    func testComputeDiffReturnsChangesForDirtyWorktree() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5diff-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -1219,22 +1228,23 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let ws = model.spaces[0].workspaces[0]
-        let diff = model.computeDiff(for: ws)
+        let diff = await model.computeDiff(for: ws)
         XCTAssertNotNil(diff)
         XCTAssertFalse(diff!.files.isEmpty)
     }
 
-    func testComputeDiffNilForNonGitWorkspace() {
+    func testComputeDiffNilForNonGitWorkspace() async {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5nogit-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: { _ in nil })
-        XCTAssertNil(model.computeDiff(for: model.spaces[0].workspaces[0]))
+        let diff = await model.computeDiff(for: model.spaces[0].workspaces[0])
+        XCTAssertNil(diff)
     }
 
-    func testDiffSummaryCountsChangedLines() throws {
+    func testDiffSummaryCountsChangedLines() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5summary-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -1244,7 +1254,7 @@ final class AppModelTests: XCTestCase {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
-        let summary = model.diffSummary(for: model.spaces[0].workspaces[0])
+        let summary = await model.diffSummary(for: model.spaces[0].workspaces[0])
         XCTAssertEqual(summary?.insertions, 1)
         XCTAssertEqual(summary?.deletions, 0)
     }

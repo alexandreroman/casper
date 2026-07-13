@@ -23,10 +23,11 @@ import SwiftUI
 /// in the app — sidebar edge, inspector edge, and the terminal splits — reads as
 /// the same colour.
 ///
-/// A resize drives the live drag via local `@State fractions`, and additionally
-/// writes the new fractions back to the model (`AppModel.setSplitRatios`) so the
-/// dragged (or double-click-equalized) divider positions persist to `session.json`
-/// and survive an app restart.
+/// A resize drives the live drag via local `@State fractions`; the model
+/// (`AppModel.setSplitRatios`) is written back only once the drag ends (mouse-up) —
+/// and immediately on double-click-equalize — so the divider positions persist to
+/// `session.json` and survive an app restart without mutating the observable model
+/// tree on every drag frame.
 struct SplitContainerView: View {
     let model: AppModel
     let workspace: Workspace
@@ -53,15 +54,26 @@ struct SplitContainerView: View {
     /// when it matches and is usable, else an even split.
     @State private var fractions: [Double] = []
 
+    /// Precomputed per-child surface-id identities (each child's `paneDiffKey`),
+    /// refreshed only when `children` changes. Keeping them out of `content` avoids
+    /// re-walking every subtree on each `GeometryReader` frame during a drag/resize.
+    @State private var paneKeys: [[UUID]] = []
+
     var body: some View {
         GeometryReader { geometry in
             content(geometry: geometry)
         }
         .onAppear {
             if fractions.isEmpty { fractions = seededFractions() }
+            if paneKeys.isEmpty { paneKeys = children.map(\.paneDiffKey) }
         }
         .onChange(of: children.count) {
             fractions = seededFractions()
+        }
+        .onChange(of: children) {
+            // Keyed on `children`, not `children.count`: a same-count reorder must
+            // still refresh the identities so panes track their content.
+            paneKeys = children.map(\.paneDiffKey)
         }
     }
 
@@ -74,13 +86,16 @@ struct SplitContainerView: View {
             }
         } else {
             let fracs = displayFractions()
+            let paneIdentities = displayPaneKeys()
             let axisLength = orientation == .horizontal ? geometry.size.width : geometry.size.height
             let crossLength = orientation == .horizontal ? geometry.size.height : geometry.size.width
             let boundaries = boundaries(fractions: fracs, axisLength: axisLength)
             ZStack(alignment: .topLeading) {
-                // Panes first (below), dividers last so they hit-test on top.
-                ForEach(Array(children.enumerated()), id: \.element.paneDiffKey) { index, child in
-                    pane(child, index: index, boundaries: boundaries,
+                // Panes first (below), dividers last so they hit-test on top. Keyed by
+                // the precomputed surface-id array (not the index) so each pane's
+                // view/host tracks its content across a drag-relocate reorder.
+                ForEach(Array(paneIdentities.enumerated()), id: \.element) { index, _ in
+                    pane(children[index], index: index, boundaries: boundaries,
                          axisLength: axisLength, crossLength: crossLength)
                 }
                 ForEach(0..<(children.count - 1), id: \.self) { i in
@@ -182,7 +197,10 @@ struct SplitContainerView: View {
                         displayFractions(), dividerIndex: index, boundaryTarget: target,
                         axisLength: axisLength, minLength: Self.minPaneLength)
                     fractions = resized  // drives the live drag feel
-                    model.setSplitRatios(at: path, ratios: resized, for: workspace.id)  // persists it
+                },
+                onCommit: {
+                    // Persist once, at mouse-up: `fractions` holds the live drag result.
+                    model.setSplitRatios(at: path, ratios: fractions, for: workspace.id)
                 },
                 onEqualize: {
                     let even = LayoutNode.evenRatios(children.count)
@@ -230,6 +248,13 @@ struct SplitContainerView: View {
         fractions.count == children.count ? fractions : evenFractions()
     }
 
+    /// Precomputed per-child surface-id identities, falling back to a fresh
+    /// computation until `@State` is seeded or when a child change momentarily
+    /// leaves them out of sync (mirrors `displayFractions`).
+    private func displayPaneKeys() -> [[UUID]] {
+        paneKeys.count == children.count ? paneKeys : children.map(\.paneDiffKey)
+    }
+
     private func seededFractions() -> [Double] {
         guard !children.isEmpty else { return [] }
         let sum = ratios.reduce(0, +)
@@ -257,12 +282,13 @@ private struct SplitterHandle: NSViewRepresentable {
     let orientation: LayoutNode.Orientation
     let boundary: CGFloat
     let onResize: (CGFloat) -> Void
+    let onCommit: () -> Void
     let onEqualize: () -> Void
 
     func makeNSView(context: Context) -> SplitterHandleView {
         SplitterHandleView(
             orientation: orientation, boundary: boundary,
-            onResize: onResize, onEqualize: onEqualize)
+            onResize: onResize, onCommit: onCommit, onEqualize: onEqualize)
     }
 
     func updateNSView(_ nsView: SplitterHandleView, context: Context) {
@@ -272,6 +298,7 @@ private struct SplitterHandle: NSViewRepresentable {
         nsView.orientation = orientation
         nsView.boundary = boundary
         nsView.onResize = onResize
+        nsView.onCommit = onCommit
         nsView.onEqualize = onEqualize
     }
 }
@@ -293,6 +320,7 @@ final class SplitterHandleView: NSView {
     var orientation: LayoutNode.Orientation
     var boundary: CGFloat
     var onResize: (CGFloat) -> Void
+    var onCommit: () -> Void
     var onEqualize: () -> Void
 
     /// Captured at `mouseDown` so the drag maps window-space movement onto the axis
@@ -301,10 +329,12 @@ final class SplitterHandleView: NSView {
     private var dragStartWindowLocation: NSPoint = .zero
 
     init(orientation: LayoutNode.Orientation, boundary: CGFloat,
-         onResize: @escaping (CGFloat) -> Void, onEqualize: @escaping () -> Void) {
+         onResize: @escaping (CGFloat) -> Void, onCommit: @escaping () -> Void,
+         onEqualize: @escaping () -> Void) {
         self.orientation = orientation
         self.boundary = boundary
         self.onResize = onResize
+        self.onCommit = onCommit
         self.onEqualize = onEqualize
         super.init(frame: .zero)
     }
@@ -372,5 +402,12 @@ final class SplitterHandleView: NSView {
             ? now.x - dragStartWindowLocation.x
             : dragStartWindowLocation.y - now.y
         onResize(dragStartBoundary + deltaAxis)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        // No `super`: this whole view is the grab strip. The live drag has kept the
+        // caller's `fractions` current; commit them to the model once, here, instead
+        // of mutating the observable tree on every `mouseDragged` frame.
+        onCommit()
     }
 }

@@ -5,7 +5,59 @@ import SwiftUI
 /// Highlighted lines for one diff file, indexed by 1-based source line number.
 /// `new` covers the working-tree side (additions + context); `old` covers the
 /// HEAD side (deletions). Either may be nil when that side can't be highlighted.
-private struct FileHighlight { var new: [AttributedString]?; var old: [AttributedString]? }
+///
+/// A reference type with identity equality: publishing one file's highlight
+/// swaps in a new instance for that file only, so SwiftUI's `.equatable()`
+/// comparison stays O(1) (an `===` check) instead of deep-comparing the
+/// attributed-string arrays of every realized file on every per-file publish.
+private final class FileHighlight: Equatable {
+    let new: [AttributedString]?
+    let old: [AttributedString]?
+
+    init(new: [AttributedString]?, old: [AttributedString]?) {
+        self.new = new
+        self.old = old
+    }
+
+    static func == (lhs: FileHighlight, rhs: FileHighlight) -> Bool { lhs === rhs }
+}
+
+/// Per-file metrics precomputed once when the diff changes, so `body` never
+/// walks a file's lines to render its header stats or gutter. Equatable (all
+/// stored fields are), which lets `DiffFileView` be compared cheaply by value.
+private struct DiffFileMetrics: Equatable {
+    let insertions: Int
+    let deletions: Int
+    let gutterWidth: CGFloat
+    let hiddenLineCount: Int
+
+    init(file: GitDiffFile) {
+        var insertions = 0
+        var deletions = 0
+        var totalLines = 0
+        var widestLineNumber = 0
+        for hunk in file.hunks {
+            for line in hunk.lines {
+                totalLines += 1
+                switch line.kind {
+                case .addition: insertions += 1
+                case .deletion: deletions += 1
+                case .context: break
+                }
+                if let old = line.oldLineNumber { widestLineNumber = max(widestLineNumber, old) }
+                if let new = line.newLineNumber { widestLineNumber = max(widestLineNumber, new) }
+            }
+        }
+        self.insertions = insertions
+        self.deletions = deletions
+        // Widest line number sets the gutter width so it never truncates (e.g.
+        // 5-digit line numbers in a large file); one line number plus trailing
+        // padding, with a sensible minimum.
+        let maxDigits = max(String(widestLineNumber).count, 1)
+        self.gutterWidth = max(CGFloat(maxDigits * 9 + 12), 36)
+        self.hiddenLineCount = max(0, totalLines - DiffFileView.maxRenderedLines)
+    }
+}
 
 /// Read-only diff surface: the workspace's working tree vs HEAD, per-file, with
 /// +/- line coloring. Refreshes on open and on the button. Long code lines wrap
@@ -19,7 +71,14 @@ struct DiffSurfaceView: View {
     /// each file finishes highlighting off the main actor. The stable key lets a
     /// rebuild carry over highlights for files whose diff hasn't changed.
     @State private var highlights: [String: FileHighlight] = [:]
+    /// Per-file metrics (line stats, gutter width, hidden-line count) keyed by
+    /// `GitDiffFile.id`, rebuilt once whenever `diff` is (re)assigned so `body`
+    /// never recomputes O(lines) values while rendering.
+    @State private var metrics: [String: DiffFileMetrics] = [:]
     @State private var highlightTask: Task<Void, Never>?
+    /// The in-flight `refresh()` compute, cancelled before starting a new one so a
+    /// rapid sequence of `diffRevision` bumps can't assign results out of order.
+    @State private var refreshTask: Task<Void, Never>?
     /// Top visible file across rebuilds, so a debounced refresh keeps scroll.
     @State private var scrolledFileID: String?
     /// Nonce of the last `model.diffScrollTarget` this view acted on, so a target
@@ -31,7 +90,7 @@ struct DiffSurfaceView: View {
             .onAppear { if !loaded { refresh() } }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
             .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
-            .onDisappear { highlightTask?.cancel() }
+            .onDisappear { highlightTask?.cancel(); refreshTask?.cancel() }
     }
 
     @ViewBuilder private var content: some View {
@@ -44,12 +103,15 @@ struct DiffSurfaceView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         ForEach(diff.files) { file in
+                            let fileMetrics = metrics[file.id] ?? DiffFileMetrics(file: file)
                             Section {
                                 DiffFileView(
                                     file: file, highlight: highlights[file.id],
+                                    metrics: fileMetrics,
                                     isLastFile: file.id == diff.files.last?.id)
+                                    .equatable()
                             } header: {
-                                DiffFileHeaderBar(file: file)
+                                DiffFileHeaderBar(file: file, metrics: fileMetrics)
                             }
                         }
                     }
@@ -75,12 +137,22 @@ struct DiffSurfaceView: View {
         let previousFiles = diff?.files ?? []
         let previousHighlights = highlights
         let started = Date()
-        diff = model.computeDiff(for: workspace)
-        let computeMs = Int(Date().timeIntervalSince(started) * 1000)
-        logDiffShape(computeMs: computeMs)
-        applyPendingScroll()
-        loaded = true
-        startHighlighting(reusing: previousFiles, previousHighlights)
+        // Keep the previous `diff` on screen while the async compute runs (no blank
+        // flash): `content` shows the last value until it's reassigned below.
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor in
+            let newDiff = await model.computeDiff(for: workspace)
+            if Task.isCancelled { return }
+            diff = newDiff
+            // Precompute per-file metrics once here (off the render hot path),
+            // keyed by file id so `body` can look them up in O(1).
+            metrics = Dictionary(uniqueKeysWithValues: (diff?.files ?? []).map { ($0.id, DiffFileMetrics(file: $0)) })
+            let computeMs = Int(Date().timeIntervalSince(started) * 1000)
+            logDiffShape(computeMs: computeMs)
+            applyPendingScroll()
+            loaded = true
+            startHighlighting(reusing: previousFiles, previousHighlights)
+        }
     }
 
     /// Logs the freshly computed diff's shape so a diff-view freeze is
@@ -218,6 +290,7 @@ private struct DiffEmptyState: View {
 /// its bottom edge against the file content scrolling underneath it.
 private struct DiffFileHeaderBar: View {
     let file: GitDiffFile
+    let metrics: DiffFileMetrics
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -226,8 +299,8 @@ private struct DiffFileHeaderBar: View {
                 Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 12)
                 HStack(spacing: 8) {
-                    Text("+\(insertions)").foregroundStyle(DiffLineStyle.insertionTint)
-                    Text("\u{2212}\(deletions)").foregroundStyle(DiffLineStyle.deletionTint)
+                    Text("+\(metrics.insertions)").foregroundStyle(DiffLineStyle.insertionTint)
+                    Text("\u{2212}\(metrics.deletions)").foregroundStyle(DiffLineStyle.deletionTint)
                 }
                 .font(.callout.monospacedDigit().bold())
             }
@@ -247,19 +320,13 @@ private struct DiffFileHeaderBar: View {
         return file.oldPath == file.newPath
             ? file.newPath : "\(file.oldPath) → \(file.newPath)"
     }
-
-    private var insertions: Int {
-        file.hunks.flatMap(\.lines).filter { $0.kind == .addition }.count
-    }
-
-    private var deletions: Int {
-        file.hunks.flatMap(\.lines).filter { $0.kind == .deletion }.count
-    }
 }
 
-private struct DiffFileView: View {
+private struct DiffFileView: View, Equatable {
     let file: GitDiffFile
     let highlight: FileHighlight?
+    /// Precomputed line stats, gutter width, and hidden-line count for this file.
+    let metrics: DiffFileMetrics
     /// True for the diff's last file, so its trailing gap isn't doubled up
     /// with the outer scroll content's own bottom padding.
     let isLastFile: Bool
@@ -285,12 +352,12 @@ private struct DiffFileView: View {
                         .padding(.top, 6).padding(.bottom, 2)
                     ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
                         DiffLineRow(
-                            line: line, gutterWidth: gutterWidth,
+                            line: line, gutterWidth: metrics.gutterWidth,
                             highlighted: highlightedLine(for: line))
                     }
                 }
-                if hiddenLineCount > 0 {
-                    Text("Diff too large — \(hiddenLineCount) more lines hidden")
+                if metrics.hiddenLineCount > 0 {
+                    Text("Diff too large — \(metrics.hiddenLineCount) more lines hidden")
                         .font(.caption).foregroundStyle(.secondary)
                         .padding(.vertical, 6)
                 }
@@ -303,7 +370,7 @@ private struct DiffFileView: View {
     /// (e.g. a generated lockfile) would otherwise instantiate every line row at
     /// once when it scrolls into the enclosing lazy stack; the overflow is
     /// summarized by `hiddenLineCount` instead.
-    private static let maxRenderedLines = 3000
+    fileprivate static let maxRenderedLines = 3000
 
     /// One rendered hunk, trimmed to the leading `lineCount` lines that still fit
     /// under `maxRenderedLines`. Hunks past the cap are dropped entirely.
@@ -326,12 +393,6 @@ private struct DiffFileView: View {
         return result
     }
 
-    /// Lines omitted by the per-file cap, for the truncation notice.
-    private var hiddenLineCount: Int {
-        let total = file.hunks.reduce(0) { $0 + $1.lines.count }
-        return max(0, total - Self.maxRenderedLines)
-    }
-
     /// The highlighted attributed text for a line, or nil when unavailable.
     /// Deletions read from the HEAD side, additions and context from the
     /// working-tree side, both indexed by their 1-based source line number.
@@ -347,20 +408,6 @@ private struct DiffFileView: View {
     private func lookup(_ lines: [AttributedString]?, at number: Int?) -> AttributedString? {
         guard let lines, let number, number >= 1, number <= lines.count else { return nil }
         return lines[number - 1]
-    }
-
-    /// Widest line number across the file's hunks, so the gutter never truncates
-    /// (e.g. 5-digit line numbers in a large file).
-    private var maxDigits: Int {
-        let lines = file.hunks.flatMap(\.lines)
-        let numbers = lines.flatMap { [$0.oldLineNumber, $0.newLineNumber] }.compactMap { $0 }
-        let widest = numbers.max() ?? 0
-        return max(String(widest).count, 1)
-    }
-
-    /// One line number plus trailing padding, with a sensible minimum width.
-    private var gutterWidth: CGFloat {
-        max(CGFloat(maxDigits * 9 + 12), 36)
     }
 }
 
@@ -393,8 +440,9 @@ private struct DiffLineRow: View {
 
     /// Context lines keep the neutral gray gutter; changed lines pick up the
     /// same accent as the stripe, matching Claude Code's tinted line numbers.
-    private var numberColor: AnyShapeStyle {
-        line.kind == .context ? AnyShapeStyle(.tertiary) : AnyShapeStyle(DiffLineStyle.accent(for: line.kind))
+    /// A concrete `Color` in both cases, avoiding a per-pass `AnyShapeStyle`.
+    private var numberColor: Color {
+        line.kind == .context ? DiffLineStyle.contextNumberTint : DiffLineStyle.accent(for: line.kind)
     }
 
     /// The code column. When a highlight is available its runs carry their own

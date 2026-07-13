@@ -113,11 +113,64 @@ final class AppModel {
     private(set) var menuCanDeleteSelectedWorkspace = false
     private(set) var menuCanCloseSelectedWorkspace = false
 
+    /// A snapshot of EXACTLY the inputs the four menu enable-state flags read, used
+    /// to skip the recompute when none of them could have changed. The flags depend
+    /// only on selection and workspace membership/kind/Git-backing — never on
+    /// `layout`/`agentState`/`todos`/`inspector` — yet `spaces.didSet` fires on
+    /// every one of those high-frequency mutations (notably each agent-detection
+    /// `agentState` flip). Comparing this fingerprint lets those churny mutations
+    /// early-out of `refreshMenuFlags()`.
+    ///
+    /// Inputs captured (a deliberate superset of the four properties' reads —
+    /// `hasSelectedWorkspace`, `canCreateWorkspace` via `targetSpaceForNewWorkspace`,
+    /// `canDeleteSelectedWorkspace`, `canCloseSelectedWorkspace`): the selection,
+    /// and per Space its `isGitRepo` plus each workspace's `id → kind`.
+    /// `canCloseSelectedWorkspace` also reads the selected workspace's `baseBranch`,
+    /// but a workspace's `baseBranch` is fixed at creation and never mutated after,
+    /// so membership + kind already capture every way it can flip.
+    private struct MenuFlagsFingerprint: Equatable {
+        struct SpaceFingerprint: Equatable {
+            let isGitRepo: Bool
+            let workspaceKinds: [UUID: WorkspaceKind]
+        }
+        let selectedWorkspaceID: UUID?
+        let spaces: [SpaceFingerprint]
+    }
+
+    /// Last fingerprint `refreshMenuFlags()` acted on. `nil` sentinel never equals a
+    /// real fingerprint, so the first call (seeded at the end of `init`) always
+    /// proceeds rather than being skipped.
+    @ObservationIgnored private var lastMenuFlagsFingerprint: MenuFlagsFingerprint?
+
+    /// Build the current menu-flags fingerprint in a single pass over `spaces`.
+    private func menuFlagsFingerprint() -> MenuFlagsFingerprint {
+        let spaceFingerprints = spaces.map { space in
+            var kinds: [UUID: WorkspaceKind] = [:]
+            for workspace in space.workspaces { kinds[workspace.id] = workspace.kind }
+            return MenuFlagsFingerprint.SpaceFingerprint(
+                isGitRepo: space.isGitRepo, workspaceKinds: kinds)
+        }
+        return MenuFlagsFingerprint(
+            selectedWorkspaceID: selectedWorkspaceID, spaces: spaceFingerprints)
+    }
+
     /// Recompute each menu flag from its computed property, writing only on a real
     /// change. The guarded write is essential: an unconditional write to an
     /// `@Observable` property notifies observers even when the value is unchanged,
     /// which would defeat the flicker fix.
+    ///
+    /// A fingerprint guard fronts the recompute: `spaces.didSet` fires on every
+    /// `spaces` mutation (including the frequent agent-detection `agentState`
+    /// flips), but the flags depend only on the inputs in `MenuFlagsFingerprint`.
+    /// When the fingerprint is unchanged, none of the four flags can have changed,
+    /// so return immediately and skip the four linear scans and their guarded
+    /// writes. Correctness hinges on the fingerprint changing whenever any flag
+    /// input changes (see `MenuFlagsFingerprint`), or a menu item could get stuck.
     private func refreshMenuFlags() {
+        let fingerprint = menuFlagsFingerprint()
+        guard fingerprint != lastMenuFlagsFingerprint else { return }
+        lastMenuFlagsFingerprint = fingerprint
+
         if menuHasSelectedWorkspace != hasSelectedWorkspace { menuHasSelectedWorkspace = hasSelectedWorkspace }
         if menuCanCreateWorkspace != canCreateWorkspace { menuCanCreateWorkspace = canCreateWorkspace }
         if menuCanDeleteSelectedWorkspace != canDeleteSelectedWorkspace {
@@ -156,6 +209,14 @@ final class AppModel {
     @ObservationIgnored let sessionIdentity: SessionIdentity
 
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
+
+    /// Serial background queue for `persist()`'s atomic disk write. Encoding stays
+    /// on the main actor (it needs the live state); only the blocking write is
+    /// dispatched here so it never stalls the render/run loop. Serial + FIFO, so a
+    /// later write never lands before an earlier one, and `flushPendingSave()` can
+    /// drain it with a synchronous barrier for quit-safety and deterministic tests.
+    @ObservationIgnored private let saveQueue = DispatchQueue(
+        label: "com.github.alexandreroman.casper.session-save", qos: .utility)
 
     /// Whether the app's window is currently visible on screen — `false` when
     /// minimized, fully occluded by other windows, on another Space, or the app
@@ -290,6 +351,19 @@ final class AppModel {
     /// build an `AppModel` directly don't spin a background loop. Stored so it can
     /// be cancelled on teardown and so a second `startAgentDetection()` is a no-op.
     @ObservationIgnored private var agentDetectionTask: Task<Void, Never>?
+
+    /// Rolling tick counter for `runAgentDetectionTick`, used to sub-sample the
+    /// background (non-selected) workspaces. Bumped with `&+=` so it wraps rather
+    /// than trapping on overflow.
+    @ObservationIgnored private var detectionTickCount = 0
+
+    /// Sub-cadence for scraping non-selected workspaces: the selected workspace
+    /// stays at full cadence (~250ms) for a live sidebar/spinner, while background
+    /// workspaces are scraped only every 4th tick (~1s while visible). They feed
+    /// only the background `done` notification, which tolerates ~1s of extra
+    /// latency (and the resolver debounces in ticks anyway), so the reduced rate
+    /// trades imperceptible latency for a much cheaper hot path.
+    nonisolated static let backgroundDetectionStride = 4
 
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
     /// AppKit lifecycle (`AppDelegate`). Loads the persisted session from its
@@ -1145,32 +1219,58 @@ final class AppModel {
     /// filesystem-change bump invalidates it without an explicit clear.
     @ObservationIgnored private var cachedDiff: (workspaceID: UUID, revision: Int, diff: GitDiff?)?
 
+    /// The in-flight diff computation, so the diff surface and the toolbar summary
+    /// don't each launch a concurrent identical libgit2 walk for the same
+    /// `(workspace, revision)`: a second caller awaits this task instead.
+    @ObservationIgnored private var inFlightDiff: (workspaceID: UUID, revision: Int, task: Task<GitDiff?, Never>)?
+
     /// Compute the working-tree-vs-HEAD diff of a workspace's worktree. Returns nil
     /// when the workspace is not Git-backed or the diff fails.
-    func computeDiff(for workspace: Workspace) -> GitDiff? {
+    ///
+    /// A memoized result matching the current `diffRevision` returns synchronously
+    /// (no await). Otherwise the libgit2 walk runs off the main actor in a detached
+    /// task that opens and uses its OWN `Repository` (never crossing an actor
+    /// boundary), so the render/run loop isn't blocked; the `Sendable` `GitDiff`
+    /// then crosses back. Concurrent callers for the same `(workspace, revision)`
+    /// share one in-flight task, and the per-revision cache is written only when a
+    /// newer revision hasn't already superseded the result.
+    func computeDiff(for workspace: Workspace) async -> GitDiff? {
         if let cached = cachedDiff, cached.workspaceID == workspace.id, cached.revision == diffRevision {
             return cached.diff
         }
-        // Runs synchronously on the main actor: `Repository` is non-Sendable and
-        // main-actor-confined, so an off-actor move would force this API to async
-        // and thread through the diff and toolbar views. The per-revision cache
-        // above keeps the cost to one diff per selection or filesystem change.
-        let diff: GitDiff?
-        do {
-            let repo = try Repository.open(atPath: workspace.worktreePath)
-            diff = try repo.diffWorkdirToHead()
-        } catch {
-            CasperLog.app.failure("diff failed", error)
-            diff = nil
+        let revision = diffRevision
+        if let inFlight = inFlightDiff, inFlight.workspaceID == workspace.id, inFlight.revision == revision {
+            return await inFlight.task.value
         }
-        cachedDiff = (workspace.id, diffRevision, diff)
+
+        let path = workspace.worktreePath
+        let task = Task.detached(priority: .userInitiated) { () -> GitDiff? in
+            do {
+                let repo = try Repository.open(atPath: path)
+                return try repo.diffWorkdirToHead()
+            } catch {
+                CasperLog.app.failure("diff failed", error)
+                return nil
+            }
+        }
+        inFlightDiff = (workspace.id, revision, task)
+        let diff = await task.value
+
+        // Don't cache a result a newer revision has already superseded.
+        if diffRevision == revision {
+            cachedDiff = (workspace.id, revision, diff)
+        }
+        // Clear the in-flight entry only if it's still the one we started.
+        if let inFlight = inFlightDiff, inFlight.workspaceID == workspace.id, inFlight.revision == revision {
+            inFlightDiff = nil
+        }
         return diff
     }
 
     /// The workspace's working-tree-vs-HEAD line counts, or nil when not
     /// Git-backed or the diff fails. Feeds the detail toolbar's `+INS −DEL`.
-    func diffSummary(for workspace: Workspace) -> (insertions: Int, deletions: Int)? {
-        computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
+    func diffSummary(for workspace: Workspace) async -> (insertions: Int, deletions: Int)? {
+        await computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
     }
 
     /// Files larger than this are left un-highlighted (neutral) to keep the diff
@@ -1412,9 +1512,24 @@ final class AppModel {
         }
     }
 
+    /// Encode the session on the main actor (where the state lives), then hand the
+    /// resulting `Data` to `saveQueue` for the blocking atomic disk write — keeping
+    /// the write off the render/run loop. Only `sessionStore` and `data` (both
+    /// `Sendable`) are captured; never `self`/`spaces`. `onPersistForTest?()` fires
+    /// synchronously right after enqueuing (not after the write completes), so the
+    /// save-count tests, which count `persist()` calls rather than disk writes, are
+    /// unaffected — and it still fires even when the encode throws.
     func persist() {
         do {
-            try sessionStore.save(Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
+            let data = try sessionStore.encode(
+                Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
+            saveQueue.async { [sessionStore] in
+                do {
+                    try sessionStore.write(data)
+                } catch {
+                    CasperLog.app.failure("failed to persist session", error)
+                }
+            }
         } catch {
             CasperLog.app.failure("failed to persist session", error)
         }
@@ -1433,6 +1548,11 @@ final class AppModel {
         saveWorkItem?.cancel()
         saveWorkItem = nil
         persist()
+        // Drain the serial save queue so the just-enqueued write (and any prior
+        // ones) have hit disk before returning. This preserves
+        // `applicationWillTerminate`'s guarantee that state is persisted before the
+        // app exits, and makes the tests' post-mutation `store.load()` deterministic.
+        saveQueue.sync {}
     }
 
     /// The per-surface environment injected into a terminal so the `casper` CLI
@@ -1589,11 +1709,17 @@ final class AppModel {
     /// signals, run the resolver, and write the result. A workspace with nothing
     /// readable this tick (no live surface view) is left untouched rather than
     /// forced to `unknown`, so switching a workspace off-screen doesn't wipe its
-    /// last known state.
+    /// last known state. The selected workspace is scraped at full cadence;
+    /// non-selected workspaces are scraped only every `backgroundDetectionStride`
+    /// ticks to keep this main-actor pass cheap.
     func runAgentDetectionTick() {
+        detectionTickCount &+= 1
+        let scrapeBackground = detectionTickCount % Self.backgroundDetectionStride == 0
         for space in spaces {
             for ws in space.workspaces {
                 if explicitAuthority.contains(ws.id) { continue }  // detection stopped for W
+                let isSelected = (ws.id == selectedWorkspaceID)
+                if !isSelected && !scrapeBackground { continue }  // background: reduced sub-cadence
 
                 let terminalIDs = LayoutTree.surfaces(ws.layout).compactMap { surface -> UUID? in
                     guard case .terminal = surface.kind else { return nil }
@@ -1721,16 +1847,23 @@ final class AppModel {
         guard let at = locate(workspaceID),
               let todos = ProgressSynthesis.todos(total: total, current: current, label: label)
         else { return false }
+        // `todos` is transient (Session's Codable never encodes it), so there is
+        // nothing to persist. Skip the mutation entirely when the synthesized
+        // todos are unchanged — an agent streams progress on a hot path, and
+        // `spaces` has no observation sub-granularity, so an unconditional write
+        // would re-render the whole sidebar + detail for no change.
+        if spaces[at.space].workspaces[at.workspace].todos == todos { return true }
         spaces[at.space].workspaces[at.workspace].todos = todos
-        persist()
         return true
     }
 
     @discardableResult
     func controlClearProgress(for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
+        // Transient field (see `controlSetProgress`); nothing to persist, and skip
+        // the re-render when the todos are already empty.
+        if spaces[at.space].workspaces[at.workspace].todos.isEmpty { return true }
         spaces[at.space].workspaces[at.workspace].todos = []
-        persist()
         return true
     }
 

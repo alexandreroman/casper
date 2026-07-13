@@ -1,9 +1,12 @@
 import Foundation
 
-/// Not `Sendable`: holds shared mutable `JSONEncoder`/`JSONDecoder` instances.
-/// Thread-safety relies on caller confinement — all access must happen on the
-/// main actor (its sole owner, `AppModel`, is main-actor-isolated).
-public final class SessionStore {
+/// `@unchecked Sendable`: every stored field is immutable (`let`), and the only
+/// entry point ever dispatched off the main actor, `write(_:)`, touches just
+/// `fileURL`, `FileManager`, and `Data` — all thread-safe. `encode`/`load` use the
+/// non-`Sendable` `JSONEncoder`/`JSONDecoder`, so they stay confined to the main
+/// actor (their sole owner, `AppModel`, is main-actor-isolated); only `write(_:)`
+/// runs on `AppModel`'s background save queue.
+public final class SessionStore: @unchecked Sendable {
     private let fileURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -61,12 +64,25 @@ public final class SessionStore {
         try? FileManager.default.moveItem(at: fileURL, to: backupURL)
     }
 
-    public func save(_ session: Session) throws {
+    /// Encode a session to JSON `Data`. Uses the non-`Sendable` `encoder`, so it
+    /// must run on the main actor. Split from the disk `write(_:)` so the caller
+    /// can encode on the main actor (where the state lives) and hand the resulting
+    /// `Data` to a background queue for the blocking atomic write.
+    public func encode(_ session: Session) throws -> Data {
+        try encoder.encode(session)
+    }
+
+    /// Atomically write already-encoded session `Data` to disk, creating the
+    /// containing directory if needed. Touches only `fileURL`, `FileManager`, and
+    /// `Data`, all thread-safe, so it is the one method safe to call off the main
+    /// actor (see the type's `@unchecked Sendable` note).
+    public func write(_ data: Data) throws {
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let data = try encoder.encode(session)
         try data.write(to: fileURL, options: .atomic)
     }
+
+    public func save(_ session: Session) throws { try write(encode(session)) }
 }
