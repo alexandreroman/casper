@@ -86,6 +86,13 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
 /// content updates the focused surface (parallels `GhosttySurfaceView`).
 final class FocusReportingWebView: WKWebView {
     var onFocus: (() -> Void)?
+
+    // The occlusion observer for the current window, and the last suspension
+    // value pushed to WebKit (so a repeat state is not re-pushed). `lastSuspended`
+    // starts nil: a fresh web view plays media, so the first push always lands.
+    private var occlusionObserver: NSObjectProtocol?
+    private var lastSuspended: Bool?
+
     override func becomeFirstResponder() -> Bool {
         onFocus?()
         return super.becomeFirstResponder()
@@ -97,4 +104,72 @@ final class FocusReportingWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         menu.removeAllItems()
     }
+
+    // `FocusReportingWebView` is @MainActor-isolated (inherited from `WKWebView`),
+    // so a plain `deinit` is synthesized `nonisolated` and cannot touch the
+    // main-actor-isolated `occlusionObserver` stored property. `isolated deinit`
+    // (Swift 6.2) removes that restriction — see the
+    // notificationcenter-self-capture-isolated-deinit project memory note.
+    isolated deinit {
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+        }
+    }
+
+    // MARK: Media suspension (perf: pause audio/video for an off-screen web view)
+
+    // A detached or occluded cached browser keeps decoding media off-screen, so
+    // suspend playback when it isn't visible. macOS exposes no public API to
+    // throttle a detached web view's JS timers / requestAnimationFrame — only
+    // media suspension — so this is a media-only partial fix. Mirrors the
+    // occlusion wiring in `GhosttySurfaceView`.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateOcclusionObserver()
+        refreshMediaSuspension()
+    }
+
+    // Recompute suspension from window membership + the window's live occlusion
+    // state. No window ⇒ the view is a detached cached surface (fully off-screen).
+    // Minimize / cover / off-Space all clear `.visible`.
+    private func refreshMediaSuspension() {
+        guard let window else { pushMediaSuspension(true); return }
+        pushMediaSuspension(!window.occlusionState.contains(.visible))
+    }
+
+    // Single point that pushes suspension into WebKit, de-duplicated so a repeat
+    // state is not re-pushed. Records the value for DEBUG tests.
+    private func pushMediaSuspension(_ suspended: Bool) {
+        guard lastSuspended != suspended else { return }
+        lastSuspended = suspended
+        setAllMediaPlaybackSuspended(suspended, completionHandler: nil)
+        #if DEBUG
+        debugLastMediaSuspended = suspended
+        #endif
+    }
+
+    // (Re)subscribe to the current window's occlusion notifications; unsubscribe
+    // when leaving a window. Called from `viewDidMoveToWindow`.
+    private func updateOcclusionObserver() {
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+            self.occlusionObserver = nil
+        }
+        guard let window else { return }
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshMediaSuspension() }
+        }
+    }
+
+    #if DEBUG
+    // Test seam: records the last suspension value `pushMediaSuspension` sent to
+    // WebKit, which is set-only and exposes no getter to read back. Lets a unit
+    // test assert a detached view suspends without a live window. Stays nil until
+    // the first transition.
+    private(set) var debugLastMediaSuspended: Bool?
+
+    func debugRefreshMediaSuspension() { refreshMediaSuspension() }
+    #endif
 }
