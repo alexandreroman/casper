@@ -194,6 +194,17 @@ final class AppModel {
     /// so the pane stays open showing the error output.
     @ObservationIgnored private var keptFailedSetupSurfaces: Set<UUID> = []
 
+    /// How long a `teardown` hook may run before the workspace is pruned anyway. A
+    /// broken cleanup script must never trap the user in the workspace.
+    static let teardownTimeout: TimeInterval = 30
+
+    /// Workspaces whose teardown hook is in flight and whose prune has not run yet,
+    /// mapped to that prune. Presence is the once-latch: both the child-exit and the
+    /// timeout paths check-and-remove the id, so the prune fires exactly once
+    /// (whichever arrives first wins). Main-actor-isolated, so the check-and-remove
+    /// needs no other synchronization. Transient, never persisted.
+    @ObservationIgnored private var pendingTeardownPrunes: [UUID: @MainActor () -> Void] = [:]
+
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
     /// agent detector. `AgentStateResolver` is a value type carried across ticks,
     /// so each workspace owns its own copy. Runtime-only; never persisted.
@@ -1704,6 +1715,54 @@ final class AppModel {
         case .teardown:
             script.onExit?(code)
         }
+    }
+
+    /// Run the workspace's `teardown` lifecycle hook (if any) in a visible split,
+    /// then run `prune` — exactly once. With NO teardown script, `prune` runs
+    /// synchronously in the caller's stack (destroy behaves as before). With one, the
+    /// teardown split is spawned and `prune` runs after the split's child exits OR
+    /// `teardownTimeout` elapses, whichever comes first; any non-zero exit or timeout
+    /// is logged and the prune proceeds regardless (a broken teardown never blocks
+    /// deletion). The prune is always dispatched to the next runloop turn (never run
+    /// synchronously inside the child-exit callback) to avoid tearing views down
+    /// mid-`ghostty_app_tick`.
+    func runTeardownThenPrune(id workspaceID: UUID, then prune: @escaping @MainActor () -> Void) {
+        guard let ws = workspace(id: workspaceID),
+              let teardown = (try? RepoConfig.load(fromRepoRoot: ws.worktreePath))??.teardownScript()
+        else {
+            prune()
+            return
+        }
+        // Arm the once-latch (its presence gates the prune) before either trigger.
+        pendingTeardownPrunes[workspaceID] = prune
+        spawnScriptSurface(kind: .teardown, in: workspaceID, command: teardown, onExit: { [weak self] code in
+            // Delivered synchronously inside ghostty_app_tick on the main actor; the
+            // prune it triggers is deferred off this callback (see fireTeardownPrune).
+            MainActor.assumeIsolated {
+                guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
+                if code != 0 {
+                    CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
+                }
+                self.fireTeardownPrune(id: workspaceID)
+            }
+        })
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownTimeout) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
+                CasperLog.app.error(
+                    "teardown script timed out after \(Int(Self.teardownTimeout))s; pruning anyway")
+                self.fireTeardownPrune(id: workspaceID)
+            }
+        }
+    }
+
+    /// Run a teardown workspace's latched prune exactly once, deferred to the next
+    /// runloop turn. The child-exit caller runs synchronously inside `ghostty_app_tick`,
+    /// where tearing views down mid-tick detaches sibling panes, so the prune must
+    /// never run inline. A no-op once the latch has been cleared by the other path.
+    private func fireTeardownPrune(id workspaceID: UUID) {
+        guard let prune = pendingTeardownPrunes.removeValue(forKey: workspaceID) else { return }
+        DispatchQueue.main.async { MainActor.assumeIsolated { prune() } }
     }
 
     /// Wrap a `casper run` command in a subshell so a script that calls `exit`
