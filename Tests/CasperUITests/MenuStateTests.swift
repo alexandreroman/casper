@@ -49,16 +49,77 @@ final class MenuStateTests: XCTestCase {
         XCTAssertFalse(model.hasSelectedWorkspace)
     }
 
-    func testCanSplitFocusedSurfaceReflectsFocus() {
-        let model = AppModel(sessionStore: makeStore())
+    /// `focusedSurfaceIsTerminal()` gates `applyNewSplit` (the always-enabled Split
+    /// menu items no-op when it is false): true for a focused terminal layout pane,
+    /// false for a focused non-layout surface (the Inspector browser), false when
+    /// nothing is focused.
+    func testFocusedSurfaceIsTerminalReflectsFocus() {
+        let model = makeModel(selecting: .linked)
+        let workspace = model.spaces[0].workspaces[0]
+
+        // Nothing focused: not a terminal.
         model.focusedSurfaceID = nil
-        XCTAssertFalse(model.canSplitFocusedSurface)
-        model.focusedSurfaceID = UUID()
-        XCTAssertTrue(model.canSplitFocusedSurface)
+        XCTAssertFalse(model.focusedSurfaceIsTerminal())
+
+        // A real terminal layout pane.
+        let layoutSurfaceID = LayoutTree.surfaceIDs(workspace.layout).first!
+        model.focusedSurfaceID = layoutSurfaceID
+        XCTAssertTrue(model.focusedSurfaceIsTerminal())
+
+        // The Inspector browser lives outside the layout tree: not a terminal.
+        model.focusedSurfaceID = workspace.inspector.browser.id
+        XCTAssertFalse(model.focusedSurfaceIsTerminal())
+    }
+
+    /// The always-enabled Split menu items delegate to `applyNewSplit`, which must
+    /// no-op unless a terminal is focused. Focusing a non-layout surface (the
+    /// Inspector browser) must leave the layout unchanged.
+    func testApplyNewSplitNoOpsWhenNoTerminalFocused() {
+        let model = makeModel(selecting: .linked)
+        let workspace = model.spaces[0].workspaces[0]
+        let layoutBefore = workspace.layout
+
+        model.focusedSurfaceID = workspace.inspector.browser.id
+        model.applyNewSplit(.right)
+
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+    }
+
+    /// A focused terminal pane splits: `applyNewSplit` adds a surface to the layout.
+    func testApplyNewSplitSplitsFocusedTerminal() {
+        let model = makeModel(selecting: .linked)
+        let layoutSurfaceID = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).first!
+        XCTAssertEqual(LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 1)
+
+        model.focusedSurfaceID = layoutSurfaceID
+        model.applyNewSplit(.right)
+
+        XCTAssertEqual(LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 2)
     }
 
     func testCanCreateWorkspaceIsFalseWithNoSpaces() {
         let model = AppModel(sessionStore: makeStore())
         XCTAssertFalse(model.canCreateWorkspace)
+    }
+
+    /// The edge-triggered `menu…` flags the menu body observes must track the
+    /// computed enable-state properties as raw inputs change. This guards against
+    /// `didSet` silently not firing (which would leave the menu stuck on stale
+    /// enable-state) — the whole point of the flags is that they stay in sync.
+    func testMenuFlagsTrackComputedPropertiesOnStateChange() {
+        let model = makeModel(selecting: .linked, baseBranch: "main")
+
+        // Seeded at init from the restored linked selection.
+        XCTAssertEqual(model.menuHasSelectedWorkspace, model.hasSelectedWorkspace)
+        XCTAssertEqual(model.menuCanDeleteSelectedWorkspace, model.canDeleteSelectedWorkspace)
+        XCTAssertEqual(model.menuCanCloseSelectedWorkspace, model.canCloseSelectedWorkspace)
+        XCTAssertTrue(model.menuCanDeleteSelectedWorkspace)
+
+        // Clearing the selection flips the workspace-scoped flags off.
+        model.selectedWorkspaceID = nil
+        XCTAssertEqual(model.menuHasSelectedWorkspace, model.hasSelectedWorkspace)
+        XCTAssertEqual(model.menuCanDeleteSelectedWorkspace, model.canDeleteSelectedWorkspace)
+        XCTAssertFalse(model.menuHasSelectedWorkspace)
+        XCTAssertFalse(model.menuCanDeleteSelectedWorkspace)
     }
 }

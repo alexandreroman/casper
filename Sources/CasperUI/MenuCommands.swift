@@ -36,7 +36,7 @@ struct CasperCommands: Commands {
                 } label: {
                     Label("Create Workspace…", systemImage: "plus")
                 }
-                .disabled(!model.canCreateWorkspace)
+                .disabled(!model.menuCanCreateWorkspace)
                 Divider()
                 Button {
                     guard let id = model.selectedWorkspaceID else { return }
@@ -44,7 +44,7 @@ struct CasperCommands: Commands {
                 } label: {
                     Label("Open in Finder", systemImage: "folder")
                 }
-                .disabled(!model.hasSelectedWorkspace)
+                .disabled(!model.menuHasSelectedWorkspace)
                 Divider()
                 Button {
                     guard let id = model.selectedWorkspaceID else { return }
@@ -52,14 +52,14 @@ struct CasperCommands: Commands {
                 } label: {
                     Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")
                 }
-                .disabled(!model.canCloseSelectedWorkspace)
+                .disabled(!model.menuCanCloseSelectedWorkspace)
                 Button {
                     guard let id = model.selectedWorkspaceID else { return }
                     model.presentDeleteWorkspaceConfirmation(id: id)
                 } label: {
                     Label("Delete Workspace…", systemImage: "trash")
                 }
-                .disabled(!model.canDeleteSelectedWorkspace)
+                .disabled(!model.menuCanDeleteSelectedWorkspace)
             }
             CommandGroup(replacing: .saveItem) {}
             CommandGroup(replacing: .importExport) {}
@@ -78,14 +78,14 @@ struct CasperCommands: Commands {
                 } label: {
                     Label("Copy Workspace Path", systemImage: "doc.on.doc")
                 }
-                .disabled(!model.hasSelectedWorkspace)
+                .disabled(!model.menuHasSelectedWorkspace)
                 Button {
                     guard let id = model.selectedWorkspaceID else { return }
                     model.copyBranchName(id: id)
                 } label: {
                     Label("Copy Branch Name", systemImage: "doc.on.doc")
                 }
-                .disabled(!model.hasSelectedWorkspace)
+                .disabled(!model.menuHasSelectedWorkspace)
                 Divider()
                 Button { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) } label: {
                     Label("Copy", systemImage: "doc.on.doc")
@@ -101,34 +101,38 @@ struct CasperCommands: Commands {
                 .keyboardShortcut("a", modifiers: .command)
             }
             CommandGroup(replacing: .textEditing) {}
+            // Format menu removed: emptying `.textFormatting` drops its items; the
+            // resulting empty stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
             CommandGroup(replacing: .textFormatting) {}
         }
 
-        // View menu: the four pane splits, disabled while no surface is focused.
+        // View menu: the four pane splits. These items are ALWAYS enabled — the
+        // action itself no-ops when no terminal is focused. The enable-state was
+        // intentionally dropped: gating it on the focused surface made the SwiftUI
+        // `.commands` body observe `focusedSurfaceID`, so SwiftUI re-asserted the
+        // whole native menu on every focus change (momentarily recreating the empty
+        // Format/Help stubs) — a visible menu-bar flicker. Zero flash beats greying.
         CommandGroup(replacing: .sidebar) {
             Button { model.applyNewSplit(.up) } label: {
                 Label("Split Up", systemImage: "rectangle.tophalf.filled")
             }
-            .disabled(!model.canSplitFocusedSurface)
             Button { model.applyNewSplit(.down) } label: {
                 Label("Split Down", systemImage: "rectangle.bottomhalf.filled")
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
-            .disabled(!model.canSplitFocusedSurface)
             Button { model.applyNewSplit(.left) } label: {
                 Label("Split Left", systemImage: "rectangle.lefthalf.filled")
             }
-            .disabled(!model.canSplitFocusedSurface)
             Button { model.applyNewSplit(.right) } label: {
                 Label("Split Right", systemImage: "rectangle.righthalf.filled")
             }
             .keyboardShortcut("d", modifiers: .command)
-            .disabled(!model.canSplitFocusedSurface)
             Divider()
         }
         CommandGroup(replacing: .toolbar) {}
 
-        // Help menu: Casper has none.
+        // Help menu removed: emptying `.help` drops its items; the resulting empty
+        // stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
         CommandGroup(replacing: .help) {}
     }
 }
@@ -146,9 +150,6 @@ extension AppModel {
         guard let workspace = menuSelectedWorkspace, workspace.kind == .linked else { return false }
         return !(workspace.baseBranch?.isEmpty ?? true)
     }
-
-    /// Enable-state for the View menu's split items: a focused surface to split.
-    var canSplitFocusedSurface: Bool { focusedSurfaceID != nil }
 
     /// Enable-state for the Edit menu's "Copy Workspace Path" / "Copy Branch Name".
     var hasSelectedWorkspace: Bool { selectedWorkspaceID != nil }

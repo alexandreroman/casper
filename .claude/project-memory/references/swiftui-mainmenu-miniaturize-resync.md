@@ -1,6 +1,6 @@
 ---
 name: "SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe"
-description: "SwiftUI re-syncs NSApp.mainMenu on scene-lifecycle events, so Casper's menu bar is defined entirely in .commands; empty Format/Help stubs are stripped on BOTH applicationWillUpdate and applicationDidUpdate to beat SwiftUI's multi-pass resync flicker"
+description: "Casper's menu bar is SwiftUI .commands; empty Format/Help stubs stripped on will+didUpdate; the .commands body must NOT observe volatile state (focus/spaces) or SwiftUI re-asserts the whole menu and flickers the stubs — so enable-states are edge-triggered flags and Split is always-enabled"
 type: reference
 ---
 
@@ -12,11 +12,20 @@ Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands` i
 `.pasteboard`, View ← `.sidebar`; App/Window use SwiftUI defaults. Edit
 Copy/Paste/Select All carry no target — `NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)`
 routes through the responder chain to the focused `GhosttySurfaceView` (and to
-text fields), so they stay always-enabled by design. Menu enable/disable lives in
-testable `@Observable` computed props on `AppModel` (`canCreateWorkspace`,
-`canCloseSelectedWorkspace`, `canDeleteSelectedWorkspace`, `canSplitFocusedSurface`,
-`hasSelectedWorkspace`), bound via `.disabled(...)` and covered by
-`Tests/CasperUITests/MenuStateTests.swift`.
+text fields), so they stay always-enabled by design.
+
+Menu enable-state does NOT read raw `@Observable` state directly (that flickers —
+see below). It reads **edge-triggered stored flags** on `AppModel`
+(`menuHasSelectedWorkspace`, `menuCanCreateWorkspace`,
+`menuCanDeleteSelectedWorkspace`, `menuCanCloseSelectedWorkspace`) bound via
+`.disabled(...)`. `refreshMenuFlags()` recomputes each flag from the underlying
+computed props and writes it back **only when it flips** (the `!=` guard is
+essential — an unconditional write to an `@Observable` var notifies observers even
+when unchanged). It is driven by `didSet` on `spaces` and `selectedWorkspaceID`
+**only**. `focusedSurfaceID` deliberately has **no** `didSet`: the menu must not
+react to focus changes. The View menu's **Split** items are **always enabled** (no
+focus-dependent `.disabled`); `applyNewSplit` gates itself with
+`focusedSurfaceIsTerminal()`. Covered by `Tests/CasperUITests/MenuStateTests.swift`.
 
 **Why:** an earlier design built the whole bar imperatively in AppKit
 (`NSApp.mainMenu = buildMainMenu()` + inserting File/View), but SwiftUI's
@@ -52,19 +61,43 @@ probe dropped from 2 transitions to 0, and the resync settled in 2 passes instea
 of 3). `willUpdate` **alone** is still wrong (SwiftUI re-inserts *during* the
 update, after `willUpdate`, so the stub survives) — the fix is the pair.
 
-Confirmed facts (from instrumented runs): the Help menu is `NSApp.helpMenu` and
-the Window menu is `NSApp.windowsMenu` (locale-independent handles); our
-App/File/Edit/View/Window are always populated, so empty-submenu detection targets
-*exactly* Format+Help without matching titles (locale-independent — important, the
-system localizes "Help" to e.g. "Aide"). The flicker is triggered by
-window/app-lifecycle resyncs (app-switch, miniaturize, fullscreen), **not** by
-`CasperCommands.body` re-evaluation — a busy terminal re-evaluates the Commands
-body many times/sec (it reads the whole `spaces` graph via
-`workspace(id:)`/`targetSpaceForNewWorkspace()`) yet never re-inserts the stubs
-(0 strips), because an unchanged menu structure triggers no native menu mutation.
-That over-coupling of the Commands body to `spaces` is wasted work but is *not*
-the flicker cause; decoupling it is a separate efficiency improvement.
+The stubs are safe to detect by emptiness: Help is `NSApp.helpMenu`, Window is
+`NSApp.windowsMenu` (locale-independent handles), and our App/File/Edit/View/Window
+are always populated, so empty-submenu detection targets *exactly* Format+Help
+without matching titles (important — the system localizes "Help" to e.g. "Aide").
+The strip is safe (never touches the always-populated menus) and cannot loop.
 
-This strip is safe — it never touches File/Edit/View/App/Window (always
-populated), and cannot loop (once stripped, the next pass finds nothing to
-remove).
+**The complete flicker mechanism (root cause).** The empty Format/Help stubs are
+created by CasperCommands' **own** `CommandGroup(replacing: .textFormatting) {}` /
+`.help {}` (not just SwiftUI defaults — confirmed: `.commandsRemoved()` did NOT
+remove them; deleting those two lines did). SwiftUI re-asserts the **entire**
+native menu — recreating those empty stubs — whenever **either** (a) an AppKit
+scene-lifecycle resync fires (app-switch, miniaturize, fullscreen, startup), OR
+(b) the `.commands` body's observed output **changes** (an enable-state flips). The
+will+did strip mitigates (a). Case (b) is why the menu body must not observe
+volatile state: a body that reads `focusedSurfaceID` re-asserts the menu on
+**every** focus switch between panes (each recreates the stubs = flicker), even
+though the resulting enable-state is identical. Reading a *stable* edge-triggered
+flag instead means focus switches that don't flip an enable-state trigger no
+re-assert and no flicker. (A busy terminal that only churns `spaces` — via
+`workspace(id:)`/`targetSpaceForNewWorkspace()` — re-evaluates the body but with
+*unchanged* output, so it already causes no re-assert; the flags also make that
+churn free.)
+
+**Why `.commandsRemoved()` is not the fix** (evaluated and rejected): it removes
+*all* default commands including the native App menu (About/Settings/Services/
+Hide/Quit) and Window menu (Minimize/Zoom/window-list). There is no public API to
+re-add a single default group, and `.systemServices`/`.windowList` are AppKit-
+populated (`NSApp.servicesMenu`/`NSApp.windowsMenu`) — not reproducible in pure
+SwiftUI without the imperative-menu approach this project abandoned. So Format/Help
+must be emptied-and-stripped, not removed.
+
+**The Split UX trade-off** (deliberate): greying a menu item requires SwiftUI to
+observe the enable-state, and any change re-asserts the menu → recreates the stubs
+→ one flicker. So on a focus change that legitimately flips Split's enabled-state
+(terminal↔browser), greying and zero-flash are mutually exclusive under SwiftUI.
+The user chose **zero-flash**: Split stays always-enabled and `applyNewSplit`
+no-ops when `focusedSurfaceIsTerminal()` is false. `focusedSurfaceID` does not
+change when focus moves to the browser's **address bar** (a non-surface first
+responder), so a `focusedSurfaceID`-based *enable-state* could never be fully
+generic anyway — another reason the action-gate approach is cleaner.

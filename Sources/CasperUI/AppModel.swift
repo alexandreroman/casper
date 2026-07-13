@@ -15,8 +15,8 @@ import UserNotifications
 @MainActor
 @Observable
 final class AppModel {
-    private(set) var spaces: [Space]
-    var selectedWorkspaceID: UUID?
+    private(set) var spaces: [Space] { didSet { refreshMenuFlags() } }
+    var selectedWorkspaceID: UUID? { didSet { refreshMenuFlags() } }
 
     /// Observable revision token bumped when the selected workspace's folder
     /// changes on disk. The diff badge and diff surface re-pull on its change,
@@ -76,7 +76,44 @@ final class AppModel {
     @ObservationIgnored private let diffDebouncer = Debouncer(delay: 0.2)
 
     /// The surface that last became first responder (runtime-only, not persisted).
+    /// Deliberately has NO `didSet { refreshMenuFlags() }`: no menu flag depends on
+    /// the focused surface anymore (the always-enabled Split items enforce
+    /// "terminal focused" in `applyNewSplit` itself), so a focus change must not
+    /// re-assert the native menu — that resync is the menu-bar flicker we avoid.
     var focusedSurfaceID: UUID?
+
+    // MARK: - Menu enable-state flags
+    //
+    // Edge-triggered mirrors of the menu enable-state computed properties. The
+    // SwiftUI `.commands` menu body (`CasperCommands`) observes ONLY these flags —
+    // never the raw `spaces` / `selectedWorkspaceID` inputs. If the body observed
+    // those inputs directly, SwiftUI would re-assert the whole native menu on every
+    // change, recreating the empty Format/Help stubs — a visible menu-bar flicker.
+    // These flags change only when an enable-state actually flips, so the menu body
+    // stays stable across `spaces` churn. `refreshMenuFlags()` keeps them in sync
+    // from those two raw inputs' `didSet`, writing each flag only when its value
+    // differs so an unchanged recompute never notifies observers. The Split items
+    // are deliberately NOT backed by a flag: they are always enabled (see
+    // `CasperCommands`), so nothing here observes `focusedSurfaceID`.
+    private(set) var menuHasSelectedWorkspace = false
+    private(set) var menuCanCreateWorkspace = false
+    private(set) var menuCanDeleteSelectedWorkspace = false
+    private(set) var menuCanCloseSelectedWorkspace = false
+
+    /// Recompute each menu flag from its computed property, writing only on a real
+    /// change. The guarded write is essential: an unconditional write to an
+    /// `@Observable` property notifies observers even when the value is unchanged,
+    /// which would defeat the flicker fix.
+    private func refreshMenuFlags() {
+        if menuHasSelectedWorkspace != hasSelectedWorkspace { menuHasSelectedWorkspace = hasSelectedWorkspace }
+        if menuCanCreateWorkspace != canCreateWorkspace { menuCanCreateWorkspace = canCreateWorkspace }
+        if menuCanDeleteSelectedWorkspace != canDeleteSelectedWorkspace {
+            menuCanDeleteSelectedWorkspace = canDeleteSelectedWorkspace
+        }
+        if menuCanCloseSelectedWorkspace != canCloseSelectedWorkspace {
+            menuCanCloseSelectedWorkspace = canCloseSelectedWorkspace
+        }
+    }
 
     /// The surface currently being dragged by its grip, or nil. Set on drag begin/end.
     /// Only ever read internally (the `setDropHover` guard); no view observes it, so
@@ -306,6 +343,9 @@ final class AppModel {
         resolveGitBacking()
         self.availableEditors = EditorLauncher.detectInstalled()
         reconfigureWorktreeWatcher()
+        // `didSet` does not fire during `init`, so seed the menu flags once now that
+        // all three raw inputs are assigned.
+        refreshMenuFlags()
     }
 
     deinit {
@@ -820,6 +860,23 @@ final class AppModel {
         indexPair { LayoutTree.surfaceIDs($0.layout).contains(surfaceID) }
     }
 
+    /// Whether `focusedSurfaceID` currently points at a TERMINAL pane in some
+    /// workspace's layout tree. Non-layout surfaces (the Inspector browser), layout
+    /// browser/diff surfaces, and "nothing focused" all return false. Gates
+    /// `applyNewSplit` — Split only makes sense on a focused terminal.
+    func focusedSurfaceIsTerminal() -> Bool {
+        guard let id = focusedSurfaceID else { return false }
+        for space in spaces {
+            for ws in space.workspaces {
+                if let surface = LayoutTree.surfaces(ws.layout).first(where: { $0.id == id }) {
+                    if case .terminal = surface.kind { return true }
+                    return false
+                }
+            }
+        }
+        return false
+    }
+
     /// Shared tail of every split-based surface addition: split the leaf holding
     /// `focused` in workspace `at` to insert `surface` along `orientation`/`side`,
     /// move focus to the new surface, persist, and re-anchor AppKit first
@@ -868,7 +925,11 @@ final class AppModel {
             surface: Surface.terminal(cwd: cwd))
     }
 
+    /// Split the focused terminal in `direction` (the View menu's Split items). Those
+    /// items are always enabled in the menu — never greyed — so the action itself is
+    /// the gate: it does nothing unless a terminal is focused.
     func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
+        guard focusedSurfaceIsTerminal() else { return }
         guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
         let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
