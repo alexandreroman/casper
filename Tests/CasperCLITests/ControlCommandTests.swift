@@ -115,6 +115,108 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.workspace, "feature")
     }
 
+    func testBrowserScreenshotDefaultsToTempPath() throws {
+        let shot = try BrowserCommand.Screenshot.parse(["--workspace", "feature"])
+        let command = try shot.makeCommand()
+        XCTAssertEqual(command.verb, .browserScreenshot)
+        XCTAssertEqual(command.workspace, "feature")
+        XCTAssertTrue(command.path?.hasSuffix(".png") ?? false)
+    }
+
+    func testBrowserScreenshotCarriesOutPath() throws {
+        let shot = try BrowserCommand.Screenshot.parse(["--out", "/tmp/x.png", "--workspace", "feature"])
+        XCTAssertEqual(try shot.makeCommand().path, "/tmp/x.png")
+    }
+
+    func testBrowserEvalBuildsCommand() throws {
+        let eval = try BrowserCommand.Eval.parse(["document.title", "--workspace", "feature"])
+        let command = try eval.makeCommand()
+        XCTAssertEqual(command.verb, .browserEval)
+        XCTAssertEqual(command.script, "document.title")
+    }
+
+    func testBrowserEvalRejectsEmptyScript() throws {
+        let eval = try BrowserCommand.Eval.parse(["", "--workspace", "feature"])
+        XCTAssertThrowsError(try eval.makeCommand())
+    }
+
+    func testBrowserEvalResultLineEmbedsRawJSON() {
+        let line = BrowserCommand.Eval.resultLine(value: "{\"a\":1}", workspace: "w")
+        XCTAssertEqual(line, "{\"result\":{\"a\":1},\"workspace\":\"w\"}")
+    }
+
+    func testBrowserEvalRawUnwrapsStringButNotOtherTokens() {
+        // `eval --raw` unwraps a JSON string to its bare contents for shell piping,
+        // but leaves numbers, booleans, null, and containers as-is.
+        XCTAssertEqual(unwrappedRawValue("\"My Title\""), "My Title")
+        XCTAssertEqual(unwrappedRawValue("42"), "42")
+        XCTAssertEqual(unwrappedRawValue("true"), "true")
+        XCTAssertEqual(unwrappedRawValue("null"), "null")
+        XCTAssertEqual(unwrappedRawValue("{\"a\":1}"), "{\"a\":1}")
+    }
+
+    func testBrowserContentBuildsCommand() throws {
+        let content = try BrowserCommand.Content.parse(["--selector", "main", "--workspace", "feature"])
+        let command = try content.makeCommand()
+        XCTAssertEqual(command.verb, .browserContent)
+        XCTAssertEqual(command.selector, "main")
+    }
+
+    func testBrowserContentRejectsEmptySelector() throws {
+        let content = try BrowserCommand.Content.parse(["--selector", "", "--workspace", "feature"])
+        XCTAssertThrowsError(try content.makeCommand())
+    }
+
+    func testBrowserClickBuildsCommand() throws {
+        let click = try BrowserCommand.Click.parse(["#go", "--workspace", "feature"])
+        let command = try click.makeCommand()
+        XCTAssertEqual(command.verb, .browserClick)
+        XCTAssertEqual(command.selector, "#go")
+    }
+
+    func testBrowserClickRejectsEmptySelector() throws {
+        let click = try BrowserCommand.Click.parse(["", "--workspace", "feature"])
+        XCTAssertThrowsError(try click.makeCommand())
+    }
+
+    func testBrowserTypeBuildsCommand() throws {
+        let type = try BrowserCommand.TypeText.parse(["#name", "Ada", "--workspace", "feature"])
+        let command = try type.makeCommand()
+        XCTAssertEqual(command.verb, .browserType)
+        XCTAssertEqual(command.selector, "#name")
+        XCTAssertEqual(command.value, "Ada")
+    }
+
+    func testBrowserTypeRejectsEmptySelector() throws {
+        let type = try BrowserCommand.TypeText.parse(["", "Ada", "--workspace", "feature"])
+        XCTAssertThrowsError(try type.makeCommand())
+    }
+
+    func testBrowserTypeRejectsEmptyText() throws {
+        let type = try BrowserCommand.TypeText.parse(["#name", "", "--workspace", "feature"])
+        XCTAssertThrowsError(try type.makeCommand())
+    }
+
+    func testBrowserKeyBuildsCommand() throws {
+        let key = try BrowserCommand.Key.parse(["Enter", "--selector", "#field", "--workspace", "feature"])
+        let command = try key.makeCommand()
+        XCTAssertEqual(command.verb, .browserKey)
+        XCTAssertEqual(command.key, "Enter")
+        XCTAssertEqual(command.selector, "#field")
+    }
+
+    func testBrowserKeyWithoutSelectorIsNil() throws {
+        let key = try BrowserCommand.Key.parse(["Escape", "--workspace", "feature"])
+        let command = try key.makeCommand()
+        XCTAssertEqual(command.key, "Escape")
+        XCTAssertNil(command.selector)
+    }
+
+    func testBrowserKeyRejectsEmptyKey() throws {
+        let key = try BrowserCommand.Key.parse(["", "--workspace", "feature"])
+        XCTAssertThrowsError(try key.makeCommand())
+    }
+
     func testDiffOpenBuildsCommand() throws {
         let open = try DiffCommand.Open.parse(["--workspace", "feature"])
         let command = try open.makeCommand()
