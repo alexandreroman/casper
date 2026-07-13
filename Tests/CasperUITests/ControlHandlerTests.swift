@@ -700,6 +700,14 @@ final class ControlHandlerTests: XCTestCase {
             AppModel.subshellWrappedScriptCommand("npm test # smoke"), "(\nnpm test # smoke\n)")
     }
 
+    func testHookCommandExitsWithStatus() {
+        // A lifecycle hook must let the shell exit with the command's status so
+        // libghostty emits a child-exit event. `exit $?` sits on its own line so a
+        // trailing `#` comment on the command's last line cannot swallow it.
+        XCTAssertEqual(AppModel.hookWrappedScriptCommand("npm install"), "npm install\nexit $?")
+        XCTAssertEqual(AppModel.hookWrappedScriptCommand("make # build"), "make # build\nexit $?")
+    }
+
     func testNamedCommandsLoadedFromConfig() throws {
         let (model, wsID) = try modelWithWorktree(
             configJSON: #"{"workspace":{"scripts":{"test":"npm test","run":"npm run dev","setup":"x"}}}"#)

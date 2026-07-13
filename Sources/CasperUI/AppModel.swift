@@ -177,6 +177,23 @@ final class AppModel {
     /// SwiftUI never reads the file during `body`.
     @ObservationIgnored private var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
 
+    enum ScriptHookKind { case setup, teardown }
+
+    /// A terminal split running a lifecycle hook (`setup`/`teardown`). Tracked so the
+    /// child-exit event can be correlated with the pane's close request.
+    private struct ScriptSurface {
+        let kind: ScriptHookKind
+        let workspaceID: UUID
+        /// Teardown completion (delivers the exit code, or is called on timeout by the
+        /// runner); nil for setup.
+        var onExit: ((Int32) -> Void)?
+    }
+
+    @ObservationIgnored private var scriptSurfaces: [UUID: ScriptSurface] = [:]
+    /// Surfaces of a FAILED setup whose one shell-exit-driven close must be swallowed
+    /// so the pane stays open showing the error output.
+    @ObservationIgnored private var keptFailedSetupSurfaces: Set<UUID> = []
+
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
     /// agent detector. `AgentStateResolver` is a value type carried across ticks,
     /// so each workspace owns its own copy. Runtime-only; never persisted.
@@ -829,6 +846,13 @@ final class AppModel {
     /// unless linked workspaces depend on that Space, in which case the Space stays
     /// and the primary is re-seeded with a fresh terminal.
     func applyCloseSurface(_ surfaceID: UUID) {
+        // A setup surface whose exit hasn't been processed yet is never torn down by
+        // an early/stray close — its fate is decided by handleScriptSurfaceExit.
+        if scriptSurfaces[surfaceID]?.kind == .setup { return }
+        // Swallow the one shell-exit-driven close that follows a FAILED setup so the
+        // pane (with its error output) survives; a later user close then proceeds
+        // normally (marker consumed, tag gone).
+        if keptFailedSetupSurfaces.remove(surfaceID) != nil { return }
         guard let at = locateSurface(surfaceID) else { return }
         let wasFocused = focusedSurfaceID == surfaceID
         let (layout, newFocus) = LayoutTree.closeSurface(
@@ -1611,6 +1635,49 @@ final class AppModel {
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
     }
 
+    /// Spawn a visible split in `workspaceID` running a lifecycle hook, tagged in
+    /// `scriptSurfaces` so its child-exit is correlated. Mirrors `controlOpenTerminal`
+    /// but hook-wraps the command and registers the tag BEFORE splitting. Returns the
+    /// new surface id, or nil if the workspace/anchor can't be resolved.
+    @discardableResult
+    private func spawnScriptSurface(
+        kind: ScriptHookKind, in workspaceID: UUID, command: String,
+        onExit: ((Int32) -> Void)?
+    ) -> UUID? {
+        guard let ws = workspace(id: workspaceID),
+              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
+              let at = locateSurface(anchor) else { return nil }
+        let surface = Surface.terminal(cwd: ws.worktreePath)
+        scriptSurfaces[surface.id] = ScriptSurface(kind: kind, workspaceID: workspaceID, onExit: onExit)
+        pendingInitialInput[surface.id] = Self.hookWrappedScriptCommand(command)
+        insertSurfaceBySplitting(
+            at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
+        return surface.id
+    }
+
+    /// Called when a surface's child process exits (via GhosttySurfaceView.onChildExit).
+    /// No-op for ordinary panes (not in `scriptSurfaces`).
+    func handleScriptSurfaceExit(_ surfaceID: UUID, code: Int32) {
+        guard let script = scriptSurfaces.removeValue(forKey: surfaceID) else { return }
+        switch script.kind {
+        case .setup:
+            if code == 0 {
+                // Success: the tag is gone, so applyCloseSurface now tears the split
+                // down normally. (The deferred close_surface_cb would also do this; we
+                // do it eagerly so a clean setup vanishes promptly.)
+                applyCloseSurface(surfaceID)
+            } else {
+                // Failure: keep the pane open showing the output, swallow the single
+                // shell-exit-driven close that follows, and flag the workspace.
+                keptFailedSetupSurfaces.insert(surfaceID)
+                setDetectedAgentState(.error, for: script.workspaceID)
+                CasperLog.app.error("setup script failed (exit \(code)); keeping the split open")
+            }
+        case .teardown:
+            script.onExit?(code)
+        }
+    }
+
     /// Wrap a `casper run` command in a subshell so a script that calls `exit`
     /// (or fails under `set -e`) terminates only the subshell — the interactive
     /// terminal stays open with the script's output visible, instead of the
@@ -1619,6 +1686,16 @@ final class AppModel {
     /// closing paren.
     static func subshellWrappedScriptCommand(_ command: String) -> String {
         "(\n\(command)\n)"
+    }
+
+    /// Wrap a lifecycle-hook command so the shell runs it and then exits with its
+    /// status: `<command>\nexit $?`. The trailing `exit` makes libghostty emit a
+    /// child-exit event carrying the status (the completion signal the hook needs) —
+    /// the deliberate opposite of `subshellWrappedScriptCommand`, which keeps the
+    /// pane open. The newline (not `; `) ensures a trailing `#` comment on the
+    /// command's last line cannot swallow `exit $?`.
+    static func hookWrappedScriptCommand(_ command: String) -> String {
+        "\(command)\nexit $?"
     }
 
     /// Run the named command `name` (defaulting to `run`) from the workspace's
