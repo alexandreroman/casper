@@ -306,7 +306,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: info.path))
         XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(info.branch))
 
-        guard case .success = model.controlDeleteWorkspace(id: linkedID) else {
+        var result: Result<Void, AppModel.WorkspaceDeleteError>?
+        model.controlDeleteWorkspace(id: linkedID) { result = $0 }
+        guard case .success = try XCTUnwrap(result) else {
             return XCTFail("expected delete to succeed")
         }
         // Gone from the UI, its worktree folder removed, and its branch deleted.
@@ -317,7 +319,9 @@ final class ControlHandlerTests: XCTestCase {
 
     func testDeleteWorkspaceRefusesPrimary() throws {
         let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
-        guard case .failure(let error) = model.controlDeleteWorkspace(id: primaryID) else {
+        var result: Result<Void, AppModel.WorkspaceDeleteError>?
+        model.controlDeleteWorkspace(id: primaryID) { result = $0 }
+        guard case .failure(let error) = try XCTUnwrap(result) else {
             return XCTFail("expected failure for a primary workspace")
         }
         XCTAssertTrue(error.message.contains("primary"), "got: \(error.message)")
@@ -627,5 +631,129 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(list.count, 1)
         XCTAssertEqual(list.first?.id, id.uuidString)
         XCTAssertEqual(list.first?.name, "main")
+    }
+
+    private func modelWithWorktree(configJSON: String?) throws -> (AppModel, UUID) {
+        let wt = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("casper-run-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(atPath: wt, withIntermediateDirectories: true)
+        if let configJSON {
+            try configJSON.write(
+                to: URL(fileURLWithPath: wt).appendingPathComponent(".casper.json"),
+                atomically: true, encoding: .utf8)
+        }
+        let ws = Workspace(
+            name: "main", worktreePath: wt, branch: "main",
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: wt))))
+        let space = Space(name: "main", folderPath: wt, isGitRepo: false, workspaces: [ws])
+        let url = URL(fileURLWithPath:
+            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
+        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
+        return (AppModel(sessionStore: SessionStore(fileURL: url), session: session), ws.id)
+    }
+
+    func testControlRunLaunchesNamedCommand() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test"}}}"#)
+        guard case .success(let info) = model.controlRun(name: "test", in: wsID) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertFalse(info.id.isEmpty)
+    }
+
+    func testControlRunDefaultsToRun() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"run":"npm run dev"}}}"#)
+        guard case .success = model.controlRun(name: nil, in: wsID) else {
+            return XCTFail("expected success for default 'run'")
+        }
+    }
+
+    func testControlRunRejectsReservedName() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"setup":"npm i"}}}"#)
+        guard case .failure(let error) = model.controlRun(name: "setup", in: wsID) else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("reserved"), "message was: \(error.message)")
+    }
+
+    func testControlRunUnknownCommand() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test"}}}"#)
+        guard case .failure(let error) = model.controlRun(name: "nope", in: wsID) else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("nope"), "message was: \(error.message)")
+    }
+
+    func testControlRunNoConfig() throws {
+        let (model, wsID) = try modelWithWorktree(configJSON: nil)
+        guard case .failure(let error) = model.controlRun(name: "run", in: wsID) else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains(".casper.json"), "message was: \(error.message)")
+    }
+
+    func testScriptCommandIsSubshellWrapped() {
+        // A script that calls `exit` must not close the interactive terminal, so
+        // the command runs in a subshell. The closing paren is on its own line so
+        // a trailing `#` comment cannot swallow it.
+        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("exit 1"), "(\nexit 1\n)")
+        XCTAssertEqual(
+            AppModel.subshellWrappedScriptCommand("npm test # smoke"), "(\nnpm test # smoke\n)")
+    }
+
+    func testHookCommandExitsWithStatus() {
+        // A lifecycle hook must let the shell exit with the command's status so
+        // libghostty emits a child-exit event. `exit $?` sits on its own line so a
+        // trailing `#` comment on the command's last line cannot swallow it.
+        XCTAssertEqual(AppModel.hookWrappedScriptCommand("npm install"), "npm install\nexit $?")
+        XCTAssertEqual(AppModel.hookWrappedScriptCommand("make # build"), "make # build\nexit $?")
+    }
+
+    func testNamedCommandsLoadedFromConfig() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test","run":"npm run dev","setup":"x"}}}"#)
+        let names = model.namedCommands(for: wsID).map(\.name)
+        XCTAssertEqual(names, ["run", "test"])  // sorted, reserved excluded
+    }
+
+    func testResolvedScriptPrefersRunThenAlphabetical() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"zeta":"z","run":"r"}}}"#)
+        XCTAssertEqual(model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "run")
+
+        let (model2, wsID2) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"zeta":"z","alpha":"a"}}}"#)
+        XCTAssertEqual(model2.resolvedScript(for: try XCTUnwrap(model2.workspace(id: wsID2)))?.name, "alpha")
+    }
+
+    func testRunScriptRemembersLastUsed() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"echo t","run":"echo r"}}}"#)
+        model.runScript("test", for: wsID)
+        XCTAssertEqual(model.workspace(id: wsID)?.lastUsedScript, "test")
+        XCTAssertNil(model.scriptRunError)
+        // Resolution now prefers the remembered command over the "run" default.
+        XCTAssertEqual(model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "test")
+    }
+
+    func testRunScriptUnknownSetsError() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"run":"echo r"}}}"#)
+        model.runScript("nope", for: wsID)
+        XCTAssertNotNil(model.scriptRunError)
+    }
+
+    func testSelectScriptRemembersWithoutRunning() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"echo t","run":"echo r"}}}"#)
+        model.selectScript("test", for: wsID)
+        XCTAssertEqual(model.workspace(id: wsID)?.lastUsedScript, "test")
+        XCTAssertNil(model.scriptRunError)
+        // The remembered command becomes the resolved (primary-button) command.
+        XCTAssertEqual(
+            model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "test")
     }
 }

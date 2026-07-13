@@ -51,6 +51,18 @@ struct SidebarView: View {
             } label: {
                 Label("Open in Finder", systemImage: "folder")
             }
+            let namedCommands = model.namedCommands(for: workspace.id)
+            if !namedCommands.isEmpty {
+                Menu {
+                    ForEach(namedCommands, id: \.name) { command in
+                        Button(command.displayName) {
+                            model.runScript(command.name, for: workspace.id)
+                        }
+                    }
+                } label: {
+                    Label("Run Script", systemImage: "play")
+                }
+            }
             Divider()
             Button {
                 model.copyWorkspacePath(id: workspace.id)

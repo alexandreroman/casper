@@ -83,7 +83,11 @@ struct WorkspaceCommand: ParsableCommand {
             ControlCommand(verb: .workspaceDelete, workspace: try requireSelector(target))
         }
         func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
+            // The app runs the repo's `teardown` hook (up to ~30s — see
+            // AppModel.teardownTimeout) before replying, so allow well beyond the
+            // default 5s or a slow teardown would be misreported as a client-side
+            // timeout even though the deletion succeeds.
+            let response = try sendControl(makeCommand(), retriable: false, timeout: 35)
             emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }

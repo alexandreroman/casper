@@ -31,6 +31,14 @@ final class GhosttySurface {
         }
         self.surface = created
         self.runtime = runtime
+
+        // libghostty's own `initial_input` config field mojibakes non-ASCII text
+        // (it expands each byte as a Latin-1 scalar), so inject the queued input
+        // through the UTF-8 `ghostty_surface_text` path here, right after the child
+        // is spawned — the tightest equivalent to where `initial_input` was applied.
+        if let initial = configuration.initialInput, !initial.isEmpty {
+            sendText(initial)
+        }
     }
 
     deinit { ghostty_surface_free(surface) }

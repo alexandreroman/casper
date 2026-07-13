@@ -33,13 +33,14 @@ func requireSelector(_ option: WorkspaceTargetOption) throws -> String {
 /// Converts a transport failure or an `ok: false` reply into a thrown `ExitCode`
 /// (identical contract to the debug channel's `CasperCLI.run`).
 @discardableResult
-func sendControl(_ command: ControlCommand, retriable: Bool) throws -> ControlResponse {
+func sendControl(_ command: ControlCommand, retriable: Bool, timeout: TimeInterval = 5) throws -> ControlResponse {
     guard let socketPath = ProcessInfo.processInfo.environment["CASPER_CONTROL_SOCKET"] else {
         throw exitWithError("Casper is not running (CASPER_CONTROL_SOCKET unset); run inside a Casper terminal")
     }
     let response: ControlResponse
     do {
-        response = try ControlSocketClient.send(command, toSocketAt: socketPath, retriable: retriable)
+        response = try ControlSocketClient.send(
+            command, toSocketAt: socketPath, timeout: timeout, retriable: retriable)
     } catch let error as ControlSocketError {
         throw exitWithError(error.reason)
     }

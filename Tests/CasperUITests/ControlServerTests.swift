@@ -33,47 +33,56 @@ final class ControlServerTests: XCTestCase {
         return (ControlServer(socketPath: "/unused-in-dispatch-test.sock", model: model), ws.id)
     }
 
+    /// `ControlServer.handle` delivers its response through an `@Sendable` reply
+    /// closure. Every verb these tests exercise replies synchronously on the main
+    /// actor, so this helper captures that single response and returns it. The box
+    /// is `@unchecked Sendable` only to satisfy the `@Sendable` reply signature —
+    /// the write always happens synchronously on this actor.
+    private func handleSync(_ server: ControlServer, _ command: ControlCommand) -> ControlResponse {
+        final class Box: @unchecked Sendable { var response: ControlResponse? }
+        let box = Box()
+        server.handle(command) { box.response = $0 }
+        return box.response!
+    }
+
     func testStatusSetDispatch() throws {
         let (server, id) = try seededServer()
-        let response = server.handle(
-            ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "blocked"))
+        let response = handleSync(
+            server, ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "blocked"))
         XCTAssertTrue(response.ok)
     }
 
     func testStatusSetRejectsUnknownState() throws {
         let (server, id) = try seededServer()
-        let response = server.handle(
-            ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "bogus"))
+        let response = handleSync(
+            server, ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "bogus"))
         XCTAssertFalse(response.ok)
     }
 
     func testUnresolvableTargetFails() throws {
         let (server, _) = try seededServer()
-        let response = server.handle(
-            ControlCommand(verb: .diffOpen, workspace: "ghost"))
+        let response = handleSync(server, ControlCommand(verb: .diffOpen, workspace: "ghost"))
         XCTAssertFalse(response.ok)
         XCTAssertNotNil(response.error)
     }
 
     func testWorkspaceListDispatch() throws {
         let (server, _) = try seededServer()
-        let response = server.handle(ControlCommand(verb: .workspaceList))
+        let response = handleSync(server, ControlCommand(verb: .workspaceList))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspaces?.count, 1)
     }
 
     func testBrowserCloseDispatch() throws {
         let (server, id) = try seededServer()
-        let response = server.handle(
-            ControlCommand(verb: .browserClose, workspace: id.uuidString))
+        let response = handleSync(server, ControlCommand(verb: .browserClose, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspace, id.uuidString)
     }
 
     func testDiffCloseDispatch() throws {
         let (server, id) = try seededServer()
-        let response = server.handle(
-            ControlCommand(verb: .diffClose, workspace: id.uuidString))
+        let response = handleSync(server, ControlCommand(verb: .diffClose, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspace, id.uuidString)
     }

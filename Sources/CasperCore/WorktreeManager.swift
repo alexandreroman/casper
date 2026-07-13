@@ -10,11 +10,33 @@ struct WorktreeError: Error, Equatable, Sendable {
         case worktreePathExists
         case mergeConflict
         case fileCopyFailed(String)
+        case configInvalid(String)
         case gitFailure(String)
     }
 
     let reason: Reason
     init(_ reason: Reason) { self.reason = reason }
+}
+
+extension WorktreeError: LocalizedError {
+    var errorDescription: String? {
+        switch reason {
+        case .repositoryNotFound:
+            return "Repository not found."
+        case .branchAlreadyCheckedOut:
+            return "That branch is already checked out in another worktree."
+        case .worktreePathExists:
+            return "The worktree path already exists."
+        case .mergeConflict:
+            return "The merge could not be completed automatically due to conflicts."
+        case .fileCopyFailed(let message):
+            return "Failed to copy workspace files: \(message)"
+        case .configInvalid(let message):
+            return "Invalid .casper.json: \(message)"
+        case .gitFailure(let message):
+            return "Git error: \(message)"
+        }
+    }
 }
 
 /// The result of creating a worktree: enough to build a `Workspace`.
@@ -48,11 +70,14 @@ public enum WorktreeManager {
     }
 
     /// Create a worktree named `name` (on a new branch of the same name, based
-    /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`. After
-    /// the git-level worktree is created, copies files matching
-    /// `WorkspaceFileCopier.defaultPatterns` from `repoPath` into `worktreePath`; a
-    /// copy failure rolls back the worktree and branch so nothing is left
-    /// half-created on disk.
+    /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`.
+    /// Before any Git mutation, loads `<repoPath>/.casper.json`; a malformed or
+    /// unreadable file throws `WorktreeError(.configInvalid)` so nothing is created. After the
+    /// git-level worktree is created, copies files matching the config's
+    /// `workspace.copyPatterns` (or `WorkspaceFileCopier.defaultPatterns` when the
+    /// file is absent or does not specify them) from `repoPath` into
+    /// `worktreePath`; a copy failure rolls back the worktree and branch so
+    /// nothing is left half-created on disk.
     public static func create(
         repoPath: String, name: String, worktreePath: String, base: String?
     ) throws -> CreatedWorktree {
@@ -65,12 +90,24 @@ public enum WorktreeManager {
             throw WorktreeError(.worktreePathExists)
         }
 
+        // Validate the per-repo config before creating anything, so a malformed
+        // file aborts with nothing half-created (no rollback needed here).
+        let config: RepoConfig?
+        do {
+            config = try RepoConfig.load(fromRepoRoot: repoPath)
+        } catch let error as RepoConfigError {
+            throw WorktreeError(.configInvalid(error.reason))
+        }
+        let patterns = config?.copyPatterns(default: WorkspaceFileCopier.defaultPatterns)
+            ?? WorkspaceFileCopier.defaultPatterns
+
         let info = try mapGitError {
             try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
         }
 
         do {
-            _ = try WorkspaceFileCopier.copy(from: repoPath, to: worktreePath)
+            _ = try WorkspaceFileCopier.copy(
+                patterns: patterns, from: repoPath, to: worktreePath)
         } catch {
             try? remove(repoPath: repoPath, name: name)
             try? deleteBranch(repoPath: repoPath, name: name)

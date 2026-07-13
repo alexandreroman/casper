@@ -44,4 +44,17 @@ final class ControlProtocolTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ControlResponse.self, from: data)
         XCTAssertEqual(decoded.workspaces, [info])
     }
+
+    func testRunVerbRoundTripsName() throws {
+        let command = ControlCommand(verb: .run, workspace: "feature", name: "test")
+        let data = try JSONEncoder().encode(command)
+        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
+        XCTAssertEqual(decoded, command)
+        XCTAssertEqual(decoded.verb, .run)
+        XCTAssertEqual(decoded.name, "test")
+    }
+
+    func testRunVerbRawValueIsStable() {
+        XCTAssertEqual(ControlCommand.Verb.run.rawValue, "run")
+    }
 }

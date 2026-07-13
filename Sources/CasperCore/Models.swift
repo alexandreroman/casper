@@ -272,6 +272,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var baseBranch: String?
     public var inspector: InspectorState
     public var lastUsedEditor: EditorKind?
+    public var lastUsedScript: String?
 
     public init(
         id: UUID = UUID(),
@@ -287,7 +288,8 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         kind: WorkspaceKind = .primary,
         baseBranch: String? = nil,
         inspector: InspectorState = InspectorState(),
-        lastUsedEditor: EditorKind? = nil
+        lastUsedEditor: EditorKind? = nil,
+        lastUsedScript: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -303,6 +305,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.baseBranch = baseBranch
         self.inspector = inspector
         self.lastUsedEditor = lastUsedEditor
+        self.lastUsedScript = lastUsedScript
     }
 
     // Full case set required now that both `init(from:)` and `encode(to:)` are
@@ -313,7 +316,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, name, worktreePath, branch, agentState, todos
         case pendingNotification, pendingNotificationMessage
-        case portBase, layout, kind, baseBranch, inspector, lastUsedEditor
+        case portBase, layout, kind, baseBranch, inspector, lastUsedEditor, lastUsedScript
     }
 
     /// Encodes every persisted field, deliberately omitting the four transient
@@ -334,6 +337,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         try c.encodeIfPresent(baseBranch, forKey: .baseBranch)
         try c.encode(inspector, forKey: .inspector)
         try c.encodeIfPresent(lastUsedEditor, forKey: .lastUsedEditor)
+        try c.encodeIfPresent(lastUsedScript, forKey: .lastUsedScript)
     }
 
     /// Decodes every persisted field normally and defaults `inspector` when it's
@@ -360,6 +364,7 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.inspector = try container.decodeIfPresent(InspectorState.self, forKey: .inspector)
             ?? InspectorState()
         self.lastUsedEditor = try container.decodeIfPresent(EditorKind.self, forKey: .lastUsedEditor)
+        self.lastUsedScript = try container.decodeIfPresent(String.self, forKey: .lastUsedScript)
     }
 }
 

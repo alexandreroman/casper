@@ -105,7 +105,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         else { return XCTFail("setup failed") }
         try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
 
-        XCTAssertEqual(model.closeWorkspace(id: created.id), .success)
+        var outcome: AppModel.WorkspaceCloseOutcome?
+        model.closeWorkspace(id: created.id) { outcome = $0 }
+        XCTAssertEqual(outcome, .success)
 
         XCTAssertNil(model.workspace(id: created.id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: created.worktreePath))
@@ -123,7 +125,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
         model.selectWorkspace(created.id)
 
-        XCTAssertEqual(model.closeWorkspace(id: created.id), .success)
+        var outcome: AppModel.WorkspaceCloseOutcome?
+        model.closeWorkspace(id: created.id) { outcome = $0 }
+        XCTAssertEqual(outcome, .success)
 
         XCTAssertEqual(model.selectedWorkspaceID, primaryID)
     }
@@ -137,7 +141,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         try commitFile(atPath: created.worktreePath, filename: "README.md", content: "from feature\n")
         try commitFile(atPath: repoPath, filename: "README.md", content: "from main\n")
 
-        guard case .mergeFailed = model.closeWorkspace(id: created.id) else {
+        var outcome: AppModel.WorkspaceCloseOutcome?
+        model.closeWorkspace(id: created.id) { outcome = $0 }
+        guard case .mergeFailed = try XCTUnwrap(outcome) else {
             return XCTFail("expected a merge failure")
         }
 
@@ -155,7 +161,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         else { return XCTFail("setup failed") }
         try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
 
-        guard case .success = model.deleteWorkspace(id: created.id) else {
+        var result: Result<Void, AppModel.WorkspaceDeleteError>?
+        model.deleteWorkspace(id: created.id) { result = $0 }
+        guard case .success = try XCTUnwrap(result) else {
             return XCTFail("expected delete to succeed")
         }
 
@@ -175,7 +183,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         else { return XCTFail("setup failed") }
         model.selectWorkspace(created.id)
 
-        guard case .success = model.deleteWorkspace(id: created.id) else {
+        var result: Result<Void, AppModel.WorkspaceDeleteError>?
+        model.deleteWorkspace(id: created.id) { result = $0 }
+        guard case .success = try XCTUnwrap(result) else {
             return XCTFail("expected delete to succeed")
         }
 
@@ -190,7 +200,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         else { return XCTFail("setup failed") }
         try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
 
-        XCTAssertEqual(model.closeWorkspace(id: created.id), .success)
+        var outcome: AppModel.WorkspaceCloseOutcome?
+        model.closeWorkspace(id: created.id) { outcome = $0 }
+        XCTAssertEqual(outcome, .success)
 
         // The primary's own working directory (not just its HEAD tree) now
         // has the merged file — the whole point of the resync.
@@ -208,7 +220,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         let dirtyPath = URL(fileURLWithPath: repoPath).appendingPathComponent("dirty.txt")
         try "uncommitted\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
 
-        guard case .mergeFailed = model.closeWorkspace(id: created.id) else {
+        var outcome: AppModel.WorkspaceCloseOutcome?
+        model.closeWorkspace(id: created.id) { outcome = $0 }
+        guard case .mergeFailed = try XCTUnwrap(outcome) else {
             return XCTFail("expected a merge failure")
         }
 
@@ -231,7 +245,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         let dirtyPath = URL(fileURLWithPath: created.worktreePath).appendingPathComponent("dirty.txt")
         try "uncommitted\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
 
-        guard case .mergeFailed = model.closeWorkspace(id: created.id) else {
+        var outcome: AppModel.WorkspaceCloseOutcome?
+        model.closeWorkspace(id: created.id) { outcome = $0 }
+        guard case .mergeFailed = try XCTUnwrap(outcome) else {
             return XCTFail("expected a merge failure")
         }
 

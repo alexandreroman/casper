@@ -26,6 +26,7 @@
 - [CLI availability](references/cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
 - [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir
 - [Surface command runs via bash exec](references/surface-command-bash-exec.md) — `--command` isn't inert; the vendored fork execs it through bash regardless of `$SHELL`, so zsh-only PATH (Homebrew, mise) is unavailable
+- [libghostty initial_input mojibakes non-ASCII](references/ghostty-initial-input-utf8.md) — don't use `initial_input`; inject queued input via `ghostty_surface_text` (UTF-8-safe) post-spawn
 - [Debug channel and logging gating](references/debug-channel-gating.md) — debug control channel is `#if DEBUG` only, never in release; verbose logs gated, `.error`/`.fault` kept
 - [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync layer.contentsScale to window.backingScaleFactor or the render upscales ×2
 - [libghostty key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint on the key event; keycode+mods alone emits nothing
@@ -45,7 +46,7 @@
 - [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a native Menu mid-hierarchy breaks glassEffect's compositing; use explicit Color background + strokeBorder instead
 - [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — for native macOS terminal UI/interaction features, match Ghostty's macOS Swift source instead of improvising
 - [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — overlays set the cursor via cursorUpdate AND mouseEntered, reset to arrow on exit; never push/pop or addCursorRect alone; splitter uses SplitterHandleView (not .pointerStyle)
-- [Driving the Casper GUI with synthetic mouse input](references/casper-gui-synthetic-input.md) — no debug mouse verb; use CGEvent but make the window key first, park cursor off-window for clean captures
+- [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — no debug mouse verb; use CGEvent but make the window key first, park cursor off-window for clean captures
 - [Browser address bar select-all on click](references/browser-address-bar-select-all.md) — field is already first-responder on tab show; select-all in NSTextField.mouseDown after super (not on focus transition), gated on empty selection
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — aborts with no bundle id; `make dev` now has one via Casper-dev.app, so notifications work again (guard on `Bundle.main.bundleIdentifier` stays for safety)
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — custom sound falls back to default; OS-level bug, not signing; fix is reboot+reinstall, not code
@@ -62,3 +63,6 @@
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module checks only the .app root + a machine-local build path, never Contents/Resources; the runtime mirror is required, not redundant
 - [Diff-view refresh hang (open incident)](references/diff-view-refresh-hang.md) — unreproduced SwiftUI-layout beachball on diff refresh; a `diff refresh:` .notice log line catches the next occurrence (watch maxLineLen); the nested-LazyVStack mitigation was reverted (broke layout)
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — non-empty `spaces` always has a resolvable `selectedWorkspaceID`; homepage shows only when `spaces.isEmpty`; watch `selectWorkspace` sets-before-validates
+- [.casper.json scripts — design decisions & invariants](references/repo-config.md) — copyPatterns + named commands + setup/teardown hooks: the child-exit/close race invariant, hook-wrap vs subshell-wrap, completion-based destroy, menu ordering
+- [Project memory file naming](references/memory-file-naming.md) — don't prefix memory filenames with `casper` (redundant)
+- [Feature status vs project memory](references/project-memory-vs-status.md) — implementation status goes in `.superpowers/status.md`, not project memory (durable decisions only)

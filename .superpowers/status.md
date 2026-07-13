@@ -309,6 +309,44 @@ no longer installed is never returned (it is not cleared either — if
 reinstalled later, the original preference is honored again); the primary
 button falls back to a working editor instead of guaranteeing a launch error.
 
+## Per-repository config (`.casper.json`) — ✅
+
+A repo can drop a `.casper.json` at its root (config under a `workspace` key) to
+customize its workspaces. Implemented on branch `casper-json`; the setup/teardown
+split lifecycle still wants one human visual pass (agents can't screenshot the
+SwiftUI/terminal chrome).
+
+**copyPatterns.** `workspace.copyPatterns` replaces the built-in `.env`/`.env.local`
+default for seeding untracked files into a new worktree (`[]` copies nothing). An
+invalid entry fails workspace creation before any Git mutation. `RepoConfig`
+(CasperCore) loads/validates; malformed files surface `Invalid .casper.json: …`.
+
+**Named commands.** `workspace.scripts` keys other than the reserved
+`setup`/`teardown` are on-demand commands, run in a visible split. Triggers: a
+`casper run [name]` CLI subcommand (defaults to `run`), a "Run Script"
+split-button in the workspace toolbar (mirrors the editor button — primary runs
+the resolved script, menu selects), and a "Run Script ▸" sidebar context submenu.
+`ControlCommand.Verb.run` + `RepoConfig.resolveRunCommand` (refuses reserved
+names). Listed alphabetically (JSON object key order isn't preserved by decoding);
+default selection = `lastUsedScript` → `run` → first.
+
+**Lifecycle hooks.** Reserved `setup`/`teardown` run automatically, never
+invocable by hand. A surface-scoped `GhosttySurfaceView.onChildExit(UUID, Int32)`
+(from `GHOSTTY_ACTION_SHOW_CHILD_EXITED`) feeds an AppModel script-surface
+controller; hooks are wrapped `"<cmd>\nexit $?"` so the shell exits with the
+command's status. **setup** runs from `createLinkedWorkspace` only (never on
+restore) — exit 0 auto-closes its split, exit ≠ 0 keeps it open and flags the
+workspace `.error`. **teardown** runs before prune (after the merge on the close
+path) — the 3 destroy paths are now completion-based and prune after child-exit or
+a 30 s timeout, whichever first, whatever the outcome; `ControlServer.handle` is
+reply-based so `casper workspace delete` replies after prune (CLI `timeout: 35`).
+The child-exit-before-close ordering invariant and its correctness corollaries are
+recorded in the `repo-config` project-memory note.
+
+**Docs & tests.** `README.md` documents `.casper.json` and `casper run`. Full
+suite green (595 tests). See the ledger (`.superpowers/sdd/progress.md`) for the
+per-task history.
+
 ## Developer tooling (`#if DEBUG`)
 
 - **Debug & observability channel — ✅.** `DebugProtocol`/`DebugSocket`/

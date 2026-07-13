@@ -32,6 +32,9 @@ final class AppModel {
     /// `WorkspaceDetailView`. Not part of any persisted model.
     var editorLaunchError: String?
 
+    /// Set when `runScript` fails to launch; drives a `.alert` in WorkspaceDetailView.
+    var scriptRunError: String?
+
     /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
     /// makes repeated requests for the same file distinct so the view re-scrolls.
     struct DiffScrollTarget: Equatable {
@@ -169,6 +172,38 @@ final class AppModel {
     /// with an empty map, so a restored terminal never re-runs its original
     /// launch command (see the `surface-command-bash-exec` project memory note).
     @ObservationIgnored private var pendingInitialInput: [UUID: String] = [:]
+
+    /// Per-workspace named commands from `.casper.json`, refreshed on selection so
+    /// SwiftUI never reads the file during `body`.
+    @ObservationIgnored private var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
+
+    enum ScriptHookKind { case setup, teardown }
+
+    /// A terminal split running a lifecycle hook (`setup`/`teardown`). Tracked so the
+    /// child-exit event can be correlated with the pane's close request.
+    private struct ScriptSurface {
+        let kind: ScriptHookKind
+        let workspaceID: UUID
+        /// Teardown completion (delivers the exit code, or is called on timeout by the
+        /// runner); nil for setup.
+        var onExit: ((Int32) -> Void)?
+    }
+
+    @ObservationIgnored private var scriptSurfaces: [UUID: ScriptSurface] = [:]
+    /// Surfaces of a FAILED setup whose one shell-exit-driven close must be swallowed
+    /// so the pane stays open showing the error output.
+    @ObservationIgnored private var keptFailedSetupSurfaces: Set<UUID> = []
+
+    /// How long a `teardown` hook may run before the workspace is pruned anyway. A
+    /// broken cleanup script must never trap the user in the workspace.
+    static let teardownTimeout: TimeInterval = 30
+
+    /// Workspaces whose teardown hook is in flight and whose prune has not run yet,
+    /// mapped to that prune. Presence is the once-latch: both the child-exit and the
+    /// timeout paths check-and-remove the id, so the prune fires exactly once
+    /// (whichever arrives first wins). Main-actor-isolated, so the check-and-remove
+    /// needs no other synchronization. Transient, never persisted.
+    @ObservationIgnored private var pendingTeardownPrunes: [UUID: @MainActor () -> Void] = [:]
 
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
     /// agent detector. `AgentStateResolver` is a value type carried across ticks,
@@ -412,6 +447,16 @@ final class AppModel {
             // The inspector browser lives outside the layout tree, so its coordinator
             // must be discarded explicitly alongside the terminal surfaces.
             discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
+            // removeSpace doesn't delegate to removeWorkspace, so prune the per-surface
+            // setup-hook maps here too (mirrors removeWorkspace) to avoid leaking entries
+            // when a Space is removed while a setup split is live.
+            for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
+                scriptSurfaces[surfaceID] = nil
+                keptFailedSetupSurfaces.remove(surfaceID)
+            }
+            // Clear the teardown once-latch (keyed by workspace id) without invoking
+            // its prune — the Space and its worktrees are being discarded outright.
+            pendingTeardownPrunes[ws.id] = nil
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
@@ -492,8 +537,7 @@ final class AppModel {
         } catch {
             portAllocator.release(portBase)
             CasperLog.app.failure("worktree creation failed", error)
-            return .failure(
-                WorkspaceCreationError(message: "worktree creation failed: \(error.localizedDescription)"))
+            return .failure(WorkspaceCreationError(message: error.localizedDescription))
         }
         let ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch, worktreePath: worktreePath, branch: branch,
@@ -504,6 +548,14 @@ final class AppModel {
         spaces[si].workspaces.append(ws)
         selectWorkspace(ws.id)
         persist()
+        // Run the repo's `setup` lifecycle hook (if any) in a visible split, once,
+        // at creation only — never on restore/re-open (this call site is the guard,
+        // so no persisted "setup ran" flag is needed). A malformed .casper.json
+        // already failed creation in WorktreeManager.create above (Part A); this
+        // re-read's `try?`/nil therefore just means "no setup script".
+        if let setup = (try? RepoConfig.load(fromRepoRoot: worktreePath))??.setupScript() {
+            spawnScriptSurface(kind: .setup, in: ws.id, command: setup, onExit: nil)
+        }
         return .success(ws)
     }
 
@@ -521,6 +573,16 @@ final class AppModel {
         // long session (both the close and control-destroy paths funnel through here).
         explicitAuthority.remove(id)
         agentResolvers[id] = nil
+        namedCommandsCache[id] = nil
+        // Clear the teardown once-latch (keyed by workspace id) without invoking its
+        // prune — the workspace is already being dropped here.
+        pendingTeardownPrunes[id] = nil
+        // Prune the per-surface setup-hook maps too, so a workspace deleted while its
+        // setup split is live doesn't leak its surface entries.
+        for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
+            scriptSurfaces[surfaceID] = nil
+            keptFailedSetupSurfaces.remove(surfaceID)
+        }
         if selectedWorkspaceID == id {
             selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }
@@ -540,6 +602,7 @@ final class AppModel {
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
         guard let id, let ws = workspace(id: id) else { return }
+        refreshNamedCommands(for: id)
         // A selected workspace must be visible: expand its owning Space if it was
         // collapsed. Only mutate when actually collapsed, so an already-expanded
         // Space doesn't run a redundant no-op animation.
@@ -821,6 +884,29 @@ final class AppModel {
     /// unless linked workspaces depend on that Space, in which case the Space stays
     /// and the primary is re-seeded with a fresh terminal.
     func applyCloseSurface(_ surfaceID: UUID) {
+        // Both setup guards below correlate a surface's child-exit with the
+        // close_surface_cb libghostty delivers for it afterward — the same assumption
+        // every shell-exit-driven pane close relies on (true for the current pin). If a
+        // future pin suppressed that close, a successful setup's split would linger, and
+        // the failure marker would instead swallow the user's first manual close.
+        // A setup surface whose exit hasn't been processed yet is never torn down by
+        // an early/stray close — its fate is decided by handleScriptSurfaceExit.
+        if scriptSurfaces[surfaceID]?.kind == .setup { return }
+        // Swallow the one shell-exit-driven close that follows a FAILED setup so the
+        // pane (with its error output) survives; a later user close then proceeds
+        // normally (marker consumed, tag gone).
+        if keptFailedSetupSurfaces.remove(surfaceID) != nil { return }
+        // A teardown split still carrying its tag is being closed before its
+        // child-exit was processed — i.e. the user closed it manually. Fire the
+        // pending prune now instead of waiting out the 30s timeout, then let the
+        // prune tear the whole workspace (including this split) down. In the normal
+        // flow the tag is already cleared by handleScriptSurfaceExit before this
+        // close arrives, so this branch is skipped.
+        if let script = scriptSurfaces[surfaceID], script.kind == .teardown {
+            scriptSurfaces[surfaceID] = nil
+            fireTeardownPrune(id: script.workspaceID)
+            return
+        }
         guard let at = locateSurface(surfaceID) else { return }
         let wasFocused = focusedSurfaceID == surfaceID
         let (layout, newFocus) = LayoutTree.closeSurface(
@@ -900,7 +986,8 @@ final class AppModel {
             onAttach: { [weak self] id in self?.focusSurfaceViewIfActive(id) },
             onClose: { [weak self] id in self?.applyCloseSurface(id) },
             onContextMenu: { [weak self, id = surface.id] _ in self?.paneContextMenu(for: id) },
-            onFontSizeChange: { [weak self] id, size in self?.updateSurfaceFontSize(id, size: size) })
+            onFontSizeChange: { [weak self] id, size in self?.updateSurfaceFontSize(id, size: size) },
+            onChildExit: { [weak self] id, code in self?.handleScriptSurfaceExit(id, code: code) })
         surfaceViews[surface.id] = view
         return view
     }
@@ -1081,6 +1168,62 @@ final class AppModel {
         guard let at = locate(workspaceID) else { return }
         spaces[at.space].workspaces[at.workspace].lastUsedEditor = kind
         persist()
+    }
+
+    /// The workspace's named commands (`.casper.json`, non-reserved, sorted).
+    /// Cached; a cache miss loads and stores lazily.
+    func namedCommands(for workspaceID: UUID) -> [RepoNamedCommand] {
+        if let cached = namedCommandsCache[workspaceID] { return cached }
+        let commands = loadNamedCommands(for: workspaceID)
+        namedCommandsCache[workspaceID] = commands
+        return commands
+    }
+
+    private func loadNamedCommands(for workspaceID: UUID) -> [RepoNamedCommand] {
+        guard let ws = workspace(id: workspaceID),
+              let config = (try? RepoConfig.load(fromRepoRoot: ws.worktreePath)) ?? nil
+        else { return [] }
+        return config.namedCommands()
+    }
+
+    /// Re-read a workspace's named commands (e.g. after it becomes selected).
+    private func refreshNamedCommands(for workspaceID: UUID) {
+        namedCommandsCache[workspaceID] = loadNamedCommands(for: workspaceID)
+    }
+
+    /// The command the toolbar's primary button runs: the remembered last-used
+    /// command if still defined, else `run`, else the first alphabetically.
+    func resolvedScript(for workspace: Workspace) -> RepoNamedCommand? {
+        let commands = namedCommands(for: workspace.id)
+        if let last = workspace.lastUsedScript,
+           let match = commands.first(where: { $0.name == last }) {
+            return match
+        }
+        if let run = commands.first(where: { $0.name == "run" }) { return run }
+        return commands.first
+    }
+
+    /// Remember a workspace's script without running it — the toolbar menu's
+    /// action (mirrors `selectEditor`); the primary button runs the remembered one.
+    func selectScript(_ name: String, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        spaces[at.space].workspaces[at.workspace].lastUsedScript = name
+        persist()
+    }
+
+    /// Run a named command in a visible terminal and remember it. On failure,
+    /// sets `scriptRunError` (surfaced by an alert).
+    func runScript(_ name: String, for workspaceID: UUID) {
+        switch controlRun(name: name, in: workspaceID) {
+        case .success:
+            if let at = locate(workspaceID) {
+                spaces[at.space].workspaces[at.workspace].lastUsedScript = name
+            }
+            scriptRunError = nil
+            persist()
+        case .failure(let error):
+            scriptRunError = error.message
+        }
     }
 
     /// Persist the inspector panel's width for a workspace. Called from the panel's
@@ -1525,6 +1668,11 @@ final class AppModel {
         }
     }
 
+    /// Why a `casper run <name>` request could not launch a command.
+    struct ControlRunError: Error, Equatable {
+        let message: String
+    }
+
     /// Open a new terminal in `workspaceID` by splitting its top-left surface to
     /// the right. Mirrors the toolbar's "new terminal" action, but targeted at an
     /// arbitrary (non-selected) workspace, and allows overriding the working
@@ -1540,6 +1688,163 @@ final class AppModel {
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
+    }
+
+    /// Spawn a visible split in `workspaceID` running a lifecycle hook, tagged in
+    /// `scriptSurfaces` so its child-exit is correlated. Mirrors `controlOpenTerminal`
+    /// but hook-wraps the command and registers the tag BEFORE splitting. Returns the
+    /// new surface id, or nil if the workspace/anchor can't be resolved.
+    @discardableResult
+    private func spawnScriptSurface(
+        kind: ScriptHookKind, in workspaceID: UUID, command: String,
+        onExit: ((Int32) -> Void)?
+    ) -> UUID? {
+        guard let ws = workspace(id: workspaceID),
+              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
+              let at = locateSurface(anchor) else { return nil }
+        let surface = Surface.terminal(cwd: ws.worktreePath)
+        scriptSurfaces[surface.id] = ScriptSurface(kind: kind, workspaceID: workspaceID, onExit: onExit)
+        pendingInitialInput[surface.id] = Self.hookWrappedScriptCommand(command)
+        insertSurfaceBySplitting(
+            at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
+        return surface.id
+    }
+
+    /// Called when a surface's child process exits (via GhosttySurfaceView.onChildExit).
+    /// No-op for ordinary panes (not in `scriptSurfaces`).
+    func handleScriptSurfaceExit(_ surfaceID: UUID, code: Int32) {
+        guard let script = scriptSurfaces.removeValue(forKey: surfaceID) else { return }
+        switch script.kind {
+        case .setup:
+            if code != 0 {
+                // Failure: keep the pane open showing the output, swallow the single
+                // shell-exit-driven close that follows (see keptFailedSetupSurfaces /
+                // applyCloseSurface), and flag the workspace.
+                keptFailedSetupSurfaces.insert(surfaceID)
+                setDetectedAgentState(.error, for: script.workspaceID)
+                CasperLog.app.error("setup script failed (exit \(code)); keeping the split open")
+            }
+            // On success there is nothing to do here: the tag is already cleared, so
+            // the deferred close_surface_cb (fired by the shell's own exit) tears the
+            // split down through the normal path. We must NOT close eagerly — this runs
+            // synchronously inside libghostty's action_cb, and tearing views down
+            // mid-tick is the sibling-detachment hazard that close_surface_cb defers.
+        case .teardown:
+            script.onExit?(code)
+        }
+    }
+
+    /// Run the workspace's `teardown` lifecycle hook (if any) in a visible split,
+    /// then run `prune` — exactly once. With NO teardown script, `prune` runs
+    /// synchronously in the caller's stack (destroy behaves as before). With one, the
+    /// teardown split is spawned and `prune` runs after the split's child exits OR
+    /// `teardownTimeout` elapses, whichever comes first; any non-zero exit or timeout
+    /// is logged and the prune proceeds regardless (a broken teardown never blocks
+    /// deletion). The prune is always dispatched to the next runloop turn (never run
+    /// synchronously inside the child-exit callback) to avoid tearing views down
+    /// mid-`ghostty_app_tick`.
+    func runTeardownThenPrune(id workspaceID: UUID, then prune: @escaping @MainActor () -> Void) {
+        guard let ws = workspace(id: workspaceID),
+              let teardown = (try? RepoConfig.load(fromRepoRoot: ws.worktreePath))??.teardownScript()
+        else {
+            prune()
+            return
+        }
+        // Arm the once-latch (its presence gates the prune) before either trigger.
+        pendingTeardownPrunes[workspaceID] = prune
+        guard spawnScriptSurface(
+            kind: .teardown, in: workspaceID, command: teardown,
+            onExit: { [weak self] code in
+                // Delivered synchronously inside ghostty_app_tick on the main actor; the
+                // prune it triggers is deferred off this callback (see fireTeardownPrune).
+                MainActor.assumeIsolated {
+                    guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
+                    if code != 0 {
+                        CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
+                    }
+                    self.fireTeardownPrune(id: workspaceID)
+                }
+            }) != nil
+        else {
+            // Couldn't create the teardown split: prune now rather than stalling
+            // until the timeout.
+            fireTeardownPrune(id: workspaceID)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownTimeout) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
+                CasperLog.app.error(
+                    "teardown script timed out after \(Int(Self.teardownTimeout))s; pruning anyway")
+                self.fireTeardownPrune(id: workspaceID)
+            }
+        }
+    }
+
+    /// Run a teardown workspace's latched prune exactly once, deferred to the next
+    /// runloop turn. The child-exit caller runs synchronously inside `ghostty_app_tick`,
+    /// where tearing views down mid-tick detaches sibling panes, so the prune must
+    /// never run inline. A no-op once the latch has been cleared by the other path.
+    private func fireTeardownPrune(id workspaceID: UUID) {
+        guard let prune = pendingTeardownPrunes.removeValue(forKey: workspaceID) else { return }
+        DispatchQueue.main.async { MainActor.assumeIsolated { prune() } }
+    }
+
+    /// True while a teardown hook is in flight for this workspace (its prune is
+    /// pending). Used to reject a re-entrant destroy that would drop the first
+    /// caller's completion and spawn a duplicate teardown split.
+    private func teardownInFlight(_ workspaceID: UUID) -> Bool { pendingTeardownPrunes[workspaceID] != nil }
+
+    /// Wrap a `casper run` command in a subshell so a script that calls `exit`
+    /// (or fails under `set -e`) terminates only the subshell — the interactive
+    /// terminal stays open with the script's output visible, instead of the
+    /// shell exiting and the pane closing. The command sits on its own line
+    /// (between newlines) so a trailing `#` comment in it cannot swallow the
+    /// closing paren.
+    static func subshellWrappedScriptCommand(_ command: String) -> String {
+        "(\n\(command)\n)"
+    }
+
+    /// Wrap a lifecycle-hook command so the shell runs it and then exits with its
+    /// status: `<command>\nexit $?`. The trailing `exit` makes libghostty emit a
+    /// child-exit event carrying the status (the completion signal the hook needs) —
+    /// the deliberate opposite of `subshellWrappedScriptCommand`, which keeps the
+    /// pane open. The newline (not `; `) ensures a trailing `#` comment on the
+    /// command's last line cannot swallow `exit $?`.
+    static func hookWrappedScriptCommand(_ command: String) -> String {
+        "\(command)\nexit $?"
+    }
+
+    /// Run the named command `name` (defaulting to `run`) from the workspace's
+    /// `.casper.json` in a new visible terminal. Refuses reserved lifecycle names
+    /// and unknown commands with a clear message.
+    func controlRun(name: String?, in workspaceID: UUID) -> Result<ControlTerminalInfo, ControlRunError> {
+        guard let ws = workspace(id: workspaceID) else {
+            return .failure(ControlRunError(message: "workspace not found"))
+        }
+        let requested = name ?? "run"
+        let config: RepoConfig
+        do {
+            guard let loaded = try RepoConfig.load(fromRepoRoot: ws.worktreePath) else {
+                return .failure(ControlRunError(message: "no .casper.json in this workspace"))
+            }
+            config = loaded
+        } catch let error as RepoConfigError {
+            return .failure(ControlRunError(message: "Invalid .casper.json: \(error.reason)"))
+        } catch {
+            return .failure(ControlRunError(message: error.localizedDescription))
+        }
+        switch config.resolveRunCommand(requested) {
+        case .denied(let message):
+            return .failure(ControlRunError(message: message))
+        case .command(let command):
+            guard let info = controlOpenTerminal(
+                in: workspaceID, command: Self.subshellWrappedScriptCommand(command), cwd: nil)
+            else {
+                return .failure(ControlRunError(message: "cannot open terminal"))
+            }
+            return .success(info)
+        }
     }
 
     /// List the terminal surfaces of `workspaceID` in visual (depth-first) order.
@@ -1680,9 +1985,20 @@ final class AppModel {
         return .success(())
     }
 
-    @discardableResult
-    func controlDeleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
-        pruneWorkspaceFromDisk(id: workspaceID)
+    func controlDeleteWorkspace(
+        id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void
+    ) {
+        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
+            completion(pruneWorkspaceFromDisk(id: workspaceID)); return  // precise error, no teardown
+        }
+        _ = ws
+        guard !teardownInFlight(workspaceID) else {
+            completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
+        }
+        runTeardownThenPrune(id: workspaceID) { [weak self] in
+            completion(self?.pruneWorkspaceFromDisk(id: workspaceID)
+                ?? .failure(WorkspaceDeleteError(message: "workspace not found")))
+        }
     }
 
     /// Merge a linked workspace's branch into its recorded `baseBranch`, then
@@ -1702,24 +2018,26 @@ final class AppModel {
     /// UI removal. Never presents UI itself: the confirmation presenter owns
     /// showing any failure alert, which keeps this safe to call from tests
     /// without spawning a real `NSAlert`.
-    @discardableResult
-    func closeWorkspace(id workspaceID: UUID) -> WorkspaceCloseOutcome {
+    func closeWorkspace(id workspaceID: UUID, completion: @escaping (WorkspaceCloseOutcome) -> Void) {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked,
               let space = space(for: ws), space.isGitRepo,
               let baseBranch = ws.baseBranch, !baseBranch.isEmpty,
               let primary = space.workspaces.first(where: { $0.kind == .primary })
         else {
-            return .mergeFailed(message: "workspace not found or has no base branch")
+            completion(.mergeFailed(message: "workspace not found or has no base branch")); return
         }
         guard (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == true else {
-            return .mergeFailed(
+            completion(.mergeFailed(
                 message: "\u{201c}\(ws.name)\u{201d} has uncommitted changes. Commit or discard "
-                    + "them before merging.")
+                    + "them before merging.")); return
         }
         guard (try? WorktreeManager.isClean(repoPath: primary.worktreePath)) == true else {
-            return .mergeFailed(
+            completion(.mergeFailed(
                 message: "\u{201c}\(primary.name)\u{201d} (branch \u{201c}\(baseBranch)\u{201d}) has "
-                    + "uncommitted changes. Commit or discard them there before merging.")
+                    + "uncommitted changes. Commit or discard them there before merging.")); return
+        }
+        guard !teardownInFlight(workspaceID) else {
+            completion(.mergeFailed(message: "This workspace is already being closed.")); return
         }
         do {
             _ = try WorktreeManager.merge(
@@ -1727,38 +2045,51 @@ final class AppModel {
                 message: "Merge branch '\(ws.branch)' into \(baseBranch)")
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
-            return .mergeFailed(
+            completion(.mergeFailed(
                 message: "The merge into \u{201c}\(baseBranch)\u{201d} could not be completed "
                     + "automatically. Resolve it manually (e.g. in a terminal), then try again. "
-                    + "Nothing was deleted.")
+                    + "Nothing was deleted.")); return
         }
-        if case .failure(let error) = pruneWorkspaceFromDisk(id: workspaceID) {
-            CasperLog.app.failure("close workspace: disk cleanup failed", error)
-            return .cleanupFailed(
-                message: "The merge succeeded, but the worktree or branch could not be removed "
-                    + "from disk: \(error.message)")
+        // Merge done; the worktree still exists so teardown has a valid cwd. Run it,
+        // then prune + resync, delivering the outcome when that completes.
+        runTeardownThenPrune(id: workspaceID) { [weak self] in
+            // Nil-self means the app itself is tearing down — unreachable for the
+            // app-lifetime shared AppModel, so the reported outcome here is moot.
+            guard let self else { completion(.success); return }
+            if case .failure(let error) = self.pruneWorkspaceFromDisk(id: workspaceID) {
+                CasperLog.app.failure("close workspace: disk cleanup failed", error)
+                completion(.cleanupFailed(
+                    message: "The merge succeeded, but the worktree or branch could not be removed "
+                        + "from disk: \(error.message)")); return
+            }
+            // The primary is guaranteed clean at this point (checked above), so the
+            // resync is unconditional: mergeBranchHeadless never runs git_checkout,
+            // so without this the primary's `git status` would show the just-merged
+            // files as `deleted:` until someone checks out manually.
+            do {
+                try WorktreeManager.resyncWorkingTree(repoPath: primary.worktreePath)
+            } catch {
+                CasperLog.app.failure("close workspace: primary worktree resync failed", error)
+            }
+            completion(.success)
         }
-        // The primary is guaranteed clean at this point (checked above), so the
-        // resync is unconditional: mergeBranchHeadless never runs git_checkout,
-        // so without this the primary's `git status` would show the just-merged
-        // files as `deleted:` until someone checks out manually.
-        do {
-            try WorktreeManager.resyncWorkingTree(repoPath: primary.worktreePath)
-        } catch {
-            CasperLog.app.failure("close workspace: primary worktree resync failed", error)
-        }
-        return .success
     }
 
     /// Delete a linked workspace from disk without merging: prune its worktree,
     /// delete its branch, then drop it from the UI. Never presents UI itself —
     /// see `closeWorkspace`.
-    @discardableResult
-    func deleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+    func deleteWorkspace(id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void) {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
-            return .failure(WorkspaceDeleteError(message: "workspace not found"))
+            completion(.failure(WorkspaceDeleteError(message: "workspace not found"))); return
         }
-        return pruneWorkspaceFromDisk(id: workspaceID)
+        _ = ws
+        guard !teardownInFlight(workspaceID) else {
+            completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
+        }
+        runTeardownThenPrune(id: workspaceID) { [weak self] in
+            completion(self?.pruneWorkspaceFromDisk(id: workspaceID)
+                ?? .failure(WorkspaceDeleteError(message: "workspace not found")))
+        }
     }
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
@@ -1780,15 +2111,18 @@ final class AppModel {
         mergeButton.hasDestructiveAction = true
         mergeButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        switch closeWorkspace(id: workspaceID) {
-        case .success:
-            break
-        case .mergeFailed(let message):
-            presentWorkspaceOperationFailureAlert(
-                title: "Could not close \u{201c}\(ws.name)\u{201d}", message: message)
-        case .cleanupFailed(let message):
-            presentWorkspaceOperationFailureAlert(
-                title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up", message: message)
+        closeWorkspace(id: workspaceID) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .success:
+                break
+            case .mergeFailed(let message):
+                self.presentWorkspaceOperationFailureAlert(
+                    title: "Could not close \u{201c}\(ws.name)\u{201d}", message: message)
+            case .cleanupFailed(let message):
+                self.presentWorkspaceOperationFailureAlert(
+                    title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up", message: message)
+            }
         }
     }
 
@@ -1810,9 +2144,11 @@ final class AppModel {
         deleteButton.hasDestructiveAction = true
         deleteButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        if case .failure(let error) = deleteWorkspace(id: workspaceID) {
-            presentWorkspaceOperationFailureAlert(
-                title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+        deleteWorkspace(id: workspaceID) { [weak self] result in
+            if case .failure(let error) = result {
+                self?.presentWorkspaceOperationFailureAlert(
+                    title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+            }
         }
     }
 

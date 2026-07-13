@@ -205,6 +205,67 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: repoDir.appendingPathComponent("feature.txt").path))
     }
+
+    private func writeRepoConfig(_ json: String) throws {
+        try json.write(
+            to: repoDir.appendingPathComponent(".casper.json"),
+            atomically: true, encoding: .utf8)
+    }
+
+    func testCreateHonorsCopyPatternsFromConfig() throws {
+        try "SECRET=1\n".write(
+            to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+        try "OTHER=1\n".write(
+            to: repoDir.appendingPathComponent(".env.local"), atomically: true, encoding: .utf8)
+        try writeRepoConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        let wtPath = root.appendingPathComponent("feature").path
+
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        let wt = URL(fileURLWithPath: wtPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wt.appendingPathComponent(".env").path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: wt.appendingPathComponent(".env.local").path))
+    }
+
+    func testCreateWithEmptyCopyPatternsCopiesNothing() throws {
+        try "SECRET=1\n".write(
+            to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+        try writeRepoConfig(#"{"workspace":{"copyPatterns":[]}}"#)
+        let wtPath = root.appendingPathComponent("feature").path
+
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: URL(fileURLWithPath: wtPath).appendingPathComponent(".env").path))
+    }
+
+    func testCreateWithInvalidConfigThrowsAndLeavesNothing() throws {
+        try writeRepoConfig("not json")
+        let wtPath = root.appendingPathComponent("feature").path
+
+        XCTAssertThrowsError(
+            try WorktreeManager.create(
+                repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        ) { error in
+            guard case .configInvalid = (error as? WorktreeError)?.reason else {
+                return XCTFail("expected .configInvalid, got \(error)")
+            }
+        }
+
+        // Nothing half-created: no worktree directory, no branch.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+        let branches = try WorktreeManager.list(repoPath: repoDir.path).map(\.name)
+        XCTAssertFalse(branches.contains("feature"))
+    }
+
+    func testConfigInvalidErrorMessageMentionsFile() throws {
+        let error = WorktreeError(.configInvalid("bad token at line 1"))
+        XCTAssertEqual(error.localizedDescription, "Invalid .casper.json: bad token at line 1")
+    }
 }
 
 /// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`
