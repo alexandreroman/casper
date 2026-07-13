@@ -195,7 +195,8 @@ final class SocketServerEngine<
         // `onCommand`) runs as a serial-queue item, so waiting for the queue to
         // drain guarantees any callback mid-flight has fully returned before
         // `stop()` returns. This is why `stop()` must not be called from within
-        // `onCommand` — it would deadlock.
+        // `onCommand` or `onFailure` — both run on `queue`, so either one calling
+        // `stop()` would self-deadlock on this barrier.
         queue.sync {}
         unlink(socketPath)
     }

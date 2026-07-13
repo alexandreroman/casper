@@ -27,5 +27,12 @@ final class GitBranchNameTests: XCTestCase {
         // the whole-string edges.
         XCTAssertEqual(GitBranchName.sanitize("a.lock/b"), "a/b")
         XCTAssertEqual(GitBranchName.sanitize("foo/.bar"), "foo/bar")
+        // The edge-trim can re-expose a forbidden `.lock` suffix, so per-component
+        // normalization and the trim must iterate to a fixpoint, not run once.
+        XCTAssertEqual(GitBranchName.sanitize("foo.lock"), "foo")
+        XCTAssertEqual(GitBranchName.sanitize("foo.lock."), "foo")
+        XCTAssertEqual(GitBranchName.sanitize("foo.lock-"), "foo")
+        XCTAssertEqual(GitBranchName.sanitize("foo-.lock"), "foo")
+        XCTAssertEqual(GitBranchName.sanitize("a.lock-.lock"), "a")
     }
 }
