@@ -42,11 +42,16 @@ public struct PortAllocator: Equatable, Sendable {
         self.used = []
     }
 
+    /// Number of aligned block bases in `[rangeStart, rangeEnd]`.
+    private static func blockCount(rangeStart: Int, rangeEnd: Int, blockSize: Int) -> Int {
+        (rangeEnd - rangeStart) / blockSize + 1
+    }
+
     /// A random aligned block base within `[rangeStart, rangeEnd]`, for seeding a
     /// per-instance `startBase`.
     public static func randomStartBase(rangeStart: Int = 40000, rangeEnd: Int = 49990,
                                        blockSize: Int = 10) -> Int {
-        let blockCount = (rangeEnd - rangeStart) / blockSize + 1
+        let blockCount = blockCount(rangeStart: rangeStart, rangeEnd: rangeEnd, blockSize: blockSize)
         return rangeStart + Int.random(in: 0..<blockCount) * blockSize
     }
 
@@ -62,7 +67,7 @@ public struct PortAllocator: Equatable, Sendable {
     }
 
     public mutating func allocate() throws -> Int {
-        let blockCount = (rangeEnd - rangeStart) / blockSize + 1
+        let blockCount = Self.blockCount(rangeStart: rangeStart, rangeEnd: rangeEnd, blockSize: blockSize)
         let startIndex = (startBase - rangeStart) / blockSize
         for i in 0..<blockCount {
             let base = rangeStart + ((startIndex + i) % blockCount) * blockSize

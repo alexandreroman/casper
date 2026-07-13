@@ -1,6 +1,5 @@
 import ArgumentParser
 import CasperCore
-import Foundation
 
 /// `casper run [name]` — run a named command from the workspace's `.casper.json`
 /// in a new visible terminal. Defaults to the command named `run`.

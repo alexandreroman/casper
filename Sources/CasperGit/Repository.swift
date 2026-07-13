@@ -136,7 +136,7 @@ public final class Repository {
         for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             let name = url.lastPathComponent
             guard name != ".git" else { continue }
-            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
             if (try? isPathIgnored(name)) == true {
                 result.append(url.path)
             }

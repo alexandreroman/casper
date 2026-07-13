@@ -6,9 +6,9 @@ public enum ProgressSynthesis {
     public static func todos(total: Int, current: Int, label: String) -> [Todo]? {
         guard total >= 1, current >= 1, current <= total else { return nil }
         var todos: [Todo] = []
-        for _ in 0..<(current - 1) { todos.append(Todo(content: "", status: .completed)) }
+        todos.append(contentsOf: Array(repeating: Todo(content: "", status: .completed), count: current - 1))
         todos.append(Todo(content: label, status: .inProgress))
-        for _ in 0..<(total - current) { todos.append(Todo(content: "", status: .pending)) }
+        todos.append(contentsOf: Array(repeating: Todo(content: "", status: .pending), count: total - current))
         return todos
     }
 }

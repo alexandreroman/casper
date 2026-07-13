@@ -10,6 +10,11 @@ struct WorkspaceDetailView: View {
     /// the selected workspace changes (see the `.task` below).
     @State private var diff: (insertions: Int, deletions: Int)?
 
+    /// The in-flight `diffRevision`-driven summary refresh, if any. Cancelled and
+    /// replaced on every new revision so rapid changes can't leave two tasks racing
+    /// to settle `diff` on a stale value.
+    @State private var diffSummaryTask: Task<Void, Never>?
+
     /// Live inspector width, seeded per-workspace on appear (the detail view has
     /// a per-workspace `.id`, so this resets on every workspace switch) and
     /// persisted on drag-end. Held locally so the divider drag never mutates
@@ -116,7 +121,14 @@ struct WorkspaceDetailView: View {
             diff = await model.diffSummary(for: workspace)
         }
         .onChange(of: model.diffRevision) { _, _ in
-            Task { @MainActor in diff = await model.diffSummary(for: workspace) }
+            // Cancel the previous refresh before starting a new one so overlapping
+            // revisions can't race to settle `diff` on a stale value.
+            diffSummaryTask?.cancel()
+            diffSummaryTask = Task { @MainActor in
+                let summary = await model.diffSummary(for: workspace)
+                guard !Task.isCancelled else { return }
+                diff = summary
+            }
         }
         .onAppear {
             if inspectorWidth == nil { inspectorWidth = workspace.inspector.width }

@@ -1,5 +1,4 @@
 import Clibgit2
-import Foundation
 
 /// Process-wide libgit2 initialization. `git_libgit2_init` is reference-counted
 /// by libgit2; we call it exactly once and never shut down (acceptable for a

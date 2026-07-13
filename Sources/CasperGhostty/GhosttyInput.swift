@@ -261,9 +261,9 @@ func ghosttyModsFromNames(_ names: [String]) -> ghostty_input_mods_e {
 /// whether Shift is required (uppercase letters). Real macOS typing of 'H' reports
 /// the 'h' physical key plus Shift, so injection must do the same.
 struct GhosttyInjectedKey: Equatable, Sendable {
-    public let keycode: UInt32
-    public let unshiftedCodepoint: UInt32
-    public let needsShift: Bool
+    let keycode: UInt32
+    let unshiftedCodepoint: UInt32
+    let needsShift: Bool
 }
 
 /// Virtual keycode for each supported *unshifted* character: the shared letter table
