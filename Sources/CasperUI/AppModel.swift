@@ -436,6 +436,13 @@ final class AppModel {
             // The inspector browser lives outside the layout tree, so its coordinator
             // must be discarded explicitly alongside the terminal surfaces.
             discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
+            // removeSpace doesn't delegate to removeWorkspace, so prune the per-surface
+            // setup-hook maps here too (mirrors removeWorkspace) to avoid leaking entries
+            // when a Space is removed while a setup split is live.
+            for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
+                scriptSurfaces[surfaceID] = nil
+                keptFailedSetupSurfaces.remove(surfaceID)
+            }
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
@@ -527,6 +534,14 @@ final class AppModel {
         spaces[si].workspaces.append(ws)
         selectWorkspace(ws.id)
         persist()
+        // Run the repo's `setup` lifecycle hook (if any) in a visible split, once,
+        // at creation only — never on restore/re-open (this call site is the guard,
+        // so no persisted "setup ran" flag is needed). A malformed .casper.json
+        // already failed creation in WorktreeManager.create above (Part A); this
+        // re-read's `try?`/nil therefore just means "no setup script".
+        if let setup = (try? RepoConfig.load(fromRepoRoot: worktreePath))??.setupScript() {
+            spawnScriptSurface(kind: .setup, in: ws.id, command: setup, onExit: nil)
+        }
         return .success(ws)
     }
 
@@ -545,6 +560,12 @@ final class AppModel {
         explicitAuthority.remove(id)
         agentResolvers[id] = nil
         namedCommandsCache[id] = nil
+        // Prune the per-surface setup-hook maps too, so a workspace deleted while its
+        // setup split is live doesn't leak its surface entries.
+        for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
+            scriptSurfaces[surfaceID] = nil
+            keptFailedSetupSurfaces.remove(surfaceID)
+        }
         if selectedWorkspaceID == id {
             selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }
@@ -846,6 +867,11 @@ final class AppModel {
     /// unless linked workspaces depend on that Space, in which case the Space stays
     /// and the primary is re-seeded with a fresh terminal.
     func applyCloseSurface(_ surfaceID: UUID) {
+        // Both setup guards below correlate a surface's child-exit with the
+        // close_surface_cb libghostty delivers for it afterward — the same assumption
+        // every shell-exit-driven pane close relies on (true for the current pin). If a
+        // future pin suppressed that close, a successful setup's split would linger, and
+        // the failure marker would instead swallow the user's first manual close.
         // A setup surface whose exit hasn't been processed yet is never torn down by
         // an early/stray close — its fate is decided by handleScriptSurfaceExit.
         if scriptSurfaces[surfaceID]?.kind == .setup { return }
@@ -932,7 +958,8 @@ final class AppModel {
             onAttach: { [weak self] id in self?.focusSurfaceViewIfActive(id) },
             onClose: { [weak self] id in self?.applyCloseSurface(id) },
             onContextMenu: { [weak self, id = surface.id] _ in self?.paneContextMenu(for: id) },
-            onFontSizeChange: { [weak self] id, size in self?.updateSurfaceFontSize(id, size: size) })
+            onFontSizeChange: { [weak self] id, size in self?.updateSurfaceFontSize(id, size: size) },
+            onChildExit: { [weak self] id, code in self?.handleScriptSurfaceExit(id, code: code) })
         surfaceViews[surface.id] = view
         return view
     }
@@ -1661,18 +1688,19 @@ final class AppModel {
         guard let script = scriptSurfaces.removeValue(forKey: surfaceID) else { return }
         switch script.kind {
         case .setup:
-            if code == 0 {
-                // Success: the tag is gone, so applyCloseSurface now tears the split
-                // down normally. (The deferred close_surface_cb would also do this; we
-                // do it eagerly so a clean setup vanishes promptly.)
-                applyCloseSurface(surfaceID)
-            } else {
+            if code != 0 {
                 // Failure: keep the pane open showing the output, swallow the single
-                // shell-exit-driven close that follows, and flag the workspace.
+                // shell-exit-driven close that follows (see keptFailedSetupSurfaces /
+                // applyCloseSurface), and flag the workspace.
                 keptFailedSetupSurfaces.insert(surfaceID)
                 setDetectedAgentState(.error, for: script.workspaceID)
                 CasperLog.app.error("setup script failed (exit \(code)); keeping the split open")
             }
+            // On success there is nothing to do here: the tag is already cleared, so
+            // the deferred close_surface_cb (fired by the shell's own exit) tears the
+            // split down through the normal path. We must NOT close eagerly — this runs
+            // synchronously inside libghostty's action_cb, and tearing views down
+            // mid-tick is the sibling-detachment hazard that close_surface_cb defers.
         case .teardown:
             script.onExit?(code)
         }
