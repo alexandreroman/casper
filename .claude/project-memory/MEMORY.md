@@ -62,5 +62,6 @@
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module checks only the .app root + a machine-local build path, never Contents/Resources; the runtime mirror is required, not redundant
 - [Diff-view refresh hang (open incident)](references/diff-view-refresh-hang.md) — unreproduced SwiftUI-layout beachball on diff refresh; a `diff refresh:` .notice log line catches the next occurrence (watch maxLineLen); the nested-LazyVStack mitigation was reverted (broke layout)
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — non-empty `spaces` always has a resolvable `selectedWorkspaceID`; homepage shows only when `spaces.isEmpty`; watch `selectWorkspace` sets-before-validates
-- [.casper.json config — scripts status & remaining design](references/repo-config.md) — per-repo `.casper.json`; Part A + B1/B2/B2-UI (`casper run` + Run Script UI) shipped; setup/teardown still to build with settled design
+- [.casper.json scripts — design decisions & invariants](references/repo-config.md) — copyPatterns + named commands + setup/teardown hooks: the child-exit/close race invariant, hook-wrap vs subshell-wrap, completion-based destroy, menu ordering
 - [Project memory file naming](references/memory-file-naming.md) — don't prefix memory filenames with `casper` (redundant)
+- [Feature status vs project memory](references/project-memory-vs-status.md) — implementation status goes in `.superpowers/status.md`, not project memory (durable decisions only)

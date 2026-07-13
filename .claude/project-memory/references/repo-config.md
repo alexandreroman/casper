@@ -1,90 +1,96 @@
 ---
-name: ".casper.json per-repo config — scripts (Part B) status & remaining design"
-description: "Part A + B1/B2/B2-UI shipped; setup/teardown hooks still to build, with settled design"
+name: ".casper.json scripts — design decisions & invariants"
+description: "Non-obvious design decisions behind .casper.json copyPatterns + named commands + setup/teardown hooks"
 type: project
 ---
 
-# .casper.json per-repo config — scripts (Part B) status & remaining design
+# .casper.json scripts — design decisions & invariants
 
-`.casper.json` at a Git repo root is the per-repository config, grouped by
-domain under a `workspace` key. Design specs live in gitignored
-`.superpowers/sdd/` (`2026-07-12-*-scripts-design.md` / `*-plan.md`), which
-does not persist — this note is the durable record for resuming. Progress ledger:
-`.superpowers/sdd/progress.md` (gitignored).
+`.casper.json` at a Git repo root is the per-repository config, grouped under a
+`workspace` key: `copyPatterns` (untracked files seeded into a new worktree) and
+`scripts` (name → shell command). This note records the durable design decisions
+and rationale that are NOT obvious from the code. Implementation STATUS lives in
+`.superpowers/status.md`, not here (see [[project-memory-vs-status]]).
 
-## Shipped on branch `casper-json`
+## Two kinds of scripts
 
-- **Part A** — `workspace.copyPatterns` drives which untracked files seed a new
-  worktree. `RepoConfig` (CasperCore); replace-not-merge semantics; invalid file
-  fails workspace creation with `Invalid .casper.json: <reason>`.
-- **B1** — `workspace.scripts` schema (`[String: String]`) + helpers:
-  `RepoScripts.reservedNames == {setup, teardown}`, `RepoConfig.setupScript()`,
-  `teardownScript()`, `namedCommand(_:)` (nil for reserved/empty),
-  `namedCommands()` (non-reserved, sorted), `RepoNamedCommand`.
-- **B2 (CLI)** — `casper run [name]` (defaults to `run`) runs a named command in
-  a visible terminal. `ControlCommand.Verb.run` + `name` field;
-  `RepoConfig.resolveRunCommand(_:) -> RunResolution{.command,.denied}` (pure,
-  refuses reserved/unknown names, lists available); `AppModel.controlRun`;
-  `ControlServer` `.run` dispatch. Config read from the workspace's own
-  `worktreePath`.
-- **B2-UI** — named-command UI, both surfaces hidden when none defined:
-  - `Workspace.lastUsedScript: String?` (persisted).
-  - `AppModel`: `@ObservationIgnored` `namedCommandsCache` (refreshed in
-    `selectWorkspace`, pruned in `removeWorkspace`), `namedCommands(for:)`
-    (cached/lazy), `resolvedScript(for:)` (last-used → `run` → first alphabetical),
-    `runScript(_:for:)` (via `controlRun`, remembers last-used, sets observable
-    `scriptRunError` on failure — mirrors `editorLaunchError`).
-  - Toolbar split-button in `WorkspaceDetailView` mirroring `editorButton`; and a
-    "Run Script ▸" submenu on the sidebar workspace context menu (`SidebarView`).
-  - Verified live: `casper run`/`run test` open splits; `run setup` refused;
-    `run bogus` lists available; script labels show `displayName` (key with `-`/`_`
-    → spaces, capitalized, e.g. `build-app` → `Build App`); `casper run` commands
-    run in a subshell `(\n<cmd>\n)` so a script `exit` keeps the terminal open.
-  - **Script order is NOT file order.** `workspace.scripts` is a JSON object
-    (`[String: String]`), and Swift's `JSONDecoder` does not preserve object key
-    order (proven: `allKeys` returns hash order, not document order). The menu is
-    therefore **alphabetical** (`namedCommands()` sorts). File-order would require
-    reformatting `scripts` to an array `[{name, command}]` — deliberately NOT done.
-    Default selected script (toolbar primary button) = remembered `lastUsedScript`
-    → `run` if present → first alphabetical.
+- Reserved keys `setup`/`teardown` are lifecycle hooks — run automatically, never
+  invocable by hand (`RepoScripts.reservedNames`; `resolveRunCommand` `.denied`s
+  them; `spawnScriptSurface` is private).
+- Every other key is a named command, run on demand from the UI or `casper run`.
 
-## Remaining phases (settled design, NOT yet built)
+## Hook wrap vs. named-command wrap (opposite goals)
 
-- **B3 — setup hook** — exit-code wiring first: intercept
-  `GHOSTTY_ACTION_SHOW_CHILD_EXITED` surface-scoped in `casperGhosttyAction`
-  (recover the view via `surfaceView(from:target)`, read
-  `action.action.child_exited.exit_code`), add `onChildExit(UUID, Int32)` to
-  `GhosttySurfaceView` (mirror `onClose`), wire in `AppModel.surfaceView`. Then a
-  script-surface controller runs `setup` (wrapped `<cmd>; exit $?`) in a visible
-  split from `createLinkedWorkspace` ONLY (never on restore). It must correlate
-  TWO libghostty events per script surface: `close_surface_cb`→`onClose` (which
-  today always closes the pane) and the exit code. Exit 0 → close the split;
-  exit ≠ 0 → intercept the auto-close, keep the split showing the error, mark the
-  workspace error state; no rollback.
-- **B4 — teardown hook (riskiest)** — restructure the 3 destroy entry points
-  (`deleteWorkspace`, `controlDeleteWorkspace`, `closeWorkspace`) so a `teardown`
-  script runs in a visible split before `pruneWorkspaceFromDisk` (after the merge
-  on the close path), waiting for child-exit or a 30 s timeout; then prune
-  regardless of outcome (signal failures). Control-channel delete replies after
-  prune completes.
+- Named commands wrap as `subshellWrappedScriptCommand` = `"(\n<cmd>\n)"` so a
+  script that `exit`s (or fails under `set -e`) kills only the subshell — the
+  interactive pane stays open with the output.
+- Hooks wrap as `hookWrappedScriptCommand` = `"<cmd>\nexit $?"` so the shell
+  exits with the command's status, which makes libghostty emit a child-exit event
+  — the completion signal a hook needs. The newline (not `;`) keeps a trailing
+  `#` comment on the command's last line from swallowing `exit $?`.
 
-## Loose ends to close at Part B end
+## THE child-exit / close race (load-bearing invariant)
 
-- Harden `casper run` CLI: guard on missing terminal in the response (mirror
-  `TerminalCommand.New`) instead of the current `?? ""` fallback.
-- Document `casper run` in `README.md`.
-- Commit the `.claude/project-memory/` files (currently uncommitted).
+libghostty delivers the child-exit action SYNCHRONOUSLY mid-`ghostty_app_tick`,
+while `close_surface_cb` DEFERS `requestClose` to the next runloop turn — so
+`handleScriptSurfaceExit` always runs BEFORE the correlated pane close. Every
+correctness argument in the hooks code rests on this. Corollaries, do not break:
+
+- **Never close or prune eagerly inside a child-exit callback.** Tearing views
+  down mid-tick detaches sibling panes (the exact hazard `close_surface_cb`
+  defers). setup-success relies on the deferred `close_surface_cb` to close its
+  split; teardown prunes via `DispatchQueue.main.async` (+ `MainActor`).
+- **setup guards in `applyCloseSurface`:** a still-tagged `.setup` surface is
+  never torn down by an early close (its fate is the exit code); a FAILED setup
+  arms `keptFailedSetupSurfaces` to swallow the one shell-exit close so the pane
+  stays open showing the error.
+- This assumes libghostty emits a `close_surface_cb` after the child exits — true
+  for the current pin (every shell-exit pane close relies on it). A future pin
+  that suppressed it would strand a successful setup's split.
+
+## setup / teardown behavior decisions
+
+- **setup** runs from `createLinkedWorkspace` ONLY — the call site is the guard
+  against re-running on restore/re-open, so there is no persisted "ran" flag. Exit
+  0 → split auto-closes; exit ≠ 0 → split kept open + workspace flagged `.error`
+  (`setDetectedAgentState`); no rollback.
+- **teardown** runs before prune, AFTER the merge on the close path (the worktree
+  still exists → valid cwd). Any outcome (success / non-zero / 30 s
+  `teardownTimeout`) proceeds to prune — a broken cleanup script never traps the
+  user. A manually-closed live teardown split prunes immediately rather than
+  stalling the timeout.
+
+## Destroy paths became completion-based (because teardown is async)
+
+The 3 destroy paths (`deleteWorkspace`/`controlDeleteWorkspace`/`closeWorkspace`)
+deliver their result via a completion closure, not a return value, since teardown
+runs a visible terminal and waits. Knock-ons: `ControlServer.handle` is
+reply-based so `.workspaceDelete` replies AFTER prune; `casper workspace delete`
+sends `timeout: 35` (> the 30 s app budget) or a slow teardown reads as a
+client-side timeout; re-entrant destroy is rejected via `teardownInFlight`.
+
+## Script menu ordering
+
+`workspace.scripts` is a JSON object, and Swift's `JSONDecoder` does NOT preserve
+object key order (proven: `allKeys` returns hash order). The menu is therefore
+**alphabetical** (`namedCommands()` sorts); file order would need reformatting
+`scripts` to an array — deliberately not done. Default selected script (toolbar
+primary button) = remembered `lastUsedScript` → `run` if present → first
+alphabetical.
 
 ## Gotcha when live-testing on a dev machine
 
 The user's zsh profile puts the installed release `~/Applications/Casper.app`
 ahead of the branch's `Casper-dev.app` in PATH, so a bare `casper` in a Casper
-terminal runs the OLD release (no `run`). Test with the full dev-binary path or
-a temporary alias. The debug channel (`casper debug`) only enumerates terminal
-surfaces, not SwiftUI toolbar/menu chrome — UI must be verified by a human.
+terminal runs the OLD release. Test with the full dev-binary path or a temporary
+alias. `casper debug` only enumerates terminal surfaces, not SwiftUI toolbar/menu
+chrome, so the split lifecycle (setup auto-close/keep-open, teardown wait) must be
+watched by a human — see [[agent-visual-verification-limits]].
 
-**Why:** SwiftUI + libghostty phases need human visual verification, so work is
-staged; user paused after B2-UI to verify the Run Script button and review.
+**Why:** these are the decisions and the one hard invariant that a future change
+to the hooks would most easily get wrong; none is recoverable from reading the
+code alone.
 
-**How to apply:** resume from the B3 / B4 sections above; the shipped B1 helpers
-and B2 `controlRun`/terminal machinery are the building blocks.
+**How to apply:** when touching the hooks, treat the child-exit/close race
+section as a hard constraint — don't close or prune eagerly inside a child-exit
+callback.
