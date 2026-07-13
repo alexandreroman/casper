@@ -113,8 +113,64 @@ final class ControlServer {
             case .failure(let error):
                 reply(.failure(error.message)); return
             }
+        // Browser automation is async (WebKit's evaluateJavaScript / takeSnapshot),
+        // so — like `workspaceDelete` — these await the AppModel call and reply on
+        // completion rather than returning a response synchronously.
+        case .browserScreenshot:
+            let path = command.path ?? ""
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserScreenshot(in: id, to: path), workspace: id))
+            }
+            return
+        case .browserEval:
+            guard let script = command.script else { reply(.failure("missing script")); return }
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserEval(script, in: id), workspace: id))
+            }
+            return
+        case .browserContent:
+            let selector = command.selector
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserContent(selector: selector, in: id), workspace: id))
+            }
+            return
+        case .browserClick:
+            guard let selector = command.selector else { reply(.failure("missing selector")); return }
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserClick(selector: selector, in: id), workspace: id))
+            }
+            return
+        case .browserType:
+            guard let selector = command.selector else { reply(.failure("missing selector")); return }
+            let value = command.value ?? ""
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserType(selector: selector, value: value, in: id), workspace: id))
+            }
+            return
+        case .browserKey:
+            guard let key = command.key else { reply(.failure("missing key")); return }
+            let selector = command.selector
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserKey(key: key, selector: selector, in: id), workspace: id))
+            }
+            return
         case .workspaceList, .workspaceNew:
             reply(.failure("unreachable")); return  // handled above
+        }
+    }
+
+    /// Map a browser-automation outcome to a control response: success carries the
+    /// payload (eval result / HTML / screenshot path, empty for action verbs) in
+    /// `text`; failure carries the error message.
+    private static func browserReply(
+        _ result: Result<String, AppModel.BrowserOpError>, workspace id: UUID
+    ) -> ControlResponse {
+        switch result {
+        case .success(let text): return .success(text: text, workspace: id.uuidString)
+        case .failure(let error): return .failure(error.message)
         }
     }
 

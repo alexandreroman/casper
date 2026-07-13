@@ -19,6 +19,12 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case workspaceNew
         case workspaceDelete
         case run
+        case browserScreenshot
+        case browserEval
+        case browserContent
+        case browserClick
+        case browserType
+        case browserKey
     }
 
     public var verb: Verb
@@ -35,13 +41,20 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var command: String?     // terminalNew / workspaceNew: optional command to run
     public var cwd: String?         // terminalNew: optional working directory
     public var name: String?        // run: named command from .casper.json
+    public var script: String?      // browserEval: JavaScript source to evaluate
+    public var selector: String?    // browserClick/Type/Key/Content: CSS selector target
+    public var value: String?       // browserType: text to type into the element
+    public var key: String?         // browserKey: key name (e.g. Enter, Escape)
+    public var path: String?        // browserScreenshot: output PNG path
 
     public init(
         verb: Verb, workspace: String? = nil, state: String? = nil,
         total: Int? = nil, current: Int? = nil, label: String? = nil,
         message: String? = nil, url: String? = nil, target: String? = nil,
         branch: String? = nil, base: String? = nil,
-        command: String? = nil, cwd: String? = nil, name: String? = nil
+        command: String? = nil, cwd: String? = nil, name: String? = nil,
+        script: String? = nil, selector: String? = nil, value: String? = nil,
+        key: String? = nil, path: String? = nil
     ) {
         self.verb = verb
         self.workspace = workspace
@@ -57,6 +70,11 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         self.command = command
         self.cwd = cwd
         self.name = name
+        self.script = script
+        self.selector = selector
+        self.value = value
+        self.key = key
+        self.path = path
     }
 }
 

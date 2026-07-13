@@ -45,6 +45,70 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     func goForward() { webView.goForward() }
     func reload() { webView.reload() }
 
+    // MARK: - Automation (release control channel)
+
+    /// Evaluate `js` in the page and return its result serialized to a JSON
+    /// string (`.fragmentsAllowed`, so scalars come back as `2`, `"hi"`, `true`);
+    /// `undefined`/`null`, and non-JSON-serializable results (`NaN`/`Infinity`),
+    /// become `"null"`. A JS runtime error is rethrown as a
+    /// `BrowserCoordinatorError` carrying the page's exception message.
+    func evaluate(_ js: String) async throws -> String {
+        // Serialize the result to a JSON String (Sendable) inside the completion
+        // handler: the raw `Any?` is main-actor-isolated and not Sendable, so it
+        // can't cross the continuation boundary directly.
+        try await withCheckedThrowingContinuation { continuation in
+            webView.evaluateJavaScript(js) { result, error in
+                if let error {
+                    continuation.resume(throwing: BrowserCoordinatorError(message: Self.message(from: error)))
+                } else {
+                    continuation.resume(returning: Self.jsonString(from: result))
+                }
+            }
+        }
+    }
+
+    /// Render the current page to a PNG. A cached, unmounted surface has no window
+    /// (a detached view), which would snapshot to an empty image; give it a default
+    /// frame first so the capture has real content to render. Gated strictly on
+    /// `window == nil` — a zero-bounds mounted view is a transient layout pass (the
+    /// inspector reveal animation), and resizing it there would race SwiftUI.
+    func snapshot() async throws -> Data {
+        if webView.window == nil {
+            webView.frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
+        }
+        let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw BrowserCoordinatorError(message: "failed to render page snapshot")
+        }
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        bitmap.size = image.size
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw BrowserCoordinatorError(message: "failed to encode snapshot as PNG")
+        }
+        return png
+    }
+
+    /// Serialize an `evaluateJavaScript` result to a JSON string. `nil`/`NSNull`
+    /// (the JS `undefined`/`null`) become `"null"`.
+    private static func jsonString(from value: Any?) -> String {
+        guard let value, !(value is NSNull) else { return "null" }
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
+              let string = String(data: data, encoding: .utf8) else {
+            return "null"
+        }
+        return string
+    }
+
+    /// Extract a clean message from a WebKit JS error, preferring the page's own
+    /// exception text over the generic `NSError` description.
+    private static func message(from error: Error) -> String {
+        let nsError = error as NSError
+        if let message = nsError.userInfo["WKJavaScriptExceptionMessage"] as? String, !message.isEmpty {
+            return message
+        }
+        return nsError.localizedDescription
+    }
+
     private func syncNav() {
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
@@ -80,6 +144,13 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     ) {
         handleFailure(error)
     }
+}
+
+/// Error carrying a human-readable reason for a failed browser-automation op
+/// (a JS runtime error or a snapshot/encoding failure).
+struct BrowserCoordinatorError: Error, CustomStringConvertible {
+    let message: String
+    var description: String { message }
 }
 
 /// A `WKWebView` that reports first-responder acquisition, so clicking into web

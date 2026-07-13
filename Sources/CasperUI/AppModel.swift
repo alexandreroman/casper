@@ -1652,6 +1652,12 @@ final class AppModel {
         var description: String { message }
     }
 
+    /// Error carrying a human-readable reason for a failed `browser` automation op.
+    struct BrowserOpError: Error, CustomStringConvertible {
+        let message: String
+        var description: String { message }
+    }
+
     /// The outcome of `closeWorkspace(id:)`, distinguishing a merge failure (nothing
     /// touched) from a cleanup failure (the merge succeeded, but disk cleanup didn't) —
     /// the confirmation presenter shows a different title/message for each.
@@ -2220,6 +2226,107 @@ final class AppModel {
             setInspectorCollapsed(true, for: workspaceID)
         }
         return true
+    }
+
+    // MARK: - Browser automation (release control channel)
+
+    /// The get-or-create `BrowserCoordinator` for a workspace's inspector browser
+    /// surface. Reuses the same cache the panel UI uses, so automation drives the
+    /// live web view and works even when the panel was never shown. Nil when the
+    /// workspace can't be resolved.
+    private func inspectorBrowserCoordinator(in workspaceID: UUID) -> BrowserCoordinator? {
+        guard let ws = workspace(id: workspaceID) else { return nil }
+        return browserCoordinator(for: ws.inspector.browser)
+    }
+
+    /// Resolve the workspace's browser coordinator, run `body` against it, and map
+    /// the outcome to a `Result`. Shared by every `controlBrowser*` op so each one
+    /// stays a single expressive line. `body` returns the op's payload: the eval
+    /// result, the page HTML, the screenshot path, or an empty string for the
+    /// action verbs.
+    private func withBrowserCoordinator(
+        _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> String
+    ) async -> Result<String, BrowserOpError> {
+        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
+            return .failure(BrowserOpError(message: "workspace not found"))
+        }
+        do {
+            return .success(try await body(coordinator))
+        } catch {
+            return .failure(BrowserOpError(message: "\(error)"))
+        }
+    }
+
+    /// Snapshot the browser page to a PNG at `path`. Returns the path on success.
+    func controlBrowserScreenshot(in workspaceID: UUID, to path: String) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) { coordinator in
+            let png = try await coordinator.snapshot()
+            do {
+                try png.write(to: URL(fileURLWithPath: path))
+            } catch {
+                // Concise message: the raw NSError renders a verbose
+                // "Error Domain=NSCocoaErrorDomain…" string in the JSON error.
+                throw BrowserCoordinatorError(
+                    message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
+            }
+            return path
+        }
+    }
+
+    /// Evaluate `script` in the browser page. Returns the JSON-serialized result.
+    func controlBrowserEval(_ script: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) { try await $0.evaluate(script) }
+    }
+
+    /// Return the page's HTML (`outerHTML` of `selector`'s first match, or of the
+    /// whole document when `selector` is nil).
+    func controlBrowserContent(selector: String?, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            // `evaluate` returns the string JSON-serialized; unwrap it back to the
+            // raw HTML so `content` consumers get plain markup, not a quoted string.
+            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.content(selector: selector)))
+        }
+    }
+
+    /// Click the first element matching `selector`.
+    func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            _ = try await $0.evaluate(BrowserAutomation.click(selector: selector))
+            return ""
+        }
+    }
+
+    /// Type `value` into the first element matching `selector`.
+    func controlBrowserType(
+        selector: String, value: String, in workspaceID: UUID
+    ) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            _ = try await $0.evaluate(BrowserAutomation.type(selector: selector, value: value))
+            return ""
+        }
+    }
+
+    /// Dispatch a `keydown`/`keyup` for `key` on `selector`'s match, or on the
+    /// focused element when `selector` is nil.
+    func controlBrowserKey(
+        key: String, selector: String?, in workspaceID: UUID
+    ) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            _ = try await $0.evaluate(BrowserAutomation.key(key: key, selector: selector))
+            return ""
+        }
+    }
+
+    /// Decode a single JSON string value (as produced by `BrowserCoordinator`'s
+    /// `evaluate`) back to its plain contents. Falls back to the input unchanged
+    /// when it isn't a JSON string (should not happen for `content`).
+    private static func plainString(fromJSON json: String) -> String {
+        guard let data = json.data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
+              let string = value as? String else {
+            return json
+        }
+        return string
     }
 
     /// Create a linked workspace in the Space that owns `workspaceID` (the control
