@@ -14,7 +14,10 @@ final class ControlServer {
         self.server = ControlSocketServer(socketPath: socketPath)
         server.onCommand = { [weak self] command, reply in
             // Hop from the socket's serial queue onto the main actor to touch AppModel.
-            Task { @MainActor in reply(self?.handle(command) ?? .failure("server gone")) }
+            Task { @MainActor in
+                guard let self else { reply(.failure("server gone")); return }
+                self.handle(command, reply: reply)
+            }
         }
     }
 
@@ -24,22 +27,22 @@ final class ControlServer {
     /// Dispatches one decoded command to the matching `AppModel.control*` handler.
     /// `internal` (not `private`) so `ControlServerTests` can call it directly
     /// without going through a real socket.
-    func handle(_ command: ControlCommand) -> ControlResponse {
-        guard let model else { return .failure("app model unavailable") }
+    func handle(_ command: ControlCommand, reply: @escaping @Sendable (ControlResponse) -> Void) {
+        guard let model else { reply(.failure("app model unavailable")); return }
 
         // Commands that do not target a single existing workspace.
         switch command.verb {
         case .workspaceList:
-            return .success(workspaces: model.controlListWorkspaces())
+            reply(.success(workspaces: model.controlListWorkspaces())); return
         case .workspaceNew:
             guard let id = model.controlResolveWorkspaceID(selector: command.workspace) else {
-                return .failure(Self.targetError(command.workspace))
+                reply(.failure(Self.targetError(command.workspace))); return
             }
-            guard let branch = command.branch else { return .failure("missing branch") }
+            guard let branch = command.branch else { reply(.failure("missing branch")); return }
             switch model.controlCreateWorkspace(
                 inSpaceOf: id, branch: branch, base: command.base, command: command.command) {
-            case .success(let info): return .success(text: info.id, workspaces: [info])
-            case .failure(let error): return .failure(error.message)
+            case .success(let info): reply(.success(text: info.id, workspaces: [info])); return
+            case .failure(let error): reply(.failure(error.message)); return
             }
         default:
             break
@@ -47,68 +50,71 @@ final class ControlServer {
 
         // Workspace-scoped commands.
         guard let id = model.controlResolveWorkspaceID(selector: command.workspace) else {
-            return .failure(Self.targetError(command.workspace))
+            reply(.failure(Self.targetError(command.workspace))); return
         }
         switch command.verb {
         case .statusSet:
             guard let raw = command.state, let state = AgentState(rawValue: raw) else {
-                return .failure("invalid state: \(command.state ?? "nil")")
+                reply(.failure("invalid state: \(command.state ?? "nil")")); return
             }
-            return model.controlSetAgentState(state, for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")
+            reply(model.controlSetAgentState(state, for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
         case .progressSet:
             guard let total = command.total, let current = command.current,
-                  let label = command.label else { return .failure("missing progress fields") }
-            return model.controlSetProgress(total: total, current: current, label: label, for: id)
-                ? .success(workspace: id.uuidString) : .failure("invalid progress \(current)/\(total)")
+                  let label = command.label else { reply(.failure("missing progress fields")); return }
+            reply(model.controlSetProgress(total: total, current: current, label: label, for: id)
+                ? .success(workspace: id.uuidString) : .failure("invalid progress \(current)/\(total)")); return
         case .progressClear:
-            return model.controlClearProgress(for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")
+            reply(model.controlClearProgress(for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
         case .notify:
-            return model.controlRaiseNotification(message: command.message, for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")
+            reply(model.controlRaiseNotification(message: command.message, for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
         case .terminalNew:
             guard let info = model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd) else {
-                return .failure("cannot open terminal")
+                reply(.failure("cannot open terminal")); return
             }
-            return .success(workspace: id.uuidString, terminals: [info])
+            reply(.success(workspace: id.uuidString, terminals: [info])); return
         case .terminalList:
-            return .success(workspace: id.uuidString, terminals: model.controlListTerminals(in: id))
+            reply(.success(workspace: id.uuidString, terminals: model.controlListTerminals(in: id))); return
         case .terminalClose:
-            return model.controlCloseTerminal(in: id, terminalID: command.target)
+            reply(model.controlCloseTerminal(in: id, terminalID: command.target)
                 ? .success(workspace: id.uuidString)
-                : .failure("no terminal '\(command.target ?? "")' in this workspace")
+                : .failure("no terminal '\(command.target ?? "")' in this workspace")); return
         case .browserOpen:
             guard let raw = command.url, let url = URL(string: raw), url.scheme != nil, url.host != nil else {
-                return .failure("invalid url: \(command.url ?? "nil")")
+                reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
-            return model.controlOpenBrowser(url: url, in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot open browser")
+            reply(model.controlOpenBrowser(url: url, in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot open browser")); return
         case .browserClose:
-            return model.controlCloseBrowser(in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot close browser")
+            reply(model.controlCloseBrowser(in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot close browser")); return
         case .diffOpen:
             switch model.controlOpenDiff(in: id, file: command.target) {
-            case .success: return .success(workspace: id.uuidString)
-            case .failure(let error): return .failure(error.message)
+            case .success: reply(.success(workspace: id.uuidString)); return
+            case .failure(let error): reply(.failure(error.message)); return
             }
         case .diffClose:
-            return model.controlCloseDiff(in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot close diff")
+            reply(model.controlCloseDiff(in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot close diff")); return
         case .workspaceDelete:
-            switch model.controlDeleteWorkspace(id: id) {
-            case .success: return .success(workspace: id.uuidString)
-            case .failure(let error): return .failure(error.message)
+            model.controlDeleteWorkspace(id: id) { result in
+                switch result {
+                case .success: reply(.success(workspace: id.uuidString))
+                case .failure(let error): reply(.failure(error.message))
+                }
             }
+            return
         case .run:
             switch model.controlRun(name: command.name, in: id) {
             case .success(let info):
-                return .success(workspace: id.uuidString, terminals: [info])
+                reply(.success(workspace: id.uuidString, terminals: [info])); return
             case .failure(let error):
-                return .failure(error.message)
+                reply(.failure(error.message)); return
             }
         case .workspaceList, .workspaceNew:
-            return .failure("unreachable")  // handled above
+            reply(.failure("unreachable")); return  // handled above
         }
     }
 

@@ -1765,6 +1765,11 @@ final class AppModel {
         DispatchQueue.main.async { MainActor.assumeIsolated { prune() } }
     }
 
+    /// True while a teardown hook is in flight for this workspace (its prune is
+    /// pending). Used to reject a re-entrant destroy that would drop the first
+    /// caller's completion and spawn a duplicate teardown split.
+    private func teardownInFlight(_ workspaceID: UUID) -> Bool { pendingTeardownPrunes[workspaceID] != nil }
+
     /// Wrap a `casper run` command in a subshell so a script that calls `exit`
     /// (or fails under `set -e`) terminates only the subshell — the interactive
     /// terminal stays open with the script's output visible, instead of the
@@ -1955,9 +1960,20 @@ final class AppModel {
         return .success(())
     }
 
-    @discardableResult
-    func controlDeleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
-        pruneWorkspaceFromDisk(id: workspaceID)
+    func controlDeleteWorkspace(
+        id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void
+    ) {
+        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
+            completion(pruneWorkspaceFromDisk(id: workspaceID)); return  // precise error, no teardown
+        }
+        _ = ws
+        guard !teardownInFlight(workspaceID) else {
+            completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
+        }
+        runTeardownThenPrune(id: workspaceID) { [weak self] in
+            completion(self?.pruneWorkspaceFromDisk(id: workspaceID)
+                ?? .failure(WorkspaceDeleteError(message: "workspace not found")))
+        }
     }
 
     /// Merge a linked workspace's branch into its recorded `baseBranch`, then
@@ -1977,24 +1993,26 @@ final class AppModel {
     /// UI removal. Never presents UI itself: the confirmation presenter owns
     /// showing any failure alert, which keeps this safe to call from tests
     /// without spawning a real `NSAlert`.
-    @discardableResult
-    func closeWorkspace(id workspaceID: UUID) -> WorkspaceCloseOutcome {
+    func closeWorkspace(id workspaceID: UUID, completion: @escaping (WorkspaceCloseOutcome) -> Void) {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked,
               let space = space(for: ws), space.isGitRepo,
               let baseBranch = ws.baseBranch, !baseBranch.isEmpty,
               let primary = space.workspaces.first(where: { $0.kind == .primary })
         else {
-            return .mergeFailed(message: "workspace not found or has no base branch")
+            completion(.mergeFailed(message: "workspace not found or has no base branch")); return
         }
         guard (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == true else {
-            return .mergeFailed(
+            completion(.mergeFailed(
                 message: "\u{201c}\(ws.name)\u{201d} has uncommitted changes. Commit or discard "
-                    + "them before merging.")
+                    + "them before merging.")); return
         }
         guard (try? WorktreeManager.isClean(repoPath: primary.worktreePath)) == true else {
-            return .mergeFailed(
+            completion(.mergeFailed(
                 message: "\u{201c}\(primary.name)\u{201d} (branch \u{201c}\(baseBranch)\u{201d}) has "
-                    + "uncommitted changes. Commit or discard them there before merging.")
+                    + "uncommitted changes. Commit or discard them there before merging.")); return
+        }
+        guard !teardownInFlight(workspaceID) else {
+            completion(.mergeFailed(message: "This workspace is already being closed.")); return
         }
         do {
             _ = try WorktreeManager.merge(
@@ -2002,38 +2020,51 @@ final class AppModel {
                 message: "Merge branch '\(ws.branch)' into \(baseBranch)")
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
-            return .mergeFailed(
+            completion(.mergeFailed(
                 message: "The merge into \u{201c}\(baseBranch)\u{201d} could not be completed "
                     + "automatically. Resolve it manually (e.g. in a terminal), then try again. "
-                    + "Nothing was deleted.")
+                    + "Nothing was deleted.")); return
         }
-        if case .failure(let error) = pruneWorkspaceFromDisk(id: workspaceID) {
-            CasperLog.app.failure("close workspace: disk cleanup failed", error)
-            return .cleanupFailed(
-                message: "The merge succeeded, but the worktree or branch could not be removed "
-                    + "from disk: \(error.message)")
+        // Merge done; the worktree still exists so teardown has a valid cwd. Run it,
+        // then prune + resync, delivering the outcome when that completes.
+        runTeardownThenPrune(id: workspaceID) { [weak self] in
+            // Nil-self means the app itself is tearing down — unreachable for the
+            // app-lifetime shared AppModel, so the reported outcome here is moot.
+            guard let self else { completion(.success); return }
+            if case .failure(let error) = self.pruneWorkspaceFromDisk(id: workspaceID) {
+                CasperLog.app.failure("close workspace: disk cleanup failed", error)
+                completion(.cleanupFailed(
+                    message: "The merge succeeded, but the worktree or branch could not be removed "
+                        + "from disk: \(error.message)")); return
+            }
+            // The primary is guaranteed clean at this point (checked above), so the
+            // resync is unconditional: mergeBranchHeadless never runs git_checkout,
+            // so without this the primary's `git status` would show the just-merged
+            // files as `deleted:` until someone checks out manually.
+            do {
+                try WorktreeManager.resyncWorkingTree(repoPath: primary.worktreePath)
+            } catch {
+                CasperLog.app.failure("close workspace: primary worktree resync failed", error)
+            }
+            completion(.success)
         }
-        // The primary is guaranteed clean at this point (checked above), so the
-        // resync is unconditional: mergeBranchHeadless never runs git_checkout,
-        // so without this the primary's `git status` would show the just-merged
-        // files as `deleted:` until someone checks out manually.
-        do {
-            try WorktreeManager.resyncWorkingTree(repoPath: primary.worktreePath)
-        } catch {
-            CasperLog.app.failure("close workspace: primary worktree resync failed", error)
-        }
-        return .success
     }
 
     /// Delete a linked workspace from disk without merging: prune its worktree,
     /// delete its branch, then drop it from the UI. Never presents UI itself —
     /// see `closeWorkspace`.
-    @discardableResult
-    func deleteWorkspace(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+    func deleteWorkspace(id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void) {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
-            return .failure(WorkspaceDeleteError(message: "workspace not found"))
+            completion(.failure(WorkspaceDeleteError(message: "workspace not found"))); return
         }
-        return pruneWorkspaceFromDisk(id: workspaceID)
+        _ = ws
+        guard !teardownInFlight(workspaceID) else {
+            completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
+        }
+        runTeardownThenPrune(id: workspaceID) { [weak self] in
+            completion(self?.pruneWorkspaceFromDisk(id: workspaceID)
+                ?? .failure(WorkspaceDeleteError(message: "workspace not found")))
+        }
     }
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
@@ -2055,15 +2086,18 @@ final class AppModel {
         mergeButton.hasDestructiveAction = true
         mergeButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        switch closeWorkspace(id: workspaceID) {
-        case .success:
-            break
-        case .mergeFailed(let message):
-            presentWorkspaceOperationFailureAlert(
-                title: "Could not close \u{201c}\(ws.name)\u{201d}", message: message)
-        case .cleanupFailed(let message):
-            presentWorkspaceOperationFailureAlert(
-                title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up", message: message)
+        closeWorkspace(id: workspaceID) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .success:
+                break
+            case .mergeFailed(let message):
+                self.presentWorkspaceOperationFailureAlert(
+                    title: "Could not close \u{201c}\(ws.name)\u{201d}", message: message)
+            case .cleanupFailed(let message):
+                self.presentWorkspaceOperationFailureAlert(
+                    title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up", message: message)
+            }
         }
     }
 
@@ -2085,9 +2119,11 @@ final class AppModel {
         deleteButton.hasDestructiveAction = true
         deleteButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        if case .failure(let error) = deleteWorkspace(id: workspaceID) {
-            presentWorkspaceOperationFailureAlert(
-                title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+        deleteWorkspace(id: workspaceID) { [weak self] result in
+            if case .failure(let error) = result {
+                self?.presentWorkspaceOperationFailureAlert(
+                    title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+            }
         }
     }
 

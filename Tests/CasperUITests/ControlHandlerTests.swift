@@ -306,7 +306,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: info.path))
         XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(info.branch))
 
-        guard case .success = model.controlDeleteWorkspace(id: linkedID) else {
+        var result: Result<Void, AppModel.WorkspaceDeleteError>?
+        model.controlDeleteWorkspace(id: linkedID) { result = $0 }
+        guard case .success = try XCTUnwrap(result) else {
             return XCTFail("expected delete to succeed")
         }
         // Gone from the UI, its worktree folder removed, and its branch deleted.
@@ -317,7 +319,9 @@ final class ControlHandlerTests: XCTestCase {
 
     func testDeleteWorkspaceRefusesPrimary() throws {
         let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
-        guard case .failure(let error) = model.controlDeleteWorkspace(id: primaryID) else {
+        var result: Result<Void, AppModel.WorkspaceDeleteError>?
+        model.controlDeleteWorkspace(id: primaryID) { result = $0 }
+        guard case .failure(let error) = try XCTUnwrap(result) else {
             return XCTFail("expected failure for a primary workspace")
         }
         XCTAssertTrue(error.message.contains("primary"), "got: \(error.message)")
