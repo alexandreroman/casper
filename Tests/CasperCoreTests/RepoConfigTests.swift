@@ -25,33 +25,33 @@ final class RepoConfigTests: XCTestCase {
     }
 
     func testExplicitPatternsAreDecoded() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":[".env"]}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertEqual(config.copyPatterns(default: [".env", ".env.local"]), [".env"])
+        XCTAssertEqual(config.copyFiles(default: [".env", ".env.local"]), [".env"])
     }
 
     func testEmptyPatternsCopyNothing() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":[]}}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":[]}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertEqual(config.copyPatterns(default: [".env"]), [])
+        XCTAssertEqual(config.copyFiles(default: [".env"]), [])
     }
 
     func testMissingCopyPatternsKeyFallsBackToDefaults() throws {
         try writeConfig(#"{"workspace":{}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertEqual(config.copyPatterns(default: [".env", ".env.local"]), [".env", ".env.local"])
+        XCTAssertEqual(config.copyFiles(default: [".env", ".env.local"]), [".env", ".env.local"])
     }
 
     func testMissingWorkspaceKeyFallsBackToDefaults() throws {
         try writeConfig(#"{}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertEqual(config.copyPatterns(default: [".env"]), [".env"])
+        XCTAssertEqual(config.copyFiles(default: [".env"]), [".env"])
     }
 
     func testUnknownKeysAreTolerated() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":[".env"],"scripts":{}},"other":1}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":[".env"],"scripts":{}},"other":1}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertEqual(config.copyPatterns(default: []), [".env"])
+        XCTAssertEqual(config.copyFiles(default: []), [".env"])
     }
 
     func testGarbageJSONThrows() throws {
@@ -62,7 +62,7 @@ final class RepoConfigTests: XCTestCase {
     }
 
     func testWrongTypeThrows() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":5}}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":5}}"#)
         XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in
             XCTAssertTrue(error is RepoConfigError)
         }
@@ -79,10 +79,10 @@ final class RepoConfigTests: XCTestCase {
     }
 
     func testTypeMismatchReasonMentionsKeyPath() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":5}}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":5}}"#)
         XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in
             let reason = (error as? RepoConfigError)?.reason ?? ""
-            XCTAssertTrue(reason.contains("copyPatterns"), "reason was: \(reason)")
+            XCTAssertTrue(reason.contains("copyFiles"), "reason was: \(reason)")
         }
     }
 
@@ -133,14 +133,14 @@ final class RepoConfigTests: XCTestCase {
     }
 
     func testNoScriptsSectionYieldsNoScripts() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":[".env"]}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
         XCTAssertNil(config.setupScript())
         XCTAssertNil(config.teardownScript())
         XCTAssertNil(config.namedCommand("run"))
         XCTAssertEqual(config.namedCommands(), [])
-        // copyPatterns still works alongside a missing scripts section.
-        XCTAssertEqual(config.copyPatterns(default: [".env", ".env.local"]), [".env"])
+        // copyFiles still works alongside a missing scripts section.
+        XCTAssertEqual(config.copyFiles(default: [".env", ".env.local"]), [".env"])
     }
 
     func testReservedNamesConstant() throws {
@@ -174,7 +174,7 @@ final class RepoConfigTests: XCTestCase {
     }
 
     func testResolveRunCommandNoCommandsHint() throws {
-        try writeConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        try writeConfig(#"{"workspace":{"copyFiles":[".env"]}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
         guard case .denied(let message) = config.resolveRunCommand("run") else {
             return XCTFail("expected denial")

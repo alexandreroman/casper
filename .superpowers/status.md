@@ -316,7 +316,7 @@ customize its workspaces. Implemented on branch `casper-json`; the setup/teardow
 split lifecycle still wants one human visual pass (agents can't screenshot the
 SwiftUI/terminal chrome).
 
-**copyPatterns.** `workspace.copyPatterns` replaces the built-in `.env`/`.env.local`
+**copyFiles.** `workspace.copyFiles` replaces the built-in `.env`/`.env.local`
 default for seeding untracked files into a new worktree (`[]` copies nothing). An
 invalid entry fails workspace creation before any Git mutation. `RepoConfig`
 (CasperCore) loads/validates; malformed files surface `Invalid .casper.json: …`.

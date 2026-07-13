@@ -1,13 +1,13 @@
 ---
 name: ".casper.json scripts — design decisions & invariants"
-description: "Non-obvious design decisions behind .casper.json copyPatterns + named commands + setup/teardown hooks"
+description: "Non-obvious design decisions behind .casper.json copyFiles + named commands + setup/teardown hooks"
 type: project
 ---
 
 # .casper.json scripts — design decisions & invariants
 
 `.casper.json` at a Git repo root is the per-repository config, grouped under a
-`workspace` key: `copyPatterns` (untracked files seeded into a new worktree) and
+`workspace` key: `copyFiles` (untracked files seeded into a new worktree) and
 `scripts` (name → shell command). This note records the durable design decisions
 and rationale that are NOT obvious from the code. Implementation STATUS lives in
 `.superpowers/status.md`, not here (see [[project-memory-vs-status]]).

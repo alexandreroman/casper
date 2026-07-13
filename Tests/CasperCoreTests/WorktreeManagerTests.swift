@@ -217,7 +217,7 @@ final class WorktreeManagerTests: XCTestCase {
             to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
         try "OTHER=1\n".write(
             to: repoDir.appendingPathComponent(".env.local"), atomically: true, encoding: .utf8)
-        try writeRepoConfig(#"{"workspace":{"copyPatterns":[".env"]}}"#)
+        try writeRepoConfig(#"{"workspace":{"copyFiles":[".env"]}}"#)
         let wtPath = root.appendingPathComponent("feature").path
 
         _ = try WorktreeManager.create(
@@ -232,7 +232,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testCreateWithEmptyCopyPatternsCopiesNothing() throws {
         try "SECRET=1\n".write(
             to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
-        try writeRepoConfig(#"{"workspace":{"copyPatterns":[]}}"#)
+        try writeRepoConfig(#"{"workspace":{"copyFiles":[]}}"#)
         let wtPath = root.appendingPathComponent("feature").path
 
         _ = try WorktreeManager.create(

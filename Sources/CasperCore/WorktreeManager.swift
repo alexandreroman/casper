@@ -74,7 +74,7 @@ public enum WorktreeManager {
     /// Before any Git mutation, loads `<repoPath>/.casper.json`; a malformed or
     /// unreadable file throws `WorktreeError(.configInvalid)` so nothing is created. After the
     /// git-level worktree is created, copies files matching the config's
-    /// `workspace.copyPatterns` (or `WorkspaceFileCopier.defaultPatterns` when the
+    /// `workspace.copyFiles` (or `WorkspaceFileCopier.defaultPatterns` when the
     /// file is absent or does not specify them) from `repoPath` into
     /// `worktreePath`; a copy failure rolls back the worktree and branch so
     /// nothing is left half-created on disk.
@@ -98,7 +98,7 @@ public enum WorktreeManager {
         } catch let error as RepoConfigError {
             throw WorktreeError(.configInvalid(error.reason))
         }
-        let patterns = config?.copyPatterns(default: WorkspaceFileCopier.defaultPatterns)
+        let patterns = config?.copyFiles(default: WorkspaceFileCopier.defaultPatterns)
             ?? WorkspaceFileCopier.defaultPatterns
 
         let info = try mapGitError {

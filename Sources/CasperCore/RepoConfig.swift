@@ -2,7 +2,7 @@ import Foundation
 
 /// A repository's `.casper.json`, read from the repo root when a workspace is
 /// created. The file is grouped by domain so future sections have a home; only
-/// `workspace.copyPatterns` is read today. Unknown keys are ignored, so a file
+/// `workspace.copyFiles` is read today. Unknown keys are ignored, so a file
 /// that already carries other sections still decodes.
 public struct RepoConfig: Codable, Equatable, Sendable {
     /// Workspace-scoped preferences.
@@ -10,15 +10,15 @@ public struct RepoConfig: Codable, Equatable, Sendable {
         /// File-name patterns (matched via `fnmatch(3)`) copied into a new
         /// worktree. `nil` means "unspecified" (use the caller's defaults); an
         /// explicit empty array means "copy nothing".
-        public var copyPatterns: [String]?
+        public var copyFiles: [String]?
 
         /// Named shell scripts attached to the workspace. Reserved names `setup`
         /// and `teardown` are lifecycle hooks; every other name is a user-invocable
         /// command. An empty command string is treated as no script.
         public var scripts: [String: String]?
 
-        public init(copyPatterns: [String]? = nil, scripts: [String: String]? = nil) {
-            self.copyPatterns = copyPatterns
+        public init(copyFiles: [String]? = nil, scripts: [String: String]? = nil) {
+            self.copyFiles = copyFiles
             self.scripts = scripts
         }
     }
@@ -29,10 +29,10 @@ public struct RepoConfig: Codable, Equatable, Sendable {
         self.workspace = workspace
     }
 
-    /// The effective copy patterns: the file's list when present, else `defaults`.
-    /// An explicit empty list is returned as empty (copy nothing).
-    public func copyPatterns(default defaults: [String]) -> [String] {
-        workspace?.copyPatterns ?? defaults
+    /// The effective list of files to copy: the file's list when present, else
+    /// `defaults`. An explicit empty list is returned as empty (copy nothing).
+    public func copyFiles(default defaults: [String]) -> [String] {
+        workspace?.copyFiles ?? defaults
     }
 
     /// Load `<repoRoot>/.casper.json`. Returns nil when the file does not exist.

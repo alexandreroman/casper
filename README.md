@@ -207,7 +207,7 @@ treats its workspaces. Every key lives under `workspace`:
 ```json
 {
   "workspace": {
-    "copyPatterns": [".env", ".env.local"],
+    "copyFiles": [".env", ".env.local"],
     "scripts": {
       "setup":    "npm install",
       "teardown": "docker compose down",
@@ -218,7 +218,7 @@ treats its workspaces. Every key lives under `workspace`:
 }
 ```
 
-- `copyPatterns` — patterns for untracked files seeded from the source worktree
+- `copyFiles` — patterns for untracked files seeded from the source worktree
   into a new workspace. It replaces the built-in `.env`/`.env.local` default;
   `[]` copies nothing. An invalid entry fails workspace creation before any Git
   mutation.
