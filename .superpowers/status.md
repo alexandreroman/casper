@@ -67,6 +67,12 @@ the `domain-cli-control-channel` memory note for the current surface.
 - The bundle executable directory is injected onto each surface's `PATH` (via
   `surfaceEnvironment(casperDirectory:basePath:)`) so `casper` resolves inside
   Casper terminals.
+- **Browser automation — ✅.** `casper browser` gains six verbs
+  (`screenshot`/`eval`/`content`/`click`/`type`/`key`) that drive the
+  workspace's inspector `WKWebView` over the control channel: JS-synthesized
+  input, `takeSnapshot` screenshots, DOM extraction, and JS eval. Pure JS
+  generation lives in `BrowserAutomation`; verified end-to-end against a live
+  page. See the `browser-automation-cli` memory note.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,

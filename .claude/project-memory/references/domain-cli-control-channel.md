@@ -14,7 +14,13 @@ with a handful of verbs. Full surface:
 - `notify [--message <str>]`
 - `terminal new [--command <cmd>] [--working-dir <dir>]` / `terminal list` /
   `terminal close <id>`
-- `browser open <url>` (the url must be absolute — scheme **and** host)
+- `browser open <url>` (the url must be absolute — scheme **and** host) /
+  `browser close`
+- `browser screenshot [--out <path>]` / `browser eval <js> [--raw]` /
+  `browser content [--selector <css>] [--raw]` / `browser click <selector>` /
+  `browser type <selector> <text>` / `browser key <key> [--selector <css>]`
+  — browser automation over the workspace's inspector `WKWebView`
+  (see [[browser-automation-cli]])
 - `diff open [<file>]`
 - `workspace list` / `workspace current` / `workspace new <branch> [--base]
   [--command]` / `workspace delete` (the branch is a required positional)
@@ -61,7 +67,10 @@ itself. The socket path is **per-session**: default `casper-control.sock`, or
 - `browser open` loads the URL into the workspace's **single inspector browser
   surface** and selects the browser tab (mirroring how `diff open` selects the
   diff tab) — there are no browser layout panels; layout panels are
-  **terminal-only**.
+  **terminal-only**. The browser-automation verbs (`screenshot`/`eval`/
+  `content`/`click`/`type`/`key`) act on that same inspector browser surface,
+  getting-or-creating its `BrowserCoordinator` so they work even when the panel
+  is collapsed or was never shown (see [[browser-automation-cli]]).
 - `diff open [<file>]` opens the diff view and scrolls to `<file>` (resolved
   against diff file ids by exact → path-suffix → basename). The file must exist
   on disk **and** be inside the worktree, else an error (`WorkspaceFilePath`
