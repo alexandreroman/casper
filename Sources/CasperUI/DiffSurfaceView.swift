@@ -20,6 +20,9 @@ struct DiffSurfaceView: View {
     /// rebuild carry over highlights for files whose diff hasn't changed.
     @State private var highlights: [String: FileHighlight] = [:]
     @State private var highlightTask: Task<Void, Never>?
+    /// The in-flight `refresh()` compute, cancelled before starting a new one so a
+    /// rapid sequence of `diffRevision` bumps can't assign results out of order.
+    @State private var refreshTask: Task<Void, Never>?
     /// Top visible file across rebuilds, so a debounced refresh keeps scroll.
     @State private var scrolledFileID: String?
     /// Nonce of the last `model.diffScrollTarget` this view acted on, so a target
@@ -31,7 +34,7 @@ struct DiffSurfaceView: View {
             .onAppear { if !loaded { refresh() } }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
             .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
-            .onDisappear { highlightTask?.cancel() }
+            .onDisappear { highlightTask?.cancel(); refreshTask?.cancel() }
     }
 
     @ViewBuilder private var content: some View {
@@ -75,12 +78,19 @@ struct DiffSurfaceView: View {
         let previousFiles = diff?.files ?? []
         let previousHighlights = highlights
         let started = Date()
-        diff = model.computeDiff(for: workspace)
-        let computeMs = Int(Date().timeIntervalSince(started) * 1000)
-        logDiffShape(computeMs: computeMs)
-        applyPendingScroll()
-        loaded = true
-        startHighlighting(reusing: previousFiles, previousHighlights)
+        // Keep the previous `diff` on screen while the async compute runs (no blank
+        // flash): `content` shows the last value until it's reassigned below.
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor in
+            let newDiff = await model.computeDiff(for: workspace)
+            if Task.isCancelled { return }
+            diff = newDiff
+            let computeMs = Int(Date().timeIntervalSince(started) * 1000)
+            logDiffShape(computeMs: computeMs)
+            applyPendingScroll()
+            loaded = true
+            startHighlighting(reusing: previousFiles, previousHighlights)
+        }
     }
 
     /// Logs the freshly computed diff's shape so a diff-view freeze is

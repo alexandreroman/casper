@@ -1208,7 +1208,7 @@ final class AppModelTests: XCTestCase {
 
     // MARK: - Diff surfaces (UI-5 Task 1)
 
-    func testComputeDiffReturnsChangesForDirtyWorktree() throws {
+    func testComputeDiffReturnsChangesForDirtyWorktree() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5diff-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -1219,22 +1219,23 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let ws = model.spaces[0].workspaces[0]
-        let diff = model.computeDiff(for: ws)
+        let diff = await model.computeDiff(for: ws)
         XCTAssertNotNil(diff)
         XCTAssertFalse(diff!.files.isEmpty)
     }
 
-    func testComputeDiffNilForNonGitWorkspace() {
+    func testComputeDiffNilForNonGitWorkspace() async {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5nogit-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: { _ in nil })
-        XCTAssertNil(model.computeDiff(for: model.spaces[0].workspaces[0]))
+        let diff = await model.computeDiff(for: model.spaces[0].workspaces[0])
+        XCTAssertNil(diff)
     }
 
-    func testDiffSummaryCountsChangedLines() throws {
+    func testDiffSummaryCountsChangedLines() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5summary-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -1244,7 +1245,7 @@ final class AppModelTests: XCTestCase {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
-        let summary = model.diffSummary(for: model.spaces[0].workspaces[0])
+        let summary = await model.diffSummary(for: model.spaces[0].workspaces[0])
         XCTAssertEqual(summary?.insertions, 1)
         XCTAssertEqual(summary?.deletions, 0)
     }

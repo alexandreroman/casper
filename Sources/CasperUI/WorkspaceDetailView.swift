@@ -113,10 +113,10 @@ struct WorkspaceDetailView: View {
             Text(model.scriptRunError ?? "")
         }
         .task(id: model.selectedWorkspaceID) {
-            diff = model.diffSummary(for: workspace)
+            diff = await model.diffSummary(for: workspace)
         }
         .onChange(of: model.diffRevision) { _, _ in
-            diff = model.diffSummary(for: workspace)
+            Task { @MainActor in diff = await model.diffSummary(for: workspace) }
         }
         .onAppear {
             if inspectorWidth == nil { inspectorWidth = workspace.inspector.width }

@@ -57,6 +57,9 @@ final class SharedHostContainer: NSView {
         // Whether we just entered or left a window, re-evaluate who owns the
         // shared view: the one container currently in a window wins.
         SharedViewOwnership.reconcile(hostedView)
+        // A torn-down surface leaves the window here, emptying its table — prune
+        // on this transition so the registry stays bounded (see pruneEmptyTables).
+        SharedViewOwnership.pruneEmptyTables()
     }
 }
 
@@ -79,7 +82,6 @@ enum SharedViewOwnership {
     /// If several are transiently in-window (mid-transition), any pick is fine:
     /// when the losers leave the window this runs again and converges.
     static func reconcile(_ view: NSView) {
-        pruneEmptyTables()
         let key = ObjectIdentifier(view)
         guard let containers = registry[key]?.allObjects else { return }
         guard let winner = containers.first(where: { $0.window != nil }) else { return }
@@ -89,9 +91,11 @@ enum SharedViewOwnership {
     /// Drop registry entries whose tables have emptied out. The tables hold
     /// containers weakly, so a torn-down surface's containers vanish from their table
     /// but leave the now-empty table keyed by the (dead) hosted view — an unbounded
-    /// accumulation over a long session. Pruning on each reconcile (which runs on
-    /// every window transition) keeps the registry bounded.
-    private static func pruneEmptyTables() {
+    /// accumulation over a long session. This runs only on window transitions (from
+    /// `viewDidMoveToWindow`), which is exactly when a torn-down container leaves its
+    /// table empty, so the registry stays bounded without paying the full-rebuild cost
+    /// on the `updateNSView`/reconcile hot path (which fires on every SwiftUI update).
+    static func pruneEmptyTables() {
         registry = registry.filter { !$0.value.allObjects.isEmpty }
     }
 }
