@@ -454,6 +454,9 @@ final class AppModel {
                 scriptSurfaces[surfaceID] = nil
                 keptFailedSetupSurfaces.remove(surfaceID)
             }
+            // Clear the teardown once-latch (keyed by workspace id) without invoking
+            // its prune — the Space and its worktrees are being discarded outright.
+            pendingTeardownPrunes[ws.id] = nil
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
@@ -571,6 +574,9 @@ final class AppModel {
         explicitAuthority.remove(id)
         agentResolvers[id] = nil
         namedCommandsCache[id] = nil
+        // Clear the teardown once-latch (keyed by workspace id) without invoking its
+        // prune — the workspace is already being dropped here.
+        pendingTeardownPrunes[id] = nil
         // Prune the per-surface setup-hook maps too, so a workspace deleted while its
         // setup split is live doesn't leak its surface entries.
         for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
@@ -890,6 +896,17 @@ final class AppModel {
         // pane (with its error output) survives; a later user close then proceeds
         // normally (marker consumed, tag gone).
         if keptFailedSetupSurfaces.remove(surfaceID) != nil { return }
+        // A teardown split still carrying its tag is being closed before its
+        // child-exit was processed — i.e. the user closed it manually. Fire the
+        // pending prune now instead of waiting out the 30s timeout, then let the
+        // prune tear the whole workspace (including this split) down. In the normal
+        // flow the tag is already cleared by handleScriptSurfaceExit before this
+        // close arrives, so this branch is skipped.
+        if let script = scriptSurfaces[surfaceID], script.kind == .teardown {
+            scriptSurfaces[surfaceID] = nil
+            fireTeardownPrune(id: script.workspaceID)
+            return
+        }
         guard let at = locateSurface(surfaceID) else { return }
         let wasFocused = focusedSurfaceID == surfaceID
         let (layout, newFocus) = LayoutTree.closeSurface(
@@ -1735,17 +1752,25 @@ final class AppModel {
         }
         // Arm the once-latch (its presence gates the prune) before either trigger.
         pendingTeardownPrunes[workspaceID] = prune
-        spawnScriptSurface(kind: .teardown, in: workspaceID, command: teardown, onExit: { [weak self] code in
-            // Delivered synchronously inside ghostty_app_tick on the main actor; the
-            // prune it triggers is deferred off this callback (see fireTeardownPrune).
-            MainActor.assumeIsolated {
-                guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
-                if code != 0 {
-                    CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
+        guard spawnScriptSurface(
+            kind: .teardown, in: workspaceID, command: teardown,
+            onExit: { [weak self] code in
+                // Delivered synchronously inside ghostty_app_tick on the main actor; the
+                // prune it triggers is deferred off this callback (see fireTeardownPrune).
+                MainActor.assumeIsolated {
+                    guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
+                    if code != 0 {
+                        CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
+                    }
+                    self.fireTeardownPrune(id: workspaceID)
                 }
-                self.fireTeardownPrune(id: workspaceID)
-            }
-        })
+            }) != nil
+        else {
+            // Couldn't create the teardown split: prune now rather than stalling
+            // until the timeout.
+            fireTeardownPrune(id: workspaceID)
+            return
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownTimeout) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
