@@ -124,15 +124,17 @@ private struct ProgressBar: View {
     let isSelected: Bool
 
     var body: some View {
-        GeometryReader { geo in
-            Capsule().fill(trackStyle)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(fillColor)
-                        .frame(width: geo.size.width * fraction)
-                }
-        }
-        .frame(height: 4)
+        Capsule().fill(trackStyle)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(fillColor)
+                    // Proportional fill without a per-row GeometryReader layout
+                    // pass: scale a full-width capsule from its leading edge.
+                    // Clamp to [0, 1] so an out-of-range fraction can't over- or
+                    // under-draw.
+                    .scaleEffect(x: max(0, min(1, fraction)), y: 1, anchor: .leading)
+            }
+            .frame(height: 4)
     }
 
     private var trackStyle: AnyShapeStyle {
