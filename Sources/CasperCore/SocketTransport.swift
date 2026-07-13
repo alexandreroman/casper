@@ -294,25 +294,36 @@ final class SocketServerEngine<
     /// once the client's EOF is observed guarantees a hard `cancel()` can never
     /// discard buffered reply bytes. A bounded fallback drops the connection
     /// even if the client never closes, so a misbehaving peer cannot leak it.
+    /// Held as a cancellable work item so the normal-close path below can
+    /// release it (and its captured connection) immediately instead of
+    /// letting it linger to the full timeout.
     private func lingerUntilClientCloses(_ connection: NWConnection) {
-        queue.asyncAfter(deadline: .now() + socketReplyLingerTimeout) { [weak self] in
+        let fallback = DispatchWorkItem { [weak self] in
             self?.drop(connection)  // idempotent fallback: a no-op if already dropped
         }
-        waitForClientClose(on: connection)
+        queue.asyncAfter(deadline: .now() + socketReplyLingerTimeout, execute: fallback)
+        waitForClientClose(on: connection, cancelling: fallback)
     }
 
     /// Post a receive that resolves only when the client closes (EOF) or errors,
     /// then drop the connection. The client sends nothing after its request, so
     /// this blocks harmlessly until the client cancels — which it does only
     /// after reading the full reply. Any stray bytes are drained and ignored.
-    private func waitForClientClose(on connection: NWConnection) {
+    /// On a normal close, cancels `fallback` so its retained connection is
+    /// freed now rather than at the linger timeout.
+    private func waitForClientClose(on connection: NWConnection, cancelling fallback: DispatchWorkItem) {
+        // DispatchWorkItem isn't Sendable, but every callback here runs serialized on
+        // `queue` (see the class's `@unchecked Sendable` note above), so capturing it
+        // across the receive callback is race-free; silence the compiler accordingly.
+        nonisolated(unsafe) let fallback = fallback
         connection.receive(minimumIncompleteLength: 1, maximumLength: maxSocketFrameBytes) {
             [weak self] _, _, isComplete, error in
             guard let self else { return }
             if isComplete || error != nil {
+                fallback.cancel()
                 self.drop(connection)
             } else {
-                self.waitForClientClose(on: connection)
+                self.waitForClientClose(on: connection, cancelling: fallback)
             }
         }
     }
