@@ -36,7 +36,7 @@ struct RootView: View {
                 }
             }
         }
-        .background(WindowConfigurator())
+        .background(WindowConfigurator(model: model))
         .onChange(of: model.spaces.isEmpty) { _, empty in
             // When the first space is added, expand the sidebar by default. Only
             // reacts to the empty↔non-empty transition, so manual sidebar toggling
@@ -53,7 +53,9 @@ struct RootView: View {
 /// The `NavigationSplitView` re-shows the title whenever the sidebar collapses,
 /// so a `Coordinator` observes the window and re-hides it on every update.
 private struct WindowConfigurator: NSViewRepresentable {
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    let model: AppModel
+
+    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -72,15 +74,36 @@ private struct WindowConfigurator: NSViewRepresentable {
         nsView.window?.toolbar?.allowsDisplayModeCustomization = false
     }
 
+    @MainActor
     final class Coordinator {
-        private var observer: NSObjectProtocol?
+        private let model: AppModel
+        // `nonisolated(unsafe)` is safe here: both are only ever mutated from
+        // `attach(to:)` on the main actor, and by the time `deinit` runs no other
+        // reference to the object exists, so there's no concurrent access to race
+        // with (and `NotificationCenter.removeObserver` is itself thread-safe). This
+        // lets `deinit` read them without a main-actor hop — avoiding the `isolated
+        // deinit` back-deployment shim that SIGABRTs on the CI runner (see the
+        // isolated-deinit-ci-sigabrt project memory note).
+        nonisolated(unsafe) private var observer: NSObjectProtocol?
+        nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
 
-        @MainActor
+        init(model: AppModel) { self.model = model }
+
+        /// Push the window's current visibility to the model and reconcile
+        /// watchers. Single source of the occlusion predicate for both the
+        /// initial seed and the occlusion-change observer.
+        private func refreshVisibility(_ window: NSWindow) {
+            model.isWindowVisible = window.occlusionState.contains(.visible)
+            model.applyWatcherVisibility()
+        }
+
         func attach(to window: NSWindow) {
             window.titleVisibility = .hidden
             // Removes the "Icon and Text / Icon Only" toolbar display-mode context
             // menu that AppKit shows on a right-/control-click of the toolbar.
             window.toolbar?.allowsDisplayModeCustomization = false
+            // Seed the visibility signal from the window's current state.
+            refreshVisibility(window)
             guard observer == nil else { return }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
@@ -94,11 +117,25 @@ private struct WindowConfigurator: NSViewRepresentable {
                     window.titleVisibility = .hidden
                 }
             }
+            // Minimize, cover, and off-Space all drop `.visible` from
+            // occlusionState, so this one observer covers every "hidden" case.
+            occlusionObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification,
+                object: window, queue: .main
+            ) { [weak self, weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let window else { return }
+                    self?.refreshVisibility(window)
+                }
+            }
         }
 
         deinit {
             if let observer {
                 NotificationCenter.default.removeObserver(observer)
+            }
+            if let occlusionObserver {
+                NotificationCenter.default.removeObserver(occlusionObserver)
             }
         }
     }

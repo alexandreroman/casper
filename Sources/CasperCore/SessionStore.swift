@@ -11,7 +11,7 @@ public final class SessionStore {
     public init(fileURL: URL) {
         self.fileURL = fileURL
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.sortedKeys]
         self.encoder = encoder
         self.decoder = JSONDecoder()
     }

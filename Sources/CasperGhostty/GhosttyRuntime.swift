@@ -108,6 +108,14 @@ public final class GhosttyRuntime {
         ghostty_app_tick(app)
     }
 
+    /// Tell libghostty whether the app is frontmost. Governs cursor blink and
+    /// focus-driven animation; does not by itself pause rendering (occlusion
+    /// does). No-op without an app (the test-only runtime).
+    public func setAppFocus(_ focused: Bool) {
+        guard let app else { return }
+        ghostty_app_set_focus(app, focused)
+    }
+
     /// Decode a raw libghostty action and route it to `onAction`. Called by the
     /// `action_cb` trampoline on the main thread; returns `true` to tell
     /// libghostty the action was consumed.

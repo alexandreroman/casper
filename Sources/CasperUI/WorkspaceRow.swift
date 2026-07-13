@@ -124,15 +124,17 @@ private struct ProgressBar: View {
     let isSelected: Bool
 
     var body: some View {
-        GeometryReader { geo in
-            Capsule().fill(trackStyle)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(fillColor)
-                        .frame(width: geo.size.width * fraction)
-                }
-        }
-        .frame(height: 4)
+        Capsule().fill(trackStyle)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(fillColor)
+                    // Proportional fill without a per-row GeometryReader layout
+                    // pass: scale a full-width capsule from its leading edge.
+                    // Clamp to [0, 1] so an out-of-range fraction can't over- or
+                    // under-draw.
+                    .scaleEffect(x: max(0, min(1, fraction)), y: 1, anchor: .leading)
+            }
+            .frame(height: 4)
     }
 
     private var trackStyle: AnyShapeStyle {
@@ -174,6 +176,7 @@ private struct NotificationBubble: View {
     @State private var pulse = false
     @State private var delay: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowVisible) private var windowVisible
 
     /// Full out-and-back cycle length: `2 * duration`, since `autoreverses: true`.
     private static let period: TimeInterval = 0.8 * 2
@@ -185,18 +188,27 @@ private struct NotificationBubble: View {
                 .frame(width: 9, height: 9)
                 .opacity(pulse ? 0.5 : 1.0)
                 .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(
-                    reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay),
-                    value: pulse)
-                .onAppear {
-                    if !reduceMotion {
-                        delay = AnimationClock.phaseDelay(period: Self.period)
-                        pulse = true
-                    }
-                }
+                .animation(animation, value: pulse)
+                .onAppear { syncPulse() }
+                .onChange(of: windowVisible) { _, _ in syncPulse() }
+                .onChange(of: reduceMotion) { _, _ in syncPulse() }
         } else {
             EmptyView()
         }
+    }
+
+    /// The repeating pulse, or `nil` when the window is hidden or reduce-motion
+    /// is on — `nil` removes the running `repeatForever` from the layer.
+    private var animation: Animation? {
+        (windowVisible && !reduceMotion)
+            ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay)
+            : nil
+    }
+
+    private func syncPulse() {
+        let shouldPulse = windowVisible && !reduceMotion
+        if shouldPulse { delay = AnimationClock.phaseDelay(period: Self.period) }
+        pulse = shouldPulse
     }
 }
 
@@ -251,6 +263,7 @@ private struct SpinningIcon: View {
     @State private var spin = false
     @State private var delay: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.windowVisible) private var windowVisible
 
     /// Full rotation cycle: duration, since autoreverses: false.
     private static let period: TimeInterval = 1
@@ -260,14 +273,28 @@ private struct SpinningIcon: View {
             .imageScale(.medium)
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(
-                reduceMotion ? nil : .linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay),
-                value: spin)
-            .onAppear {
-                if !reduceMotion {
-                    delay = AnimationClock.phaseDelay(period: Self.period)
-                    spin = true
-                }
-            }
+            .animation(animation, value: spin)
+            .onAppear { syncSpin() }
+            .onChange(of: windowVisible) { _, _ in syncSpin() }
+            .onChange(of: reduceMotion) { _, _ in syncSpin() }
+    }
+
+    /// The repeating spin, or `nil` when the window is hidden or reduce-motion is
+    /// on. Returning `nil` removes the in-flight `repeatForever` from the layer
+    /// (instead of leaving it to free-run off-screen), so the compositor goes
+    /// idle while hidden.
+    private var animation: Animation? {
+        (windowVisible && !reduceMotion)
+            ? .linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay)
+            : nil
+    }
+
+    /// Start or stop the spin to match the current visibility / reduce-motion
+    /// state. Re-phases via `AnimationClock` on (re)start so all rows resume in
+    /// sync after the window returns.
+    private func syncSpin() {
+        let shouldSpin = windowVisible && !reduceMotion
+        if shouldSpin { delay = AnimationClock.phaseDelay(period: Self.period) }
+        spin = shouldSpin
     }
 }

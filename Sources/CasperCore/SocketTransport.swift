@@ -99,7 +99,14 @@ final class SocketServerEngine<
     /// mutual exclusion.
     private struct State {
         var stopped = false
-        var conns: [ObjectIdentifier: NWConnection] = [:]
+        var conns: [ObjectIdentifier: ConnEntry] = [:]
+    }
+
+    /// A tracked connection plus its pending linger-fallback timer (if any), so
+    /// `drop` can cancel the timer the moment the connection is torn down.
+    private struct ConnEntry {
+        let connection: NWConnection
+        var lingerFallback: DispatchWorkItem?
     }
 
     private let socketPath: String
@@ -182,9 +189,10 @@ final class SocketServerEngine<
         // `onCommand` after `stop()` returns.
         let inflight = state.withLockUnchecked { current -> [NWConnection] in
             current.stopped = true
-            let values = Array(current.conns.values)
+            let entries = Array(current.conns.values)
             current.conns.removeAll()
-            return values
+            entries.forEach { $0.lingerFallback?.cancel() }
+            return entries.map(\.connection)
         }
         listener?.cancel()
         listener = nil
@@ -207,7 +215,7 @@ final class SocketServerEngine<
         // accepted post-stop would have no drainer, so cancel it and bail.
         let tracked = state.withLockUnchecked { current -> Bool in
             guard !current.stopped else { return false }
-            current.conns[id] = connection
+            current.conns[id] = ConnEntry(connection: connection)
             return true
         }
         guard tracked else {
@@ -292,12 +300,18 @@ final class SocketServerEngine<
     /// After a reply has been queued, wait for the client to finish draining it
     /// and close its side before tearing the connection down. Dropping only
     /// once the client's EOF is observed guarantees a hard `cancel()` can never
-    /// discard buffered reply bytes. A bounded fallback drops the connection
-    /// even if the client never closes, so a misbehaving peer cannot leak it.
+    /// discard buffered reply bytes. Bounded fallback: drop the connection even
+    /// if the client never closes, so a misbehaving peer cannot leak it. Stored
+    /// in the lock-guarded state (the project's idiom for non-Sendable guarded
+    /// state) so `drop` cancels it the moment the client closes normally —
+    /// releasing the timer and its retained connection immediately instead of
+    /// at the full timeout.
     private func lingerUntilClientCloses(_ connection: NWConnection) {
-        queue.asyncAfter(deadline: .now() + socketReplyLingerTimeout) { [weak self] in
+        let fallback = DispatchWorkItem { [weak self] in
             self?.drop(connection)  // idempotent fallback: a no-op if already dropped
         }
+        state.withLockUnchecked { $0.conns[ObjectIdentifier(connection)]?.lingerFallback = fallback }
+        queue.asyncAfter(deadline: .now() + socketReplyLingerTimeout, execute: fallback)
         waitForClientClose(on: connection)
     }
 
@@ -305,6 +319,8 @@ final class SocketServerEngine<
     /// then drop the connection. The client sends nothing after its request, so
     /// this blocks harmlessly until the client cancels — which it does only
     /// after reading the full reply. Any stray bytes are drained and ignored.
+    /// On a normal close, `drop` cancels the pending linger fallback so its
+    /// retained connection is freed now rather than at the linger timeout.
     private func waitForClientClose(on connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: maxSocketFrameBytes) {
             [weak self] _, _, isComplete, error in
@@ -318,9 +334,12 @@ final class SocketServerEngine<
     }
 
     /// Untrack a connection and cancel it. Idempotent: a second call finds no
-    /// entry and simply re-cancels the already-cancelled connection.
+    /// entry and simply re-cancels the already-cancelled connection. Also
+    /// cancels any pending linger-fallback timer so it never fires and its
+    /// captured connection is released promptly.
     private func drop(_ connection: NWConnection) {
-        state.withLockUnchecked { _ = $0.conns.removeValue(forKey: ObjectIdentifier(connection)) }
+        let entry = state.withLockUnchecked { $0.conns.removeValue(forKey: ObjectIdentifier(connection)) }
+        entry?.lingerFallback?.cancel()
         connection.cancel()
     }
 }

@@ -62,6 +62,19 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // this title (a Braille spinner glyph prefix), no longer via the viewport text.
     private(set) var latestOSCTitle: String?
 
+    // The occlusion observer for the current window, and the last value pushed to
+    // libghostty (so a repeat state is not re-pushed). `lastOcclusion` starts nil:
+    // libghostty defaults a new surface to visible, so the first push always lands.
+    // `nonisolated(unsafe)` on `occlusionObserver` is safe here: it's only ever
+    // mutated from `updateOcclusionObserver()` on the main actor, and by the time
+    // `deinit` runs no other reference to the object exists, so there's no
+    // concurrent access to race with (and `NotificationCenter.removeObserver` is
+    // itself thread-safe). This lets `deinit` read it without a main-actor hop —
+    // avoiding the `isolated deinit` back-deployment shim that SIGABRTs on the CI
+    // runner (see the isolated-deinit-ci-sigabrt project memory note).
+    nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
+    private var lastOcclusion: Bool?
+
     public init(
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
         surfaceID: UUID = UUID(), onFocus: @escaping (UUID) -> Void = { _ in },
@@ -89,6 +102,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
 
+    deinit {
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+        }
+    }
+
     public override var acceptsFirstResponder: Bool { true }
 
     // A click on an unfocused terminal must both focus this view AND arrive as a
@@ -100,7 +119,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // sized host). Idempotent, with a bounded retry on transient null.
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil else { return }
+        updateOcclusionObserver()
+        guard window != nil else {
+            // Left the window (e.g. a cached surface detached by the layout
+            // coordinator): mark occluded so libghostty pauses its render thread.
+            refreshOcclusion()
+            return
+        }
         // Re-parenting into a window while the surface never came up (all prior
         // attempts failed) begins a fresh creation cycle: restore the retry budget
         // and clear the error overlay so this attachment gets a clean chance instead
@@ -121,6 +146,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // attach (not just the first), so a workspace switch that re-mounts this view
         // still lands keyboard focus on the terminal.
         onAttach(surfaceID)
+        // Now that the surface exists (or is retrying) and the view is in a
+        // window, reconcile occlusion from the window's live state.
+        refreshOcclusion()
     }
 
     // Create the libghostty surface if this view has none yet and is in a window.
@@ -142,6 +170,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             pushContentScale()
             pushSize()
             pushDisplayID()
+            // A freshly created surface defaults to visible in libghostty; the
+            // dedup cache may still read from the pre-creation (nil-surface) push,
+            // so reset it before reconciling occlusion for the real surface.
+            lastOcclusion = nil
+            refreshOcclusion()
         } catch {
             CasperLog.ghostty.failure("surface creation failed", error)
             surfaceCreationAttempts += 1
@@ -210,6 +243,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // read back. Lets a unit test assert `blurForLayoutChange()` fired without a
     // live surface or real OS focus. Stays nil until the first focus transition.
     private(set) var debugLastFocusValue: Bool?
+
+    // Test seam: records the last occlusion value `pushOcclusion` sent to
+    // libghostty (`ghostty_surface_set_occlusion`), which is set-only. Mirrors
+    // `debugLastFocusValue`. Stays nil until the first occlusion transition.
+    private(set) var debugLastOcclusionValue: Bool?
+
+    func debugRefreshOcclusion() { refreshOcclusion() }
 
     public var debugHasSurface: Bool { surface != nil }
 
@@ -392,6 +432,43 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         #if DEBUG
         debugLastFocusValue = focused
         #endif
+    }
+
+    // MARK: Occlusion
+
+    // Single point that pushes occlusion into libghostty, de-duplicated so a
+    // repeat state is not re-pushed. Records the value for DEBUG tests, exactly
+    // like `pushFocus`.
+    private func pushOcclusion(_ occluded: Bool) {
+        guard lastOcclusion != occluded else { return }
+        lastOcclusion = occluded
+        surface?.setOcclusion(occluded)
+        #if DEBUG
+        debugLastOcclusionValue = occluded
+        #endif
+    }
+
+    // Recompute occlusion from window membership + the window's live occlusion
+    // state. No window ⇒ the view is a detached cached surface (fully off-screen).
+    // Minimize / cover / off-Space all clear `.visible`.
+    private func refreshOcclusion() {
+        guard let window else { pushOcclusion(true); return }
+        pushOcclusion(!window.occlusionState.contains(.visible))
+    }
+
+    // (Re)subscribe to the current window's occlusion notifications; unsubscribe
+    // when leaving a window. Called from `viewDidMoveToWindow`.
+    private func updateOcclusionObserver() {
+        if let occlusionObserver {
+            NotificationCenter.default.removeObserver(occlusionObserver)
+            self.occlusionObserver = nil
+        }
+        guard let window else { return }
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshOcclusion() }
+        }
     }
 
     /// Ask the host to close this surface. Invoked by libghostty's

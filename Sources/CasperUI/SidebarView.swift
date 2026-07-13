@@ -29,6 +29,7 @@ struct SidebarView: View {
             AddFolderFooter(onAdd: { model.presentAddFolderPanel() })
         }
         .navigationTitle("Casper")
+        .environment(\.windowVisible, model.isWindowVisible)
     }
 
     /// A workspace row. Routes selection through `selectWorkspace` (not a plain

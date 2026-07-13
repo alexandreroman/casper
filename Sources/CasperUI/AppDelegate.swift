@@ -185,4 +185,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             mainMenu.removeItem(item)
         }
     }
+
+    /// Tell libghostty the app regained focus (cursor blink, focus animation).
+    func applicationDidBecomeActive(_ notification: Notification) {
+        AppModel.shared.runtime?.setAppFocus(true)
+    }
+
+    /// Tell libghostty the app lost focus. Complementary to occlusion — this does
+    /// not pause rendering, only quiets focus-driven work.
+    func applicationDidResignActive(_ notification: Notification) {
+        AppModel.shared.runtime?.setAppFocus(false)
+    }
 }

@@ -62,6 +62,12 @@ final class AppModel {
     /// commit signal with no storm. Reconfigured on every selection change.
     @ObservationIgnored private var gitMetaWatcher: DirectoryWatching?
 
+    /// Last window-visibility state `applyWatcherVisibility` acted on, so it can
+    /// react only to real transitions. Starts `true` because `init` already armed
+    /// the watchers as visible before any window seed arrives — matching that
+    /// makes the first seed from a visible window a no-op.
+    @ObservationIgnored private var lastAppliedWindowVisible = true
+
     /// Builds the watcher for the selected worktree. Injectable so tests can
     /// substitute a stub; the default builds the real FSEvents-backed watcher.
     @ObservationIgnored
@@ -143,6 +149,15 @@ final class AppModel {
     @ObservationIgnored let sessionIdentity: SessionIdentity
 
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
+
+    /// Whether the app's window is currently visible on screen — `false` when
+    /// minimized, fully occluded by other windows, on another Space, or the app
+    /// is hidden. Drives suspension of the sidebar's continuous animations, the
+    /// terminal surfaces' render threads, and the agent-detection cadence.
+    /// Tracked (not `@ObservationIgnored`) so the sidebar re-injects the
+    /// `windowVisible` environment when it flips. Defaults `true` so a headless
+    /// AppModel (no window, e.g. tests) never suspends work.
+    var isWindowVisible = true
 
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp?.keyWindow != nil }
@@ -688,6 +703,14 @@ final class AppModel {
         armWorktreeWatcher()
     }
 
+    /// Stop both selected-worktree watchers without rebuilding them.
+    private func stopWorktreeWatchers() {
+        worktreeWatcher?.stop()
+        worktreeWatcher = nil
+        gitMetaWatcher?.stop()
+        gitMetaWatcher = nil
+    }
+
     /// (Re)build the FSEvents watcher for the current selection from the CURRENT
     /// Git-backing/gitignore state. Stops any prior watcher, then starts a fresh
     /// one on the selected worktree regardless of Git-backing — a degenerate Space
@@ -697,10 +720,10 @@ final class AppModel {
     /// `handleSelectedWorktreeChange`. Pure wiring: no promotion/demotion here. A
     /// nil selection leaves the watcher stopped.
     private func armWorktreeWatcher() {
-        worktreeWatcher?.stop()
-        worktreeWatcher = nil
-        gitMetaWatcher?.stop()
-        gitMetaWatcher = nil
+        // Never leave watchers armed while the window is hidden: the visibility
+        // path (`applyWatcherVisibility`) is the only thing that starts them.
+        guard isWindowVisible else { stopWorktreeWatchers(); return }
+        stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
         let ws = spaces[at.space].workspaces[at.workspace]
         let path = ws.worktreePath
@@ -728,6 +751,26 @@ final class AppModel {
         if let repo {
             let logsPath = repo.gitDirPath + "logs"
             gitMetaWatcher = makeWorktreeWatcher(logsPath, [], makeWorktreeChangeHandler())
+        }
+    }
+
+    /// Suspend or resume the selected-worktree FSEvents watchers with window
+    /// visibility. Hidden ⇒ stop them (a busy background worktree must not wake
+    /// the main actor for a window nobody sees). Visible ⇒ re-arm and bump
+    /// `diffRevision` once so the diff/summary catches up on anything missed
+    /// while hidden.
+    func applyWatcherVisibility() {
+        // Act only on an actual visibility transition. The initial `true` matches
+        // `init`, which already armed the watchers as visible — so the first seed
+        // from a visible window is a no-op (no redundant re-arm or diff bump), and
+        // repeated same-state occlusion notifications do nothing.
+        guard lastAppliedWindowVisible != isWindowVisible else { return }
+        lastAppliedWindowVisible = isWindowVisible
+        if isWindowVisible {
+            reconfigureWorktreeWatcher()
+            diffRevision += 1
+        } else {
+            stopWorktreeWatchers()
         }
     }
 
@@ -1485,14 +1528,31 @@ final class AppModel {
     // yields to — the explicit `casper status set` path (see the authority latch
     // in `controlSetAgentState`). See `.superpowers/themes/agent-state-detection.md`.
 
-    /// Start the periodic terminal-scraping detector on a ~0.25s cadence.
+    /// Detection cadence while the window is visible — fast enough to keep the
+    /// sidebar's live state and spinners responsive.
+    nonisolated static let agentDetectionIntervalVisible: Duration = .milliseconds(250)
+    /// Detection cadence while the window is hidden — slow, but never stopped, so
+    /// a run that completes off-screen still fires its background notification.
+    nonisolated static let agentDetectionIntervalHidden: Duration = .milliseconds(1000)
+
+    /// The scrape interval for the current visibility. Throttles 4× when hidden.
+    /// Note: the resolver debounces in *ticks* (`debounce: 2`), so a hidden
+    /// completion is accepted after ~2 s instead of ~0.5 s — acceptable, since
+    /// nothing visible depends on it and the notification is the only consumer.
+    nonisolated static func agentDetectionInterval(isWindowVisible: Bool) -> Duration {
+        isWindowVisible ? agentDetectionIntervalVisible : agentDetectionIntervalHidden
+    }
+
+    /// Start the periodic terminal-scraping detector, throttled to ~1s while the
+    /// window is hidden (see `agentDetectionInterval`) and ~0.25s while visible.
     /// Idempotent: a second call while a loop is already running is a no-op.
     func startAgentDetection() {
         guard agentDetectionTask == nil else { return }
         agentDetectionTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 self?.runAgentDetectionTick()
-                try? await Task.sleep(for: .milliseconds(250))
+                let visible = self?.isWindowVisible ?? true
+                try? await Task.sleep(for: AppModel.agentDetectionInterval(isWindowVisible: visible))
             }
         }
     }

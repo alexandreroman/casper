@@ -9,6 +9,19 @@ final class SessionStoreTests: XCTestCase {
             .appendingPathComponent("session.json")
     }
 
+    // `isGitRepo` is intentionally not persisted (it is resolved at runtime), so
+    // the fixture uses `isGitRepo: false` for round-trip equality to hold.
+    private func makeSampleSession() -> Session {
+        Session(spaces: [
+            Space(name: "r", folderPath: "/r", isGitRepo: false, workspaces: [
+                Workspace(
+                    name: "w", worktreePath: "/r/w", branch: "b",
+                    portBase: 40000,
+                    layout: .leaf(Surface(kind: .terminal(cwd: "/r/w"))))
+            ])
+        ])
+    }
+
     func testLoadMissingFileReturnsEmptySession() throws {
         let store = SessionStore(fileURL: tempFileURL())
         XCTAssertEqual(try store.load(), Session())
@@ -19,16 +32,7 @@ final class SessionStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = SessionStore(fileURL: url)
 
-        // `isGitRepo` is intentionally not persisted (it is resolved at runtime), so
-        // build the fixture with `isGitRepo: false` for the round-trip equality to hold.
-        let session = Session(spaces: [
-            Space(name: "r", folderPath: "/r", isGitRepo: false, workspaces: [
-                Workspace(
-                    name: "w", worktreePath: "/r/w", branch: "b",
-                    portBase: 40000,
-                    layout: .leaf(Surface(kind: .terminal(cwd: "/r/w"))))
-            ])
-        ])
+        let session = makeSampleSession()
         try store.save(session)
         XCTAssertEqual(try store.load(), session)
     }
@@ -92,6 +96,22 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertTrue(loaded.spaces.isEmpty)
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: url.appendingPathExtension("corrupt").path))
+    }
+
+    func testSaveDoesNotPrettyPrint() throws {
+        let url = tempFileURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = SessionStore(fileURL: url)
+
+        let session = makeSampleSession()
+        try store.save(session)
+
+        // Pretty-printed output indents with "\n  "; a compact encode has no
+        // newline byte at all.
+        let data = try Data(contentsOf: url)
+        XCTAssertFalse(data.contains(UInt8(ascii: "\n")))
+
+        XCTAssertEqual(try store.load(), session)
     }
 
     func testDefaultURLUsesSessionLayoutFileName() throws {
