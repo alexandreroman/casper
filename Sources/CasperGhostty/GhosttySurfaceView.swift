@@ -28,6 +28,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // surface's live font size, reading back via `GhosttySurface.currentFontSize()`
     // — libghostty exposes no getter to read a size change any other way.
     let onFontSizeChange: (UUID, Float) -> Void
+    // Fired when this surface's child process exits, carrying its status. Distinct
+    // from `onClose` (which is a pane-teardown request); a lifecycle-hook surface
+    // uses this to decide what to do about the exit.
+    let onChildExit: (UUID, Int32) -> Void
     // The last font size reported to `onFontSizeChange`, so a font-size action
     // that libghostty clamped to a no-op (e.g. reset when already at default,
     // or increase past its max) does not re-report the same value.
@@ -64,7 +68,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         onAttach: @escaping (UUID) -> Void = { _ in },
         onClose: @escaping (UUID) -> Void = { _ in },
         onContextMenu: ((NSEvent) -> NSMenu?)? = nil,
-        onFontSizeChange: @escaping (UUID, Float) -> Void = { _, _ in }
+        onFontSizeChange: @escaping (UUID, Float) -> Void = { _, _ in },
+        onChildExit: @escaping (UUID, Int32) -> Void = { _, _ in }
     ) {
         self.surfaceID = surfaceID
         self.onFocus = onFocus
@@ -72,6 +77,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         self.onClose = onClose
         self.onContextMenu = onContextMenu
         self.onFontSizeChange = onFontSizeChange
+        self.onChildExit = onChildExit
         self.runtime = runtime
         self.configuration = configuration
         super.init(frame: .zero)
@@ -392,6 +398,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// `close_surface_cb` (via the runtime) when the child process exits
     /// (Ctrl-D / `exit`) or a close-surface request arrives.
     func requestClose() { onClose(surfaceID) }
+
+    /// Deliver this surface's child-process exit status to `onChildExit`. Called
+    /// by the runtime's action trampoline on GHOSTTY_ACTION_SHOW_CHILD_EXITED.
+    func reportChildExit(_ code: Int32) { onChildExit(surfaceID, code) }
 
     // MARK: Menu actions
 

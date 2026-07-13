@@ -198,6 +198,16 @@ func casperGhosttyAction(
                 view.updateOSCTitle(title)
             }
         }
+    case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
+        // Surface-scoped: deliver the child's exit status to the target view so a
+        // lifecycle-hook surface can react. Fall through (no `return`) so the
+        // existing close_surface_cb pane-teardown path stays untouched — the
+        // consumer decides based on the code. Truncating (not trapping) i32
+        // conversion matches GhosttyAction.decode's handling of this field.
+        if let view = surfaceView(from: target) {
+            let code = Int32(truncatingIfNeeded: action.action.child_exited.exit_code)
+            MainActor.assumeIsolated { view.reportChildExit(code) }
+        }
     default:
         break
     }
