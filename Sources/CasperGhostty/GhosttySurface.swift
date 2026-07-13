@@ -56,11 +56,15 @@ final class GhosttySurface {
         ghostty_surface_set_focus(surface, focused)
     }
 
-    /// Tell libghostty whether this surface is occluded (off-screen). When
-    /// occluded, libghostty pauses the surface's render thread; clearing it
+    /// Tell libghostty whether this surface is occluded (off-screen). Note:
+    /// libghostty's `ghostty_surface_set_occlusion` parameter is **`visible`**
+    /// (true = on-screen → render; false = occluded → pause) — the INVERSE of our
+    /// `occluded`, so we pass the negation. Confirmed against Ghostty v1.3.1
+    /// `src/apprt/embedded.zig`: `ghostty_surface_set_occlusion(surface, visible)`.
+    /// When occluded, libghostty pauses the surface's render thread; clearing it
     /// resumes rendering. Balances `set_display_id`, which arms the render loop.
     func setOcclusion(_ occluded: Bool) {
-        ghostty_surface_set_occlusion(surface, occluded)
+        ghostty_surface_set_occlusion(surface, !occluded)
     }
 
     /// Committed/IME text (from `NSTextInputClient.insertText`).
