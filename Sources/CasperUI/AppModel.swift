@@ -697,6 +697,14 @@ final class AppModel {
         armWorktreeWatcher()
     }
 
+    /// Stop both selected-worktree watchers without rebuilding them.
+    private func stopWorktreeWatchers() {
+        worktreeWatcher?.stop()
+        worktreeWatcher = nil
+        gitMetaWatcher?.stop()
+        gitMetaWatcher = nil
+    }
+
     /// (Re)build the FSEvents watcher for the current selection from the CURRENT
     /// Git-backing/gitignore state. Stops any prior watcher, then starts a fresh
     /// one on the selected worktree regardless of Git-backing — a degenerate Space
@@ -706,10 +714,7 @@ final class AppModel {
     /// `handleSelectedWorktreeChange`. Pure wiring: no promotion/demotion here. A
     /// nil selection leaves the watcher stopped.
     private func armWorktreeWatcher() {
-        worktreeWatcher?.stop()
-        worktreeWatcher = nil
-        gitMetaWatcher?.stop()
-        gitMetaWatcher = nil
+        stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
         let ws = spaces[at.space].workspaces[at.workspace]
         let path = ws.worktreePath
@@ -737,6 +742,20 @@ final class AppModel {
         if let repo {
             let logsPath = repo.gitDirPath + "logs"
             gitMetaWatcher = makeWorktreeWatcher(logsPath, [], makeWorktreeChangeHandler())
+        }
+    }
+
+    /// Suspend or resume the selected-worktree FSEvents watchers with window
+    /// visibility. Hidden ⇒ stop them (a busy background worktree must not wake
+    /// the main actor for a window nobody sees). Visible ⇒ re-arm and bump
+    /// `diffRevision` once so the diff/summary catches up on anything missed
+    /// while hidden.
+    func applyWatcherVisibility() {
+        if isWindowVisible {
+            reconfigureWorktreeWatcher()
+            diffRevision += 1
+        } else {
+            stopWorktreeWatchers()
         }
     }
 

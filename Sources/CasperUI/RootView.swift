@@ -89,6 +89,7 @@ private struct WindowConfigurator: NSViewRepresentable {
             window.toolbar?.allowsDisplayModeCustomization = false
             // Seed the visibility signal from the window's current state.
             model.isWindowVisible = window.occlusionState.contains(.visible)
+            model.applyWatcherVisibility()
             guard observer == nil else { return }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
@@ -111,6 +112,7 @@ private struct WindowConfigurator: NSViewRepresentable {
                 MainActor.assumeIsolated {
                     guard let window else { return }
                     self?.model.isWindowVisible = window.occlusionState.contains(.visible)
+                    self?.model.applyWatcherVisibility()
                 }
             }
         }
