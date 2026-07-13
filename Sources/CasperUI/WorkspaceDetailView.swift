@@ -214,7 +214,7 @@ struct WorkspaceDetailView: View {
             model.toggleInspectorCollapsed(for: workspace.id)
         } label: {
             Image(systemName: "sidebar.right")
-                .titleCapsule()
+                .titleCapsule(filled: workspace.inspector.collapsed)
         }
         .buttonStyle(.plain)
         .help("Toggle panel")
@@ -323,12 +323,16 @@ private extension View {
     /// Liquid Glass) because glass renders nearly invisible on chips that embed a
     /// nested borderless `Menu` (Run / Editor), so this is the only treatment that
     /// works for every chip.
-    func titleCapsule() -> some View {
+    ///
+    /// Pass `filled: false` to drop the fill and border while keeping the exact
+    /// same padding, height, and hit area — used by the inspector toggle so its
+    /// background vanishes when the panel is open but the button never shifts.
+    func titleCapsule(filled: Bool = true) -> some View {
         self
             .padding(.horizontal, 10)
             .frame(height: 36)
-            .background(Color.secondary.opacity(0.15), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .background(filled ? Color.secondary.opacity(0.15) : .clear, in: Capsule())
+            .overlay(filled ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
             .contentShape(Capsule())
     }
 }
