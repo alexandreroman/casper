@@ -7,13 +7,19 @@ import Foundation
 @MainActor
 public final class Debouncer {
     private let delay: TimeInterval
-    private var pending: DispatchWorkItem?
+    // `nonisolated(unsafe)` is safe here: `pending` is only ever mutated from
+    // `schedule` on the main actor, and by the time `deinit` runs no other
+    // reference to the object exists, so there's no concurrent access to race
+    // with (and `DispatchWorkItem.cancel()` is itself thread-safe). This lets
+    // `deinit` read it without a main-actor hop — avoiding the `isolated deinit`
+    // back-deployment shim that SIGABRTs on the CI runner.
+    nonisolated(unsafe) private var pending: DispatchWorkItem?
 
     public init(delay: TimeInterval) {
         self.delay = delay
     }
 
-    isolated deinit {
+    deinit {
         // Cancel any pending action so a coalesced fire cannot outlive the
         // Debouncer (and typically its owner), which would be surprising for a
         // reusable, model-free utility.

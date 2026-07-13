@@ -66,3 +66,4 @@
 - [.casper.json scripts — design decisions & invariants](references/repo-config.md) — copyPatterns + named commands + setup/teardown hooks: the child-exit/close race invariant, hook-wrap vs subshell-wrap, completion-based destroy, menu ordering
 - [Project memory file naming](references/memory-file-naming.md) — don't prefix memory filenames with `casper` (redundant)
 - [Feature status vs project memory](references/project-memory-vs-status.md) — implementation status goes in `.superpowers/status.md`, not project memory (durable decisions only)
+- [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI; use plain deinit + nonisolated(unsafe)
