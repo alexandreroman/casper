@@ -18,5 +18,4 @@ public enum CasperGhostty {
 /// reason.
 struct GhosttyError: Error, Equatable, Sendable {
     let reason: String
-    init(reason: String) { self.reason = reason }
 }
