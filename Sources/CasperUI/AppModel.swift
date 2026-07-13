@@ -1494,14 +1494,31 @@ final class AppModel {
     // yields to — the explicit `casper status set` path (see the authority latch
     // in `controlSetAgentState`). See `.superpowers/themes/agent-state-detection.md`.
 
-    /// Start the periodic terminal-scraping detector on a ~0.25s cadence.
+    /// Detection cadence while the window is visible — fast enough to keep the
+    /// sidebar's live state and spinners responsive.
+    nonisolated static let agentDetectionIntervalVisible: Duration = .milliseconds(250)
+    /// Detection cadence while the window is hidden — slow, but never stopped, so
+    /// a run that completes off-screen still fires its background notification.
+    nonisolated static let agentDetectionIntervalHidden: Duration = .milliseconds(1000)
+
+    /// The scrape interval for the current visibility. Throttles 4× when hidden.
+    /// Note: the resolver debounces in *ticks* (`debounce: 2`), so a hidden
+    /// completion is accepted after ~2 s instead of ~0.5 s — acceptable, since
+    /// nothing visible depends on it and the notification is the only consumer.
+    nonisolated static func agentDetectionInterval(isWindowVisible: Bool) -> Duration {
+        isWindowVisible ? agentDetectionIntervalVisible : agentDetectionIntervalHidden
+    }
+
+    /// Start the periodic terminal-scraping detector, throttled to ~1s while the
+    /// window is hidden (see `agentDetectionInterval`) and ~0.25s while visible.
     /// Idempotent: a second call while a loop is already running is a no-op.
     func startAgentDetection() {
         guard agentDetectionTask == nil else { return }
         agentDetectionTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 self?.runAgentDetectionTick()
-                try? await Task.sleep(for: .milliseconds(250))
+                let visible = self?.isWindowVisible ?? true
+                try? await Task.sleep(for: AppModel.agentDetectionInterval(isWindowVisible: visible))
             }
         }
     }
