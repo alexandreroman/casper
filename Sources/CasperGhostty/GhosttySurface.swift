@@ -14,7 +14,7 @@ final class GhosttySurface {
     /// libghostty's clipboard/close callbacks — pass the view pointer so those
     /// callbacks can recover the owning `GhosttySurfaceView`. Throws if the
     /// runtime has no app or libghostty returns null.
-    public init(
+    init(
         runtime: GhosttyRuntime,
         configuration: GhosttySurfaceConfiguration,
         nsview: UnsafeMutableRawPointer,
@@ -44,20 +44,20 @@ final class GhosttySurface {
     deinit { ghostty_surface_free(surface) }
 
     /// Set the drawable size in *pixels* (backing-store units).
-    public func setSize(widthPixels: UInt32, heightPixels: UInt32) {
+    func setSize(widthPixels: UInt32, heightPixels: UInt32) {
         ghostty_surface_set_size(surface, widthPixels, heightPixels)
     }
 
-    public func setContentScale(x: Double, y: Double) {
+    func setContentScale(x: Double, y: Double) {
         ghostty_surface_set_content_scale(surface, x, y)
     }
 
-    public func setFocus(_ focused: Bool) {
+    func setFocus(_ focused: Bool) {
         ghostty_surface_set_focus(surface, focused)
     }
 
     /// Committed/IME text (from `NSTextInputClient.insertText`).
-    public func sendText(_ text: String) {
+    func sendText(_ text: String) {
         // Pass the full UTF-8 byte length, not strlen: the withCString buffer
         // preserves embedded NULs, so text containing U+0000 is sent intact.
         text.withCString { ptr in
@@ -66,11 +66,11 @@ final class GhosttySurface {
     }
 
     @discardableResult
-    public func sendKey(_ event: ghostty_input_key_s) -> Bool {
+    func sendKey(_ event: ghostty_input_key_s) -> Bool {
         ghostty_surface_key(surface, event)
     }
 
-    public func sendMouseButton(
+    func sendMouseButton(
         state: ghostty_input_mouse_state_e,
         button: ghostty_input_mouse_button_e,
         mods: ghostty_input_mods_e
@@ -78,27 +78,27 @@ final class GhosttySurface {
         _ = ghostty_surface_mouse_button(surface, state, button, mods)
     }
 
-    public func sendMousePos(x: Double, y: Double, mods: ghostty_input_mods_e) {
+    func sendMousePos(x: Double, y: Double, mods: ghostty_input_mods_e) {
         ghostty_surface_mouse_pos(surface, x, y, mods)
     }
 
-    public func sendMouseScroll(
+    func sendMouseScroll(
         deltaX: Double, deltaY: Double, mods: ghostty_input_scroll_mods_t
     ) {
         ghostty_surface_mouse_scroll(surface, deltaX, deltaY, mods)
     }
 
     /// Whether the surface currently has an active text selection.
-    public func hasSelection() -> Bool { ghostty_surface_has_selection(surface) }
+    func hasSelection() -> Bool { ghostty_surface_has_selection(surface) }
 
     /// Whether the terminal app is currently capturing the mouse (mouse reporting
     /// active). When true, right-clicks belong to the app, not an AppKit menu.
-    public func mouseCaptured() -> Bool { ghostty_surface_mouse_captured(surface) }
+    func mouseCaptured() -> Bool { ghostty_surface_mouse_captured(surface) }
 
     /// Deliver clipboard text back to libghostty for a pending read (paste)
     /// request. `state` is the opaque token libghostty handed to the read
     /// callback; it must be passed back unchanged.
-    public func completeClipboardRequest(
+    func completeClipboardRequest(
         _ text: String, state: UnsafeMutableRawPointer?, confirmed: Bool
     ) {
         text.withCString { ptr in
@@ -110,7 +110,7 @@ final class GhosttySurface {
     /// `"paste_from_clipboard"`, `"select_all"`), bypassing key-event translation.
     /// Returns whether the action was recognized and performed.
     @discardableResult
-    public func bindingAction(_ name: String) -> Bool {
+    func bindingAction(_ name: String) -> Bool {
         name.withCString { ptr in
             ghostty_surface_binding_action(surface, ptr, UInt(name.utf8.count))
         }
@@ -119,7 +119,7 @@ final class GhosttySurface {
     /// Read the terminal's text: the visible viewport, or the full screen
     /// (including scrollback) when `scrollback` is true. Returns nil if
     /// libghostty declines to produce a selection.
-    public func readText(scrollback: Bool) -> String? {
+    func readText(scrollback: Bool) -> String? {
         let tag = scrollback ? GHOSTTY_POINT_SCREEN : GHOSTTY_POINT_VIEWPORT
         let selection = ghostty_selection_s(
             top_left: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
@@ -140,17 +140,17 @@ final class GhosttySurface {
     /// so it is compiled only into debug builds (matching its sole consumer,
     /// `GhosttySurfaceView.debugGeometry()`).
     #if DEBUG
-    public struct Geometry: Equatable, Sendable {
-        public let columns: Int
-        public let rows: Int
-        public let widthPixels: Int
-        public let heightPixels: Int
-        public let cellWidthPixels: Int
-        public let cellHeightPixels: Int
+    struct Geometry: Equatable, Sendable {
+        let columns: Int
+        let rows: Int
+        let widthPixels: Int
+        let heightPixels: Int
+        let cellWidthPixels: Int
+        let cellHeightPixels: Int
     }
 
     /// Read every field of `ghostty_surface_size_s` for the current surface.
-    public func geometry() -> Geometry {
+    func geometry() -> Geometry {
         let size = ghostty_surface_size(surface)
         return Geometry(
             columns: Int(size.columns),

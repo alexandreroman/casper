@@ -17,6 +17,6 @@ public enum CasperGhostty {
 /// never-crash error pattern of `CasperGit.GitError`). Carries a human-readable
 /// reason.
 struct GhosttyError: Error, Equatable, Sendable {
-    public let reason: String
-    public init(reason: String) { self.reason = reason }
+    let reason: String
+    init(reason: String) { self.reason = reason }
 }
