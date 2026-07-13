@@ -56,6 +56,13 @@ final class GhosttySurface {
         ghostty_surface_set_focus(surface, focused)
     }
 
+    /// Tell libghostty whether this surface is occluded (off-screen). When
+    /// occluded, libghostty pauses the surface's render thread; clearing it
+    /// resumes rendering. Balances `set_display_id`, which arms the render loop.
+    func setOcclusion(_ occluded: Bool) {
+        ghostty_surface_set_occlusion(surface, occluded)
+    }
+
     /// Committed/IME text (from `NSTextInputClient.insertText`).
     func sendText(_ text: String) {
         // Pass the full UTF-8 byte length, not strlen: the withCString buffer
