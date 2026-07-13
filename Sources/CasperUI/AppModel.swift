@@ -714,6 +714,9 @@ final class AppModel {
     /// `handleSelectedWorktreeChange`. Pure wiring: no promotion/demotion here. A
     /// nil selection leaves the watcher stopped.
     private func armWorktreeWatcher() {
+        // Never leave watchers armed while the window is hidden: the visibility
+        // path (`applyWatcherVisibility`) is the only thing that starts them.
+        guard isWindowVisible else { stopWorktreeWatchers(); return }
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
         let ws = spaces[at.space].workspaces[at.workspace]

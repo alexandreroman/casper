@@ -168,6 +168,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             pushContentScale()
             pushSize()
             pushDisplayID()
+            // A freshly created surface defaults to visible in libghostty; the
+            // dedup cache may still read from the pre-creation (nil-surface) push,
+            // so reset it before reconciling occlusion for the real surface.
+            lastOcclusion = nil
+            refreshOcclusion()
         } catch {
             CasperLog.ghostty.failure("surface creation failed", error)
             surfaceCreationAttempts += 1

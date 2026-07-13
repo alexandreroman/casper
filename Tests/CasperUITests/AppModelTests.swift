@@ -668,6 +668,36 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].branch, "main")
     }
 
+    // MARK: - Watcher arm guarded by window visibility
+
+    func testArmWorktreeWatcherSkipsWhileWindowHidden() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        var watcherCreated = false
+        model.makeWorktreeWatcher = { _, _, _ in
+            watcherCreated = true
+            return StubDirectoryWatcher()
+        }
+        model.isWindowVisible = false
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)  // selects & would arm the watcher
+        XCTAssertFalse(watcherCreated)
+    }
+
+    func testArmWorktreeWatcherRunsWhileWindowVisible() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        var watcherCreated = false
+        model.makeWorktreeWatcher = { _, _, _ in
+            watcherCreated = true
+            return StubDirectoryWatcher()
+        }
+        model.isWindowVisible = true
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)  // selects & arms the watcher
+        XCTAssertTrue(watcherCreated)
+    }
+
     /// Spin the main runloop for `seconds` so debounced main-queue work can run.
     private func expectAfter(_ seconds: TimeInterval) {
         let done = expectation(description: "waited \(seconds)s")
