@@ -65,7 +65,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // The occlusion observer for the current window, and the last value pushed to
     // libghostty (so a repeat state is not re-pushed). `lastOcclusion` starts nil:
     // libghostty defaults a new surface to visible, so the first push always lands.
-    private var occlusionObserver: NSObjectProtocol?
+    // `nonisolated(unsafe)` on `occlusionObserver` is safe here: it's only ever
+    // mutated from `updateOcclusionObserver()` on the main actor, and by the time
+    // `deinit` runs no other reference to the object exists, so there's no
+    // concurrent access to race with (and `NotificationCenter.removeObserver` is
+    // itself thread-safe). This lets `deinit` read it without a main-actor hop —
+    // avoiding the `isolated deinit` back-deployment shim that SIGABRTs on the CI
+    // runner (see the isolated-deinit-ci-sigabrt project memory note).
+    nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
     private var lastOcclusion: Bool?
 
     public init(
@@ -95,12 +102,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not supported") }
 
-    // `GhosttySurfaceView` is @MainActor-isolated (inherited from `NSView`), so a
-    // plain `deinit` is synthesized `nonisolated` and cannot touch the
-    // main-actor-isolated `occlusionObserver` stored property. `isolated deinit`
-    // (Swift 6.2) removes that restriction — see the
-    // notificationcenter-self-capture-isolated-deinit project memory note.
-    isolated deinit {
+    deinit {
         if let occlusionObserver {
             NotificationCenter.default.removeObserver(occlusionObserver)
         }

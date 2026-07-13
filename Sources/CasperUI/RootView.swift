@@ -77,8 +77,15 @@ private struct WindowConfigurator: NSViewRepresentable {
     @MainActor
     final class Coordinator {
         private let model: AppModel
-        private var observer: NSObjectProtocol?
-        private var occlusionObserver: NSObjectProtocol?
+        // `nonisolated(unsafe)` is safe here: both are only ever mutated from
+        // `attach(to:)` on the main actor, and by the time `deinit` runs no other
+        // reference to the object exists, so there's no concurrent access to race
+        // with (and `NotificationCenter.removeObserver` is itself thread-safe). This
+        // lets `deinit` read them without a main-actor hop — avoiding the `isolated
+        // deinit` back-deployment shim that SIGABRTs on the CI runner (see the
+        // isolated-deinit-ci-sigabrt project memory note).
+        nonisolated(unsafe) private var observer: NSObjectProtocol?
+        nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
 
         init(model: AppModel) { self.model = model }
 
@@ -123,7 +130,7 @@ private struct WindowConfigurator: NSViewRepresentable {
             }
         }
 
-        isolated deinit {
+        deinit {
             if let observer {
                 NotificationCenter.default.removeObserver(observer)
             }

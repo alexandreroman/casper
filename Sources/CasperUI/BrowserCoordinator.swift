@@ -90,7 +90,14 @@ final class FocusReportingWebView: WKWebView {
     // The occlusion observer for the current window, and the last suspension
     // value pushed to WebKit (so a repeat state is not re-pushed). `lastSuspended`
     // starts nil: a fresh web view plays media, so the first push always lands.
-    private var occlusionObserver: NSObjectProtocol?
+    // `nonisolated(unsafe)` on `occlusionObserver` is safe here: it's only ever
+    // mutated from `updateOcclusionObserver()` on the main actor, and by the time
+    // `deinit` runs no other reference to the object exists, so there's no
+    // concurrent access to race with (and `NotificationCenter.removeObserver` is
+    // itself thread-safe). This lets `deinit` read it without a main-actor hop —
+    // avoiding the `isolated deinit` back-deployment shim that SIGABRTs on the CI
+    // runner (see the isolated-deinit-ci-sigabrt project memory note).
+    nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
     private var lastSuspended: Bool?
 
     override func becomeFirstResponder() -> Bool {
@@ -105,12 +112,7 @@ final class FocusReportingWebView: WKWebView {
         menu.removeAllItems()
     }
 
-    // `FocusReportingWebView` is @MainActor-isolated (inherited from `WKWebView`),
-    // so a plain `deinit` is synthesized `nonisolated` and cannot touch the
-    // main-actor-isolated `occlusionObserver` stored property. `isolated deinit`
-    // (Swift 6.2) removes that restriction — see the
-    // notificationcenter-self-capture-isolated-deinit project memory note.
-    isolated deinit {
+    deinit {
         if let occlusionObserver {
             NotificationCenter.default.removeObserver(occlusionObserver)
         }
