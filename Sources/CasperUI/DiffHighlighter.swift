@@ -59,6 +59,18 @@ enum DiffHighlighter {
         return fileManager.fileExists(atPath: target.path)
     }()
 
+    /// Files larger than this are rendered as neutral text instead of being
+    /// highlighted: highlighting a minified/generated blob is wasted work, since
+    /// its long lines are truncated in the view anyway (see
+    /// `DiffLineStyle.maxDisplayLineLength`).
+    static let maxHighlightBytes = 512 * 1024
+
+    /// Whether `text` is too large to be worth highlighting (see
+    /// `maxHighlightBytes`). Measured in UTF-8 bytes to bound memory use.
+    static func exceedsHighlightBudget(_ text: String) -> Bool {
+        text.utf8.count > maxHighlightBytes
+    }
+
     /// Highlights `text` as a whole (full-file context matters, so lines are
     /// never highlighted in isolation) and returns one `AttributedString` per
     /// source line, indexable by 1-based line number.
@@ -70,6 +82,12 @@ enum DiffHighlighter {
     /// neutral text.
     static func highlightedLines(of text: String, forPath path: String) async -> [AttributedString]? {
         guard let language = language(forPath: path), !text.isEmpty, resourceBundleReady else {
+            return nil
+        }
+        // Skip huge generated files: their long lines are truncated at display
+        // anyway (see `DiffLineStyle.maxDisplayLineLength`), so highlighting a
+        // minified/generated blob only burns CPU and memory off-actor.
+        if exceedsHighlightBudget(text) {
             return nil
         }
 
