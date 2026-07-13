@@ -214,9 +214,9 @@ struct WorkspaceDetailView: View {
             model.toggleInspectorCollapsed(for: workspace.id)
         } label: {
             Image(systemName: "sidebar.right")
+                .titleCapsule()
         }
         .buttonStyle(.plain)
-        .titleCapsule()
         .help("Toggle panel")
     }
 

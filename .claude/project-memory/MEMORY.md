@@ -68,3 +68,4 @@
 - [Feature status vs project memory](references/project-memory-vs-status.md) — implementation status goes in `.superpowers/status.md`, not project memory (durable decisions only)
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI; use plain deinit + nonisolated(unsafe)
 - [libghostty set_occlusion param is `visible` not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread; inverting it freezes visible surfaces (grid still updates, no frames)
+- [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply .titleCapsule() inside the Button's label, not after .buttonStyle(.plain), or only the glyph is clickable
