@@ -32,7 +32,8 @@ final class AppModelTests: XCTestCase {
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/plain"), probe: { _ in nil })
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces[0].id)
-        // Persisted synchronously.
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 1)
     }
 
@@ -63,6 +64,8 @@ final class AppModelTests: XCTestCase {
         model.removeSpace(id: containingSpaceID(model, workspace: second))
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces[0].id)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 1)
     }
 
@@ -301,6 +304,8 @@ final class AppModelTests: XCTestCase {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store, session: session)
         model.selectWorkspace(ws2.id)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertEqual(try store.load().selectedWorkspaceID, ws2.id)
     }
 
@@ -318,6 +323,8 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store, session: session)
         model.removeSpace(id: model.spaces[0].id)  // the only Space holds the selection
         XCTAssertNil(model.selectedWorkspaceID)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
         XCTAssertNil(try store.load().selectedWorkspaceID)
         assertSelectionValidOrNil(model)
     }
@@ -383,6 +390,8 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/roundtrip"), probe: { _ in nil })
 
+        // The disk write is backgrounded; flush so the reload below sees it.
+        model.flushPendingSave()
         let reloadedStore = SessionStore(fileURL: url)
         let reloadedSession = try reloadedStore.load()
         let reloadedModel = AppModel(sessionStore: reloadedStore, session: reloadedSession)

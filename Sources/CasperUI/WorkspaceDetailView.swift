@@ -167,7 +167,13 @@ struct WorkspaceDetailView: View {
     }
 
     private var title: some View {
-        HStack(spacing: 7) {
+        // Resolve the owning Space once — `model.space(for:)` scans every Space's
+        // workspaces, so both the git-backed flag and the name derive from this
+        // single lookup rather than scanning the model twice per body pass.
+        let space = model.space(for: workspace)
+        let isGitRepo = space?.isGitRepo ?? false
+        let spaceName = space?.name ?? workspace.name
+        return HStack(spacing: 7) {
             // Mirror WorkspaceRow: git-branch glyph + branch label for a
             // Git-backed Space, folder glyph + Space name for a degenerate one.
             if isGitRepo {
@@ -182,14 +188,6 @@ struct WorkspaceDetailView: View {
             }
         }
         .titleCapsule()
-    }
-
-    private var isGitRepo: Bool {
-        model.isWorkspaceGitBacked(workspace)
-    }
-
-    private var spaceName: String {
-        model.space(for: workspace)?.name ?? workspace.name
     }
 
     @ViewBuilder private var diffBadge: some View {

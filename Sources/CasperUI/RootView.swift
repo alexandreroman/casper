@@ -70,8 +70,14 @@ private struct WindowConfigurator: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        nsView.window?.titleVisibility = .hidden
-        nsView.window?.toolbar?.allowsDisplayModeCustomization = false
+        // The `didUpdateNotification` observer already keeps these applied, so only
+        // write when the value actually differs — `updateNSView` runs on every
+        // `RootView` re-evaluation (spaces/selection changes) and these are redundant.
+        guard let window = nsView.window else { return }
+        if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
+        if let toolbar = window.toolbar, toolbar.allowsDisplayModeCustomization {
+            toolbar.allowsDisplayModeCustomization = false
+        }
     }
 
     @MainActor

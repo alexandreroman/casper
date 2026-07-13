@@ -11,6 +11,11 @@ enum DiffLineStyle {
     static let insertionTint = Color(red: 0.529, green: 0.757, blue: 0.388)
     static let deletionTint = Color(red: 0.725, green: 0.416, blue: 0.369)
 
+    /// Concrete gutter line-number color for context lines. A plain `Color`
+    /// rather than the hierarchical `.tertiary` style, so a row can pick one
+    /// concrete color per line kind without erasing to `AnyShapeStyle`.
+    static let contextNumberTint = Color(nsColor: .tertiaryLabelColor)
+
     static func prefix(for kind: GitDiffLine.Kind) -> String {
         switch kind {
         case .addition: return "+"

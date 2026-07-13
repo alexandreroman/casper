@@ -646,14 +646,21 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // is refreshed only during a drag and a fresh click lands at a stale cell. One
     // tracking area over the whole visible rect restores the stream, matching
     // upstream Ghostty.
+    // The tracking area uses `.inVisibleRect`, so it auto-tracks the visible bounds
+    // and never needs rebuilding for a pure geometry change. AppKit calls
+    // `updateTrackingAreas` on every bounds/frame change (e.g. every split-resize
+    // frame), so install the single area once and skip the remove+re-add thereafter.
+    private var trackingAreaInstalled = false
+
     public override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        for area in trackingAreas { removeTrackingArea(area) }
+        guard !trackingAreaInstalled else { return }
         addTrackingArea(NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .inVisibleRect, .activeAlways],
             owner: self,
             userInfo: nil))
+        trackingAreaInstalled = true
     }
 
     public override func mouseDown(with event: NSEvent) {

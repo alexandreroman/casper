@@ -113,11 +113,64 @@ final class AppModel {
     private(set) var menuCanDeleteSelectedWorkspace = false
     private(set) var menuCanCloseSelectedWorkspace = false
 
+    /// A snapshot of EXACTLY the inputs the four menu enable-state flags read, used
+    /// to skip the recompute when none of them could have changed. The flags depend
+    /// only on selection and workspace membership/kind/Git-backing — never on
+    /// `layout`/`agentState`/`todos`/`inspector` — yet `spaces.didSet` fires on
+    /// every one of those high-frequency mutations (notably each agent-detection
+    /// `agentState` flip). Comparing this fingerprint lets those churny mutations
+    /// early-out of `refreshMenuFlags()`.
+    ///
+    /// Inputs captured (a deliberate superset of the four properties' reads —
+    /// `hasSelectedWorkspace`, `canCreateWorkspace` via `targetSpaceForNewWorkspace`,
+    /// `canDeleteSelectedWorkspace`, `canCloseSelectedWorkspace`): the selection,
+    /// and per Space its `isGitRepo` plus each workspace's `id → kind`.
+    /// `canCloseSelectedWorkspace` also reads the selected workspace's `baseBranch`,
+    /// but a workspace's `baseBranch` is fixed at creation and never mutated after,
+    /// so membership + kind already capture every way it can flip.
+    private struct MenuFlagsFingerprint: Equatable {
+        struct SpaceFingerprint: Equatable {
+            let isGitRepo: Bool
+            let workspaceKinds: [UUID: WorkspaceKind]
+        }
+        let selectedWorkspaceID: UUID?
+        let spaces: [SpaceFingerprint]
+    }
+
+    /// Last fingerprint `refreshMenuFlags()` acted on. `nil` sentinel never equals a
+    /// real fingerprint, so the first call (seeded at the end of `init`) always
+    /// proceeds rather than being skipped.
+    @ObservationIgnored private var lastMenuFlagsFingerprint: MenuFlagsFingerprint?
+
+    /// Build the current menu-flags fingerprint in a single pass over `spaces`.
+    private func menuFlagsFingerprint() -> MenuFlagsFingerprint {
+        let spaceFingerprints = spaces.map { space in
+            var kinds: [UUID: WorkspaceKind] = [:]
+            for workspace in space.workspaces { kinds[workspace.id] = workspace.kind }
+            return MenuFlagsFingerprint.SpaceFingerprint(
+                isGitRepo: space.isGitRepo, workspaceKinds: kinds)
+        }
+        return MenuFlagsFingerprint(
+            selectedWorkspaceID: selectedWorkspaceID, spaces: spaceFingerprints)
+    }
+
     /// Recompute each menu flag from its computed property, writing only on a real
     /// change. The guarded write is essential: an unconditional write to an
     /// `@Observable` property notifies observers even when the value is unchanged,
     /// which would defeat the flicker fix.
+    ///
+    /// A fingerprint guard fronts the recompute: `spaces.didSet` fires on every
+    /// `spaces` mutation (including the frequent agent-detection `agentState`
+    /// flips), but the flags depend only on the inputs in `MenuFlagsFingerprint`.
+    /// When the fingerprint is unchanged, none of the four flags can have changed,
+    /// so return immediately and skip the four linear scans and their guarded
+    /// writes. Correctness hinges on the fingerprint changing whenever any flag
+    /// input changes (see `MenuFlagsFingerprint`), or a menu item could get stuck.
     private func refreshMenuFlags() {
+        let fingerprint = menuFlagsFingerprint()
+        guard fingerprint != lastMenuFlagsFingerprint else { return }
+        lastMenuFlagsFingerprint = fingerprint
+
         if menuHasSelectedWorkspace != hasSelectedWorkspace { menuHasSelectedWorkspace = hasSelectedWorkspace }
         if menuCanCreateWorkspace != canCreateWorkspace { menuCanCreateWorkspace = canCreateWorkspace }
         if menuCanDeleteSelectedWorkspace != canDeleteSelectedWorkspace {
@@ -156,6 +209,14 @@ final class AppModel {
     @ObservationIgnored let sessionIdentity: SessionIdentity
 
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
+
+    /// Serial background queue for `persist()`'s atomic disk write. Encoding stays
+    /// on the main actor (it needs the live state); only the blocking write is
+    /// dispatched here so it never stalls the render/run loop. Serial + FIFO, so a
+    /// later write never lands before an earlier one, and `flushPendingSave()` can
+    /// drain it with a synchronous barrier for quit-safety and deterministic tests.
+    @ObservationIgnored private let saveQueue = DispatchQueue(
+        label: "com.github.alexandreroman.casper.session-save", qos: .utility)
 
     /// Whether the app's window is currently visible on screen — `false` when
     /// minimized, fully occluded by other windows, on another Space, or the app
@@ -1451,9 +1512,24 @@ final class AppModel {
         }
     }
 
+    /// Encode the session on the main actor (where the state lives), then hand the
+    /// resulting `Data` to `saveQueue` for the blocking atomic disk write — keeping
+    /// the write off the render/run loop. Only `sessionStore` and `data` (both
+    /// `Sendable`) are captured; never `self`/`spaces`. `onPersistForTest?()` fires
+    /// synchronously right after enqueuing (not after the write completes), so the
+    /// save-count tests, which count `persist()` calls rather than disk writes, are
+    /// unaffected — and it still fires even when the encode throws.
     func persist() {
         do {
-            try sessionStore.save(Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
+            let data = try sessionStore.encode(
+                Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
+            saveQueue.async { [sessionStore] in
+                do {
+                    try sessionStore.write(data)
+                } catch {
+                    CasperLog.app.failure("failed to persist session", error)
+                }
+            }
         } catch {
             CasperLog.app.failure("failed to persist session", error)
         }
@@ -1472,6 +1548,11 @@ final class AppModel {
         saveWorkItem?.cancel()
         saveWorkItem = nil
         persist()
+        // Drain the serial save queue so the just-enqueued write (and any prior
+        // ones) have hit disk before returning. This preserves
+        // `applicationWillTerminate`'s guarantee that state is persisted before the
+        // app exits, and makes the tests' post-mutation `store.load()` deterministic.
+        saveQueue.sync {}
     }
 
     /// The per-surface environment injected into a terminal so the `casper` CLI
