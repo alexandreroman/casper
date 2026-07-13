@@ -36,7 +36,11 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         }
     }
 
-    func testMarshalsInitialInput() {
+    // `initialInput` is deliberately NOT marshaled into the C struct: libghostty's
+    // `initial_input` field mojibakes non-ASCII text, so `GhosttySurface.init`
+    // injects the text post-spawn via the UTF-8-safe `ghostty_surface_text` path
+    // instead. The C field must therefore stay null even when `initialInput` is set.
+    func testInitialInputIsNotMarshaledIntoCStruct() {
         var config = GhosttySurfaceConfiguration()
         config.initialInput = "echo hi\n"
 
@@ -44,7 +48,7 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         withUnsafeMutablePointer(to: &sentinel) { raw in
             let nsview = UnsafeMutableRawPointer(raw)
             config.withCValue(nsview: nsview, userdata: nil) { c in
-                XCTAssertEqual(String(cString: c.initial_input), "echo hi\n")
+                XCTAssertNil(c.initial_input)
             }
         }
     }
