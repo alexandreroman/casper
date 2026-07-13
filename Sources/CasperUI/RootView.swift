@@ -36,7 +36,7 @@ struct RootView: View {
                 }
             }
         }
-        .background(WindowConfigurator())
+        .background(WindowConfigurator(model: model))
         .onChange(of: model.spaces.isEmpty) { _, empty in
             // When the first space is added, expand the sidebar by default. Only
             // reacts to the empty↔non-empty transition, so manual sidebar toggling
@@ -53,7 +53,9 @@ struct RootView: View {
 /// The `NavigationSplitView` re-shows the title whenever the sidebar collapses,
 /// so a `Coordinator` observes the window and re-hides it on every update.
 private struct WindowConfigurator: NSViewRepresentable {
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    let model: AppModel
+
+    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -72,15 +74,21 @@ private struct WindowConfigurator: NSViewRepresentable {
         nsView.window?.toolbar?.allowsDisplayModeCustomization = false
     }
 
+    @MainActor
     final class Coordinator {
+        private let model: AppModel
         private var observer: NSObjectProtocol?
+        private var occlusionObserver: NSObjectProtocol?
 
-        @MainActor
+        init(model: AppModel) { self.model = model }
+
         func attach(to window: NSWindow) {
             window.titleVisibility = .hidden
             // Removes the "Icon and Text / Icon Only" toolbar display-mode context
             // menu that AppKit shows on a right-/control-click of the toolbar.
             window.toolbar?.allowsDisplayModeCustomization = false
+            // Seed the visibility signal from the window's current state.
+            model.isWindowVisible = window.occlusionState.contains(.visible)
             guard observer == nil else { return }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
@@ -94,11 +102,25 @@ private struct WindowConfigurator: NSViewRepresentable {
                     window.titleVisibility = .hidden
                 }
             }
+            // Minimize, cover, and off-Space all drop `.visible` from
+            // occlusionState, so this one observer covers every "hidden" case.
+            occlusionObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification,
+                object: window, queue: .main
+            ) { [weak self, weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let window else { return }
+                    self?.model.isWindowVisible = window.occlusionState.contains(.visible)
+                }
+            }
         }
 
-        deinit {
+        isolated deinit {
             if let observer {
                 NotificationCenter.default.removeObserver(observer)
+            }
+            if let occlusionObserver {
+                NotificationCenter.default.removeObserver(occlusionObserver)
             }
         }
     }

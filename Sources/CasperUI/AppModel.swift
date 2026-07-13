@@ -144,6 +144,15 @@ final class AppModel {
 
     @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
 
+    /// Whether the app's window is currently visible on screen — `false` when
+    /// minimized, fully occluded by other windows, on another Space, or the app
+    /// is hidden. Drives suspension of the sidebar's continuous animations, the
+    /// terminal surfaces' render threads, and the agent-detection cadence.
+    /// Tracked (not `@ObservationIgnored`) so the sidebar re-injects the
+    /// `windowVisible` environment when it flips. Defaults `true` so a headless
+    /// AppModel (no window, e.g. tests) never suspends work.
+    var isWindowVisible = true
+
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp?.keyWindow != nil }
 
