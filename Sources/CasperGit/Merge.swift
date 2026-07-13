@@ -40,16 +40,18 @@ extension Repository {
         var index: OpaquePointer?
         try gitCheck(git_merge_commits(&index, pointer, targetCommit, sourceCommit, &mergeOptions))
         defer { git_index_free(index) }
+        let mergeIndex = try requireNonNull(index, "merge index")
 
-        if git_index_has_conflicts(index) != 0 {
+        if git_index_has_conflicts(mergeIndex) != 0 {
             throw MergeConflictError()
         }
 
         var treeOid = git_oid()
-        try gitCheck(git_index_write_tree_to(&treeOid, index, pointer))
+        try gitCheck(git_index_write_tree_to(&treeOid, mergeIndex, pointer))
         var tree: OpaquePointer?
         try gitCheck(git_tree_lookup(&tree, pointer, &treeOid))
         defer { git_tree_free(tree) }
+        let mergeTree = try requireNonNull(tree, "merge tree")
 
         let signature = try mergeSignature()
         defer { git_signature_free(signature) }
@@ -61,7 +63,7 @@ extension Repository {
             git_commit_create(
                 &newCommitOid, pointer, refName,
                 signature, signature, "UTF-8", message,
-                tree, 2, buf.baseAddress)
+                mergeTree, 2, buf.baseAddress)
         })
 
         return .merged
