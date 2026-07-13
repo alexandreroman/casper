@@ -26,3 +26,15 @@ the subagent build + `make build`/compile-verify only, then let the
 or more simply the user's own eyes via `make dev`) do the actual visual
 check. Expect visual polish to be an iterative loop driven by the user's
 screenshots, not something an agent confirms end-to-end alone.
+
+**Do not assume the interactive session can always capture either.** In some
+session configurations even the main-loop `Bash` tool's shell lacks the
+screen-recording grant: `screencapture -x` fails with `could not create image
+from display`, and `casper debug screenshot` needs both a running instance
+*and* a loaded workspace surface (a fresh `--session` instance has none →
+`{"error":"no surface"}`, and that verb captures the terminal surface, not the
+window's title-bar/toolbar chrome anyway). Net: title-bar/toolbar visuals
+often cannot be pixel-verified from within any agent context — rely on the
+compile-clean build plus the shared-code guarantee (e.g. one common view
+modifier applied to every chip makes them identical by construction), and defer
+the final visual sign-off to the user viewing `make dev`.

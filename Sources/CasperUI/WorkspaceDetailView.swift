@@ -74,7 +74,7 @@ struct WorkspaceDetailView: View {
             .animation(.easeInOut(duration: 0.18), value: workspace.inspector.collapsed)
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) { title }
+            ToolbarItem(placement: .navigation) { title }.flatToolbarItem()
             ToolbarItem(placement: .navigation) { diffBadge }.flatToolbarItem()
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
@@ -88,14 +88,9 @@ struct WorkspaceDetailView: View {
             if !model.availableEditors.isEmpty {
                 ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
             }
-            // Expanded: strip the glass so the toggle doesn't merge into the diff
-            // badge's capsule (a macOS 26 glass-merge artifact). Collapsed: keep it.
-            let inspectorItem = ToolbarItem(placement: .primaryAction) { inspectorToggle }
-            if workspace.inspector.collapsed {
-                inspectorItem
-            } else {
-                inspectorItem.flatToolbarItem()
-            }
+            // Always flattened: the toggle draws its own capsule, so the system shared
+            // glass is stripped in both states to keep it visually identical.
+            ToolbarItem(placement: .primaryAction) { inspectorToggle }.flatToolbarItem()
         }
         .alert("Couldn't Open Editor", isPresented: Binding(
             get: { model.editorLaunchError != nil },
@@ -182,7 +177,7 @@ struct WorkspaceDetailView: View {
                     .fontWeight(.bold)
             }
         }
-        .padding(.horizontal, 10)
+        .titleCapsule()
     }
 
     private var isGitRepo: Bool {
@@ -198,27 +193,12 @@ struct WorkspaceDetailView: View {
             Button {
                 model.setInspectorTab(.diff, for: workspace.id)
             } label: {
-                let content = HStack(spacing: 5) {
+                HStack(spacing: 5) {
                     Text("+\(diff.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
                     Text("−\(diff.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
                 }
                 .font(.body.monospacedDigit().bold())
-                .padding(.horizontal, 8)
-                // Match the branch capsule: same Liquid Glass material (.glassEffect) and
-                // same height, but keep the badge a DISTINCT pill (its toolbar item is
-                // flattened so it doesn't merge into the branch's shared glass). 36 pt is
-                // the branch capsule's real height on a Retina display — off-screen window
-                // captures under-report the system glass, so it was calibrated live.
-                .frame(height: 36)
-                if #available(macOS 26.0, *) {
-                    content
-                        .glassEffect(in: .capsule)
-                        .contentShape(Capsule())
-                } else {
-                    content
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
-                        .contentShape(Capsule())
-                }
+                .titleCapsule()
             }
             .buttonStyle(.plain)
             .help("Show diff")
@@ -231,6 +211,8 @@ struct WorkspaceDetailView: View {
         } label: {
             Image(systemName: "sidebar.right")
         }
+        .buttonStyle(.plain)
+        .titleCapsule()
         .help("Toggle panel")
     }
 
@@ -265,22 +247,12 @@ struct WorkspaceDetailView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .padding(.horizontal, 10)
-        // Match the branch capsule / diff badge: same Liquid Glass material and same
-        // height, drawn around the WHOLE HStack (primary button + chevron menu) so the
-        // capsule is one visible shape enclosing both regions — Menu's own primaryAction
-        // chrome renders its disclosure chevron OUTSIDE the label view, so styling only
-        // the label (the previous attempt) never produces a visible enclosing pill.
-        .frame(height: 36)
+        // The capsule wraps the WHOLE HStack (primary button + chevron menu) so it is
+        // one visible shape enclosing both: Menu's own primaryAction chrome renders its
+        // disclosure chevron OUTSIDE the label view, so styling only the label never
+        // produces a visible enclosing pill.
         return content
-            // Unlike diffBadge, .glassEffect(in: .capsule) renders this pill nearly
-            // invisible when the HStack contains a nested borderless-style Menu — the
-            // native control mid-hierarchy interferes with the glass material's
-            // compositing. Use an explicit, unconditional background instead so the
-            // pill stays visible on every macOS version.
-            .background(Color.secondary.opacity(0.15), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-            .contentShape(Capsule())
+            .titleCapsule()
             .help("Open in Editor")
     }
 
@@ -333,15 +305,27 @@ private struct ScriptToolbarButton: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .padding(.horizontal, 10)
-        .frame(height: 36)
-        .background(Color.secondary.opacity(0.15), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-        .contentShape(Capsule())
+        .titleCapsule()
         .help("Run Script")
         .opacity(appeared ? 1 : 0)
         .scaleEffect(appeared ? 1 : 0.85)
         .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }
+    }
+}
+
+private extension View {
+    /// The one shared title-bar capsule chrome. Every title-bar chip uses this so
+    /// they render strictly identically. Explicit fill + hairline border (not
+    /// Liquid Glass) because glass renders nearly invisible on chips that embed a
+    /// nested borderless `Menu` (Run / Editor), so this is the only treatment that
+    /// works for every chip.
+    func titleCapsule() -> some View {
+        self
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(Color.secondary.opacity(0.15), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .contentShape(Capsule())
     }
 }
 
