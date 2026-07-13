@@ -48,7 +48,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     private func syncNav() {
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
-        if let url = webView.url {
+        // about:blank is the initial placeholder load (see `init`), not a committed
+        // URL: never surface it as text or persist it, so a never-navigated surface
+        // keeps its empty address (which shows the placeholder).
+        if let url = webView.url, url != .aboutBlank {
             // Persist the committed URL regardless, but leave the visible text
             // alone while the user is mid-edit so their typing isn't clobbered.
             if !isEditingAddress { address = url.absoluteString }

@@ -64,7 +64,12 @@ struct WorkspaceCommand: ParsableCommand {
         }
 
         func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
+            // The app creates the worktree synchronously before replying (git
+            // worktree add + branch + `.casper.json` copyPatterns file copy), which
+            // can exceed the default 5s on a large repo or broad copyPatterns.
+            // Allow well beyond it — mirroring `workspace delete` — so a slow but
+            // successful creation is not misreported as a client-side timeout.
+            let response = try sendControl(makeCommand(), retriable: false, timeout: 35)
             guard let info = response.workspaces?.first else {
                 throw exitWithError("no workspace returned")
             }

@@ -4,9 +4,10 @@ import Foundation
 public enum GitBranchName {
     /// Lowercase, collapse whitespace to `-`, replace ref-forbidden characters
     /// (including ASCII control characters and the `@{` sequence), collapse
-    /// repeated separators, apply Git's per-component leading-`.`/trailing-`.lock`
-    /// rules, and trim edge separators. Returns nil when the result would be empty
-    /// or invalid. The output is always a valid Git ref name or nil.
+    /// repeated separators, then iterate Git's per-component leading-`.`/trailing-`.lock`
+    /// rules together with the edge-separator trim to a fixpoint (each can re-expose
+    /// work for the other). Returns nil when the result would be empty or invalid.
+    /// The output is always a valid Git ref name or nil.
     public static func sanitize(_ raw: String) -> String? {
         var s = raw.lowercased()
         s = s.split(whereSeparator: { $0.isWhitespace }).joined(separator: "-")
@@ -30,22 +31,34 @@ public enum GitBranchName {
         while s.contains("--") { s = s.replacingOccurrences(of: "--", with: "-") }
         while s.contains("..") { s = s.replacingOccurrences(of: "..", with: ".") }
 
-        // Apply Git's per-component rules: no slash-separated component may begin
-        // with a dot or end with `.lock`. Checking only the whole-string edges
-        // misses `foo.lock.lock`, `a.lock/b`, or `foo/.bar`.
-        s = s.split(separator: "/", omittingEmptySubsequences: true)
-            .map { component -> Substring in
-                var c = component
-                while c.hasPrefix(".") { c = c.dropFirst() }
-                while c.hasSuffix(".lock") { c = c.dropLast(5) }
-                return c
-            }
-            .filter { !$0.isEmpty }
-            .joined(separator: "/")
+        // Apply the per-component normalization and the whole-string edge-trim to
+        // a fixpoint. The two steps can re-expose work for each other: trimming a
+        // trailing `-`/`.` can uncover a fresh `.lock` suffix (e.g. `foo.lock-` →
+        // `foo.lock`), and stripping `.lock` can uncover a trailing separator, so a
+        // single pass is not enough (`a.lock-.lock` needs several). Both steps only
+        // ever REMOVE characters, so `s` strictly shrinks and the loop terminates
+        // quickly.
+        var previous: String
+        repeat {
+            previous = s
 
-        // Trim any separator left at the whole-string edges (leading/trailing
-        // `-`, `.`, or `/`; Git also forbids a trailing `.`).
-        s = s.trimmingCharacters(in: CharacterSet(charactersIn: "-./"))
+            // Per-component rule: no slash-separated component may begin with a
+            // dot or end with `.lock`. Checking only the whole-string edges would
+            // miss `foo.lock.lock`, `a.lock/b`, or `foo/.bar`.
+            s = s.split(separator: "/", omittingEmptySubsequences: true)
+                .map { component -> Substring in
+                    var c = component
+                    while c.hasPrefix(".") { c = c.dropFirst() }
+                    while c.hasSuffix(".lock") { c = c.dropLast(5) }
+                    return c
+                }
+                .filter { !$0.isEmpty }
+                .joined(separator: "/")
+
+            // Trim any separator left at the whole-string edges (leading/trailing
+            // `-`, `.`, or `/`; Git also forbids a trailing `.`).
+            s = s.trimmingCharacters(in: CharacterSet(charactersIn: "-./"))
+        } while s != previous
 
         if s.isEmpty || s == "@" { return nil }
         return s

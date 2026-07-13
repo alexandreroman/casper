@@ -46,16 +46,19 @@ extension Repository {
             return try worktreeInfo(fromPointer: handle, name: name)
         } catch {
             // Roll back so retrying the same name is idempotent instead of
-            // failing with GIT_EEXISTS. If `git_worktree_add` already created the
-            // worktree before a later step threw, prune it first — otherwise the
-            // working tree is orphaned — then delete the branch created above.
-            // The `defer`s still free the handles; this clears the on-disk
-            // worktree and the refdb branch. `pruneWorktree` re-looks-up by name,
-            // which is safe now that the handle above has been freed.
-            if worktree != nil {
-                try? pruneWorktree(name: name)
-            }
-            git_branch_delete(branchRef)
+            // failing with GIT_EEXISTS. Prune unconditionally: `git_worktree_add`
+            // can write the on-disk admin entry and still fail with a NULL
+            // out-pointer (a partial failure where `worktree == nil`), so gating
+            // the prune on `worktree != nil` would leak that orphaned entry.
+            // `pruneWorktree` re-looks-up by name and throws GIT_ENOTFOUND —
+            // swallowed by `try?` — when nothing is registered, so it is a safe
+            // no-op when there is nothing to prune. The `defer`s still free the
+            // handles; this clears the on-disk worktree and the refdb branch.
+            try? pruneWorktree(name: name)
+            // Branch-delete result is intentionally ignored: rollback is
+            // best-effort and the original `error` is what we re-throw, so we
+            // must not let a cleanup failure mask it.
+            _ = git_branch_delete(branchRef)
             throw error
         }
     }

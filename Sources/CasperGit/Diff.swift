@@ -11,7 +11,9 @@ public struct GitDiff: Equatable, Sendable {
     public var deletions: Int { lineCount(of: .deletion) }
 
     private func lineCount(of kind: GitDiffLine.Kind) -> Int {
-        files.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == kind }.count
+        // `.lazy` streams the nested flatMap/filter without materializing the
+        // intermediate hunk and line arrays.
+        files.lazy.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == kind }.count
     }
 }
 

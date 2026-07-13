@@ -196,9 +196,9 @@ public final class Repository {
         // (`newPath`, or `oldPath` for deletions), matching how the diff view lists
         // them. `localizedStandardCompare` gives case-insensitive natural ordering.
         files.sort { lhs, rhs in
-            let lhsPath = lhs.newPath.isEmpty ? lhs.oldPath : lhs.newPath
-            let rhsPath = rhs.newPath.isEmpty ? rhs.oldPath : rhs.newPath
-            return lhsPath.localizedStandardCompare(rhsPath) == .orderedAscending
+            // `GitDiffFile.id` is the display path (`newPath`, or `oldPath` for
+            // deletions) — reuse it so the sort key can't drift from the identity.
+            lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
         }
         return GitDiff(files: files)
     }

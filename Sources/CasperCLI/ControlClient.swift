@@ -11,7 +11,13 @@ struct WorkspaceTargetOption: ParsableArguments {
     func resolvedSelector(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {
-        workspace ?? environment["CASPER_WORKSPACE_ID"]
+        // Treat an empty or whitespace-only selector as absent so `requireSelector`
+        // raises its clear "no target workspace" error instead of round-tripping a
+        // useless empty selector to the app.
+        (workspace ?? environment["CASPER_WORKSPACE_ID"]).flatMap { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
     }
 }
 

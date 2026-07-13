@@ -739,7 +739,10 @@ final class AppModel {
             guard !spaces[si].workspaces.isEmpty,
                   let info = gitReprobe(spaces[si].folderPath) else { continue }
             spaces[si].isGitRepo = true
-            spaces[si].workspaces[0].branch = info.branch
+            // Resolve the primary by kind, not position; skip the branch write if none.
+            if let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) {
+                spaces[si].workspaces[pi].branch = info.branch
+            }
         }
     }
 
@@ -749,11 +752,12 @@ final class AppModel {
     /// `gitReprobe`. (Formerly driven by the heartbeat poll.)
     @discardableResult
     func promoteSpaceIfGitInitialized(spaceIndex si: Int) -> Bool {
+        // Resolve the primary by kind, not position; a missing primary fails safe (no promotion).
         guard spaces.indices.contains(si), !spaces[si].isGitRepo,
-              !spaces[si].workspaces.isEmpty,
-              let info = gitReprobe(spaces[si].folderPath) else { return false }
+              let info = gitReprobe(spaces[si].folderPath),
+              let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) else { return false }
         spaces[si].isGitRepo = true
-        spaces[si].workspaces[0].branch = info.branch
+        spaces[si].workspaces[pi].branch = info.branch
         persist()
         return true
     }
@@ -765,11 +769,12 @@ final class AppModel {
     /// transient read failure must not be mistaken for `.git` removal.
     @discardableResult
     func demoteSpaceIfGitRemoved(spaceIndex si: Int) -> Bool {
+        // Resolve the primary by kind, not position; a missing primary fails safe (no demotion).
         guard spaces.indices.contains(si), spaces[si].isGitRepo,
-              !spaces[si].workspaces.isEmpty,
-              gitReprobe(spaces[si].folderPath) == nil else { return false }
+              gitReprobe(spaces[si].folderPath) == nil,
+              let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) else { return false }
         spaces[si].isGitRepo = false
-        spaces[si].workspaces[0].branch = ""   // degenerate primaries carry an empty branch
+        spaces[si].workspaces[pi].branch = ""   // degenerate primaries carry an empty branch
         persist()
         return true
     }
@@ -1988,10 +1993,23 @@ final class AppModel {
     func controlDeleteWorkspace(
         id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void
     ) {
-        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
-            completion(pruneWorkspaceFromDisk(id: workspaceID)); return  // precise error, no teardown
+        deleteLinkedWorkspace(id: workspaceID, completion: completion) {
+            self.pruneWorkspaceFromDisk(id: workspaceID)   // precise error, no teardown
         }
-        _ = ws
+    }
+
+    /// Shared linked-workspace teardown-then-prune flow behind `deleteWorkspace`
+    /// and `controlDeleteWorkspace`. Only the non-linked case differs, so each
+    /// caller supplies its own `nonLinkedFallback` and keeps its exact error and
+    /// return behavior. Runs synchronously up to the async teardown handoff.
+    private func deleteLinkedWorkspace(
+        id workspaceID: UUID,
+        completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void,
+        nonLinkedFallback: () -> Result<Void, WorkspaceDeleteError>
+    ) {
+        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
+            completion(nonLinkedFallback()); return
+        }
         guard !teardownInFlight(workspaceID) else {
             completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
         }
@@ -2079,16 +2097,8 @@ final class AppModel {
     /// delete its branch, then drop it from the UI. Never presents UI itself —
     /// see `closeWorkspace`.
     func deleteWorkspace(id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void) {
-        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
-            completion(.failure(WorkspaceDeleteError(message: "workspace not found"))); return
-        }
-        _ = ws
-        guard !teardownInFlight(workspaceID) else {
-            completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
-        }
-        runTeardownThenPrune(id: workspaceID) { [weak self] in
-            completion(self?.pruneWorkspaceFromDisk(id: workspaceID)
-                ?? .failure(WorkspaceDeleteError(message: "workspace not found")))
+        deleteLinkedWorkspace(id: workspaceID, completion: completion) {
+            .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
     }
 
@@ -2132,7 +2142,10 @@ final class AppModel {
     /// default-button treatment as `presentCloseWorkspaceConfirmation`.
     func presentDeleteWorkspaceConfirmation(id workspaceID: UUID) {
         guard let ws = workspace(id: workspaceID) else { return }
-        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == false
+        // Fail safe toward SHOWING the warning: `!= true` treats both a thrown probe
+        // error and a genuinely-dirty tree as dirty, so a probe failure never silently
+        // hides the "changes will be lost" warning on this destructive delete.
+        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) != true
         let alert = NSAlert()
         alert.messageText = "Delete \u{201c}\(ws.name)\u{201d}?"
         var text = "This deletes the worktree, its folder on disk, and branch "

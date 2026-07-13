@@ -13,6 +13,13 @@ public final class Debouncer {
         self.delay = delay
     }
 
+    isolated deinit {
+        // Cancel any pending action so a coalesced fire cannot outlive the
+        // Debouncer (and typically its owner), which would be surprising for a
+        // reusable, model-free utility.
+        pending?.cancel()
+    }
+
     /// Cancel any pending action and arm `action` to fire `delay` from now.
     public func schedule(_ action: @escaping @MainActor () -> Void) {
         pending?.cancel()
