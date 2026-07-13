@@ -1,6 +1,6 @@
 ---
 name: "SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe"
-description: "SwiftUI re-syncs NSApp.mainMenu on scene-lifecycle events, so Casper's menu bar is defined entirely in .commands; empty top-level stubs are stripped in applicationDidUpdate"
+description: "SwiftUI re-syncs NSApp.mainMenu on scene-lifecycle events, so Casper's menu bar is defined entirely in .commands; empty Format/Help stubs are stripped on BOTH applicationWillUpdate and applicationDidUpdate to beat SwiftUI's multi-pass resync flicker"
 type: reference
 ---
 
@@ -35,15 +35,36 @@ resync, so the important menus can no longer vanish.
 this app — express menus in `.commands`. One genuine SwiftUI limitation remains:
 `.commands` cannot remove an entire default top-level menu — an emptied
 `CommandGroup(replacing: .textFormatting)` / `.help` leaves the empty "Format" /
-"Help" title on the bar (confirmed via Apple Developer Forums). Casper strips
-those in `AppDelegate.applicationDidUpdate(_:)`, which removes every empty
-top-level menu (`item.submenu?.numberOfItems == 0`). It must be `didUpdate`, not
-`willUpdate`: SwiftUI re-inserts the empty Format/Help stubs *during* the update,
-so stripping *before* the update (`willUpdate`) leaves the re-inserted stubs
-visible until a later cycle — the intermittent "Format/Help swap in" bug. Running
-*after* the rebuild strips them on the same cycle, before the bar is displayed.
-This is safe — it never touches File/Edit/View/App/Window (always populated), and
-cannot loop (once stripped, the next `didUpdate` finds nothing to remove). If you must own
-other window-lifecycle-sensitive AppKit chrome that SwiftUI also manages, prefer
-the SwiftUI-declared route + an `applicationWillUpdate` reconcile over
-reasserting on individual notifications.
+"Help" title on the bar (confirmed via Apple Developer Forums; there is no clean
+official fix). Casper strips those empty stubs in a shared
+`stripEmptyTopLevelMenus()` helper called from **both**
+`AppDelegate.applicationWillUpdate(_:)` **and** `applicationDidUpdate(_:)`, which
+removes every empty top-level menu (`item.submenu?.numberOfItems == 0`).
+
+Why both, not `didUpdate` alone: SwiftUI resyncs the menu in **multiple passes**
+spanning ~250 ms (verified by logging the menu-bar composition each `didUpdate`),
+re-inserting the empty Format/Help stubs on each pass until it settles. A single
+`didUpdate` strip loses that race — SwiftUI re-adds the stub between callbacks and
+the bar renders the empty title in the gap = the intermittent menu-bar flicker.
+Stripping on both the will- and did-update passes minimizes the window in which a
+stub is visible (measured: at startup, Format/Help exposure at the `didUpdate`
+probe dropped from 2 transitions to 0, and the resync settled in 2 passes instead
+of 3). `willUpdate` **alone** is still wrong (SwiftUI re-inserts *during* the
+update, after `willUpdate`, so the stub survives) — the fix is the pair.
+
+Confirmed facts (from instrumented runs): the Help menu is `NSApp.helpMenu` and
+the Window menu is `NSApp.windowsMenu` (locale-independent handles); our
+App/File/Edit/View/Window are always populated, so empty-submenu detection targets
+*exactly* Format+Help without matching titles (locale-independent — important, the
+system localizes "Help" to e.g. "Aide"). The flicker is triggered by
+window/app-lifecycle resyncs (app-switch, miniaturize, fullscreen), **not** by
+`CasperCommands.body` re-evaluation — a busy terminal re-evaluates the Commands
+body many times/sec (it reads the whole `spaces` graph via
+`workspace(id:)`/`targetSpaceForNewWorkspace()`) yet never re-inserts the stubs
+(0 strips), because an unchanged menu structure triggers no native menu mutation.
+That over-coupling of the Commands body to `spaces` is wasted work but is *not*
+the flicker cause; decoupling it is a separate efficiency improvement.
+
+This strip is safe — it never touches File/Edit/View/App/Window (always
+populated), and cannot loop (once stripped, the next pass finds nothing to
+remove).
