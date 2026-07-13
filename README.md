@@ -181,6 +181,7 @@ casper workspace list                        # enumerate workspaces
 casper workspace current                     # print the current workspace + path
 casper workspace new feature/x               # create a Git worktree workspace
 casper workspace delete                      # destroy a workspace (worktree + branch)
+casper run [name]                            # run a named .casper.json command in a split (defaults to 'run')
 ```
 
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
@@ -197,6 +198,44 @@ primary workspace.
 Casper has no agent-hook integration: an agent reports its state by calling these
 commands itself (e.g. `casper status set working`), so the surface is explicit
 and agent-agnostic.
+
+### Per-repository configuration (`.casper.json`)
+
+A repository can drop a `.casper.json` file at its root to tailor how Casper
+treats its workspaces. Every key lives under `workspace`:
+
+```json
+{
+  "workspace": {
+    "copyPatterns": [".env", ".env.local"],
+    "scripts": {
+      "setup":    "npm install",
+      "teardown": "docker compose down",
+      "run":      "npm run dev",
+      "test":     "npm test"
+    }
+  }
+}
+```
+
+- `copyPatterns` — patterns for untracked files seeded from the source worktree
+  into a new workspace. It replaces the built-in `.env`/`.env.local` default;
+  `[]` copies nothing. An invalid entry fails workspace creation before any Git
+  mutation.
+- `scripts` — shell commands bound to a workspace, each run in a visible
+  terminal split. Two reserved keys are lifecycle hooks, run automatically and
+  never invocable by hand:
+  - `setup` runs once, when the workspace is created (never on restart). A
+    non-zero exit keeps its split open with the output and flags the workspace.
+  - `teardown` runs just before the workspace is destroyed (after the merge on
+    the close path). Deletion proceeds whatever the outcome, bounded by a 30s
+    timeout, so a broken cleanup script never traps you.
+
+  Every other key is a named command, launched on demand from the workspace's
+  "Run Script" toolbar button and context menu, or with `casper run <name>`.
+
+The file is hand-edited (there is no settings UI) and re-read each time it is
+needed.
 
 ## License
 
