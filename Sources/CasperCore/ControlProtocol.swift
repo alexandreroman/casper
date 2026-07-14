@@ -12,6 +12,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case terminalList
         case terminalClose
         case browserOpen
+        case browserLoad
         case browserClose
         case diffOpen
         case diffClose
@@ -56,6 +57,8 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var visible: Bool?       // browserWait: require the selector to be visible
     public var gone: Bool?          // browserWait: require the selector to be absent
     public var waitReady: Bool?     // browserReload: also wait for readyState === "complete"
+    public var width: Int?          // browserScreenshot: off-screen render viewport width
+    public var height: Int?         // browserScreenshot: off-screen render viewport height
 
     public init(
         verb: Verb, workspace: String? = nil, state: String? = nil,
@@ -66,7 +69,8 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         script: String? = nil, selector: String? = nil, value: String? = nil,
         key: String? = nil, path: String? = nil,
         level: String? = nil, predicate: String? = nil, waitTimeout: Int? = nil,
-        clear: Bool? = nil, visible: Bool? = nil, gone: Bool? = nil, waitReady: Bool? = nil
+        clear: Bool? = nil, visible: Bool? = nil, gone: Bool? = nil, waitReady: Bool? = nil,
+        width: Int? = nil, height: Int? = nil
     ) {
         self.verb = verb
         self.workspace = workspace
@@ -94,6 +98,8 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         self.visible = visible
         self.gone = gone
         self.waitReady = waitReady
+        self.width = width
+        self.height = height
     }
 }
 

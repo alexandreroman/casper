@@ -87,6 +87,12 @@ final class ControlServer {
             }
             reply(model.controlOpenBrowser(url: url, in: id)
                 ? .success(workspace: id.uuidString) : .failure("cannot open browser")); return
+        case .browserLoad:
+            guard let raw = command.url, let url = URL(string: raw), url.scheme != nil, url.host != nil else {
+                reply(.failure("invalid url: \(command.url ?? "nil")")); return
+            }
+            reply(model.controlLoadBrowser(url: url, in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot load browser")); return
         case .browserClose:
             reply(model.controlCloseBrowser(in: id)
                 ? .success(workspace: id.uuidString) : .failure("cannot close browser")); return
@@ -118,8 +124,12 @@ final class ControlServer {
         // completion rather than returning a response synchronously.
         case .browserScreenshot:
             let path = command.path ?? ""
+            let width = command.width
+            let height = command.height
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserScreenshot(in: id, to: path), workspace: id))
+                reply(Self.browserReply(
+                    await model.controlBrowserScreenshot(in: id, to: path, width: width, height: height),
+                    workspace: id))
             }
             return
         case .browserEval:

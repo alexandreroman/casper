@@ -2173,6 +2173,30 @@ final class AppModel {
         return true
     }
 
+    /// Load `url` into `workspaceID`'s inspector browser surface WITHOUT touching
+    /// the inspector: unlike `controlOpenBrowser`, it never selects the browser tab
+    /// or expands the panel, so it drives a hidden/unselected browser in the
+    /// background (useful for parallel automation of a browser that isn't visible).
+    @discardableResult
+    func controlLoadBrowser(url: URL, in workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        // Reuse the existing browser surface id (like `controlOpenBrowser`) so the
+        // cached coordinator/web view keyed on it is preserved across loads.
+        let existingID = spaces[at.space].workspaces[at.workspace].inspector.browser.id
+        let surface = Surface(id: existingID, kind: .browser(url: url))
+        spaces[at.space].workspaces[at.workspace].inspector.browser = surface
+        scheduleSave()   // persist the new URL exactly like `setBrowserURL`
+        // The panel may be hidden/unselected, so the SwiftUI view won't lazily
+        // create the coordinator: create-or-navigate it explicitly. A freshly-created
+        // coordinator already loads the surface's URL at init, so only navigate again
+        // when it pre-existed — avoiding a redundant double load.
+        let existed = browserCoordinators[existingID] != nil
+        if let coordinator = browserCoordinator(for: surface), existed {
+            coordinator.load(url)
+        }
+        return true
+    }
+
     /// Open `workspaceID`'s diff view (select the diff tab, expand the inspector).
     /// When `file` is given, validate it against the workspace's worktree — it
     /// must resolve INSIDE the worktree and exist on disk — then request the view
@@ -2258,9 +2282,13 @@ final class AppModel {
     }
 
     /// Snapshot the browser page to a PNG at `path`. Returns the path on success.
-    func controlBrowserScreenshot(in workspaceID: UUID, to path: String) async -> Result<String, BrowserOpError> {
+    /// `width`/`height` size the off-screen render viewport for a detached
+    /// (hidden/background) browser; a mounted panel uses its own live size.
+    func controlBrowserScreenshot(
+        in workspaceID: UUID, to path: String, width: Int? = nil, height: Int? = nil
+    ) async -> Result<String, BrowserOpError> {
         await withBrowserCoordinator(workspaceID) { coordinator in
-            let png = try await coordinator.snapshot()
+            let png = try await coordinator.snapshot(width: width, height: height)
             do {
                 try png.write(to: URL(fileURLWithPath: path))
             } catch {

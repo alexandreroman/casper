@@ -85,6 +85,47 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(response.workspace, id.uuidString)
     }
 
+    func testBrowserLoadDispatch() throws {
+        let (server, id) = try seededServer()
+        let response = handleSync(
+            server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "https://example.com"))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testBrowserLoadRejectsInvalidURL() throws {
+        let (server, id) = try seededServer()
+        let response = handleSync(
+            server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "not-a-url"))
+        XCTAssertFalse(response.ok)
+        XCTAssertNotNil(response.error)
+    }
+
+    /// `browser load` differs from `browser open` in exactly one way: it must NOT
+    /// touch the inspector (no tab switch, no expand). Seeded from the defaults
+    /// (collapsed, diff tab), a load leaves both untouched, whereas an open selects
+    /// the browser tab and expands the panel.
+    func testBrowserLoadLeavesInspectorUntouchedWhileOpenChangesIt() throws {
+        let (server, id) = try seededServer()
+        let model = try XCTUnwrap(self.model)
+
+        // Sanity-check the seeded defaults the behaviour is contrasted against.
+        XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff)
+        XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, true)
+
+        let load = handleSync(
+            server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "https://example.com"))
+        XCTAssertTrue(load.ok)
+        XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff, "load must not switch the tab")
+        XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, true, "load must not expand the panel")
+
+        let open = handleSync(
+            server, ControlCommand(verb: .browserOpen, workspace: id.uuidString, url: "https://example.com"))
+        XCTAssertTrue(open.ok)
+        XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .browser, "open selects the browser tab")
+        XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, false, "open expands the panel")
+    }
+
     func testDiffCloseDispatch() throws {
         let (server, id) = try seededServer()
         let response = handleSync(server, ControlCommand(verb: .diffClose, workspace: id.uuidString))
