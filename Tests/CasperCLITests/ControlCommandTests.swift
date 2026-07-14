@@ -217,6 +217,90 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try key.makeCommand())
     }
 
+    // MARK: - browser console / wait / reload
+
+    func testBrowserConsoleBuildsCommand() throws {
+        let console = try BrowserCommand.Console.parse(["--level", "warn", "--clear", "--workspace", "feature"])
+        let command = try console.makeCommand()
+        XCTAssertEqual(command.verb, .browserConsole)
+        XCTAssertEqual(command.level, "warn")
+        XCTAssertEqual(command.clear, true)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testBrowserConsoleWithoutLevelOrClear() throws {
+        let console = try BrowserCommand.Console.parse(["--workspace", "feature"])
+        let command = try console.makeCommand()
+        XCTAssertNil(command.level)
+        XCTAssertNil(command.clear)
+    }
+
+    func testBrowserConsoleRejectsInvalidLevel() throws {
+        let console = try BrowserCommand.Console.parse(["--level", "bogus", "--workspace", "feature"])
+        XCTAssertThrowsError(try console.makeCommand())
+    }
+
+    func testBrowserConsoleLineEmbedsRawJSON() {
+        let line = BrowserCommand.Console.consoleLine(entries: "[{\"level\":\"log\"}]", workspace: "w")
+        XCTAssertEqual(line, "{\"console\":[{\"level\":\"log\"}],\"workspace\":\"w\"}")
+    }
+
+    func testBrowserWaitWithSelectorBuildsCommand() throws {
+        let wait = try BrowserCommand.Wait.parse(["#main", "--visible", "--timeout", "1000", "--workspace", "f"])
+        let command = try wait.makeCommand()
+        XCTAssertEqual(command.verb, .browserWait)
+        XCTAssertEqual(command.selector, "#main")
+        XCTAssertEqual(command.visible, true)
+        XCTAssertEqual(command.waitTimeout, 1000)
+        XCTAssertNil(command.predicate)
+    }
+
+    func testBrowserWaitWithJSBuildsCommand() throws {
+        let wait = try BrowserCommand.Wait.parse(["--js", "window.ready === true", "--workspace", "f"])
+        let command = try wait.makeCommand()
+        XCTAssertEqual(command.predicate, "window.ready === true")
+        XCTAssertNil(command.selector)
+        XCTAssertEqual(command.waitTimeout, 5000)   // default
+    }
+
+    func testBrowserWaitRejectsBothSelectorAndJS() throws {
+        let wait = try BrowserCommand.Wait.parse(["#main", "--js", "true", "--workspace", "f"])
+        XCTAssertThrowsError(try wait.makeCommand())
+    }
+
+    func testBrowserWaitRejectsNeitherSelectorNorJS() throws {
+        let wait = try BrowserCommand.Wait.parse(["--workspace", "f"])
+        XCTAssertThrowsError(try wait.makeCommand())
+    }
+
+    func testBrowserWaitRejectsVisibleAndGone() throws {
+        let wait = try BrowserCommand.Wait.parse(["#m", "--visible", "--gone", "--workspace", "f"])
+        XCTAssertThrowsError(try wait.makeCommand())
+    }
+
+    func testBrowserWaitRejectsVisibleWithJS() throws {
+        let wait = try BrowserCommand.Wait.parse(["--js", "true", "--visible", "--workspace", "f"])
+        XCTAssertThrowsError(try wait.makeCommand())
+    }
+
+    func testBrowserWaitRejectsNonPositiveTimeout() throws {
+        let wait = try BrowserCommand.Wait.parse(["#m", "--timeout", "0", "--workspace", "f"])
+        XCTAssertThrowsError(try wait.makeCommand())
+    }
+
+    func testBrowserReloadBuildsCommand() throws {
+        let reload = try BrowserCommand.Reload.parse(["--workspace", "f"])
+        let command = try reload.makeCommand()
+        XCTAssertEqual(command.verb, .browserReload)
+        XCTAssertNil(command.waitReady)
+    }
+
+    func testBrowserReloadWithWaitBuildsCommand() throws {
+        let reload = try BrowserCommand.Reload.parse(["--wait", "--workspace", "f"])
+        let command = try reload.makeCommand()
+        XCTAssertEqual(command.waitReady, true)
+    }
+
     func testDiffOpenBuildsCommand() throws {
         let open = try DiffCommand.Open.parse(["--workspace", "feature"])
         let command = try open.makeCommand()

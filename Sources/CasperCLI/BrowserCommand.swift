@@ -24,6 +24,7 @@ struct BrowserCommand: ParsableCommand {
         subcommands: [
             Open.self, Close.self,
             Screenshot.self, Eval.self, Content.self, Click.self, TypeText.self, Key.self,
+            Console.self, Wait.self, Reload.self,
         ])
 
     struct Open: ParsableCommand {
@@ -219,6 +220,117 @@ struct BrowserCommand: ParsableCommand {
         }
 
         func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct Console: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Print the page's captured console output and uncaught errors.")
+
+        @Option(name: .long, help: "Only entries at or above this severity: debug, log, info, warn, error.")
+        var level: String?
+        @Flag(name: .long, help: "Drain the buffer after reading it.")
+        var clear = false
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            if let level, ConsoleLevel(rawValue: level) == nil {
+                throw exitWithError("invalid level '\(level)' (expected debug, log, info, warn, or error)")
+            }
+            return ControlCommand(
+                verb: .browserConsole, workspace: try requireSelector(target),
+                level: level, clear: clear ? true : nil)
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            print(Self.consoleLine(entries: response.text ?? "[]", workspace: response.workspace ?? ""))
+        }
+
+        /// Build `{"console":[…],"workspace":"<id>"}` from the app's already-
+        /// serialized JSON array (mirrors `Eval.resultLine`). The array is re-parsed
+        /// so it embeds as a JSON token, not an escaped string. Keys are sorted for
+        /// deterministic output.
+        static func consoleLine(entries: String, workspace: String) -> String {
+            let parsed = (try? JSONSerialization.jsonObject(
+                with: Data(entries.utf8), options: [.fragmentsAllowed])) ?? []
+            let object: [String: Any] = ["console": parsed, "workspace": workspace]
+            guard let data = try? JSONSerialization.data(
+                    withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
+                  let string = String(data: data, encoding: .utf8) else {
+                return "{}"
+            }
+            return string
+        }
+    }
+
+    struct Wait: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Block until a selector or JS predicate condition holds.")
+
+        @Argument(help: "CSS selector to wait for (omit when using --js).")
+        var selector: String?
+        @Option(name: .long, help: "JavaScript predicate to wait until truthy.")
+        var js: String?
+        @Flag(name: .long, help: "Wait until the selector is visible (selector form only).")
+        var visible = false
+        @Flag(name: .long, help: "Wait until the selector is gone (selector form only).")
+        var gone = false
+        @Option(name: .long, help: "Timeout in milliseconds (default 5000).")
+        var timeout: Int?
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            let hasSelector = !(selector?.isEmpty ?? true)
+            let hasJS = !(js?.isEmpty ?? true)
+            guard hasSelector != hasJS else {
+                throw exitWithError("provide exactly one of a <selector> argument or --js <expr>")
+            }
+            if visible && gone {
+                throw exitWithError("--visible and --gone are mutually exclusive")
+            }
+            if hasJS && (visible || gone) {
+                throw exitWithError("--visible and --gone apply to the selector form only, not --js")
+            }
+            let ms = timeout ?? 5000
+            guard ms > 0 else { throw exitWithError("--timeout must be a positive number of milliseconds") }
+            return ControlCommand(
+                verb: .browserWait, workspace: try requireSelector(target),
+                selector: hasSelector ? selector : nil, predicate: hasJS ? js : nil,
+                waitTimeout: ms, visible: visible ? true : nil, gone: gone ? true : nil)
+        }
+
+        func run() throws {
+            let command = try makeCommand()
+            // Give the socket read a margin beyond the app-side deadline so the reply
+            // always arrives before the client gives up.
+            let socketTimeout = TimeInterval((command.waitTimeout ?? 5000) / 1000 + 5)
+            let response = try sendControl(command, retriable: false, timeout: socketTimeout)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct Reload: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Reload the browser page, optionally waiting for it to finish loading.")
+
+        @Flag(name: .long, help: "Also wait until the page finishes loading (readyState complete).")
+        var wait = false
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(
+                verb: .browserReload, workspace: try requireSelector(target),
+                waitReady: wait ? true : nil)
+        }
+
+        func run() throws {
+            // Deliberate simplification: unlike `wait` (whose socket timeout is
+            // derived from a user-supplied `--timeout`), reload's app-side wait
+            // deadline is a fixed 5 s, comfortably within the 15 s automation socket
+            // timeout — so no dynamic derivation is needed, regardless of `--wait`.
             let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
             emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
