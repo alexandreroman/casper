@@ -81,4 +81,34 @@ final class BrowserAutomationTests: XCTestCase {
         XCTAssertTrue(js.contains("no element matches 'a[href='x']'"))
         XCTAssertTrue(js.contains("document.querySelector(\"a[href='x']\")"))
     }
+
+    // MARK: - Wait predicate builders
+
+    func testPresenceJSChecksNonNull() {
+        let js = BrowserAutomation.presenceJS(selector: "#late")
+        XCTAssertEqual(js, "document.querySelector(\"#late\") !== null")
+    }
+
+    func testGoneJSChecksNull() {
+        let js = BrowserAutomation.goneJS(selector: "#late")
+        XCTAssertEqual(js, "document.querySelector(\"#late\") === null")
+    }
+
+    func testVisibleJSChecksOffsetParentAndBounds() {
+        let js = BrowserAutomation.visibleJS(selector: ".panel")
+        XCTAssertTrue(js.contains("document.querySelector(\".panel\")"))
+        XCTAssertTrue(js.contains("el.offsetParent === null"))
+        XCTAssertTrue(js.contains("getBoundingClientRect()"))
+        XCTAssertTrue(js.contains("rect.width > 0 && rect.height > 0"))
+    }
+
+    func testReadyStateCompleteJS() {
+        XCTAssertEqual(BrowserAutomation.readyStateCompleteJS(), "document.readyState === \"complete\"")
+    }
+
+    func testWaitPredicateSelectorsAreJSONEscaped() {
+        // A selector with a double quote stays a single valid string literal.
+        let js = BrowserAutomation.presenceJS(selector: "a[title=\"x\"]")
+        XCTAssertTrue(js.contains("document.querySelector(\"a[title=\\\"x\\\"]\")"))
+    }
 }

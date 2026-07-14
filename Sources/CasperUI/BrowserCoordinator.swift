@@ -28,15 +28,52 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// Called when the web view gains first-responder, to update focus.
     var onFocus: (() -> Void)?
 
+    /// Bounded ring buffer (cap `consoleBufferCapacity`, oldest dropped) of the
+    /// page's captured `console.*` calls and uncaught errors/rejections, oldest
+    /// first. Fed by the injected user script via the `casperConsole` handler and
+    /// drained by `browser console`.
+    private var consoleBuffer: [ConsoleEntry] = []
+    private static let consoleBufferCapacity = 500
+
+    /// The web view's content controller, held so `deinit` can detach the message
+    /// handler. `nonisolated(unsafe)` for the same reason as
+    /// `FocusReportingWebView.occlusionObserver`: it is only ever mutated here (in
+    /// `init`), and by the time `deinit` runs no other reference to this
+    /// coordinator exists, so there is no concurrent access to race with — letting
+    /// `deinit` read it without a main-actor hop and avoiding the `isolated deinit`
+    /// back-deployment shim that SIGABRTs on CI (see the isolated-deinit-ci-sigabrt
+    /// project memory note). `removeAllScriptMessageHandlers()` is thread-safe.
+    nonisolated(unsafe) private let messageController: WKUserContentController
+
     init(surfaceID: UUID, url: URL) {
         self.surfaceID = surfaceID
-        let web = FocusReportingWebView(frame: .zero)
+        // Build a configuration that captures the page's console output and uncaught
+        // errors: a document-start user script wraps `console.*`, `window.onerror`,
+        // and `unhandledrejection`, forwarding each entry to the `casperConsole`
+        // message handler. `WeakScriptMessageHandler` forwards weakly so the
+        // controller→handler→coordinator chain never forms a retain cycle (the
+        // controller strongly retains the handler; the handler holds the coordinator
+        // weakly), and `deinit` detaches the handler as belt-and-braces.
+        let controller = WKUserContentController()
+        controller.addUserScript(WKUserScript(
+            source: Self.consoleCaptureScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        let messageHandler = WeakScriptMessageHandler()
+        controller.add(messageHandler, name: "casperConsole")
+        self.messageController = controller
+        let config = WKWebViewConfiguration()
+        config.userContentController = controller
+        let web = FocusReportingWebView(frame: .zero, configuration: config)
         self.webView = web
         super.init()
+        messageHandler.coordinator = self
         web.onFocus = { [weak self] in self?.onFocus?() }
         web.navigationDelegate = self
         self.address = url == .aboutBlank ? "" : url.absoluteString
         web.load(URLRequest(url: url))
+    }
+
+    deinit {
+        messageController.removeAllScriptMessageHandlers()
     }
 
     /// Load a user-entered address (already normalized to a URL).
@@ -63,6 +100,81 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
                 } else {
                     continuation.resume(returning: Self.jsonString(from: result))
                 }
+            }
+        }
+    }
+
+    // MARK: - Console capture
+
+    /// Ingest one `casperConsole` message body (a JS object) into the buffer. Called
+    /// from `WeakScriptMessageHandler` on the main actor. A malformed body (missing
+    /// the required keys) is ignored rather than surfaced.
+    func ingestConsoleMessage(_ body: Any) {
+        guard let dict = body as? [String: Any] else { return }
+        let entry = ConsoleEntry(
+            level: dict["level"] as? String ?? "log",
+            message: dict["message"] as? String ?? "",
+            timestamp: (dict["timestamp"] as? NSNumber)?.doubleValue ?? Date().timeIntervalSince1970 * 1000,
+            source: dict["source"] as? String,
+            line: (dict["line"] as? NSNumber)?.intValue,
+            column: (dict["column"] as? NSNumber)?.intValue,
+            stack: dict["stack"] as? String)
+        appendConsole(entry)
+    }
+
+    /// Append one entry, evicting the oldest once the buffer exceeds its cap.
+    private func appendConsole(_ entry: ConsoleEntry) {
+        consoleBuffer.append(entry)
+        if consoleBuffer.count > Self.consoleBufferCapacity {
+            consoleBuffer.removeFirst(consoleBuffer.count - Self.consoleBufferCapacity)
+        }
+    }
+
+    /// Return the buffered console entries oldest→newest. `level` keeps only
+    /// entries at or above that severity threshold; `clear` drains the ENTIRE
+    /// buffer afterwards (an unconditional drain, never filtered — a partial clear
+    /// would be surprising).
+    func consoleSnapshot(level: ConsoleLevel?, clear: Bool) -> [ConsoleEntry] {
+        let snapshot: [ConsoleEntry]
+        if let level {
+            snapshot = consoleBuffer.filter { (ConsoleLevel(rawValue: $0.level) ?? .log) >= level }
+        } else {
+            snapshot = consoleBuffer
+        }
+        if clear { consoleBuffer.removeAll() }
+        return snapshot
+    }
+
+    #if DEBUG
+    /// Test seam: feed the buffer directly, without a live page posting messages,
+    /// so the ring-buffer/threshold/drain behaviour is unit-testable. Mirrors the
+    /// `debugLastMediaSuspended` seam on `FocusReportingWebView`.
+    func debugAppendConsole(_ entry: ConsoleEntry) { appendConsole(entry) }
+    #endif
+
+    // MARK: - Wait
+
+    /// Poll `predicate` (a JS boolean expression) roughly every 100 ms until it is
+    /// truthy or `timeoutMs` elapses; return whether it became true. The predicate
+    /// is evaluated as `!!(predicate)`, so a predicate that throws counts as
+    /// not-yet-true and polling continues (a malformed predicate thus surfaces as a
+    /// timeout). Sleeps asynchronously between polls, so the main actor is never
+    /// blocked while waiting.
+    func waitFor(js predicate: String, timeoutMs: Int) async -> Bool {
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000)
+        while true {
+            if await evaluatePredicate(predicate) { return true }
+            if Date() >= deadline { return false }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
+    /// Evaluate `!!(predicate)` once; a JS error or a non-boolean result is treated
+    /// as `false` (not yet true).
+    private func evaluatePredicate(_ predicate: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            webView.evaluateJavaScript("!!(\(predicate))") { result, error in
+                continuation.resume(returning: error == nil && (result as? Bool ?? false))
             }
         }
     }
@@ -109,6 +221,64 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         return nsError.localizedDescription
     }
 
+    /// Injected at document start: wraps every `console.*` method and adds `error`
+    /// + `unhandledrejection` listeners, forwarding each entry to the
+    /// `casperConsole` message handler. Error capture uses
+    /// `addEventListener("error", …)` rather than assigning `window.onerror`, so it
+    /// neither clobbers a handler the page already set nor gets silently replaced
+    /// when the page later installs its own (as error-tracking SDKs do) — and it
+    /// additionally catches resource-load errors. Arguments are stringified
+    /// defensively (`JSON.stringify` under try/catch, falling back to `String(arg)`,
+    /// which also preserves `undefined`/functions that `JSON.stringify` drops) and
+    /// joined with a space, so a circular or exotic argument can never break
+    /// capture. The original `console.*` methods are still called, so DevTools
+    /// output is unaffected.
+    private static let consoleCaptureScript = """
+    (function () {
+      function post(entry) {
+        try { window.webkit.messageHandlers.casperConsole.postMessage(entry); } catch (e) {}
+      }
+      function stringify(arg) {
+        if (typeof arg === "string") { return arg; }
+        var json;
+        try { json = JSON.stringify(arg); } catch (e) { return String(arg); }
+        // JSON.stringify returns undefined for undefined/functions/symbols; fall
+        // back to String(arg) so those still render (e.g. "undefined") instead of "".
+        return typeof json === "undefined" ? String(arg) : json;
+      }
+      function format(args) {
+        return Array.prototype.map.call(args, stringify).join(" ");
+      }
+      ["debug", "log", "info", "warn", "error"].forEach(function (level) {
+        var original = console[level];
+        console[level] = function () {
+          post({ level: level, message: format(arguments), timestamp: Date.now() });
+          if (original) { original.apply(console, arguments); }
+        };
+      });
+      window.addEventListener("error", function (event) {
+        post({
+          level: "error",
+          message: event.message ? String(event.message) : "uncaught error",
+          timestamp: Date.now(),
+          source: event.filename,
+          line: event.lineno,
+          column: event.colno,
+          stack: event.error && event.error.stack ? String(event.error.stack) : undefined
+        });
+      });
+      window.addEventListener("unhandledrejection", function (event) {
+        var reason = event.reason;
+        post({
+          level: "error",
+          message: reason && reason.message ? String(reason.message) : String(reason),
+          timestamp: Date.now(),
+          stack: reason && reason.stack ? String(reason.stack) : undefined
+        });
+      });
+    })();
+    """
+
     private func syncNav() {
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
@@ -151,6 +321,21 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
 struct BrowserCoordinatorError: Error, CustomStringConvertible {
     let message: String
     var description: String { message }
+}
+
+/// Forwards `WKScriptMessage` bodies to a `BrowserCoordinator` through a *weak*
+/// reference. `WKUserContentController` retains its message handlers strongly, so
+/// registering the coordinator itself would form a
+/// coordinator→webView→config→controller→handler→coordinator retain cycle. This
+/// thin proxy breaks it: the controller retains the proxy, the proxy holds the
+/// coordinator weakly. `WKScriptMessageHandler` is `@MainActor` in the SDK, so the
+/// callback (and the forwarded `ingestConsoleMessage`) run on the main actor.
+private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var coordinator: BrowserCoordinator?
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        coordinator?.ingestConsoleMessage(message.body)
+    }
 }
 
 /// A `WKWebView` that reports first-responder acquisition, so clicking into web

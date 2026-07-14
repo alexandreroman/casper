@@ -74,6 +74,42 @@ enum BrowserAutomation {
         """
     }
 
+    // MARK: - Wait predicates
+
+    // These return a boolean *expression* (not a full statement): the coordinator
+    // wraps each in `!!(…)` before evaluating, so a truthy result means "ready".
+    // Selectors are embedded as JSON string literals, like the action builders.
+
+    /// True once `selector` matches at least one element.
+    static func presenceJS(selector: String) -> String {
+        "document.querySelector(\(jsLiteral(selector))) !== null"
+    }
+
+    /// True once `selector` matches an element that is actually visible: attached
+    /// to the render tree (`offsetParent !== null`) and with a non-zero bounding
+    /// rect. Matches the CSS spec's notion of "shown", not merely present.
+    static func visibleJS(selector: String) -> String {
+        """
+        (function () {
+          const el = document.querySelector(\(jsLiteral(selector)));
+          if (el === null) { return false; }
+          if (el.offsetParent === null) { return false; }
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        })()
+        """
+    }
+
+    /// True once `selector` matches nothing (the negation of `presenceJS`).
+    static func goneJS(selector: String) -> String {
+        "document.querySelector(\(jsLiteral(selector))) === null"
+    }
+
+    /// True once the document has finished loading (`readyState === "complete"`).
+    static func readyStateCompleteJS() -> String {
+        "document.readyState === \"complete\""
+    }
+
     // MARK: - JS source helpers
 
     /// The JS expression that resolves the target element for a `key` dispatch.

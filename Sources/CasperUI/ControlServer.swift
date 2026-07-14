@@ -157,9 +157,58 @@ final class ControlServer {
                     await model.controlBrowserKey(key: key, selector: selector, in: id), workspace: id))
             }
             return
+        case .browserConsole:
+            let level = command.level.flatMap { ConsoleLevel(rawValue: $0) }
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserConsole(level: level, clear: command.clear ?? false, in: id),
+                    workspace: id))
+            }
+            return
+        case .browserWait:
+            guard let (predicate, description) = Self.waitPredicate(for: command) else {
+                reply(.failure("wait needs a <selector> or --js <expr>")); return
+            }
+            let timeout = command.waitTimeout ?? 5000
+            Task { @MainActor in
+                switch await model.controlBrowserWait(
+                    js: predicate, timeoutMs: timeout, description: description, in: id) {
+                case .success: reply(.success(workspace: id.uuidString))
+                case .failure(let error): reply(.failure(error.message))
+                }
+            }
+            return
+        case .browserReload:
+            let waitReady = command.waitReady ?? false
+            let timeout = command.waitTimeout ?? 5000
+            Task { @MainActor in
+                switch await model.controlBrowserReload(waitReady: waitReady, timeoutMs: timeout, in: id) {
+                case .success: reply(.success(workspace: id.uuidString))
+                case .failure(let error): reply(.failure(error.message))
+                }
+            }
+            return
         case .workspaceList, .workspaceNew:
             reply(.failure("unreachable")); return  // handled above
         }
+    }
+
+    /// Build the wait predicate JS and a human description from a `browserWait`
+    /// command. `--js` passes the user expression through unchanged; a selector maps
+    /// to presence / visibility / absence via `BrowserAutomation`. Nil when neither
+    /// a selector nor a predicate was supplied.
+    private static func waitPredicate(for command: ControlCommand) -> (js: String, description: String)? {
+        if let predicate = command.predicate {
+            return (predicate, "the js predicate")
+        }
+        guard let selector = command.selector else { return nil }
+        if command.gone == true {
+            return (BrowserAutomation.goneJS(selector: selector), "'\(selector)' to disappear")
+        }
+        if command.visible == true {
+            return (BrowserAutomation.visibleJS(selector: selector), "'\(selector)' to be visible")
+        }
+        return (BrowserAutomation.presenceJS(selector: selector), "'\(selector)'")
     }
 
     /// Map a browser-automation outcome to a control response: success carries the

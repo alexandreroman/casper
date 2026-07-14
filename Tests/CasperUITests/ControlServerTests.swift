@@ -204,6 +204,101 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(afterType.text, "\"hello\"")
     }
 
+    // MARK: - Console / wait / reload
+
+    func testBrowserConsoleRoutesEmptyBuffer() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserConsole, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.text, "[]")
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testBrowserWaitImmediateTrueSucceeds() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(
+            server,
+            ControlCommand(verb: .browserWait, workspace: id.uuidString, predicate: "true", waitTimeout: 2000))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testBrowserWaitNeverTrueTimesOut() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(
+            server,
+            ControlCommand(verb: .browserWait, workspace: id.uuidString, predicate: "false", waitTimeout: 300))
+        XCTAssertFalse(response.ok)
+        XCTAssertTrue((response.error ?? "").contains("timed out"))
+    }
+
+    func testBrowserWaitWithoutSelectorOrPredicateFails() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserWait, workspace: id.uuidString))
+        XCTAssertFalse(response.ok)
+    }
+
+    func testBrowserWaitUnresolvableTargetFails() async throws {
+        let (server, _) = try seededServer()
+        let response = await handleAsync(
+            server, ControlCommand(verb: .browserWait, workspace: "ghost", predicate: "true"))
+        XCTAssertFalse(response.ok)
+        XCTAssertNotNil(response.error)
+    }
+
+    func testBrowserReloadReturns() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserReload, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    /// End-to-end against a real `WKWebView`: a `data:` page logs to the console and
+    /// throws on load; assert both are captured; wait for an element a `setTimeout`
+    /// inserts; and confirm `reload --wait` returns.
+    func testBrowserConsoleWaitReloadEndToEnd() async throws {
+        let html = """
+        <script>
+          console.log('hello from page');
+          setTimeout(function () {
+            var d = document.createElement('div');
+            d.id = 'late';
+            document.body.appendChild(d);
+          }, 100);
+          throw new Error('boom on load');
+        </script>
+        """
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? html
+        let (server, id) = try seededServer(browserURL: URL(string: "data:text/html," + encoded)!)
+
+        // Poll the console until it has captured both the log and the uncaught error.
+        var messages: [String] = []
+        for _ in 0..<100 {
+            let response = await handleAsync(server, ControlCommand(verb: .browserConsole, workspace: id.uuidString))
+            if let text = response.text, let data = text.data(using: .utf8),
+               let array = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
+                messages = array.compactMap { $0["message"] as? String }
+                if messages.contains(where: { $0.contains("hello from page") })
+                    && messages.contains(where: { $0.contains("boom on load") }) { break }
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(messages.contains { $0.contains("hello from page") }, "missing console.log; got \(messages)")
+        XCTAssertTrue(messages.contains { $0.contains("boom on load") }, "missing uncaught error; got \(messages)")
+
+        // Wait for the element the page's setTimeout inserts.
+        let wait = await handleAsync(
+            server,
+            ControlCommand(verb: .browserWait, workspace: id.uuidString, selector: "#late", waitTimeout: 5000))
+        XCTAssertTrue(wait.ok, "wait failed: \(wait.error ?? "")")
+
+        // reload --wait returns once the page finishes reloading.
+        let reload = await handleAsync(
+            server,
+            ControlCommand(verb: .browserReload, workspace: id.uuidString, waitTimeout: 5000, waitReady: true))
+        XCTAssertTrue(reload.ok, "reload failed: \(reload.error ?? "")")
+    }
+
     /// Poll `script` (a boolean-returning JS readiness check) until it returns
     /// `true`, so a test acts only after the page has loaded. Fails after ~5 s.
     private func waitForElement(_ server: ControlServer, _ id: UUID, script: String) async throws {

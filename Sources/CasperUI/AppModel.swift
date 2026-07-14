@@ -2317,6 +2317,65 @@ final class AppModel {
         }
     }
 
+    /// Return the browser console/error buffer serialized to a JSON array string
+    /// (oldest→newest). `level` filters to that severity threshold and above; when
+    /// `clear` is set the whole buffer is drained after snapshotting.
+    func controlBrowserConsole(
+        level: ConsoleLevel?, clear: Bool, in workspaceID: UUID
+    ) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) { coordinator in
+            Self.consoleJSON(coordinator.consoleSnapshot(level: level, clear: clear))
+        }
+    }
+
+    /// Block until `js` is truthy in the page or the deadline expires. `description`
+    /// names what is awaited, for the timeout message.
+    func controlBrowserWait(
+        js: String, timeoutMs: Int, description: String, in workspaceID: UUID
+    ) async -> Result<Void, BrowserOpError> {
+        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
+            return .failure(BrowserOpError(message: "workspace not found"))
+        }
+        if await coordinator.waitFor(js: js, timeoutMs: timeoutMs) {
+            return .success(())
+        }
+        return .failure(BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for \(description)"))
+    }
+
+    /// Reload the browser page. When `waitReady`, also block until the document's
+    /// `readyState` is `complete` (or the timeout expires).
+    func controlBrowserReload(
+        waitReady: Bool, timeoutMs: Int, in workspaceID: UUID
+    ) async -> Result<Void, BrowserOpError> {
+        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
+            return .failure(BrowserOpError(message: "workspace not found"))
+        }
+        coordinator.reload()
+        guard waitReady else { return .success(()) }
+        if await coordinator.waitFor(js: BrowserAutomation.readyStateCompleteJS(), timeoutMs: timeoutMs) {
+            return .success(())
+        }
+        return .failure(BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for the page to reload"))
+    }
+
+    /// Encoder for the console entry array: sorted keys for deterministic output,
+    /// unescaped slashes so embedded URLs stay readable.
+    private static let consoleEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return encoder
+    }()
+
+    /// Serialize console entries to a JSON array string, falling back to `[]` on the
+    /// (never-expected) encoding failure.
+    private static func consoleJSON(_ entries: [ConsoleEntry]) -> String {
+        guard let data = try? consoleEncoder.encode(entries),
+              let string = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return string
+    }
+
     /// Decode a single JSON string value (as produced by `BrowserCoordinator`'s
     /// `evaluate`) back to its plain contents. Falls back to the input unchanged
     /// when it isn't a JSON string (should not happen for `content`).
