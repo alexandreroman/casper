@@ -2282,22 +2282,67 @@ final class AppModel {
     }
 
     /// Snapshot the browser page to a PNG at `path`. Returns the path on success.
-    /// `width`/`height` size the off-screen render viewport for a detached
-    /// (hidden/background) browser; a mounted panel uses its own live size.
+    ///
+    /// With no `width`/`height`/`url` override this captures the live browser panel
+    /// exactly as before (panel size when mounted, the 1280x800 fallback when
+    /// detached). Any override switches to the dedicated off-screen `BrowserCapture`,
+    /// which renders the target URL at the requested viewport (default 1280x800)
+    /// independent of the panel: the `url` override if given, else the live browser's
+    /// committed URL, else the surface's persisted URL — failing when none resolves.
     func controlBrowserScreenshot(
-        in workspaceID: UUID, to path: String, width: Int? = nil, height: Int? = nil
+        in workspaceID: UUID, to path: String, width: Int? = nil, height: Int? = nil, url: String? = nil
     ) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) { coordinator in
-            let png = try await coordinator.snapshot(width: width, height: height)
-            do {
-                try png.write(to: URL(fileURLWithPath: path))
-            } catch {
-                // Concise message: the raw NSError renders a verbose
-                // "Error Domain=NSCocoaErrorDomain…" string in the JSON error.
-                throw BrowserCoordinatorError(
-                    message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
+        if width == nil, height == nil, url == nil {
+            return await withBrowserCoordinator(workspaceID) { coordinator in
+                let png = try await coordinator.snapshot()
+                try Self.writeScreenshot(png, to: path)
+                return path
             }
-            return path
+        }
+        guard let ws = workspace(id: workspaceID) else {
+            return .failure(BrowserOpError(message: "workspace not found"))
+        }
+        guard let target = resolveScreenshotURL(for: ws, override: url) else {
+            return .failure(BrowserOpError(message: "no page to capture; open a page or pass --url"))
+        }
+        do {
+            let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
+            try Self.writeScreenshot(png, to: path)
+            return .success(path)
+        } catch {
+            return .failure(BrowserOpError(message: "\(error)"))
+        }
+    }
+
+    /// Resolve the page for an off-screen sized capture: the explicit `--url`
+    /// override (must be absolute), else the live browser's committed URL, else the
+    /// surface's persisted URL. Returns nil when nothing usable resolves (a browser
+    /// that never navigated / sits on about:blank, with no override).
+    private func resolveScreenshotURL(for ws: Workspace, override: String?) -> URL? {
+        // A scheme is enough here (the CLI enforces scheme+host for user URLs); this
+        // also admits the schemed-but-hostless `data:` URLs automation relies on.
+        if let override, let parsed = URL(string: override), parsed.scheme != nil, parsed != .aboutBlank {
+            return parsed
+        }
+        if let coordinator = browserCoordinator(for: ws.inspector.browser),
+           let live = coordinator.webView.url, live != .aboutBlank {
+            return live
+        }
+        if case .browser(let stored) = ws.inspector.browser.kind, stored != .aboutBlank {
+            return stored
+        }
+        return nil
+    }
+
+    /// Write a screenshot PNG to `path`, mapping a filesystem error to a concise
+    /// message — the raw NSError renders a verbose "Error Domain=NSCocoaErrorDomain…"
+    /// string in the JSON error.
+    private static func writeScreenshot(_ png: Data, to path: String) throws {
+        do {
+            try png.write(to: URL(fileURLWithPath: path))
+        } catch {
+            throw BrowserCoordinatorError(
+                message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
         }
     }
 

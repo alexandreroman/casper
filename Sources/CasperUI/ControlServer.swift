@@ -126,9 +126,10 @@ final class ControlServer {
             let path = command.path ?? ""
             let width = command.width
             let height = command.height
+            let url = command.url
             Task { @MainActor in
                 reply(Self.browserReply(
-                    await model.controlBrowserScreenshot(in: id, to: path, width: width, height: height),
+                    await model.controlBrowserScreenshot(in: id, to: path, width: width, height: height, url: url),
                     workspace: id))
             }
             return

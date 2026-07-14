@@ -181,15 +181,15 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
 
     /// Render the current page to a PNG. A cached, unmounted surface has no window
     /// (a detached view), which would snapshot to an empty image; give it a default
-    /// frame first so the capture has real content to render. `width`/`height` size
-    /// that off-screen viewport (defaulting to 1280x800). Gated strictly on
-    /// `window == nil` — a zero-bounds mounted view is a transient layout pass (the
-    /// inspector reveal animation), and resizing it there would race SwiftUI; a
-    /// mounted view also keeps its live panel size, so `width`/`height` apply only
-    /// to a detached browser.
-    func snapshot(width: Int? = nil, height: Int? = nil) async throws -> Data {
+    /// 1280x800 frame first so the capture has real content to render. Gated
+    /// strictly on `window == nil` — a zero-bounds mounted view is a transient
+    /// layout pass (the inspector reveal animation), and resizing it there would
+    /// race SwiftUI; a mounted view keeps its live panel size. Sized/URL-overridden
+    /// captures don't route through here — they use the dedicated off-screen
+    /// `BrowserCapture` instead.
+    func snapshot() async throws -> Data {
         if webView.window == nil {
-            webView.frame = NSRect(x: 0, y: 0, width: width ?? 1280, height: height ?? 800)
+            webView.frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
         }
         let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {

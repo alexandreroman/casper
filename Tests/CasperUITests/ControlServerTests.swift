@@ -198,6 +198,8 @@ final class ControlServerTests: XCTestCase {
     }
 
     func testBrowserScreenshotWritesPNG() async throws {
+        // No width/height/url overrides: the live-panel capture path, even for a
+        // browser that never navigated (about:blank).
         let (server, id) = try seededServer()
         let path = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("shot-\(UUID().uuidString).png")
@@ -208,6 +210,37 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(response.text, path)
         let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
         XCTAssertGreaterThan(size ?? 0, 0)
+    }
+
+    func testBrowserScreenshotWithURLUsesOffScreenCapture() async throws {
+        // A --url override (plus dimensions) routes to the dedicated off-screen
+        // capturer, which loads the URL headlessly — no prior navigation required.
+        let html = "<html><body><h1>capture me</h1></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? html
+        let (server, id) = try seededServer()
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("shot-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let response = await handleAsync(server, ControlCommand(
+            verb: .browserScreenshot, workspace: id.uuidString, url: "data:text/html," + encoded,
+            path: path, width: 375, height: 800))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.text, path)
+        let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+        XCTAssertGreaterThan(size ?? 0, 0)
+    }
+
+    func testBrowserScreenshotSizedWithoutResolvableURLFails() async throws {
+        // Sized capture, but the browser never navigated (about:blank) and no --url:
+        // nothing resolves to capture, so it fails with a clear message.
+        let (server, id) = try seededServer()
+        let path = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("shot-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let response = await handleAsync(server, ControlCommand(
+            verb: .browserScreenshot, workspace: id.uuidString, path: path, width: 375, height: 800))
+        XCTAssertFalse(response.ok)
+        XCTAssertTrue((response.error ?? "").contains("no page to capture"))
     }
 
     func testBrowserUnresolvableTargetFails() async throws {
