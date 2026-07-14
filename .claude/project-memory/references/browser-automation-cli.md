@@ -27,9 +27,19 @@ they ship in every build.
   screen-recording permission, captures the rendered web content (not the
   address-bar chrome), works off-screen. Distinct from the DEBUG terminal
   screenshot ([[debug-screenshot-screencapturekit]]) which captures the whole
-  window and needs permission. `screenshot --width/--height` set the render
-  viewport, but **only for a detached (hidden) browser** (`window == nil`);
-  when the panel is mounted/visible its own size wins and the flags are ignored.
+  window and needs permission. Plain `screenshot` (no flags) snapshots the
+  workspace's live browser web view (panel size when mounted; a 1280×800
+  fallback when detached). `screenshot --width/--height [--url]` instead renders
+  in a **dedicated off-screen `WKWebView`** (`BrowserCapture`) sized to the given
+  viewport — so it captures responsive layouts (mobile/wide) **regardless of the
+  panel state**, verified with the panel open (a 375-wide capture triggers the
+  page's mobile media query, `window.innerWidth === 375`). `--url` captures an
+  arbitrary URL headlessly; the capturer shares the `.default()` data store
+  (cookies/localStorage carry, so authenticated pages render), hosts the view in
+  an off-screen `NSWindow` at `(-100000,-100000)` to force layout/paint, waits
+  for `didFinish`, and does a **fresh load** — so the live DOM's client-side
+  state (SPA route, unsaved input) is NOT reproduced, only the URL's page. Raw
+  dimensions only: no user-agent / devicePixelRatio emulation.
 - **`load <url>` vs `open <url>`:** both point the workspace's single inspector
   browser surface at a URL and reuse its cached coordinator, but `open` also
   `setInspectorTab(.browser)` (selects the browser tab + expands the panel)
@@ -70,9 +80,10 @@ attachment. Caveats, all measured:
   near load still fires ~on time, but long-running timer-driven behavior slows —
   budget `wait --timeout` accordingly.
 - `requestAnimationFrame` is paused while not visible.
-- Off-screen `screenshot` renders at the fallback 1280×800 frame (or
-  `--width/--height`), not the real panel size, so responsive layout differs
-  from what the visible panel would show.
+- Plain off-screen `screenshot` (no flags) renders at the fallback 1280×800
+  frame, not the real panel size. To control the viewport, use
+  `--width/--height` (the dedicated off-screen capturer, above), which works
+  regardless of panel state.
 
 Bottom line: solid for DOM-driven automation; unreliable for anything driven by
 real-time timers / rAF / visibility while off-screen.
