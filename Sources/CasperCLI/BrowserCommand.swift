@@ -93,22 +93,33 @@ struct BrowserCommand: ParsableCommand {
     private static let automationTimeout: TimeInterval = 15
 
     struct Screenshot: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Save a PNG screenshot of the browser page.")
+        static let configuration = CommandConfiguration(
+            abstract: "Save a PNG screenshot of the browser page.",
+            discussion: "With --width/--height/--url the page renders off-screen at the given viewport "
+                + "(default 1280x800), independent of the visible panel — so responsive breakpoints render "
+                + "faithfully. Without them, the live browser panel is captured.")
 
         @Option(name: .long, help: "Output PNG path (defaults to a temp file).")
         var out: String?
-        @Option(name: .long, help: "Render viewport width for a hidden/background browser (a live panel uses its own size).")
+        @Option(name: .long, help: "Off-screen render viewport width (default 1280); renders independent of the panel.")
         var width: Int?
-        @Option(name: .long, help: "Render viewport height for a hidden/background browser (a live panel uses its own size).")
+        @Option(name: .long, help: "Off-screen render viewport height (default 800); renders independent of the panel.")
         var height: Int?
+        @Option(name: .long, help: "Capture this absolute URL off-screen instead of the current page.")
+        var url: String?
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
             if let width, width <= 0 { throw exitWithError("--width must be a positive number of pixels") }
             if let height, height <= 0 { throw exitWithError("--height must be a positive number of pixels") }
+            if let url {
+                guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
+                    throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
+                }
+            }
             let path = out ?? Self.temporaryScreenshotPath()
             return ControlCommand(
-                verb: .browserScreenshot, workspace: try requireSelector(target), path: path,
+                verb: .browserScreenshot, workspace: try requireSelector(target), url: url, path: path,
                 width: width, height: height)
         }
 

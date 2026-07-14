@@ -155,6 +155,23 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.height, 600)
     }
 
+    func testBrowserScreenshotCarriesURLWithDimensions() throws {
+        let shot = try BrowserCommand.Screenshot.parse(
+            ["--url", "https://example.com", "--width", "375", "--height", "800", "--workspace", "feature"])
+        let command = try shot.makeCommand()
+        XCTAssertEqual(command.url, "https://example.com")
+        XCTAssertEqual(command.width, 375)
+        XCTAssertEqual(command.height, 800)
+    }
+
+    func testBrowserScreenshotWithoutFlagsCarriesNoOverrides() throws {
+        let shot = try BrowserCommand.Screenshot.parse(["--workspace", "feature"])
+        let command = try shot.makeCommand()
+        XCTAssertNil(command.url)
+        XCTAssertNil(command.width)
+        XCTAssertNil(command.height)
+    }
+
     func testBrowserScreenshotRejectsNonPositiveWidth() throws {
         let shot = try BrowserCommand.Screenshot.parse(["--width", "0", "--workspace", "feature"])
         XCTAssertThrowsError(try shot.makeCommand())
@@ -164,6 +181,12 @@ final class ControlCommandTests: XCTestCase {
         // Attached `--height=-1` form so ArgumentParser doesn't read the leading `-`
         // as a new flag; the non-positive value is then rejected by `makeCommand`.
         let shot = try BrowserCommand.Screenshot.parse(["--height=-1", "--workspace", "feature"])
+        XCTAssertThrowsError(try shot.makeCommand())
+    }
+
+    func testBrowserScreenshotRejectsRelativeURL() throws {
+        // A dotted host without a scheme parses as a relative URL, not an absolute web URL.
+        let shot = try BrowserCommand.Screenshot.parse(["--url", "example.com", "--workspace", "feature"])
         XCTAssertThrowsError(try shot.makeCommand())
     }
 
