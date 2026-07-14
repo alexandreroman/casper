@@ -73,6 +73,11 @@ the `domain-cli-control-channel` memory note for the current surface.
   input, `takeSnapshot` screenshots, DOM extraction, and JS eval. Pure JS
   generation lives in `BrowserAutomation`; verified end-to-end against a live
   page. See the `browser-automation-cli` memory note.
+- **Browser debugging — ✅.** Three more verbs (`console`/`wait`/`reload`) turn
+  the panel into a debug surface: page `console.*` + uncaught-error capture (a
+  500-entry ring buffer fed by an injected `WKUserScript`), deterministic waits
+  (selector present/visible/gone or a `--js` predicate), and reload. Verified
+  end-to-end against a live page. See the `browser-console-capture` memory note.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,

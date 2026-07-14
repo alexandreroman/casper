@@ -21,6 +21,10 @@ with a handful of verbs. Full surface:
   `browser type <selector> <text>` / `browser key <key> [--selector <css>]`
   — browser automation over the workspace's inspector `WKWebView`
   (see [[browser-automation-cli]])
+- `browser console [--level <lvl>] [--clear]` / `browser wait
+  <selector>|--js <expr> [--visible|--gone] [--timeout <ms>]` /
+  `browser reload [--wait]` — web-app debugging: page console/error capture,
+  deterministic waits, reload (see [[browser-console-capture]])
 - `diff open [<file>]`
 - `workspace list` / `workspace current` / `workspace new <branch> [--base]
   [--command]` / `workspace delete` (the branch is a required positional)
