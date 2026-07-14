@@ -87,6 +87,12 @@ final class ControlServer {
             }
             reply(model.controlOpenBrowser(url: url, in: id)
                 ? .success(workspace: id.uuidString) : .failure("cannot open browser")); return
+        case .browserLoad:
+            guard let raw = command.url, let url = URL(string: raw), url.scheme != nil, url.host != nil else {
+                reply(.failure("invalid url: \(command.url ?? "nil")")); return
+            }
+            reply(model.controlLoadBrowser(url: url, in: id)
+                ? .success(workspace: id.uuidString) : .failure("cannot load browser")); return
         case .browserClose:
             reply(model.controlCloseBrowser(in: id)
                 ? .success(workspace: id.uuidString) : .failure("cannot close browser")); return
@@ -113,8 +119,118 @@ final class ControlServer {
             case .failure(let error):
                 reply(.failure(error.message)); return
             }
+        // Browser automation is async (WebKit's evaluateJavaScript / takeSnapshot),
+        // so — like `workspaceDelete` — these await the AppModel call and reply on
+        // completion rather than returning a response synchronously.
+        case .browserScreenshot:
+            let path = command.path ?? ""
+            let width = command.width
+            let height = command.height
+            let url = command.url
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserScreenshot(in: id, to: path, width: width, height: height, url: url),
+                    workspace: id))
+            }
+            return
+        case .browserEval:
+            guard let script = command.script else { reply(.failure("missing script")); return }
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserEval(script, in: id), workspace: id))
+            }
+            return
+        case .browserContent:
+            let selector = command.selector
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserContent(selector: selector, in: id), workspace: id))
+            }
+            return
+        case .browserClick:
+            guard let selector = command.selector else { reply(.failure("missing selector")); return }
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserClick(selector: selector, in: id), workspace: id))
+            }
+            return
+        case .browserType:
+            guard let selector = command.selector else { reply(.failure("missing selector")); return }
+            let value = command.value ?? ""
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserType(selector: selector, value: value, in: id), workspace: id))
+            }
+            return
+        case .browserKey:
+            guard let key = command.key else { reply(.failure("missing key")); return }
+            let selector = command.selector
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserKey(key: key, selector: selector, in: id), workspace: id))
+            }
+            return
+        case .browserConsole:
+            let level = command.level.flatMap { ConsoleLevel(rawValue: $0) }
+            Task { @MainActor in
+                reply(Self.browserReply(
+                    await model.controlBrowserConsole(level: level, clear: command.clear ?? false, in: id),
+                    workspace: id))
+            }
+            return
+        case .browserWait:
+            guard let (predicate, description) = Self.waitPredicate(for: command) else {
+                reply(.failure("wait needs a <selector> or --js <expr>")); return
+            }
+            let timeout = command.waitTimeout ?? 5000
+            Task { @MainActor in
+                switch await model.controlBrowserWait(
+                    js: predicate, timeoutMs: timeout, description: description, in: id) {
+                case .success: reply(.success(workspace: id.uuidString))
+                case .failure(let error): reply(.failure(error.message))
+                }
+            }
+            return
+        case .browserReload:
+            let waitReady = command.waitReady ?? false
+            let timeout = command.waitTimeout ?? 5000
+            Task { @MainActor in
+                switch await model.controlBrowserReload(waitReady: waitReady, timeoutMs: timeout, in: id) {
+                case .success: reply(.success(workspace: id.uuidString))
+                case .failure(let error): reply(.failure(error.message))
+                }
+            }
+            return
         case .workspaceList, .workspaceNew:
             reply(.failure("unreachable")); return  // handled above
+        }
+    }
+
+    /// Build the wait predicate JS and a human description from a `browserWait`
+    /// command. `--js` passes the user expression through unchanged; a selector maps
+    /// to presence / visibility / absence via `BrowserAutomation`. Nil when neither
+    /// a selector nor a predicate was supplied.
+    private static func waitPredicate(for command: ControlCommand) -> (js: String, description: String)? {
+        if let predicate = command.predicate {
+            return (predicate, "the js predicate")
+        }
+        guard let selector = command.selector else { return nil }
+        if command.gone == true {
+            return (BrowserAutomation.goneJS(selector: selector), "'\(selector)' to disappear")
+        }
+        if command.visible == true {
+            return (BrowserAutomation.visibleJS(selector: selector), "'\(selector)' to be visible")
+        }
+        return (BrowserAutomation.presenceJS(selector: selector), "'\(selector)'")
+    }
+
+    /// Map a browser-automation outcome to a control response: success carries the
+    /// payload (eval result / HTML / screenshot path, empty for action verbs) in
+    /// `text`; failure carries the error message.
+    private static func browserReply(
+        _ result: Result<String, AppModel.BrowserOpError>, workspace id: UUID
+    ) -> ControlResponse {
+        switch result {
+        case .success(let text): return .success(text: text, workspace: id.uuidString)
+        case .failure(let error): return .failure(error.message)
         }
     }
 

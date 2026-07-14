@@ -67,6 +67,26 @@ the `domain-cli-control-channel` memory note for the current surface.
 - The bundle executable directory is injected onto each surface's `PATH` (via
   `surfaceEnvironment(casperDirectory:basePath:)`) so `casper` resolves inside
   Casper terminals.
+- **Browser automation — ✅.** `casper browser` gains six verbs
+  (`screenshot`/`eval`/`content`/`click`/`type`/`key`) that drive the
+  workspace's inspector `WKWebView` over the control channel: JS-synthesized
+  input, `takeSnapshot` screenshots, DOM extraction, and JS eval. Pure JS
+  generation lives in `BrowserAutomation`; verified end-to-end against a live
+  page. See the `browser-automation-cli` memory note.
+- **Browser debugging — ✅.** Three more verbs (`console`/`wait`/`reload`) turn
+  the panel into a debug surface: page `console.*` + uncaught-error capture (a
+  500-entry ring buffer fed by an injected `WKUserScript`), deterministic waits
+  (selector present/visible/gone or a `--js` predicate), and reload. Verified
+  end-to-end against a live page. See the `browser-console-capture` memory note.
+- **Background browser — ✅.** `browser load <url>` mirrors `open` but does not
+  open/select the inspector (a background navigation, for driving a hidden
+  browser in parallel), and `screenshot --width/--height` set the off-screen
+  render viewport. Sized captures (`--width/--height`, plus an optional `--url`
+  to grab an arbitrary URL headlessly) render in a dedicated off-screen
+  `WKWebView` (`BrowserCapture`), so responsive layouts (mobile/wide) capture
+  faithfully **regardless of the panel state** — verified with the panel open.
+  All browser verbs target a workspace by id independent of selection and work
+  off-screen — see the `browser-automation-cli` note's off-screen caveats.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,

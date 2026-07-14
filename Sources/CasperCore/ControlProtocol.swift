@@ -12,6 +12,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case terminalList
         case terminalClose
         case browserOpen
+        case browserLoad
         case browserClose
         case diffOpen
         case diffClose
@@ -19,6 +20,15 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case workspaceNew
         case workspaceDelete
         case run
+        case browserScreenshot
+        case browserEval
+        case browserContent
+        case browserClick
+        case browserType
+        case browserKey
+        case browserConsole
+        case browserWait
+        case browserReload
     }
 
     public var verb: Verb
@@ -35,13 +45,32 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var command: String?     // terminalNew / workspaceNew: optional command to run
     public var cwd: String?         // terminalNew: optional working directory
     public var name: String?        // run: named command from .casper.json
+    public var script: String?      // browserEval: JavaScript source to evaluate
+    public var selector: String?    // browserClick/Type/Key/Content: CSS selector target
+    public var value: String?       // browserType: text to type into the element
+    public var key: String?         // browserKey: key name (e.g. Enter, Escape)
+    public var path: String?        // browserScreenshot: output PNG path
+    public var level: String?       // browserConsole: severity threshold (ConsoleLevel raw value)
+    public var predicate: String?   // browserWait: JavaScript predicate (--js form)
+    public var waitTimeout: Int?    // browserWait/browserReload: deadline in milliseconds
+    public var clear: Bool?         // browserConsole: drain the buffer after reading
+    public var visible: Bool?       // browserWait: require the selector to be visible
+    public var gone: Bool?          // browserWait: require the selector to be absent
+    public var waitReady: Bool?     // browserReload: also wait for readyState === "complete"
+    public var width: Int?          // browserScreenshot: off-screen render viewport width
+    public var height: Int?         // browserScreenshot: off-screen render viewport height
 
     public init(
         verb: Verb, workspace: String? = nil, state: String? = nil,
         total: Int? = nil, current: Int? = nil, label: String? = nil,
         message: String? = nil, url: String? = nil, target: String? = nil,
         branch: String? = nil, base: String? = nil,
-        command: String? = nil, cwd: String? = nil, name: String? = nil
+        command: String? = nil, cwd: String? = nil, name: String? = nil,
+        script: String? = nil, selector: String? = nil, value: String? = nil,
+        key: String? = nil, path: String? = nil,
+        level: String? = nil, predicate: String? = nil, waitTimeout: Int? = nil,
+        clear: Bool? = nil, visible: Bool? = nil, gone: Bool? = nil, waitReady: Bool? = nil,
+        width: Int? = nil, height: Int? = nil
     ) {
         self.verb = verb
         self.workspace = workspace
@@ -57,6 +86,74 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         self.command = command
         self.cwd = cwd
         self.name = name
+        self.script = script
+        self.selector = selector
+        self.value = value
+        self.key = key
+        self.path = path
+        self.level = level
+        self.predicate = predicate
+        self.waitTimeout = waitTimeout
+        self.clear = clear
+        self.visible = visible
+        self.gone = gone
+        self.waitReady = waitReady
+        self.width = width
+        self.height = height
+    }
+}
+
+/// A severity level for a captured `console.*` call, ordered `debug < log < info
+/// < warn < error`. `browser console --level` uses this ordering as a threshold:
+/// `--level warn` returns `warn` and `error` entries only. `Comparable` is
+/// derived from the fixed `severity` rank so callers can filter with `>=`.
+public enum ConsoleLevel: String, Codable, Sendable, CaseIterable, Comparable {
+    case debug
+    case log
+    case info
+    case warn
+    case error
+
+    /// Fixed severity rank (`debug` lowest, `error` highest) backing `Comparable`.
+    private var severity: Int {
+        switch self {
+        case .debug: return 0
+        case .log: return 1
+        case .info: return 2
+        case .warn: return 3
+        case .error: return 4
+        }
+    }
+
+    public static func < (lhs: ConsoleLevel, rhs: ConsoleLevel) -> Bool {
+        lhs.severity < rhs.severity
+    }
+}
+
+/// A single captured console message or uncaught error/rejection from a browser
+/// page. Serialized to a JSON array in `ControlResponse.text` for `browser
+/// console`; each optional key is emitted only when known. `timestamp` is epoch
+/// milliseconds (`Date.now()`), matching the JS-side capture.
+public struct ConsoleEntry: Codable, Equatable, Sendable {
+    public var level: String
+    public var message: String
+    public var timestamp: Double
+    public var source: String?
+    public var line: Int?
+    public var column: Int?
+    public var stack: String?
+
+    public init(
+        level: String, message: String, timestamp: Double,
+        source: String? = nil, line: Int? = nil, column: Int? = nil, stack: String? = nil
+    ) {
+        self.level = level
+        self.message = message
+        self.timestamp = timestamp
+        self.source = source
+        self.line = line
+        self.column = column
+        self.stack = stack
     }
 }
 

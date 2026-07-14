@@ -69,3 +69,5 @@
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI; use plain deinit + nonisolated(unsafe)
 - [libghostty set_occlusion param is `visible` not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread; inverting it freezes visible surfaces (grid still updates, no frames)
 - [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply .titleCapsule() inside the Button's label, not after .buttonStyle(.plain), or only the glyph is clickable
+- [Browser automation CLI](references/browser-automation-cli.md) — casper browser screenshot/eval/content/click/type/key: JS-synthesized input, takeSnapshot, off-screen support, control-socket-in-$TMPDIR gotcha
+- [Browser console/wait/reload + retain cycle](references/browser-console-capture.md) — console/wait/reload verbs; WeakScriptMessageHandler breaks WKUserContentController's strong handler retain; plain deinit removeAll

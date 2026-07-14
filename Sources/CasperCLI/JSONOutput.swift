@@ -136,6 +136,20 @@ struct RunOut: Encodable {
     let workspace: String
 }
 
+/// `{"screenshot":"<path>","workspace":"<id>"}` — the saved PNG path for
+/// `browser screenshot`.
+struct ScreenshotOut: Encodable {
+    let screenshot: String
+    let workspace: String
+}
+
+/// `{"content":"<html>","workspace":"<id>"}` — the page HTML for `browser
+/// content` (non-`--raw`).
+struct ContentOut: Encodable {
+    let content: String
+    let workspace: String
+}
+
 /// `{"error":"<message>"}` — the sole error shape, written to stderr.
 struct ErrorOut: Encodable {
     let error: String
