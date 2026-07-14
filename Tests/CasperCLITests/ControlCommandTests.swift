@@ -108,6 +108,25 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try dottedHost.makeCommand())
     }
 
+    func testBrowserLoadBuildsCommand() throws {
+        let load = try BrowserCommand.Load.parse(["https://example.com", "--workspace", "feature"])
+        let command = try load.makeCommand()
+        XCTAssertEqual(command.verb, .browserLoad)
+        XCTAssertEqual(command.url, "https://example.com")
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testBrowserLoadRejectsEmptyURL() throws {
+        let load = try BrowserCommand.Load.parse(["", "--workspace", "feature"])
+        XCTAssertThrowsError(try load.makeCommand())
+    }
+
+    func testBrowserLoadRejectsRelativeURL() throws {
+        // A dotted host without a scheme parses as a relative URL, not an absolute web URL.
+        let load = try BrowserCommand.Load.parse(["example.com", "--workspace", "feature"])
+        XCTAssertThrowsError(try load.makeCommand())
+    }
+
     func testBrowserCloseBuildsCommand() throws {
         let close = try BrowserCommand.Close.parse(["--workspace", "feature"])
         let command = try close.makeCommand()
@@ -126,6 +145,26 @@ final class ControlCommandTests: XCTestCase {
     func testBrowserScreenshotCarriesOutPath() throws {
         let shot = try BrowserCommand.Screenshot.parse(["--out", "/tmp/x.png", "--workspace", "feature"])
         XCTAssertEqual(try shot.makeCommand().path, "/tmp/x.png")
+    }
+
+    func testBrowserScreenshotCarriesWidthAndHeight() throws {
+        let shot = try BrowserCommand.Screenshot.parse(
+            ["--width", "800", "--height", "600", "--workspace", "feature"])
+        let command = try shot.makeCommand()
+        XCTAssertEqual(command.width, 800)
+        XCTAssertEqual(command.height, 600)
+    }
+
+    func testBrowserScreenshotRejectsNonPositiveWidth() throws {
+        let shot = try BrowserCommand.Screenshot.parse(["--width", "0", "--workspace", "feature"])
+        XCTAssertThrowsError(try shot.makeCommand())
+    }
+
+    func testBrowserScreenshotRejectsNegativeHeight() throws {
+        // Attached `--height=-1` form so ArgumentParser doesn't read the leading `-`
+        // as a new flag; the non-positive value is then rejected by `makeCommand`.
+        let shot = try BrowserCommand.Screenshot.parse(["--height=-1", "--workspace", "feature"])
+        XCTAssertThrowsError(try shot.makeCommand())
     }
 
     func testBrowserEvalBuildsCommand() throws {

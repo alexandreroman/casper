@@ -22,7 +22,7 @@ struct BrowserCommand: ParsableCommand {
         commandName: "browser",
         abstract: "Open or close a workspace's browser panel, or automate the page.",
         subcommands: [
-            Open.self, Close.self,
+            Open.self, Load.self, Close.self,
             Screenshot.self, Eval.self, Content.self, Click.self, TypeText.self, Key.self,
             Console.self, Wait.self, Reload.self,
         ])
@@ -41,6 +41,29 @@ struct BrowserCommand: ParsableCommand {
             }
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserOpen, workspace: selector, url: url)
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct Load: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Load a URL into the browser in the background (without opening the inspector panel).")
+
+        @Argument(help: "URL to load.")
+        var url: String
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            guard !url.isEmpty else { throw exitWithError("missing url") }
+            guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
+                throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
+            }
+            let selector = try requireSelector(target)
+            return ControlCommand(verb: .browserLoad, workspace: selector, url: url)
         }
 
         func run() throws {
@@ -74,11 +97,19 @@ struct BrowserCommand: ParsableCommand {
 
         @Option(name: .long, help: "Output PNG path (defaults to a temp file).")
         var out: String?
+        @Option(name: .long, help: "Render viewport width for a hidden/background browser (a live panel uses its own size).")
+        var width: Int?
+        @Option(name: .long, help: "Render viewport height for a hidden/background browser (a live panel uses its own size).")
+        var height: Int?
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
+            if let width, width <= 0 { throw exitWithError("--width must be a positive number of pixels") }
+            if let height, height <= 0 { throw exitWithError("--height must be a positive number of pixels") }
             let path = out ?? Self.temporaryScreenshotPath()
-            return ControlCommand(verb: .browserScreenshot, workspace: try requireSelector(target), path: path)
+            return ControlCommand(
+                verb: .browserScreenshot, workspace: try requireSelector(target), path: path,
+                width: width, height: height)
         }
 
         func run() throws {
