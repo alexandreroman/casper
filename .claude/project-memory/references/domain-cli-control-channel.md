@@ -15,7 +15,8 @@ with a handful of verbs. Full surface:
 - `terminal new [--command <cmd>] [--working-dir <dir>]` / `terminal list` /
   `terminal close <id>`
 - `browser open <url>` (the url must be absolute — scheme **and** host) /
-  `browser close`
+  `browser load <url>` (same, but a **background** load — does not open/select
+  the inspector) / `browser close`
 - `browser screenshot [--out <path>]` / `browser eval <js> [--raw]` /
   `browser content [--selector <css>] [--raw]` / `browser click <selector>` /
   `browser type <selector> <text>` / `browser key <key> [--selector <css>]`

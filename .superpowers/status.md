@@ -78,6 +78,12 @@ the `domain-cli-control-channel` memory note for the current surface.
   500-entry ring buffer fed by an injected `WKUserScript`), deterministic waits
   (selector present/visible/gone or a `--js` predicate), and reload. Verified
   end-to-end against a live page. See the `browser-console-capture` memory note.
+- **Background browser — ✅.** `browser load <url>` mirrors `open` but does not
+  open/select the inspector (a background navigation, for driving a hidden
+  browser in parallel), and `screenshot --width/--height` set the off-screen
+  render viewport (honored only while the panel is detached). All browser verbs
+  target a workspace by id independent of selection and work off-screen — see
+  the `browser-automation-cli` note's off-screen caveats.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
 `GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,

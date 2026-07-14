@@ -27,7 +27,17 @@ they ship in every build.
   screen-recording permission, captures the rendered web content (not the
   address-bar chrome), works off-screen. Distinct from the DEBUG terminal
   screenshot ([[debug-screenshot-screencapturekit]]) which captures the whole
-  window and needs permission.
+  window and needs permission. `screenshot --width/--height` set the render
+  viewport, but **only for a detached (hidden) browser** (`window == nil`);
+  when the panel is mounted/visible its own size wins and the flags are ignored.
+- **`load <url>` vs `open <url>`:** both point the workspace's single inspector
+  browser surface at a URL and reuse its cached coordinator, but `open` also
+  `setInspectorTab(.browser)` (selects the browser tab + expands the panel)
+  while `load` does **not** touch the inspector tab/collapsed state — a
+  background navigation. Because a hidden panel's `WKWebView` is never mounted by
+  the view, `load` must create-or-navigate the coordinator itself (only
+  re-`load()` when it already existed, since a fresh coordinator loads the URL at
+  init).
 - **Off-screen support:** the verbs get-or-create the inspector browser's
   `BrowserCoordinator` themselves, so automation does not require the panel to
   be visible. `snapshot()` assigns a default 1280×800 frame **only when
@@ -42,6 +52,30 @@ they ship in every build.
   (`--raw` prints raw HTML); `screenshot` → `{"screenshot":"<path>",…}`;
   action verbs → `{"workspace":…}`. A no-match selector / JS error / unwritable
   path → `{"error":…}`, non-zero exit.
+
+## Off-screen / background behavior (parallel tasks)
+
+All verbs target a workspace by `--workspace` id, independent of selection, and
+get-or-create its coordinator — so a **non-selected workspace whose browser was
+never shown** can be driven for parallel work. Verified live: `eval`/`content`/
+`click`/`type`/`console`/`wait`/`screenshot` all work on a detached
+(`window == nil`) `WKWebView`; the web content process runs regardless of window
+attachment. Caveats, all measured:
+
+- A detached view reports `document.visibilityState === "hidden"`, so a page
+  that gates work on visibility (pauses fetches/animations on `visibilitychange`)
+  idles in the background.
+- WebKit **throttles recurring timers to ~1 Hz** when hidden (measured: a
+  100 ms `setInterval` advanced ~2 ticks in 3 s). A short one-shot `setTimeout`
+  near load still fires ~on time, but long-running timer-driven behavior slows —
+  budget `wait --timeout` accordingly.
+- `requestAnimationFrame` is paused while not visible.
+- Off-screen `screenshot` renders at the fallback 1280×800 frame (or
+  `--width/--height`), not the real panel size, so responsive layout differs
+  from what the visible panel would show.
+
+Bottom line: solid for DOM-driven automation; unreliable for anything driven by
+real-time timers / rAF / visibility while off-screen.
 
 ## Live-driving gotcha
 
