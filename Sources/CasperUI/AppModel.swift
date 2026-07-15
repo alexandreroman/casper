@@ -2083,13 +2083,15 @@ final class AppModel {
     private func teardownInFlight(_ workspaceID: UUID) -> Bool { pendingTeardownPrunes[workspaceID] != nil }
 
     /// Wrap a `casper run` command in a subshell so a script that calls `exit`
-    /// (or fails under `set -e`) terminates only the subshell — the interactive
-    /// terminal stays open with the script's output visible, instead of the
-    /// shell exiting and the pane closing. The command sits on its own line
-    /// (between newlines) so a trailing `#` comment in it cannot swallow the
-    /// closing paren.
+    /// (or fails under `set -e`) terminates only the subshell, isolating it from
+    /// the interactive shell. The trailing `[ $? -eq 0 ] && exit` then makes the
+    /// interactive shell exit — closing the pane via the normal close path — only
+    /// when the script succeeded (exit 0). A failing script (non-zero `$?`) leaves
+    /// the interactive shell alive at a prompt with its output still visible. The
+    /// command and the closing `[ … ]` test each sit on their own line so a
+    /// trailing `#` comment cannot swallow the closing paren or the test.
     static func subshellWrappedScriptCommand(_ command: String) -> String {
-        "(\n\(command)\n)"
+        "(\n\(command)\n)\n[ $? -eq 0 ] && exit"
     }
 
     /// Wrap a lifecycle-hook command so the shell runs it and then exits with its
