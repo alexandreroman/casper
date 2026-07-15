@@ -296,13 +296,16 @@ private struct DiffFileHeaderBar: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text(title).font(.system(.body, design: .monospaced)).bold()
+                    .lineLimit(1).truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
-                Spacer(minLength: 12)
+                    .fixedSize()
                 HStack(spacing: 8) {
                     Text("+\(metrics.insertions)").foregroundStyle(DiffLineStyle.insertionTint)
                     Text("\u{2212}\(metrics.deletions)").foregroundStyle(DiffLineStyle.deletionTint)
                 }
                 .font(.callout.monospacedDigit().bold())
+                .fixedSize()
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
