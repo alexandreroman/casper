@@ -232,7 +232,10 @@ treats its workspaces. Every key lives under `workspace`:
     timeout, so a broken cleanup script never traps you.
 
   Every other key is a named command, launched on demand from the workspace's
-  "Run Script" toolbar button and context menu, or with `casper run <name>`.
+  "Run Script" toolbar button and context menu, or with `casper run <name>`. Its
+  split closes automatically when the command succeeds (exit 0); on any non-zero
+  exit the split stays open with a live shell so you can read the output and
+  re-run.
 
 The file is hand-edited (there is no settings UI) and re-read each time it is
 needed.
