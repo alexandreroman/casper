@@ -177,8 +177,17 @@ public struct InspectorState: Codable, Equatable, Sendable {
     /// Bounds for the user-resizable panel width, in points. Single source of
     /// truth shared by the SwiftUI `.inspectorColumnWidth(...)` call and the
     /// model's clamping, so the two never drift apart.
+    ///
+    /// `defaultWidth` is sized so the diff view (`DiffLineRow` in `DiffSurfaceView.swift`) can show ~80 columns of
+    /// code content without wrapping. Budget, in points, of one diff row at its 14pt monospaced font
+    /// (SF Mono advance ≈ 8.65pt/char):
+    /// - code column: 80 content columns + 1 diff-marker prefix = 81 cells × 8.65 ≈ 701
+    /// - gutter: budgeted for 4-digit line numbers (`maxDigits*9 + 12` = 48)
+    /// - leading accent stripe (3) + gutter↔code spacing (8) = 11
+    /// - ~16 slack for a legacy always-on vertical scroller
+    /// Total ≈ 780, comfortably within min/max.
     public static let minWidth: Double = 240
-    public static let defaultWidth: Double = 480
+    public static let defaultWidth: Double = 780
     public static let maxWidth: Double = 1400
 
     public var collapsed: Bool
