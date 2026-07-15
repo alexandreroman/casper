@@ -169,17 +169,13 @@ private struct WorkspaceShortcutHint: View {
 /// Trailing notification indicator: a filled dot when pending, otherwise hidden.
 /// The call site reserves the trailing space so the row's edge stays anchored even
 /// when nothing renders. Selection-aware so it reads on the accent selection background.
-/// While pending, the dot pulses continuously (a breathing fade-and-scale) to draw the eye.
+/// While pending, the dot pulses continuously (a breathing fade-and-scale) to draw the
+/// eye, unless reduce-motion is on.
 private struct NotificationBubble: View {
     let on: Bool
     let isSelected: Bool
     @State private var pulse = false
-    @State private var delay: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.windowVisible) private var windowVisible
-
-    /// Full out-and-back cycle length: `2 * duration`, since `autoreverses: true`.
-    private static let period: TimeInterval = 0.8 * 2
 
     var body: some View {
         if on {
@@ -188,27 +184,11 @@ private struct NotificationBubble: View {
                 .frame(width: 9, height: 9)
                 .opacity(pulse ? 0.5 : 1.0)
                 .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(animation, value: pulse)
-                .onAppear { syncPulse() }
-                .onChange(of: windowVisible) { _, _ in syncPulse() }
-                .onChange(of: reduceMotion) { _, _ in syncPulse() }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                .onAppear { pulse = true }
         } else {
             EmptyView()
         }
-    }
-
-    /// The repeating pulse, or `nil` when the window is hidden or reduce-motion
-    /// is on — `nil` removes the running `repeatForever` from the layer.
-    private var animation: Animation? {
-        (windowVisible && !reduceMotion)
-            ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true).delay(delay)
-            : nil
-    }
-
-    private func syncPulse() {
-        let shouldPulse = windowVisible && !reduceMotion
-        if shouldPulse { delay = AnimationClock.phaseDelay(period: Self.period) }
-        pulse = shouldPulse
     }
 }
 
@@ -255,46 +235,20 @@ private struct AgentStatusIcon: View {
 }
 
 /// The `working` glyph: a circular-arrows SF Symbol in continuous clockwise
-/// rotation. The spin starts when the view appears — i.e. when the agent enters
-/// the working state — and stops when it leaves, since the view is then torn down
-/// and replaced by a different (non-animated) state glyph.
+/// rotation. The spin runs while the view exists — i.e. while the agent is in the
+/// working state — and stops when it leaves, since the view is then torn down and
+/// replaced by a different (non-animated) state glyph. Respects reduce-motion.
 private struct SpinningIcon: View {
     let isSelected: Bool
     @State private var spin = false
-    @State private var delay: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.windowVisible) private var windowVisible
-
-    /// Full rotation cycle: duration, since autoreverses: false.
-    private static let period: TimeInterval = 1
 
     var body: some View {
         Image(systemName: "arrow.triangle.2.circlepath")
             .imageScale(.medium)
             .foregroundStyle(isSelected ? Color.white : Color.secondary)
             .rotationEffect(.degrees(spin ? 360 : 0))
-            .animation(animation, value: spin)
-            .onAppear { syncSpin() }
-            .onChange(of: windowVisible) { _, _ in syncSpin() }
-            .onChange(of: reduceMotion) { _, _ in syncSpin() }
-    }
-
-    /// The repeating spin, or `nil` when the window is hidden or reduce-motion is
-    /// on. Returning `nil` removes the in-flight `repeatForever` from the layer
-    /// (instead of leaving it to free-run off-screen), so the compositor goes
-    /// idle while hidden.
-    private var animation: Animation? {
-        (windowVisible && !reduceMotion)
-            ? .linear(duration: Self.period).repeatForever(autoreverses: false).delay(delay)
-            : nil
-    }
-
-    /// Start or stop the spin to match the current visibility / reduce-motion
-    /// state. Re-phases via `AnimationClock` on (re)start so all rows resume in
-    /// sync after the window returns.
-    private func syncSpin() {
-        let shouldSpin = windowVisible && !reduceMotion
-        if shouldSpin { delay = AnimationClock.phaseDelay(period: Self.period) }
-        spin = shouldSpin
+            .animation(reduceMotion ? nil : .linear(duration: 1).repeatForever(autoreverses: false), value: spin)
+            .onAppear { spin = true }
     }
 }

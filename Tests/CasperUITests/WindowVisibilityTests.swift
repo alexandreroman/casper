@@ -1,5 +1,4 @@
 import CasperCore
-import SwiftUI
 import XCTest
 @testable import CasperUI
 
@@ -12,11 +11,5 @@ final class WindowVisibilityTests: XCTestCase {
             .appendingPathComponent("casper-test-\(UUID().uuidString).json")
         let model = AppModel(sessionStore: SessionStore(fileURL: url))
         XCTAssertTrue(model.isWindowVisible)
-    }
-
-    func testEnvironmentDefaultIsVisible() {
-        // The environment value must default true so any view read outside an
-        // injected sidebar (previews, detached hosts) animates normally.
-        XCTAssertTrue(EnvironmentValues().windowVisible)
     }
 }
