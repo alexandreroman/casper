@@ -15,16 +15,16 @@ the later assignment triggers **no re-render** — so the fallback is permanent.
 **Why:** on a **restored session**, SwiftUI can render the detail hierarchy
 before the delegate finishes assigning the dependency, so the view samples the
 `nil`. Only an observed property re-renders the view when the value arrives.
-This bit `AppModel.runtime`: restored terminals stayed pure black until `runtime`
-was made observed.
+`AppModel.runtime` is the concrete case: if it is `@ObservationIgnored`, restored
+terminals stay pure black until it is made observed.
 
 **How to apply:**
 - Do not `@ObservationIgnored` a startup-provided dependency that a view body
   reads to decide rendering; leave it observed so its assignment re-renders.
 - **Live-verify the restore-at-launch path separately** from the
-  create-after-launch path — they exercise different timing. UI-1's live check
-  only covered *Add folder* after launch (runtime already set), so this bug hid
-  until a persisted multi-terminal session was reopened.
+  create-after-launch path — they exercise different timing. A check that only
+  covers *Add folder* after launch (runtime already set) misses this class of bug;
+  it surfaces only when a persisted multi-terminal session is reopened.
 - Use the `debug-casper` skill's channel to confirm: `dump-state` shows whether a
   surface exists and its size; `read-text`/`screenshot` show whether it paints.
   This works in a normal local session even when the agent itself launches the

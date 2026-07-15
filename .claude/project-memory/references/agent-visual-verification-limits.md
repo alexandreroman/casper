@@ -10,8 +10,8 @@ Subagents dispatched via the Agent tool consistently report
 `SCScreenshotManager`/`ScreenCaptureKit` failing with "The user declined TCCs
 for application, window, display capture" when attempting
 `casper debug screenshot`, even on a machine where the interactive session's
-own terminal can capture successfully. This held across multiple independent
-subagent dispatches while building the "Open in Editor" toolbar feature.
+own terminal can capture successfully. This reproduces across independent subagent
+dispatches.
 
 **Why:** screen-recording permission (see
 [[debug-screenshot-screencapturekit]]) is granted per requesting process/TCC

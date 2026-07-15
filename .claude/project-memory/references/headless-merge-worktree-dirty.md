@@ -17,7 +17,7 @@ touched.
 to decide whether to act on it (e.g. `AppModel.closeWorkspace`'s post-merge
 resync of the sibling worktree) must capture that cleanliness **before** calling
 the merge. Checking `isClean()` after the merge always sees "dirty" and wrongly
-skips. This bit Task 5: the resync is now gated on a pre-merge
+skips. So the resync is gated on a pre-merge
 `cleanBaseBranchWorktree(baseBranch:in:)` snapshot, and the mechanical
 `WorktreeManager.resyncWorkingTree` (force `git_checkout_head`) runs afterward.
 

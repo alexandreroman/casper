@@ -30,6 +30,5 @@ to recommending this System Settings toggle + reboot + reinstall sequence. See
 also [[unusernotificationcenter-unbundled-abort]] for the separate,
 already-fixed "no notification at all" bug (missing bundle id in dev builds).
 Also: `Scripts/bundle-app.sh`/`Makefile`'s release `bundle` target intentionally
-stay **unconditional ad-hoc** signing — a real personal "Apple Development"
-certificate is not portable to other machines and was reverted after this
-investigation disproved it as the fix.
+use **unconditional ad-hoc** signing — a real personal "Apple Development"
+certificate is not portable to other machines and does not fix this bug.

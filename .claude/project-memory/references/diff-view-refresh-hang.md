@@ -1,6 +1,6 @@
 ---
 name: "Diff-view main-thread hang on refresh (open incident)"
-description: "Unreproduced SwiftUI-layout hang in the diff view triggered on refresh; a diagnostic log line is in place to capture the next occurrence (the lazy-rendering mitigation was reverted — it broke layout)"
+description: "Unreproduced SwiftUI-layout hang in the diff view triggered on refresh; a diagnostic log line is in place to capture the next occurrence (do not nest a LazyVStack in DiffFileView — it breaks layout)"
 type: project
 ---
 
@@ -30,15 +30,14 @@ hang recurs, read that LAST line before the freeze — `maxLineLen` (longest
 it with `/usr/bin/log show --predicate 'subsystem ==
 "com.github.alexandreroman.casper"' --info` (or the `debug-casper` stream).
 
-**The `LazyVStack` mitigation was reverted.** `DiffFileView`'s inner container
-was briefly a nested `LazyVStack` (commit 339334e) to virtualize rows, but a
-lazy stack nested as a `Section`'s content inside the outer `LazyVStack`/
-`ScrollView` cannot report an exact height: it over-reserves vertical space and
-leaves large empty gaps between files. It is back to a plain `VStack`. Row count
-is still bounded by `DiffFileView.maxRenderedLines` (3000), and the outer
-`LazyVStack` still virtualizes at the per-file level. The correct guard for the
-huge-single-line hang, when reproduced, is a per-line content-length cap in the
-render path (bounding `StyledText.sizeThatFits`) — NOT a nested lazy stack.
+**Do not nest a `LazyVStack` in `DiffFileView`.** Its inner container must stay a
+plain `VStack`: a lazy stack nested as a `Section`'s content inside the outer
+`LazyVStack`/`ScrollView` cannot report an exact height, so it over-reserves
+vertical space and leaves large empty gaps between files. Row count is bounded by
+`DiffFileView.maxRenderedLines` (3000), and the outer `LazyVStack` virtualizes at
+the per-file level. The correct guard for the huge-single-line hang, once
+reproduced, is a per-line content-length cap in the render path (bounding
+`StyledText.sizeThatFits`) — NOT a nested lazy stack.
 
-Batching the per-file highlight publication was tried and deliberately reverted
-to keep progressive coloring; do not re-add it without a real repro.
+**Do not batch the per-file highlight publication** — it breaks progressive
+coloring. Do not re-add it without a real repro.

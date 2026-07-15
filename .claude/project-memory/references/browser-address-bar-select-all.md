@@ -35,5 +35,5 @@ selection is preserved. To verify select-all visually the `debug-casper` channel
 is not enough (it can't target the address `NSTextField`); drive a **crisp**
 synthetic click (mouse-down and mouse-up back-to-back — a gap lets the mouse-up
 arrive after `super.mouseDown` returns and collapse the selection, a test-only
-artifact) per [[casper-gui-synthetic-input]], then screenshot and check the
+artifact) per [[gui-synthetic-input]], then screenshot and check the
 highlight.

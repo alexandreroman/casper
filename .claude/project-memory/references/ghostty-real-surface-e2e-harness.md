@@ -31,13 +31,13 @@ interactively ready (ZLE/readline actually attached in raw mode). Too short a wa
 a "poll until text looks non-empty/stable" loop) reads back **kernel cooked-mode
 echo** instead of real shell behavior — every control character echoes literally as
 `^X` in that window regardless of whether the real shell would handle it, producing a
-false bug signal (this happened during the AZERTY Ctrl-A investigation: an
-under-settled harness made even the already-fixed QWERTY case look broken). The
-working, reproducible recipe: pump the RunLoop for a **fixed** `settle(0.6)` right
+false bug signal (an under-settled harness makes even an already-fixed case look
+broken). The working, reproducible recipe: pump the RunLoop for a **fixed**
+`settle(0.6)` right
 after the surface appears, then `settle(0.4)` after each subsequent input step
 (`RunLoop.current.run(until: Date().addingTimeInterval(seconds))`). A
-"wait-until-stable" polling loop was flakier than this fixed-pump approach in this
-investigation — prefer the fixed settle times over adaptive polling here.
+"wait-until-stable" polling loop is flakier than this fixed-pump approach — prefer
+fixed settle times over adaptive polling here.
 
 See `Tests/CasperGhosttyTests/GhosttyEditingCommandReplayTests.swift` for the
 canonical example (`settle(_:)` helper + `assertControlAMovesToLineStart(keyCode:)`).

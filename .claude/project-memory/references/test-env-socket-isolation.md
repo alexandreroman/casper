@@ -18,15 +18,14 @@ Running `swift test` directly inside such a terminal (a normal dogfooding
 workflow for this repo) therefore leaks the live instance's real socket path
 into the test process.
 
-**Why:** reproduced live — `swift test --filter SocketPathResolutionTests`
-run inside a terminal opened by a real bundled `Casper.app` failed
-`testControlResolveNamedSession` because the ambient `CASPER_CONTROL_SOCKET`
-silently overrode the `SessionIdentity` argument passed to `resolve(for:)`.
-This only affects *assertions on the resolved path string* — no test ever
-binds a real listener at that default/session path (every test that opens a
-real socket uses its own UUID-suffixed temp path), so the live socket
-**file** itself was never at risk of being unlinked/rebound; the bug was
-test-hermeticity, not socket corruption.
+**Why:** without the strip, `swift test --filter SocketPathResolutionTests` run
+inside a terminal opened by a real bundled `Casper.app` fails
+`testControlResolveNamedSession`, because the ambient `CASPER_CONTROL_SOCKET`
+silently overrides the `SessionIdentity` argument passed to `resolve(for:)`. This
+only affects *assertions on the resolved path string* — no test binds a real
+listener at that default/session path (every test that opens a real socket uses
+its own UUID-suffixed temp path), so the live socket **file** is never at risk of
+being unlinked/rebound; the hazard is test-hermeticity, not socket corruption.
 
 **How to apply:**
 

@@ -26,4 +26,4 @@ Soft spot to watch: `selectWorkspace(_:)` assigns `selectedWorkspaceID`
 **before** validating the id, so the invariant holds only because every current
 caller pre-validates (e.g. `AppDelegate` guards explicitly). A future caller that
 skips validation would silently reintroduce a dangling selection that the
-now-removed dead branch used to mask.
+defensive `Color.clear` dead branch would otherwise mask.

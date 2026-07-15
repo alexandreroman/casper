@@ -1,19 +1,27 @@
 ---
 name: english-only
-description: All generated text in the Casper project must be in English
+description: All generated text (docs, code, UI, commit messages) in the Casper project is written in English; commit subjects use a verb + action format
 type: feedback
 ---
 
 # english-only
 
-Every piece of text generated for the Casper project must be written in
-**English** — documentation, code (identifiers, comments, log/error strings),
-and UI/IHM elements (labels, menu titles, notification copy). No French in
-committed artifacts.
+Every piece of text generated for the Casper project is written in **English** —
+documentation, code (identifiers, comments, log/error strings), and UI elements
+(labels, menu titles, notification copy). No French lands in committed artifacts
+or the shipped app.
 
-**Why:** English throughout is a project-wide convention.
+Chat replies to the user may stay in the user's language; anything landing in the
+repo or the app is English.
 
-**How to apply:** When writing or reviewing docs, source code, or user-facing
-UI strings, use English throughout. Chat replies to the user may stay in the
-user's language, but anything landing in the repo or the shipped app is English.
-Commit messages follow the same rule — see [[commit-message-style]].
+**Commit messages** follow the same rule (subject AND body in English) and use a
+**verb + action performed** subject, e.g. "Simplify the diff parser", "Add the
+port allocator". This applies on top of the [git workflow](git-workflow.md) note:
+authorization before committing/pushing still stands.
+
+**Why:** English throughout, and a consistent verb-first subject, are project-wide
+conventions.
+
+**How to apply:** use English for all docs, source, and user-facing strings, and
+write commit subjects as an English verb followed by the action done. Keep commit
+subjects concise.
