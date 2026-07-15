@@ -233,15 +233,25 @@ struct WorkspaceDetailView: View {
 
     private var editorButton: some View {
         let current = model.resolvedEditor(nil, for: workspace)
-        let content = HStack(spacing: 4) {
+        let content = HStack(spacing: 0) {
             Button {
                 model.openInEditor(nil, for: workspace.id)
             } label: {
-                if let current {
-                    editorLabel(current)
-                } else {
-                    Text("Editor")
+                Group {
+                    if let current {
+                        editorLabel(current)
+                    } else {
+                        Text("Editor")
+                    }
                 }
+                // Carry the capsule's interior geometry INSIDE the label so the whole
+                // pill region (leading padding + full height) triggers the primary
+                // action, not just the glyph/text (see the `title-capsule-hit-area`
+                // memory note). No `maxWidth` — the button stays sized to its content.
+                .padding(.leading, 10)
+                .padding(.trailing, 4)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -261,13 +271,16 @@ struct WorkspaceDetailView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            // Fill the capsule's right inset so its trailing edge isn't a dead zone.
+            .padding(.trailing, 10)
         }
-        // The capsule wraps the WHOLE HStack (primary button + chevron menu) so it is
-        // one visible shape enclosing both: Menu's own primaryAction chrome renders its
-        // disclosure chevron OUTSIDE the label view, so styling only the label never
-        // produces a visible enclosing pill.
+        // The capsule SHELL wraps the WHOLE HStack (primary button + chevron menu) so it
+        // is one visible shape enclosing both: Menu's own primaryAction chrome renders
+        // its disclosure chevron OUTSIDE the label view, so styling only the label never
+        // produces a visible enclosing pill. Interior padding lives inside each control's
+        // label (not on the shell) so the whole pill is clickable, not just the glyphs.
         return content
-            .titleCapsule()
+            .titleCapsuleShell()
             .help("Open in Editor")
     }
 
@@ -293,12 +306,21 @@ private struct ScriptToolbarButton: View {
     var body: some View {
         let commands = model.namedCommands(for: workspace.id)
         let current = model.resolvedScript(for: workspace)
-        return HStack(spacing: 4) {
+        return HStack(spacing: 0) {
             Button {
                 if let current { model.runScript(current.name, for: workspace.id) }
             } label: {
                 Label(current?.displayName ?? "Run", systemImage: "play.fill")
                     .labelStyle(.titleAndIcon)
+                    // Carry the capsule's interior geometry INSIDE the label so the
+                    // whole pill region (leading padding + full height) triggers the
+                    // primary action, not just the glyph/text (see the
+                    // `title-capsule-hit-area` memory note). No `maxWidth` — the
+                    // button stays sized to its content so the toolbar doesn't stretch.
+                    .padding(.leading, 10)
+                    .padding(.trailing, 4)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -319,8 +341,10 @@ private struct ScriptToolbarButton: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            // Fill the capsule's right inset so its trailing edge isn't a dead zone.
+            .padding(.trailing, 10)
         }
-        .titleCapsule()
+        .titleCapsuleShell()
         .help("Run Script")
         .opacity(appeared ? 1 : 0)
         .scaleEffect(appeared ? 1 : 0.85)
@@ -341,6 +365,17 @@ private extension View {
     func titleCapsule(filled: Bool = true) -> some View {
         self
             .padding(.horizontal, 10)
+            .titleCapsuleShell(filled: filled)
+    }
+
+    /// The capsule chrome WITHOUT the interior horizontal padding: fixed height,
+    /// fill, hairline border, and hit shape. Split out from `titleCapsule` so a
+    /// split-button (Run / Editor) can wrap the whole HStack in the visible pill
+    /// while its inner controls carry the padding themselves — keeping that
+    /// padding inside their clickable label instead of as dead decoration around
+    /// a `.plain` button (see the `title-capsule-hit-area` memory note).
+    func titleCapsuleShell(filled: Bool = true) -> some View {
+        self
             .frame(height: 36)
             .background(filled ? Color.secondary.opacity(0.15) : .clear, in: Capsule())
             .overlay(filled ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
