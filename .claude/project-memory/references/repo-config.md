@@ -10,7 +10,7 @@ type: project
 `workspace` key: `copyFiles` (untracked files seeded into a new worktree) and
 `scripts` (name → shell command). This note records the durable design decisions
 and rationale that are NOT obvious from the code. Implementation STATUS lives in
-`.superpowers/status.md`, not here (see [[project-memory-vs-status]]).
+`.superpowers/status.md`, not here (see [[project-memory-conventions]]).
 
 ## Two kinds of scripts
 

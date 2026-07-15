@@ -21,18 +21,15 @@ socket hijack:
 
 **Why:** every terminal a running Casper.app opens unconditionally carries that
 instance's own `CASPER_CONTROL_SOCKET` (`ClaudeCodeAdapter.swift`, regardless of
-session — see [[domain-cli-control-channel]]). `AppDelegate` used to call
-`resolve(for:)` for its own bind path, so launching a second, differently
-`--session`-named instance (e.g. via the `debug-casper` harness, see
-[[app-sessions]]) **from inside a terminal the real instance opened** made the
-new instance inherit the real instance's `CASPER_CONTROL_SOCKET`; its
-`ControlSocketServer.start()` then `unlink()`ed and rebound onto the REAL
-instance's socket, silently hijacking it even though `--session` was passed
-correctly. Confirmed both by code reading and by a live repro: instance A
-(session `sim-main`) launched, a terminal-inherited env exported A's real
-control-socket path, instance B launched with `--session sim-dev` inheriting
-that env — post-fix, B bound its own session-derived socket and A's socket
-file's inode/mtime never changed.
+session — see [[domain-cli-control-channel]]). If `AppDelegate` binds via
+`resolve(for:)`, launching a second, differently `--session`-named instance (e.g.
+via the `debug-casper` harness, see [[app-sessions]]) **from inside a terminal the
+real instance opened** makes the new instance inherit the real instance's
+`CASPER_CONTROL_SOCKET`; its `ControlSocketServer.start()` then `unlink()`s and
+rebinds onto the REAL instance's socket, silently hijacking it even though
+`--session` was passed correctly. Binding via `listenPath(for:)` avoids this: the
+second instance binds its own session-derived socket and the first instance's
+socket file is untouched.
 
 **How to apply:**
 

@@ -21,5 +21,11 @@ command (`GhosttySurfaceConfiguration.initialInput` — a `.casper.json` script,
 uses). Verified live: the command still runs (no lost input from the post-spawn
 timing) and `… café 🚀` render correctly.
 
-Do NOT reintroduce `c.initial_input`. This mirrors the sibling pinned-fork
-gotcha in [[surface-command-bash-exec]] (the `command` field is also avoided).
+Do NOT reintroduce `c.initial_input`. Casper likewise avoids libghostty's
+`ghostty_surface_config_s.command` field: the pinned fork execs it as
+`bash -l -c "exec <command>"` regardless of `$SHELL`, so a command depending on
+zsh-only PATH entries (Homebrew, mise, added by `~/.zprofile`/`~/.zshrc`) fails
+with `not found`, and `exec` replaces the shell so a compound `a ; b` runs only
+`a`. A queued command is instead typed into the real login shell via the
+`ghostty_surface_text` path above, which rebuilds PATH from the user's own
+profile.

@@ -27,8 +27,8 @@ react to focus changes. The View menu's **Split** items are **always enabled** (
 focus-dependent `.disabled`); `applyNewSplit` gates itself with
 `focusedSurfaceIsTerminal()`. Covered by `Tests/CasperUITests/MenuStateTests.swift`.
 
-**Why:** an earlier design built the whole bar imperatively in AppKit
-(`NSApp.mainMenu = buildMainMenu()` + inserting File/View), but SwiftUI's
+**Why:** building the whole bar imperatively in AppKit
+(`NSApp.mainMenu = buildMainMenu()` + inserting File/View) fails, because SwiftUI's
 `WindowGroup` re-synchronises `NSApp.mainMenu` on scene-lifecycle events
 (miniaturize, app-switch, key-window change, fullscreen, …), mutating
 `NSApp.mainMenu.items` **in place** (same `NSMenu` object identity) and wiping
