@@ -41,13 +41,24 @@ string (no new response fields).
 coordinator owns `webView → config → userContentController`. Registering the
 coordinator itself as the handler forms a cycle it can never escape. Fix: a tiny
 `WeakScriptMessageHandler: NSObject, WKScriptMessageHandler` proxy holds the
-coordinator **weakly** and forwards `message.body`. Belt-and-braces:
-`removeAllScriptMessageHandlers()` in a **plain** `deinit`, reading the controller
-through a `nonisolated(unsafe)` stored `let` — same discipline as
-`FocusReportingWebView.occlusionObserver`, and required to avoid the `isolated
-deinit` SIGABRT ([[isolated-deinit-ci-sigabrt]]). `WKScriptMessageHandler` is
-`@MainActor` in the SDK, so the proxy's callback runs on the main actor
-([[mainactor-isolated-delegate-conformance]]).
+coordinator **weakly** and forwards `message.body`. The weak back-reference is
+the *entire* fix — nothing strong points back at the coordinator, so it
+deallocs (tearing down `webView → config → controller → proxy` with it) with no
+leak. `WKScriptMessageHandler` is `@MainActor` in the SDK, so the proxy's
+callback runs on the main actor ([[mainactor-isolated-delegate-conformance]]).
+
+`BrowserCoordinator` deliberately has **no `deinit`** and does **not** store the
+`WKUserContentController`. An earlier belt-and-braces
+`removeAllScriptMessageHandlers()` in a plain `deinit` (reading the controller
+through a `nonisolated(unsafe)` stored `let`) was removed: it was redundant given
+the weak proxy above, and the newer Swift compiler warns on the call — `removeAll`
+is `@MainActor`, so it can't be invoked from a nonisolated `deinit`, and the
+project's deinit discipline forbids both escape hatches (`isolated deinit`
+SIGABRTs on CI, `assumeIsolated` is unsafe in a deinit not guaranteed to run on
+the main actor — see [[isolated-deinit-ci-sigabrt]]). Note that discipline covers
+only nonisolated thread-safe cleanup (`NSEvent.removeMonitor`, `NotificationCenter.
+removeObserver`); a `@MainActor`-only API like `removeAllScriptMessageHandlers()`
+has no clean deinit home, which is the other reason it's gone.
 
 The console ring buffer is private to `BrowserCoordinator`; a `#if DEBUG`
 `debugAppendConsole` seam (mirroring `debugLastMediaSuspended`) makes the
