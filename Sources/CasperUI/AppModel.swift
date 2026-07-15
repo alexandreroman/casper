@@ -573,6 +573,26 @@ final class AppModel {
         space?.orderedWorkspaces.first?.id ?? spaces.first?.orderedWorkspaces.first?.id
     }
 
+    /// Prune every transient, non-persisted map keyed by a workspace being
+    /// removed, so a long-lived session with workspace churn doesn't accumulate
+    /// dead entries. Called from both `removeWorkspace` (linked drop) and
+    /// `removeSpace` (whole-Space discard) so the two teardown paths can't drift.
+    private func pruneTransientState(for ws: Workspace) {
+        explicitAuthority.remove(ws.id)
+        agentResolvers[ws.id] = nil
+        namedCommandsCache[ws.id] = nil
+        lastNotifiedAt[ws.id] = nil
+        // Teardown once-latch: clear without invoking its prune — the workspace is
+        // being dropped outright here.
+        pendingTeardownPrunes[ws.id] = nil
+        // Per-surface setup-hook maps, so a workspace removed while its setup split
+        // is live doesn't leak its surface entries.
+        for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
+            scriptSurfaces[surfaceID] = nil
+            keptFailedSetupSurfaces.remove(surfaceID)
+        }
+    }
+
     func removeSpace(id: UUID) {
         guard let index = spaces.firstIndex(where: { $0.id == id }) else { return }
         let removed = spaces.remove(at: index)
@@ -581,16 +601,7 @@ final class AppModel {
             // The inspector browser lives outside the layout tree, so its coordinator
             // must be discarded explicitly alongside the terminal surfaces.
             discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
-            // removeSpace doesn't delegate to removeWorkspace, so prune the per-surface
-            // setup-hook maps here too (mirrors removeWorkspace) to avoid leaking entries
-            // when a Space is removed while a setup split is live.
-            for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
-                scriptSurfaces[surfaceID] = nil
-                keptFailedSetupSurfaces.remove(surfaceID)
-            }
-            // Clear the teardown once-latch (keyed by workspace id) without invoking
-            // its prune — the Space and its worktrees are being discarded outright.
-            pendingTeardownPrunes[ws.id] = nil
+            pruneTransientState(for: ws)
         }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
@@ -708,20 +719,9 @@ final class AppModel {
         // The inspector browser lives outside the layout tree, so its coordinator
         // must be discarded explicitly alongside the terminal surfaces.
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
-        // Prune the transient agent-state maps so they don't grow unbounded across a
-        // long session (both the close and control-destroy paths funnel through here).
-        explicitAuthority.remove(id)
-        agentResolvers[id] = nil
-        namedCommandsCache[id] = nil
-        // Clear the teardown once-latch (keyed by workspace id) without invoking its
-        // prune — the workspace is already being dropped here.
-        pendingTeardownPrunes[id] = nil
-        // Prune the per-surface setup-hook maps too, so a workspace deleted while its
-        // setup split is live doesn't leak its surface entries.
-        for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
-            scriptSurfaces[surfaceID] = nil
-            keptFailedSetupSurfaces.remove(surfaceID)
-        }
+        // Prune the transient maps so they don't grow unbounded across a long session
+        // (both the close and control-destroy paths funnel through here).
+        pruneTransientState(for: ws)
         if selectedWorkspaceID == id {
             selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }

@@ -33,7 +33,9 @@ final class CommandHoldTracker {
     private let holdDuration: TimeInterval
     private let scheduleTimer: (TimeInterval, @escaping @Sendable () -> Void) -> HoldTimerToken
     private let onRevealChange: (Bool) -> Void
-    private var state: State = .idle
+    // `nonisolated(unsafe)` so the plain `deinit` below can read it to cancel a
+    // pending timer. Safe: by dealloc no other reference exists to race with.
+    private nonisolated(unsafe) var state: State = .idle
 
     init(
         holdDuration: TimeInterval = 1.0,
@@ -49,6 +51,14 @@ final class CommandHoldTracker {
         self.holdDuration = holdDuration
         self.scheduleTimer = scheduleTimer
         self.onRevealChange = onRevealChange
+    }
+
+    // Plain (non-isolated) deinit — never `isolated`, whose back-deploy shim
+    // SIGABRTs under XCTest on CI. Cancels a pending reveal timer so a tracker
+    // deallocated mid-hold doesn't leave the timer retained by the run loop
+    // until it self-invalidates.
+    deinit {
+        if case .pending(let token) = state { token.cancel() }
     }
 
     func commandKeyDown() {
