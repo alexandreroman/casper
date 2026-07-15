@@ -43,6 +43,15 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(branch.isEmpty)
     }
 
+    func testHeadBranchNameOnUnbornHead() throws {
+        // Freshly initialized repo with no commits: HEAD is unborn but the
+        // branch name (e.g. "main"/"master") must still resolve so a space
+        // promoted right after `git init` shows the branch, not the folder.
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        let branch = try repo.headBranchName()
+        XCTAssertFalse(branch.isEmpty)
+    }
+
     func testBranchExists() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
         let head = try repo.headBranchName()

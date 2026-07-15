@@ -45,7 +45,23 @@ public final class Repository {
     /// Short name of the branch HEAD currently points to.
     public func headBranchName() throws -> String {
         var head: OpaquePointer?
-        try gitCheck(git_repository_head(&head, pointer))
+        let rc = git_repository_head(&head, pointer)
+        if rc == GIT_EUNBORNBRANCH.rawValue {
+            // Freshly-initialized repo with no commits: HEAD is a symbolic
+            // reference (e.g. refs/heads/main). Resolve the branch name from
+            // its symbolic target so promotion after `git init` shows the
+            // real branch instead of falling back to the folder name.
+            var ref: OpaquePointer?
+            try gitCheck(git_reference_lookup(&ref, pointer, "HEAD"))
+            defer { git_reference_free(ref) }
+            guard let target = git_reference_symbolic_target(ref) else {
+                throw GitError(code: -1, message: "unborn HEAD has no symbolic target")
+            }
+            let full = String(cString: target)  // e.g. "refs/heads/main"
+            let prefix = "refs/heads/"
+            return full.hasPrefix(prefix) ? String(full.dropFirst(prefix.count)) : full
+        }
+        try gitCheck(rc)
         defer { git_reference_free(head) }
         guard let shorthand = git_reference_shorthand(head) else {
             throw GitError(code: -1, message: "HEAD has no shorthand name")
