@@ -186,13 +186,14 @@ struct WorkspaceDetailView: View {
         let isGitRepo = space?.isGitRepo ?? false
         let spaceName = space?.name ?? workspace.name
         return HStack(spacing: 7) {
-            // Mirror WorkspaceRow: git-branch glyph + branch label for a
+            // Mirror WorkspaceRow: git-branch glyph + "Space / branch" for a
             // Git-backed Space, folder glyph + Space name for a degenerate one.
             if isGitRepo {
                 Octicon(.gitBranch).foregroundStyle(.secondary)
+                Text(spaceName).foregroundStyle(.secondary)
+                Text("/").foregroundStyle(.secondary)
                 Text(workspace.branchLabel)
                     .fontWeight(.bold)
-                Text(spaceName).foregroundStyle(.secondary)
             } else {
                 Octicon(.fileDirectory).foregroundStyle(.secondary)
                 Text(spaceName)
