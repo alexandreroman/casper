@@ -322,7 +322,7 @@ private struct DiffFileHeaderBar: View {
     }
 }
 
-private struct DiffFileView: View, Equatable {
+private struct DiffFileView: View, @MainActor Equatable {
     let file: GitDiffFile
     let highlight: FileHighlight?
     /// Precomputed line stats, gutter width, and hidden-line count for this file.
@@ -370,7 +370,7 @@ private struct DiffFileView: View, Equatable {
     /// (e.g. a generated lockfile) would otherwise instantiate every line row at
     /// once when it scrolls into the enclosing lazy stack; the overflow is
     /// summarized by `hiddenLineCount` instead.
-    fileprivate static let maxRenderedLines = 3000
+    nonisolated fileprivate static let maxRenderedLines = 3000
 
     /// One rendered hunk, trimmed to the leading `lineCount` lines that still fit
     /// under `maxRenderedLines`. Hunks past the cap are dropped entirely.

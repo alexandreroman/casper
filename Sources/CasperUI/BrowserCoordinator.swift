@@ -35,31 +35,20 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     private var consoleBuffer: [ConsoleEntry] = []
     private static let consoleBufferCapacity = 500
 
-    /// The web view's content controller, held so `deinit` can detach the message
-    /// handler. `nonisolated(unsafe)` for the same reason as
-    /// `FocusReportingWebView.occlusionObserver`: it is only ever mutated here (in
-    /// `init`), and by the time `deinit` runs no other reference to this
-    /// coordinator exists, so there is no concurrent access to race with — letting
-    /// `deinit` read it without a main-actor hop and avoiding the `isolated deinit`
-    /// back-deployment shim that SIGABRTs on CI (see the isolated-deinit-ci-sigabrt
-    /// project memory note). `removeAllScriptMessageHandlers()` is thread-safe.
-    nonisolated(unsafe) private let messageController: WKUserContentController
-
     init(surfaceID: UUID, url: URL) {
         self.surfaceID = surfaceID
         // Build a configuration that captures the page's console output and uncaught
         // errors: a document-start user script wraps `console.*`, `window.onerror`,
         // and `unhandledrejection`, forwarding each entry to the `casperConsole`
         // message handler. `WeakScriptMessageHandler` forwards weakly so the
-        // controller→handler→coordinator chain never forms a retain cycle (the
-        // controller strongly retains the handler; the handler holds the coordinator
-        // weakly), and `deinit` detaches the handler as belt-and-braces.
+        // controller→handler→coordinator chain never forms a retain cycle: the
+        // controller strongly retains the handler, but the handler holds the
+        // coordinator weakly, so nothing points back to keep it alive.
         let controller = WKUserContentController()
         controller.addUserScript(WKUserScript(
             source: Self.consoleCaptureScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
         let messageHandler = WeakScriptMessageHandler()
         controller.add(messageHandler, name: "casperConsole")
-        self.messageController = controller
         let config = WKWebViewConfiguration()
         config.userContentController = controller
         let web = FocusReportingWebView(frame: .zero, configuration: config)
@@ -70,10 +59,6 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         web.navigationDelegate = self
         self.address = url == .aboutBlank ? "" : url.absoluteString
         web.load(URLRequest(url: url))
-    }
-
-    deinit {
-        messageController.removeAllScriptMessageHandlers()
     }
 
     /// Load a user-entered address (already normalized to a URL).
