@@ -162,6 +162,54 @@ final class ControlHandlerTests: XCTestCase {
         else { XCTFail("inspector browser surface is not a browser kind") }
     }
 
+    /// A second `controlOpenBrowser` with a different URL must navigate the
+    /// coordinator that was already created for the first open — it must not keep
+    /// showing the previous page. Uses `data:` URLs so the load resolves locally
+    /// (no network) and the navigation delegate commits, matching how
+    /// `BrowserCaptureTests` exercises a live `WKWebView`.
+    func testSecondOpenBrowserNavigatesExistingCoordinator() async throws {
+        let (model, id) = seededModel()
+        let firstURL = try XCTUnwrap(URL(string: "data:text/html,%3Ch1%3Eone%3C/h1%3E"))
+        let secondURL = try XCTUnwrap(URL(string: "data:text/html,%3Ch1%3Etwo%3C/h1%3E"))
+
+        // First open, then force-create the coordinator the way the SwiftUI view
+        // would on first render. It loads `firstURL` at init; wait for that commit.
+        // Compare against the coordinator's own committed string rather than
+        // reconstructing it, so any WebKit URL normalization can't skew the test.
+        XCTAssertTrue(model.controlOpenBrowser(url: firstURL, in: id))
+        let firstSurface = try XCTUnwrap(model.workspace(id: id)).inspector.browser
+        let coordinator = try XCTUnwrap(model.browserCoordinator(for: firstSurface))
+        try await waitUntil { !coordinator.address.isEmpty }
+        let firstCommitted = coordinator.address
+
+        // Second open with a different URL. The coordinator already exists, so the
+        // surface id is reused and the same instance must be navigated away from the
+        // first page — before the fix, no navigation was triggered and this timed out.
+        XCTAssertTrue(model.controlOpenBrowser(url: secondURL, in: id))
+        let secondSurface = try XCTUnwrap(model.workspace(id: id)).inspector.browser
+        XCTAssertEqual(secondSurface.id, firstSurface.id, "surface id must be reused across opens")
+        XCTAssertTrue(
+            model.browserCoordinator(for: secondSurface) === coordinator,
+            "the cached coordinator must be preserved, not recreated")
+
+        try await waitUntil { coordinator.address != firstCommitted }
+    }
+
+    /// Polls `condition` on the main actor until it holds or `timeout` elapses,
+    /// yielding between checks so pending `WKWebView` navigation callbacks can run.
+    private func waitUntil(
+        timeout: TimeInterval = 5, _ condition: () -> Bool,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                return XCTFail("condition not met within \(timeout)s", file: file, line: line)
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)  // 20 ms
+        }
+    }
+
     func testCloseBrowserCollapsesWhenBrowserTabActive() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!

@@ -2161,6 +2161,9 @@ final class AppModel {
     /// Load `url` into `workspaceID`'s inspector browser surface and select the
     /// browser tab (expanding the panel). The browser lives ONLY in the inspector
     /// — there are no browser layout panels — so this mirrors `controlOpenDiff`.
+    /// Like `controlLoadBrowser`, it drives a create-or-navigate on the cached
+    /// coordinator, so a repeat open with a different URL actually navigates the
+    /// already-shown web view instead of silently keeping the previous page.
     @discardableResult
     func controlOpenBrowser(url: URL, in workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
@@ -2168,8 +2171,19 @@ final class AppModel {
         // `BrowserCoordinator`/`WKWebView` keyed on it is preserved rather than leaked,
         // keeping the page and its history across reopens.
         let existingID = spaces[at.space].workspaces[at.workspace].inspector.browser.id
-        spaces[at.space].workspaces[at.workspace].inspector.browser = Surface(id: existingID, kind: .browser(url: url))
+        let surface = Surface(id: existingID, kind: .browser(url: url))
+        spaces[at.space].workspaces[at.workspace].inspector.browser = surface
         setInspectorTab(.browser, for: workspaceID)   // selects the browser tab, expands, persists
+        // A coordinator that already exists won't be re-initialized by the SwiftUI
+        // view, so it won't pick up the new URL on its own: create-or-navigate it
+        // explicitly. A freshly-created coordinator already loads the surface's URL
+        // at init, so only navigate again when it pre-existed — avoiding a redundant
+        // double load. (Same logic as `controlLoadBrowser`; the difference is that
+        // this method also selects and expands the browser tab above.)
+        let existed = browserCoordinators[existingID] != nil
+        if let coordinator = browserCoordinator(for: surface), existed {
+            coordinator.load(url)
+        }
         return true
     }
 
