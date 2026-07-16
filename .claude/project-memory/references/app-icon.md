@@ -16,20 +16,26 @@ but is deliberately **not a ghost**.
 Palette: body gradient `#15182F → #090B1B`, caret cream `#F6F1E2`, sparkle
 gradient `#FFDD86 → #FF9E3D`, split line mint `#8EF7DE` at 0.20 opacity.
 
+There are **two variants**: the production icon and a **dev** variant that adds
+a violet "DEV" corner ribbon (bottom-right), used only by `make dev` /
+`Casper-dev.app` so the dev build is distinguishable in the Dock.
+
 **Files & pipeline:**
-- Master: `Packaging/AppIcon/icon.svg` (1024×1024; macOS template — 824×824
-  content centered with 100 px padding, corner radius 186, baked soft drop
-  shadow, transparent canvas).
-- `Packaging/AppIcon/AppIcon.icns` is **committed** so ordinary builds need no
-  rasterizer.
-- Regenerate with **`make icon`** (→ `Scripts/make-icon.sh`), which rasterizes
-  the 10 iconset sizes with **resvg** (`brew install resvg` — chosen over
-  ImageMagick, whose SVG path ignores `feGaussianBlur`/gradients) then packs
-  them with `iconutil`.
-- Wired via `CFBundleIconFile` = `AppIcon` in **both** `Packaging/Info.plist`
-  (release) and `Packaging/Info-dev.plist` (dev). The `.icns` is copied into
-  `Contents/Resources/` by `Scripts/bundle-app.sh` (release bundle) and by the
-  Makefile `build:` target (dev `Casper-dev.app`).
+- Masters: `Packaging/AppIcon/icon.svg` (prod) and
+  `Packaging/AppIcon/icon-dev.svg` (dev = prod + violet `#6C5CE7` corner ribbon
+  with "DEV" in Menlo bold, clipped to the icon shape). Both are 1024×1024,
+  macOS template — 824×824 content centered with 100 px padding, corner radius
+  186, baked soft drop shadow, transparent canvas.
+- `Packaging/AppIcon/AppIcon.icns` and `Packaging/AppIcon/AppIconDev.icns` are
+  **committed** so ordinary builds need no rasterizer.
+- Regenerate BOTH with **`make icon`** (→ `Scripts/make-icon.sh`), which
+  rasterizes the 10 iconset sizes per SVG with **resvg** (`brew install resvg` —
+  chosen over ImageMagick, whose SVG path ignores `feGaussianBlur`/gradients and
+  which cannot render the `<text>` label) then packs them with `iconutil`.
+- Release (`Packaging/Info.plist`) sets `CFBundleIconFile` = `AppIcon`; dev
+  (`Packaging/Info-dev.plist`) sets it = `AppIconDev`. `Scripts/bundle-app.sh`
+  copies `AppIcon.icns` into the release bundle Resources; the Makefile `build:`
+  target copies `AppIconDev.icns` into the dev bundle Resources.
 
 **Why:** the app had no icon; this gives it a native macOS one whose form
 encodes Casper's essence — the split = per-worktree terminal workspaces, the
