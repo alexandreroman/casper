@@ -9,11 +9,13 @@ type: project
 Casper's macOS app icon is a **full-bleed "split terminal"**: the rounded-square
 icon *is* the terminal, split vertically down the middle — left pane a **cream
 prompt caret `>`**, right pane an **amber 4-point sparkle** (the AI agent), on a
-dark night-terminal gradient body. It is **inspired by Ghostty** (it reuses the
+neutral dark-gray gradient body matching the Visual Studio Code app icon
+background. It is **inspired by Ghostty** (it reuses the
 exact caret path from Ghostty's official logo, and Ghostty's cream foreground)
 but is deliberately **not a ghost**.
 
-Palette: body gradient `#15182F → #090B1B`, caret cream `#F6F1E2`, sparkle
+Palette: body gradient `#3C3C3C → #1E1E1E` (VS Code neutral dark gray), caret
+cream `#F6F1E2`, sparkle
 gradient `#FFDD86 → #FF9E3D`, split line mint `#8EF7DE` at 0.20 opacity.
 
 There are **two variants**: the production icon and a **dev** variant that adds
