@@ -107,6 +107,11 @@ public final class Repository {
 
     /// Whether the working tree and index are clean (no changes, no untracked).
     public func isClean() throws -> Bool {
+        // Status hashes workdir/untracked files whose stat differs from the index,
+        // and libgit2 mmaps them to do so; a concurrent truncation can raise SIGBUS
+        // mid-hash. Guard it so that fault surfaces as a throw — which callers
+        // already treat as "not clean / blocked" — instead of killing the process.
+        try SigbusGuard.run { [self] in
         var options = git_status_options()
         try gitCheck(git_status_options_init(
             &options, UInt32(GIT_STATUS_OPTIONS_VERSION)))
@@ -120,6 +125,7 @@ public final class Repository {
         defer { git_status_list_free(list) }
 
         return git_status_list_entrycount(list) == 0
+        }
     }
 
     /// Whether `path` (relative to the working directory) is ignored per Git's own
