@@ -1,0 +1,37 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casper app icon">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#15182F"/><stop offset="1" stop-color="#090B1B"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFDD86"/><stop offset="1" stop-color="#FF9E3D"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="16" stdDeviation="22" flood-color="#000000" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <!-- macOS icon: 824×824 rounded square centered in 1024 (100 px padding), with a soft drop shadow -->
+  <g filter="url(#shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#body)"/>
+  </g>
+
+  <!-- full-height split -->
+  <line x1="512" y1="184" x2="512" y2="840" stroke="#8EF7DE" stroke-opacity="0.20" stroke-width="3.2"/>
+
+  <!-- left pane: Ghostty prompt caret, cream -->
+  <path transform="translate(100 100) scale(3.21875) translate(66 128) scale(15) translate(-7.83 -9.54)"
+    d="M6.069 6.562a1 1 0 0 1 .46.131l3.578 2.065v.002a.974.974 0 0 1 0 1.687L6.53 12.512a.975.975 0 0 1-.976-1.687L7.67 9.602 5.553 8.38a.975.975 0 0 1 .515-1.818Z"
+    fill="#F6F1E2"/>
+
+  <!-- right pane: agent sparkle -->
+  <g filter="url(#glow)">
+    <path transform="translate(100 100) scale(3.21875)"
+      d="M192 82 Q201.1 118.9 238 128 Q201.1 137.1 192 174 Q182.9 137.1 146 128 Q182.9 118.9 192 82 Z"
+      fill="url(#spark)"/>
+  </g>
+</svg>

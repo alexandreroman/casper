@@ -4,7 +4,7 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build dev test release clean vendor help bundle dist
+.PHONY: all build dev test release clean vendor help bundle dist icon
 
 # Version metadata for packaging (overridable by CI). SHORT_VERSION is the
 # marketing version; BUNDLE_VERSION is a monotonic build number.
@@ -35,6 +35,7 @@ build:
 	@mkdir -p $(DEV_APP)/Contents/MacOS $(DEV_APP)/Contents/Resources
 	@cp .build/debug/casper $(DEV_APP)/Contents/MacOS/casper
 	@cp Packaging/Sounds/NotificationAlert.aiff $(DEV_APP)/Contents/Resources/NotificationAlert.aiff
+	@cp Packaging/AppIcon/AppIcon.icns $(DEV_APP)/Contents/Resources/AppIcon.icns
 	@cp -R .build/debug/HighlightSwift_HighlightSwift.bundle $(DEV_APP)/Contents/Resources/HighlightSwift_HighlightSwift.bundle
 	@sed -e "s/__DEV_BUNDLE_ID__/$(DEV_BUNDLE_ID)/g" \
 		Packaging/Info-dev.plist > $(DEV_APP)/Contents/Info.plist
@@ -84,6 +85,10 @@ clean:
 ## vendor: re-sync vendored files (pinned libghostty header) via Carvel vendir
 vendor:
 	vendir sync
+
+## icon: regenerate Packaging/AppIcon/AppIcon.icns from icon.svg (needs resvg)
+icon:
+	Scripts/make-icon.sh
 
 ## help: list available targets
 help:
