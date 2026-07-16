@@ -649,10 +649,14 @@ final class AppModel {
 
     /// Create a linked workspace (new branch + worktree at `<parent>/<repo>-<branch>`)
     /// in a Git Space. `base` overrides the fork point; nil derives it from the
-    /// primary workspace's branch (the prior behavior). Returns the new workspace or
-    /// a human-readable error.
+    /// primary workspace's branch (the prior behavior). `select` controls whether the
+    /// new workspace becomes the selected/focused one; it defaults to true for UI
+    /// creation and is set to false for the control-channel (CLI) path so a workspace
+    /// created remotely does not steal the user's current selection. Returns the new
+    /// workspace or a human-readable error.
     func createLinkedWorkspace(
-        spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil
+        spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil,
+        select: Bool = true
     ) -> Result<Workspace, WorkspaceCreationError> {
         // Carry over the editor selected in the currently-active workspace (nil is
         // fine — it keeps the same resolved default). Captured before any selection
@@ -696,7 +700,12 @@ final class AppModel {
             pendingInitialInput[terminalID] = command
         }
         spaces[si].workspaces.append(ws)
-        selectWorkspace(ws.id)
+        // Only steal focus for UI-initiated creation. A workspace created from the
+        // CLI (control channel) is added silently, without changing the user's
+        // current selection.
+        if select {
+            selectWorkspace(ws.id)
+        }
         persist()
         // Run the repo's `setup` lifecycle hook (if any) in a visible split, once,
         // at creation only — never on restore/re-open (this call site is the guard,
@@ -2501,7 +2510,7 @@ final class AppModel {
         guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
             return .failure(WorkspaceCreationError(message: "no target workspace"))
         }
-        return createLinkedWorkspace(spaceID: space.id, name: branch, base: base, command: command)
+        return createLinkedWorkspace(spaceID: space.id, name: branch, base: base, command: command, select: false)
             .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 
