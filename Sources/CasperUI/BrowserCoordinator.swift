@@ -17,6 +17,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// navigation starts. Nil while the current load is healthy.
     @Published var loadError: String?
 
+    /// The URL to re-issue after a failed navigation (nothing committed, so
+    /// `webView.reload()` would no-op). Nil while the load is healthy.
+    private var failedURL: URL?
+
     /// True while the user is editing the address field. A navigation that
     /// finishes mid-edit must not overwrite their in-progress text, so `syncNav`
     /// skips the `address` assignment while this is set. Driven by the view's
@@ -65,7 +69,35 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     func load(_ url: URL) { webView.load(URLRequest(url: url)) }
     func goBack() { webView.goBack() }
     func goForward() { webView.goForward() }
-    func reload() { webView.reload() }
+
+    func reload() {
+        // WKWebView.reload() reloads the *committed* page. After a failed provisional
+        // navigation nothing committed (webView.url is nil, back/forward list empty),
+        // so reload() is a silent no-op — re-issue the failed request instead so a
+        // now-reachable server actually loads. The address-bar Return path already
+        // works because it always issues a fresh load().
+        if let failedURL {
+            webView.load(URLRequest(url: failedURL))
+        } else {
+            webView.reload()
+        }
+    }
+
+    /// The URL that failed to load, extracted from a navigation error's userInfo.
+    /// Returns nil when the error carries no failing URL.
+    static func failingURL(from error: Error) -> URL? {
+        let userInfo = (error as NSError).userInfo
+        if let url = userInfo[NSURLErrorFailingURLErrorKey] as? URL { return url }
+        if let string = userInfo[NSURLErrorFailingURLStringErrorKey] as? String { return URL(string: string) }
+        return nil
+    }
+
+    #if DEBUG
+    /// Test seam: the URL a reload would re-issue (nil ⇒ reload() falls through to
+    /// the live page). Lets a unit test assert the failed-state reload path without
+    /// a live page/server.
+    var debugReloadTarget: URL? { failedURL }
+    #endif
 
     // MARK: - Automation (release control channel)
 
@@ -285,12 +317,14 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         // A load superseded by a newer one reports as cancelled — not a failure.
         let nsError = error as NSError
         guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
+        failedURL = Self.failingURL(from: error)
         loadError = error.localizedDescription
         syncNav()
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         loadError = nil
+        failedURL = nil
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { syncNav() }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { syncNav() }
