@@ -76,10 +76,13 @@ extension Repository {
     /// `git_checkout`, by design), once the caller has confirmed it's safe to
     /// discard whatever is currently on disk there (e.g. the worktree is clean).
     public func forceCheckoutHead() throws {
+        // Guarded: a FORCE checkout mmaps live working-directory files (SIGBUS risk). See SigbusGuard.
+        try SigbusGuard.run { [self] in
         var options = git_checkout_options()
         try gitCheck(git_checkout_options_init(&options, UInt32(GIT_CHECKOUT_OPTIONS_VERSION)))
         options.checkout_strategy = GIT_CHECKOUT_FORCE.rawValue
         try gitCheck(git_checkout_head(pointer, &options))
+        }
     }
 
     /// Resolve local branch `name` to its tip commit object. Throws `GitError`

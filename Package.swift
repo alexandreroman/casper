@@ -33,7 +33,8 @@ let package = Package(
             pkgConfig: "libgit2",
             providers: [.brew(["libgit2"])]
         ),
-        .target(name: "CasperGit", dependencies: ["Clibgit2"]),
+        .target(name: "CSigbusGuard"),
+        .target(name: "CasperGit", dependencies: ["Clibgit2", "CSigbusGuard"]),
         .target(name: "CasperCore", dependencies: ["CasperGit"]),
         .target(name: "CasperAgents", dependencies: ["CasperCore"]),
         .target(

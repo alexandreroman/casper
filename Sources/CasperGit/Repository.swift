@@ -107,6 +107,8 @@ public final class Repository {
 
     /// Whether the working tree and index are clean (no changes, no untracked).
     public func isClean() throws -> Bool {
+        // Guarded: status mmaps live working-directory files to hash them (SIGBUS risk). See SigbusGuard.
+        try SigbusGuard.run { [self] in
         var options = git_status_options()
         try gitCheck(git_status_options_init(
             &options, UInt32(GIT_STATUS_OPTIONS_VERSION)))
@@ -120,6 +122,7 @@ public final class Repository {
         defer { git_status_list_free(list) }
 
         return git_status_list_entrycount(list) == 0
+        }
     }
 
     /// Whether `path` (relative to the working directory) is ignored per Git's own
@@ -175,6 +178,8 @@ public final class Repository {
     /// Structured diff of the working tree + index against HEAD (or the whole tree
     /// as additions when HEAD is unborn). Untracked files are included.
     public func diffWorkdirToHead() throws -> GitDiff {
+        // Guarded: diffing mmaps live working-directory files (SIGBUS risk). See SigbusGuard.
+        try SigbusGuard.run { [self] in
         let tree = try headTree()  // nil when HEAD is unborn
         defer { if let tree { git_tree_free(tree) } }
 
@@ -217,6 +222,7 @@ public final class Repository {
             lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
         }
         return GitDiff(files: files)
+        }
     }
 
     /// The UTF-8 text of `path` in the HEAD commit's tree, or nil when HEAD is

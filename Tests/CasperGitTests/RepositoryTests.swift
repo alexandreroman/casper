@@ -79,6 +79,17 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(try repo.isClean())
     }
 
+    func testModifiedFileMakesRepositoryDirty() throws {
+        let repo = try GitFixture.repository(at: tempDir.path)
+
+        // Modify the committed file's content in the working tree.
+        try "casper fixture edited\n".write(
+            to: tempDir.appendingPathComponent("README.md"),
+            atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(try repo.isClean())
+    }
+
     func testDeletedFileMakesRepositoryDirty() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
 
