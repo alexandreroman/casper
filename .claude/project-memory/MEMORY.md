@@ -67,3 +67,4 @@
 - [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply .titleCapsule() inside the Button's label, not after .buttonStyle(.plain), or only the glyph is clickable
 - [Browser automation CLI](references/browser-automation-cli.md) — casper browser automation + console/wait/reload verbs: JS-synthesized input, takeSnapshot, off-screen behavior, WeakScriptMessageHandler retain-cycle proxy, control-socket-in-$TMPDIR gotcha
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — NSAllowsArbitraryLoads=true in both Info.plists; ATS blocks plain-HTTP to public-qualified hostnames (nip.io) it can't see resolve to loopback
+- [App icon design and generation pipeline](references/app-icon.md) — full-bleed split-terminal mark (Ghostty caret + agent sparkle); prod + dev (violet "DEV" ribbon) masters → `make icon` (resvg+iconutil) → committed AppIcon.icns/AppIconDev.icns wired via CFBundleIconFile

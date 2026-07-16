@@ -12,6 +12,8 @@
     <string>com.github.alexandreroman.casper</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
     <string>__SHORT_VERSION__</string>
     <key>CFBundleVersion</key>
