@@ -107,10 +107,7 @@ public final class Repository {
 
     /// Whether the working tree and index are clean (no changes, no untracked).
     public func isClean() throws -> Bool {
-        // Status hashes workdir/untracked files whose stat differs from the index,
-        // and libgit2 mmaps them to do so; a concurrent truncation can raise SIGBUS
-        // mid-hash. Guard it so that fault surfaces as a throw — which callers
-        // already treat as "not clean / blocked" — instead of killing the process.
+        // Guarded: status mmaps live working-directory files to hash them (SIGBUS risk). See SigbusGuard.
         try SigbusGuard.run { [self] in
         var options = git_status_options()
         try gitCheck(git_status_options_init(
@@ -181,10 +178,7 @@ public final class Repository {
     /// Structured diff of the working tree + index against HEAD (or the whole tree
     /// as additions when HEAD is unborn). Untracked files are included.
     public func diffWorkdirToHead() throws -> GitDiff {
-        // libgit2 mmaps working-directory files here; a concurrent truncation can
-        // raise SIGBUS deep inside xdiff. Guard the whole diff+patch work so that
-        // fault surfaces as a throw on the same graceful path as libgit2's own
-        // stat-based race detection instead of killing the process.
+        // Guarded: diffing mmaps live working-directory files (SIGBUS risk). See SigbusGuard.
         try SigbusGuard.run { [self] in
         let tree = try headTree()  // nil when HEAD is unborn
         defer { if let tree { git_tree_free(tree) } }

@@ -76,10 +76,7 @@ extension Repository {
     /// `git_checkout`, by design), once the caller has confirmed it's safe to
     /// discard whatever is currently on disk there (e.g. the worktree is clean).
     public func forceCheckoutHead() throws {
-        // A FORCE checkout reads and hashes the existing workdir files before
-        // overwriting them, and libgit2 mmaps them to do so; a concurrent
-        // truncation can raise SIGBUS mid-hash. Guard it so that fault surfaces as
-        // a throw instead of killing the process.
+        // Guarded: a FORCE checkout mmaps live working-directory files (SIGBUS risk). See SigbusGuard.
         try SigbusGuard.run { [self] in
         var options = git_checkout_options()
         try gitCheck(git_checkout_options_init(&options, UInt32(GIT_CHECKOUT_OPTIONS_VERSION)))
