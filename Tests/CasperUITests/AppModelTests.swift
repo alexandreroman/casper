@@ -1251,6 +1251,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(diff!.files.isEmpty)
     }
 
+    // Precondition behind DiffSurfaceView's refresh dedup (diff-view refresh-hang
+    // incident): recomputing an unchanged worktree must yield an `==` diff, so the
+    // view can treat a byte-identical recompute as a no-op instead of re-driving the
+    // animated `LazyVStack` relayout that hangs the main thread.
+    func testComputeDiffIsStableForUnchangedWorktree() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-ui5diffstable-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try seedRepository(at: dir.path)  // existing helper: repo + one commit (README.md)
+        try "changed\n".write(
+            to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        let ws = model.spaces[0].workspaces[0]
+        let first = await model.computeDiff(for: ws)
+        let second = await model.computeDiff(for: ws)
+        XCTAssertNotNil(first)
+        XCTAssertEqual(first, second)
+    }
+
     func testComputeDiffNilForNonGitWorkspace() async {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-ui5nogit-\(UUID().uuidString)")

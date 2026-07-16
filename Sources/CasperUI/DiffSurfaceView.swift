@@ -143,10 +143,30 @@ struct DiffSurfaceView: View {
         refreshTask = Task { @MainActor in
             let newDiff = await model.computeDiff(for: workspace)
             if Task.isCancelled { return }
-            diff = newDiff
-            // Precompute per-file metrics once here (off the render hot path),
-            // keyed by file id so `body` can look them up in O(1).
-            metrics = Dictionary(uniqueKeysWithValues: (diff?.files ?? []).map { ($0.id, DiffFileMetrics(file: $0)) })
+            // Dedup redundant refreshes (diff-view refresh-hang incident): on an
+            // active worktree an FSEvents watcher bumps `model.diffRevision` very
+            // frequently, and many bumps recompute a byte-identical diff. Reassigning
+            // `diff`/`metrics` and re-driving `.scrollPosition` for an unchanged diff
+            // pushes the pinned-header `LazyVStack` into a non-converging animated
+            // relayout that never settles → permanent main-thread hang. On an
+            // unchanged diff, skip all content work; only a pending scroll target
+            // (which can arrive independent of a content change) still needs applying.
+            if loaded, newDiff == diff {
+                applyPendingScroll()
+                return
+            }
+            // The diff changed: apply it without implicit animation. An animated
+            // subview placement is exactly the path the hang spindump was stuck in
+            // (`LazyStack.place` ⇄ `_FlexFrameLayout.sizeThatFits` recursion), so a
+            // content refresh must never animate the `LazyVStack` relayout.
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                diff = newDiff
+                // Precompute per-file metrics once here (off the render hot path),
+                // keyed by file id so `body` can look them up in O(1).
+                metrics = Dictionary(uniqueKeysWithValues: (newDiff?.files ?? []).map { ($0.id, DiffFileMetrics(file: $0)) })
+            }
             let computeMs = Int(Date().timeIntervalSince(started) * 1000)
             logDiffShape(computeMs: computeMs)
             applyPendingScroll()
@@ -198,7 +218,15 @@ struct DiffSurfaceView: View {
         appliedScrollNonce = target.nonce
         // Defer one runloop so the ScrollView has laid the target file out before
         // we drive its scroll position.
-        DispatchQueue.main.async { scrolledFileID = matchID }
+        DispatchQueue.main.async {
+            // Non-animated scroll re-drive (diff-view refresh-hang incident): a
+            // programmatic `.scrollPosition` change must not animate, or a redundant
+            // refresh's scroll re-application feeds the same non-converging animated
+            // `LazyVStack` relayout that hung the main thread.
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) { scrolledFileID = matchID }
+        }
     }
 
     /// Kicks off a background pass that highlights each file's working-tree and
@@ -227,7 +255,13 @@ struct DiffSurfaceView: View {
                 carried[file.id] = existing
             }
         }
-        highlights = carried
+        // Reset carried-over highlights without implicit animation (diff-view
+        // refresh-hang incident): this runs on every changed-diff refresh and, like
+        // the per-file publication below, would otherwise animate the `LazyVStack`
+        // relayout down the same non-converging path that hung the main thread.
+        var resetTx = Transaction()
+        resetTx.disablesAnimations = true
+        withTransaction(resetTx) { highlights = carried }
 
         highlightTask = Task {
             for file in files {
@@ -242,7 +276,14 @@ struct DiffSurfaceView: View {
                 let oldLines = await highlight(oldText, path: file.oldPath)
                 if Task.isCancelled { return }
 
-                highlights[file.id] = FileHighlight(new: newLines, old: oldLines)
+                // Publish this file's highlight without implicit animation
+                // (diff-view refresh-hang incident): each per-file assignment
+                // re-lays-out the `LazyVStack`, and an animated placement is the
+                // non-converging path that hung the main thread. Kept per-file so
+                // coloring still appears progressively as each file finishes.
+                var tx = Transaction()
+                tx.disablesAnimations = true
+                withTransaction(tx) { highlights[file.id] = FileHighlight(new: newLines, old: oldLines) }
             }
         }
     }
