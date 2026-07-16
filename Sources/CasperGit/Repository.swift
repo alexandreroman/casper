@@ -175,6 +175,11 @@ public final class Repository {
     /// Structured diff of the working tree + index against HEAD (or the whole tree
     /// as additions when HEAD is unborn). Untracked files are included.
     public func diffWorkdirToHead() throws -> GitDiff {
+        // libgit2 mmaps working-directory files here; a concurrent truncation can
+        // raise SIGBUS deep inside xdiff. Guard the whole diff+patch work so that
+        // fault surfaces as a throw on the same graceful path as libgit2's own
+        // stat-based race detection instead of killing the process.
+        try SigbusGuard.run { [self] in
         let tree = try headTree()  // nil when HEAD is unborn
         defer { if let tree { git_tree_free(tree) } }
 
@@ -217,6 +222,7 @@ public final class Repository {
             lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
         }
         return GitDiff(files: files)
+        }
     }
 
     /// The UTF-8 text of `path` in the HEAD commit's tree, or nil when HEAD is
