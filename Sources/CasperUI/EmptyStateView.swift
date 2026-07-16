@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Shown full-window whenever the session has no Spaces (`RootView` gates on
@@ -9,15 +10,10 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 32) {
             VStack(spacing: 16) {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 34, weight: .medium))
-                    .foregroundStyle(.secondary)
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
                     .frame(width: 76, height: 76)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-                    }
                     .accessibilityHidden(true)
 
                 VStack(spacing: 12) {
