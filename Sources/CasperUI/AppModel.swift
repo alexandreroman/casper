@@ -1344,6 +1344,23 @@ final class AppModel {
         persist()
     }
 
+    /// Toggle behavior for a title-bar tab button: expand onto `tab` if the
+    /// panel is collapsed, collapse if it's already open on `tab`, otherwise
+    /// switch to `tab` while keeping the panel open.
+    func toggleInspectorTab(_ tab: InspectorTab, for workspaceID: UUID) {
+        guard let at = locate(workspaceID) else { return }
+        let inspector = spaces[at.space].workspaces[at.workspace].inspector
+        if inspector.collapsed {
+            spaces[at.space].workspaces[at.workspace].inspector.collapsed = false
+            spaces[at.space].workspaces[at.workspace].inspector.tab = tab
+        } else if inspector.tab == tab {
+            spaces[at.space].workspaces[at.workspace].inspector.collapsed = true
+        } else {
+            spaces[at.space].workspaces[at.workspace].inspector.tab = tab
+        }
+        persist()
+    }
+
     /// Explicitly set the inspector's collapsed state (the panel's collapse button).
     func setInspectorCollapsed(_ collapsed: Bool, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }

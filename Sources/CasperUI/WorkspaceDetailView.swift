@@ -206,7 +206,7 @@ struct WorkspaceDetailView: View {
     @ViewBuilder private var diffBadge: some View {
         if let diff, diff.insertions > 0 || diff.deletions > 0 {
             Button {
-                model.setInspectorTab(.diff, for: workspace.id)
+                model.toggleInspectorTab(.diff, for: workspace.id)
             } label: {
                 HStack(spacing: 5) {
                     Text("+\(diff.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
@@ -216,7 +216,7 @@ struct WorkspaceDetailView: View {
                 .titleCapsule()
             }
             .buttonStyle(.plain)
-            .help("Show diff")
+            .help("Toggle diff")
         }
     }
 

@@ -1019,6 +1019,24 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(saves, 1)
     }
 
+    func testToggleInspectorTabExpandsCollapsesAndSwitches() {
+        let (model, _) = modelWithOnePlainWorkspace()
+        let wsID = model.spaces[0].workspaces[0].id
+        // Start collapsed → first toggle expands onto the diff tab.
+        model.setInspectorCollapsed(true, for: wsID)
+        model.toggleInspectorTab(.diff, for: wsID)
+        XCTAssertFalse(model.spaces[0].workspaces[0].inspector.collapsed)
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.tab, .diff)
+        // Expanded on the same tab → toggle collapses.
+        model.toggleInspectorTab(.diff, for: wsID)
+        XCTAssertTrue(model.spaces[0].workspaces[0].inspector.collapsed)
+        // Expanded on a DIFFERENT tab → toggle switches tab, stays expanded.
+        model.setInspectorTab(.browser, for: wsID)
+        model.toggleInspectorTab(.diff, for: wsID)
+        XCTAssertFalse(model.spaces[0].workspaces[0].inspector.collapsed)
+        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.tab, .diff)
+    }
+
     func testToggleInspectorCollapsedFlipsAndPersists() {
         let (model, _) = modelWithOnePlainWorkspace()
         let wsID = model.spaces[0].workspaces[0].id
