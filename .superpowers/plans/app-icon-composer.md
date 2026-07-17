@@ -65,9 +65,10 @@ is authored once by hand in the GUI and committed, rather than scripted.
 Packaging/AppIcon/
   icon.svg, icon-dev.svg        # unchanged (SVG masters)
   AppIcon.icns, AppIconDev.icns # unchanged (fallback, committed)
-  layers/                       # NEW — layer art extracted from icon.svg for GUI import
-    spark.png                   #   orange spark, transparent, 1024×1024
-    glow.png                    #   glow, transparent, 1024×1024 (optional 2nd fg group)
+  layers/                       # NEW — layer sources (committed) + generated PNGs (gitignored)
+    terminal.svg                #   split line + cream caret (committed source)
+    sparkle.svg                 #   orange sparkle, no glow filter (committed source)
+    terminal.png, sparkle.png   #   1024×1024 GUI-import assets (generated, gitignored)
   AppIcon.icon/                 # NEW — committed Icon Composer bundle (icon.json + Assets/)
 ```
 
@@ -76,10 +77,20 @@ The bundle is named `AppIcon.icon` so `actool --app-icon AppIcon` sets
 `CFBundleIconFile = AppIcon`. One name, two mechanisms — no conflict, since they
 resolve against different stores (a `.car` entry vs. a Resources file).
 
-The dark body (`#3C3C3C→#1E1E1E`) is expressed as Icon Composer's **background
-gradient fill**, set in the GUI (resolution-independent, no `background.png`).
-The orange spark (`#FFDD86→#FF9E3D`) and its glow become foreground layer groups
-— two groups, well within the four-group limit.
+`icon.svg` composites four elements: the dark rounded body
+(`#3C3C3C→#1E1E1E`), a teal vertical split line, a cream Ghostty prompt caret,
+and an orange sparkle (`#FFDD86→#FF9E3D`) under a Gaussian-blur glow filter.
+These map to Icon Composer as:
+
+- **Background** — the dark body, expressed as a **gradient fill set in the GUI**
+  (resolution-independent, no `background.png`; Icon Composer applies its own
+  rounded-rect mask, so the body's own `rx`/drop-shadow are dropped).
+- **Foreground group 1 — terminal marks**: the split line + caret (`terminal.svg`).
+- **Foreground group 2 — sparkle**: the orange sparkle (`sparkle.svg`), rendered
+  *without* the SVG glow filter so the glow is reproduced as an Icon Composer
+  material/specular effect on the group.
+
+Two foreground groups, well within the four-group limit.
 
 ## Build pipeline changes
 
@@ -131,23 +142,24 @@ Add, keeping the existing `CFBundleIconFile`:
   `sudo xcode-select -s /Applications/Xcode.app` if it does not — mirroring the
   existing `test-toolchain` guidance.
 - **`make icon-layers`** (new): rasterize the foreground layer PNGs
-  (`spark.png`, `glow.png`) from `icon.svg` with `resvg`, into
-  `Packaging/AppIcon/layers/`. Run once to seed / refresh the GUI import; the
-  committed `AppIcon.icon` is the source of truth thereafter.
+  (`terminal.png`, `sparkle.png`) from the committed `layers/*.svg` sources with
+  `resvg`, into `Packaging/AppIcon/layers/`. Run once to seed / refresh the GUI
+  import; the committed `AppIcon.icon` is the source of truth thereafter. The
+  generated PNGs are gitignored.
 - **`make icon`** (SVG→`.icns`) is unchanged.
 
 ## Manual authoring step (one-time, not automatable)
 
 Documented procedure (README / CLAUDE.md icon section):
 
-1. Run `make icon-layers` to produce `Packaging/AppIcon/layers/`.
+1. Run `make icon-layers` to produce the PNGs in `Packaging/AppIcon/layers/`.
 2. Open Icon Composer (Xcode 26 / standalone app). Create a new icon.
 3. Set the **background** to the dark gradient (`#3C3C3C` top → `#1E1E1E`
    bottom).
-4. Add `spark.png` (and `glow.png`) as **foreground layer groups**; tune
-   material properties (specular / glass) to taste.
-5. Tune the **Dark** appearance (darker body, brighter spark) and verify the
-   **Clear** appearance — confirm the spark silhouette reads as monochrome.
+4. Add `terminal.png` and `sparkle.png` as two **foreground layer groups**; tune
+   material properties (specular / glass), applying glow to the sparkle group.
+5. Tune the **Dark** appearance (darker body, brighter sparkle) and verify the
+   **Clear** appearance — confirm the sparkle silhouette reads as monochrome.
 6. Export/save as `Packaging/AppIcon/AppIcon.icon` and commit it (the whole
    package directory: `icon.json` + `Assets/`).
 
