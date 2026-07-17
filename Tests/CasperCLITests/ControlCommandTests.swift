@@ -363,6 +363,30 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.waitReady, true)
     }
 
+    func testBrowserScrollUpBuildsCommand() throws {
+        let scroll = try BrowserCommand.ScrollUp.parse(["--workspace", "f"])
+        let command = try scroll.makeCommand()
+        XCTAssertEqual(command.verb, .browserScrollUp)
+    }
+
+    func testBrowserScrollDownBuildsCommand() throws {
+        let scroll = try BrowserCommand.ScrollDown.parse(["--workspace", "f"])
+        let command = try scroll.makeCommand()
+        XCTAssertEqual(command.verb, .browserScrollDown)
+    }
+
+    func testBrowserScrollTopBuildsCommand() throws {
+        let scroll = try BrowserCommand.ScrollTop.parse(["--workspace", "f"])
+        let command = try scroll.makeCommand()
+        XCTAssertEqual(command.verb, .browserScrollTop)
+    }
+
+    func testBrowserScrollBottomBuildsCommand() throws {
+        let scroll = try BrowserCommand.ScrollBottom.parse(["--workspace", "f"])
+        let command = try scroll.makeCommand()
+        XCTAssertEqual(command.verb, .browserScrollBottom)
+    }
+
     func testDiffOpenBuildsCommand() throws {
         let open = try DiffCommand.Open.parse(["--workspace", "feature"])
         let command = try open.makeCommand()

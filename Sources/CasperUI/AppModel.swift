@@ -2425,6 +2425,22 @@ final class AppModel {
         }
     }
 
+    /// Scroll the browser page one viewport down (`down` true) or up.
+    func controlBrowserScroll(down: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            _ = try await $0.evaluate(BrowserAutomation.scroll(down: down))
+            return ""
+        }
+    }
+
+    /// Jump the browser page to the very bottom (`bottom` true) or top.
+    func controlBrowserScrollToEdge(bottom: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            _ = try await $0.evaluate(BrowserAutomation.scrollToEdge(bottom: bottom))
+            return ""
+        }
+    }
+
     /// Type `value` into the first element matching `selector`.
     func controlBrowserType(
         selector: String, value: String, in workspaceID: UUID

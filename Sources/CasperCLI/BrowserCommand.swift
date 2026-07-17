@@ -24,7 +24,8 @@ struct BrowserCommand: ParsableCommand {
         subcommands: [
             Open.self, Load.self, Close.self,
             Screenshot.self, Eval.self, Content.self, Click.self, TypeText.self, Key.self,
-            Console.self, Wait.self, Reload.self,
+            Console.self, Wait.self, Reload.self, ScrollUp.self, ScrollDown.self,
+            ScrollTop.self, ScrollBottom.self,
         ])
 
     struct Open: ParsableCommand {
@@ -373,6 +374,74 @@ struct BrowserCommand: ParsableCommand {
             // derived from a user-supplied `--timeout`), reload's app-side wait
             // deadline is a fixed 5 s, comfortably within the 15 s automation socket
             // timeout — so no dynamic derivation is needed, regardless of `--wait`.
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct ScrollUp: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "scroll-up",
+            abstract: "Scroll the browser page up by one viewport.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .browserScrollUp, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct ScrollDown: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "scroll-down",
+            abstract: "Scroll the browser page down by one viewport.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .browserScrollDown, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct ScrollTop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "scroll-top",
+            abstract: "Scroll the browser page to the top.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .browserScrollTop, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        }
+    }
+
+    struct ScrollBottom: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "scroll-bottom",
+            abstract: "Scroll the browser page to the bottom.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .browserScrollBottom, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
             let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
             emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }

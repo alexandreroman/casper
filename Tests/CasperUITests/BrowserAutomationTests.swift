@@ -37,6 +37,28 @@ final class BrowserAutomationTests: XCTestCase {
         XCTAssertTrue(js.contains("new KeyboardEvent(\"keydown\", { key: \"Escape\", bubbles: true })"))
     }
 
+    func testScrollDownScrollsByViewportHeight() {
+        let js = BrowserAutomation.scroll(down: true)
+        XCTAssertTrue(js.contains("window.scrollBy(0, window.innerHeight)"))
+        XCTAssertTrue(js.contains("return null"))
+    }
+
+    func testScrollUpScrollsByNegativeViewportHeight() {
+        let js = BrowserAutomation.scroll(down: false)
+        XCTAssertTrue(js.contains("window.scrollBy(0, -window.innerHeight)"))
+    }
+
+    func testScrollToEdgeTopScrollsToOrigin() {
+        let js = BrowserAutomation.scrollToEdge(bottom: false)
+        XCTAssertTrue(js.contains("window.scrollTo(0, 0)"))
+        XCTAssertTrue(js.contains("return null"))
+    }
+
+    func testScrollToEdgeBottomScrollsToScrollHeight() {
+        let js = BrowserAutomation.scrollToEdge(bottom: true)
+        XCTAssertTrue(js.contains("window.scrollTo(0, document.documentElement.scrollHeight)"))
+    }
+
     func testContentWithoutSelectorReturnsDocumentHTML() {
         let js = BrowserAutomation.content(selector: nil)
         XCTAssertTrue(js.contains("document.documentElement.outerHTML"))

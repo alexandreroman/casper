@@ -19,7 +19,9 @@ with a handful of verbs. Full surface:
   the inspector) / `browser close`
 - `browser screenshot [--out <path>]` / `browser eval <js> [--raw]` /
   `browser content [--selector <css>] [--raw]` / `browser click <selector>` /
-  `browser type <selector> <text>` / `browser key <key> [--selector <css>]`
+  `browser type <selector> <text>` / `browser key <key> [--selector <css>]` /
+  `browser scroll-up` / `browser scroll-down` /
+  `browser scroll-top` / `browser scroll-bottom`
   — browser automation over the workspace's inspector `WKWebView`
   (see [[browser-automation-cli]])
 - `browser console [--level <lvl>] [--clear]` / `browser wait
