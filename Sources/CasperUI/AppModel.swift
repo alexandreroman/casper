@@ -1995,12 +1995,16 @@ final class AppModel {
         let message: String
     }
 
-    /// Open a new terminal in `workspaceID` by splitting its top-left surface to
-    /// the right. Mirrors the toolbar's "new terminal" action, but targeted at an
-    /// arbitrary (non-selected) workspace, and allows overriding the working
-    /// directory (defaults to the workspace's worktree) and running a command.
+    /// Open a new terminal in `workspaceID` by splitting its top-left surface.
+    /// Mirrors the toolbar's "new terminal" action, but targeted at an arbitrary
+    /// (non-selected) workspace, and allows overriding the working directory
+    /// (defaults to the workspace's worktree) and running a command. The caller
+    /// chooses the split `orientation`, defaulting to `.horizontal` (split-right).
     @discardableResult
-    func controlOpenTerminal(in workspaceID: UUID, command: String? = nil, cwd: String? = nil) -> ControlTerminalInfo? {
+    func controlOpenTerminal(
+        in workspaceID: UUID, command: String? = nil, cwd: String? = nil,
+        orientation: LayoutNode.Orientation = .horizontal
+    ) -> ControlTerminalInfo? {
         guard let ws = workspace(id: workspaceID),
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
               let at = locateSurface(anchor) else { return nil }
@@ -2008,13 +2012,13 @@ final class AppModel {
         let surface = Surface.terminal(cwd: resolvedCwd)
         if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
+            at: at, focused: anchor, orientation: orientation, side: .after, surface: surface)
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
     }
 
-    /// Spawn a visible split in `workspaceID` running a lifecycle hook, tagged in
-    /// `scriptSurfaces` so its child-exit is correlated. Mirrors `controlOpenTerminal`
-    /// but hook-wraps the command and registers the tag BEFORE splitting. Returns the
+    /// Spawn a visible split-down (top/bottom stack) in `workspaceID` running a
+    /// lifecycle hook, tagged in `scriptSurfaces` so its child-exit is correlated.
+    /// Hook-wraps the command and registers the tag BEFORE splitting. Returns the
     /// new surface id, or nil if the workspace/anchor can't be resolved.
     @discardableResult
     private func spawnScriptSurface(
@@ -2028,7 +2032,7 @@ final class AppModel {
         scriptSurfaces[surface.id] = ScriptSurface(kind: kind, workspaceID: workspaceID, onExit: onExit)
         pendingInitialInput[surface.id] = Self.hookWrappedScriptCommand(command)
         insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: .horizontal, side: .after, surface: surface)
+            at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
         return surface.id
     }
 
@@ -2163,7 +2167,8 @@ final class AppModel {
             return .failure(ControlRunError(message: message))
         case .command(let command):
             guard let info = controlOpenTerminal(
-                in: workspaceID, command: Self.subshellWrappedScriptCommand(command), cwd: nil)
+                in: workspaceID, command: Self.subshellWrappedScriptCommand(command), cwd: nil,
+                orientation: .vertical)
             else {
                 return .failure(ControlRunError(message: "cannot open terminal"))
             }
