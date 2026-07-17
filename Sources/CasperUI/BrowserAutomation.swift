@@ -55,6 +55,28 @@ enum BrowserAutomation {
         """
     }
 
+    /// Scroll the page vertically by one viewport height — down when `down` is
+    /// true, up otherwise. Returns null so the outer `evaluate` resolves cleanly.
+    static func scroll(down: Bool) -> String {
+        """
+        (function () {
+          window.scrollBy(0, \(down ? "window.innerHeight" : "-window.innerHeight"));
+          return null;
+        })();
+        """
+    }
+
+    /// Jump the page to the very bottom (`bottom` true) or the very top.
+    /// Returns null so the outer `evaluate` resolves cleanly.
+    static func scrollToEdge(bottom: Bool) -> String {
+        """
+        (function () {
+          window.scrollTo(0, \(bottom ? "document.documentElement.scrollHeight" : "0"));
+          return null;
+        })();
+        """
+    }
+
     /// Return the `outerHTML` of the first element matching `selector`, or of the
     /// whole document when `selector` is nil.
     static func content(selector: String?) -> String {

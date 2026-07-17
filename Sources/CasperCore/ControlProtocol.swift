@@ -29,6 +29,10 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case browserConsole
         case browserWait
         case browserReload
+        case browserScrollUp
+        case browserScrollDown
+        case browserScrollTop
+        case browserScrollBottom
     }
 
     public var verb: Verb

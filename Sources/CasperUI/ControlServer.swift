@@ -199,6 +199,26 @@ final class ControlServer {
                 }
             }
             return
+        case .browserScrollUp:
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserScroll(down: false, in: id), workspace: id))
+            }
+            return
+        case .browserScrollDown:
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserScroll(down: true, in: id), workspace: id))
+            }
+            return
+        case .browserScrollTop:
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserScrollToEdge(bottom: false, in: id), workspace: id))
+            }
+            return
+        case .browserScrollBottom:
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserScrollToEdge(bottom: true, in: id), workspace: id))
+            }
+            return
         case .workspaceList, .workspaceNew:
             reply(.failure("unreachable")); return  // handled above
         }

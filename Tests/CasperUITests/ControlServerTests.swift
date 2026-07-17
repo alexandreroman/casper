@@ -327,6 +327,34 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(response.workspace, id.uuidString)
     }
 
+    func testBrowserScrollUpReturns() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserScrollUp, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testBrowserScrollDownReturns() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserScrollDown, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testBrowserScrollTopReturns() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserScrollTop, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
+    func testBrowserScrollBottomReturns() async throws {
+        let (server, id) = try seededServer()
+        let response = await handleAsync(server, ControlCommand(verb: .browserScrollBottom, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.workspace, id.uuidString)
+    }
+
     /// End-to-end against a real `WKWebView`: a `data:` page logs to the console and
     /// throws on load; assert both are captured; wait for an element a `setTimeout`
     /// inserts; and confirm `reload --wait` returns.
