@@ -107,6 +107,43 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(match, "expected a terminal surface with the given cwd")
     }
 
+    /// Opening a terminal in a workspace that is NOT the selected/visible one must
+    /// not move global focus: a background `controlOpenTerminal` should leave
+    /// `focusedSurfaceID` on the selected workspace's surface. Two workspaces are
+    /// seeded inline (the shared `seededModel` only has one) so A can be selected
+    /// and B targeted in the background.
+    func testOpenTerminalInBackgroundWorkspaceKeepsFocus() throws {
+        let workspaceA = Workspace(
+            name: "alpha", worktreePath: "/wt-a", branch: "alpha",
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt-a"))))
+        let workspaceB = Workspace(
+            name: "beta", worktreePath: "/wt-b", branch: "beta",
+            portBase: 41000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt-b"))))
+        let space = Space(
+            name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [workspaceA, workspaceB])
+        let url = URL(fileURLWithPath:
+            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
+        let store = SessionStore(fileURL: url)
+        let session = Session(spaces: [space], selectedWorkspaceID: workspaceA.id)
+        let model = AppModel(sessionStore: store, session: session)
+
+        // `selectWorkspace` is the path that assigns focus to a workspace's top-left
+        // surface — drive it so the focused surface is deterministically A's leaf.
+        model.selectWorkspace(workspaceA.id)
+        let expectedFocus = model.focusedSurfaceID
+        let workspaceALeaf = try XCTUnwrap(LayoutTree.surfaceIDs(workspaceA.layout).first)
+        XCTAssertEqual(expectedFocus, workspaceALeaf, "focus should start on the visible workspace A's surface")
+
+        let before = model.workspace(id: workspaceB.id).map { LayoutTree.surfaceIDs($0.layout).count } ?? 0
+        _ = try XCTUnwrap(model.controlOpenTerminal(in: workspaceB.id))
+        let after = model.workspace(id: workspaceB.id).map { LayoutTree.surfaceIDs($0.layout).count } ?? 0
+        XCTAssertEqual(after, before + 1, "the terminal must be created in background workspace B")
+
+        XCTAssertEqual(
+            model.focusedSurfaceID, expectedFocus,
+            "opening a terminal in a background workspace must not steal focus from the visible workspace")
+    }
+
     func testListTerminalsReportsOpenTerminals() throws {
         let (model, id) = seededModel()
         XCTAssertEqual(model.controlListTerminals(in: id).count, 1)  // the seeded leaf

@@ -1016,29 +1016,40 @@ final class AppModel {
 
     /// Shared tail of every split-based surface addition: split the leaf holding
     /// `focused` in workspace `at` to insert `surface` along `orientation`/`side`,
-    /// move focus to the new surface, persist, and re-anchor AppKit first
-    /// responder. Callers resolve their own target and surface, then delegate here.
+    /// then persist. When the split targets the currently-visible workspace it also
+    /// moves focus to the new surface and re-anchors the AppKit first responder;
+    /// when it targets a background workspace (e.g. `casper terminal new
+    /// --workspace <other>`) the layout still changes but focus is left untouched.
+    /// Callers resolve their own target and surface, then delegate here.
     private func insertSurfaceBySplitting(
         at: (space: Int, workspace: Int), focused: UUID,
         orientation: LayoutNode.Orientation, side: LayoutTree.InsertSide, surface: Surface
     ) {
-        // Blur the surface that actually currently holds focus before the layout
-        // restructure. Note this is `focusedSurfaceID`, NOT the `focused` split
-        // anchor — a context-menu split can target a pane other than the focused
-        // one. The SwiftUI re-render this triggers can silently detach the focused
-        // view from the window (reparenting an ancestor container) before AppKit
-        // fires `resignFirstResponder`, so libghostty would otherwise keep
-        // rendering a solid caret on it even though the new surface holds focus.
-        if let currentlyFocused = focusedSurfaceID {
+        // A split into a background workspace must not disturb the visible terminal:
+        // reassigning focus (or blurring) here would hollow the caret of the pane the
+        // user is actually typing into and strand `focusedSurfaceID` on an off-screen
+        // surface. `selectWorkspace` assigns focus to the new workspace's top-left
+        // surface when the user switches to it, so no focus state is lost by skipping.
+        let targetsVisibleWorkspace = spaces[at.space].workspaces[at.workspace].id == selectedWorkspaceID
+        if targetsVisibleWorkspace, let currentlyFocused = focusedSurfaceID {
+            // Blur the surface that actually currently holds focus before the layout
+            // restructure. Note this is `focusedSurfaceID`, NOT the `focused` split
+            // anchor — a context-menu split can target a pane other than the focused
+            // one. The SwiftUI re-render this triggers can silently detach the focused
+            // view from the window (reparenting an ancestor container) before AppKit
+            // fires `resignFirstResponder`, so libghostty would otherwise keep
+            // rendering a solid caret on it even though the new surface holds focus.
             (surfaceViews[currentlyFocused] as? GhosttySurfaceView)?.blurForLayoutChange()
         }
         let (layout, newFocus) = LayoutTree.split(
             spaces[at.space].workspaces[at.workspace].layout,
             focused: focused, orientation: orientation, side: side, surface: surface)
         spaces[at.space].workspaces[at.workspace].layout = layout
-        focusedSurfaceID = newFocus
         persist()
-        focusActiveSurfaceView()
+        if targetsVisibleWorkspace {
+            focusedSurfaceID = newFocus
+            focusActiveSurfaceView()
+        }
     }
 
     /// Add a new terminal by splitting the anchored surface (or the focused one
