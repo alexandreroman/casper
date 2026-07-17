@@ -50,17 +50,24 @@ if [ -d "$ICON_SRC" ]; then
         echo "error: actool not found — select Xcode 26 with 'sudo xcode-select -s /Applications/Xcode.app'" >&2
         exit 1
     fi
+    # Compile into a temp dir, not directly into Resources: actool also emits a
+    # low-res AppIcon.icns (and a partial Info.plist) alongside Assets.car, and
+    # that icns would clobber the hand-crafted high-res fallback copied above.
+    # Take only Assets.car; the icns and partial plist are intentionally dropped.
+    ICON_OUT="$TMP/iconout"
+    mkdir -p "$ICON_OUT"
     xcrun actool "$ICON_SRC" \
-        --compile "$APP/Contents/Resources" \
+        --compile "$ICON_OUT" \
         --app-icon AppIcon --include-all-app-icons \
         --output-partial-info-plist "$TMP/actool-partial.plist" \
         --platform macosx --target-device mac \
         --minimum-deployment-target 15.0 \
         --errors --warnings --notices --output-format human-readable-text
-    if [ ! -f "$APP/Contents/Resources/Assets.car" ]; then
+    if [ ! -f "$ICON_OUT/Assets.car" ]; then
         echo "error: actool did not produce Assets.car" >&2
         exit 1
     fi
+    cp "$ICON_OUT/Assets.car" "$APP/Contents/Resources/Assets.car"
     echo "Compiled $ICON_SRC -> Contents/Resources/Assets.car"
 else
     echo "note: $ICON_SRC not found — bundling .icns fallback only (no Liquid Glass icon)" >&2
