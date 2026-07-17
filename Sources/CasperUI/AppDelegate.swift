@@ -12,6 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private var controlServer: ControlServer?
     private var keyWindowObserver: NSObjectProtocol?
     private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
+    // Temporary freeze-diagnosis scaffolding — see MainThreadHangWatchdog. Ships in
+    // release builds on purpose; remove once the beachball hang is root-caused.
+    private var hangWatchdog: MainThreadHangWatchdog?
     #if DEBUG
     private var debugServer: DebugServer?
     #endif
@@ -76,6 +79,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         }
 
         setupNotifications()
+
+        // Temporary main-thread hang diagnostics. On a detected freeze it dumps a
+        // `sample` stack trace under ~/Library/Logs/Casper/ and surfaces a
+        // notification. The capture callback fires on a background thread, so hop
+        // to the main actor before touching UserNotifications.
+        let watchdog = MainThreadHangWatchdog { dumpFileURL in
+            Task { @MainActor in
+                AppModel.shared.deliverNotification(
+                    "Casper UI freeze captured", dumpFileURL.lastPathComponent, UUID(), .active)
+            }
+        }
+        watchdog.start()
+        hangWatchdog = watchdog
 
         // When a window becomes key (the app returns to the foreground), dismiss
         // the attention bubble of the now-focused workspace. Mirrors the
@@ -147,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
     func applicationWillTerminate(_ notification: Notification) {
         if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
+        hangWatchdog?.stop()
         AppModel.shared.stopAgentDetection()
         controlServer?.stop()
         #if DEBUG
