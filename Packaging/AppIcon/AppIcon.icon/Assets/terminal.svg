@@ -1,0 +1,8 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casper icon terminal layer">
+  <!-- full-height split -->
+  <line x1="512" y1="184" x2="512" y2="840" stroke="#8EF7DE" stroke-opacity="0.20" stroke-width="3.2"/>
+  <!-- left pane: Ghostty prompt caret, cream -->
+  <path transform="translate(100 100) scale(3.21875) translate(66 128) scale(15) translate(-7.83 -9.54)"
+    d="M6.069 6.562a1 1 0 0 1 .46.131l3.578 2.065v.002a.974.974 0 0 1 0 1.687L6.53 12.512a.975.975 0 0 1-.976-1.687L7.67 9.602 5.553 8.38a.975.975 0 0 1 .515-1.818Z"
+    fill="#F6F1E2"/>
+</svg>
