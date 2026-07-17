@@ -1,6 +1,6 @@
 ---
 name: "App icon design and generation pipeline"
-description: "Casper's app icon is a full-bleed split-terminal mark; how it is authored, generated, and wired into the bundle"
+description: "Casper's app icon is a full-bleed split-terminal mark; how it is authored, generated, and wired into the bundle (legacy .icns + macOS 26 Icon Composer .icon)"
 type: project
 ---
 
@@ -39,13 +39,39 @@ a violet "DEV" corner ribbon (bottom-right), used only by `make dev` /
   copies `AppIcon.icns` into the release bundle Resources; the Makefile `build:`
   target copies `AppIconDev.icns` into the dev bundle Resources.
 
+**macOS 26 Liquid Glass icon (additive, release only):** alongside the legacy
+`.icns`, the release build also ships an **Icon Composer** layered icon so
+macOS 26 (Tahoe) renders Default/Dark/Clear appearances. It is **additive**, not
+a replacement — both `CFBundleIconName` (new, macOS 26) and `CFBundleIconFile`
+(legacy, macOS 15–25) are set in `Packaging/Info.plist`, both = `AppIcon`. The
+`.icns` stays the mandatory pre-Tahoe fallback; the split-icon workaround is NOT
+used (Apple dropped support for it in Xcode 26.1).
+- Source: `Packaging/AppIcon/AppIcon.icon` (Icon Composer bundle: `icon.json` +
+  `Assets/`), **GUI-authored and committed** — the `icon.json` schema is
+  undocumented and shifts across Xcode 26.x, so scripting it was rejected.
+  Background = the body gradient set as a fill in the GUI; two foreground groups
+  = the terminal marks (`layers/terminal.svg`) and the sparkle (`layers/sparkle.svg`).
+- `make icon-layers` (→ `Scripts/make-icon-layers.sh`, resvg) rasterizes the
+  committed `layers/*.svg` to 1024² PNGs for GUI import; the PNGs are gitignored.
+- `Scripts/bundle-app.sh` compiles `AppIcon.icon` with **`xcrun actool`** (Xcode
+  26 required) into `Contents/Resources/Assets.car`. It compiles into a **temp
+  dir and copies only `Assets.car`** — actool also emits its own low-res
+  `AppIcon.icns`, which would otherwise clobber the hand-crafted high-res one.
+  The step no-ops (icns-only) when `AppIcon.icon` is absent.
+- Dev build stays `.icns`-only (no `.icon`). Design/plan:
+  `.superpowers/plans/app-icon-composer.md` (+ `-plan.md`).
+
 **Why:** the app had no icon; this gives it a native macOS one whose form
 encodes Casper's essence — the split = per-worktree terminal workspaces, the
 sparkle = the agent — with a Ghostty family resemblance (Casper embeds
-libghostty).
+libghostty). The Liquid Glass variant keeps the icon current on macOS 26 without
+dropping older-OS support.
 
-**How to apply:** edit `icon.svg`, then run `make icon`; never hand-edit the
-`.icns`. `iconutil` requires the iconset directory name to end in `.iconset`
-(the script renders into `<tmp>/AppIcon.iconset`, not the bare `mktemp -d`).
-See [[ghosttykit-pin]] and [[ghostty-is-the-reference]] for the Ghostty
-relationship.
+**How to apply:** for the `.icns`, edit `icon.svg`, then run `make icon`; never
+hand-edit the `.icns`. `iconutil` requires the iconset directory name to end in
+`.iconset` (the script renders into `<tmp>/AppIcon.iconset`, not the bare
+`mktemp -d`). For the Liquid Glass icon, `make icon-layers`, re-author
+`AppIcon.icon` in Icon Composer, commit it; verify with `assetutil --info` on
+the compiled `Assets.car` and `plutil` on the bundle's `Info.plist`. See
+[[ghosttykit-pin]] and [[ghostty-is-the-reference]] for the Ghostty
+relationship, and [[test-toolchain]] for the Xcode requirement.
