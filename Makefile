@@ -4,7 +4,7 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build dev test release clean vendor help bundle dist icon
+.PHONY: all build dev test release clean vendor help bundle dist icon icon-layers
 
 # Version metadata for packaging (overridable by CI). SHORT_VERSION is the
 # marketing version; BUNDLE_VERSION is a monotonic build number.
@@ -89,6 +89,10 @@ vendor:
 ## icon: regenerate Packaging/AppIcon/AppIcon.icns from icon.svg (needs resvg)
 icon:
 	Scripts/make-icon.sh
+
+## icon-layers: rasterize Icon Composer layer sources to PNGs (needs resvg)
+icon-layers:
+	Scripts/make-icon-layers.sh
 
 ## help: list available targets
 help:
