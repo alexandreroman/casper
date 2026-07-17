@@ -21,6 +21,3 @@ DerivedData/
 /Casper-dev.app/
 /dist/
 /appcast.xml
-
-# Icon Composer layer PNGs are generated from layers/*.svg via `make icon-layers`
-Packaging/AppIcon/layers/*.png

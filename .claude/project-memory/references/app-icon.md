@@ -49,10 +49,12 @@ used (Apple dropped support for it in Xcode 26.1).
 - Source: `Packaging/AppIcon/AppIcon.icon` (Icon Composer bundle: `icon.json` +
   `Assets/`), **GUI-authored and committed** — the `icon.json` schema is
   undocumented and shifts across Xcode 26.x, so scripting it was rejected.
-  Background = the body gradient set as a fill in the GUI; two foreground groups
-  = the terminal marks (`layers/terminal.svg`) and the sparkle (`layers/sparkle.svg`).
-- `make icon-layers` (→ `Scripts/make-icon-layers.sh`, resvg) rasterizes the
-  committed `layers/*.svg` to 1024² PNGs for GUI import; the PNGs are gitignored.
+  Background = the body gradient set as a fill in the GUI; two foreground
+  layers = the terminal marks (`layers/terminal.svg`) and the sparkle
+  (`layers/sparkle.svg`).
+- The layer sources `Packaging/AppIcon/layers/{terminal,sparkle}.svg` are
+  imported directly into Icon Composer — no PNG rasterization step. Icon
+  Composer embeds them, byte-identical, in `AppIcon.icon/Assets/`.
 - `Scripts/bundle-app.sh` compiles `AppIcon.icon` with **`xcrun actool`** (Xcode
   26 required) into `Contents/Resources/Assets.car`. It compiles into a **temp
   dir and copies only `Assets.car`** — actool also emits its own low-res
@@ -70,8 +72,8 @@ dropping older-OS support.
 **How to apply:** for the `.icns`, edit `icon.svg`, then run `make icon`; never
 hand-edit the `.icns`. `iconutil` requires the iconset directory name to end in
 `.iconset` (the script renders into `<tmp>/AppIcon.iconset`, not the bare
-`mktemp -d`). For the Liquid Glass icon, `make icon-layers`, re-author
-`AppIcon.icon` in Icon Composer, commit it; verify with `assetutil --info` on
-the compiled `Assets.car` and `plutil` on the bundle's `Info.plist`. See
-[[ghosttykit-pin]] and [[ghostty-is-the-reference]] for the Ghostty
-relationship, and [[test-toolchain]] for the Xcode requirement.
+`mktemp -d`). For the Liquid Glass icon, edit `layers/*.svg`, re-import them
+into Icon Composer, and commit the updated `AppIcon.icon`; verify with
+`assetutil --info` on the compiled `Assets.car` and `plutil` on the bundle's
+`Info.plist`. See [[ghosttykit-pin]] and [[ghostty-is-the-reference]] for the
+Ghostty relationship, and [[test-toolchain]] for the Xcode requirement.

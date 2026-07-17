@@ -65,10 +65,9 @@ is authored once by hand in the GUI and committed, rather than scripted.
 Packaging/AppIcon/
   icon.svg, icon-dev.svg        # unchanged (SVG masters)
   AppIcon.icns, AppIconDev.icns # unchanged (fallback, committed)
-  layers/                       # NEW — layer sources (committed) + generated PNGs (gitignored)
+  layers/                       # NEW — layer sources (committed + imported)
     terminal.svg                #   split line + cream caret (committed source)
     sparkle.svg                 #   orange sparkle, no glow filter (committed source)
-    terminal.png, sparkle.png   #   1024×1024 GUI-import assets (generated, gitignored)
   AppIcon.icon/                 # NEW — committed Icon Composer bundle (icon.json + Assets/)
 ```
 
@@ -85,12 +84,15 @@ These map to Icon Composer as:
 - **Background** — the dark body, expressed as a **gradient fill set in the GUI**
   (resolution-independent, no `background.png`; Icon Composer applies its own
   rounded-rect mask, so the body's own `rx`/drop-shadow are dropped).
-- **Foreground group 1 — terminal marks**: the split line + caret (`terminal.svg`).
-- **Foreground group 2 — sparkle**: the orange sparkle (`sparkle.svg`), rendered
-  *without* the SVG glow filter so the glow is reproduced as an Icon Composer
-  material/specular effect on the group.
+- **Foreground layer 1 — terminal marks**: the split line + caret
+  (`terminal.svg`), imported directly into Icon Composer.
+- **Foreground layer 2 — sparkle**: the orange sparkle (`sparkle.svg`),
+  imported directly and rendered *without* the SVG glow filter so the glow is
+  reproduced as an Icon Composer material/specular effect on the layer.
 
-Two foreground groups, well within the four-group limit.
+Two foreground layers in one group, well within the four-group limit. Icon
+Composer embeds the imported SVGs, byte-identical, in `AppIcon.icon/Assets/`
+— there is no PNG rasterization step.
 
 ## Build pipeline changes
 
@@ -141,26 +143,24 @@ Add, keeping the existing `CFBundleIconFile`:
   fail with a clear message pointing at
   `sudo xcode-select -s /Applications/Xcode.app` if it does not — mirroring the
   existing `test-toolchain` guidance.
-- **`make icon-layers`** (new): rasterize the foreground layer PNGs
-  (`terminal.png`, `sparkle.png`) from the committed `layers/*.svg` sources with
-  `resvg`, into `Packaging/AppIcon/layers/`. Run once to seed / refresh the GUI
-  import; the committed `AppIcon.icon` is the source of truth thereafter. The
-  generated PNGs are gitignored.
+- No new Makefile target for the layered icon: the committed `layers/*.svg`
+  sources are imported directly into Icon Composer, and the committed
+  `AppIcon.icon` is the source of truth thereafter.
 - **`make icon`** (SVG→`.icns`) is unchanged.
 
 ## Manual authoring step (one-time, not automatable)
 
 Documented procedure (README / CLAUDE.md icon section):
 
-1. Run `make icon-layers` to produce the PNGs in `Packaging/AppIcon/layers/`.
-2. Open Icon Composer (Xcode 26 / standalone app). Create a new icon.
-3. Set the **background** to the dark gradient (`#3C3C3C` top → `#1E1E1E`
+1. Open Icon Composer (Xcode 26 / standalone app). Create a new icon.
+2. Set the **background** to the dark gradient (`#3C3C3C` top → `#1E1E1E`
    bottom).
-4. Add `terminal.png` and `sparkle.png` as two **foreground layer groups**; tune
-   material properties (specular / glass), applying glow to the sparkle group.
-5. Tune the **Dark** appearance (darker body, brighter sparkle) and verify the
+3. Import `Packaging/AppIcon/layers/terminal.svg` and `sparkle.svg` directly
+   as two **foreground layers**; tune material properties (specular / glass),
+   applying glow to the sparkle layer.
+4. Tune the **Dark** appearance (darker body, brighter sparkle) and verify the
    **Clear** appearance — confirm the sparkle silhouette reads as monochrome.
-6. Export/save as `Packaging/AppIcon/AppIcon.icon` and commit it (the whole
+5. Export/save as `Packaging/AppIcon/AppIcon.icon` and commit it (the whole
    package directory: `icon.json` + `Assets/`).
 
 ## Verification

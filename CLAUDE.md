@@ -54,9 +54,9 @@ macOS 26 Liquid Glass `Packaging/AppIcon/AppIcon.icon` (Icon Composer
 bundle, compiled to `Assets.car` by `actool` during `make bundle`). Both
 `CFBundleIconName` and `CFBundleIconFile` are set. Compiling the `.icon`
 requires **Xcode 26** selected (`sudo xcode-select -s /Applications/Xcode.app`).
-To re-author the layered icon: `make icon-layers` regenerates the
-foreground PNGs from `layers/*.svg`, then edit `AppIcon.icon` in Icon
-Composer and commit it.
+To re-author the layered icon: edit the layer sources
+`Packaging/AppIcon/layers/*.svg`, re-import them into Icon Composer, and
+commit the updated `AppIcon.icon`.
 
 ## Modules
 
