@@ -13,6 +13,9 @@ BUNDLE_VERSION="${2:?usage: bundle-app.sh <short-version> <bundle-version>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
 BIN_DIR="$(swift build -c release --show-bin-path)"
 BINARY="$BIN_DIR/casper"
 if [ ! -x "$BINARY" ]; then
@@ -36,6 +39,39 @@ cp "$ROOT/Packaging/Sounds/NotificationAlert.aiff" "$APP/Contents/Resources/Noti
 
 # CFBundleIconFile (Info.plist) resolves AppIcon.icns from the bundle's Resources dir.
 cp "$ROOT/Packaging/AppIcon/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+
+# macOS 26+ prefers the layered Liquid Glass icon: compile AppIcon.icon into
+# Assets.car (resolved via CFBundleIconName). Requires Xcode 26's actool. The
+# .icon is authored once in Icon Composer and committed; until it exists the
+# build proceeds with the .icns fallback only.
+ICON_SRC="$ROOT/Packaging/AppIcon/AppIcon.icon"
+if [ -d "$ICON_SRC" ]; then
+    if ! xcrun --find actool >/dev/null 2>&1; then
+        echo "error: actool not found — select Xcode 26 with 'sudo xcode-select -s /Applications/Xcode.app'" >&2
+        exit 1
+    fi
+    # Compile into a temp dir, not directly into Resources: actool also emits a
+    # low-res AppIcon.icns (and a partial Info.plist) alongside Assets.car, and
+    # that icns would clobber the hand-crafted high-res fallback copied above.
+    # Take only Assets.car; the icns and partial plist are intentionally dropped.
+    ICON_OUT="$TMP/iconout"
+    mkdir -p "$ICON_OUT"
+    xcrun actool "$ICON_SRC" \
+        --compile "$ICON_OUT" \
+        --app-icon AppIcon --include-all-app-icons \
+        --output-partial-info-plist "$TMP/actool-partial.plist" \
+        --platform macosx --target-device mac \
+        --minimum-deployment-target 15.0 \
+        --errors --warnings --notices --output-format human-readable-text
+    if [ ! -f "$ICON_OUT/Assets.car" ]; then
+        echo "error: actool did not produce Assets.car" >&2
+        exit 1
+    fi
+    cp "$ICON_OUT/Assets.car" "$APP/Contents/Resources/Assets.car"
+    echo "Compiled $ICON_SRC -> Contents/Resources/Assets.car"
+else
+    echo "note: $ICON_SRC not found — bundling .icns fallback only (no Liquid Glass icon)" >&2
+fi
 
 # HighlightSwift's generated Bundle.module ships as an ordinary sealed resource;
 # DiffHighlighter mirrors it to the app root at runtime (where Bundle.module looks).
