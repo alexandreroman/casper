@@ -41,7 +41,8 @@ is authored once by hand in the GUI and committed, rather than scripted.
   `Contents/Resources/Assets.car`.
 - `CFBundleIconName` added to the release `Info.plist` (alongside the retained
   `CFBundleIconFile`).
-- A Makefile toolchain guard and a `make icon-layers` helper.
+- A Makefile toolchain guard (no new target; the `layers/*.svg` sources import
+  directly into Icon Composer).
 - Documentation of the one-time manual authoring step, plus a project-memory
   note recording the decision.
 
@@ -178,7 +179,7 @@ Documented procedure (README / CLAUDE.md icon section):
 ## Docs & memory
 
 - Update `CLAUDE.md` Build & run (note the Xcode-26 `actool` prerequisite and
-  the new `make icon-layers` target / manual authoring step) and any icon docs.
+  the SVG-native manual authoring step) and any icon docs.
 - Save a `skillbox:project-memory` note: the dual-key pipeline (both
   `CFBundleIconName` and `CFBundleIconFile`), keeping `.icns` for macOS 15–25,
   GUI-authored `.icon`, the `actool` bundling step, and the rationale for
