@@ -12,8 +12,11 @@ enum BrowserCapture {
     /// How long to wait for the page's navigation to finish before giving up. Kept
     /// under the 15 s automation socket timeout so the CLI still gets a reply.
     private static let loadTimeout: Duration = .seconds(10)
-    /// A short settle after `didFinish` for final layout/paint before snapshotting.
-    private static let settleDelay: Duration = .milliseconds(150)
+    /// After navigation finishes, how long to wait for the page to fully render
+    /// (fonts, deferred images, next-tick paints) before snapshotting anyway.
+    /// Best-effort: the load already succeeded, so a stalled resource should
+    /// still yield a snapshot rather than fail the capture.
+    private static let renderSettleTimeout: Duration = .seconds(5)
 
     /// Render `url` off-screen at `width`×`height` and return a PNG of the resulting
     /// viewport. The capture shares the default website data store
@@ -64,7 +67,11 @@ enum BrowserCapture {
         defer { timeoutTask.cancel() }
         try await delegate.waitForLoad()
 
-        try? await Task.sleep(for: settleDelay)
+        // `didFinish` fires on the main frame's load event, but pages routinely
+        // paint after it — fonts swap in, images finish decoding, SPA frameworks
+        // hydrate on the next tick. A fixed delay just guesses at that; instead
+        // wait for the real readiness signals (bounded and best-effort).
+        await waitForFullRender(of: webView)
 
         let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -76,6 +83,77 @@ enum BrowserCapture {
             throw BrowserCoordinatorError(message: "failed to encode snapshot as PNG")
         }
         return png
+    }
+
+    /// Wait until the loaded page has settled visually: DOM complete, web fonts
+    /// ready, in-flight images finished (load or error), then two animation
+    /// frames so the compositor has produced a paint. Bounded by
+    /// `renderSettleTimeout` and fully best-effort — any error or timeout just
+    /// proceeds to the snapshot.
+    private static func waitForFullRender(of webView: WKWebView) async {
+        let js = """
+        await new Promise((resolve) => {
+          const settle = () => {
+            const pending = Array.from(document.images)
+              .filter((img) => !img.complete)
+              .map((img) => new Promise((done) => {
+                img.addEventListener('load', done, { once: true });
+                img.addEventListener('error', done, { once: true });
+              }));
+            const fonts = (document.fonts && document.fonts.ready) || Promise.resolve();
+            Promise.all([fonts, ...pending]).then(() => {
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            });
+          };
+          if (document.readyState === 'complete') settle();
+          else window.addEventListener('load', settle, { once: true });
+        });
+        """
+
+        // Race the readiness JS against the timeout with a one-shot resume guard.
+        // `callAsyncJavaScript`'s bridge ignores cancellation, so the timeout must
+        // resume the waiter directly rather than by cancelling the JS task.
+        // Whichever fires first wins; the other resume is a no-op. Best-effort —
+        // a thrown JS error or the timeout both simply proceed to the snapshot.
+        let waiter = RenderWaiter()
+        let render = Task { @MainActor in
+            _ = try? await webView.callAsyncJavaScript(
+                js, arguments: [:], in: nil, contentWorld: .page)
+            waiter.resume()
+        }
+        let timeout = Task { @MainActor in
+            try? await Task.sleep(for: renderSettleTimeout)
+            waiter.resume()
+        }
+        await waiter.wait()
+        render.cancel()
+        timeout.cancel()
+    }
+}
+
+/// A one-shot main-actor waiter: `wait()` suspends until the first `resume()`.
+/// Handles `resume()` arriving before `wait()`. Used to race the render-readiness
+/// JavaScript against its timeout in `BrowserCapture.waitForFullRender`.
+@MainActor
+private final class RenderWaiter {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var resumed = false
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            if resumed {
+                continuation.resume()
+            } else {
+                self.continuation = continuation
+            }
+        }
+    }
+
+    func resume() {
+        guard !resumed else { return }
+        resumed = true
+        continuation?.resume()
+        continuation = nil
     }
 }
 
