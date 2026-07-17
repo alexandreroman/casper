@@ -47,6 +47,17 @@ dylib chain into the bundle so the app runs on a clean Mac). The
 publishes the `.app` as a GitHub Release — see
 [`.superpowers/plans/github-release.md`](.superpowers/plans/github-release.md).
 
+The app icon ships in two forms: the legacy
+`Packaging/AppIcon/AppIcon.icns` (fallback for macOS 15–25, regenerated
+from `icon.svg` via `make icon`, needs `brew install resvg`), and the
+macOS 26 Liquid Glass `Packaging/AppIcon/AppIcon.icon` (Icon Composer
+bundle, compiled to `Assets.car` by `actool` during `make bundle`). Both
+`CFBundleIconName` and `CFBundleIconFile` are set. Compiling the `.icon`
+requires **Xcode 26** selected (`sudo xcode-select -s /Applications/Xcode.app`).
+To re-author the layered icon: `make icon-layers` regenerates the
+foreground PNGs from `layers/*.svg`, then edit `AppIcon.icon` in Icon
+Composer and commit it.
+
 ## Modules
 
 - **CasperCore** — models, session store, port allocator, control-channel
