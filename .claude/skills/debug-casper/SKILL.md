@@ -13,7 +13,7 @@ This channel exists **only in debug builds** (`#if DEBUG`). `make release` does
 not include it. Everything below assumes a debug build (`make build`, which maps
 to `swift build`).
 
-## 1. Build and launch
+## 1. Build, seed, launch
 
 Always launch under a dedicated **session** so this harness isolates its debug
 socket, control socket, and layout file from the user's real Casper instance —
@@ -29,16 +29,59 @@ char, `[A-Za-z0-9._-]` limit:
 make build
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
 export CASPER_SESSION="test-${branch:-x}-$$"   # e.g. test-my-feature-51377
-Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
 ```
 
-The GUI then binds its debug socket at `/tmp/casper-debug-$CASPER_SESSION.sock`.
-Exporting `CASPER_SESSION` makes every `casper debug …` below derive that same
-path (an explicit `CASPER_DEBUG_SOCKET` still overrides it). Wait for the socket:
+### Seed a space (for workspace-level tests)
+
+A fresh session has **no spaces** — the app opens on the homepage, and there is
+no non-interactive "open folder" (`NSOpenPanel` is modal). So to test anything
+that needs a real Space/Workspace (most things beyond a bare terminal),
+pre-write the session's layout file **before launching**. It lives at
+`~/Library/Application Support/Casper/session-$CASPER_SESSION.json` (see
+`SessionIdentity.layoutFileName`). Point it at a real Git repo — `isGitRepo` is
+not persisted; it is re-probed from `folderPath` at load, so the folder must
+actually be Git-backed:
 
 ```bash
+REPO=$(mktemp -d); REPO=$(cd "$REPO" && pwd -P)   # canonical path (avoids /tmp symlink)
+git -C "$REPO" init -q -b main
+git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+SP=$(uuidgen); WS=$(uuidgen); SURF=$(uuidgen); BROW=$(uuidgen)
+mkdir -p "$HOME/Library/Application Support/Casper"
+cat > "$HOME/Library/Application Support/Casper/session-$CASPER_SESSION.json" <<JSON
+{
+  "spaces": [{
+    "id": "$SP", "name": "test", "folderPath": "$REPO", "isCollapsed": false,
+    "workspaces": [{
+      "id": "$WS", "name": "test", "worktreePath": "$REPO", "branch": "main",
+      "portBase": 47000, "kind": "primary",
+      "layout": { "leaf": { "_0": { "id": "$SURF", "kind": { "terminal": { "cwd": "$REPO" } } } } },
+      "inspector": { "collapsed": true, "tab": "diff", "width": 780,
+        "browser": { "id": "$BROW", "kind": { "browser": { "url": "about:blank" } } } }
+    }]
+  }],
+  "selectedWorkspaceID": "$WS"
+}
+JSON
+```
+
+A malformed file self-heals to an empty session (the app moves it aside to
+`session-*.json.corrupt` and starts fresh), so if the app still shows the
+homepage, re-check the JSON against the `Session`/`Space`/`Workspace`/`Surface`
+Codable in `Sources/CasperCore/Models.swift`. Terminals opened this way are real
+Casper surfaces, so `$CASPER_CONTROL_SOCKET` / `$CASPER_WORKSPACE_ID` are
+injected and the `casper` CLI works when driven via `send-text`.
+
+### Launch
+
+```bash
+Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
 until [ -S "/tmp/casper-debug-$CASPER_SESSION.sock" ]; do sleep 0.2; done
 ```
+
+The GUI binds its debug socket at `/tmp/casper-debug-$CASPER_SESSION.sock`;
+exporting `CASPER_SESSION` makes every `casper debug …` below derive that same
+path (an explicit `CASPER_DEBUG_SOCKET` still overrides it).
 
 ## 2. Observe
 
@@ -107,26 +150,43 @@ Then re-read to verify:
 .build/debug/casper debug read-text
 ```
 
-## Target a specific surface
+## What the harness can (and cannot) see
 
-`dump-state` reports a stable `id` per surface. Address one directly (without
-moving the UI focus):
+The debug bridge (`DebugSurfaceBridge.debugSurfaces()`) exposes **exactly one
+surface**: the *first* `GhosttySurfaceView` found in the key window's content
+hierarchy — i.e. the selected workspace's focused/first pane. Its reported `id`
+is the **selected workspace's UUID** (`selectedWorkspaceID.uuidString`), not a
+per-pane id and not a numeric index. So `dump-state` always returns a
+single-element `surfaces` array. Consequently the harness **cannot reach** other
+panes in a split, or any unselected workspace's surface (including a
+background/off-screen one).
+
+Because there is only ever one surface, `--target` is essentially redundant —
+just omit it and verbs act on that surface. If you do pass it, `--target` /
+`focus` match the id **exactly** (`surfaces.first(where: { $0.id == target })`,
+in `DebugServer.resolve`); there is **no** numeric-index form, so `--target 0` /
+`focus 0` never match and fail with `no surface with id 0`. Pass the workspace
+UUID from `dump-state` instead:
 
 ```bash
-.build/debug/casper debug read-text --target 0
-.build/debug/casper debug send-text 'ls' --enter --target 0
-.build/debug/casper debug screenshot /tmp/casper.png --target 0
-```
-
-Or change the actual UI focus to a surface:
-
-```bash
-.build/debug/casper debug focus 0
+WS=$(.build/debug/casper debug dump-state | sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+.build/debug/casper debug read-text --target "$WS"
+.build/debug/casper debug focus "$WS"          # changes UI focus (not retried)
 ```
 
 Without `--target`, verbs act on the focused surface (falling back to the
 first). An unknown id fails with `no surface with id <id>` — there is no silent
-fallback. The single-window demo exposes one surface, id `0`; Plan 5 adds more.
+fallback.
+
+### Switching workspace can't be driven by synthetic keys
+
+Selecting another workspace is a `Cmd+<n>` app shortcut
+(`WorkspaceShortcutKeyMonitor`), but synthetic keystrokes via
+`osascript … keystroke` are rejected with `error 1002` unless the driving
+terminal holds Accessibility permission — so the debug channel cannot switch
+workspaces on its own. Verify the *selected* workspace directly, or drive the
+switch with CGEvent against the key window (see the `gui-synthetic-input`
+project-memory note).
 
 ## 4. Teardown
 
@@ -142,7 +202,11 @@ unset CASPER_SESSION
 - `read-text` returns the terminal contents as plain text — prefer it over
   screenshots for asserting terminal output.
 - All verbs target the focused surface (falling back to the first surface).
+- Only the selected workspace's focused/first surface is ever exposed — see
+  "What the harness can (and cannot) see". To exercise a specific pane or
+  workspace, select/arrange it in the UI first.
 - This is a DEBUG-only channel. A `make release` (`swift build -c release`)
   binary omits the socket server and the `casper debug` subcommand entirely.
 - `--target <id>` addresses a surface without changing focus; `focus <id>`
-  changes the UI focus. `focus` is not retried (it mutates UI state).
+  changes the UI focus. `focus` is not retried (it mutates UI state). The `<id>`
+  is the workspace UUID from `dump-state`, never a numeric index.
