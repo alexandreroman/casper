@@ -1597,7 +1597,7 @@ final class AppModel {
             // A background-nursery-hosted view is retained by the nursery's content view;
             // detach it so niling the cache actually frees the PTY. (A view that was later
             // selected lives in a real container and is torn down by SwiftUI.)
-            if let nursery = backgroundSurfaceNursery, let view = surfaceViews[id] as? NSView, view.window === nursery {
+            if let nursery = backgroundSurfaceNursery, let view = surfaceViews[id], view.window === nursery {
                 view.removeFromSuperview()
             }
             surfaceViews[id] = nil
