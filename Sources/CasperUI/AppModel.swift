@@ -291,6 +291,14 @@ final class AppModel {
     /// launch command (see the `surface-command-bash-exec` project memory note).
     @ObservationIgnored private var pendingInitialInput: [UUID: String] = [:]
 
+    /// Off-screen host window that materializes a silently-created (control-channel)
+    /// workspace's terminal surfaces — those carrying queued `pendingInitialInput` —
+    /// so libghostty spawns their PTY and runs the queued command even though the
+    /// workspace is never selected (its real view would otherwise never mount). When
+    /// the user later selects the workspace, `SharedViewOwnership` reparents the
+    /// cached `GhosttySurfaceView` from here into the visible container. Created lazily.
+    @ObservationIgnored private var backgroundSurfaceNursery: NSWindow?
+
     /// Per-workspace named commands from `.casper.json`, refreshed on selection so
     /// SwiftUI never reads the file during `body`.
     @ObservationIgnored private var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
@@ -714,6 +722,14 @@ final class AppModel {
         // re-read's `try?`/nil therefore just means "no setup script".
         if let setup = (try? RepoConfig.load(fromRepoRoot: worktreePath))??.setupScript() {
             spawnScriptSurface(kind: .setup, in: ws.id, command: setup, onExit: nil)
+        }
+        // A silently-created (control-channel) workspace is never selected, so its views
+        // never mount on their own. Bring up any surface carrying a queued command
+        // off-screen so it runs now, in the background, instead of waiting for the user
+        // to select the workspace. (UI creation takes the `select` path above and mounts
+        // its views normally, so this is scoped to the silent path.)
+        if !select, let created = workspace(id: ws.id) {
+            materializePendingSurfacesOffscreen(in: created)
         }
         return .success(ws)
     }
@@ -1206,6 +1222,42 @@ final class AppModel {
         return view
     }
 
+    /// Eagerly bring up — parked off-screen — every terminal surface in `workspace`
+    /// that has queued initial input, so its command (a `--command`, or a `setup`
+    /// hook) runs in the background without stealing the user's current selection.
+    /// Used only for control-channel (silent) creation; UI creation selects the
+    /// workspace, which mounts its views the normal way. No-op until the runtime exists.
+    private func materializePendingSurfacesOffscreen(in workspace: Workspace) {
+        guard runtime != nil else { return }
+        let pending = LayoutTree.surfaces(workspace.layout).filter { pendingInitialInput[$0.id] != nil }
+        guard !pending.isEmpty else { return }
+        let nursery = backgroundSurfaceNursery ?? makeBackgroundSurfaceNursery()
+        guard let host = nursery.contentView else { return }
+        for surface in pending {
+            // surfaceView(for:) drains pendingInitialInput into the configuration and
+            // caches the view; hosting it in a window drives viewDidMoveToWindow ->
+            // createSurfaceIfNeeded -> PTY spawn -> the queued command.
+            guard let view = surfaceView(for: surface, in: workspace), view.window == nil else { continue }
+            view.frame = host.bounds
+            view.autoresizingMask = [.width, .height]
+            host.addSubview(view)
+        }
+    }
+
+    /// Borderless window parked far off-screen (mirrors `BrowserCapture`), sized so
+    /// hosted surfaces get valid dimensions. Borderless windows never become key, so
+    /// this never steals keyboard focus; parked off any display its surfaces read as
+    /// occluded and libghostty pauses their render thread (the PTY still runs).
+    private func makeBackgroundSurfaceNursery() -> NSWindow {
+        let frame = NSRect(x: -100_000, y: -100_000, width: 800, height: 600)
+        let window = NSWindow(
+            contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        window.orderFrontRegardless()
+        backgroundSurfaceNursery = window
+        return window
+    }
+
     /// Visible viewport text of a live terminal surface, or nil if it has no
     /// live Ghostty view. Read-only; used by agent-state detection.
     func surfaceViewportText(_ surfaceID: UUID) -> String? {
@@ -1542,6 +1594,12 @@ final class AppModel {
     /// (their PTYs or `WKWebView`s are freed on deinit).
     private func discardSurfaceViews(_ ids: [UUID]) {
         for id in ids {
+            // A background-nursery-hosted view is retained by the nursery's content view;
+            // detach it so niling the cache actually frees the PTY. (A view that was later
+            // selected lives in a real container and is torn down by SwiftUI.)
+            if let nursery = backgroundSurfaceNursery, let view = surfaceViews[id] as? NSView, view.window === nursery {
+                view.removeFromSuperview()
+            }
             surfaceViews[id] = nil
             browserCoordinators[id] = nil
             pendingInitialInput[id] = nil

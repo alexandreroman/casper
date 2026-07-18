@@ -70,3 +70,4 @@
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — NSAllowsArbitraryLoads=true in both Info.plists; ATS blocks plain-HTTP to public-qualified hostnames (nip.io) it can't see resolve to loopback
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — CSigbusGuard turns mmap-truncation SIGBUS in diff into a graceful throw; body must be @escaping (not withoutActuallyEscaping)
 - [App icon design and generation pipeline](references/app-icon.md) — full-bleed split-terminal mark; prod+dev masters → `make icon` → committed .icns via CFBundleIconFile; PLUS macOS 26 Icon Composer AppIcon.icon → actool → Assets.car via CFBundleIconName (dual-key, additive)
+- [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY (window-gated surface creation); CLI `workspace new --command` runs via an off-screen nursery window, reparented on select
