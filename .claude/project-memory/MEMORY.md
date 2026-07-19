@@ -71,3 +71,4 @@
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — CSigbusGuard turns mmap-truncation SIGBUS in diff into a graceful throw; body must be @escaping (not withoutActuallyEscaping)
 - [App icon design and generation pipeline](references/app-icon.md) — full-bleed split-terminal mark; prod+dev masters → `make icon` → committed .icns via CFBundleIconFile; PLUS macOS 26 Icon Composer AppIcon.icon → actool → Assets.car via CFBundleIconName (dual-key, additive)
 - [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY (window-gated surface creation); CLI `workspace new --command` runs via an off-screen nursery window, reparented on select
+- [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each Highlight() = a new JavaScriptCore JSContext; per-call construction under diff churn leaked GBs of JSC VM heap; use the shared DiffHighlighter instance
