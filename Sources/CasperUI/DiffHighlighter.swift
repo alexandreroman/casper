@@ -71,6 +71,14 @@ enum DiffHighlighter {
         text.utf8.count > maxHighlightBytes
     }
 
+    /// One reused HighlightSwift instance (it keeps a single warm JavaScriptCore
+    /// context). Constructing a fresh `Highlight()` per call — as this did before —
+    /// spun up a new `JSContext` each time; under rapid diff refreshes those piled
+    /// up and JavaScriptCore never returned the VM-heap memory to the OS, so RSS
+    /// grew into the gigabytes and never receded. Reusing one instance serialises
+    /// highlighting through its `HLJS` actor and bounds memory (measured ~7.5× less).
+    private static let highlighter = Highlight()
+
     /// Highlights `text` as a whole (full-file context matters, so lines are
     /// never highlighted in isolation) and returns one `AttributedString` per
     /// source line, indexable by 1-based line number.
@@ -96,7 +104,7 @@ enum DiffHighlighter {
 
         let highlighted: AttributedString
         do {
-            highlighted = try await Highlight().attributedText(text, language: language, colors: colors)
+            highlighted = try await highlighter.attributedText(text, language: language, colors: colors)
         } catch {
             return nil
         }
