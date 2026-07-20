@@ -23,7 +23,7 @@ struct BrowserCommand: ParsableCommand {
         abstract: "Open or close a workspace's browser panel, or automate the page.",
         subcommands: [
             Open.self, Load.self, Close.self,
-            Screenshot.self, Eval.self, Content.self, Click.self, TypeText.self, Key.self,
+            Screenshot.self, Eval.self, Content.self, URLCommand.self, Click.self, TypeText.self, Key.self,
             Console.self, Wait.self, Reload.self, ScrollUp.self, ScrollDown.self,
             ScrollTop.self, ScrollBottom.self,
         ])
@@ -198,6 +198,32 @@ struct BrowserCommand: ParsableCommand {
                 print(html)
             } else {
                 emit(ContentOut(content: html, workspace: response.workspace ?? ""))
+            }
+        }
+    }
+
+    // Named `URLCommand` (not `URL`) to avoid clashing with Foundation's `URL`;
+    // `commandName` keeps the CLI verb `url`.
+    struct URLCommand: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "url",
+            abstract: "Print the browser page's current URL.")
+
+        @Flag(name: .long, help: "Print just the raw URL instead of a JSON object.")
+        var raw = false
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .browserURL, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            let url = response.text ?? ""
+            if raw {
+                print(url)
+            } else {
+                emit(URLOut(url: url, workspace: response.workspace ?? ""))
             }
         }
     }

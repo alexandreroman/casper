@@ -23,6 +23,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case browserScreenshot
         case browserEval
         case browserContent
+        case browserURL
         case browserClick
         case browserType
         case browserKey

@@ -166,6 +166,21 @@ final class ControlServerTests: XCTestCase {
         XCTAssertTrue((response.text ?? "").lowercased().contains("<html"))
     }
 
+    func testBrowserURLReturnsCurrentHref() async throws {
+        // Seed a data: URL so the page's href is a known, meaningful value. The page
+        // loads asynchronously, so poll for readiness (like the DOM-mutation test)
+        // before reading the URL back.
+        let html = "<html><body><h1>hi</h1></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? html
+        let (server, id) = try seededServer(browserURL: URL(string: "data:text/html," + encoded)!)
+
+        try await waitForElement(server, id, script: "document.querySelector('h1') !== null")
+
+        let response = await handleAsync(server, ControlCommand(verb: .browserURL, workspace: id.uuidString))
+        XCTAssertTrue(response.ok)
+        XCTAssertTrue((response.text ?? "").hasPrefix("data:text/html"))
+    }
+
     func testBrowserClickMissingElementFails() async throws {
         let (server, id) = try seededServer()
         let response = await handleAsync(

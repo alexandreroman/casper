@@ -150,6 +150,13 @@ struct ContentOut: Encodable {
     let workspace: String
 }
 
+/// `{"url":"<href>","workspace":"<id>"}` — the current page URL for `browser
+/// url` (non-`--raw`).
+struct URLOut: Encodable {
+    let url: String
+    let workspace: String
+}
+
 /// `{"error":"<message>"}` — the sole error shape, written to stderr.
 struct ErrorOut: Encodable {
     let error: String

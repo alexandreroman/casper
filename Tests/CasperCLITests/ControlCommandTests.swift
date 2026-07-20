@@ -224,6 +224,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.selector, "main")
     }
 
+    func testBrowserURLBuildsCommand() throws {
+        let urlCommand = try BrowserCommand.URLCommand.parse(["--workspace", "feature"])
+        let command = try urlCommand.makeCommand()
+        XCTAssertEqual(command.verb, .browserURL)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
     func testBrowserContentRejectsEmptySelector() throws {
         let content = try BrowserCommand.Content.parse(["--selector", "", "--workspace", "feature"])
         XCTAssertThrowsError(try content.makeCommand())

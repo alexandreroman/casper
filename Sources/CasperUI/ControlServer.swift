@@ -146,6 +146,11 @@ final class ControlServer {
                     await model.controlBrowserContent(selector: selector, in: id), workspace: id))
             }
             return
+        case .browserURL:
+            Task { @MainActor in
+                reply(Self.browserReply(await model.controlBrowserURL(in: id), workspace: id))
+            }
+            return
         case .browserClick:
             guard let selector = command.selector else { reply(.failure("missing selector")); return }
             Task { @MainActor in

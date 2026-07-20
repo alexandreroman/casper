@@ -2475,6 +2475,15 @@ final class AppModel {
         }
     }
 
+    /// Return the browser page's current URL (`window.location.href`).
+    func controlBrowserURL(in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await withBrowserCoordinator(workspaceID) {
+            // `evaluate` returns the string JSON-serialized; unwrap it back to the
+            // raw URL so `url` consumers get a plain string, not a quoted one.
+            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.currentURL()))
+        }
+    }
+
     /// Click the first element matching `selector`.
     func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
         await withBrowserCoordinator(workspaceID) {
