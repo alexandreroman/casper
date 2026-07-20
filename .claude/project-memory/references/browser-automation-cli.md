@@ -11,7 +11,8 @@ type: project
 ([[domain-cli-control-channel]]) so they ship in every build:
 
 - Automation: `screenshot [--out]`, `eval <js> [--raw]`, `content [--selector]
-  [--raw]`, `click <selector>`, `type <selector> <text>`, `key <key> [--selector]`.
+  [--raw]`, `url [--raw]`, `click <selector>`, `type <selector> <text>`,
+  `key <key> [--selector]`.
 - Debug: `console [--level L] [--clear]`, `wait <selector>|--js <expr>
   [--visible|--gone] [--timeout ms]`, `reload [--wait]`.
 
@@ -73,9 +74,10 @@ WebKit-free, unit-testable `BrowserAutomation` module.
   `readyStateCompleteJS`). CLI socket timeout is `waitTimeout/1000 + 5` to outlive
   the app deadline.
 - **Output:** `eval` → `{"result":<json>,…}`; `content` → `{"content":"<html>",…}`;
-  `screenshot` → `{"screenshot":"<path>",…}`; action verbs → `{"workspace":…}`.
-  `--raw` prints the bare value/HTML. A no-match selector / JS error / unwritable
-  path → `{"error":…}`, non-zero exit.
+  `url` → `{"url":"<href>",…}` (`window.location.href`); `screenshot` →
+  `{"screenshot":"<path>",…}`; action verbs → `{"workspace":…}`.
+  `--raw` prints the bare value/HTML/URL. A no-match selector / JS error /
+  unwritable path → `{"error":…}`, non-zero exit.
 
 ## WKScriptMessageHandler retain-cycle gotcha
 

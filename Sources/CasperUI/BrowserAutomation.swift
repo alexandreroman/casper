@@ -96,6 +96,15 @@ enum BrowserAutomation {
         """
     }
 
+    /// Return the page's current URL (`window.location.href`).
+    static func currentURL() -> String {
+        """
+        (function () {
+          return window.location.href;
+        })();
+        """
+    }
+
     // MARK: - Wait predicates
 
     // These return a boolean *expression* (not a full statement): the coordinator

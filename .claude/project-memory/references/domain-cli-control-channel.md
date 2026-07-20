@@ -18,7 +18,8 @@ with a handful of verbs. Full surface:
   `browser load <url>` (same, but a **background** load — does not open/select
   the inspector) / `browser close`
 - `browser screenshot [--out <path>]` / `browser eval <js> [--raw]` /
-  `browser content [--selector <css>] [--raw]` / `browser click <selector>` /
+  `browser content [--selector <css>] [--raw]` / `browser url [--raw]` /
+  `browser click <selector>` /
   `browser type <selector> <text>` / `browser key <key> [--selector <css>]` /
   `browser scroll-up` / `browser scroll-down` /
   `browser scroll-top` / `browser scroll-bottom`
@@ -75,7 +76,7 @@ itself. The socket path is **per-session**: default `casper-control.sock`, or
   surface** and selects the browser tab (mirroring how `diff open` selects the
   diff tab) — there are no browser layout panels; layout panels are
   **terminal-only**. The browser-automation verbs (`screenshot`/`eval`/
-  `content`/`click`/`type`/`key`) act on that same inspector browser surface,
+  `content`/`url`/`click`/`type`/`key`) act on that same inspector browser surface,
   getting-or-creating its `BrowserCoordinator` so they work even when the panel
   is collapsed or was never shown (see [[browser-automation-cli]]).
 - `diff open [<file>]` opens the diff view and scrolls to `<file>` (resolved

@@ -72,6 +72,11 @@ final class BrowserAutomationTests: XCTestCase {
         XCTAssertTrue(js.contains("throw new Error("))
     }
 
+    func testCurrentURLReturnsLocationHref() {
+        let js = BrowserAutomation.currentURL()
+        XCTAssertTrue(js.contains("window.location.href"))
+    }
+
     // MARK: - Escaping
 
     func testSelectorWithDoubleQuoteIsEscaped() {
