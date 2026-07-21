@@ -144,6 +144,52 @@ final class ControlHandlerTests: XCTestCase {
             "opening a terminal in a background workspace must not steal focus from the visible workspace")
     }
 
+    /// Opening a terminal WITH a command in a background (non-selected) workspace must
+    /// trigger the off-screen materialization path, so the queued command actually runs
+    /// instead of waiting for the user to select the workspace. Headless tests have no
+    /// runtime, so we observe the `onMaterializePendingForTest` hook rather than a real PTY.
+    func testOpenTerminalInBackgroundWorkspaceRunsCommand() throws {
+        let workspaceA = Workspace(
+            name: "alpha", worktreePath: "/wt-a", branch: "alpha",
+            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt-a"))))
+        let workspaceB = Workspace(
+            name: "beta", worktreePath: "/wt-b", branch: "beta",
+            portBase: 41000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt-b"))))
+        let space = Space(
+            name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [workspaceA, workspaceB])
+        let url = URL(fileURLWithPath:
+            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
+        let store = SessionStore(fileURL: url)
+        let session = Session(spaces: [space], selectedWorkspaceID: workspaceA.id)
+        let model = AppModel(sessionStore: store, session: session)
+        model.selectWorkspace(workspaceA.id)
+
+        var materializedFor: [UUID] = []
+        model.onMaterializePendingForTest = { materializedFor.append($0) }
+
+        _ = try XCTUnwrap(model.controlOpenTerminal(in: workspaceB.id, command: "echo hi"))
+
+        XCTAssertTrue(
+            materializedFor.contains(workspaceB.id),
+            "a command opened in a background workspace must trigger off-screen materialization")
+    }
+
+    /// Opening a terminal WITH a command in the SELECTED workspace needs no off-screen
+    /// materialization: its views mount the normal way when visible, and draining the
+    /// queued command there would double-run it. Assert the hook does not fire for it.
+    func testOpenTerminalInSelectedWorkspaceDoesNotMaterializeOffscreen() throws {
+        let (model, id) = seededModel()
+
+        var materializedFor: [UUID] = []
+        model.onMaterializePendingForTest = { materializedFor.append($0) }
+
+        _ = try XCTUnwrap(model.controlOpenTerminal(in: id, command: "echo hi"))
+
+        XCTAssertFalse(
+            materializedFor.contains(id),
+            "the selected workspace mounts its views normally; no off-screen materialization is needed")
+    }
+
     func testListTerminalsReportsOpenTerminals() throws {
         let (model, id) = seededModel()
         XCTAssertEqual(model.controlListTerminals(in: id).count, 1)  // the seeded leaf
