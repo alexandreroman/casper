@@ -11,7 +11,7 @@ struct TerminalCommand: ParsableCommand {
 
     struct New: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Open a new terminal as a split to the right.")
+            abstract: "Open a new terminal as a split below.")
 
         @OptionGroup var target: WorkspaceTargetOption
         @Option(name: .long, help: "Command to run in the new terminal.") var command: String?
