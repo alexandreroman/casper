@@ -475,6 +475,8 @@ private struct DiffLineRow: View {
                     .frame(width: gutterWidth, alignment: .trailing)
                 codeText
                     .font(.system(size: 14, design: .monospaced))
+                    .lineLimit(DiffLineStyle.maxWrappedLinesPerRow)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

@@ -1,10 +1,40 @@
 ---
-name: "Diff-view main-thread hang on refresh (diagnosed + fixed)"
-description: "SwiftUI-layout hang in the diff view was caused by frequent-refresh animated LazyVStack relayout, not a long line; fixed by deduping identical-diff refreshes + disabling implicit animations on all diff-view state mutations"
+name: "Diff-view main-thread hang on refresh (animated cause fixed; non-animated variant still open)"
+description: "SwiftUI-layout hang in the diff view: the animated LazyVStack-relayout trigger was fixed (dedup + disablesAnimations), but a second, NON-animated variant still hangs build 766 via unbounded StackLayout/_FlexFrameLayout/StyledText recursion; being bounded via defense-in-depth"
 type: project
 ---
 
-# Diff-view main-thread hang on refresh (diagnosed + fixed)
+# Diff-view main-thread hang on refresh (animated cause fixed; non-animated variant still open)
+
+**2026-07-21 update — the 07-16 fix is INCOMPLETE.** A release build 766
+(post-fix, binary from 2026-07-20) hung again with a diff view open. A live
+`sample` + the watchdog auto-dump (`~/Library/Logs/Casper/hang-20260721-165800.txt`,
+PID 24431, ran 5h then hung at 16:58) show the animation fix HOLDS
+(`NSAnimationContext`/`runAnimationGroup` = 0, vs 8–11 in pre-fix dumps) but the
+main thread still busy-loops (99% CPU, state R) in a **non-animated** unbounded
+layout recursion: `ViewLayoutEngine.explicitAlignment` ⇄
+`LayoutEngineBox.sizeThatFits` ⇄ `StackLayout.sizeChildrenGenerally…` ⇄
+`_FlexFrameLayout.sizeThatFits` ⇄ `StyledTextLayoutEngine`/
+`NSAttributedString.MetricsCache`, deep enough to hit `___chkstk_darwin` (×47).
+So the earlier claim "animation churn is the SOLE cause" is falsified — the
+underlying `StackLayout ⇄ _FlexFrameLayout.sizeThatFits` recursion can diverge
+on a purely content/geometry-driven, non-animated path too. Diagnostic gaps this
+time: os_log did not persist for the release build (`log show` returned 0 lines
+for the subsystem), and the watchdog dump does not embed the `diff refresh:`
+shape line, so the exact triggering file/geometry is unknown.
+
+**Fix in progress (defense-in-depth, 2026-07-21).** Rather than chase the exact
+trigger (unreproducible headlessly — see [[agent-visual-verification-limits]]),
+bound the runaway at the row layer: cap wrapped visual lines per code row
+(`.lineLimit`, the vertical analog of `maxDisplayLineLength`) and remove the
+flexible-frame free variable on the wrapping code text
+(`.fixedSize(horizontal: false, vertical: true)`), on top of the existing
+`maxDisplayLineLength = 2000` and `maxRenderedLines = 3000` caps. NOT yet
+verified on a live visible instance.
+
+---
+
+## Original entry (2026-07-16) — animated variant, fixed
 
 The diff view could hang the main thread for minutes (a real macOS `.hang`
 spindump showed ~378 s stuck) in a **non-converging SwiftUI layout transaction**:

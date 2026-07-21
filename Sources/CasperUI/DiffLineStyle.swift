@@ -24,6 +24,15 @@ enum DiffLineStyle {
     /// (the 120-column convention), so this only ever trims generated content.
     static let maxDisplayLineLength = 2000
 
+    /// Caps how many wrapped visual lines a single diff row renders — the vertical
+    /// analog of `maxDisplayLineLength`. Without it, a long-but-under-cap line in a
+    /// narrow diff panel wraps into dozens of TextKit line fragments; across many
+    /// realized rows that feeds an unbounded StackLayout ⇄ _FlexFrameLayout ⇄
+    /// StyledText layout recursion that hangs the main thread. Real source lines
+    /// (the 120-column convention) wrap to only a handful of visual lines, so this
+    /// only ever bites generated/pathological content.
+    static let maxWrappedLinesPerRow = 40
+
     /// Caps `content` to `maxDisplayLineLength` characters for display. Returns
     /// the original string and `false` when it fits; otherwise the leading
     /// `maxDisplayLineLength` characters and `true`. Exactly the cap length is
