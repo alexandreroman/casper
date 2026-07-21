@@ -2063,11 +2063,11 @@ final class AppModel {
     /// Mirrors the toolbar's "new terminal" action, but targeted at an arbitrary
     /// (non-selected) workspace, and allows overriding the working directory
     /// (defaults to the workspace's worktree) and running a command. The caller
-    /// chooses the split `orientation`, defaulting to `.horizontal` (split-right).
+    /// chooses the split `orientation`, defaulting to `.vertical` (split-down).
     @discardableResult
     func controlOpenTerminal(
         in workspaceID: UUID, command: String? = nil, cwd: String? = nil,
-        orientation: LayoutNode.Orientation = .horizontal
+        orientation: LayoutNode.Orientation = .vertical
     ) -> ControlTerminalInfo? {
         guard let ws = workspace(id: workspaceID),
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
