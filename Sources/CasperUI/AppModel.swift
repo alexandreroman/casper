@@ -236,6 +236,11 @@ final class AppModel {
     /// Test hook fired after each successful/attempted persist. nil in production.
     @ObservationIgnored var onPersistForTest: (() -> Void)?
 
+    /// Test-only: fired when `materializePendingSurfacesOffscreen` is asked to bring up a
+    /// background workspace's pending surfaces, so headless tests (which have no runtime) can
+    /// assert the background command path was triggered. Carries the workspace id.
+    @ObservationIgnored var onMaterializePendingForTest: ((UUID) -> Void)?
+
     /// Delivers a local notification for a workspace. Injectable for tests; the
     /// default posts a best-effort `UserNotifications` request. Skipped entirely when
     /// the process has no bundle identifier (a bare `swift run` executable): on macOS
@@ -1228,6 +1233,7 @@ final class AppModel {
     /// Used only for control-channel (silent) creation; UI creation selects the
     /// workspace, which mounts its views the normal way. No-op until the runtime exists.
     private func materializePendingSurfacesOffscreen(in workspace: Workspace) {
+        onMaterializePendingForTest?(workspace.id)
         guard runtime != nil else { return }
         let pending = LayoutTree.surfaces(workspace.layout).filter { pendingInitialInput[$0.id] != nil }
         guard !pending.isEmpty else { return }
@@ -2071,6 +2077,13 @@ final class AppModel {
         if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: orientation, side: .after, surface: surface)
+        // A background (non-selected) workspace's views never mount on their own, so a
+        // queued command would otherwise never run. Bring its pending surfaces up off-screen
+        // now — mirroring the silent-creation path in createLinkedWorkspace. Re-fetch the
+        // workspace fresh: the earlier `ws` predates the split and lacks the new surface.
+        if command != nil, selectedWorkspaceID != workspaceID, let refreshed = workspace(id: workspaceID) {
+            materializePendingSurfacesOffscreen(in: refreshed)
+        }
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
     }
 
