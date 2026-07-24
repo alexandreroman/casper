@@ -7,6 +7,10 @@ import XCTest
 final class WorktreeManagerTests: XCTestCase {
     private var root: URL!
     private var repoDir: URL!
+    /// A directory created OUTSIDE `root` by the symlink-containment test; torn
+    /// down separately so it survives (and is cleaned up after) an assertion
+    /// failure inside the test body.
+    private var externalDir: URL?
 
     override func setUpWithError() throws {
         root = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -19,6 +23,9 @@ final class WorktreeManagerTests: XCTestCase {
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: root)
+        if let externalDir {
+            try? FileManager.default.removeItem(at: externalDir)
+        }
     }
 
     /// Seed a repo with one commit via CasperGit (mirrors the CasperGit fixture).
@@ -129,10 +136,138 @@ final class WorktreeManagerTests: XCTestCase {
             repoPath: repoDir.path, name: "feature",
             worktreePath: wtPath, base: nil)
 
-        try WorktreeManager.remove(repoPath: repoDir.path, name: "feature")
+        try WorktreeManager.remove(repoPath: repoDir.path, name: "feature", worktreePath: wtPath)
 
         XCTAssertEqual(try WorktreeManager.list(repoPath: repoDir.path).count, 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+    }
+
+    /// Failure mode 1: a read-only directory (mode 0555) inside the working tree
+    /// — the classic Go module / package-cache case — blocks libgit2's own
+    /// recursive rmdir. The robust removal must still delete the directory.
+    func testRemoveDeletesWorktreeWithReadOnlyEntries() throws {
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        // A read-only directory containing a read-only file: unlinking the file
+        // needs write permission on its 0555 parent, which the owner lacks.
+        let cache = URL(fileURLWithPath: wtPath).appendingPathComponent("cache")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        try "cached\n".write(
+            to: cache.appendingPathComponent("locked.txt"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555], ofItemAtPath: cache.path)
+        defer {
+            // Restore write access so a failed assertion still lets tearDown clean up.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: cache.path)
+        }
+
+        try WorktreeManager.remove(repoPath: repoDir.path, name: "feature", worktreePath: wtPath)
+        try WorktreeManager.deleteBranch(repoPath: repoDir.path, name: "feature")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+        XCTAssertFalse(try Repository.open(atPath: repoDir.path).branchExists("feature"))
+    }
+
+    /// Failure mode 2: a half-completed prior prune deletes the libgit2 admin
+    /// entry before the working tree, orphaning the directory. On retry the admin
+    /// entry is already gone, so the removal must fall back to deleting the
+    /// directory itself and tolerate the missing metadata without error.
+    func testRemoveDeletesOrphanedWorktreeDirectory() throws {
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        // Simulate the prior half-prune: drop only the admin entry, leaving the
+        // working-tree directory on disk.
+        let adminEntry = repoDir.appendingPathComponent(".git/worktrees/feature")
+        try FileManager.default.removeItem(at: adminEntry)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wtPath))
+
+        XCTAssertNoThrow(
+            try WorktreeManager.remove(repoPath: repoDir.path, name: "feature", worktreePath: wtPath))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+    }
+
+    /// Safety-critical containment: a symlink INSIDE the worktree pointing at a
+    /// target OUTSIDE it must never be followed while permissions are restored
+    /// for removal. After removal the external target must still exist with its
+    /// mode untouched (not relaxed to 0700/0600), and the worktree gone.
+    func testRemoveDoesNotFollowSymlinkOutOfWorktree() throws {
+        // An external target with a distinctive, restrictive mode, living OUTSIDE
+        // `root` so only an errant chmod-through-symlink could change it.
+        let external = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("casper-external-\(UUID().uuidString)")
+        externalDir = external
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: external.path)
+        let externalFile = external.appendingPathComponent("keep.txt")
+        try "external\n".write(to: externalFile, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644], ofItemAtPath: externalFile.path)
+        let dirModeBefore = try mode(of: external.path)
+        let fileModeBefore = try mode(of: externalFile.path)
+
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try FileManager.default.createSymbolicLink(
+            at: URL(fileURLWithPath: wtPath).appendingPathComponent("escape-link"),
+            withDestinationURL: external)
+
+        try WorktreeManager.remove(repoPath: repoDir.path, name: "feature", worktreePath: wtPath)
+        try WorktreeManager.deleteBranch(repoPath: repoDir.path, name: "feature")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: externalFile.path))
+        XCTAssertEqual(try mode(of: external.path), dirModeBefore)
+        XCTAssertEqual(try mode(of: externalFile.path), fileModeBefore)
+        XCTAssertEqual(dirModeBefore, 0o700)
+        XCTAssertEqual(fileModeBefore, 0o644)
+    }
+
+    /// Containment for the ROOT itself: when the path handed to
+    /// `forceRemoveDirectory` is a symlink to an out-of-tree target, restoring
+    /// permissions must not chmod through it. Only the link is unlinked; the
+    /// external target keeps its mode.
+    func testForceRemoveDirectoryDoesNotChmodSymlinkRootTarget() throws {
+        let external = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("casper-external-\(UUID().uuidString)")
+        externalDir = external
+        try FileManager.default.createDirectory(at: external, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: external.path)
+        let modeBefore = try mode(of: external.path)
+
+        let link = root.appendingPathComponent("root-link").path
+        try FileManager.default.createSymbolicLink(
+            atPath: link, withDestinationPath: external.path)
+
+        try WorktreeManager.forceRemoveDirectory(at: link)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: link))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: external.path))
+        XCTAssertEqual(try mode(of: external.path), modeBefore)
+        XCTAssertEqual(modeBefore, 0o755)
+    }
+
+    /// Idempotency: `forceRemoveDirectory` on an already-missing path is a no-op
+    /// success, never an error.
+    func testForceRemoveDirectoryOnMissingPathSucceeds() throws {
+        let missing = root.appendingPathComponent("does-not-exist").path
+        XCTAssertNoThrow(try WorktreeManager.forceRemoveDirectory(at: missing))
+    }
+
+    /// The POSIX permission bits of the item at `path`, masked to the standard
+    /// 12 mode bits so comparisons ignore incidental higher-order flags.
+    private func mode(of path: String) throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        let permissions = try XCTUnwrap(attributes[.posixPermissions] as? Int)
+        return permissions & 0o7777
     }
 
     func testIsCleanReflectsWorkingTree() throws {

@@ -2629,9 +2629,11 @@ final class AppModel {
     /// Destroy a LINKED workspace: prune its worktree (deletes the folder),
     /// delete its branch in the origin repo, then drop it from the UI. Refuses a
     /// primary workspace. Git cleanup runs BEFORE the UI removal so a git failure
-    /// leaves the workspace intact and retryable. Pruning must precede the branch
-    /// delete (a checked-out branch cannot be deleted); pruning is skipped when the
-    /// worktree is already gone, and the branch delete is idempotent. Shared by the
+    /// leaves the workspace intact and retryable. Removal must precede the branch
+    /// delete (a checked-out branch cannot be deleted); `WorktreeManager.remove`
+    /// guarantees the working-tree directory is gone from disk even with read-only
+    /// entries or a dangling admin entry, and the branch delete is idempotent.
+    /// Shared by the
     /// `casper workspace delete` control-channel verb and the sidebar's "Merge and
     /// Close Workspace…"/"Delete Workspace…" actions.
     @discardableResult
@@ -2644,11 +2646,9 @@ final class AppModel {
         }
         let repoPath = spaces[at.space].folderPath
         let branch = spaces[at.space].workspaces[at.workspace].branch
+        let worktreePath = spaces[at.space].workspaces[at.workspace].worktreePath
         do {
-            let names = (try? WorktreeManager.list(repoPath: repoPath).map(\.name)) ?? []
-            if names.contains(branch) {
-                try WorktreeManager.remove(repoPath: repoPath, name: branch)
-            }
+            try WorktreeManager.remove(repoPath: repoPath, name: branch, worktreePath: worktreePath)
             try WorktreeManager.deleteBranch(repoPath: repoPath, name: branch)
         } catch {
             return .failure(WorkspaceDeleteError(message: "delete failed: \(error)"))
