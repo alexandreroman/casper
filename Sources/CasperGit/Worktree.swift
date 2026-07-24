@@ -114,4 +114,30 @@ extension Repository {
 
         try gitCheck(git_worktree_prune(worktree, &options))
     }
+
+    /// Prune only the admin metadata (`.git/worktrees/<name>`) of the worktree
+    /// named `name`, leaving its working-tree directory on disk untouched. Meant
+    /// to run *after* the working tree has already been removed (e.g. by
+    /// `FileManager`), so it drops a now-dangling admin entry without repeating
+    /// `git_worktree_prune`'s "delete admin entry, then the working tree" ordering
+    /// — the trap that orphans the directory when the working-tree rmdir fails.
+    ///
+    /// Sets `GIT_WORKTREE_PRUNE_VALID` (prune even if the working tree still looks
+    /// valid) but never `GIT_WORKTREE_PRUNE_WORKING_TREE`, so no directory is
+    /// touched. Idempotent: a `GIT_ENOTFOUND` lookup (the entry is already gone)
+    /// is a no-op success.
+    public func pruneWorktreeMetadata(name: String) throws {
+        var worktree: OpaquePointer?
+        let code = git_worktree_lookup(&worktree, pointer, name)
+        defer { git_worktree_free(worktree) }
+        if code == GIT_ENOTFOUND.rawValue { return }
+        try gitCheck(code)
+
+        var options = git_worktree_prune_options()
+        try gitCheck(git_worktree_prune_options_init(
+            &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION)))
+        options.flags = GIT_WORKTREE_PRUNE_VALID.rawValue
+
+        try gitCheck(git_worktree_prune(worktree, &options))
+    }
 }

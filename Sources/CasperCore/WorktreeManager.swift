@@ -109,7 +109,7 @@ public enum WorktreeManager {
             _ = try WorkspaceFileCopier.copy(
                 patterns: patterns, from: repoPath, to: worktreePath)
         } catch {
-            try? remove(repoPath: repoPath, name: name)
+            try? remove(repoPath: repoPath, name: name, worktreePath: worktreePath)
             try? deleteBranch(repoPath: repoPath, name: name)
             throw WorktreeError(.fileCopyFailed("\(error)"))
         }
@@ -125,10 +125,69 @@ public enum WorktreeManager {
         }
     }
 
-    /// Remove the worktree named `name` from the repository at `repoPath`.
-    public static func remove(repoPath: String, name: String) throws {
+    /// Remove the worktree named `name` (working tree at `worktreePath`) from the
+    /// repository at `repoPath`, guaranteeing the working-tree directory is gone
+    /// from disk.
+    ///
+    /// Deletes the directory with `forceRemoveDirectory` first — robust against
+    /// read-only entries (e.g. a 0555 Go module cache) that defeat libgit2's own
+    /// recursive rmdir — then prunes only the libgit2 admin metadata. Doing it in
+    /// this order sidesteps `git_worktree_prune`'s "delete admin entry before the
+    /// working tree" trap, which silently orphans the directory when the rmdir
+    /// fails. Idempotent: an already-removed directory and an already-pruned admin
+    /// entry are both no-ops.
+    public static func remove(repoPath: String, name: String, worktreePath: String) throws {
+        try forceRemoveDirectory(at: worktreePath)
         let repo = try openRepo(repoPath)
-        try mapGitError { try repo.pruneWorktree(name: name) }
+        try mapGitError { try repo.pruneWorktreeMetadata(name: name) }
+    }
+
+    /// Recursively delete the directory tree at `path`, guaranteeing removal even
+    /// when it contains read-only entries. Read-only directories (mode 0555) can't
+    /// have their contents unlinked, so owner write+execute is first restored on
+    /// the root and every directory beneath it (and write on regular files) before
+    /// `FileManager.removeItem` runs. A non-existent path is a no-op success
+    /// (idempotent). Uses `Foundation` only.
+    public static func forceRemoveDirectory(at path: String) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: path) else { return }
+
+        restoreOwnerPermissions(under: path, using: fileManager)
+        try fileManager.removeItem(atPath: path)
+    }
+
+    /// Grant the owner write+execute on `path` and every directory beneath it, and
+    /// write on every regular file, so nothing read-only blocks removal. Symlinks
+    /// are skipped so a link's target outside the tree is never touched — including
+    /// the root itself: `setAttributes` is `chmod` (not `lchmod`) and would follow
+    /// a symlinked root out of the tree, so a symlinked root is left untouched for
+    /// `removeItem` to simply unlink. The root is typed without resolving its final
+    /// link (a regular-file root gets 0600, a real directory 0700).
+    /// Best-effort: per-item failures are ignored, since the following
+    /// `removeItem` is what surfaces a genuine problem.
+    private static func restoreOwnerPermissions(under path: String, using fileManager: FileManager) {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
+        let rootURL = URL(fileURLWithPath: path)
+
+        let rootValues = try? rootURL.resourceValues(forKeys: Set(keys))
+        if rootValues?.isSymbolicLink == true { return }
+        setOwnerWritable(path, isDirectory: rootValues?.isDirectory == true, using: fileManager)
+
+        guard let enumerator = fileManager.enumerator(
+            at: rootURL, includingPropertiesForKeys: keys) else { return }
+
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            if values?.isSymbolicLink == true { continue }
+            setOwnerWritable(url.path, isDirectory: values?.isDirectory == true, using: fileManager)
+        }
+    }
+
+    /// Add owner write (and, for directories, execute) permissions to the item at
+    /// `path`, ignoring any failure.
+    private static func setOwnerWritable(_ path: String, isDirectory: Bool, using fileManager: FileManager) {
+        let mode = isDirectory ? 0o700 : 0o600
+        try? fileManager.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
     }
 
     /// Delete the local branch `name` in the repository at `repoPath`. Idempotent.
