@@ -169,14 +169,13 @@ Added now:
   EdDSA key exists). `sha256` is published in the `.sha256` sidecar for manual
   verification in the meantime.
 
-### Future step (documented, out of scope now)
+### Future step — since shipped
 
-Integrate Sparkle 2 via SPM into `CasperUI`; generate the EdDSA keypair with
-Sparkle's `generate_keys`; sign each zip with `sign_update` in the release job
-and inject the signature into the appcast; set `SUPublicEDKey` in `Info.plist`.
-Note: for a Sparkle update to install past Gatekeeper cleanly the `.app` should
-be signed — this milestone reintroduces signing/notarization, consistent with
-deferring them today.
+Sparkle 2 is now integrated: see
+[`sparkle-auto-update.md`](sparkle-auto-update.md). The reserved
+`sparkle:edSignature="__TODO__"` slot carries a real signature, and
+`SUPublicEDKey` is set. Signing/notarization stayed out of scope — the EdDSA
+signature, not a Developer ID, is what authenticates an update.
 
 ## Data Flow
 

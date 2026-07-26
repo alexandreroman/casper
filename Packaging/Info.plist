@@ -32,9 +32,25 @@
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
-    <!-- Auto-update (Sparkle) — reserved, inert until Sparkle is integrated. -->
+    <!-- Auto-update (Sparkle). Casper ships ad-hoc signed (no Developer ID, no
+         notarization), so Sparkle cannot validate an update by code-signing
+         continuity: SUPublicEDKey below is the ONLY trust anchor. Every appcast
+         enclosure is signed with the matching private seed (the SPARKLE_PRIVATE_KEY
+         repository secret) by the release workflow; an unsigned or mis-signed
+         archive is rejected. Only the release bundle carries these keys —
+         Info-dev.plist omits them, which is what keeps SoftwareUpdater inert in
+         development builds. -->
     <key>SUFeedURL</key>
     <string>https://github.com/alexandreroman/casper/releases/latest/download/appcast.xml</string>
-    <!-- TODO: SUPublicEDKey — set to the EdDSA public key once Sparkle's generate_keys has run. -->
+    <key>SUPublicEDKey</key>
+    <string>+y5n3ii5Xyp19iA26QmYeNbkXNyFqoePDqftYz6kTWE=</string>
+    <!-- Check daily in the background; the user still confirms every install
+         (SUAutomaticallyUpdate is deliberately left unset/false). Setting this
+         explicitly also suppresses Sparkle's first-launch "check automatically?"
+         prompt. -->
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>

@@ -77,12 +77,40 @@ fi
 # DiffHighlighter mirrors it to the app root at runtime (where Bundle.module looks).
 cp -R "$BIN_DIR/HighlightSwift_HighlightSwift.bundle" "$APP/Contents/Resources/HighlightSwift_HighlightSwift.bundle"
 
+# Sparkle: embed the auto-update framework the release binary links against.
+# The binary references it as @rpath/Sparkle.framework/Versions/B/Sparkle, and
+# dylibbundler below points @rpath at Contents/Frameworks, so dropping the
+# framework there is all the wiring needed.
+#
+# ditto, not cp: this is a versioned framework bundle whose Versions/Current
+# symlinks and Apple code signature must survive the copy byte for byte. That
+# signature seals Autoupdate, Updater.app and the XPC services nested inside —
+# Sparkle launches those as separate processes during an install, and a broken
+# seal there fails the update at the very last step.
+SPARKLE_FRAMEWORK="$BIN_DIR/Sparkle.framework"
+if [ ! -d "$SPARKLE_FRAMEWORK" ]; then
+    echo "error: $SPARKLE_FRAMEWORK not found (run 'make release' first)" >&2
+    exit 1
+fi
+ditto "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/Sparkle.framework"
+echo "Embedded Sparkle.framework -> Contents/Frameworks/"
+
 # Copy non-system dylibs into Contents/Frameworks and rewrite load commands to
 # @executable_path/../Frameworks (recurses into transitive dependencies).
+#
+# --ignore keeps dylibbundler away from Sparkle: left to itself it would resolve
+# @rpath/Sparkle.framework/Versions/B/Sparkle, flatten that Mach-O into
+# Frameworks/Sparkle and repoint the load command at it. The app would still
+# launch, but Sparkle locates Autoupdate and its nibs through the bundle of its
+# own class — which would then be Casper.app instead of the framework — and
+# every update would fail. Copied whole above, the @rpath reference resolves to
+# the framework as-is.
 dylibbundler \
     --fix-file "$APP/Contents/MacOS/casper" \
     --dest-dir "$APP/Contents/Frameworks" \
     --install-path "@executable_path/../Frameworks" \
+    --ignore "$BIN_DIR" \
+    --ignore "$APP/Contents/Frameworks" \
     --bundle-deps --create-dir --overwrite-files
 
 # dylibbundler rewrites each of the binary's pre-existing rpaths to the same
@@ -101,12 +129,30 @@ install_name_tool -add_rpath "$RPATH" "$BUNDLED_BIN"
 find "$APP/Contents/Frameworks" -type f -name '*.dylib' -exec codesign --force --sign - {} +
 codesign --force --sign - "$BUNDLED_BIN"
 
+# Sparkle is deliberately left out of the re-signing above: it keeps the Apple
+# signature it shipped with. Assert the framework survived dylibbundler intact —
+# a flattened Sparkle only shows up as a failed update months later.
+if [ -e "$APP/Contents/Frameworks/Sparkle" ]; then
+    echo "error: dylibbundler flattened Sparkle.framework into Contents/Frameworks/Sparkle" >&2
+    exit 1
+fi
+if ! otool -L "$BUNDLED_BIN" | grep -q 'Sparkle\.framework/Versions/B/Sparkle'; then
+    echo "error: the binary no longer loads Sparkle from its framework bundle" >&2
+    otool -L "$BUNDLED_BIN" | grep -i sparkle >&2 || true
+    exit 1
+fi
+codesign --verify "$APP/Contents/Frameworks/Sparkle.framework"
+
 # Self-check (hard fail): every Mach-O in the bundle must reference only system
 # libraries or relocatable (@rpath/@executable_path/@loader_path) paths. Any
 # absolute Homebrew/local path means the app would not launch on a clean Mac.
 non_relocatable() {
     local file="$1"
-    otool -L "$file" | tail -n +2 | awk '{print $1}' | while read -r dep; do
+    # Only tab-indented lines are load commands. Filtering on the tab (rather than
+    # dropping the first line) is what keeps universal binaries honest: for a fat
+    # Mach-O like Sparkle, otool repeats a "<path> (architecture arm64):" header
+    # per slice, and those headers are absolute paths that read as violations.
+    otool -L "$file" | awk '/^\t/ {print $1}' | while read -r dep; do
         case "$dep" in
             /usr/lib/*|/System/*|@rpath/*|@executable_path/*|@loader_path/*) ;;
             *) echo "$dep" ;;
@@ -122,7 +168,9 @@ while IFS= read -r macho; do
         echo "$bad" | sed 's/^/  /' >&2
         status=1
     fi
-done < <(printf '%s\n' "$APP/Contents/MacOS/casper"; find "$APP/Contents/Frameworks" -type f -name '*.dylib')
+done < <(printf '%s\n' "$APP/Contents/MacOS/casper" \
+    "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"; \
+    find "$APP/Contents/Frameworks" -type f -name '*.dylib')
 
 if [ "$status" -ne 0 ]; then
     echo "error: bundle contains non-relocatable dependencies — would not launch on a clean Mac" >&2

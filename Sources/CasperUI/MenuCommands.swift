@@ -18,11 +18,26 @@ import SwiftUI
 /// - View   ← `.sidebar`   (`.toolbar` emptied)
 /// - Format ← `.textFormatting` emptied (menu removed)
 /// - Help   ← `.help` emptied (menu removed)
-/// - App / Window ← SwiftUI defaults
+/// - App    ← `.appInfo` (the one *additive* group: "Check for Updates…"),
+///            everything else SwiftUI defaults
+/// - Window ← SwiftUI defaults
 struct CasperCommands: Commands {
     let model: AppModel
 
     var body: some Commands {
+        // App menu: offer the update check only when this bundle is actually wired
+        // for Sparkle (see SoftwareUpdater) — a dead menu item is worse than none.
+        // `isEnabled` is constant for the process lifetime, so unlike the enable-state
+        // flags below it makes this body observe nothing volatile and cannot provoke
+        // the menu-bar resync flicker.
+        CommandGroup(after: .appInfo) {
+            if SoftwareUpdater.shared.isEnabled {
+                Button { SoftwareUpdater.shared.checkForUpdates() } label: {
+                    Label("Check for Updates…", systemImage: "arrow.down.circle")
+                }
+            }
+        }
+
         // File menu.
         Group {
             CommandGroup(replacing: .newItem) {

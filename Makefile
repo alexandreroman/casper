@@ -32,11 +32,19 @@ DEV_APP := Casper-dev.app
 build:
 	swift build
 	@rm -rf $(DEV_APP)
-	@mkdir -p $(DEV_APP)/Contents/MacOS $(DEV_APP)/Contents/Resources
+	@mkdir -p $(DEV_APP)/Contents/MacOS $(DEV_APP)/Contents/Resources $(DEV_APP)/Contents/Frameworks
 	@cp .build/debug/casper $(DEV_APP)/Contents/MacOS/casper
 	@cp Packaging/Sounds/NotificationAlert.aiff $(DEV_APP)/Contents/Resources/NotificationAlert.aiff
 	@cp Packaging/AppIcon/AppIconDev.icns $(DEV_APP)/Contents/Resources/AppIconDev.icns
 	@cp -R .build/debug/HighlightSwift_HighlightSwift.bundle $(DEV_APP)/Contents/Resources/HighlightSwift_HighlightSwift.bundle
+# Sparkle is linked, so dyld must find it even though the updater stays inert in
+# dev builds (Info-dev.plist carries no SUFeedURL/SUPublicEDKey). SwiftPM puts the
+# framework next to the binary in .build/debug, where the binary finds it via
+# @loader_path — copying the binary out of there breaks that, hence the framework
+# copy plus an @executable_path rpath, mirroring the release bundle.
+# install_name_tool warns that it invalidates the signature; codesign below re-signs.
+	@ditto .build/debug/Sparkle.framework $(DEV_APP)/Contents/Frameworks/Sparkle.framework
+	@install_name_tool -add_rpath @executable_path/../Frameworks $(DEV_APP)/Contents/MacOS/casper
 	@sed -e "s/__DEV_BUNDLE_ID__/$(DEV_BUNDLE_ID)/g" \
 		Packaging/Info-dev.plist > $(DEV_APP)/Contents/Info.plist
 	@if [ -n "$(CODESIGN_IDENTITY)" ]; then \

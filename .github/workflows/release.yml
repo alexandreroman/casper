@@ -74,17 +74,41 @@ jobs:
           BUNDLE: ${{ steps.version.outputs.bundle }}
         run: make dist SHORT_VERSION="$SHORT" BUNDLE_VERSION="$BUNDLE"
 
+      # Casper is ad-hoc signed, so this EdDSA signature is the only thing that
+      # proves an update came from us — a missing secret must fail the release,
+      # never silently publish a feed every installed copy would reject.
+      - name: Sign the archive (Sparkle EdDSA)
+        id: sign
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "error: the SPARKLE_PRIVATE_KEY repository secret is not set" >&2
+            echo "       (base64 EdDSA private seed — see" \
+                 ".superpowers/plans/sparkle-auto-update.md)" >&2
+            exit 1
+          fi
+          KEY_FILE="$(mktemp)"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
+          SIGN_UPDATE="$(Scripts/sparkle-tool.sh sign_update)"
+          SIG="$("$SIGN_UPDATE" --ed-key-file "$KEY_FILE" -p "dist/Casper-${SHORT}-arm64.zip")"
+          "$SIGN_UPDATE" --ed-key-file "$KEY_FILE" --verify "dist/Casper-${SHORT}-arm64.zip" "$SIG"
+          echo "signature=$SIG" >> "$GITHUB_OUTPUT"
+
       - name: Generate appcast
         env:
           SHORT: ${{ steps.version.outputs.short }}
           BUNDLE: ${{ steps.version.outputs.bundle }}
           TAG: ${{ steps.version.outputs.tag }}
+          SIGNATURE: ${{ steps.sign.outputs.signature }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           ZIP="dist/Casper-${SHORT}-arm64.zip"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Casper-${SHORT}-arm64.zip"
           LEN="$(stat -f%z "$ZIP")"
-          Scripts/update-appcast.sh "$SHORT" "$BUNDLE" "$URL" "$LEN"
+          Scripts/update-appcast.sh "$SHORT" "$BUNDLE" "$URL" "$LEN" "$SIGNATURE"
 
       - name: Publish release
         if: github.event_name == 'push'

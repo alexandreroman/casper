@@ -14,8 +14,10 @@ and the map (`INDEX.md`). The `.superpowers/sdd/` scratch stays out of Git.
 - UI: SwiftUI + targeted AppKit. Browser: `WKWebView`. Notifications:
   `UserNotifications`. IPC: `Network.framework`.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),
-  **swift-argument-parser**, **libgit2**, and **HighlightSwift** (syntax
-  highlighting for the diff view). Everything else uses built-in macOS
+  **swift-argument-parser**, **libgit2**, **HighlightSwift** (syntax
+  highlighting for the diff view), and **Sparkle** (auto-update — see
+  [`.superpowers/plans/sparkle-auto-update.md`](.superpowers/plans/sparkle-auto-update.md)).
+  Everything else uses built-in macOS
   frameworks. (`swiftui-introspect` was tried for the diff view's frozen file
   header but dropped — its `.introspect(.scrollView, on: .macOS(.v26))`
   closure fires unreliably on macOS 26, a currently open upstream bug:

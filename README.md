@@ -47,6 +47,11 @@ Casper is distributed as a standalone `Casper.app`.
 **Requirements:** macOS 15 or later, on Apple Silicon (arm64). On first launch,
 Casper wires up its code-agent integration for you — no manual setup.
 
+**Updates:** Casper checks for new releases once a day and offers them through
+**Casper ▸ Check for Updates…**; nothing is installed without your say-so. Every
+update is verified against a signing key embedded in the app, so a tampered
+download is refused.
+
 ## Building from source
 
 The rest of this document is for contributors who want to build Casper locally.
@@ -128,7 +133,11 @@ for the full rationale.
 Tests run on every push to `main` and every pull request via GitHub Actions on
 `macos-15` ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)). Tagging a
 `v*` release builds and publishes `Casper.app` as a GitHub Release
-([`.github/workflows/release.yml`](./.github/workflows/release.yml)).
+([`.github/workflows/release.yml`](./.github/workflows/release.yml)), along with
+the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
+the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
+missing — an unsigned feed would be rejected by every installed copy. See
+[`.superpowers/plans/sparkle-auto-update.md`](./.superpowers/plans/sparkle-auto-update.md).
 
 ## Architecture
 

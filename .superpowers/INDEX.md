@@ -55,6 +55,9 @@ is [`status.md`](status.md).
 - [`plans/github-release.md`](plans/github-release.md) — GitHub release workflow
   publishing a downloadable `Casper.app` (`.github/workflows/release.yml`)
   (**shipped**).
+- [`plans/sparkle-auto-update.md`](plans/sparkle-auto-update.md) — in-app
+  auto-update via Sparkle, anchored on an EdDSA-signed appcast because Casper
+  ships ad-hoc signed (**shipped**).
 - [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
   — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
   skill's Screen Recording grant survives rebuilds (**shipped**).

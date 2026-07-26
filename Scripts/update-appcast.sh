@@ -3,18 +3,26 @@
 # published on the latest GitHub release, or the template on the very first
 # release, then prepend a new <item> for this version (newest first).
 #
-# Usage: Scripts/update-appcast.sh <short-version> <bundle-version> <zip-url> <zip-length>
+# Usage: Scripts/update-appcast.sh <short-version> <bundle-version> <zip-url> <zip-length> <ed-signature>
 set -euo pipefail
 
 SHORT_VERSION="${1:?}"
 BUNDLE_VERSION="${2:?}"
 ZIP_URL="${3:?}"
 ZIP_LEN="${4:?}"
+# No apostrophe in this message: bash parses quotes inside ${var:?word}, and a
+# stray one silently swallows the rest of the script.
+ED_SIGNATURE="${5:?missing EdDSA signature — sign the zip with sign_update first}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="${GITHUB_REPOSITORY:-alexandreroman/casper}"
 OUT="$ROOT/appcast.xml"
 PUBDATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+# The human-readable release page for this version, derived from the enclosure
+# URL: .../releases/download/<tag>/<file> -> .../releases/tag/<tag>.
+ASSET_DIR="${ZIP_URL%/*}"
+RELEASE_TAG="${ASSET_DIR##*/}"
+RELEASE_URL="${ASSET_DIR%/releases/download/*}/releases/tag/${RELEASE_TAG}"
 
 # Seed from the previously published feed. Only a genuine 404 (no prior feed)
 # falls back to the empty template; any other outcome is fatal so a transient
@@ -34,11 +42,13 @@ IFS= read -r -d '' ITEM <<EOF || true
     <!-- ITEMS -->
     <item>
       <title>Casper ${SHORT_VERSION}</title>
+      <link>${RELEASE_URL}</link>
       <sparkle:version>${BUNDLE_VERSION}</sparkle:version>
       <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
       <pubDate>${PUBDATE}</pubDate>
-      <enclosure url="${ZIP_URL}" length="${ZIP_LEN}" type="application/octet-stream" sparkle:edSignature="__TODO__" />
+      <description><![CDATA[<h2>Casper ${SHORT_VERSION}</h2><p><a href="${RELEASE_URL}">Read the full release notes on GitHub</a>.</p>]]></description>
+      <enclosure url="${ZIP_URL}" length="${ZIP_LEN}" type="application/octet-stream" sparkle:edSignature="${ED_SIGNATURE}" />
     </item>
 EOF
 
