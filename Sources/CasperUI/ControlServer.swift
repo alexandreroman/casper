@@ -129,32 +129,35 @@ final class ControlServer {
             let url = command.url
             Task { @MainActor in
                 reply(Self.browserReply(
-                    await model.controlBrowserScreenshot(in: id, to: path, width: width, height: height, url: url),
+                    await model.browserAutomation.controlBrowserScreenshot(
+                        in: id, to: path, width: width, height: height, url: url),
                     workspace: id))
             }
             return
         case .browserEval:
             guard let script = command.script else { reply(.failure("missing script")); return }
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserEval(script, in: id), workspace: id))
+                reply(Self.browserReply(
+                    await model.browserAutomation.controlBrowserEval(script, in: id), workspace: id))
             }
             return
         case .browserContent:
             let selector = command.selector
             Task { @MainActor in
                 reply(Self.browserReply(
-                    await model.controlBrowserContent(selector: selector, in: id), workspace: id))
+                    await model.browserAutomation.controlBrowserContent(selector: selector, in: id), workspace: id))
             }
             return
         case .browserURL:
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserURL(in: id), workspace: id))
+                reply(Self.browserReply(await model.browserAutomation.controlBrowserURL(in: id), workspace: id))
             }
             return
         case .browserClick:
             guard let selector = command.selector else { reply(.failure("missing selector")); return }
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserClick(selector: selector, in: id), workspace: id))
+                reply(Self.browserReply(
+                    await model.browserAutomation.controlBrowserClick(selector: selector, in: id), workspace: id))
             }
             return
         case .browserType:
@@ -162,7 +165,8 @@ final class ControlServer {
             let value = command.value ?? ""
             Task { @MainActor in
                 reply(Self.browserReply(
-                    await model.controlBrowserType(selector: selector, value: value, in: id), workspace: id))
+                    await model.browserAutomation.controlBrowserType(selector: selector, value: value, in: id),
+                    workspace: id))
             }
             return
         case .browserKey:
@@ -170,14 +174,16 @@ final class ControlServer {
             let selector = command.selector
             Task { @MainActor in
                 reply(Self.browserReply(
-                    await model.controlBrowserKey(key: key, selector: selector, in: id), workspace: id))
+                    await model.browserAutomation.controlBrowserKey(key: key, selector: selector, in: id),
+                    workspace: id))
             }
             return
         case .browserConsole:
             let level = command.level.flatMap { ConsoleLevel(rawValue: $0) }
             Task { @MainActor in
                 reply(Self.browserReply(
-                    await model.controlBrowserConsole(level: level, clear: command.clear ?? false, in: id),
+                    await model.browserAutomation.controlBrowserConsole(
+                        level: level, clear: command.clear ?? false, in: id),
                     workspace: id))
             }
             return
@@ -187,7 +193,7 @@ final class ControlServer {
             }
             let timeout = command.waitTimeout ?? 5000
             Task { @MainActor in
-                switch await model.controlBrowserWait(
+                switch await model.browserAutomation.controlBrowserWait(
                     js: predicate, timeoutMs: timeout, description: description, in: id) {
                 case .success: reply(.success(workspace: id.uuidString))
                 case .failure(let error): reply(.failure(error.message))
@@ -198,7 +204,8 @@ final class ControlServer {
             let waitReady = command.waitReady ?? false
             let timeout = command.waitTimeout ?? 5000
             Task { @MainActor in
-                switch await model.controlBrowserReload(waitReady: waitReady, timeoutMs: timeout, in: id) {
+                switch await model.browserAutomation.controlBrowserReload(
+                    waitReady: waitReady, timeoutMs: timeout, in: id) {
                 case .success: reply(.success(workspace: id.uuidString))
                 case .failure(let error): reply(.failure(error.message))
                 }
@@ -206,22 +213,26 @@ final class ControlServer {
             return
         case .browserScrollUp:
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserScroll(down: false, in: id), workspace: id))
+                reply(Self.browserReply(
+                    await model.browserAutomation.controlBrowserScroll(down: false, in: id), workspace: id))
             }
             return
         case .browserScrollDown:
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserScroll(down: true, in: id), workspace: id))
+                reply(Self.browserReply(
+                    await model.browserAutomation.controlBrowserScroll(down: true, in: id), workspace: id))
             }
             return
         case .browserScrollTop:
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserScrollToEdge(bottom: false, in: id), workspace: id))
+                reply(Self.browserReply(
+                    await model.browserAutomation.controlBrowserScrollToEdge(bottom: false, in: id), workspace: id))
             }
             return
         case .browserScrollBottom:
             Task { @MainActor in
-                reply(Self.browserReply(await model.controlBrowserScrollToEdge(bottom: true, in: id), workspace: id))
+                reply(Self.browserReply(
+                    await model.browserAutomation.controlBrowserScrollToEdge(bottom: true, in: id), workspace: id))
             }
             return
         case .workspaceList, .workspaceNew:
@@ -251,7 +262,7 @@ final class ControlServer {
     /// payload (eval result / HTML / screenshot path, empty for action verbs) in
     /// `text`; failure carries the error message.
     private static func browserReply(
-        _ result: Result<String, AppModel.BrowserOpError>, workspace id: UUID
+        _ result: Result<String, BrowserOpError>, workspace id: UUID
     ) -> ControlResponse {
         switch result {
         case .success(let text): return .success(text: text, workspace: id.uuidString)

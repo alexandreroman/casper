@@ -321,56 +321,10 @@ final class AppModel {
     /// SwiftUI never reads the file during `body`.
     @ObservationIgnored private var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
 
-    enum ScriptHookKind { case setup, teardown }
-
-    /// A terminal split running a lifecycle hook (`setup`/`teardown`). Tracked so the
-    /// child-exit event can be correlated with the pane's close request.
-    private struct ScriptSurface {
-        let kind: ScriptHookKind
-        let workspaceID: UUID
-        /// Teardown completion (delivers the exit code, or is called on timeout by the
-        /// runner); nil for setup.
-        var onExit: ((Int32) -> Void)?
-    }
-
-    @ObservationIgnored private var scriptSurfaces: [UUID: ScriptSurface] = [:]
-    /// Surfaces of a FAILED setup whose one shell-exit-driven close must be swallowed
-    /// so the pane stays open showing the error output.
-    @ObservationIgnored private var keptFailedSetupSurfaces: Set<UUID> = []
-
-    /// How long a `teardown` hook may run before the workspace is pruned anyway. A
-    /// broken cleanup script must never trap the user in the workspace.
-    static let teardownTimeout: TimeInterval = 30
-
-    /// One workspace's in-flight teardown hook: the resume of the `runTeardown`
-    /// continuation awaiting its outcome, plus the run's generation.
-    ///
-    /// The generation is what lets a trigger identify itself as stale. The 30 s
-    /// timeout is scheduled once per run and cannot be un-scheduled; without a
-    /// generation its only guard would be "some teardown is in flight for this
-    /// workspace id", so the timer of a run that already ended (a close that failed
-    /// at the prune step, say) would happily time out the user's *retry* seconds
-    /// after it started. The child-exit callback of an abandoned split has the same
-    /// shape, so it carries a generation too.
-    private struct PendingTeardown {
-        let generation: UInt64
-        let resume: @MainActor (TeardownHookStatus) -> Void
-    }
-
-    /// Workspaces whose teardown hook is in flight, keyed by workspace id. Presence is
-    /// the once-latch: every exit path (child exit, manual split close, timeout, spawn
-    /// failure, workspace dropped) check-and-removes the id through `finishTeardown`, so
-    /// the continuation is resumed exactly once — whichever arrives first wins, and
-    /// `withCheckedContinuation` never sees the double resume it traps on.
-    /// Main-actor-isolated, so the check-and-remove needs no other synchronization.
-    /// Transient, never persisted.
-    @ObservationIgnored private var pendingTeardownResumes: [UUID: PendingTeardown] = [:]
-
-    /// Source of the per-run generation above. Monotonic for the process lifetime.
-    @ObservationIgnored private var lastTeardownGeneration: UInt64 = 0
-
     /// Workspaces with a close/delete operation in flight, claimed for the WHOLE
-    /// operation rather than just its teardown wait.
+    /// operation rather than just its teardown wait. Stays on `AppModel` rather than
+    /// moving to `ScriptHookRunner` for exactly that reason: it covers the cleanliness
+    /// probes, the merge and the prune too, none of which is hook business.
     ///
     /// The claim has to be its own thing because the operation is now async: it awaits
     /// the cleanliness probes, the merge and the teardown hook, so a check made at entry
@@ -585,9 +539,13 @@ final class AppModel {
         return spaces.first(where: { $0.isGitRepo })
     }
 
+    /// An index pair into `spaces` → `workspaces`, as resolved by `locate` /
+    /// `locateSurface` / `indexPair`.
+    typealias WorkspaceIndex = (space: Int, workspace: Int)
+
     /// Resolve the (space, workspace) index pair of the first workspace matching
     /// `predicate`, for in-place mutation.
-    private func indexPair(where predicate: (Workspace) -> Bool) -> (space: Int, workspace: Int)? {
+    private func indexPair(where predicate: (Workspace) -> Bool) -> WorkspaceIndex? {
         for (si, space) in spaces.enumerated() {
             if let wi = space.workspaces.firstIndex(where: predicate) {
                 return (si, wi)
@@ -597,8 +555,31 @@ final class AppModel {
     }
 
     /// Resolve the (space, workspace) index pair for in-place mutation.
-    private func locate(_ id: UUID) -> (space: Int, workspace: Int)? {
+    private func locate(_ id: UUID) -> WorkspaceIndex? {
         indexPair { $0.id == id }
+    }
+
+    /// The workspace at a resolved index pair.
+    private func workspace(at index: WorkspaceIndex) -> Workspace {
+        spaces[index.space].workspaces[index.workspace]
+    }
+
+    /// Mutate the workspace at a resolved index pair **in place**. Going through
+    /// `inout` (rather than a computed subscript's copy-in/copy-out) keeps the
+    /// nested array subscripts' in-place access, so a hot-path write does not
+    /// copy the whole `Workspace` in and back out — `spaces`' observable accessors
+    /// still run, and `spaces.didSet` fires exactly once *per call*.
+    ///
+    /// "Per call" is load-bearing: grouping several field writes into one block
+    /// deliberately collapses what used to be several `didSet` fires into one. That
+    /// collapsing is only sound while none of the grouped fields is an input to
+    /// `MenuFlagsFingerprint` (which captures only `selectedWorkspaceID`, each Space's
+    /// `isGitRepo`, and each workspace's `id → kind`) — a future grouping that touches
+    /// a fingerprint input must not be collapsed. The five sites that group writes
+    /// today touch only `inspector.*` and `pendingNotification*`, none of which is a
+    /// fingerprint input.
+    private func updateWorkspace(at index: WorkspaceIndex, _ body: (inout Workspace) -> Void) {
+        body(&spaces[index.space].workspaces[index.workspace])
     }
 
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
@@ -641,18 +622,11 @@ final class AppModel {
         agentResolvers[ws.id] = nil
         namedCommandsCache[ws.id] = nil
         lastNotifiedAt[ws.id] = nil
-        // Teardown once-latch: the workspace is being dropped outright, so there is
-        // nothing left for the destroy to prune — but the latch must never be cleared
-        // without resuming, or the caller awaiting `runTeardown` would stay suspended
-        // forever. The hook's real outcome is unknown here and the workspace is already
-        // gone, so report success rather than inventing a failure.
-        finishTeardown(id: ws.id, status: .succeeded)
-        // Per-surface setup-hook maps, so a workspace removed while its setup split
-        // is live doesn't leak its surface entries.
-        for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
-            scriptSurfaces[surfaceID] = nil
-            keptFailedSetupSurfaces.remove(surfaceID)
-        }
+        // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
+        // is cleared — the workspace is being dropped outright here, so there is nothing
+        // left for the destroy to prune) and the per-surface setup tags of a workspace
+        // removed while its setup split is live.
+        scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
     }
 
     func removeSpace(id: UUID) {
@@ -775,7 +749,7 @@ final class AppModel {
         // already failed creation in WorktreeManager.create above (Part A); this
         // re-read's `try?`/nil therefore just means "no setup script".
         if let setup = (try? RepoConfig.load(fromRepoRoot: worktreePath))??.setupScript() {
-            spawnScriptSurface(kind: .setup, in: ws.id, command: setup, onExit: nil)
+            scriptHooks.runSetupHook(in: ws.id, command: setup)
         }
         // A silently-created (control-channel) workspace is never selected, so its views
         // never mount on their own. Bring up any surface carrying a queued command
@@ -792,7 +766,7 @@ final class AppModel {
     /// worktree and branch on disk.
     func removeWorkspace(id: UUID) {
         guard let at = locate(id) else { return }
-        guard spaces[at.space].workspaces[at.workspace].kind == .linked else { return }
+        guard workspace(at: at).kind == .linked else { return }
         let ws = spaces[at.space].workspaces.remove(at: at.workspace)
         portAllocator.release(ws.portBase)
         // The inspector browser lives outside the layout tree, so its coordinator
@@ -840,8 +814,8 @@ final class AppModel {
         // gated on `isWindowKey()`, unlike the bubble clear above: the
         // resolver's own "seen" test is selection alone. `blocked`/`error`
         // are untouched — selection has no power over them.
-        if let at = locate(id), spaces[at.space].workspaces[at.workspace].agentState == .done {
-            spaces[at.space].workspaces[at.workspace].agentState = .idle
+        if let at = locate(id), workspace(at: at).agentState == .done {
+            updateWorkspace(at: at) { $0.agentState = .idle }
         }
         persist()
     }
@@ -888,7 +862,7 @@ final class AppModel {
         guard isWindowVisible else { stopWorktreeWatchers(); return }
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
-        let ws = spaces[at.space].workspaces[at.workspace]
+        let ws = workspace(at: at)
         let path = ws.worktreePath
         // Open the repo once (when the Space is a Git repo) and reuse the same handle
         // for both the ignored-directory exclusions and the reflog watcher below.
@@ -1063,7 +1037,7 @@ final class AppModel {
     }
 
     /// The (space, workspace) index pair whose layout contains `surfaceID`.
-    private func locateSurface(_ surfaceID: UUID) -> (space: Int, workspace: Int)? {
+    private func locateSurface(_ surfaceID: UUID) -> WorkspaceIndex? {
         indexPair { LayoutTree.surfaceIDs($0.layout).contains(surfaceID) }
     }
 
@@ -1092,7 +1066,7 @@ final class AppModel {
     /// --workspace <other>`) the layout still changes but focus is left untouched.
     /// Callers resolve their own target and surface, then delegate here.
     private func insertSurfaceBySplitting(
-        at: (space: Int, workspace: Int), focused: UUID,
+        at: WorkspaceIndex, focused: UUID,
         orientation: LayoutNode.Orientation, side: LayoutTree.InsertSide, surface: Surface
     ) {
         // A split into a background workspace must not disturb the visible terminal:
@@ -1100,7 +1074,7 @@ final class AppModel {
         // user is actually typing into and strand `focusedSurfaceID` on an off-screen
         // surface. `selectWorkspace` assigns focus to the new workspace's top-left
         // surface when the user switches to it, so no focus state is lost by skipping.
-        let targetsVisibleWorkspace = spaces[at.space].workspaces[at.workspace].id == selectedWorkspaceID
+        let targetsVisibleWorkspace = workspace(at: at).id == selectedWorkspaceID
         if targetsVisibleWorkspace, let currentlyFocused = focusedSurfaceID {
             // Blur the surface that actually currently holds focus before the layout
             // restructure. Note this is `focusedSurfaceID`, NOT the `focused` split
@@ -1112,9 +1086,9 @@ final class AppModel {
             (surfaceViews[currentlyFocused] as? GhosttySurfaceView)?.blurForLayoutChange()
         }
         let (layout, newFocus) = LayoutTree.split(
-            spaces[at.space].workspaces[at.workspace].layout,
+            workspace(at: at).layout,
             focused: focused, orientation: orientation, side: side, surface: surface)
-        spaces[at.space].workspaces[at.workspace].layout = layout
+        updateWorkspace(at: at) { $0.layout = layout }
         persist()
         if targetsVisibleWorkspace {
             focusedSurfaceID = newFocus
@@ -1126,7 +1100,7 @@ final class AppModel {
     /// when `anchor` is nil) to the RIGHT.
     func applyNewTerminal(anchor: UUID? = nil) {
         guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
-        let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
+        let cwd = workspace(at: at).worktreePath
         insertSurfaceBySplitting(
             at: at, focused: target, orientation: .horizontal, side: .after,
             surface: Surface.terminal(cwd: cwd))
@@ -1136,7 +1110,7 @@ final class AppModel {
     /// context-menu action; always creates a terminal).
     func applySplit(from surfaceID: UUID, direction: GhosttySplitDirectionLike) {
         guard let at = locateSurface(surfaceID) else { return }
-        let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
+        let cwd = workspace(at: at).worktreePath
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(
             at: at, focused: surfaceID, orientation: orientation, side: side,
@@ -1149,7 +1123,7 @@ final class AppModel {
     func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
         guard focusedSurfaceIsTerminal() else { return }
         guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
-        let cwd = spaces[at.space].workspaces[at.workspace].worktreePath
+        let cwd = workspace(at: at).worktreePath
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(
             at: at, focused: focus, orientation: orientation, side: side,
@@ -1175,31 +1149,25 @@ final class AppModel {
         // the failure marker would instead swallow the user's first manual close.
         // A setup surface whose exit hasn't been processed yet is never torn down by
         // an early/stray close — its fate is decided by handleScriptSurfaceExit.
-        if scriptSurfaces[surfaceID]?.kind == .setup { return }
+        if scriptHooks.isPendingSetupSurface(surfaceID) { return }
         // Swallow the one shell-exit-driven close that follows a FAILED setup so the
         // pane (with its error output) survives; a later user close then proceeds
         // normally (marker consumed, tag gone).
-        if keptFailedSetupSurfaces.remove(surfaceID) != nil { return }
+        if scriptHooks.consumeKeptFailedSetup(surfaceID) { return }
         // A teardown split still carrying its tag is being closed before its
         // child-exit was processed — i.e. the user closed it manually. Finish the
         // pending teardown now instead of waiting out the 30s timeout, then let the
         // caller's prune tear the whole workspace (including this split) down. In the
         // normal flow the tag is already cleared by handleScriptSurfaceExit before this
-        // close arrives, so this branch is skipped. A manual close carries no exit
-        // code, so report success rather than inventing a failure — through the split's
-        // own `onExit`, which is what scopes the resume to the run that spawned it: the
-        // split of an abandoned run must not end a later run for the same workspace.
-        if let script = scriptSurfaces[surfaceID], script.kind == .teardown {
-            scriptSurfaces[surfaceID] = nil
-            script.onExit?(0)
-            return
-        }
+        // close arrives, so this branch is skipped. See the runner for why the resume
+        // goes through the split's own `onExit`.
+        if scriptHooks.finishManuallyClosedTeardown(surfaceID) { return }
         guard let at = locateSurface(surfaceID) else { return }
         let wasFocused = focusedSurfaceID == surfaceID
         let (layout, newFocus) = LayoutTree.closeSurface(
-            spaces[at.space].workspaces[at.workspace].layout, surface: surfaceID)
+            workspace(at: at).layout, surface: surfaceID)
         if let layout {
-            spaces[at.space].workspaces[at.workspace].layout = layout
+            updateWorkspace(at: at) { $0.layout = layout }
             if wasFocused { focusedSurfaceID = newFocus }
             discardSurfaceViews([surfaceID])
             persist()
@@ -1209,7 +1177,7 @@ final class AppModel {
         // Last surface in the workspace was closed. Discard its views, then close
         // the workspace non-destructively — never taking down anything that depends
         // on it (its worktree/branch, or a Space's linked workspaces).
-        let ws = spaces[at.space].workspaces[at.workspace]
+        let ws = workspace(at: at)
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         switch ws.kind {
         case .linked:
@@ -1222,7 +1190,7 @@ final class AppModel {
             // so removing the whole Space would destroy them too. Keep the Space and
             // re-seed the primary with a fresh terminal to keep it alive.
             let fresh = Surface.terminal(cwd: ws.worktreePath)
-            spaces[at.space].workspaces[at.workspace].layout = .leaf(fresh)
+            updateWorkspace(at: at) { $0.layout = .leaf(fresh) }
             if wasFocused || selectedWorkspaceID == ws.id { focusedSurfaceID = fresh.id }
             persist()
             focusActiveSurfaceView()
@@ -1245,10 +1213,10 @@ final class AppModel {
               targetAt == at
         else { return }
         guard let (layout, newFocus) = LayoutTree.move(
-            spaces[at.space].workspaces[at.workspace].layout,
+            workspace(at: at).layout,
             surfaceID: surfaceID, toTarget: targetID, direction: zone.direction)
         else { return }
-        spaces[at.space].workspaces[at.workspace].layout = layout
+        updateWorkspace(at: at) { $0.layout = layout }
         focusedSurfaceID = newFocus
         persist()
         focusActiveSurfaceView()
@@ -1346,101 +1314,15 @@ final class AppModel {
         space(for: workspace)?.isGitRepo ?? false
     }
 
-    /// Memoizes the last `computeDiff` result so the diff surface and the toolbar
-    /// summary don't each recompute it for the same state. Keyed by the workspace
-    /// id and the `diffRevision` at compute time, so a new selection or a
-    /// filesystem-change bump invalidates it without an explicit clear.
-    @ObservationIgnored private var cachedDiff: (workspaceID: UUID, revision: Int, diff: GitDiff?)?
-
-    /// The in-flight diff computation, so the diff surface and the toolbar summary
-    /// don't each launch a concurrent identical libgit2 walk for the same
-    /// `(workspace, revision)`: a second caller awaits this task instead.
-    @ObservationIgnored private var inFlightDiff: (workspaceID: UUID, revision: Int, task: Task<GitDiff?, Never>)?
-
-    /// Compute the working-tree-vs-HEAD diff of a workspace's worktree. Returns nil
-    /// when the workspace is not Git-backed or the diff fails.
-    ///
-    /// A memoized result matching the current `diffRevision` returns synchronously
-    /// (no await). Otherwise the libgit2 walk runs off the main actor in a detached
-    /// task that opens and uses its OWN `Repository` (never crossing an actor
-    /// boundary), so the render/run loop isn't blocked; the `Sendable` `GitDiff`
-    /// then crosses back. Concurrent callers for the same `(workspace, revision)`
-    /// share one in-flight task, and the per-revision cache is written only when a
-    /// newer revision hasn't already superseded the result.
-    func computeDiff(for workspace: Workspace) async -> GitDiff? {
-        if let cached = cachedDiff, cached.workspaceID == workspace.id, cached.revision == diffRevision {
-            return cached.diff
-        }
-        let revision = diffRevision
-        if let inFlight = inFlightDiff, inFlight.workspaceID == workspace.id, inFlight.revision == revision {
-            return await inFlight.task.value
-        }
-
-        let path = workspace.worktreePath
-        let task = Task.detached(priority: .userInitiated) { () -> GitDiff? in
-            do {
-                let repo = try Repository.open(atPath: path)
-                return try repo.diffWorkdirToHead()
-            } catch {
-                CasperLog.app.failure("diff failed", error)
-                return nil
-            }
-        }
-        inFlightDiff = (workspace.id, revision, task)
-        let diff = await task.value
-
-        // Don't cache a result a newer revision has already superseded.
-        if diffRevision == revision {
-            cachedDiff = (workspace.id, revision, diff)
-        }
-        // Clear the in-flight entry only if it's still the one we started.
-        if let inFlight = inFlightDiff, inFlight.workspaceID == workspace.id, inFlight.revision == revision {
-            inFlightDiff = nil
-        }
-        return diff
-    }
-
-    /// The workspace's working-tree-vs-HEAD line counts, or nil when not
-    /// Git-backed or the diff fails. Feeds the detail toolbar's `+INS −DEL`.
-    func diffSummary(for workspace: Workspace) async -> (insertions: Int, deletions: Int)? {
-        await computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
-    }
-
-    /// The full UTF-8 text of `path` in the workspace's HEAD commit, or nil when
-    /// the path is empty/absent, the blob is binary, exceeds
-    /// `DiffHighlighter.maxHighlightBytes`, or the read fails. This is the
-    /// "before" side of the diff, feeding syntax highlighting.
-    func headFileText(for workspace: Workspace, path: String) -> String? {
-        guard !path.isEmpty else { return nil }
-        do {
-            let repo = try Repository.open(atPath: workspace.worktreePath)
-            guard let text = try repo.fileTextAtHead(path: path) else { return nil }
-            // Mirror worktreeFileText's cap: keep oversized blobs out of the highlighter.
-            guard text.utf8.count <= DiffHighlighter.maxHighlightBytes else { return nil }
-            return text
-        } catch {
-            CasperLog.app.failure("read HEAD file text failed", error)
-            return nil
-        }
-    }
-
-    /// The full UTF-8 text of `path` on disk in the workspace's worktree, or nil
-    /// when the path is empty, the file is missing/unreadable, exceeds
-    /// `DiffHighlighter.maxHighlightBytes`, or is not valid UTF-8. This is the
-    /// "after" side of the diff, feeding syntax highlighting. Never throws.
-    func worktreeFileText(for workspace: Workspace, path: String) -> String? {
-        guard !path.isEmpty else { return nil }
-        let url = URL(fileURLWithPath: workspace.worktreePath).appendingPathComponent(path)
-        do {
-            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
-            if let size, size > DiffHighlighter.maxHighlightBytes { return nil }
-            let data = try Data(contentsOf: url)
-            guard data.count <= DiffHighlighter.maxHighlightBytes else { return nil }
-            return String(data: data, encoding: .utf8)
-        } catch {
-            return nil
-        }
-    }
+    /// The Git diff read/cache layer (`computeDiff`, `diffSummary` and the two
+    /// file-text readers feeding the diff surface's highlighting). Lazy so the
+    /// injected closure can capture a fully-initialized `self`; it captures it WEAKLY,
+    /// because this model owns the service and a strong capture would close the retain
+    /// cycle. The `?? 0` fallback only ever applies once this model is gone, at which
+    /// point no view is left to observe the diff. `diffRevision` stays here: it is
+    /// `@Observable` state the diff views watch directly.
+    @ObservationIgnored private(set) lazy var diffService = DiffService(
+        currentRevision: { [weak self] in self?.diffRevision ?? 0 })
 
     /// Rewrite a browser surface's persisted URL (address-bar navigation).
     /// Browsers live exclusively in each workspace's inspector, so this matches the
@@ -1451,10 +1333,11 @@ final class AppModel {
     /// already matches the stored one — a page load must not thrash the session file.
     func setBrowserURL(_ surfaceID: UUID, _ url: URL) {
         if let at = indexPair(where: { $0.inspector.browser.id == surfaceID }) {
-            if case .browser(let current) = spaces[at.space].workspaces[at.workspace].inspector.browser.kind,
+            if case .browser(let current) = workspace(at: at).inspector.browser.kind,
                current == url { return }
-            spaces[at.space].workspaces[at.workspace].inspector.browser =
-                Surface(id: surfaceID, kind: .browser(url: url))
+            updateWorkspace(at: at) {
+                $0.inspector.browser = Surface(id: surfaceID, kind: .browser(url: url))
+            }
             scheduleSave()
         }
     }
@@ -1462,15 +1345,17 @@ final class AppModel {
     /// Flip the inspector panel's collapsed state for a workspace (toolbar toggle).
     func toggleInspectorCollapsed(for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        spaces[at.space].workspaces[at.workspace].inspector.collapsed.toggle()
+        updateWorkspace(at: at) { $0.inspector.collapsed.toggle() }
         persist()
     }
 
     /// Select the inspector's active tab, expanding the panel if it was collapsed.
     func setInspectorTab(_ tab: InspectorTab, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        spaces[at.space].workspaces[at.workspace].inspector.tab = tab
-        spaces[at.space].workspaces[at.workspace].inspector.collapsed = false
+        updateWorkspace(at: at) {
+            $0.inspector.tab = tab
+            $0.inspector.collapsed = false
+        }
         persist()
     }
 
@@ -1479,14 +1364,16 @@ final class AppModel {
     /// switch to `tab` while keeping the panel open.
     func toggleInspectorTab(_ tab: InspectorTab, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        let inspector = spaces[at.space].workspaces[at.workspace].inspector
+        let inspector = workspace(at: at).inspector
         if inspector.collapsed {
-            spaces[at.space].workspaces[at.workspace].inspector.collapsed = false
-            spaces[at.space].workspaces[at.workspace].inspector.tab = tab
+            updateWorkspace(at: at) {
+                $0.inspector.collapsed = false
+                $0.inspector.tab = tab
+            }
         } else if inspector.tab == tab {
-            spaces[at.space].workspaces[at.workspace].inspector.collapsed = true
+            updateWorkspace(at: at) { $0.inspector.collapsed = true }
         } else {
-            spaces[at.space].workspaces[at.workspace].inspector.tab = tab
+            updateWorkspace(at: at) { $0.inspector.tab = tab }
         }
         persist()
     }
@@ -1494,7 +1381,7 @@ final class AppModel {
     /// Explicitly set the inspector's collapsed state (the panel's collapse button).
     func setInspectorCollapsed(_ collapsed: Bool, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        spaces[at.space].workspaces[at.workspace].inspector.collapsed = collapsed
+        updateWorkspace(at: at) { $0.inspector.collapsed = collapsed }
         persist()
     }
 
@@ -1512,12 +1399,12 @@ final class AppModel {
     /// workspace's default for next time.
     func openInEditor(_ kind: EditorKind?, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        let workspace = spaces[at.space].workspaces[at.workspace]
+        let workspace = self.workspace(at: at)
         guard let resolved = resolvedEditor(kind, for: workspace) else { return }
         do {
             try EditorLauncher.launch(resolved, at: workspace.worktreePath)
             editorLaunchError = nil
-            spaces[at.space].workspaces[at.workspace].lastUsedEditor = resolved
+            updateWorkspace(at: at) { $0.lastUsedEditor = resolved }
             persist()
         } catch {
             editorLaunchError = error.localizedDescription
@@ -1529,7 +1416,7 @@ final class AppModel {
     /// split-button's primary action (`openInEditor`) actually launches.
     func selectEditor(_ kind: EditorKind, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        spaces[at.space].workspaces[at.workspace].lastUsedEditor = kind
+        updateWorkspace(at: at) { $0.lastUsedEditor = kind }
         persist()
     }
 
@@ -1583,7 +1470,7 @@ final class AppModel {
     /// action (mirrors `selectEditor`); the primary button runs the remembered one.
     func selectScript(_ name: String, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
-        spaces[at.space].workspaces[at.workspace].lastUsedScript = name
+        updateWorkspace(at: at) { $0.lastUsedScript = name }
         persist()
     }
 
@@ -1593,7 +1480,7 @@ final class AppModel {
         switch controlRun(name: name, in: workspaceID) {
         case .success:
             if let at = locate(workspaceID) {
-                spaces[at.space].workspaces[at.workspace].lastUsedScript = name
+                updateWorkspace(at: at) { $0.lastUsedScript = name }
             }
             scriptRunError = nil
             persist()
@@ -1611,9 +1498,9 @@ final class AppModel {
         guard let at = locate(workspaceID) else { return }
         let clamped = min(max(Double(width), InspectorState.minWidth), InspectorState.maxWidth)
         // Round to whole points: sub-point layout jitter must not trigger saves.
-        guard clamped.rounded() != spaces[at.space].workspaces[at.workspace].inspector.width.rounded()
+        guard clamped.rounded() != workspace(at: at).inspector.width.rounded()
         else { return }
-        spaces[at.space].workspaces[at.workspace].inspector.width = clamped
+        updateWorkspace(at: at) { $0.inspector.width = clamped }
         scheduleSave()
     }
 
@@ -1629,10 +1516,10 @@ final class AppModel {
         let sum = ratios.reduce(0, +)
         guard sum > 0 else { return }
         let normalized = ratios.map { $0 / sum }
-        let current = spaces[at.space].workspaces[at.workspace].layout
+        let current = workspace(at: at).layout
         let updated = LayoutTree.updateRatios(in: current, at: path, ratios: normalized)
         guard updated != current else { return }
-        spaces[at.space].workspaces[at.workspace].layout = updated
+        updateWorkspace(at: at) { $0.layout = updated }
         scheduleSave()
     }
 
@@ -1642,9 +1529,10 @@ final class AppModel {
     /// `setInspectorWidth`'s drag-persistence pattern.
     func updateSurfaceFontSize(_ surfaceID: UUID, size: Float) {
         guard let at = locateSurface(surfaceID) else { return }
-        spaces[at.space].workspaces[at.workspace].layout = LayoutTree.updateSurface(
-            spaces[at.space].workspaces[at.workspace].layout, id: surfaceID
+        let updated = LayoutTree.updateSurface(
+            workspace(at: at).layout, id: surfaceID
         ) { $0.fontSize = size }
+        updateWorkspace(at: at) { $0.layout = updated }
         scheduleSave()
     }
 
@@ -1731,40 +1619,6 @@ final class AppModel {
         return config
     }
 
-    /// Open a directory picker and adopt the chosen folder as a workspace.
-    func presentAddFolderPanel() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Add"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        addSpace(folderURL: url, probe: Self.gitProbe)
-    }
-
-    /// Prompt for a linked-workspace name and create it. AppKit alert with a text
-    /// field; no-op on cancel or empty input.
-    func presentAddLinkedWorkspacePanel(spaceID: UUID) {
-        let alert = NSAlert()
-        alert.messageText = "Create Workspace"
-        alert.informativeText = "Name for the new branch and worktree:"
-        alert.addButton(withTitle: "Create")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        alert.accessoryView = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        if !addLinkedWorkspace(spaceID: spaceID, name: name) {
-            let alert = NSAlert()
-            alert.messageText = "Could not create workspace"
-            alert.informativeText =
-                "\u{201c}\(name)\u{201d} could not be created. A branch or worktree with that name "
-                + "may already exist, or the name is not a valid branch name."
-            alert.runModal()
-        }
-    }
-
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
     /// state; returns nil for a non-Git folder (accepted per UI-1 design).
     /// Uses `Repository.open`, an exact-path open, rather than `discover`,
@@ -1799,12 +1653,6 @@ final class AppModel {
 
     /// Error carrying a human-readable reason for a rejected `workspace delete`.
     struct WorkspaceDeleteError: Error, CustomStringConvertible {
-        let message: String
-        var description: String { message }
-    }
-
-    /// Error carrying a human-readable reason for a failed `browser` automation op.
-    struct BrowserOpError: Error, CustomStringConvertible {
         let message: String
         var description: String { message }
     }
@@ -1912,11 +1760,11 @@ final class AppModel {
     /// unit-tested directly, like `isUnderExplicitAuthority` / `runAgentDetectionTick`.
     func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID),
-              spaces[at.space].workspaces[at.workspace].agentState != state else { return }
-        let previous = spaces[at.space].workspaces[at.workspace].agentState
+              workspace(at: at).agentState != state else { return }
+        let previous = workspace(at: at).agentState
         // agentState is transient (deliberately not encoded by Session's Codable),
         // so the @Observable mutation refreshes the sidebar with no need to persist.
-        spaces[at.space].workspaces[at.workspace].agentState = state
+        updateWorkspace(at: at) { $0.agentState = state }
         clearNotificationOnResume(from: previous, to: state, at: at)
         // A detected transition into an attention state raises the same notification
         // `casper notify` would — a real macOS notification plus the sidebar dot — so
@@ -1932,10 +1780,12 @@ final class AppModel {
     /// (`pendingNotification`), so the sidebar bubble goes away once the agent picks
     /// the task back up. A no-op for any other transition.
     private func clearNotificationOnResume(
-        from previous: AgentState, to state: AgentState, at: (space: Int, workspace: Int)) {
+        from previous: AgentState, to state: AgentState, at: WorkspaceIndex) {
         guard previous == .done, state == .working else { return }
-        spaces[at.space].workspaces[at.workspace].pendingNotificationMessage = nil
-        spaces[at.space].workspaces[at.workspace].pendingNotification = false
+        updateWorkspace(at: at) {
+            $0.pendingNotificationMessage = nil
+            $0.pendingNotification = false
+        }
     }
 
     /// The notification text for a detected state, or `nil` when the state needs
@@ -1970,8 +1820,8 @@ final class AppModel {
     @discardableResult
     func controlSetAgentState(_ state: AgentState, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
-        let previous = spaces[at.space].workspaces[at.workspace].agentState
-        spaces[at.space].workspaces[at.workspace].agentState = state
+        let previous = workspace(at: at).agentState
+        updateWorkspace(at: at) { $0.agentState = state }
         clearNotificationOnResume(from: previous, to: state, at: at)
         // The explicit CLI path is the ONLY place authority is granted: once an
         // agent reports its own state, terminal-scraping detection steps aside for
@@ -2010,8 +1860,8 @@ final class AppModel {
         // todos are unchanged — an agent streams progress on a hot path, and
         // `spaces` has no observation sub-granularity, so an unconditional write
         // would re-render the whole sidebar + detail for no change.
-        if spaces[at.space].workspaces[at.workspace].todos == todos { return true }
-        spaces[at.space].workspaces[at.workspace].todos = todos
+        if workspace(at: at).todos == todos { return true }
+        updateWorkspace(at: at) { $0.todos = todos }
         return true
     }
 
@@ -2020,8 +1870,8 @@ final class AppModel {
         guard let at = locate(workspaceID) else { return false }
         // Transient field (see `controlSetProgress`); nothing to persist, and skip
         // the re-render when the todos are already empty.
-        if spaces[at.space].workspaces[at.workspace].todos.isEmpty { return true }
-        spaces[at.space].workspaces[at.workspace].todos = []
+        if workspace(at: at).todos.isEmpty { return true }
+        updateWorkspace(at: at) { $0.todos = [] }
         return true
     }
 
@@ -2042,8 +1892,10 @@ final class AppModel {
         // (selected AND the window is key), raising either is noise, so skip both.
         let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
         if !focused {
-            spaces[at.space].workspaces[at.workspace].pendingNotification = true
-            spaces[at.space].workspaces[at.workspace].pendingNotificationMessage = message
+            updateWorkspace(at: at) {
+                $0.pendingNotification = true
+                $0.pendingNotificationMessage = message
+            }
         }
         // A notification means "look at this workspace". If its owning Space is
         // collapsed, the workspace row (and any attention bubble) is hidden, so expand
@@ -2058,9 +1910,9 @@ final class AppModel {
             // detection path sets it just before calling here, and the explicit CLI
             // path (`casper notify`) reflects whatever the last `casper status set`
             // reported — so the workspace state is the single source of truth for both.
-            let state = spaces[at.space].workspaces[at.workspace].agentState
+            let state = workspace(at: at).agentState
             deliverNotification(
-                spaces[at.space].workspaces[at.workspace].name, message, workspaceID,
+                workspace(at: at).name, message, workspaceID,
                 Self.interruptionLevel(for: state))
             lastNotifiedAt[workspaceID] = Date()
         }
@@ -2084,9 +1936,11 @@ final class AppModel {
     /// when it actually clears a bubble, so the common no-op case is free.
     func clearNotificationForFocusedWorkspace() {
         guard let id = selectedWorkspaceID, isWindowKey(), let at = locate(id) else { return }
-        guard spaces[at.space].workspaces[at.workspace].pendingNotification else { return }
-        spaces[at.space].workspaces[at.workspace].pendingNotification = false
-        spaces[at.space].workspaces[at.workspace].pendingNotificationMessage = nil
+        guard workspace(at: at).pendingNotification else { return }
+        updateWorkspace(at: at) {
+            $0.pendingNotification = false
+            $0.pendingNotificationMessage = nil
+        }
         persist()
     }
 
@@ -2139,187 +1993,59 @@ final class AppModel {
         return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
     }
 
-    /// Spawn a visible split-down (top/bottom stack) in `workspaceID` running a
-    /// lifecycle hook, tagged in `scriptSurfaces` so its child-exit is correlated.
-    /// Hook-wraps the command and registers the tag BEFORE splitting. Returns the
-    /// new surface id, or nil if the workspace/anchor can't be resolved.
-    @discardableResult
-    private func spawnScriptSurface(
-        kind: ScriptHookKind, in workspaceID: UUID, command: String,
-        onExit: ((Int32) -> Void)?
-    ) -> UUID? {
+    // MARK: - `.casper.json` lifecycle hooks
+
+    /// The `setup`/`teardown` hook machinery: the visible hook splits, the child-exit
+    /// correlation, and the once-latched teardown prune. Lazy so the injected closures
+    /// can capture a fully-initialized `self`; all three capture it WEAKLY, because
+    /// this model owns the runner and a strong capture would close the retain cycle.
+    @ObservationIgnored private lazy var scriptHooks = ScriptHookRunner(
+        insertSurface: { [weak self] workspaceID, surface, command in
+            self?.insertHookSurface(surface, in: workspaceID, command: command) ?? false
+        },
+        worktreePath: { [weak self] id in self?.workspace(id: id)?.worktreePath },
+        reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) })
+
+    /// Insert `surface` into `workspaceID` as a visible split-down (top/bottom stack),
+    /// running `command` (already hook-wrapped by the runner) on first mount. Returns
+    /// false if the workspace/anchor can't be resolved. The layout mutation and the
+    /// queued-input map live here; the hook policy lives in `ScriptHookRunner`, which
+    /// owns the surface's identity so it can tag it before this split runs.
+    private func insertHookSurface(_ surface: Surface, in workspaceID: UUID, command: String) -> Bool {
         guard let ws = workspace(id: workspaceID),
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
-              let at = locateSurface(anchor) else { return nil }
-        let surface = Surface.terminal(cwd: ws.worktreePath)
-        scriptSurfaces[surface.id] = ScriptSurface(kind: kind, workspaceID: workspaceID, onExit: onExit)
-        pendingInitialInput[surface.id] = Self.hookWrappedScriptCommand(command)
+              let at = locateSurface(anchor) else { return false }
+        pendingInitialInput[surface.id] = command
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
-        return surface.id
+        return true
     }
 
     /// Called when a surface's child process exits (via GhosttySurfaceView.onChildExit).
-    /// No-op for ordinary panes (not in `scriptSurfaces`).
+    /// A no-op for ordinary panes (those not tagged in the runner's `scriptSurfaces`) —
+    /// which matters precisely here, because every `GhosttySurfaceView` calls this on
+    /// every child exit, hook split or not.
     func handleScriptSurfaceExit(_ surfaceID: UUID, code: Int32) {
-        guard let script = scriptSurfaces.removeValue(forKey: surfaceID) else { return }
-        switch script.kind {
-        case .setup:
-            if code != 0 {
-                // Failure: keep the pane open showing the output, swallow the single
-                // shell-exit-driven close that follows (see keptFailedSetupSurfaces /
-                // applyCloseSurface), and flag the workspace.
-                keptFailedSetupSurfaces.insert(surfaceID)
-                setDetectedAgentState(.error, for: script.workspaceID)
-                CasperLog.app.error("setup script failed (exit \(code)); keeping the split open")
-            }
-            // On success there is nothing to do here: the tag is already cleared, so
-            // the deferred close_surface_cb (fired by the shell's own exit) tears the
-            // split down through the normal path. We must NOT close eagerly — this runs
-            // synchronously inside libghostty's action_cb, and tearing views down
-            // mid-tick is the sibling-detachment hazard that close_surface_cb defers.
-        case .teardown:
-            script.onExit?(code)
-        }
+        scriptHooks.handleScriptSurfaceExit(surfaceID, code: code)
     }
 
-    /// How a workspace's `teardown` lifecycle hook ended. A failure never blocks the
-    /// destroy — the caller prunes regardless — so this is reported, not acted upon.
-    enum TeardownHookStatus: Equatable, Sendable {
-        /// No hook configured for this workspace.
-        case none
-        case succeeded
-        case failed(exitCode: Int32)
-        case timedOut
-        /// The teardown split itself could not be created (an internal failure, not
-        /// the user's script failing).
-        case couldNotSpawn
-    }
+    /// How a workspace's `teardown` lifecycle hook ended, re-exported so this model's
+    /// close/delete API can be read without reaching into the runner's namespace.
+    typealias TeardownHookStatus = ScriptHookRunner.TeardownHookStatus
 
     /// The workspace's resolved `teardown` hook command, or nil when it has no
     /// `.casper.json` or no `teardown` script. Each destroy path resolves it once and
     /// hands it to `runTeardown`, so the config file is read exactly once per close.
+    /// Stays here rather than on the runner, which knows workspaces only by id and
+    /// deliberately nothing about the `Workspace` model.
     func teardownCommand(for ws: Workspace) -> String? {
         (try? RepoConfig.load(fromRepoRoot: ws.worktreePath))??.teardownScript()
     }
 
-    /// Run the workspace's `teardown` lifecycle hook in a visible split and wait for it
-    /// to finish. `command` is the already-resolved hook (see `teardownCommand`); nil
-    /// means there is no hook and the call returns `.none` without suspending, so a
-    /// hookless destroy behaves exactly as it did before hooks existed. Otherwise the
-    /// split is spawned and this returns when its child exits, when the user closes the
-    /// split by hand, or when `teardownTimeout` elapses — whichever comes first. A
-    /// non-zero exit or a timeout is logged and still returns normally: the caller
-    /// prunes regardless, because a broken teardown must never block deletion.
-    ///
-    /// The caller always resumes on a later main-queue turn than the child-exit
-    /// callback that ended the hook — see `finishTeardown` for why that matters.
+    /// Run the workspace's `teardown` lifecycle hook (if any) and wait for its outcome.
+    /// See `ScriptHookRunner.runTeardown`.
     func runTeardown(id workspaceID: UUID, command: String?) async -> TeardownHookStatus {
-        guard let command else { return .none }
-        lastTeardownGeneration += 1
-        let generation = lastTeardownGeneration
-        return await withCheckedContinuation { continuation in
-            // Arming must never clobber a live entry: the overwritten run's continuation
-            // could then never be resumed (a permanently suspended caller, and the
-            // "continuation leaked" trap). The whole operation is claimed in
-            // `closingWorkspaces`, so this is unreachable — hence the fault log rather
-            // than a user-facing story.
-            guard pendingTeardownResumes[workspaceID] == nil else {
-                CasperLog.app.fault(
-                    "teardown already in flight for this workspace; refusing to run a second one")
-                continuation.resume(returning: .couldNotSpawn)
-                return
-            }
-            // Arm the once-latch (its presence gates every exit path) before either trigger.
-            pendingTeardownResumes[workspaceID] = PendingTeardown(
-                generation: generation, resume: { continuation.resume(returning: $0) })
-            guard spawnScriptSurface(
-                kind: .teardown, in: workspaceID, command: command,
-                onExit: { [weak self] code in
-                    // Delivered synchronously inside ghostty_app_tick on the main actor; the
-                    // resume it triggers is deferred off this callback (see finishTeardown).
-                    MainActor.assumeIsolated {
-                        guard let self, self.isTeardownCurrent(workspaceID, generation: generation)
-                        else { return }
-                        if code != 0 {
-                            CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
-                        }
-                        self.finishTeardown(
-                            id: workspaceID, generation: generation,
-                            status: code == 0 ? .succeeded : .failed(exitCode: code))
-                    }
-                }) != nil
-            else {
-                // Couldn't create the teardown split: return now rather than stalling
-                // the caller until the timeout. Logged because the hook silently never
-                // ran, and nothing else records that.
-                CasperLog.app.error("teardown script could not be spawned; pruning anyway")
-                finishTeardown(id: workspaceID, generation: generation, status: .couldNotSpawn)
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownTimeout) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, self.isTeardownCurrent(workspaceID, generation: generation)
-                    else { return }
-                    CasperLog.app.error(
-                        "teardown script timed out after \(Int(Self.teardownTimeout))s; pruning anyway")
-                    self.finishTeardown(id: workspaceID, generation: generation, status: .timedOut)
-                }
-            }
-        }
-    }
-
-    /// Resume a workspace's latched `runTeardown` continuation exactly once, on the
-    /// NEXT main-queue turn. The child-exit path calls this from inside
-    /// `ghostty_app_tick`, and the caller tears views down (prunes the workspace) as
-    /// soon as it resumes — doing that mid-tick detaches sibling panes, the exact
-    /// hazard `close_surface_cb` defers for. Resuming a continuation already enqueues
-    /// the awaiting task rather than running it inline, but this hop makes the
-    /// guarantee independent of that scheduling detail: the resume itself happens in a
-    /// later main-queue work item, off the tick. A no-op once the latch has been
-    /// cleared by another exit path, which is what keeps the resume exactly-once.
-    ///
-    /// `generation` scopes the resume to one specific run: a trigger left over from an
-    /// earlier run for the same workspace id passes its own generation and is ignored.
-    /// Callers that mean "whatever is in flight, end it" (the workspace being dropped
-    /// outright) pass nil.
-    private func finishTeardown(
-        id workspaceID: UUID, generation: UInt64? = nil, status: TeardownHookStatus
-    ) {
-        guard let pending = pendingTeardownResumes[workspaceID],
-              generation == nil || generation == pending.generation
-        else { return }
-        pendingTeardownResumes[workspaceID] = nil
-        DispatchQueue.main.async { MainActor.assumeIsolated { pending.resume(status) } }
-    }
-
-    /// True while THIS teardown run is still the one in flight for `workspaceID` — i.e.
-    /// its caller is still suspended and no later run has taken its place. What makes a
-    /// stale timeout timer or an abandoned split's child exit identify itself as stale.
-    private func isTeardownCurrent(_ workspaceID: UUID, generation: UInt64) -> Bool {
-        pendingTeardownResumes[workspaceID]?.generation == generation
-    }
-
-    /// Wrap a `casper run` command in a subshell so a script that calls `exit`
-    /// (or fails under `set -e`) terminates only the subshell, isolating it from
-    /// the interactive shell. The trailing `[ $? -eq 0 ] && exit` then makes the
-    /// interactive shell exit — closing the pane via the normal close path — only
-    /// when the script succeeded (exit 0). A failing script (non-zero `$?`) leaves
-    /// the interactive shell alive at a prompt with its output still visible. The
-    /// command and the closing `[ … ]` test each sit on their own line so a
-    /// trailing `#` comment cannot swallow the closing paren or the test.
-    static func subshellWrappedScriptCommand(_ command: String) -> String {
-        "(\n\(command)\n)\n[ $? -eq 0 ] && exit"
-    }
-
-    /// Wrap a lifecycle-hook command so the shell runs it and then exits with its
-    /// status: `<command>\nexit $?`. The trailing `exit` makes libghostty emit a
-    /// child-exit event carrying the status (the completion signal the hook needs) —
-    /// the deliberate opposite of `subshellWrappedScriptCommand`, which keeps the
-    /// pane open. The newline (not `; `) ensures a trailing `#` comment on the
-    /// command's last line cannot swallow `exit $?`.
-    static func hookWrappedScriptCommand(_ command: String) -> String {
-        "\(command)\nexit $?"
+        await scriptHooks.runTeardown(id: workspaceID, command: command)
     }
 
     /// Run the named command `name` (defaulting to `run`) from the workspace's
@@ -2346,7 +2072,7 @@ final class AppModel {
             return .failure(ControlRunError(message: message))
         case .command(let command):
             guard let info = controlOpenTerminal(
-                in: workspaceID, command: Self.subshellWrappedScriptCommand(command), cwd: nil,
+                in: workspaceID, command: ScriptHookRunner.subshellWrappedScriptCommand(command), cwd: nil,
                 orientation: .vertical)
             else {
                 return .failure(ControlRunError(message: "cannot open terminal"))
@@ -2391,9 +2117,9 @@ final class AppModel {
         // Reuse the existing browser surface id (like `setBrowserURL`) so the cached
         // `BrowserCoordinator`/`WKWebView` keyed on it is preserved rather than leaked,
         // keeping the page and its history across reopens.
-        let existingID = spaces[at.space].workspaces[at.workspace].inspector.browser.id
+        let existingID = workspace(at: at).inspector.browser.id
         let surface = Surface(id: existingID, kind: .browser(url: url))
-        spaces[at.space].workspaces[at.workspace].inspector.browser = surface
+        updateWorkspace(at: at) { $0.inspector.browser = surface }
         setInspectorTab(.browser, for: workspaceID)   // selects the browser tab, expands, persists
         // A coordinator that already exists won't be re-initialized by the SwiftUI
         // view, so it won't pick up the new URL on its own: create-or-navigate it
@@ -2417,9 +2143,9 @@ final class AppModel {
         guard let at = locate(workspaceID) else { return false }
         // Reuse the existing browser surface id (like `controlOpenBrowser`) so the
         // cached coordinator/web view keyed on it is preserved across loads.
-        let existingID = spaces[at.space].workspaces[at.workspace].inspector.browser.id
+        let existingID = workspace(at: at).inspector.browser.id
         let surface = Surface(id: existingID, kind: .browser(url: url))
-        spaces[at.space].workspaces[at.workspace].inspector.browser = surface
+        updateWorkspace(at: at) { $0.inspector.browser = surface }
         scheduleSave()   // persist the new URL exactly like `setBrowserURL`
         // The panel may be hidden/unselected, so the SwiftUI view won't lazily
         // create the coordinator: create-or-navigate it explicitly. A freshly-created
@@ -2443,7 +2169,7 @@ final class AppModel {
         guard let at = locate(workspaceID) else {
             return .failure(DiffOpenError(message: "workspace not found"))
         }
-        let worktree = spaces[at.space].workspaces[at.workspace].worktreePath
+        let worktree = workspace(at: at).worktreePath
         if let file, !file.isEmpty {
             guard let resolved = WorkspaceFilePath.resolve(file, inWorktree: worktree) else {
                 return .failure(DiffOpenError(message: "file is outside the workspace: \(file)"))
@@ -2489,237 +2215,16 @@ final class AppModel {
 
     // MARK: - Browser automation (release control channel)
 
-    /// The get-or-create `BrowserCoordinator` for a workspace's inspector browser
-    /// surface. Reuses the same cache the panel UI uses, so automation drives the
-    /// live web view and works even when the panel was never shown. Nil when the
-    /// workspace can't be resolved.
-    private func inspectorBrowserCoordinator(in workspaceID: UUID) -> BrowserCoordinator? {
-        guard let ws = workspace(id: workspaceID) else { return nil }
-        return browserCoordinator(for: ws.inspector.browser)
-    }
-
-    /// Resolve the workspace's browser coordinator, run `body` against it, and map
-    /// the outcome to a `Result`. Shared by every `controlBrowser*` op so each one
-    /// stays a single expressive line. `body` returns the op's payload: the eval
-    /// result, the page HTML, the screenshot path, or an empty string for the
-    /// action verbs.
-    private func withBrowserCoordinator(
-        _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> String
-    ) async -> Result<String, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
-        }
-        do {
-            return .success(try await body(coordinator))
-        } catch {
-            return .failure(BrowserOpError(message: "\(error)"))
-        }
-    }
-
-    /// Snapshot the browser page to a PNG at `path`. Returns the path on success.
-    ///
-    /// With no `width`/`height`/`url` override this captures the live browser panel
-    /// exactly as before (panel size when mounted, the 1280x800 fallback when
-    /// detached). Any override switches to the dedicated off-screen `BrowserCapture`,
-    /// which renders the target URL at the requested viewport (default 1280x800)
-    /// independent of the panel: the `url` override if given, else the live browser's
-    /// committed URL, else the surface's persisted URL — failing when none resolves.
-    func controlBrowserScreenshot(
-        in workspaceID: UUID, to path: String, width: Int? = nil, height: Int? = nil, url: String? = nil
-    ) async -> Result<String, BrowserOpError> {
-        if width == nil, height == nil, url == nil {
-            return await withBrowserCoordinator(workspaceID) { coordinator in
-                let png = try await coordinator.snapshot()
-                try Self.writeScreenshot(png, to: path)
-                return path
-            }
-        }
-        guard let ws = workspace(id: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
-        }
-        guard let target = resolveScreenshotURL(for: ws, override: url) else {
-            return .failure(BrowserOpError(message: "no page to capture; open a page or pass --url"))
-        }
-        do {
-            let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
-            try Self.writeScreenshot(png, to: path)
-            return .success(path)
-        } catch {
-            return .failure(BrowserOpError(message: "\(error)"))
-        }
-    }
-
-    /// Resolve the page for an off-screen sized capture: the explicit `--url`
-    /// override (must be absolute), else the live browser's committed URL, else the
-    /// surface's persisted URL. Returns nil when nothing usable resolves (a browser
-    /// that never navigated / sits on about:blank, with no override).
-    private func resolveScreenshotURL(for ws: Workspace, override: String?) -> URL? {
-        // A scheme is enough here (the CLI enforces scheme+host for user URLs); this
-        // also admits the schemed-but-hostless `data:` URLs automation relies on.
-        if let override, let parsed = URL(string: override), parsed.scheme != nil, parsed != .aboutBlank {
-            return parsed
-        }
-        if let coordinator = browserCoordinator(for: ws.inspector.browser),
-           let live = coordinator.webView.url, live != .aboutBlank {
-            return live
-        }
-        if case .browser(let stored) = ws.inspector.browser.kind, stored != .aboutBlank {
-            return stored
-        }
-        return nil
-    }
-
-    /// Write a screenshot PNG to `path`, mapping a filesystem error to a concise
-    /// message — the raw NSError renders a verbose "Error Domain=NSCocoaErrorDomain…"
-    /// string in the JSON error.
-    private static func writeScreenshot(_ png: Data, to path: String) throws {
-        do {
-            try png.write(to: URL(fileURLWithPath: path))
-        } catch {
-            throw BrowserCoordinatorError(
-                message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
-        }
-    }
-
-    /// Evaluate `script` in the browser page. Returns the JSON-serialized result.
-    func controlBrowserEval(_ script: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) { try await $0.evaluate(script) }
-    }
-
-    /// Return the page's HTML (`outerHTML` of `selector`'s first match, or of the
-    /// whole document when `selector` is nil).
-    func controlBrowserContent(selector: String?, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            // `evaluate` returns the string JSON-serialized; unwrap it back to the
-            // raw HTML so `content` consumers get plain markup, not a quoted string.
-            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.content(selector: selector)))
-        }
-    }
-
-    /// Return the browser page's current URL (`window.location.href`).
-    func controlBrowserURL(in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            // `evaluate` returns the string JSON-serialized; unwrap it back to the
-            // raw URL so `url` consumers get a plain string, not a quoted one.
-            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.currentURL()))
-        }
-    }
-
-    /// Click the first element matching `selector`.
-    func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.click(selector: selector))
-            return ""
-        }
-    }
-
-    /// Scroll the browser page one viewport down (`down` true) or up.
-    func controlBrowserScroll(down: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.scroll(down: down))
-            return ""
-        }
-    }
-
-    /// Jump the browser page to the very bottom (`bottom` true) or top.
-    func controlBrowserScrollToEdge(bottom: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.scrollToEdge(bottom: bottom))
-            return ""
-        }
-    }
-
-    /// Type `value` into the first element matching `selector`.
-    func controlBrowserType(
-        selector: String, value: String, in workspaceID: UUID
-    ) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.type(selector: selector, value: value))
-            return ""
-        }
-    }
-
-    /// Dispatch a `keydown`/`keyup` for `key` on `selector`'s match, or on the
-    /// focused element when `selector` is nil.
-    func controlBrowserKey(
-        key: String, selector: String?, in workspaceID: UUID
-    ) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.key(key: key, selector: selector))
-            return ""
-        }
-    }
-
-    /// Return the browser console/error buffer serialized to a JSON array string
-    /// (oldest→newest). `level` filters to that severity threshold and above; when
-    /// `clear` is set the whole buffer is drained after snapshotting.
-    func controlBrowserConsole(
-        level: ConsoleLevel?, clear: Bool, in workspaceID: UUID
-    ) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) { coordinator in
-            Self.consoleJSON(coordinator.consoleSnapshot(level: level, clear: clear))
-        }
-    }
-
-    /// Block until `js` is truthy in the page or the deadline expires. `description`
-    /// names what is awaited, for the timeout message.
-    func controlBrowserWait(
-        js: String, timeoutMs: Int, description: String, in workspaceID: UUID
-    ) async -> Result<Void, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
-        }
-        if await coordinator.waitFor(js: js, timeoutMs: timeoutMs) {
-            return .success(())
-        }
-        return .failure(BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for \(description)"))
-    }
-
-    /// Reload the browser page. When `waitReady`, also block until the document's
-    /// `readyState` is `complete` (or the timeout expires).
-    func controlBrowserReload(
-        waitReady: Bool, timeoutMs: Int, in workspaceID: UUID
-    ) async -> Result<Void, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
-        }
-        coordinator.reload()
-        guard waitReady else { return .success(()) }
-        if await coordinator.waitFor(js: BrowserAutomation.readyStateCompleteJS(), timeoutMs: timeoutMs) {
-            return .success(())
-        }
-        return .failure(BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for the page to reload"))
-    }
-
-    /// Encoder for the console entry array: sorted keys for deterministic output,
-    /// unescaped slashes so embedded URLs stay readable.
-    private static let consoleEncoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return encoder
-    }()
-
-    /// Serialize console entries to a JSON array string, falling back to `[]` on the
-    /// (never-expected) encoding failure.
-    private static func consoleJSON(_ entries: [ConsoleEntry]) -> String {
-        guard let data = try? consoleEncoder.encode(entries),
-              let string = String(data: data, encoding: .utf8) else {
-            return "[]"
-        }
-        return string
-    }
-
-    /// Decode a single JSON string value (as produced by `BrowserCoordinator`'s
-    /// `evaluate`) back to its plain contents. Falls back to the input unchanged
-    /// when it isn't a JSON string (should not happen for `content`).
-    private static func plainString(fromJSON json: String) -> String {
-        guard let data = json.data(using: .utf8),
-              let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
-              let string = value as? String else {
-            return json
-        }
-        return string
-    }
+    /// The browser-automation control-channel ops (`screenshot`, `eval`, `content`,
+    /// `url`, `click`, `scroll`, `type`, `key`, `console`, `wait`, `reload`), which
+    /// only read the model and drive an already-existing browser surface. Lazy so the
+    /// injected closures can capture a fully-initialized `self`; both capture it
+    /// WEAKLY, because this model owns the controller and a strong capture would close
+    /// the retain cycle. The verbs that mutate `spaces` or the inspector
+    /// (`controlOpenBrowser`, `controlLoadBrowser`, `controlCloseBrowser`) stay here.
+    @ObservationIgnored private(set) lazy var browserAutomation = BrowserAutomationController(
+        resolveWorkspace: { [weak self] id in self?.workspace(id: id) },
+        coordinator: { [weak self] surface in self?.browserCoordinator(for: surface) })
 
     /// Create a linked workspace in the Space that owns `workspaceID` (the control
     /// channel's "create workspace" verb, targetable from any workspace in that
@@ -2781,12 +2286,12 @@ final class AppModel {
         guard let at = locate(workspaceID) else {
             return .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
-        guard spaces[at.space].workspaces[at.workspace].kind == .linked else {
+        guard workspace(at: at).kind == .linked else {
             return .failure(WorkspaceDeleteError(message: "cannot delete the primary workspace"))
         }
         let repoPath = spaces[at.space].folderPath
-        let branch = spaces[at.space].workspaces[at.workspace].branch
-        let worktreePath = spaces[at.space].workspaces[at.workspace].worktreePath
+        let branch = workspace(at: at).branch
+        let worktreePath = workspace(at: at).worktreePath
         do {
             // Both git calls share one detached hop (see offloadGit) because their order
             // is load-bearing: a checked-out branch cannot be deleted, so the worktree
@@ -2855,7 +2360,7 @@ final class AppModel {
         if teardown != nil {
             progress?.step(
                 "Running teardown hook\u{2026}",
-                deadline: Date().addingTimeInterval(Self.teardownTimeout))
+                deadline: Date().addingTimeInterval(ScriptHookRunner.teardownTimeout))
         }
         onTeardownHook(await runTeardown(id: workspaceID, command: teardown))
         progress?.step("Removing the worktree\u{2026}")
@@ -2947,7 +2452,7 @@ final class AppModel {
         if teardown != nil {
             progress.step(
                 "Running teardown hook\u{2026}",
-                deadline: Date().addingTimeInterval(Self.teardownTimeout))
+                deadline: Date().addingTimeInterval(ScriptHookRunner.teardownTimeout))
         }
         onTeardownHook(await runTeardown(id: workspaceID, command: teardown))
         progress.step("Removing the worktree\u{2026}")
@@ -2982,143 +2487,5 @@ final class AppModel {
         ) {
             .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
-    }
-
-    /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
-    /// workspace has no recorded base branch (nothing to merge into) — the
-    /// sidebar only offers this action in that case anyway. Per Apple HIG,
-    /// the consequential "Merge and Close" button is never the Return-key
-    /// default (compare Finder's "Empty Trash": Cancel stays the safe
-    /// default, the destructive button just loses its Return binding).
-    func presentCloseWorkspaceConfirmation(id workspaceID: UUID) {
-        guard let ws = workspace(id: workspaceID), let baseBranch = ws.baseBranch, !baseBranch.isEmpty
-        else { return }
-        let alert = NSAlert()
-        alert.messageText = "Merge and Close \u{201c}\(ws.name)\u{201d}?"
-        alert.informativeText = "This merges branch \u{201c}\(ws.branch)\u{201d} into "
-            + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
-            + "This can\u{2019}t be undone."
-        let mergeButton = alert.addButton(withTitle: "Merge and Close")
-        alert.addButton(withTitle: "Cancel")
-        mergeButton.hasDestructiveAction = true
-        mergeButton.keyEquivalent = ""
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        // The confirmation itself stays modal (`runModal` above); only the work that
-        // follows it is async, so the sidebar's call site keeps its plain signature.
-        Task { @MainActor in
-            let outcome = await self.closeWorkspace(id: workspaceID) { status in
-                self.reportTeardownHookFailure(status, workspace: ws.name, id: workspaceID, verb: "closed")
-            }
-            switch outcome {
-            case .success:
-                break
-            case .mergeFailed(let message):
-                await self.presentWorkspaceOperationFailureAlert(
-                    for: workspaceID, title: "Could not close \u{201c}\(ws.name)\u{201d}",
-                    message: message)
-            case .cleanupFailed(let message):
-                await self.presentWorkspaceOperationFailureAlert(
-                    for: workspaceID,
-                    title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up",
-                    message: message)
-            }
-        }
-    }
-
-    /// A confirmation, then `deleteWorkspace(id:)` on confirm. Unlike
-    /// `closeWorkspace`, this never merges, so uncommitted changes in `ws`
-    /// really are discarded — the warning below stays. Same HIG-correct
-    /// default-button treatment as `presentCloseWorkspaceConfirmation`.
-    func presentDeleteWorkspaceConfirmation(id workspaceID: UUID) {
-        guard let ws = workspace(id: workspaceID) else { return }
-        // Fail safe toward SHOWING the warning: `!= true` treats both a thrown probe
-        // error and a genuinely-dirty tree as dirty, so a probe failure never silently
-        // hides the "changes will be lost" warning on this destructive delete.
-        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) != true
-        let alert = NSAlert()
-        alert.messageText = "Delete \u{201c}\(ws.name)\u{201d}?"
-        var text = "This deletes the worktree, its folder on disk, and branch "
-            + "\u{201c}\(ws.branch)\u{201d} without merging. This can\u{2019}t be undone."
-        if dirty { text += " This workspace has uncommitted changes that will be lost." }
-        alert.informativeText = text
-        let deleteButton = alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        deleteButton.hasDestructiveAction = true
-        deleteButton.keyEquivalent = ""
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        // As in presentCloseWorkspaceConfirmation: modal confirmation, async work.
-        Task { @MainActor in
-            let result = await self.deleteWorkspace(id: workspaceID) { status in
-                self.reportTeardownHookFailure(status, workspace: ws.name, id: workspaceID, verb: "deleted")
-            }
-            if case .failure(let error) = result {
-                await self.presentWorkspaceOperationFailureAlert(
-                    for: workspaceID, title: "Could not delete \u{201c}\(ws.name)\u{201d}",
-                    message: error.message)
-            }
-        }
-    }
-
-    /// Notify the user that a workspace's `teardown` hook did not end well. The workspace
-    /// is closed or deleted regardless — a broken teardown never blocks deletion — so this
-    /// notification is the only place the failure surfaces outside the log. `verb` is what
-    /// just happened to the workspace: "closed" or "deleted".
-    ///
-    /// `.active` rather than `.passive`: a passive notification is a silent Notification
-    /// Center entry, which the user would simply never see.
-    ///
-    /// `.couldNotSpawn` stays log-only, alongside `.none` and `.succeeded`. It means
-    /// Casper failed to create the teardown split — an internal failure, not the user's
-    /// script failing — so there is nothing actionable to report.
-    ///
-    /// Internal rather than private only so tests can exercise it: its two callers are
-    /// the confirmation presenters, which run an `NSAlert` modally and therefore cannot
-    /// be driven headlessly.
-    func reportTeardownHookFailure(
-        _ status: TeardownHookStatus, workspace name: String, id workspaceID: UUID, verb: String
-    ) {
-        let title: String
-        let cause: String
-        switch status {
-        case .failed(let exitCode):
-            title = "Teardown hook failed"
-            cause = "failed (exit \(exitCode))"
-        case .timedOut:
-            title = "Teardown hook timed out"
-            cause = "timed out after \(Int(Self.teardownTimeout))s"
-        case .none, .succeeded, .couldNotSpawn:
-            return
-        }
-        deliverNotification(
-            title, "\u{201c}\(name)\u{201d} \(verb), but its teardown hook \(cause)",
-            workspaceID, .active)
-    }
-
-    /// A generic error alert for a failed close/delete operation on `workspaceID`.
-    ///
-    /// Silent when the workspace is already gone: the only way to reach here in that
-    /// state is an operation the user effectively cancelled by discarding the workspace
-    /// (or its whole Space) mid-flight, and the precise error it produced — "workspace
-    /// not found" — describes exactly the outcome they asked for. The error itself is
-    /// untouched, so the control channel and the tests still see it.
-    ///
-    /// Async because of the hop below: the progress sheet is dismissed by clearing
-    /// `closeProgress`, but SwiftUI only tears it down on a later main-queue turn, and an
-    /// `NSAlert` run modally before that stacks on top of a live sheet. Clearing here too
-    /// (the orchestrator already did on its way out) keeps that invariant local to the one
-    /// place that runs a modal — and, exactly like the reporter, only clears a sheet that
-    /// belongs to this operation.
-    private func presentWorkspaceOperationFailureAlert(
-        for workspaceID: UUID, title: String, message: String
-    ) async {
-        if closeProgress?.id == workspaceID { closeProgress = nil }
-        guard workspace(id: workspaceID) != nil else { return }
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
-        }
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.runModal()
     }
 }

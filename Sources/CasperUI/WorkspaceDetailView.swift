@@ -118,14 +118,14 @@ struct WorkspaceDetailView: View {
             Text(model.scriptRunError ?? "")
         }
         .task(id: model.selectedWorkspaceID) {
-            diff = await model.diffSummary(for: workspace)
+            diff = await model.diffService.diffSummary(for: workspace)
         }
         .onChange(of: model.diffRevision) { _, _ in
             // Cancel the previous refresh before starting a new one so overlapping
             // revisions can't race to settle `diff` on a stale value.
             diffSummaryTask?.cancel()
             diffSummaryTask = Task { @MainActor in
-                let summary = await model.diffSummary(for: workspace)
+                let summary = await model.diffService.diffSummary(for: workspace)
                 guard !Task.isCancelled else { return }
                 diff = summary
             }

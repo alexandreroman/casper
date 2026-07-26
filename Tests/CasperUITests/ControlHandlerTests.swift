@@ -837,9 +837,9 @@ final class ControlHandlerTests: XCTestCase {
         // A script that calls `exit` must not close the interactive terminal, so
         // the command runs in a subshell. The closing paren is on its own line so
         // a trailing `#` comment cannot swallow it.
-        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("exit 1"), "(\nexit 1\n)\n[ $? -eq 0 ] && exit")
+        XCTAssertEqual(ScriptHookRunner.subshellWrappedScriptCommand("exit 1"), "(\nexit 1\n)\n[ $? -eq 0 ] && exit")
         XCTAssertEqual(
-            AppModel.subshellWrappedScriptCommand("npm test # smoke"),
+            ScriptHookRunner.subshellWrappedScriptCommand("npm test # smoke"),
             "(\nnpm test # smoke\n)\n[ $? -eq 0 ] && exit")
     }
 
@@ -847,8 +847,8 @@ final class ControlHandlerTests: XCTestCase {
         // A lifecycle hook must let the shell exit with the command's status so
         // libghostty emits a child-exit event. `exit $?` sits on its own line so a
         // trailing `#` comment on the command's last line cannot swallow it.
-        XCTAssertEqual(AppModel.hookWrappedScriptCommand("npm install"), "npm install\nexit $?")
-        XCTAssertEqual(AppModel.hookWrappedScriptCommand("make # build"), "make # build\nexit $?")
+        XCTAssertEqual(ScriptHookRunner.hookWrappedScriptCommand("npm install"), "npm install\nexit $?")
+        XCTAssertEqual(ScriptHookRunner.hookWrappedScriptCommand("make # build"), "make # build\nexit $?")
     }
 
     func testNamedCommandsLoadedFromConfig() throws {

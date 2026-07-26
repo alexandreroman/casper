@@ -14,8 +14,8 @@ naming tasks are already delivered under CasperUI UI-2).
 
 The Space theme's only remaining open item is **Space rename**.
 
-**Why:** the title-bar working-tree-vs-HEAD diff summary (`AppModel.diffSummary`
-via `computeDiff`/`diffWorkdirToHead`) already covers the practical need, so the
+**Why:** the title-bar working-tree-vs-HEAD diff summary (`DiffService` via
+`computeDiff`/`diffWorkdirToHead`) already covers the practical need, so the
 extra branch-divergence variant is not worth building.
 
 **How to apply:** do not propose or start the diff-summary / divergence-stats

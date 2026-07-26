@@ -16,7 +16,9 @@ and rationale that are NOT obvious from the code. Implementation STATUS lives in
 
 - Reserved keys `setup`/`teardown` are lifecycle hooks — run automatically, never
   invocable by hand (`RepoScripts.reservedNames`; `resolveRunCommand` `.denied`s
-  them; `spawnScriptSurface` is private).
+  them; `spawnScriptSurface` is still private, now on `ScriptHookRunner`, whose
+  only internal entry points for a hook spawn are the narrow `runSetupHook` that
+  `createLinkedWorkspace` calls and the `runTeardown` the destroy paths await).
 - Every other key is a named command, run on demand from the UI or `casper run`.
 
 ## Hook wrap vs. named-command wrap (opposite goals)
@@ -46,7 +48,12 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
 - **setup guards in `applyCloseSurface`:** a still-tagged `.setup` surface is
   never torn down by an early close (its fate is the exit code); a FAILED setup
   arms `keptFailedSetupSurfaces` to swallow the one shell-exit close so the pane
-  stays open showing the error.
+  stays open showing the error. That hook state — `scriptSurfaces`,
+  `keptFailedSetupSurfaces`, `pendingTeardownResumes` — is owned privately by
+  `ScriptHookRunner`; `applyCloseSurface` (still on `AppModel`) reaches it only
+  through the runner's narrow query/consume methods. `closingWorkspaces` is the
+  exception that stays on `AppModel`: it claims the whole close/delete operation
+  (probes, merge, prune), not just the hook.
 - This assumes libghostty emits a `close_surface_cb` after the child exits — true
   for the current pin (every shell-exit pane close relies on it). A future pin
   that suppressed it would strand a successful setup's split.

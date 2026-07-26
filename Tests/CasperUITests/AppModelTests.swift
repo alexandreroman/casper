@@ -1246,7 +1246,7 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let ws = model.spaces[0].workspaces[0]
-        let diff = await model.computeDiff(for: ws)
+        let diff = await model.diffService.computeDiff(for: ws)
         XCTAssertNotNil(diff)
         XCTAssertFalse(diff!.files.isEmpty)
     }
@@ -1266,8 +1266,8 @@ final class AppModelTests: XCTestCase {
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let ws = model.spaces[0].workspaces[0]
-        let first = await model.computeDiff(for: ws)
-        let second = await model.computeDiff(for: ws)
+        let first = await model.diffService.computeDiff(for: ws)
+        let second = await model.diffService.computeDiff(for: ws)
         XCTAssertNotNil(first)
         XCTAssertEqual(first, second)
     }
@@ -1279,7 +1279,7 @@ final class AppModelTests: XCTestCase {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: { _ in nil })
-        let diff = await model.computeDiff(for: model.spaces[0].workspaces[0])
+        let diff = await model.diffService.computeDiff(for: model.spaces[0].workspaces[0])
         XCTAssertNil(diff)
     }
 
@@ -1293,7 +1293,7 @@ final class AppModelTests: XCTestCase {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
-        let summary = await model.diffSummary(for: model.spaces[0].workspaces[0])
+        let summary = await model.diffService.diffSummary(for: model.spaces[0].workspaces[0])
         XCTAssertEqual(summary?.insertions, 1)
         XCTAssertEqual(summary?.deletions, 0)
     }
