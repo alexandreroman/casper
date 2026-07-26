@@ -80,6 +80,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
         setupNotifications()
 
+        // Sparkle schedules its own periodic checks once started, so launch is the
+        // only place it has to be kicked off. It stays inert in dev builds — see
+        // SoftwareUpdater for the bundle-configuration gate.
+        SoftwareUpdater.shared.start()
+
         // Temporary main-thread hang diagnostics. On a detected freeze it dumps a
         // `sample` stack trace under ~/Library/Logs/Casper/ and surfaces a
         // notification. The capture callback fires on a background thread, so hop

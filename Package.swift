@@ -26,6 +26,10 @@ let package = Package(
             url: "https://github.com/appstefan/HighlightSwift.git",
             from: "1.1.0"
         ),
+        .package(
+            url: "https://github.com/sparkle-project/Sparkle.git",
+            from: "2.9.4"
+        ),
     ],
     targets: [
         .systemLibrary(
@@ -56,6 +60,7 @@ let package = Package(
                 "CasperGhostty",
                 "CasperAgents",
                 .product(name: "HighlightSwift", package: "HighlightSwift"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ]
         ),
         .target(
