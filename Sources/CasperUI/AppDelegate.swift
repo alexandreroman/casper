@@ -14,10 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
     // `NSMenu.delegate` is weak, so the App-menu proxy needs an owner here.
     private var appMenuDelegateProxy: AppMenuDelegateProxy?
-    // Temporary freeze-diagnosis scaffolding — see MainThreadHangWatchdog. Ships in
-    // release builds on purpose; remove once the beachball hang is root-caused.
-    private var hangWatchdog: MainThreadHangWatchdog?
     #if DEBUG
+    // Temporary freeze-diagnosis scaffolding — see MainThreadHangWatchdog. DEBUG
+    // only; remove once the beachball hang is root-caused.
+    private var hangWatchdog: MainThreadHangWatchdog?
     private var debugServer: DebugServer?
     #endif
 
@@ -87,10 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         // SoftwareUpdater for the bundle-configuration gate.
         SoftwareUpdater.shared.start()
 
-        // Temporary main-thread hang diagnostics. On a detected freeze it dumps a
-        // `sample` stack trace under ~/Library/Logs/Casper/ and surfaces a
-        // notification. The capture callback fires on a background thread, so hop
-        // to the main actor before touching UserNotifications.
+        #if DEBUG
+        // Temporary main-thread hang diagnostics, compiled out of release builds.
+        // On a detected freeze it dumps a `sample` stack trace under
+        // ~/Library/Logs/Casper/ and surfaces a notification. The capture callback
+        // fires on a background thread, so hop to the main actor before touching
+        // UserNotifications.
         let watchdog = MainThreadHangWatchdog { dumpFileURL in
             Task { @MainActor in
                 AppModel.shared.deliverNotification(
@@ -99,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         }
         watchdog.start()
         hangWatchdog = watchdog
+        #endif
 
         // When a window becomes key (the app returns to the foreground), dismiss
         // the attention bubble of the now-focused workspace. Mirrors the
@@ -170,10 +173,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
     func applicationWillTerminate(_ notification: Notification) {
         if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
-        hangWatchdog?.stop()
         AppModel.shared.stopAgentDetection()
         controlServer?.stop()
         #if DEBUG
+        hangWatchdog?.stop()
         debugServer?.stop()
         #endif
         AppModel.shared.flushPendingSave()

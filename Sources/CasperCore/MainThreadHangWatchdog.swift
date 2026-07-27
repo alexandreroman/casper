@@ -1,20 +1,23 @@
+#if DEBUG
+
 import Foundation
 import os
 
-/// Temporary freeze-diagnosis scaffolding.
+/// Temporary freeze-diagnosis scaffolding. **DEBUG builds only** — the whole file
+/// is compiled out of release, so a distributed build contains none of it.
 ///
-/// Casper intermittently beachballs (spinning-wheel, main thread blocked) on real
-/// release builds, and we do not yet have a reliable reproduction. This watchdog
-/// detects a hung main thread and, on the first stall of an episode, spawns
-/// `/usr/bin/sample` against our own process so the resulting stack dump reveals
-/// what the main thread is blocked on. It is deliberately compiled into release
-/// builds (NO `#if DEBUG` gating) so we can catch the freeze in the field.
+/// Casper intermittently beachballs (spinning-wheel, main thread blocked), and we
+/// do not yet have a reliable reproduction. This watchdog detects a hung main
+/// thread and, on the first stall of an episode, spawns `/usr/bin/sample` against
+/// our own process so the resulting stack dump reveals what the main thread is
+/// blocked on.
 ///
 /// Remove this file — and its wiring in `AppDelegate` — once the hang is
 /// root-caused. This is a sibling to the `Repository.diffWorkdirToHead` SIGBUS
-/// guard (`CSigbusGuard` / `SigbusGuard.run`): both are last-resort field
-/// instrumentation for hard-to-catch crashes/freezes around the diff view. If the
-/// captured samples repeatedly point at the diff/libgit2 path, start there.
+/// guard (`CSigbusGuard` / `SigbusGuard.run`): both are last-resort instrumentation
+/// for hard-to-catch crashes/freezes around the diff view — the SIGBUS guard still
+/// ships in release, this one does not. If the captured samples repeatedly point at
+/// the diff/libgit2 path, start there.
 ///
 /// Detection uses an inverted heartbeat. A `DispatchSourceTimer` on a dedicated
 /// background queue — never blocked by the main thread — fires every 500 ms. Each
@@ -33,8 +36,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// parses to a value greater than zero.
     static let thresholdEnvKey = "CASPER_HANG_THRESHOLD"
     /// Environment kill switch. Set to `0`/`false` to make `start()` a no-op — a
-    /// safety valve so the diagnostic can be disabled in the field without a
-    /// rebuild.
+    /// safety valve so the diagnostic can be disabled without a rebuild.
     static let enabledEnvKey = "CASPER_HANG_WATCHDOG"
 
     /// How often the background timer fires. Well below the threshold so a stall
@@ -164,7 +166,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
 
     /// Starts the detection timer. Idempotent, and safe to call from any thread.
     /// Reads the environment overrides here so no rebuild is needed to retune or
-    /// disable the diagnostic in the field.
+    /// disable the diagnostic.
     public func start() {
         let environment = ProcessInfo.processInfo.environment
         if let flag = environment[Self.enabledEnvKey]?.lowercased(), flag == "0" || flag == "false" {
@@ -279,7 +281,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     private func performDefaultCapture(hangDuration: TimeInterval, destination: URL) {
         // Emit the marker BEFORE anything can fail, so the unified log always
         // carries the hang duration and intended dump path even if `sample` never
-        // runs. `.fault` keeps it in release builds and highly visible.
+        // runs. `.fault` makes it stand out in the unified log.
         CasperLog.app.fault(
             """
             main-thread hang detected: unresponsive for \
@@ -316,3 +318,5 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         onHangCaptured(destination)
     }
 }
+
+#endif  // DEBUG
