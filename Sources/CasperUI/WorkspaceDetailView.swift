@@ -213,7 +213,7 @@ struct WorkspaceDetailView: View {
                     Text("−\(diff.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
                 }
                 .font(.body.monospacedDigit().bold())
-                .titleCapsule()
+                .titleCapsule(interactive: true)
             }
             .buttonStyle(.plain)
             .help("Toggle diff")
@@ -225,7 +225,7 @@ struct WorkspaceDetailView: View {
             model.toggleInspectorCollapsed(for: workspace.id)
         } label: {
             Image(systemName: "sidebar.right")
-                .titleCapsule(filled: workspace.inspector.collapsed)
+                .titleCapsule(filled: workspace.inspector.collapsed, interactive: true)
         }
         .buttonStyle(.plain)
         .help("Toggle panel")
@@ -280,7 +280,7 @@ struct WorkspaceDetailView: View {
         // produces a visible enclosing pill. Interior padding lives inside each control's
         // label (not on the shell) so the whole pill is clickable, not just the glyphs.
         return content
-            .titleCapsuleShell()
+            .titleCapsuleShell(interactive: true)
             .help("Open in Editor")
     }
 
@@ -344,11 +344,57 @@ private struct ScriptToolbarButton: View {
             // Fill the capsule's right inset so its trailing edge isn't a dead zone.
             .padding(.trailing, 10)
         }
-        .titleCapsuleShell()
+        .titleCapsuleShell(interactive: true)
         .help("Run Script")
         .opacity(appeared ? 1 : 0)
         .scaleEffect(appeared ? 1 : 0.85)
         .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }
+    }
+}
+
+/// The capsule chrome itself — fixed height, fill, hairline border, hit shape —
+/// plus the hover highlight that makes an interactive chip read as clickable.
+///
+/// It lives in a `ViewModifier` (rather than as `.onHover` on each call site) for
+/// the `@State` it needs, and because sitting on the shell makes hover cover the
+/// WHOLE pill, including the nested borderless `Menu` chevron of the split
+/// buttons — a per-control `.onHover` would flicker as the pointer crosses them.
+private struct TitleCapsuleChrome: ViewModifier {
+    let filled: Bool
+    /// Buttons opt in; the branch/space `title` chip is not clickable, so it stays
+    /// hover-inert and renders exactly as it did before hover existed.
+    let interactive: Bool
+
+    @State private var hovering = false
+
+    private var highlighted: Bool { interactive && hovering }
+
+    /// An unfilled chip (the inspector toggle while the panel is open) grows the
+    /// standard fill + border on hover, so the capsule "appears" under the pointer
+    /// like a native toolbar button. Padding, height and hit area are already
+    /// identical in both states, so this can never shift the layout.
+    private var showsChrome: Bool { filled || highlighted }
+
+    private var fill: Color {
+        guard showsChrome else { return .clear }
+        return Color.secondary.opacity(highlighted ? 0.28 : 0.15)
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let shell = content
+            .frame(height: 36)
+            .background(fill, in: Capsule())
+            .overlay(showsChrome ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
+            .contentShape(Capsule())
+
+        if interactive {
+            shell
+                .onHover { hovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovering)
+        } else {
+            shell
+        }
     }
 }
 
@@ -362,24 +408,23 @@ private extension View {
     /// Pass `filled: false` to drop the fill and border while keeping the exact
     /// same padding, height, and hit area — used by the inspector toggle so its
     /// background vanishes when the panel is open but the button never shifts.
-    func titleCapsule(filled: Bool = true) -> some View {
+    ///
+    /// Pass `interactive: true` for chips that are buttons, so they light up on
+    /// hover like a native toolbar button; see `TitleCapsuleChrome`.
+    func titleCapsule(filled: Bool = true, interactive: Bool = false) -> some View {
         self
             .padding(.horizontal, 10)
-            .titleCapsuleShell(filled: filled)
+            .titleCapsuleShell(filled: filled, interactive: interactive)
     }
 
-    /// The capsule chrome WITHOUT the interior horizontal padding: fixed height,
-    /// fill, hairline border, and hit shape. Split out from `titleCapsule` so a
-    /// split-button (Run / Editor) can wrap the whole HStack in the visible pill
-    /// while its inner controls carry the padding themselves — keeping that
-    /// padding inside their clickable label instead of as dead decoration around
-    /// a `.plain` button (see the `title-capsule-hit-area` memory note).
-    func titleCapsuleShell(filled: Bool = true) -> some View {
-        self
-            .frame(height: 36)
-            .background(filled ? Color.secondary.opacity(0.15) : .clear, in: Capsule())
-            .overlay(filled ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
-            .contentShape(Capsule())
+    /// The capsule chrome WITHOUT the interior horizontal padding. Split out from
+    /// `titleCapsule` so a split-button (Run / Editor) can wrap the whole HStack in
+    /// the visible pill while its inner controls carry the padding themselves —
+    /// keeping that padding inside their clickable label instead of as dead
+    /// decoration around a `.plain` button (see the `title-capsule-hit-area`
+    /// memory note). `interactive` behaves as in `titleCapsule`.
+    func titleCapsuleShell(filled: Bool = true, interactive: Bool = false) -> some View {
+        modifier(TitleCapsuleChrome(filled: filled, interactive: interactive))
     }
 }
 
