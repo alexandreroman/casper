@@ -25,6 +25,11 @@ SIGBUS guard (see `sigbus-guard-diff`); the earlier fixed UI freeze is
 `diff-view-refresh-hang`. If captured samples repeatedly point at the
 diff/libgit2 path (`computeDiff` / `diffWorkdirToHead`), start there.
 
+The liveness probe rides the **main run loop** (`CFRunLoopPerformBlock`), not
+the main dispatch queue, or every modal alert reads as a hang — see
+[[main-queue-starved-by-modal-loops]] for the mechanism and the accepted
+trade-off.
+
 **How to access after a freeze:**
 
 - **Auto-captured dumps:** `~/Library/Logs/Casper/hang-<yyyyMMdd-HHmmss>.txt`.
