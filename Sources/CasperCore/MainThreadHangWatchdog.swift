@@ -18,11 +18,12 @@ import os
 ///
 /// Detection uses an inverted heartbeat. A `DispatchSourceTimer` on a dedicated
 /// background queue — never blocked by the main thread — fires every 500 ms. Each
-/// tick schedules a block on the main queue that records "the main thread was
-/// alive as of this tick's timestamp", then measures how long ago the main thread
-/// last acknowledged. While the main thread spins, its queued acknowledgements
-/// never run, so the measured gap grows until it crosses the threshold and we
-/// capture.
+/// tick enqueues a block on the main thread's *run loop* that records "the main
+/// thread was alive as of this tick's timestamp", then measures how long ago the
+/// main thread last acknowledged. While the main thread is stuck, it never turns
+/// its run loop, so the pending acknowledgements never run and the measured gap
+/// grows until it crosses the threshold and we capture. See `scheduleAck` for why
+/// the ack rides the run loop rather than the main dispatch queue.
 ///
 /// `@unchecked Sendable`: the timer's `DispatchSourceTimer` and shared detection
 /// state are confined to the serial `queue` / the `OSAllocatedUnfairLock`, the
@@ -39,6 +40,29 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// How often the background timer fires. Well below the threshold so a stall
     /// is noticed promptly.
     private static let tickInterval: TimeInterval = 0.5
+
+    /// The two nested-loop modes AppKit spins on its own: modal sessions
+    /// (`NSModalPanelRunLoopMode`) and menu / drag tracking
+    /// (`NSEventTrackingRunLoopMode`). Spelled as literals because
+    /// `RunLoop.Mode.modalPanel` / `.eventTracking` are declared by AppKit, and
+    /// CasperCore deliberately does not link AppKit. The raw values are part of
+    /// AppKit's public API and have been stable since NeXTSTEP.
+    static let modalPanelRunLoopMode = "NSModalPanelRunLoopMode"
+    static let eventTrackingRunLoopMode = "NSEventTrackingRunLoopMode"
+
+    /// Run loop modes the acknowledgement block is enqueued for: the common modes
+    /// (normal event processing) plus the two nested-loop modes above. See
+    /// `scheduleAck`.
+    ///
+    /// Built once and shared: `scheduleAck` runs twice a second for the whole
+    /// process lifetime. `nonisolated(unsafe)` because `CFArray` is not `Sendable`
+    /// even though this one is immutable and never handed out.
+    nonisolated(unsafe) private static let ackRunLoopModes: CFArray =
+        [
+            CFRunLoopMode.commonModes.rawValue,
+            modalPanelRunLoopMode as CFString,
+            eventTrackingRunLoopMode as CFString,
+        ] as CFArray
 
     /// Detection state, guarded by `lock`. All of it is touched from both the
     /// timer queue and the (possibly recovered) main-thread ack block, so it lives
@@ -80,9 +104,36 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// clock change cannot manufacture a phantom hang.
     var nowProvider: @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Schedules the per-tick acknowledgement block onto the main thread. The
-    /// default hops to the main queue; a hung main thread simply never runs it.
+    /// default enqueues it on the main *run loop*, for `ackRunLoopModes`; a main
+    /// thread that has stopped turning its run loop simply never runs it.
+    ///
+    /// The obvious implementation — and the original one — was
+    /// `DispatchQueue.main.async`, but it cried wolf. Choosing "Check for
+    /// Updates…" makes Sparkle call `-[NSAlert runModal]` from inside a main
+    /// queue block, which spins a nested modal run loop and sits there waiting
+    /// for the user. libdispatch will not re-enter `_dispatch_main_queue_drain`
+    /// from that nested loop, so every queued ack stays stuck behind the alert:
+    /// the gap crossed the threshold and the watchdog sampled a perfectly healthy
+    /// app (captured dump `hang-20260727-115846.txt`, main thread parked in
+    /// `-[NSApplication _doModalLoop:peek:]`). Casper's own `runModal()` panels
+    /// and alerts in `AppModel+Presentation` and plain menu tracking have the
+    /// exact same shape. Run loop blocks carry no such re-entrancy guard: the
+    /// nested loop drains them, so acks keep flowing while a modal is up.
+    ///
+    /// Accepted trade-off: the watchdog no longer notices "the main dispatch
+    /// queue is not draining" on its own — only "the main thread is not turning
+    /// its run loop at all". So a genuine hang whose signature is a nested loop
+    /// spinning forever while ordinary main queue work starves — a modal session
+    /// or a menu track that never ends — now reads as healthy. That is the price
+    /// of not crying wolf on every alert the user opens. (A hard block, where the
+    /// thread stops servicing any loop, is still caught.)
     var scheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = { block in
-        DispatchQueue.main.async(execute: block)
+        let mainRunLoop = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(mainRunLoop, MainThreadHangWatchdog.ackRunLoopModes, block)
+        // A run loop asleep in `mach_msg` would not notice the block until its
+        // next event — which, on an idle app, may be seconds away and would look
+        // exactly like a hang. Wake it so the ack lands within this tick.
+        CFRunLoopWakeUp(mainRunLoop)
     }
     /// Dispatches the (blocking) capture work off the detection timer's queue. The
     /// default uses `captureQueue`; a test runs it inline for determinism.
@@ -167,9 +218,9 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     }
 
     /// Records that the main thread was alive as of `ackTime`. Called from the
-    /// block `scheduleAck` runs on the main thread. Ack blocks are delivered in
-    /// order on the serial main queue and carry a monotonic timestamp, so a plain
-    /// assignment always advances `lastMainAck`.
+    /// block `scheduleAck` runs on the main thread. Ack blocks are drained by the
+    /// run loop in the order they were enqueued and carry a monotonic timestamp,
+    /// so a plain assignment always advances `lastMainAck`.
     func recordAck(at ackTime: TimeInterval) {
         lock.withLock { $0.lastMainAck = ackTime }
     }
