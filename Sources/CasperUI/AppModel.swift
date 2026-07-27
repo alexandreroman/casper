@@ -752,11 +752,13 @@ final class AppModel {
             scriptHooks.runSetupHook(in: ws.id, command: setup)
         }
         // A silently-created (control-channel) workspace is never selected, so its views
-        // never mount on their own. Bring up any surface carrying a queued command
-        // off-screen so it runs now, in the background, instead of waiting for the user
-        // to select the workspace. (UI creation takes the `select` path above and mounts
-        // its views normally, so this is scoped to the silent path.)
-        if !select, let created = workspace(id: ws.id) {
+        // never mount on their own. Bring the surface carrying the queued `command` up
+        // off-screen so it runs now, in the background, instead of waiting for the user to
+        // select the workspace. (UI creation takes the `select` path above and mounts its
+        // views normally, so this is scoped to the silent path.) The `setup` split just
+        // above is NOT covered here: `insertHookSurface` materializes every hook split
+        // itself, so each site brings up exactly the surfaces whose input it queued.
+        if !select, command != nil, let created = workspace(id: ws.id) {
             materializePendingSurfacesOffscreen(in: created)
         }
         return .success(ws)
@@ -2018,6 +2020,15 @@ final class AppModel {
         pendingInitialInput[surface.id] = command
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
+        // A background (non-selected) workspace's views never mount on their own, so the
+        // split just inserted would get no `GhosttySurfaceView`, no PTY, and the hook would
+        // never run — leaving `runTeardown` to end on its 30 s timeout on every delete of an
+        // unselected workspace. Bring it up off-screen now, mirroring the queued-command
+        // paths in `controlOpenTerminal` / `createLinkedWorkspace`. Re-fetch the workspace
+        // fresh: the `ws` above predates the split and lacks the new surface.
+        if selectedWorkspaceID != workspaceID, let refreshed = workspace(id: workspaceID) {
+            materializePendingSurfacesOffscreen(in: refreshed)
+        }
         return true
     }
 
