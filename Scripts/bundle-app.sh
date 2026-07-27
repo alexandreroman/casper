@@ -16,7 +16,14 @@ cd "$ROOT"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-BIN_DIR="$(swift build -c release --show-bin-path)"
+# Same flags as the Makefile's `release` target, which exports them; the default
+# keeps a standalone run of this script honest. Building the release with one set
+# of flags and locating it with another risks resolving a different build
+# directory (or planning a rebuild without them).
+SWIFT_RELEASE_FLAGS="${SWIFT_RELEASE_FLAGS:--Xswiftc -Osize}"
+# Word splitting is intended here: the variable holds several arguments.
+# shellcheck disable=SC2086
+BIN_DIR="$(swift build -c release $SWIFT_RELEASE_FLAGS --show-bin-path)"
 BINARY="$BIN_DIR/casper"
 if [ ! -x "$BINARY" ]; then
     echo "error: release binary not found at $BINARY (run 'make release' first)" >&2
@@ -127,6 +134,19 @@ install_name_tool -add_rpath "$RPATH" "$BUNDLED_BIN"
 # names, invalidating any prior signature, and an invalid signature is worse than
 # an ad-hoc one on the target Mac. Sign nested code before the main executable.
 find "$APP/Contents/Frameworks" -type f -name '*.dylib' -exec codesign --force --sign - {} +
+
+# Save the debug symbols outside Casper.app, then strip them from the shipped
+# executable (~3.8 MB smaller). The dSYM stays out of the bundle because users
+# have no use for it, while crash reports still symbolicate against the copy
+# archived next to the release. Order is not negotiable: dsymutil needs the
+# symbol table strip is about to remove, and strip rewrites the Mach-O, so it
+# must run before the signature below rather than invalidate it afterwards.
+DSYM="$ROOT/Casper.dSYM"
+rm -rf "$DSYM"
+dsymutil "$BUNDLED_BIN" --out "$DSYM"
+strip -x "$BUNDLED_BIN"
+echo "Saved debug symbols -> $DSYM"
+
 codesign --force --sign - "$BUNDLED_BIN"
 
 # Sparkle is deliberately left out of the re-signing above: it keeps the Apple
