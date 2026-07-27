@@ -200,7 +200,9 @@ struct WorkspaceDetailView: View {
                     .fontWeight(.bold)
             }
         }
-        .titleCapsule()
+        // Chrome-less on purpose: the title is not a control, so it keeps the
+        // shared capsule metrics (alignment with the chips) without the pill.
+        .titleCapsule(filled: false)
     }
 
     @ViewBuilder private var diffBadge: some View {
@@ -406,8 +408,10 @@ private extension View {
     /// works for every chip.
     ///
     /// Pass `filled: false` to drop the fill and border while keeping the exact
-    /// same padding, height, and hit area — used by the inspector toggle so its
-    /// background vanishes when the panel is open but the button never shifts.
+    /// same padding, height, and hit area. Used by the inspector toggle, so its
+    /// background vanishes when the panel is open but the button never shifts,
+    /// and by the branch/space `title`, which reads as a label rather than a
+    /// chip yet still lines up with the chips next to it.
     ///
     /// Pass `interactive: true` for chips that are buttons, so they light up on
     /// hover like a native toolbar button; see `TitleCapsuleChrome`.
