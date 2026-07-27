@@ -89,7 +89,7 @@ struct WorkspaceCommand: ParsableCommand {
         }
         func run() throws {
             // The app runs the repo's `teardown` hook (up to ~30s — see
-            // AppModel.teardownTimeout) before replying, so allow well beyond the
+            // ScriptHookRunner.teardownTimeout) before replying, so allow well beyond the
             // default 5s or a slow teardown would be misreported as a client-side
             // timeout even though the deletion succeeds.
             let response = try sendControl(makeCommand(), retriable: false, timeout: 35)

@@ -17,9 +17,10 @@ type: project
   [--visible|--gone] [--timeout ms]`, `reload [--wait]`.
 
 Add a new verb the same way as any control verb: `ControlCommand.Verb` case + flat
-field(s) + async completion-reply `ControlServer` dispatch + `AppModel.controlBrowser*`
-+ `BrowserCommand` subcommand + JSON output. Pure JS generation lives in the
-WebKit-free, unit-testable `BrowserAutomation` module.
+field(s) + async completion-reply `ControlServer` dispatch +
+`BrowserAutomationController.controlBrowser*` + `BrowserCommand` subcommand +
+JSON output. Pure JS generation lives in the WebKit-free, unit-testable
+`BrowserAutomation` module.
 
 ## Design decisions (the durable "why")
 

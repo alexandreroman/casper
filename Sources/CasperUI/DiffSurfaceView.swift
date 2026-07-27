@@ -141,7 +141,7 @@ struct DiffSurfaceView: View {
         // flash): `content` shows the last value until it's reassigned below.
         refreshTask?.cancel()
         refreshTask = Task { @MainActor in
-            let newDiff = await model.computeDiff(for: workspace)
+            let newDiff = await model.diffService.computeDiff(for: workspace)
             if Task.isCancelled { return }
             // Dedup redundant refreshes (diff-view refresh-hang incident): on an
             // active worktree an FSEvents watcher bumps `model.diffRevision` very
@@ -269,8 +269,8 @@ struct DiffSurfaceView: View {
                 guard !file.isBinary else { continue }
                 if carried[file.id] != nil { continue }  // already have a valid highlight — skip
 
-                let newText = model.worktreeFileText(for: workspace, path: file.newPath)
-                let oldText = model.headFileText(for: workspace, path: file.oldPath)
+                let newText = model.diffService.worktreeFileText(for: workspace, path: file.newPath)
+                let oldText = model.diffService.headFileText(for: workspace, path: file.oldPath)
 
                 let newLines = await highlight(newText, path: file.newPath)
                 let oldLines = await highlight(oldText, path: file.oldPath)

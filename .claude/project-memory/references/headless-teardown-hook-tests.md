@@ -7,8 +7,8 @@ type: project
 # Headless teardown-hook tests
 
 A workspace's `teardown` lifecycle hook is unit-testable without a live libghostty
-surface. `AppModel.spawnScriptSurface` is a **pure layout mutation** — it inserts a
-`Surface.terminal` into the workspace's layout tree and records it in
+surface. `ScriptHookRunner.spawnScriptSurface` is a **pure layout mutation** — it
+inserts a `Surface.terminal` into the workspace's layout tree and records it in
 `scriptSurfaces` — so `runTeardown` reaches its wait state in a headless XCTest run
 exactly as it does in the app. What does not happen headlessly is the child exiting:
 no PTY runs, so nothing ever calls back.
@@ -32,7 +32,7 @@ assert the teardown-failure notification calls it the way the presenters do.
 **Why:** without this, the whole hook-present branch (step counts, the countdown
 deadline, the failure notification) looks untestable and gets left to manual
 verification — and a test that forgets step 4 stalls on the 30 s
-`AppModel.teardownTimeout` instead of failing.
+`ScriptHookRunner.teardownTimeout` instead of failing.
 
 **How to apply:** when covering anything behind `runTeardown`, drive
 `handleScriptSurfaceExit` rather than faking the hook status; keep the poll bounded

@@ -29,16 +29,29 @@ final class ControlHandlerTests: XCTestCase {
     /// which this target cannot import: that fixture lives in the CasperGitTests
     /// target, whereas `CasperUITests` links `CasperGit`/`Clibgit2` directly (see
     /// Package.swift) without seeing that target's test sources.
-    private func makeRepo(at path: String) throws {
+    ///
+    /// `configJSON` commits a `.casper.json` alongside the README. It has to be part of
+    /// the commit, not just written to the working tree, so a linked worktree forked from
+    /// HEAD checks it out and its lifecycle hooks resolve.
+    private func makeRepo(at path: String, configJSON: String? = nil) throws {
         let repo = try Repository.initialize(atPath: path)
 
         let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
         try "casper fixture\n".write(to: readme, atomically: true, encoding: .utf8)
+        var committedFiles = ["README.md"]
+        if let configJSON {
+            try configJSON.write(
+                to: URL(fileURLWithPath: path).appendingPathComponent(".casper.json"),
+                atomically: true, encoding: .utf8)
+            committedFiles.append(".casper.json")
+        }
 
         var index: OpaquePointer?
         XCTAssertEqual(git_repository_index(&index, repo.pointer), 0)
         defer { git_index_free(index) }
-        XCTAssertEqual(git_index_add_bypath(index, "README.md"), 0)
+        for file in committedFiles {
+            XCTAssertEqual(git_index_add_bypath(index, file), 0)
+        }
         XCTAssertEqual(git_index_write(index), 0)
 
         var treeOid = git_oid()
@@ -65,11 +78,13 @@ final class ControlHandlerTests: XCTestCase {
     /// would be flaky. An empty branch makes `createLinkedWorkspace`'s `base`
     /// resolve to `nil`, which `WorktreeManager.create` always accepts as "fork
     /// from HEAD" — the same outcome without guessing the branch name.
-    private func seededGitModel(primaryBranch: String) throws -> (AppModel, UUID, String) {
+    private func seededGitModel(
+        primaryBranch: String, configJSON: String? = nil
+    ) throws -> (AppModel, UUID, String) {
         let repoPath = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("casper-ctrl-\(UUID().uuidString)")
         try FileManager.default.createDirectory(atPath: repoPath, withIntermediateDirectories: true)
-        try makeRepo(at: repoPath)
+        try makeRepo(at: repoPath, configJSON: configJSON)
 
         let ws = Workspace(
             name: "main", worktreePath: repoPath, branch: "",
@@ -433,6 +448,32 @@ final class ControlHandlerTests: XCTestCase {
         case .failure(let error):
             XCTFail("expected success, got \(error.message)")
         }
+    }
+
+    /// A workspace created through the control channel is never selected, so its views
+    /// never mount on their own — and its repo's `setup` lifecycle hook runs in a split of
+    /// that very workspace. Without off-screen materialization the split's PTY is never
+    /// spawned and the hook silently never runs. Headless tests have no runtime, so we
+    /// observe the `onMaterializePendingForTest` seam rather than a real PTY.
+    func testCreateWorkspaceMaterializesTheSetupHookSplitOffScreen() throws {
+        let (model, primaryID, _) = try seededGitModel(
+            primaryBranch: "main",
+            configJSON: #"{"workspace":{"scripts":{"setup":"echo setting up"}}}"#)
+
+        var materializedFor: [UUID] = []
+        model.onMaterializePendingForTest = { materializedFor.append($0) }
+
+        guard case .success(let info) = model.controlCreateWorkspace(
+            inSpaceOf: primaryID, branch: "feature-setup", base: nil)
+        else { return XCTFail("expected the workspace to be created") }
+        let createdID = try XCTUnwrap(UUID(uuidString: info.id))
+
+        XCTAssertNotEqual(
+            model.selectedWorkspaceID, createdID,
+            "control-channel creation must not steal the selection — that is what makes the hook silent")
+        XCTAssertTrue(
+            materializedFor.contains(createdID),
+            "the setup split of a background workspace must be brought up off-screen, or the hook never runs")
     }
 
     func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() async throws {
@@ -837,9 +878,9 @@ final class ControlHandlerTests: XCTestCase {
         // A script that calls `exit` must not close the interactive terminal, so
         // the command runs in a subshell. The closing paren is on its own line so
         // a trailing `#` comment cannot swallow it.
-        XCTAssertEqual(AppModel.subshellWrappedScriptCommand("exit 1"), "(\nexit 1\n)\n[ $? -eq 0 ] && exit")
+        XCTAssertEqual(ScriptHookRunner.subshellWrappedScriptCommand("exit 1"), "(\nexit 1\n)\n[ $? -eq 0 ] && exit")
         XCTAssertEqual(
-            AppModel.subshellWrappedScriptCommand("npm test # smoke"),
+            ScriptHookRunner.subshellWrappedScriptCommand("npm test # smoke"),
             "(\nnpm test # smoke\n)\n[ $? -eq 0 ] && exit")
     }
 
@@ -847,8 +888,8 @@ final class ControlHandlerTests: XCTestCase {
         // A lifecycle hook must let the shell exit with the command's status so
         // libghostty emits a child-exit event. `exit $?` sits on its own line so a
         // trailing `#` comment on the command's last line cannot swallow it.
-        XCTAssertEqual(AppModel.hookWrappedScriptCommand("npm install"), "npm install\nexit $?")
-        XCTAssertEqual(AppModel.hookWrappedScriptCommand("make # build"), "make # build\nexit $?")
+        XCTAssertEqual(ScriptHookRunner.hookWrappedScriptCommand("npm install"), "npm install\nexit $?")
+        XCTAssertEqual(ScriptHookRunner.hookWrappedScriptCommand("make # build"), "make # build\nexit $?")
     }
 
     func testNamedCommandsLoadedFromConfig() throws {

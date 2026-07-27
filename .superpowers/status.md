@@ -221,11 +221,11 @@ explicit non-overlapping frames so the Metal-backed terminals never occlude.
 
 **Chrome.** The native window toolbar (with the native sidebar toggle) shows the
 branch-icon title + worktree path, the `+ins −del` diff summary
-(`AppModel.diffSummary` via `computeDiff`), and side-by-side new-terminal /
-new-browser buttons (both split right). "Add Space" stays sidebar-side. Sidebar
-rows show a neutral branch icon, a full-width todo progress bar with the current
-task, and a notification bubble; Spaces stay collapsible; the per-Space "+" adds a
-linked workspace.
+(`AppModel.diffService.diffSummary` via `computeDiff`), and side-by-side
+new-terminal / new-browser buttons (both split right). "Add Space" stays
+sidebar-side. Sidebar rows show a neutral branch icon, a full-width todo
+progress bar with the current task, and a notification bubble; Spaces stay
+collapsible; the per-Space "+" adds a linked workspace.
 
 **Close-on-exit.** libghostty `close_surface_cb` (Ctrl-D / `exit`) is wired via
 `GhosttySurfaceView.onClose` → `AppModel.applyCloseSurface`; closing the last pane
