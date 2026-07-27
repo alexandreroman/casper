@@ -67,6 +67,100 @@ are always populated, so empty-submenu detection targets *exactly* Format+Help
 without matching titles (important — the system localizes "Help" to e.g. "Aide").
 The strip is safe (never touches the always-populated menus) and cannot loop.
 
+**Services is removed too, and also in AppKit — but from the App menu's
+`NSMenuDelegate`, not from the update hooks.** Casper does not expose the App
+menu's Services submenu. There is no SwiftUI `CommandGroup` for it — AppKit
+fills it via `NSApp.servicesMenu` — so the removal has to happen in AppKit, and
+SwiftUI re-injects it on every resync (observed: a full re-assertion ~3.4 s after
+launch put `Services` back), so a one-shot removal at launch never holds.
+
+**Stripping only from `applicationWillUpdate`/`DidUpdate` does not work, and
+cannot.** Both hooks run **after** AppKit has already drawn the menu, so on the
+pass that matters they lose the race by construction. The chronology that proved
+it, on one long-running instance (each timestamp is a *successful* removal,
+logged by the strip itself): `12:47:01` at launch, then `13:55:42`, `13:55:56`,
+`13:56:06` — one per menu opening — while a screenshot taken during those
+openings shows Services **present and expanded**. The item was removed every
+single time, always too late to be invisible. Combined with observation (1)
+below (an idle app runs zero strip passes), the failure mode is: SwiftUI
+re-injects Services while the app is idle, nothing strips it, the user clicks,
+AppKit draws the menu *with* Services, and only then does `willUpdate`/
+`DidUpdate` fire and remove it.
+
+**The fix is `NSMenuDelegate.menuNeedsUpdate(_:)`** — the callback AppKit
+invokes immediately *before* displaying a menu, and the documented point for
+mutating menu contents. The App menu already has a delegate (SwiftUI's
+`AppKitMainMenuItem`, confirmed by logging), so Casper does not replace it: an
+`AppMenuDelegateProxy` (private to `AppDelegate.swift`) **wraps** it. It calls
+`original?.menuNeedsUpdate?(menu)` **first**, then strips — that order is
+required, since the wrapped delegate is free to re-assert the menu's contents in
+its own callback. Everything the proxy does not implement reaches SwiftUI
+through ObjC forwarding: `forwardingTarget(for:)` returns the original and
+`responds(to:)` is `super.responds(to:) || original?.responds(to:) == true` —
+the two must agree, or AppKit's optional-method probes ask the wrong object and
+the menu bar breaks. `menuWillOpen(_:)` is wrapped the same way, as a
+belt-and-braces second pre-display pass. The original is held **weakly**
+(SwiftUI owns it) and the proxy is retained by `AppDelegate`, because
+`NSMenu.delegate` is weak. `installAppMenuDelegateProxy()` runs on every
+will/did-update pass and re-wraps whenever the current delegate is not our proxy
+(SwiftUI swapped it once ~150 ms after launch, then left it alone); a proxy is
+never wrapped in a proxy — the delegate it was already forwarding to is reused.
+The identity guard must be `if let installed = proxy, menu.delegate === installed`
+and **not** `menu.delegate !== proxy`: `nil === nil` is true, which would skip
+the first install on a delegate-less menu.
+
+The `stripServicesMenu()` call in `applicationWillUpdate`/`DidUpdate` is
+**kept**, before `stripEmptyTopLevelMenus()` (so the empty-stub pass sees the
+final menu), as a safety net for re-injections that happen with no menu open. It
+is a safety net, not the fix.
+
+The proxy is confirmed working against a human click, and the same logs settle
+the mechanism: on the first opening, `menuNeedsUpdate:` logged
+`before=[About | --- | Services | --- | Hide | …]` / `after=[About | --- | Hide | …]`,
+so Services was **already in the menu** when the callback fired — put there by an
+earlier idle resync, not by SwiftUI re-injecting inside `menuNeedsUpdate:` (the
+`willOpen` pass that follows already sees a clean menu). A later opening logged a
+`before=` with no Services at all, i.e. re-injection is intermittent, not
+per-open. Verifying this needs a real click: the debug channel exposes only
+terminal surfaces, and assistive access (osascript/System Events/CGEvent) plus
+screen capture are both denied to agents here, so no menu-bar state can be
+observed or driven from outside the app — in-app `.debug` logging is the only
+instrument, and a human has to open the menu.
+
+**`NSApp.servicesMenu` is NOT a usable handle — never gate on it.** The obvious
+implementation (match the item by submenu identity, `$0.submenu === NSApp.servicesMenu`,
+then nil the property and let that early-return later passes) is wrong. Logging
+the property on every will/didUpdate pass showed it is **not** a mirror of the
+item's presence: after `NSApp.servicesMenu = nil` at pass 1, pass 2 — 8 ms later —
+already read it back as **non-nil while no submenu-bearing item was in the App
+menu at all**. Both AppKit and SwiftUI write to it, independently of what is in
+the menu. Using it as the entry condition therefore makes the strip effectively
+one-shot: any resync that re-inserts the Services item while the property happens
+to be nil is never cleaned up, and the item stays visible forever.
+
+**What the strip matches instead:** in the App menu, Services is the **only** item
+carrying a submenu — the live dump is
+`About | --- | Hide | Hide Others | Show All | --- | Quit`, all plain items, so
+`item.submenu != nil` identifies Services alone. That criterion is
+locale-independent (macOS localizes "Services"), identity-independent, idempotent,
+re-triggerable on every pass, and confined to the App menu. `NSApp.servicesMenu = nil`
+is still done **after** the removal so AppKit stops feeding the orphaned submenu,
+but purely as an effect — never as a precondition. The strip also collapses the
+orphaned separator pair AppKit leaves behind (`normalizeSeparators(in:)`).
+
+Two related observations from the same instrumentation, useful for the next
+menu-bar investigation: (1) `applicationWillUpdate`/`DidUpdate` fire only while
+the app processes events — an idle or background instance runs **zero** strip
+passes even though SwiftUI keeps mutating state, so any re-injection in that
+window survives until the next event — this is what makes the update hooks alone
+insufficient for Services; (2) menu-open time is not a *re-injection* point
+(neither `NSMenu.update()` nor `NSMenuDidBeginTracking` was observed putting
+Services back), but it **is** the correct *strip* point: by then the item is
+already there from an earlier idle resync, and `menuNeedsUpdate:` is the last
+moment at which removing it is still invisible to the user. `.debug` logs are not
+persisted to the log store — read them with `log stream --level debug` started
+**before** launching the app, not with `log show --debug` afterwards.
+
 **The complete flicker mechanism (root cause).** The empty Format/Help stubs are
 created by CasperCommands' **own** `CommandGroup(replacing: .textFormatting) {}` /
 `.help {}` (not just SwiftUI defaults — confirmed: `.commandsRemoved()` did NOT
