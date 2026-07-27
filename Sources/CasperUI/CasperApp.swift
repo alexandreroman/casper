@@ -21,6 +21,8 @@ struct CasperApp: App {
         // API to re-add a single default group afterwards. Format/Help are instead
         // removed by emptying `.textFormatting`/`.help` in CasperCommands and
         // stripping the leftover empty stubs in AppDelegate.stripEmptyTopLevelMenus().
+        // Services alone is dropped from the App menu — there is no CommandGroup for
+        // it either, so AppDelegate.stripServicesMenu() removes it in AppKit.
         .commands { CasperCommands(model: model) }
     }
 }
