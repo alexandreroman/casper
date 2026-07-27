@@ -19,5 +19,6 @@ DerivedData/
 ## Packaging output
 /Casper.app/
 /Casper-dev.app/
+/Casper.dSYM/
 /dist/
 /appcast.xml

@@ -119,10 +119,13 @@ jobs:
         run: |
           ZIP="dist/Casper-${SHORT}-arm64.zip"
           SUM="dist/Casper-${SHORT}-arm64.zip.sha256"
+          # The shipped binary is stripped; this dSYM is what symbolicates the
+          # crash reports users send back for this exact release.
+          DSYM="dist/Casper-${SHORT}-arm64.dSYM.zip"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ZIP" "$SUM" appcast.xml --clobber
+            gh release upload "$TAG" "$ZIP" "$SUM" "$DSYM" appcast.xml --clobber
           else
-            gh release create "$TAG" "$ZIP" "$SUM" appcast.xml \
+            gh release create "$TAG" "$ZIP" "$SUM" "$DSYM" appcast.xml \
               --title "Casper ${SHORT}" \
               --notes-file Packaging/release-notes.md
           fi
@@ -135,4 +138,5 @@ jobs:
           path: |
             dist/Casper-${{ steps.version.outputs.short }}-arm64.zip
             dist/Casper-${{ steps.version.outputs.short }}-arm64.zip.sha256
+            dist/Casper-${{ steps.version.outputs.short }}-arm64.dSYM.zip
             appcast.xml

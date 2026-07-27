@@ -89,7 +89,12 @@ bundle:
    every non-system dylib (libgit2, llhttp, libssh2, and transitive deps) into
    `Contents/Frameworks/` and rewrites all `install_name`s to `@rpath` /
    `@executable_path/../Frameworks`.
-4. **Self-check (hard fail):** `otool -L` on the bundled binary **and** each
+4. `dsymutil` the bundled binary into `Casper.dSYM` (**outside** the bundle),
+   then `strip -x` the binary and sign it. Users get a ~3.8 MB smaller
+   executable; the archived dSYM keeps their crash reports symbolicatable. The
+   order is load-bearing: `dsymutil` needs the symbol table `strip` removes, and
+   `strip` rewrites the Mach-O, so it must precede `codesign`.
+5. **Self-check (hard fail):** `otool -L` on the bundled binary **and** each
    bundled dylib; if any `LC_LOAD_DYLIB` still points at `/opt/homebrew` or other
    non-system, non-`@rpath` path, exit non-zero. This is the guarantee that the
    artifact runs on a clean Mac — the closest proxy to testing on one.
@@ -97,8 +102,9 @@ bundle:
 **`Makefile`** — two new targets:
 
 - `bundle` — runs `make release` then `Scripts/bundle-app.sh` → `Casper.app`.
-- `dist` — runs `bundle`, then zips to `dist/Casper-<version>-arm64.zip` and
-  writes `dist/Casper-<version>-arm64.zip.sha256`.
+- `dist` — runs `bundle`, then zips to `dist/Casper-<version>-arm64.zip`, writes
+  `dist/Casper-<version>-arm64.zip.sha256`, and zips the debug symbols to
+  `dist/Casper-<version>-arm64.dSYM.zip` as a separate release asset.
 
 Both are usable locally so the release is reproducible off-CI.
 
@@ -120,15 +126,16 @@ Both are usable locally so the release is reproducible off-CI.
      (`git rev-list --count HEAD`); **validate** `SHORT_VERSION` against
      `^[0-9A-Za-z.+-]+$` and reject anything else (blocks script/XML injection
      from the free-text dispatch input).
-  5. `make dist` (which runs `swift build -c release` → `bundle-app.sh`). All
-     interpolated values (`github.ref_name`, `inputs.version`,
-     `github.repository`) flow through `env:` vars, never inlined into `run:`
-     script text.
+  5. `make dist` (which runs `swift build -c release -Xswiftc -Osize` →
+     `bundle-app.sh`). All interpolated values (`github.ref_name`,
+     `inputs.version`, `github.repository`) flow through `env:` vars, never
+     inlined into `run:` script text.
   6. Regenerate `appcast.xml` (see §3) and stage it alongside the zip.
   7. **Publish** (only on `push`): idempotent — `gh release view "$TAG"` then
      either `gh release upload "$TAG" … --clobber` (release exists) or
-     `gh release create "$TAG" dist/Casper-*.zip dist/*.sha256 appcast.xml
-     --title … --notes-file Packaging/release-notes.md`. Uses the preinstalled
+     `gh release create "$TAG" dist/Casper-*.zip dist/*.sha256
+     dist/*.dSYM.zip appcast.xml --title …
+     --notes-file Packaging/release-notes.md`. Uses the preinstalled
      `gh` CLI (no third-party action); `GH_TOKEN` from `github.token`.
      `--generate-notes` is deliberately **omitted** (its interaction with
      `--notes-file` varies across `gh` versions and could break the publish
@@ -183,13 +190,15 @@ signature, not a Developer ID, is what authenticates an update.
 git push tag v0.1.0
   └─ release.yml (macos-15, arm64)
        ├─ pinned Xcode + brew install libgit2 pkgconf dylibbundler
-       ├─ swift build -c release            → bare casper binary
+       ├─ swift build -c release -Xswiftc -Osize → bare casper binary
        ├─ bundle-app.sh                      → Casper.app
        │    ├─ binary → Contents/MacOS/casper
        │    ├─ Info.plist (versions substituted) → Contents/
        │    ├─ dylibbundler → Contents/Frameworks/ + @rpath rewrite
+       │    ├─ dsymutil → Casper.dSYM (outside the bundle), then strip -x
        │    └─ otool self-check (fail if any /opt/homebrew remains)
        ├─ make dist                          → Casper-0.1.0-arm64.zip + .sha256
+       │                                       + Casper-0.1.0-arm64.dSYM.zip
        ├─ regenerate appcast.xml             → Sparkle feed
        └─ gh release create                  → assets attached to the v0.1.0 release
 ```

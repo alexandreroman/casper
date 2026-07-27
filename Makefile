@@ -11,6 +11,12 @@
 SHORT_VERSION ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); echo $${v:-0.0.0})
 BUNDLE_VERSION ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 
+# Flags for the shipped release build. Exported so Scripts/bundle-app.sh runs
+# `swift build -c release --show-bin-path` with the very same flags and can
+# never resolve a build directory other than the one `make release` filled.
+SWIFT_RELEASE_FLAGS ?= -Xswiftc -Osize
+export SWIFT_RELEASE_FLAGS
+
 # Per-branch dev session name: sanitize the current branch to SessionIdentity's
 # charset ([A-Za-z0-9._-], max 32 chars) so two worktrees on different branches
 # get independent, non-colliding dev sessions. Falls back to "dev".
@@ -74,17 +80,21 @@ all: build test
 
 ## release: size-optimized release build (arm64)
 release:
-	swift build -c release
+	swift build -c release $(SWIFT_RELEASE_FLAGS)
 
 ## bundle: assemble a self-contained Casper.app (release binary + bundled dylibs)
 bundle: release
 	Scripts/bundle-app.sh $(SHORT_VERSION) $(BUNDLE_VERSION)
 
 ## dist: package Casper.app into a downloadable release archive + checksum
+# The dSYM ships as its own archive, never inside Casper.app: users would carry
+# megabytes of debug symbols for nothing, while crash reports coming back from
+# a release still symbolicate against the matching published dSYM.
 dist: bundle
 	mkdir -p dist
 	ditto -c -k --sequesterRsrc --keepParent Casper.app dist/Casper-$(SHORT_VERSION)-arm64.zip
 	cd dist && shasum -a 256 Casper-$(SHORT_VERSION)-arm64.zip > Casper-$(SHORT_VERSION)-arm64.zip.sha256
+	ditto -c -k --sequesterRsrc --keepParent Casper.dSYM dist/Casper-$(SHORT_VERSION)-arm64.dSYM.zip
 
 ## clean: remove build artifacts
 clean:

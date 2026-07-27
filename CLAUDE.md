@@ -39,7 +39,7 @@ make dev     # recompile and launch the app (swift run casper)
 make test    # run the test suite
 make release # size-optimized release build (arm64)
 make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)
-make dist    # package Casper.app into a downloadable .zip + .sha256 (release artifact)
+make dist    # package Casper.app into a .zip + .sha256 + dSYM.zip (release artifacts)
 casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
 
@@ -48,6 +48,11 @@ dylib chain into the bundle so the app runs on a clean Mac). The
 `.github/workflows/release.yml` workflow runs `make dist` on every `v*` tag and
 publishes the `.app` as a GitHub Release — see
 [`.superpowers/plans/github-release.md`](.superpowers/plans/github-release.md).
+
+The release build compiles with `-Osize`, and `make bundle` extracts the debug
+symbols to `Casper.dSYM` (kept **outside** `Casper.app`) before stripping the
+shipped executable. `make dist` publishes that dSYM as a separate
+`.dSYM.zip` asset so release crash reports stay symbolicatable.
 
 The app icon ships in two forms: the legacy
 `Packaging/AppIcon/AppIcon.icns` (fallback for macOS 15–25, regenerated

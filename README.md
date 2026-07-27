@@ -90,13 +90,19 @@ make test     # run the full test suite
 make all      # build then test
 make release  # size-optimized release build (arm64)
 make bundle   # assemble a self-contained Casper.app (release binary + dylibs)
-make dist     # package Casper.app into a downloadable .zip + .sha256
+make dist     # package Casper.app into a downloadable .zip + .sha256 + dSYM
 make vendor   # re-sync the pinned libghostty header via Carvel vendir
 make clean    # remove build artifacts
 ```
 
 `make bundle`/`make dist` also need `brew install dylibbundler` to embed the
 libgit2 dylib chain so the bundled `Casper.app` runs on a clean Mac.
+
+`make bundle` compiles with `-Osize`, extracts the debug symbols to a
+`Casper.dSYM` bundle **next to** `Casper.app`, and strips the shipped
+executable. `make dist` publishes that dSYM as its own
+`Casper-<version>-arm64.dSYM.zip` archive, so a crash report from a release can
+still be symbolicated without shipping the symbols to every user.
 
 ### Debug build code signing (optional)
 
