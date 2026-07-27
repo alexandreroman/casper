@@ -367,9 +367,16 @@ private struct TitleCapsuleChrome: ViewModifier {
     /// hover-inert and renders exactly as it did before hover existed.
     let interactive: Bool
 
+    @Environment(\.controlActiveState) private var controlActiveState
     @State private var hovering = false
 
     private var highlighted: Bool { interactive && hovering }
+
+    /// The native toolbar controls next to these chips (the sidebar toggle) dim
+    /// when the window stops being key/main, so the interactive chips dim with
+    /// them. Fading the whole shell keeps the glyphs, the +N/−N tints and the
+    /// capsule in step, and opacity alone can never shift the layout.
+    private var shellOpacity: Double { controlActiveState == .inactive ? 0.5 : 1 }
 
     /// An unfilled chip (the inspector toggle while the panel is open) grows the
     /// standard fill + border on hover, so the capsule "appears" under the pointer
@@ -394,6 +401,8 @@ private struct TitleCapsuleChrome: ViewModifier {
             shell
                 .onHover { hovering = $0 }
                 .animation(.easeOut(duration: 0.12), value: hovering)
+                .opacity(shellOpacity)
+                .animation(.easeOut(duration: 0.12), value: controlActiveState)
         } else {
             shell
         }
