@@ -36,6 +36,22 @@ struct RootView: View {
                 }
             }
         }
+        // Attached to the whole `Group` so the sheet is presented the same way in
+        // the empty-state and the split-view branch. The binding only ever accepts
+        // being nil-ed out: `closeProgress` is model-owned, and SwiftUI's dismissal
+        // is the sole write the view is allowed to make.
+        .sheet(
+            item: Binding(
+                get: { model.closeProgress },
+                set: { if $0 == nil { model.closeProgress = nil } }
+            )
+        ) { progress in
+            WorkspaceCloseProgressView(progress: progress)
+                // No Cancel button, and no way to dismiss: neither the merge nor the
+                // worktree removal can be stopped midway without leaving the repository
+                // half-done, so the sheet stays up until the operation clears it.
+                .interactiveDismissDisabled()
+        }
         .background(WindowConfigurator(model: model))
         .onChange(of: model.spaces.isEmpty) { _, empty in
             // When the first space is added, expand the sidebar by default. Only

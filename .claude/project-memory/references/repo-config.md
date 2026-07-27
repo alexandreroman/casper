@@ -39,7 +39,10 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
 - **Never close or prune eagerly inside a child-exit callback.** Tearing views
   down mid-tick detaches sibling panes (the exact hazard `close_surface_cb`
   defers). setup-success relies on the deferred `close_surface_cb` to close its
-  split; teardown prunes via `DispatchQueue.main.async` (+ `MainActor`).
+  split; teardown defers its continuation resume — and so the prune it triggers
+  — via `DispatchQueue.main.async` (+ `MainActor`) in `finishTeardown`. Resuming
+  a continuation already enqueues rather than running inline, but the explicit
+  hop is what makes that guarantee independent of Swift scheduling details.
 - **setup guards in `applyCloseSurface`:** a still-tagged `.setup` surface is
   never torn down by an early close (its fate is the exit code); a FAILED setup
   arms `keptFailedSetupSurfaces` to swallow the one shell-exit close so the pane
@@ -60,14 +63,28 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
   user. A manually-closed live teardown split prunes immediately rather than
   stalling the timeout.
 
-## Destroy paths became completion-based (because teardown is async)
+## Destroy paths: async, guarded by a synchronous claim
 
-The 3 destroy paths (`deleteWorkspace`/`controlDeleteWorkspace`/`closeWorkspace`)
-deliver their result via a completion closure, not a return value, since teardown
-runs a visible terminal and waits. Knock-ons: `ControlServer.handle` is
-reply-based so `.workspaceDelete` replies AFTER prune; `casper workspace delete`
-sends `timeout: 35` (> the 30 s app budget) or a slow teardown reads as a
-client-side timeout; re-entrant destroy is rejected via `teardownInFlight`.
+`closeWorkspace`/`deleteWorkspace` are `async` and return their outcome.
+`controlDeleteWorkspace` keeps a completion closure because
+`ControlServer.handle` is reply-based: `.workspaceDelete` replies AFTER prune,
+so `casper workspace delete` sends `timeout: 35` (> the 30 s app budget) or a
+slow teardown reads as a client-side timeout.
+
+Re-entrancy is rejected by claiming the workspace id in `closingWorkspaces`
+**synchronously, with no `await` between the test and the insert**, released in
+a `defer`. A probe sited further from the claim is NOT safe here: the git work
+runs off the main actor, so any suspension point between the two lets a second
+destroy pass the guard, clobber the first's continuation (permanent hang, leaked
+continuation, undismissable sheet) and run concurrent libgit2 writes against one
+repo — the main actor no longer serializes them.
+
+Teardown waits are additionally scoped by a monotonic generation
+(`isTeardownCurrent`). The 30 s timer is never cancelled, so without the
+generation a stale timer from an abandoned run resumes a LATER run for the same
+workspace with `.timedOut` — aborting a healthy hook and posting a false "timed
+out" notification. Same reason the manual-close branch resumes through the
+split's own `onExit` instead of calling `finishTeardown` directly.
 
 ## Script menu ordering
 

@@ -42,6 +42,15 @@ final class AppModel {
     /// Set when `runScript` fails to launch; drives a `.alert` in WorkspaceDetailView.
     var scriptRunError: String?
 
+    /// Live progress of a workspace close/delete while its modal sheet is up; nil
+    /// when no operation is visible. Publishing is deliberately lagged: the
+    /// orchestrator tracks its own current step from the first instant, but only
+    /// promotes it here once the operation has been running ~250 ms, so a close
+    /// that finishes sooner never flashes a panel. Once non-nil it is written
+    /// through on every step boundary, and back to nil when the operation ends —
+    /// before any failure alert, so an `NSAlert` never stacks on a live sheet.
+    var closeProgress: WorkspaceCloseProgress?
+
     /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
     /// makes repeated requests for the same file distinct so the view re-scrolls.
     struct DiffScrollTarget: Equatable {
@@ -241,6 +250,10 @@ final class AppModel {
     /// assert the background command path was triggered. Carries the workspace id.
     @ObservationIgnored var onMaterializePendingForTest: ((UUID) -> Void)?
 
+    /// Fires for every step boundary regardless of the anti-flash delay, so tests can
+    /// assert the step sequence without waiting 250 ms or instantiating a view.
+    @ObservationIgnored var onCloseProgressForTest: ((WorkspaceCloseProgress) -> Void)?
+
     /// Delivers a local notification for a workspace. Injectable for tests; the
     /// default posts a best-effort `UserNotifications` request. Skipped entirely when
     /// the process has no bundle identifier (a bare `swift run` executable): on macOS
@@ -329,12 +342,45 @@ final class AppModel {
     /// broken cleanup script must never trap the user in the workspace.
     static let teardownTimeout: TimeInterval = 30
 
-    /// Workspaces whose teardown hook is in flight and whose prune has not run yet,
-    /// mapped to that prune. Presence is the once-latch: both the child-exit and the
-    /// timeout paths check-and-remove the id, so the prune fires exactly once
-    /// (whichever arrives first wins). Main-actor-isolated, so the check-and-remove
-    /// needs no other synchronization. Transient, never persisted.
-    @ObservationIgnored private var pendingTeardownPrunes: [UUID: @MainActor () -> Void] = [:]
+    /// One workspace's in-flight teardown hook: the resume of the `runTeardown`
+    /// continuation awaiting its outcome, plus the run's generation.
+    ///
+    /// The generation is what lets a trigger identify itself as stale. The 30 s
+    /// timeout is scheduled once per run and cannot be un-scheduled; without a
+    /// generation its only guard would be "some teardown is in flight for this
+    /// workspace id", so the timer of a run that already ended (a close that failed
+    /// at the prune step, say) would happily time out the user's *retry* seconds
+    /// after it started. The child-exit callback of an abandoned split has the same
+    /// shape, so it carries a generation too.
+    private struct PendingTeardown {
+        let generation: UInt64
+        let resume: @MainActor (TeardownHookStatus) -> Void
+    }
+
+    /// Workspaces whose teardown hook is in flight, keyed by workspace id. Presence is
+    /// the once-latch: every exit path (child exit, manual split close, timeout, spawn
+    /// failure, workspace dropped) check-and-removes the id through `finishTeardown`, so
+    /// the continuation is resumed exactly once — whichever arrives first wins, and
+    /// `withCheckedContinuation` never sees the double resume it traps on.
+    /// Main-actor-isolated, so the check-and-remove needs no other synchronization.
+    /// Transient, never persisted.
+    @ObservationIgnored private var pendingTeardownResumes: [UUID: PendingTeardown] = [:]
+
+    /// Source of the per-run generation above. Monotonic for the process lifetime.
+    @ObservationIgnored private var lastTeardownGeneration: UInt64 = 0
+
+    /// Workspaces with a close/delete operation in flight, claimed for the WHOLE
+    /// operation rather than just its teardown wait.
+    ///
+    /// The claim has to be its own thing because the operation is now async: it awaits
+    /// the cleanliness probes, the merge and the teardown hook, so a check made at entry
+    /// says nothing by the time the work starts. Two callers are genuinely reachable —
+    /// a window-modal sheet does not disable the menu bar, and `casper workspace delete`
+    /// arrives over the control channel at any moment — and letting both through would
+    /// strand the first one's continuation and run two libgit2 writers against the same
+    /// repository. Claimed and released on the main actor with no `await` in between, so
+    /// the check-and-insert is atomic. Transient, never persisted.
+    @ObservationIgnored private var closingWorkspaces: Set<UUID> = []
 
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
     /// agent detector. `AgentStateResolver` is a value type carried across ticks,
@@ -595,9 +641,12 @@ final class AppModel {
         agentResolvers[ws.id] = nil
         namedCommandsCache[ws.id] = nil
         lastNotifiedAt[ws.id] = nil
-        // Teardown once-latch: clear without invoking its prune — the workspace is
-        // being dropped outright here.
-        pendingTeardownPrunes[ws.id] = nil
+        // Teardown once-latch: the workspace is being dropped outright, so there is
+        // nothing left for the destroy to prune — but the latch must never be cleared
+        // without resuming, or the caller awaiting `runTeardown` would stay suspended
+        // forever. The hook's real outcome is unknown here and the workspace is already
+        // gone, so report success rather than inventing a failure.
+        finishTeardown(id: ws.id, status: .succeeded)
         // Per-surface setup-hook maps, so a workspace removed while its setup split
         // is live doesn't leak its surface entries.
         for surfaceID in LayoutTree.surfaceIDs(ws.layout) {
@@ -1132,14 +1181,17 @@ final class AppModel {
         // normally (marker consumed, tag gone).
         if keptFailedSetupSurfaces.remove(surfaceID) != nil { return }
         // A teardown split still carrying its tag is being closed before its
-        // child-exit was processed — i.e. the user closed it manually. Fire the
-        // pending prune now instead of waiting out the 30s timeout, then let the
-        // prune tear the whole workspace (including this split) down. In the normal
-        // flow the tag is already cleared by handleScriptSurfaceExit before this
-        // close arrives, so this branch is skipped.
+        // child-exit was processed — i.e. the user closed it manually. Finish the
+        // pending teardown now instead of waiting out the 30s timeout, then let the
+        // caller's prune tear the whole workspace (including this split) down. In the
+        // normal flow the tag is already cleared by handleScriptSurfaceExit before this
+        // close arrives, so this branch is skipped. A manual close carries no exit
+        // code, so report success rather than inventing a failure — through the split's
+        // own `onExit`, which is what scopes the resume to the run that spawned it: the
+        // split of an abandoned run must not end a later run for the same workspace.
         if let script = scriptSurfaces[surfaceID], script.kind == .teardown {
             scriptSurfaces[surfaceID] = nil
-            fireTeardownPrune(id: script.workspaceID)
+            script.onExit?(0)
             return
         }
         guard let at = locateSurface(surfaceID) else { return }
@@ -2131,66 +2183,122 @@ final class AppModel {
         }
     }
 
-    /// Run the workspace's `teardown` lifecycle hook (if any) in a visible split,
-    /// then run `prune` — exactly once. With NO teardown script, `prune` runs
-    /// synchronously in the caller's stack (destroy behaves as before). With one, the
-    /// teardown split is spawned and `prune` runs after the split's child exits OR
-    /// `teardownTimeout` elapses, whichever comes first; any non-zero exit or timeout
-    /// is logged and the prune proceeds regardless (a broken teardown never blocks
-    /// deletion). The prune is always dispatched to the next runloop turn (never run
-    /// synchronously inside the child-exit callback) to avoid tearing views down
-    /// mid-`ghostty_app_tick`.
-    func runTeardownThenPrune(id workspaceID: UUID, then prune: @escaping @MainActor () -> Void) {
-        guard let ws = workspace(id: workspaceID),
-              let teardown = (try? RepoConfig.load(fromRepoRoot: ws.worktreePath))??.teardownScript()
-        else {
-            prune()
-            return
-        }
-        // Arm the once-latch (its presence gates the prune) before either trigger.
-        pendingTeardownPrunes[workspaceID] = prune
-        guard spawnScriptSurface(
-            kind: .teardown, in: workspaceID, command: teardown,
-            onExit: { [weak self] code in
-                // Delivered synchronously inside ghostty_app_tick on the main actor; the
-                // prune it triggers is deferred off this callback (see fireTeardownPrune).
-                MainActor.assumeIsolated {
-                    guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
-                    if code != 0 {
-                        CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
+    /// How a workspace's `teardown` lifecycle hook ended. A failure never blocks the
+    /// destroy — the caller prunes regardless — so this is reported, not acted upon.
+    enum TeardownHookStatus: Equatable, Sendable {
+        /// No hook configured for this workspace.
+        case none
+        case succeeded
+        case failed(exitCode: Int32)
+        case timedOut
+        /// The teardown split itself could not be created (an internal failure, not
+        /// the user's script failing).
+        case couldNotSpawn
+    }
+
+    /// The workspace's resolved `teardown` hook command, or nil when it has no
+    /// `.casper.json` or no `teardown` script. Each destroy path resolves it once and
+    /// hands it to `runTeardown`, so the config file is read exactly once per close.
+    func teardownCommand(for ws: Workspace) -> String? {
+        (try? RepoConfig.load(fromRepoRoot: ws.worktreePath))??.teardownScript()
+    }
+
+    /// Run the workspace's `teardown` lifecycle hook in a visible split and wait for it
+    /// to finish. `command` is the already-resolved hook (see `teardownCommand`); nil
+    /// means there is no hook and the call returns `.none` without suspending, so a
+    /// hookless destroy behaves exactly as it did before hooks existed. Otherwise the
+    /// split is spawned and this returns when its child exits, when the user closes the
+    /// split by hand, or when `teardownTimeout` elapses — whichever comes first. A
+    /// non-zero exit or a timeout is logged and still returns normally: the caller
+    /// prunes regardless, because a broken teardown must never block deletion.
+    ///
+    /// The caller always resumes on a later main-queue turn than the child-exit
+    /// callback that ended the hook — see `finishTeardown` for why that matters.
+    func runTeardown(id workspaceID: UUID, command: String?) async -> TeardownHookStatus {
+        guard let command else { return .none }
+        lastTeardownGeneration += 1
+        let generation = lastTeardownGeneration
+        return await withCheckedContinuation { continuation in
+            // Arming must never clobber a live entry: the overwritten run's continuation
+            // could then never be resumed (a permanently suspended caller, and the
+            // "continuation leaked" trap). The whole operation is claimed in
+            // `closingWorkspaces`, so this is unreachable — hence the fault log rather
+            // than a user-facing story.
+            guard pendingTeardownResumes[workspaceID] == nil else {
+                CasperLog.app.fault(
+                    "teardown already in flight for this workspace; refusing to run a second one")
+                continuation.resume(returning: .couldNotSpawn)
+                return
+            }
+            // Arm the once-latch (its presence gates every exit path) before either trigger.
+            pendingTeardownResumes[workspaceID] = PendingTeardown(
+                generation: generation, resume: { continuation.resume(returning: $0) })
+            guard spawnScriptSurface(
+                kind: .teardown, in: workspaceID, command: command,
+                onExit: { [weak self] code in
+                    // Delivered synchronously inside ghostty_app_tick on the main actor; the
+                    // resume it triggers is deferred off this callback (see finishTeardown).
+                    MainActor.assumeIsolated {
+                        guard let self, self.isTeardownCurrent(workspaceID, generation: generation)
+                        else { return }
+                        if code != 0 {
+                            CasperLog.app.error("teardown script failed (exit \(code)); pruning anyway")
+                        }
+                        self.finishTeardown(
+                            id: workspaceID, generation: generation,
+                            status: code == 0 ? .succeeded : .failed(exitCode: code))
                     }
-                    self.fireTeardownPrune(id: workspaceID)
+                }) != nil
+            else {
+                // Couldn't create the teardown split: return now rather than stalling
+                // the caller until the timeout. Logged because the hook silently never
+                // ran, and nothing else records that.
+                CasperLog.app.error("teardown script could not be spawned; pruning anyway")
+                finishTeardown(id: workspaceID, generation: generation, status: .couldNotSpawn)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownTimeout) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.isTeardownCurrent(workspaceID, generation: generation)
+                    else { return }
+                    CasperLog.app.error(
+                        "teardown script timed out after \(Int(Self.teardownTimeout))s; pruning anyway")
+                    self.finishTeardown(id: workspaceID, generation: generation, status: .timedOut)
                 }
-            }) != nil
-        else {
-            // Couldn't create the teardown split: prune now rather than stalling
-            // until the timeout.
-            fireTeardownPrune(id: workspaceID)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownTimeout) { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self, self.pendingTeardownPrunes[workspaceID] != nil else { return }
-                CasperLog.app.error(
-                    "teardown script timed out after \(Int(Self.teardownTimeout))s; pruning anyway")
-                self.fireTeardownPrune(id: workspaceID)
             }
         }
     }
 
-    /// Run a teardown workspace's latched prune exactly once, deferred to the next
-    /// runloop turn. The child-exit caller runs synchronously inside `ghostty_app_tick`,
-    /// where tearing views down mid-tick detaches sibling panes, so the prune must
-    /// never run inline. A no-op once the latch has been cleared by the other path.
-    private func fireTeardownPrune(id workspaceID: UUID) {
-        guard let prune = pendingTeardownPrunes.removeValue(forKey: workspaceID) else { return }
-        DispatchQueue.main.async { MainActor.assumeIsolated { prune() } }
+    /// Resume a workspace's latched `runTeardown` continuation exactly once, on the
+    /// NEXT main-queue turn. The child-exit path calls this from inside
+    /// `ghostty_app_tick`, and the caller tears views down (prunes the workspace) as
+    /// soon as it resumes — doing that mid-tick detaches sibling panes, the exact
+    /// hazard `close_surface_cb` defers for. Resuming a continuation already enqueues
+    /// the awaiting task rather than running it inline, but this hop makes the
+    /// guarantee independent of that scheduling detail: the resume itself happens in a
+    /// later main-queue work item, off the tick. A no-op once the latch has been
+    /// cleared by another exit path, which is what keeps the resume exactly-once.
+    ///
+    /// `generation` scopes the resume to one specific run: a trigger left over from an
+    /// earlier run for the same workspace id passes its own generation and is ignored.
+    /// Callers that mean "whatever is in flight, end it" (the workspace being dropped
+    /// outright) pass nil.
+    private func finishTeardown(
+        id workspaceID: UUID, generation: UInt64? = nil, status: TeardownHookStatus
+    ) {
+        guard let pending = pendingTeardownResumes[workspaceID],
+              generation == nil || generation == pending.generation
+        else { return }
+        pendingTeardownResumes[workspaceID] = nil
+        DispatchQueue.main.async { MainActor.assumeIsolated { pending.resume(status) } }
     }
 
-    /// True while a teardown hook is in flight for this workspace (its prune is
-    /// pending). Used to reject a re-entrant destroy that would drop the first
-    /// caller's completion and spawn a duplicate teardown split.
-    private func teardownInFlight(_ workspaceID: UUID) -> Bool { pendingTeardownPrunes[workspaceID] != nil }
+    /// True while THIS teardown run is still the one in flight for `workspaceID` — i.e.
+    /// its caller is still suspended and no later run has taken its place. What makes a
+    /// stale timeout timer or an abandoned split's child exit identify itself as stale.
+    private func isTeardownCurrent(_ workspaceID: UUID, generation: UInt64) -> Bool {
+        pendingTeardownResumes[workspaceID]?.generation == generation
+    }
 
     /// Wrap a `casper run` command in a subshell so a script that calls `exit`
     /// (or fails under `set -e`) terminates only the subshell, isolating it from
@@ -2626,6 +2734,38 @@ final class AppModel {
             .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 
+    /// Run one `WorktreeManager` call off the main actor and await its result.
+    ///
+    /// Every git call on the close/delete path goes through here, so the main actor stays
+    /// free and the progress sheet can actually animate. Detaching is safe:
+    /// `WorktreeManager`'s entry points are `nonisolated static func`s on an `enum` taking
+    /// `Sendable` `String`s and returning `Sendable` values; each one opens its own
+    /// `Repository`, so no libgit2 object ever crosses a thread; `Libgit2.ensureInit` is a
+    /// lazy `static let`, whose initialization is thread-safe; and `git_error_last` is
+    /// thread-local, read by `gitCheck` on the very thread that made the failing call.
+    ///
+    /// What is deliberately NOT offloaded is every touch of the model — `removeWorkspace`,
+    /// selection, port release, view disposal all stay on the main actor. This runs the
+    /// libgit2/filesystem work and nothing else.
+    private static func offloadGit<T: Sendable>(
+        _ body: @escaping @Sendable () throws -> T
+    ) async throws -> T {
+        try await Task.detached(priority: .userInitiated, operation: body).value
+    }
+
+    /// The progress reporter for one close/delete run, wired to the published
+    /// `closeProgress` and to the step test hook. Weak captures because the reporter
+    /// outlives nothing but the operation, while `AppModel` is app-lifetime.
+    private func makeCloseProgressReporter(
+        id workspaceID: UUID, title: String, stepCount: Int
+    ) -> WorkspaceCloseProgressReporter {
+        WorkspaceCloseProgressReporter(
+            id: workspaceID, title: title, stepCount: stepCount,
+            publish: { [weak self] in self?.closeProgress = $0 },
+            published: { [weak self] in self?.closeProgress },
+            onStep: { [weak self] in self?.onCloseProgressForTest?($0) })
+    }
+
     /// Destroy a LINKED workspace: prune its worktree (deletes the folder),
     /// delete its branch in the origin repo, then drop it from the UI. Refuses a
     /// primary workspace. Git cleanup runs BEFORE the UI removal so a git failure
@@ -2637,7 +2777,7 @@ final class AppModel {
     /// `casper workspace delete` control-channel verb and the sidebar's "Merge and
     /// Close Workspace…"/"Delete Workspace…" actions.
     @discardableResult
-    private func pruneWorkspaceFromDisk(id workspaceID: UUID) -> Result<Void, WorkspaceDeleteError> {
+    private func pruneWorkspaceFromDisk(id workspaceID: UUID) async -> Result<Void, WorkspaceDeleteError> {
         guard let at = locate(workspaceID) else {
             return .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
@@ -2648,42 +2788,78 @@ final class AppModel {
         let branch = spaces[at.space].workspaces[at.workspace].branch
         let worktreePath = spaces[at.space].workspaces[at.workspace].worktreePath
         do {
-            try WorktreeManager.remove(repoPath: repoPath, name: branch, worktreePath: worktreePath)
-            try WorktreeManager.deleteBranch(repoPath: repoPath, name: branch)
+            // Both git calls share one detached hop (see offloadGit) because their order
+            // is load-bearing: a checked-out branch cannot be deleted, so the worktree
+            // must go first.
+            try await Self.offloadGit {
+                try WorktreeManager.remove(repoPath: repoPath, name: branch, worktreePath: worktreePath)
+                try WorktreeManager.deleteBranch(repoPath: repoPath, name: branch)
+            }
         } catch {
             return .failure(WorkspaceDeleteError(message: "delete failed: \(error)"))
         }
-        removeWorkspace(id: workspaceID)   // drops from UI, releases port, discards views
+        removeWorkspace(id: workspaceID)   // back on the main actor: drops from UI, releases port, discards views
         return .success(())
     }
 
+    /// The control channel's delete verb. Keeps a completion-based shape because
+    /// `ControlServer` replies from a synchronous `handle`; the work itself is the
+    /// shared async core. Deliberately silent — no progress sheet, no teardown-hook
+    /// notification: this path is driven remotely and already reports back as JSON.
     func controlDeleteWorkspace(
         id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void
     ) {
-        deleteLinkedWorkspace(id: workspaceID, completion: completion) {
-            self.pruneWorkspaceFromDisk(id: workspaceID)   // precise error, no teardown
+        Task { @MainActor in
+            completion(await self.deleteLinkedWorkspace(id: workspaceID, reportsProgress: false) {
+                await self.pruneWorkspaceFromDisk(id: workspaceID)   // precise error, no teardown
+            })
         }
     }
 
     /// Shared linked-workspace teardown-then-prune flow behind `deleteWorkspace`
     /// and `controlDeleteWorkspace`. Only the non-linked case differs, so each
     /// caller supplies its own `nonLinkedFallback` and keeps its exact error and
-    /// return behavior. Runs synchronously up to the async teardown handoff.
+    /// return behavior.
+    ///
+    /// `reportsProgress` is what keeps the control channel silent while the GUI gets its
+    /// modal sheet. `onTeardownHook` receives the hook's outcome — always, including
+    /// `.none` and `.succeeded` — so the caller decides whether it is worth reporting;
+    /// it never affects the returned result, because a broken teardown must not block
+    /// the delete.
     private func deleteLinkedWorkspace(
         id workspaceID: UUID,
-        completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void,
-        nonLinkedFallback: () -> Result<Void, WorkspaceDeleteError>
-    ) {
+        reportsProgress: Bool,
+        onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in },
+        nonLinkedFallback: () async -> Result<Void, WorkspaceDeleteError>
+    ) async -> Result<Void, WorkspaceDeleteError> {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
-            completion(nonLinkedFallback()); return
+            return await nonLinkedFallback()
         }
-        guard !teardownInFlight(workspaceID) else {
-            completion(.failure(WorkspaceDeleteError(message: "deletion already in progress"))); return
+        // Claim the workspace synchronously, before the first `await` below: see
+        // `closingWorkspaces`.
+        guard closingWorkspaces.insert(workspaceID).inserted else {
+            return .failure(WorkspaceDeleteError(message: "deletion already in progress"))
         }
-        runTeardownThenPrune(id: workspaceID) { [weak self] in
-            completion(self?.pruneWorkspaceFromDisk(id: workspaceID)
-                ?? .failure(WorkspaceDeleteError(message: "workspace not found")))
+        defer { closingWorkspaces.remove(workspaceID) }
+        // Resolved once, up front: it decides the step count AND is what `runTeardown`
+        // runs, so the config file is never read twice.
+        let teardown = teardownCommand(for: ws)
+        let progress = reportsProgress
+            ? makeCloseProgressReporter(
+                id: workspaceID, title: "Deleting \u{201c}\(ws.name)\u{201d}",
+                stepCount: teardown == nil ? 1 : 2)
+            : nil
+        progress?.start()
+        defer { progress?.finish() }
+
+        if teardown != nil {
+            progress?.step(
+                "Running teardown hook\u{2026}",
+                deadline: Date().addingTimeInterval(Self.teardownTimeout))
         }
+        onTeardownHook(await runTeardown(id: workspaceID, command: teardown))
+        progress?.step("Removing the worktree\u{2026}")
+        return await pruneWorkspaceFromDisk(id: workspaceID)
     }
 
     /// Merge a linked workspace's branch into its recorded `baseBranch`, then
@@ -2703,68 +2879,107 @@ final class AppModel {
     /// UI removal. Never presents UI itself: the confirmation presenter owns
     /// showing any failure alert, which keeps this safe to call from tests
     /// without spawning a real `NSAlert`.
-    func closeWorkspace(id workspaceID: UUID, completion: @escaping (WorkspaceCloseOutcome) -> Void) {
+    ///
+    /// `onTeardownHook` receives the hook's outcome — always, including `.none` and
+    /// `.succeeded` — so the caller decides whether it is worth reporting; it never
+    /// affects the returned outcome, because a broken teardown must not block the close.
+    func closeWorkspace(
+        id workspaceID: UUID,
+        onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in }
+    ) async -> WorkspaceCloseOutcome {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked,
               let space = space(for: ws), space.isGitRepo,
               let baseBranch = ws.baseBranch, !baseBranch.isEmpty,
               let primary = space.workspaces.first(where: { $0.kind == .primary })
         else {
-            completion(.mergeFailed(message: "workspace not found or has no base branch")); return
+            return .mergeFailed(message: "workspace not found or has no base branch")
         }
-        guard (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) == true else {
-            completion(.mergeFailed(
+        // Claim the workspace synchronously, before the first `await` below: see
+        // `closingWorkspaces`.
+        guard closingWorkspaces.insert(workspaceID).inserted else {
+            return .mergeFailed(message: "This workspace is already being closed.")
+        }
+        defer { closingWorkspaces.remove(workspaceID) }
+        // Read the model here, on the main actor, so the detached git calls below capture
+        // plain strings and never reach back into it.
+        let worktreePath = ws.worktreePath
+        let primaryPath = primary.worktreePath
+        let repoPath = space.folderPath
+        let branch = ws.branch
+        // Resolved once, up front: it decides the step count AND is what `runTeardown`
+        // runs, so the config file is never read twice.
+        let teardown = teardownCommand(for: ws)
+        let progress = makeCloseProgressReporter(
+            id: workspaceID, title: "Closing \u{201c}\(ws.name)\u{201d}",
+            stepCount: teardown == nil ? 4 : 5)
+        progress.start()
+        defer { progress.finish() }
+
+        progress.step("Checking for uncommitted changes\u{2026}")
+        guard (try? await Self.offloadGit { try WorktreeManager.isClean(repoPath: worktreePath) }) == true
+        else {
+            return .mergeFailed(
                 message: "\u{201c}\(ws.name)\u{201d} has uncommitted changes. Commit or discard "
-                    + "them before merging.")); return
+                    + "them before merging.")
         }
-        guard (try? WorktreeManager.isClean(repoPath: primary.worktreePath)) == true else {
-            completion(.mergeFailed(
+        guard (try? await Self.offloadGit { try WorktreeManager.isClean(repoPath: primaryPath) }) == true
+        else {
+            return .mergeFailed(
                 message: "\u{201c}\(primary.name)\u{201d} (branch \u{201c}\(baseBranch)\u{201d}) has "
-                    + "uncommitted changes. Commit or discard them there before merging.")); return
+                    + "uncommitted changes. Commit or discard them there before merging.")
         }
-        guard !teardownInFlight(workspaceID) else {
-            completion(.mergeFailed(message: "This workspace is already being closed.")); return
-        }
+        progress.step("Merging \u{201c}\(branch)\u{201d} into \u{201c}\(baseBranch)\u{201d}\u{2026}")
         do {
-            _ = try WorktreeManager.merge(
-                repoPath: space.folderPath, branch: ws.branch, into: baseBranch,
-                message: "Merge branch '\(ws.branch)' into \(baseBranch)")
+            try await Self.offloadGit {
+                _ = try WorktreeManager.merge(
+                    repoPath: repoPath, branch: branch, into: baseBranch,
+                    message: "Merge branch '\(branch)' into \(baseBranch)")
+            }
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
-            completion(.mergeFailed(
+            return .mergeFailed(
                 message: "The merge into \u{201c}\(baseBranch)\u{201d} could not be completed "
                     + "automatically. Resolve it manually (e.g. in a terminal), then try again. "
-                    + "Nothing was deleted.")); return
+                    + "Nothing was deleted.")
         }
         // Merge done; the worktree still exists so teardown has a valid cwd. Run it,
-        // then prune + resync, delivering the outcome when that completes.
-        runTeardownThenPrune(id: workspaceID) { [weak self] in
-            // Nil-self means the app itself is tearing down — unreachable for the
-            // app-lifetime shared AppModel, so the reported outcome here is moot.
-            guard let self else { completion(.success); return }
-            if case .failure(let error) = self.pruneWorkspaceFromDisk(id: workspaceID) {
-                CasperLog.app.failure("close workspace: disk cleanup failed", error)
-                completion(.cleanupFailed(
-                    message: "The merge succeeded, but the worktree or branch could not be removed "
-                        + "from disk: \(error.message)")); return
-            }
-            // The primary is guaranteed clean at this point (checked above), so the
-            // resync is unconditional: mergeBranchHeadless never runs git_checkout,
-            // so without this the primary's `git status` would show the just-merged
-            // files as `deleted:` until someone checks out manually.
-            do {
-                try WorktreeManager.resyncWorkingTree(repoPath: primary.worktreePath)
-            } catch {
-                CasperLog.app.failure("close workspace: primary worktree resync failed", error)
-            }
-            completion(.success)
+        // then prune + resync.
+        if teardown != nil {
+            progress.step(
+                "Running teardown hook\u{2026}",
+                deadline: Date().addingTimeInterval(Self.teardownTimeout))
         }
+        onTeardownHook(await runTeardown(id: workspaceID, command: teardown))
+        progress.step("Removing the worktree\u{2026}")
+        if case .failure(let error) = await pruneWorkspaceFromDisk(id: workspaceID) {
+            CasperLog.app.failure("close workspace: disk cleanup failed", error)
+            return .cleanupFailed(
+                message: "The merge succeeded, but the worktree or branch could not be removed "
+                    + "from disk: \(error.message)")
+        }
+        // The primary is guaranteed clean at this point (checked above), so the
+        // resync is unconditional: mergeBranchHeadless never runs git_checkout,
+        // so without this the primary's `git status` would show the just-merged
+        // files as `deleted:` until someone checks out manually.
+        progress.step("Updating \u{201c}\(baseBranch)\u{201d}\u{2026}")
+        do {
+            try await Self.offloadGit { try WorktreeManager.resyncWorkingTree(repoPath: primaryPath) }
+        } catch {
+            CasperLog.app.failure("close workspace: primary worktree resync failed", error)
+        }
+        return .success
     }
 
     /// Delete a linked workspace from disk without merging: prune its worktree,
     /// delete its branch, then drop it from the UI. Never presents UI itself —
     /// see `closeWorkspace`.
-    func deleteWorkspace(id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void) {
-        deleteLinkedWorkspace(id: workspaceID, completion: completion) {
+    func deleteWorkspace(
+        id workspaceID: UUID,
+        onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in }
+    ) async -> Result<Void, WorkspaceDeleteError> {
+        await deleteLinkedWorkspace(
+            id: workspaceID, reportsProgress: true, onTeardownHook: onTeardownHook
+        ) {
             .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
     }
@@ -2788,17 +3003,24 @@ final class AppModel {
         mergeButton.hasDestructiveAction = true
         mergeButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        closeWorkspace(id: workspaceID) { [weak self] outcome in
-            guard let self else { return }
+        // The confirmation itself stays modal (`runModal` above); only the work that
+        // follows it is async, so the sidebar's call site keeps its plain signature.
+        Task { @MainActor in
+            let outcome = await self.closeWorkspace(id: workspaceID) { status in
+                self.reportTeardownHookFailure(status, workspace: ws.name, id: workspaceID, verb: "closed")
+            }
             switch outcome {
             case .success:
                 break
             case .mergeFailed(let message):
-                self.presentWorkspaceOperationFailureAlert(
-                    title: "Could not close \u{201c}\(ws.name)\u{201d}", message: message)
+                await self.presentWorkspaceOperationFailureAlert(
+                    for: workspaceID, title: "Could not close \u{201c}\(ws.name)\u{201d}",
+                    message: message)
             case .cleanupFailed(let message):
-                self.presentWorkspaceOperationFailureAlert(
-                    title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up", message: message)
+                await self.presentWorkspaceOperationFailureAlert(
+                    for: workspaceID,
+                    title: "\u{201c}\(ws.name)\u{201d} merged but not fully cleaned up",
+                    message: message)
             }
         }
     }
@@ -2824,16 +3046,76 @@ final class AppModel {
         deleteButton.hasDestructiveAction = true
         deleteButton.keyEquivalent = ""
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        deleteWorkspace(id: workspaceID) { [weak self] result in
+        // As in presentCloseWorkspaceConfirmation: modal confirmation, async work.
+        Task { @MainActor in
+            let result = await self.deleteWorkspace(id: workspaceID) { status in
+                self.reportTeardownHookFailure(status, workspace: ws.name, id: workspaceID, verb: "deleted")
+            }
             if case .failure(let error) = result {
-                self?.presentWorkspaceOperationFailureAlert(
-                    title: "Could not delete \u{201c}\(ws.name)\u{201d}", message: error.message)
+                await self.presentWorkspaceOperationFailureAlert(
+                    for: workspaceID, title: "Could not delete \u{201c}\(ws.name)\u{201d}",
+                    message: error.message)
             }
         }
     }
 
-    /// A generic error alert for a failed close/delete operation.
-    private func presentWorkspaceOperationFailureAlert(title: String, message: String) {
+    /// Notify the user that a workspace's `teardown` hook did not end well. The workspace
+    /// is closed or deleted regardless — a broken teardown never blocks deletion — so this
+    /// notification is the only place the failure surfaces outside the log. `verb` is what
+    /// just happened to the workspace: "closed" or "deleted".
+    ///
+    /// `.active` rather than `.passive`: a passive notification is a silent Notification
+    /// Center entry, which the user would simply never see.
+    ///
+    /// `.couldNotSpawn` stays log-only, alongside `.none` and `.succeeded`. It means
+    /// Casper failed to create the teardown split — an internal failure, not the user's
+    /// script failing — so there is nothing actionable to report.
+    ///
+    /// Internal rather than private only so tests can exercise it: its two callers are
+    /// the confirmation presenters, which run an `NSAlert` modally and therefore cannot
+    /// be driven headlessly.
+    func reportTeardownHookFailure(
+        _ status: TeardownHookStatus, workspace name: String, id workspaceID: UUID, verb: String
+    ) {
+        let title: String
+        let cause: String
+        switch status {
+        case .failed(let exitCode):
+            title = "Teardown hook failed"
+            cause = "failed (exit \(exitCode))"
+        case .timedOut:
+            title = "Teardown hook timed out"
+            cause = "timed out after \(Int(Self.teardownTimeout))s"
+        case .none, .succeeded, .couldNotSpawn:
+            return
+        }
+        deliverNotification(
+            title, "\u{201c}\(name)\u{201d} \(verb), but its teardown hook \(cause)",
+            workspaceID, .active)
+    }
+
+    /// A generic error alert for a failed close/delete operation on `workspaceID`.
+    ///
+    /// Silent when the workspace is already gone: the only way to reach here in that
+    /// state is an operation the user effectively cancelled by discarding the workspace
+    /// (or its whole Space) mid-flight, and the precise error it produced — "workspace
+    /// not found" — describes exactly the outcome they asked for. The error itself is
+    /// untouched, so the control channel and the tests still see it.
+    ///
+    /// Async because of the hop below: the progress sheet is dismissed by clearing
+    /// `closeProgress`, but SwiftUI only tears it down on a later main-queue turn, and an
+    /// `NSAlert` run modally before that stacks on top of a live sheet. Clearing here too
+    /// (the orchestrator already did on its way out) keeps that invariant local to the one
+    /// place that runs a modal — and, exactly like the reporter, only clears a sheet that
+    /// belongs to this operation.
+    private func presentWorkspaceOperationFailureAlert(
+        for workspaceID: UUID, title: String, message: String
+    ) async {
+        if closeProgress?.id == workspaceID { closeProgress = nil }
+        guard workspace(id: workspaceID) != nil else { return }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message

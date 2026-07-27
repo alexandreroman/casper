@@ -357,15 +357,65 @@ controller; hooks are wrapped `"<cmd>\nexit $?"` so the shell exits with the
 command's status. **setup** runs from `createLinkedWorkspace` only (never on
 restore) — exit 0 auto-closes its split, exit ≠ 0 keeps it open and flags the
 workspace `.error`. **teardown** runs before prune (after the merge on the close
-path) — the 3 destroy paths are now completion-based and prune after child-exit or
-a 30 s timeout, whichever first, whatever the outcome; `ControlServer.handle` is
-reply-based so `casper workspace delete` replies after prune (CLI `timeout: 35`).
-The child-exit-before-close ordering invariant and its correctness corollaries are
-recorded in the `repo-config` project-memory note.
+path) and ends on child-exit or a 30 s timeout, whichever first, whatever the
+outcome. `AppModel.runTeardown(id:command:)` is the wait — `async`, returning a
+`TeardownHookStatus` (`none`/`succeeded`/`failed(exitCode:)`/`timedOut`/
+`couldNotSpawn`) — and the prune is the caller's next statement rather than a
+continuation closure. Its once-latch entry carries a per-run generation, so a
+timer or a child exit left over from an earlier run for the same workspace id
+identifies itself as stale instead of ending the current one.
+`ControlServer.handle` is reply-based so `casper workspace delete` replies after
+prune (CLI `timeout: 35`). The child-exit-before-close ordering invariant and
+its correctness corollaries are recorded in the `repo-config` project-memory
+note.
 
-**Docs & tests.** `README.md` documents `.casper.json` and `casper run`. Full
-suite green (595 tests). See the ledger (`.superpowers/sdd/progress.md`) for the
-per-task history.
+**Docs & tests.** `README.md` documents `.casper.json` and `casper run`. See the
+ledger (`.superpowers/sdd/progress.md`) for the per-task history.
+
+## Workspace close/delete progress — ✅
+
+A window-modal sheet reports what a "Merge and Close Workspace…" or a "Delete
+Workspace…" is doing, so a slow `teardown` hook, a large worktree or a slow
+base resync no longer looks like a frozen app. Design (gitignored scratch, like
+the ledger): `.superpowers/sdd/2026-07-26-workspace-close-progress-design.md`.
+
+**Off the main actor.** `closeWorkspace(id:)` and `deleteWorkspace(id:)` are
+`async` and return their outcome directly; every `WorktreeManager` call on those
+paths runs through `AppModel.offloadGit` (a `Task.detached` hop), which is what
+lets the bar animate. All model mutation stays on the `MainActor`.
+`controlDeleteWorkspace(id:completion:)` keeps its completion shape for
+`ControlServer` and wraps the same async core.
+
+**Steps.** Close is 5 steps (4 without a `teardown` hook), delete 2 (1 without).
+The hook's presence is resolved once up front via `RepoConfig.load`, so it
+decides the step count and is handed to `runTeardown` rather than re-read there.
+
+**The sheet.** `WorkspaceCloseProgress` (value type) +
+`WorkspaceCloseProgressReporter` (delay, write-through, step numbering) +
+`WorkspaceCloseProgressView`, presented by `RootView` via `.sheet(item:)`. The
+reporter withholds the value for 250 ms so a fast close never flashes a panel,
+and owns the shared published value **by identity**: it writes and clears only
+while `closeProgress` carries its own workspace id, so overlapping runs cannot
+dismiss each other's sheet. No buttons and `.interactiveDismissDisabled()` —
+nothing here is cancellable midway; the one long wait, the hook, shows a 1 Hz
+countdown to its timeout instead.
+
+**One operation at a time.** `AppModel.closingWorkspaces` claims a workspace
+synchronously at the entry of `closeWorkspace`/`deleteLinkedWorkspace` and
+releases it in a `defer`, covering the whole operation rather than just the
+teardown wait — the async conversion made an entry check meaningless on its own,
+and both a menu action (a window-modal sheet does not disable the menu bar) and
+`casper workspace delete` can arrive mid-flight.
+
+**Hook failures are surfaced.** A non-zero exit or a timeout still closes or
+deletes the workspace — a broken teardown never blocks deletion — but the two
+GUI presenters now post an `.active` local notification for it. `.couldNotSpawn`
+and the control-channel path stay log-only.
+
+**Tests.** Full suite green (745 tests, 2 skipped). Step sequences, hook-failure
+notifications, the reporter's delay and ownership rules, and two overlapping
+destroys for the same workspace id are covered headlessly; the 30 s timeout path
+is not (no test can reach it without waiting it out).
 
 ## Developer tooling (`#if DEBUG`)
 

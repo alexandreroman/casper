@@ -82,6 +82,16 @@ final class ControlHandlerTests: XCTestCase {
         return (AppModel(sessionStore: store, session: session), ws.id, repoPath)
     }
 
+    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
+    /// `ControlServer` even though the work behind it is async.
+    private func deleteViaControl(
+        _ model: AppModel, id: UUID
+    ) async -> Result<Void, AppModel.WorkspaceDeleteError> {
+        await withCheckedContinuation { continuation in
+            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
+        }
+    }
+
     func testOpenTerminalAddsSurface() throws {
         let (model, id) = seededModel()
         let before = model.workspace(id: id).map { LayoutTree.surfaceIDs($0.layout).count } ?? 0
@@ -425,7 +435,7 @@ final class ControlHandlerTests: XCTestCase {
         }
     }
 
-    func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() throws {
+    func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() async throws {
         let (model, primaryID, repoPath) = try seededGitModel(primaryBranch: "main")
         let info: ControlWorkspaceInfo
         switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-del", base: nil) {
@@ -437,9 +447,8 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: info.path))
         XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(info.branch))
 
-        var result: Result<Void, AppModel.WorkspaceDeleteError>?
-        model.controlDeleteWorkspace(id: linkedID) { result = $0 }
-        guard case .success = try XCTUnwrap(result) else {
+        // Exercised through the completion-based shape ControlServer replies from.
+        guard case .success = await deleteViaControl(model, id: linkedID) else {
             return XCTFail("expected delete to succeed")
         }
         // Gone from the UI, its worktree folder removed, and its branch deleted.
@@ -448,11 +457,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(try Repository.open(atPath: repoPath).branchExists(info.branch))
     }
 
-    func testDeleteWorkspaceRefusesPrimary() throws {
+    func testDeleteWorkspaceRefusesPrimary() async throws {
         let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
-        var result: Result<Void, AppModel.WorkspaceDeleteError>?
-        model.controlDeleteWorkspace(id: primaryID) { result = $0 }
-        guard case .failure(let error) = try XCTUnwrap(result) else {
+        guard case .failure(let error) = await deleteViaControl(model, id: primaryID) else {
             return XCTFail("expected failure for a primary workspace")
         }
         XCTAssertTrue(error.message.contains("primary"), "got: \(error.message)")
