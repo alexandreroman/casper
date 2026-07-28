@@ -1,97 +1,99 @@
 ---
-name: "Diff-view main-thread hang on refresh (animated cause fixed; non-animated variant still open)"
-description: "SwiftUI-layout hang in the diff view: the animated LazyVStack-relayout trigger was fixed (dedup + disablesAnimations), but a second, NON-animated variant still hangs build 766 via unbounded StackLayout/_FlexFrameLayout/StyledText recursion; being bounded via defense-in-depth"
+name: "Diff-view main-thread layout hang"
+description: "The diff view can spin the main thread at ~98% CPU in a non-converging SwiftUI layout recursion; root cause is an explicit alignment guide on the pinned file header, plus the diagnostic recipe and the falsified hypotheses"
 type: project
 ---
 
-# Diff-view main-thread hang on refresh (animated cause fixed; non-animated variant still open)
+# Diff-view main-thread layout hang
 
-**2026-07-21 update — the 07-16 fix is INCOMPLETE.** A release build 766
-(post-fix, binary from 2026-07-20) hung again with a diff view open. A live
-`sample` + the watchdog auto-dump (`~/Library/Logs/Casper/hang-20260721-165800.txt`,
-PID 24431, ran 5h then hung at 16:58) show the animation fix HOLDS
-(`NSAnimationContext`/`runAnimationGroup` = 0, vs 8–11 in pre-fix dumps) but the
-main thread still busy-loops (99% CPU, state R) in a **non-animated** unbounded
-layout recursion: `ViewLayoutEngine.explicitAlignment` ⇄
-`LayoutEngineBox.sizeThatFits` ⇄ `StackLayout.sizeChildrenGenerally…` ⇄
-`_FlexFrameLayout.sizeThatFits` ⇄ `StyledTextLayoutEngine`/
-`NSAttributedString.MetricsCache`, deep enough to hit `___chkstk_darwin` (×47).
-So the earlier claim "animation churn is the SOLE cause" is falsified — the
-underlying `StackLayout ⇄ _FlexFrameLayout.sizeThatFits` recursion can diverge
-on a purely content/geometry-driven, non-animated path too. Diagnostic gaps this
-time: os_log did not persist for the release build (`log show` returned 0 lines
-for the subsystem), and the watchdog dump does not embed the `diff refresh:`
-shape line, so the exact triggering file/geometry is unknown.
+The diff view is susceptible to a non-converging SwiftUI layout recursion that
+spins the main thread at ~98% CPU. It presents as a frozen window, not a crash,
+so it leaves **no `.ips` crash report** — only a live `sample`, a system
+`.hang`/spindump (`/Library/Logs/DiagnosticReports/casper_*.hang`), or the
+in-app watchdog dump (`~/Library/Logs/Casper/hang-<timestamp>.txt`).
 
-**Fix in progress (defense-in-depth, 2026-07-21).** Rather than chase the exact
-trigger (unreproducible headlessly — see [[agent-visual-verification-limits]]),
-bound the runaway at the row layer: cap wrapped visual lines per code row
-(`.lineLimit`, the vertical analog of `maxDisplayLineLength`) and remove the
-flexible-frame free variable on the wrapping code text
-(`.fixedSize(horizontal: false, vertical: true)`), on top of the existing
-`maxDisplayLineLength = 2000` and `maxRenderedLines = 3000` caps. NOT yet
-verified on a live visible instance.
+**Why:** three separate causes in this family have been diagnosed, and each was
+initially mistaken for the previous one. The signature markers below are what
+tell them apart; without them, a session re-chases dead ends that are already
+falsified.
 
----
+**How to apply:** identify which variant is active from the frame counts before
+proposing anything.
 
-## Original entry (2026-07-16) — animated variant, fixed
+## Diagnostic recipe
 
-The diff view could hang the main thread for minutes (a real macOS `.hang`
-spindump showed ~378 s stuck) in a **non-converging SwiftUI layout transaction**:
-`GraphHost.flushTransactions` → `LazyStack.place(…pinnedSubviews…)` → unbounded
-`StackLayout` ⇄ `_FlexFrameLayout.sizeThatFits` recursion reaching
-`___chkstk_darwin` (stack-growth probe). It presents as a beachball, not a crash,
-so it leaves NO `.ips` crash report — only a spindump/`.hang`/"Stackshots" report
-(look in `/Library/Logs/DiagnosticReports/casper_*.hang`).
+1. `ps -o %cpu,state -p <pid>` — state `R` at ~98% means a spin, not a deadlock.
+2. `sample <pid> 3 -file /tmp/casper-sample.txt`, twice, a few minutes apart. A
+   stable-or-growing count across both samples means it is not converging.
+3. Count the discriminating frames:
+   - `explicitAlignment` dominant (hundreds) → alignment-guide recursion.
+   - `StyledTextLayoutEngine` / `NSAttributedString.MetricsCache` dominant →
+     text-metrics recursion, bounded by the `DiffLineStyle` caps.
+   - `NSAnimationContext` / `runAnimationGroup` / `motionVectors` present in
+     quantity → animated-relayout churn.
+   Fewer than ~10 frames of a marker is background noise, not the driver.
+4. `refresh()` logs one `.notice` per refresh (`diff refresh: files=… lines=…
+   maxFileLines=… maxLineLen=… computeMs=…`) via `CasperLog.app`. Read it with
+   `log show --predicate 'subsystem == "com.github.alexandreroman.casper"'
+   --info --debug`. A flood of these with unchanged `files=`/`lines=` is the
+   churn signature. Release builds often persist nothing, so treat an empty
+   result as no evidence rather than as absence of churn.
 
-**Root cause (identified 2026-07-16).** The trigger is diff-view **refresh
-churn**, not diff content. On an actively-edited worktree an FSEvents watcher
-bumps `model.diffRevision` very frequently; `DiffSurfaceView.refresh()` ran on
-every bump, and many bumps recompute a byte-identical diff yet still reassigned
-`diff`/`metrics` and re-drove `.scrollPosition`. Each mutation drove the
-pinned-header `LazyVStack` into an **animated** subview relayout (the stuck
-spindump path includes `Array.motionVectors`, `LazyLayoutViewCache.initialPlacement`,
-`commitPlacedSubviews`, `+[NSAnimationContext runAnimationGroup:]`); back-to-back
-animated relayouts never converge → permanent hang.
+Watchdog dumps whose main thread sits in `mach_msg_trap` capture a different
+phenomenon and are not this hang.
 
-**Why:** this is why it was historically "unreproducible" — synthetic **static**
-diffs (even 40 files × 800 lines, long wrapping lines) never churn, so they never
-hit the animated-relayout storm. It reproduces on real, actively-changing
-worktrees (e.g. a Temporal workshop repo mid-edit).
+## Root cause: explicit alignment guides in a pinned header
 
-**The long-single-line hypothesis was FALSIFIED.** A release build (726) that
-already shipped the `DiffLineStyle.truncatedForDisplay` 2000-char cap still hung
-on the `auth-codec` workspace whose diff was benign (`maxLineLen=278`, Markdown/
-YAML, 14 files). The `truncatedForDisplay` guard is still worth keeping, but it is
-NOT what fixed this hang.
+An explicit alignment guide (`.lastTextBaseline`, `.firstTextBaseline`) in a
+stack that also holds a flexible-width child forms a circular layout
+dependency: resolving the guide requires the child's baseline, the child has no
+intrinsic width so its baseline depends on the width it is proposed, and that
+width depends on the stack's sizing, which is waiting on the guide. As a
+**pinned** section header (`pinnedViews: [.sectionHeaders]`) the row is
+re-placed by `LazySubviewPlacements` on every layout pass, so the cycle is
+entered continuously and never settles.
 
-**The fix (in `DiffSurfaceView.swift`).**
-1. **Dedup redundant refreshes:** in `refresh()`, if `loaded && newDiff == diff`
-   (`GitDiff` is `Equatable`), skip all content work; only `applyPendingScroll()`
-   still runs (a scroll target can arrive independent of a content change).
-2. **Disable implicit animation** (`Transaction.disablesAnimations = true`,
-   `withTransaction { … }`) on every diff-view state mutation that relayouts the
-   `LazyVStack`: the `diff`/`metrics` assignment, the `scrolledFileID` scroll
-   re-drive, the `highlights = carried` reset, and the per-file highlight
-   publication.
+The dump chain for this variant is `LazySubviewPlacements.placeSubviews` →
+`LazyStack.place` → `_PaddingLayout` → `StackLayout` → `_FlexFrameLayout` →
+`_HStackLayout.explicitAlignment` → `StackLayout.placeChildren` (cycle).
 
-**How to apply / diagnose next time.** `refresh()` still logs one `.notice` per
-refresh (`diff refresh: files=… lines=… maxFileLines=… maxLineLen=… computeMs=…`)
-via `CasperLog.app` — read it with `/usr/bin/log show --predicate 'subsystem ==
-"com.github.alexandreroman.casper"' --info --debug`. A **flood** of these lines
-(especially with unchanged `files=/lines=`) is the churn signature. For a live
-hang, `sample <pid>` or the system `.hang` report shows whether the main thread
-is in the `LazyStack.place` recursion. NOTE: the fix cannot be A/B-verified
-headlessly — an unbundled debug binary's window is treated as not-visible, so
-`applyWatcherVisibility` stops the FSEvents watchers and no refresh fires;
-reproduction/verification needs a **visible real instance**. See
-[[agent-visual-verification-limits]].
+`DiffFileHeaderBar` therefore uses implicit (center) alignment, and the
+codebase contains no explicit baseline guide. Center alignment derives from the
+child's height and never re-enters placement. The constraint is recorded as a
+comment on the view itself.
 
-**Still-valid layout constraints (do NOT regress):**
-- Do NOT nest a `LazyVStack` inside `DiffFileView`; its inner container stays a
-  plain `VStack` (a nested lazy stack can't report exact height → huge gaps).
-- Do NOT batch the per-file highlight publication — it breaks progressive
-  coloring. Keep it per-file (the fix wrapped each publication in its own
-  animation-disabling transaction, still per-file).
-- Keep `pinnedViews: [.sectionHeaders]`; the fix removes animation + redundant
-  churn, not the sticky-header feature.
+## Falsified hypotheses — do not re-chase
+
+- **Long single lines / large diffs.** A release build (726) shipping the
+  `DiffLineStyle.truncatedForDisplay` 2000-char cap hung on a benign diff
+  (`maxLineLen=278`, 14 Markdown/YAML files). The caps are worth keeping; they
+  are not what resolves this.
+- **Animated relayout churn as the sole cause.** Dedup of redundant refreshes
+  plus `Transaction.disablesAnimations` removed the animation frames from the
+  dumps (8–11 before, ~0 after) and the main thread still spun. Both mitigations
+  remain correct and stay in place; they address one variant only.
+- **Row-layer bounds as the remedy for the alignment variant.**
+  `DiffLineStyle.maxWrappedLinesPerRow` and
+  `.fixedSize(horizontal: false, vertical: true)` on the code text bound the
+  text-metrics variant. `DiffLineRow` aligns with `.top`, which issues no
+  baseline query, so these caps cannot affect an `explicitAlignment` recursion.
+  They stay as defense-in-depth for the variant they do cover.
+
+## Verification limits
+
+None of these variants reproduces headlessly: an unbundled debug binary's
+window counts as not-visible, so `applyWatcherVisibility` stops the FSEvents
+watchers and no refresh fires. Confirming a fix needs a visible real instance
+left running with the diff view open on an actively-edited worktree. See
+[[agent-visual-verification-limits]]. As of 2026-07-28 the header fix has this
+live confirmation outstanding.
+
+## Layout constraints that must hold
+
+- `DiffFileView`'s inner container is a plain `VStack`. A lazy stack nested as
+  a `Section`'s content inside the outer `LazyVStack`/`ScrollView` cannot report
+  an exact height, which leaves large empty gaps between files.
+- Per-file highlight publication stays per-file, each in its own
+  animation-disabling transaction. Batching it breaks progressive coloring.
+- `pinnedViews: [.sectionHeaders]` stays; the sticky-header feature is
+  intended.

@@ -325,17 +325,28 @@ private struct DiffEmptyState: View {
 
 /// Per-file header band, used as each file's pinned `Section` header (see
 /// `pinnedViews: [.sectionHeaders]` in `DiffSurfaceView.content`): file path +
-/// status on the left, the +N −N line summary pushed to the right via a
-/// flexible spacer, sized to the diff panel's own width (`maxWidth: .infinity`)
-/// since there's no horizontal scrolling to diverge from. A 1pt hairline marks
-/// its bottom edge against the file content scrolling underneath it.
+/// status on the left, the +N −N line summary pushed to the right by the
+/// title's flexible frame, sized to the diff panel's own width
+/// (`maxWidth: .infinity`) since there's no horizontal scrolling to diverge
+/// from. A 1pt hairline marks its bottom edge against the file content
+/// scrolling underneath it.
 private struct DiffFileHeaderBar: View {
     let file: GitDiffFile
     let metrics: DiffFileMetrics
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .lastTextBaseline, spacing: 8) {
+            // The default center alignment is deliberate: do NOT reintroduce
+            // `.lastTextBaseline` (or any explicit baseline guide) here. As a
+            // pinned lazy-stack header, this row is re-placed on every layout
+            // pass, and resolving a baseline needs the flexible-width
+            // `Text(title)` child's baseline, which depends on the width the
+            // stack proposes — which is itself waiting on that baseline. The
+            // resulting `explicitAlignment` ⇄ `placeChildren` recursion never
+            // converges and hangs the main thread at ~98% CPU, with no crash
+            // report. Center alignment derives from the child's height, so it
+            // never re-enters placement.
+            HStack(spacing: 8) {
                 Text(title).font(.system(.body, design: .monospaced)).bold()
                     .lineLimit(1).truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
