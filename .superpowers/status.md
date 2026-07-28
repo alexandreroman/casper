@@ -121,9 +121,20 @@ debug symbols in `make release`). UI-1 is verified live on a real desktop sessio
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
 moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
 `baseBranch`). Opening a folder builds a Space — Git or not (non-Git folders are
-degenerate Spaces: one primary, no worktree creation), promoted to Git when a
-`.git` appears — detected live by the workspace filesystem watcher (and once per
-Space at launch), and demoted back if the `.git` is removed. A per-Space "+"
+degenerate Spaces: one primary, no worktree creation), with **one Space per Git
+repository** enforced both ways: a folder that is a linked worktree of a
+repository already open as a Space is adopted into that Space as a linked
+workspace (same branch, the Space's primary branch as its base, nothing created
+on disk and no `setup` hook, since the worktree already exists); and opening a
+repository whose worktrees are already open as Spaces of their own **reunifies**
+them into the Space it creates — those workspaces move whole (same ids, ports,
+layouts and live terminals), each ex-primary becoming a linked workspace named
+after its branch, and a workspace that already recorded a base branch keeps it.
+Repository identity is libgit2's common `.git` directory, shared by every
+working tree of a repository. Re-adding a folder Casper already tracks just
+selects it. A Space is promoted to Git when a `.git` appears — detected live by
+the workspace filesystem watcher (and once per Space at launch), and demoted
+back if the `.git` is removed. A per-Space "+"
 creates a **linked** workspace as a new branch + `git worktree` at a visible
 sibling of the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so
 naturally untracked — the old in-repo `.casper/worktrees/` layout and its

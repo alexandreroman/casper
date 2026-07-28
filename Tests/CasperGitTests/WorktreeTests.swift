@@ -85,6 +85,25 @@ final class WorktreeTests: XCTestCase {
         XCTAssertFalse(try repo.branchExists("blocked"))
     }
 
+    /// The common directory is the repository's identity: a linked worktree reports
+    /// the SAME one as its main working tree, even though their git dirs differ.
+    func testWorktreeSharesCommonDirWithMainWorkingTree() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try repo.addWorktree(name: "feature", atPath: wtPath, basedOn: nil)
+
+        let worktreeRepo = try Repository.open(atPath: wtPath)
+
+        XCTAssertEqual(
+            URL(fileURLWithPath: worktreeRepo.commonDirPath).standardizedFileURL.path,
+            URL(fileURLWithPath: repo.commonDirPath).standardizedFileURL.path)
+        XCTAssertNotEqual(
+            URL(fileURLWithPath: worktreeRepo.gitDirPath).standardizedFileURL.path,
+            URL(fileURLWithPath: repo.gitDirPath).standardizedFileURL.path)
+        XCTAssertTrue(worktreeRepo.isLinkedWorktree)
+        XCTAssertFalse(repo.isLinkedWorktree)
+    }
+
     func testPruneRemovesWorktree() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let wtPath = root.appendingPathComponent("feature").path
