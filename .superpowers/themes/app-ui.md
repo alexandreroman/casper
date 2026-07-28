@@ -57,12 +57,16 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   `repoPath` moved up to `Space.folderPath`; `Workspace` gained
   `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
   or not — non-Git folders are degenerate Spaces with one primary workspace and
-  no worktree creation), unless the folder is a **linked worktree of a repository
-  already open as a Space** — same common `.git` directory — in which case it is
-  adopted into that Space as a linked workspace instead of becoming a Space of its
-  own (nothing is created on disk, so no `setup` hook runs), and re-adding a
-  folder Casper already tracks only selects it; a per-Space "+" creates a
-  **linked** workspace as a new
+  no worktree creation), with **one Space per Git repository** — identity being
+  the common `.git` directory every working tree of a repository shares. A folder
+  that is a **linked worktree of a repository already open as a Space** is adopted
+  into that Space as a linked workspace instead of becoming a Space of its own
+  (nothing is created on disk, so no `setup` hook runs); conversely, opening a
+  **repository whose worktrees are already open as Spaces** reunifies them into
+  the Space it creates, moving those workspaces whole (ids, ports, layouts and
+  live terminals unchanged) with each ex-primary becoming a linked workspace named
+  after its branch. Re-adding a folder Casper already tracks only selects it; a
+  per-Space "+" creates a **linked** workspace as a new
   branch + `git worktree` at a visible sibling of the repo folder,
   `<parent>/<repo>-<branch>` (outside the repo, so naturally untracked — no
   in-repo `.casper/worktrees/` and no `.git/info/exclude` entry; a `-2`/`-3`…

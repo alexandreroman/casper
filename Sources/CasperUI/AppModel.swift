@@ -582,11 +582,17 @@ final class AppModel {
         body(&spaces[index.space].workspaces[index.workspace])
     }
 
-    /// Adopt `folderURL` into the session. A folder that is a linked worktree of a
-    /// repository Casper already has open joins that repository's Space as a linked
-    /// workspace — a worktree is part of its repo, not a project of its own — and any
-    /// other folder becomes a Space. A folder that is already tracked (as a Space or
-    /// as one of its workspaces) is not added twice: it is just selected.
+    /// Adopt `folderURL` into the session, keeping one Space per Git repository:
+    ///
+    /// - a folder that is a linked worktree of a repository already open joins that
+    ///   repository's Space as a linked workspace — a worktree is part of its repo,
+    ///   not a project of its own;
+    /// - a folder that is a repository whose worktrees are already open as Spaces of
+    ///   their own becomes their Space, reunifying them into it as linked workspaces;
+    /// - any other folder becomes a Space, as before.
+    ///
+    /// A folder that is already tracked (as a Space or as one of its workspaces) is
+    /// not added twice: it is just selected.
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
         let folderPath = folderURL.path
         let candidate = Self.canonicalPath(folderPath)
@@ -608,10 +614,19 @@ final class AppModel {
             CasperLog.app.failure("cannot add space: no free port block", error)
             return
         }
-        let space = WorkspaceFactory.makeSpace(
+        var space = WorkspaceFactory.makeSpace(
             folderURL: folderURL, info: info, portBase: portBase)
-        spaces.append(space)
-        spaces = Self.sortedByName(spaces)
+        // The mirror image of adoption: this folder is the main working tree, so any
+        // Space rooted at one of its worktrees is really a part of the Space being
+        // created and is folded into it.
+        let absorbed = info.map { worktreeSpaces(sharingRepositoryWith: $0, probe: probe) } ?? []
+        reunify(absorbed, into: &space)
+        // One write, so the absorbed workspaces are never momentarily absent from the
+        // model: they keep running throughout, they only change Space.
+        let absorbedIDs = Set(absorbed.map(\.id))
+        var updated = spaces.filter { !absorbedIDs.contains($0.id) }
+        updated.append(space)
+        spaces = Self.sortedByName(updated)
         selectWorkspace(space.workspaces.first?.id)
         persist()
     }
@@ -639,23 +654,97 @@ final class AppModel {
         return nil
     }
 
-    /// The open Space backed by the same Git repository as `info` — same common
-    /// `.git` directory, which every working tree of a repository shares — or nil
-    /// when that repository isn't open. When both a repository's main working tree
-    /// and one of its worktrees are open as Spaces, the main working tree wins: its
-    /// folder is what worktree operations (create, prune, merge) run against.
+    /// An open Space that turns out to be backed by the same Git repository as a
+    /// folder being added, and which of the repository's working trees it roots at.
+    private struct RepositoryMatch {
+        let space: Space
+        let isLinkedWorktree: Bool
+    }
+
+    /// Every open Space backed by the same Git repository as `info` — same common
+    /// `.git` directory, which all of a repository's working trees share.
+    private func spacesSharingRepository(
+        with info: WorkspaceFactory.GitInfo, probe: (URL) -> WorkspaceFactory.GitInfo?
+    ) -> [RepositoryMatch] {
+        guard let commonDir = info.commonDirPath else { return [] }
+        return spaces.compactMap { space in
+            guard space.isGitRepo,
+                  let spaceInfo = probe(URL(fileURLWithPath: space.folderPath)),
+                  spaceInfo.commonDirPath == commonDir else { return nil }
+            return RepositoryMatch(space: space, isLinkedWorktree: spaceInfo.isLinkedWorktree)
+        }
+    }
+
+    /// The Space a worktree described by `info` should join, or nil when its
+    /// repository isn't open. When both a repository's main working tree and one of
+    /// its worktrees are open as Spaces, the main working tree wins: its folder is
+    /// what worktree operations (create, prune, merge) run against.
     private func spaceSharingRepository(
         with info: WorkspaceFactory.GitInfo, probe: (URL) -> WorkspaceFactory.GitInfo?
     ) -> UUID? {
-        guard let commonDir = info.commonDirPath else { return nil }
-        var worktreeSpace: UUID?
-        for space in spaces where space.isGitRepo {
-            guard let spaceInfo = probe(URL(fileURLWithPath: space.folderPath)),
-                  spaceInfo.commonDirPath == commonDir else { continue }
-            if !spaceInfo.isLinkedWorktree { return space.id }
-            if worktreeSpace == nil { worktreeSpace = space.id }
+        let matches = spacesSharingRepository(with: info, probe: probe)
+        return (matches.first(where: { !$0.isLinkedWorktree }) ?? matches.first)?.space.id
+    }
+
+    /// The open Spaces rooted at a worktree of `info`'s repository: what opening that
+    /// repository's main working tree reunifies into a single Space. Spaces rooted at
+    /// the main working tree itself are excluded — a Space always roots at the folder
+    /// its primary workspace is, and `addSpace` has already ruled out a duplicate.
+    private func worktreeSpaces(
+        sharingRepositoryWith info: WorkspaceFactory.GitInfo,
+        probe: (URL) -> WorkspaceFactory.GitInfo?
+    ) -> [Space] {
+        spacesSharingRepository(with: info, probe: probe)
+            .filter(\.isLinkedWorktree)
+            .map(\.space)
+    }
+
+    /// Move every workspace of `absorbed` into `space` as a linked workspace (see
+    /// `linkedWorkspaces`), tearing down whatever cannot be carried over so a dropped
+    /// workspace leaves behind neither a reserved port nor a cached view. The
+    /// absorbed Spaces themselves are dropped by the caller, in the same write that
+    /// installs `space`.
+    private func reunify(_ absorbed: [Space], into space: inout Space) {
+        guard !absorbed.isEmpty, let primary = space.workspaces.first else { return }
+        space.workspaces.append(contentsOf: Self.linkedWorkspaces(
+            absorbing: absorbed, baseBranch: primary.branch,
+            excluding: Self.canonicalPath(primary.worktreePath)))
+        let moved = Set(space.workspaces.map(\.id))
+        for workspace in absorbed.flatMap(\.workspaces) where !moved.contains(workspace.id) {
+            portAllocator.release(workspace.portBase)
+            discardSurfaceViews(
+                LayoutTree.surfaceIDs(workspace.layout) + [workspace.inspector.browser.id])
+            pruneTransientState(for: workspace)
         }
-        return worktreeSpace
+    }
+
+    /// The workspaces of `absorbed`, reshaped as linked workspaces of the Space that
+    /// absorbs them. They move whole — same ids, ports, layouts and live terminals,
+    /// so nothing is torn down or respawned — and only the fields that make a
+    /// workspace linked are normalized: an absorbed Space's own worktree stops being
+    /// a primary and takes its branch as its name (a Space is named after its
+    /// repository, which would merely duplicate the new primary's name), and any
+    /// workspace with no base branch of its own inherits `baseBranch`. A workspace
+    /// that already records a base keeps it: that is the branch it forked from and
+    /// still merges back into.
+    ///
+    /// A workspace rooted at `primaryPath` is dropped rather than moved: a second
+    /// workspace on the absorbing Space's own working tree would be a linked
+    /// workspace whose deletion removes the repository itself.
+    private static func linkedWorkspaces(
+        absorbing absorbed: [Space], baseBranch: String, excluding primaryPath: String
+    ) -> [Workspace] {
+        absorbed.flatMap(\.orderedWorkspaces)
+            .filter { canonicalPath($0.worktreePath) != primaryPath }
+            .map { workspace in
+                var workspace = workspace
+                if workspace.kind == .primary {
+                    workspace.kind = .linked
+                    if !workspace.branch.isEmpty { workspace.name = workspace.branch }
+                }
+                if workspace.baseBranch?.isEmpty ?? true { workspace.baseBranch = baseBranch }
+                return workspace
+            }
     }
 
     /// Add an existing worktree to `spaceID` as a linked workspace. Unlike
