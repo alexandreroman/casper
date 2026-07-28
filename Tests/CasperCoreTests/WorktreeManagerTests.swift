@@ -130,6 +130,19 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertEqual(listed.map(\.name), ["feature"])
     }
 
+    func testRegisteredNameResolvesTheAdminEntryByPath() throws {
+        let wtPath = root.appendingPathComponent("feature").path
+        _ = try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+
+        XCTAssertEqual(
+            WorktreeManager.registeredName(repoPath: repoDir.path, worktreePath: wtPath),
+            "feature")
+        // A path git knows nothing about — the caller falls back to the branch name.
+        XCTAssertNil(WorktreeManager.registeredName(
+            repoPath: repoDir.path, worktreePath: root.appendingPathComponent("ghost").path))
+    }
+
     func testRemoveDeletesWorktree() throws {
         let wtPath = root.appendingPathComponent("feature").path
         _ = try WorktreeManager.create(

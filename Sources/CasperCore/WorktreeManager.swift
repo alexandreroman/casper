@@ -125,6 +125,25 @@ public enum WorktreeManager {
         }
     }
 
+    /// The name git registered for the worktree checked out at `worktreePath`, or
+    /// nil when the repository lists no worktree there (or cannot be read).
+    ///
+    /// Casper's own worktrees are registered under their branch name, so the two are
+    /// interchangeable for them — but a worktree created outside Casper and later
+    /// adopted into a Space can carry any name, and pruning its admin entry needs the
+    /// registered one, not the branch.
+    public static func registeredName(repoPath: String, worktreePath: String) -> String? {
+        let target = canonicalPath(worktreePath)
+        return (try? list(repoPath: repoPath))?
+            .first(where: { canonicalPath($0.path) == target })?.name
+    }
+
+    /// `path` with symlinks resolved, so paths reported by libgit2 and paths held by
+    /// the model compare equal whichever spelling each came from.
+    private static func canonicalPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
     /// Remove the worktree named `name` (working tree at `worktreePath`) from the
     /// repository at `repoPath`, guaranteeing the working-tree directory is gone
     /// from disk.

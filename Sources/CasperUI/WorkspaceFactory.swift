@@ -9,13 +9,39 @@ enum WorkspaceFactory {
         let canonicalPath: String
         let branch: String
         let remoteURL: String?
+        /// The repository's common `.git` directory: the identity shared by its main
+        /// working tree and every linked worktree, so two folders belong to the same
+        /// repository exactly when these match. Nil when the prober doesn't report it.
+        let commonDirPath: String?
+        /// True when the probed folder is a linked worktree rather than the
+        /// repository's main working tree.
+        let isLinkedWorktree: Bool
+
+        init(
+            canonicalPath: String, branch: String, remoteURL: String?,
+            commonDirPath: String? = nil, isLinkedWorktree: Bool = false
+        ) {
+            self.canonicalPath = canonicalPath
+            self.branch = branch
+            self.remoteURL = remoteURL
+            self.commonDirPath = commonDirPath
+            self.isLinkedWorktree = isLinkedWorktree
+        }
     }
 
     static func makeSpace(
         folderURL: URL, probe: (URL) -> GitInfo?, portBase: Int
     ) -> Space {
+        makeSpace(folderURL: folderURL, info: probe(folderURL), portBase: portBase)
+    }
+
+    /// Variant taking an already-probed `info`, for callers that inspect the probe
+    /// result before deciding what to build (see `AppModel.addSpace`, which routes a
+    /// worktree of an open repository into that repository's Space instead).
+    static func makeSpace(
+        folderURL: URL, info: GitInfo?, portBase: Int
+    ) -> Space {
         let folderPath = folderURL.path
-        let info = probe(folderURL)
         let canonical = info?.canonicalPath ?? folderPath
         let name = SpaceName.derive(
             remoteURL: info?.remoteURL, folderName: folderURL.lastPathComponent)

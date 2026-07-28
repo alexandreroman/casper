@@ -42,6 +42,22 @@ public final class Repository {
         return String(cString: cString)
     }
 
+    /// Absolute path to the repository's **common** directory (trailing slash, per
+    /// libgit2): the `.git` directory shared by the main working tree and every
+    /// linked worktree. Equal to `gitDirPath` when the handle is the main working
+    /// tree; for a linked worktree `gitDirPath` is `<common>/worktrees/<name>/`
+    /// while this stays `<common>/`. It therefore identifies the repository
+    /// itself, whichever of its working trees was opened.
+    public var commonDirPath: String {
+        String(cString: git_repository_commondir(pointer))
+    }
+
+    /// True when this handle was opened on a linked worktree (`git worktree add`)
+    /// rather than on the repository's main working tree.
+    public var isLinkedWorktree: Bool {
+        git_repository_is_worktree(pointer) == 1
+    }
+
     /// Short name of the branch HEAD currently points to.
     public func headBranchName() throws -> String {
         var head: OpaquePointer?

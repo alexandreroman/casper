@@ -550,6 +550,127 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces.count, 1)
     }
 
+    // MARK: - Adding a folder that is a worktree of an open repository
+
+    /// A worktree of `repo` at a sibling path, registered under `name` on a branch
+    /// of the same name. Returns its folder URL.
+    private func makeWorktree(of repo: URL, named name: String) throws -> URL {
+        let worktree = repo.deletingLastPathComponent()
+            .appendingPathComponent(repo.lastPathComponent + "-" + name)
+        addTeardownBlock { try? FileManager.default.removeItem(at: worktree) }
+        let handle = try Repository.open(atPath: repo.path)
+        _ = try handle.addWorktree(name: name, atPath: worktree.path, basedOn: nil)
+        return worktree
+    }
+
+    func testAddFolderAdoptsWorktreeIntoItsRepositorySpace() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "adopted")
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let primary = model.spaces[0].workspaces[0]
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(model.spaces.count, 1)  // no Space of its own
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
+        let adopted = model.spaces[0].workspaces[1]
+        XCTAssertEqual(adopted.kind, .linked)
+        XCTAssertEqual(adopted.branch, "adopted")
+        XCTAssertEqual(adopted.name, "adopted")
+        XCTAssertEqual(adopted.baseBranch, primary.branch)
+        XCTAssertNotEqual(adopted.portBase, primary.portBase)
+        XCTAssertEqual(
+            URL(fileURLWithPath: adopted.worktreePath).resolvingSymlinksInPath().path,
+            worktree.resolvingSymlinksInPath().path)
+        XCTAssertEqual(model.selectedWorkspaceID, adopted.id)
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
+        XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 2)
+    }
+
+    func testAddFolderAdoptsWorktreeIntoCollapsedSpaceAndExpandsIt() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "adopted")
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        model.toggleSpaceCollapsed(id: model.spaces[0].id)
+        XCTAssertTrue(model.spaces[0].isCollapsed)
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        // Selecting the adopted workspace must reveal it.
+        XCTAssertFalse(model.spaces[0].isCollapsed)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
+    }
+
+    func testAddFolderKeepsWorktreeOfUnopenedRepositoryAsItsOwnSpace() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(model.spaces.count, 1)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+        XCTAssertEqual(model.spaces[0].workspaces[0].kind, .primary)
+    }
+
+    func testAddFolderIgnoresRepositoryOpenedInADifferentSession() throws {
+        let repoA = try makeTempGitRepo()
+        let repoB = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repoB, named: "feature")
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repoA, probe: AppModel.gitProbe)
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        // Another repo's Space must not absorb it.
+        XCTAssertEqual(model.spaces.count, 2)
+        XCTAssertTrue(model.spaces.allSatisfy { $0.workspaces.count == 1 })
+    }
+
+    func testAddFolderSelectsAnAlreadyAdoptedWorktreeInsteadOfDuplicatingIt() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "adopted")
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+        let adoptedID = model.spaces[0].workspaces[1].id
+        model.selectWorkspace(model.spaces[0].workspaces[0].id)
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
+        XCTAssertEqual(model.selectedWorkspaceID, adoptedID)
+    }
+
+    func testAddFolderAdoptsWorktreeOfCasperCreatedWorkspaceRepository() throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        // A worktree created by Casper, then dropped from the sidebar without
+        // deleting it on disk: re-adding its folder must bring it back into the
+        // same Space rather than spawning a second Space for the same repo.
+        XCTAssertTrue(model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat"))
+        let linked = model.spaces[0].workspaces[1]
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: linked.worktreePath) }
+        model.removeWorkspace(id: linked.id)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+
+        model.addSpace(folderURL: URL(fileURLWithPath: linked.worktreePath), probe: AppModel.gitProbe)
+
+        XCTAssertEqual(model.spaces.count, 1)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
+        XCTAssertEqual(model.spaces[0].workspaces[1].branch, "feat")
+    }
+
     // MARK: - Promotion on worktree change (degenerate space gaining .git)
 
     func testSelectingDegenerateSpaceThatGainedGitPromotesIt() {

@@ -121,7 +121,12 @@ debug symbols in `make release`). UI-1 is verified live on a real desktop sessio
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
 moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
 `baseBranch`). Opening a folder builds a Space — Git or not (non-Git folders are
-degenerate Spaces: one primary, no worktree creation), promoted to Git when a
+degenerate Spaces: one primary, no worktree creation) — **except when the folder
+is a linked worktree of a repository already open as a Space**, in which case it
+is adopted into that Space as a linked workspace (same branch, the Space's
+primary branch as its base, nothing created on disk and no `setup` hook, since
+the worktree already exists); re-adding a folder Casper already tracks just
+selects it. A Space is promoted to Git when a
 `.git` appears — detected live by the workspace filesystem watcher (and once per
 Space at launch), and demoted back if the `.git` is removed. A per-Space "+"
 creates a **linked** workspace as a new branch + `git worktree` at a visible
