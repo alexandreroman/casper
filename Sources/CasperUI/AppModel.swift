@@ -1782,7 +1782,10 @@ final class AppModel {
             workingDirectory: cwd, fontSize: terminal.fontSize ?? 0)
         config.environment = ClaudeCodeAdapter.surfaceEnvironment(
             workspaceId: workspace.id,
-            portBase: workspace.portBase,
+            // Only linked worktrees need an offset port block; the primary working
+            // tree keeps the project's default ports. The rule is kind-based, not
+            // branch-name-based — a primary tree may sit on any branch.
+            portBase: workspace.kind == .primary ? nil : workspace.portBase,
             casperDirectory: casperDirectory,
             basePath: ProcessInfo.processInfo.environment["PATH"],
             controlSocketPath: controlSocketPath,

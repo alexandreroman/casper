@@ -1414,6 +1414,31 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(saves, 1)
     }
 
+    // MARK: - Reserved port block injection
+
+    func testSurfaceConfigurationInjectsPortBlockForLinkedWorkspacesOnly() {
+        let primary = Workspace(
+            name: "main", worktreePath: "/repo", branch: "main", portBase: 40000,
+            layout: .leaf(Surface.terminal(cwd: "/repo")), kind: .primary)
+        let linked = Workspace(
+            name: "feat", worktreePath: "/repo-feat", branch: "feat", portBase: 40010,
+            layout: .leaf(Surface.terminal(cwd: "/repo-feat")), kind: .linked)
+        let session = Session(spaces: [
+            Space(name: "repo", folderPath: "/repo", isGitRepo: true,
+                  workspaces: [primary, linked]),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+
+        let primaryEnv = model.surfaceConfiguration(
+            for: primary, terminal: Surface.terminal(cwd: primary.worktreePath)).environment
+        let linkedEnv = model.surfaceConfiguration(
+            for: linked, terminal: Surface.terminal(cwd: linked.worktreePath)).environment
+
+        XCTAssertNil(primaryEnv["CASPER_PORT"])
+        XCTAssertEqual(linkedEnv["CASPER_PORT"], String(linked.portBase))
+    }
+
     // MARK: - Terminal font-size persistence
 
     func testSurfaceConfigurationPassesPersistedFontSizeOrDefaultsToZero() {

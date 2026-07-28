@@ -5,10 +5,17 @@ import Foundation
 public enum ClaudeCodeAdapter {
     /// Environment injected into every terminal surface of a workspace so that the
     /// `casper` CLI can reach the app's control channel and the agent can bind its
-    /// reserved ports. `CASPER_PORT` is the block base. When `controlSocketPath` is
-    /// given, it is exposed as `CASPER_CONTROL_SOCKET` so the terminal can reach
-    /// the control socket. When `sessionName` is given, it is exposed as
-    /// `CASPER_SESSION`.
+    /// reserved ports.
+    ///
+    /// `CASPER_PORT` is the base of the workspace's reserved port block, and is set
+    /// only when `portBase` is given. A worktree workspace passes its block base so
+    /// dev servers of parallel worktrees don't collide. `nil` means the workspace
+    /// needs no reserved block (the Space's primary working tree): its terminals see
+    /// no `CASPER_PORT`, so dev servers started there use their project default port.
+    ///
+    /// When `controlSocketPath` is given, it is exposed as `CASPER_CONTROL_SOCKET` so
+    /// the terminal can reach the control socket. When `sessionName` is given, it is
+    /// exposed as `CASPER_SESSION`.
     ///
     /// When `casperDirectory` is given, it is prepended to `PATH` so the `casper`
     /// binary resolves only inside terminals Casper opens — it is deliberately not
@@ -18,16 +25,16 @@ public enum ClaudeCodeAdapter {
     /// passed in.
     public static func surfaceEnvironment(
         workspaceId: UUID,
-        portBase: Int,
+        portBase: Int?,
         casperDirectory: String? = nil,
         basePath: String? = nil,
         controlSocketPath: String? = nil,
         sessionName: String? = nil
     ) -> [String: String] {
-        var env: [String: String] = [
-            "CASPER_WORKSPACE_ID": workspaceId.uuidString,
-            "CASPER_PORT": String(portBase),
-        ]
+        var env: [String: String] = ["CASPER_WORKSPACE_ID": workspaceId.uuidString]
+        if let portBase {
+            env["CASPER_PORT"] = String(portBase)
+        }
         if let controlSocketPath {
             env["CASPER_CONTROL_SOCKET"] = controlSocketPath
         }

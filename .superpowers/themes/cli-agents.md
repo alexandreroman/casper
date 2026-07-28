@@ -90,12 +90,13 @@ agent**; the user runs their agent manually.
 
 The only agent-facing runtime coupling is the per-surface environment
 `ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal:
-`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT`, and — when
-a debug build runs under `--session <name>` (a `#if DEBUG`-only flag) —
-`CASPER_SESSION`. A CLI command reads `CASPER_WORKSPACE_ID` for its default
-target and `CASPER_CONTROL_SOCKET` to reach the app; state changes flow straight
-into the sidebar (badge, progress, notification dot) and, for `notify`,
-`UserNotifications`.
+`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in `linked`
+workspaces only (a `primary` workspace gets none, so its dev servers keep the
+project's default ports), and — when a debug build runs under `--session <name>`
+(a `#if DEBUG`-only flag) — `CASPER_SESSION`. A CLI command reads
+`CASPER_WORKSPACE_ID` for its default target and `CASPER_CONTROL_SOCKET` to
+reach the app; state changes flow straight into the sidebar (badge, progress,
+notification dot) and, for `notify`, `UserNotifications`.
 
 When a debug build is launched with `--session <name>`, its control socket is
 the session-scoped `casper-control-<name>.sock` and that path is the value

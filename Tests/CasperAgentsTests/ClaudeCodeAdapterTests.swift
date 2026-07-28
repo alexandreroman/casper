@@ -10,6 +10,13 @@ final class ClaudeCodeAdapterTests: XCTestCase {
         XCTAssertEqual(env["CASPER_PORT"], "40010")
     }
 
+    func testSurfaceEnvironmentOmitsPortWhenNoPortBase() {
+        let id = UUID()
+        let env = ClaudeCodeAdapter.surfaceEnvironment(workspaceId: id, portBase: nil)
+        XCTAssertNil(env["CASPER_PORT"])
+        XCTAssertEqual(env["CASPER_WORKSPACE_ID"], id.uuidString)
+    }
+
     func testSurfaceEnvironmentDoesNotExposeNumberedPorts() {
         let env = ClaudeCodeAdapter.surfaceEnvironment(workspaceId: UUID(), portBase: 40010)
         XCTAssertNil(env["CASPER_PORT_0"])

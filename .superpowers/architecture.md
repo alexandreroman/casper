@@ -66,7 +66,7 @@ Session
          ├─ agentState: working | blocked | idle | done | unknown | error
          ├─ todos: [Todo{content, status: pending|in_progress|completed}]
          ├─ pendingNotification: Bool
-         ├─ portBase: Int                        // 10-port block; env CASPER_PORT
+         ├─ portBase: Int                        // 10-port block; env CASPER_PORT if linked
          ├─ layout: LayoutNode
          └─ inspector: InspectorState            // right panel: collapsed, tab, browser, width
 

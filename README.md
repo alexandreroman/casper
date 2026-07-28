@@ -29,9 +29,10 @@ per workspace, and bundles a native browser and diff viewer.
 - **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
   tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
   native diff view per workspace.
-- **Per-workspace port reservation** — a contiguous block of 10 ports
-  (`CASPER_PORT`) per workspace, so the same app can run once per worktree
-  without collisions.
+- **Per-workspace port reservation** — a contiguous block of 10 ports per
+  workspace, injected as `CASPER_PORT` in worktree workspaces only, so the same
+  app can run once per worktree without collisions. The repository's main
+  working tree gets no `CASPER_PORT` and keeps the project's default ports.
 - **Native & lean** — prefers built-in macOS frameworks; only four external
   dependencies (libghostty, swift-argument-parser, libgit2, and HighlightSwift
   for diff syntax highlighting); **arm64-only**.
@@ -202,7 +203,8 @@ casper run [name]                            # run a named .casper.json command 
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
 workspace other than the current one. Commands talk to the running app over a
 Unix domain socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal
-alongside `$CASPER_WORKSPACE_ID` and `$CASPER_PORT`.
+alongside `$CASPER_WORKSPACE_ID` — and, in worktree workspaces only,
+`$CASPER_PORT`.
 
 Every command is machine-readable: on success it prints a JSON object (or array)
 to stdout describing the affected `workspace` and any resulting state; on error
