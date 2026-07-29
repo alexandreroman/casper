@@ -13,7 +13,9 @@ enum BrowserCapture {
     /// under the 15 s automation socket timeout so the CLI still gets a reply.
     private static let loadTimeout: Duration = .seconds(10)
     /// After navigation finishes, how long to wait for the page to fully render
-    /// (fonts, deferred images, next-tick paints) before snapshotting anyway.
+    /// before snapshotting anyway. This bounds the network-bound part of the wait —
+    /// web fonts and deferred images, which can take seconds on a slow origin — since
+    /// `waitForFullRender` caps the paint barrier itself with its own short fallback.
     /// Best-effort: the load already succeeded, so a stalled resource should
     /// still yield a snapshot rather than fail the capture.
     private static let renderSettleTimeout: Duration = .seconds(5)
@@ -94,10 +96,14 @@ enum BrowserCapture {
     }
 
     /// Wait until the loaded page has settled visually: DOM complete, web fonts
-    /// ready, in-flight images finished (load or error), then two animation
-    /// frames so the compositor has produced a paint. Bounded by
-    /// `renderSettleTimeout` and fully best-effort — any error or timeout just
-    /// proceeds to the snapshot.
+    /// ready, in-flight images finished (load or error), then a paint barrier of two
+    /// animation frames raced against a ~120 ms fallback. The race is required, not a
+    /// safety net: `requestAnimationFrame` never fires in a window parked off any
+    /// display (see the -100_000 placement above), so the barrier alone would never
+    /// resolve and every capture would burn the full `renderSettleTimeout`. A visible
+    /// window still waits for a real compositor paint; an off-display one proceeds
+    /// after roughly two frames' worth of slack. Bounded by `renderSettleTimeout` and
+    /// fully best-effort — any error or timeout just proceeds to the snapshot.
     private static func waitForFullRender(of webView: WKWebView) async {
         let js = """
         await new Promise((resolve) => {
@@ -110,7 +116,9 @@ enum BrowserCapture {
               }));
             const fonts = (document.fonts && document.fonts.ready) || Promise.resolve();
             Promise.all([fonts, ...pending]).then(() => {
-              requestAnimationFrame(() => requestAnimationFrame(resolve));
+              const painted = new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const slack = new Promise((r) => setTimeout(r, 120));
+              Promise.race([painted, slack]).then(resolve);
             });
           };
           if (document.readyState === 'complete') settle();

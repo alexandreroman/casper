@@ -35,6 +35,18 @@ remaining a perfectly valid `view.window` host.
   occluded and libghostty keeps their render thread paused while the PTY runs.
 - An unordered window can never become key, so it cannot steal keyboard focus.
 
+**What does not work off-display: `requestAnimationFrame`.** A `WKWebView` in a
+window on no display never gets an animation-frame callback, because the
+WindowServer drives rAF from a display's refresh cycle. Any JavaScript readiness
+signal that ends in a paint barrier therefore hangs forever and silently burns
+whatever outer timeout bounds it. `BrowserCapture.waitForFullRender` races the
+two-frame barrier against a ~120 ms `setTimeout` fallback for exactly this
+reason: a visible window still waits for a real paint, an off-display one
+proceeds after two frames' worth of slack. Measured on a page with a 600 ms
+webfont and image: 5026 ms → 124 ms, byte-identical snapshot pixels — the
+barrier contributes latency only. `document.fonts.ready`, image `load`/`error`
+events and `document.readyState` do fire off-display, so they stay unraced.
+
 **How to diagnose** a regression here: dump
 `CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)` and look for
 an entry with `layer=0`, `alpha=1.0` and a hugely negative `x` — that is an
