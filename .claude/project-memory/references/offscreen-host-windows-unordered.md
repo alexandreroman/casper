@@ -1,0 +1,41 @@
+---
+name: "Off-screen host windows stay out of the on-screen list"
+description: "Ordering a window parked at -100_000 breaks Mission Control; off-screen hosts are never ordered in"
+type: project
+---
+
+# Off-screen host windows stay out of the on-screen list
+
+Casper hosts views that must lay out and run without being visible in borderless
+`NSWindow`s parked far off-screen at `(-100_000, -100_000)`:
+
+- `AppModel.makeBackgroundSurfaceNursery()` — the background surface nursery
+  (see [[background-surface-nursery]]).
+- `BrowserCapture.snapshot(url:width:height:)` — the one-shot `WKWebView`
+  capturer.
+
+**These windows are never ordered on-screen** — no `orderFrontRegardless()`, no
+`orderFront(_:)`. Mission Control lays out *every* window the WindowServer
+reports as on-screen, so an ordered window at -100_000 stretches the layout
+bounding box to ~101,000 px and every real window is scaled down to nothing: the
+three-finger swipe-up gesture visibly breaks, with all windows receding and
+vanishing instead of showing thumbnails. A window that is never ordered in is
+absent from the on-screen list and therefore invisible to Mission Control, while
+remaining a perfectly valid `view.window` host.
+
+**Why hosting still works without ordering:**
+
+- `GhosttySurfaceView.viewDidMoveToWindow()` / `createSurfaceIfNeeded()` gate
+  only on `window != nil`, which `addSubview` satisfies regardless of window
+  visibility. Same for `WKWebView` layout and `takeSnapshot`.
+- Hosted surfaces take their dimensions from an explicit
+  `view.frame = host.bounds`, not from the window being displayed.
+- `pushDisplayID()` no-ops because `window?.screen` is nil off any display.
+- `occlusionState` on a non-visible window lacks `.visible`, so surfaces read as
+  occluded and libghostty keeps their render thread paused while the PTY runs.
+- An unordered window can never become key, so it cannot steal keyboard focus.
+
+**How to diagnose** a regression here: dump
+`CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)` and look for
+an entry with `layer=0`, `alpha=1.0` and a hugely negative `x` — that is an
+off-screen host that leaked into the on-screen list.

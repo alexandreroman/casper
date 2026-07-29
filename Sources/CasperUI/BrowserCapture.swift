@@ -34,22 +34,23 @@ enum BrowserCapture {
         config.websiteDataStore = .default()
         let webView = WKWebView(frame: frame, configuration: config)
 
-        // A WKWebView never placed in a window may not lay out or paint, so host it
-        // in a borderless window parked far off-screen. The window and delegate are
-        // held in locals so they outlive the awaits (WKWebView retains its
-        // navigation delegate only weakly), and torn down in `defer` even on throw.
+        // A WKWebView never placed in a window may not lay out or paint, so host it in
+        // a borderless window — one deliberately never ordered on-screen. Layout and
+        // painting only need a non-nil `window`, whereas an ordered window parked at
+        // -100_000 joins Mission Control's layout: its bounding box then spans ~101,000
+        // px and every real window is scaled to nothing. The window and delegate are
+        // held in locals so they outlive the awaits (WKWebView retains its navigation
+        // delegate only weakly), and torn down in `defer` even on throw.
         let window = NSWindow(
             contentRect: NSRect(x: -100_000, y: -100_000, width: CGFloat(width), height: CGFloat(height)),
             styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = webView
-        window.orderFrontRegardless()
 
         let delegate = NavigationLoadDelegate(url: url)
         webView.navigationDelegate = delegate
 
         defer {
             webView.navigationDelegate = nil
-            window.orderOut(nil)
             window.contentView = nil
         }
 

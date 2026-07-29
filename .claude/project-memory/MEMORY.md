@@ -74,6 +74,7 @@
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — CSigbusGuard turns mmap-truncation SIGBUS in diff into a graceful throw; body must be @escaping (not withoutActuallyEscaping)
 - [App icon design and generation pipeline](references/app-icon.md) — full-bleed split-terminal mark; prod+dev masters → `make icon` → committed .icns via CFBundleIconFile; PLUS macOS 26 Icon Composer AppIcon.icon → actool → Assets.car via CFBundleIconName (dual-key, additive)
 - [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY; queued commands + hook splits need the nursery
+- [Off-screen host windows stay unordered](references/offscreen-host-windows-unordered.md) — ordering a window parked at -100_000 wrecks Mission Control's layout; hosting only needs `window != nil`
 - [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each Highlight() = a new JavaScriptCore JSContext; per-call construction under diff churn leaked GBs of JSC VM heap; use the shared DiffHighlighter instance
 - [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — the teardown split spawns fine in XCTest; drive `handleScriptSurfaceExit` for the child exit
 - [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views in XCTest; pixels still need human eyes
