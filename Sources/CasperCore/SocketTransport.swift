@@ -17,14 +17,14 @@ private let socketReplyLingerTimeout: TimeInterval = 15
 
 /// A transport failure the generic engine can construct without knowing the
 /// concrete error type. Each channel provides its own conforming error struct.
-protocol SocketTransportError: Error, Equatable {
+public protocol SocketTransportError: Error, Equatable {
     init(reason: String)
 }
 
 /// A response the generic server can synthesize for protocol-level failures
 /// (undecodable command, no handler, invalid length) without knowing the
 /// concrete response type. Each channel's response already provides `failure`.
-protocol SocketFailureResponse {
+public protocol SocketFailureResponse {
     static func failure(_ message: String) -> Self
 }
 
@@ -85,7 +85,7 @@ private func decodeLength(_ header: Data) -> UInt32 {
 /// `@unchecked Sendable`: wraps `Network.framework` whose handlers are
 /// `@Sendable`; all connection I/O runs on the single serial `queue`, and
 /// callbacks are configured before `start()`.
-final class SocketServerEngine<
+public final class SocketServerEngine<
     Command: Decodable & Sendable,
     Response: Encodable & Sendable & SocketFailureResponse,
     TransportError: SocketTransportError
@@ -118,17 +118,21 @@ final class SocketServerEngine<
     /// Invoked on the server queue with each decoded command and a `reply`
     /// callback. The handler MUST call `reply` exactly once (it may hop threads
     /// first). `reply` writes the response and closes the connection.
-    var onCommand: ((Command, @escaping @Sendable (Response) -> Void) -> Void)?
+    public var onCommand: ((Command, @escaping @Sendable (Response) -> Void) -> Void)?
     /// Invoked on the server queue if the listener fails.
-    var onFailure: ((Error) -> Void)?
+    public var onFailure: ((Error) -> Void)?
 
-    init(socketPath: String, bindTimeout: TimeInterval, queueLabel: String) {
+    /// `queueLabel` defaults to a per-channel label derived from the command type
+    /// (e.g. `casper.socket.server.ControlCommand`), so each channel's serial queue
+    /// stays individually identifiable in Instruments and crash reports.
+    public init(socketPath: String, bindTimeout: TimeInterval = 5,
+                queueLabel: String = "casper.socket.server.\(Command.self)") {
         self.socketPath = socketPath
         self.bindTimeout = bindTimeout
         self.queue = DispatchQueue(label: queueLabel)
     }
 
-    func start() throws {
+    public func start() throws {
         unlink(socketPath)  // remove any stale socket file before binding
 
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
@@ -181,7 +185,7 @@ final class SocketServerEngine<
         }
     }
 
-    func stop() {
+    public func stop() {
         // Mark stopped and snapshot-and-clear the in-flight set in one locked
         // block, so a connection accepted from here on is refused by `receive(on:)`
         // (no drainer) and any later `dispatch` sees its connection gone and stays
@@ -346,7 +350,7 @@ final class SocketServerEngine<
 
 /// Sends one `Command` to a server socket and returns the decoded `Response`.
 /// Synchronous by design: `casper` CLI invocations are short-lived.
-enum SocketClientEngine<
+public enum SocketClientEngine<
     Command: Encodable & Sendable,
     Response: Decodable & Sendable,
     TransportError: SocketTransportError
@@ -367,9 +371,14 @@ enum SocketClientEngine<
     /// arrives. A decoded `Response` — even `ok: false` — is a real answer and
     /// is returned immediately, never retried, so a mutating verb is never
     /// applied twice.
-    static func send(
+    ///
+    /// `queueLabel` defaults to a per-channel label derived from the command type
+    /// (e.g. `casper.socket.client.ControlCommand`), so each channel's serial queue
+    /// stays individually identifiable in Instruments and crash reports.
+    public static func send(
         _ command: Command, toSocketAt socketPath: String,
-        timeout: TimeInterval, retriable: Bool, queueLabel: String
+        timeout: TimeInterval = 5, retriable: Bool = false,
+        queueLabel: String = "casper.socket.client.\(Command.self)"
     ) throws -> Response {
         let maxAttempts = retriable ? maxRetriableAttempts : 1
         var lastError: TransportError?

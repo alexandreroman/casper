@@ -19,6 +19,6 @@ final class LayoutActionHandlerTests: XCTestCase {
         XCTAssertTrue(handler.handle(.newSplit(.right)))   // claimed
         XCTAssertEqual(
             LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout).count, 2)
-        XCTAssertFalse(handler.handle(.ringBell))          // not a layout action
+        XCTAssertFalse(handler.handle(.render))            // not a layout action
     }
 }

@@ -11,7 +11,7 @@ import CasperCore
 @MainActor
 final class BrowserReloadTests: XCTestCase {
     private func makeCoordinator() -> BrowserCoordinator {
-        BrowserCoordinator(surfaceID: UUID(), url: URL(string: "http://localhost:3000")!)
+        BrowserCoordinator(url: URL(string: "http://localhost:3000")!)
     }
 
     private func failureError(code: Int, url: URL) -> NSError {

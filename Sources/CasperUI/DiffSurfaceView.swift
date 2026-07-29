@@ -2,6 +2,18 @@ import CasperCore
 import CasperGit
 import SwiftUI
 
+/// Runs `body` with implicit animations disabled (diff-view refresh-hang
+/// incident). Every state change this view publishes re-lays out the
+/// pinned-header `LazyVStack`, and an ANIMATED subview placement is exactly the
+/// non-converging `LazyStack.place` ⇄ `_FlexFrameLayout.sizeThatFits` recursion
+/// the hang spindump was stuck in — so no refresh, highlight publication, or
+/// programmatic scroll here may animate that relayout.
+private func withoutAnimation(_ body: () -> Void) {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction, body)
+}
+
 /// Highlighted lines for one diff file, indexed by 1-based source line number.
 /// `new` covers the working-tree side (additions + context); `old` covers the
 /// HEAD side (deletions). Either may be nil when that side can't be highlighted.
@@ -155,13 +167,7 @@ struct DiffSurfaceView: View {
                 applyPendingScroll()
                 return
             }
-            // The diff changed: apply it without implicit animation. An animated
-            // subview placement is exactly the path the hang spindump was stuck in
-            // (`LazyStack.place` ⇄ `_FlexFrameLayout.sizeThatFits` recursion), so a
-            // content refresh must never animate the `LazyVStack` relayout.
-            var tx = Transaction()
-            tx.disablesAnimations = true
-            withTransaction(tx) {
+            withoutAnimation {
                 diff = newDiff
                 // Precompute per-file metrics once here (off the render hot path),
                 // keyed by file id so `body` can look them up in O(1).
@@ -219,13 +225,7 @@ struct DiffSurfaceView: View {
         // Defer one runloop so the ScrollView has laid the target file out before
         // we drive its scroll position.
         DispatchQueue.main.async {
-            // Non-animated scroll re-drive (diff-view refresh-hang incident): a
-            // programmatic `.scrollPosition` change must not animate, or a redundant
-            // refresh's scroll re-application feeds the same non-converging animated
-            // `LazyVStack` relayout that hung the main thread.
-            var tx = Transaction()
-            tx.disablesAnimations = true
-            withTransaction(tx) { scrolledFileID = matchID }
+            withoutAnimation { scrolledFileID = matchID }
         }
     }
 
@@ -255,13 +255,7 @@ struct DiffSurfaceView: View {
                 carried[file.id] = existing
             }
         }
-        // Reset carried-over highlights without implicit animation (diff-view
-        // refresh-hang incident): this runs on every changed-diff refresh and, like
-        // the per-file publication below, would otherwise animate the `LazyVStack`
-        // relayout down the same non-converging path that hung the main thread.
-        var resetTx = Transaction()
-        resetTx.disablesAnimations = true
-        withTransaction(resetTx) { highlights = carried }
+        withoutAnimation { highlights = carried }
 
         highlightTask = Task {
             for file in files {
@@ -276,14 +270,9 @@ struct DiffSurfaceView: View {
                 let oldLines = await highlight(oldText, path: file.oldPath)
                 if Task.isCancelled { return }
 
-                // Publish this file's highlight without implicit animation
-                // (diff-view refresh-hang incident): each per-file assignment
-                // re-lays-out the `LazyVStack`, and an animated placement is the
-                // non-converging path that hung the main thread. Kept per-file so
-                // coloring still appears progressively as each file finishes.
-                var tx = Transaction()
-                tx.disablesAnimations = true
-                withTransaction(tx) { highlights[file.id] = FileHighlight(new: newLines, old: oldLines) }
+                // Kept per-file (rather than batched) so coloring still appears
+                // progressively as each file finishes.
+                withoutAnimation { highlights[file.id] = FileHighlight(new: newLines, old: oldLines) }
             }
         }
     }

@@ -22,6 +22,7 @@
 - [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the Space +/− branch-vs-merge-base row badge is not built; only Space rename remains open
 - [Domain CLI and control channel](references/domain-cli-control-channel.md) — domain CLI emits JSON over `$CASPER_CONTROL_SOCKET` (verbs + shapes, errors exit non-zero); no hook mechanism
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning `@Option`/`@Argument` wrapped values crashes real `.parse()`; test via `.parse([...])`, not direct construction
+- [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a protocol refining ParsableCommand carries the common `run()`; its witness beats ArgumentParser's default
 - [App sessions (--session)](references/app-sessions.md) — `--session <name>` (DEBUG builds only) suffixes layout+sockets and sets `CASPER_SESSION`; live-verify the GUI under session `dev` to isolate from the real instance
 - [CLI availability](references/cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
 - [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir
@@ -54,7 +55,7 @@
 - [libghostty macOS config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — bundled Casper.app misses the user's Ghostty config (empty bundle-id-scoped dir) → vanilla gray; hence the baked-in default theme
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — after mergeBranchHeadless the base worktree reports deleted files; capture cleanliness before merging to decide any resync
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_CONTROL_SOCKET/CASPER_DEBUG_SOCKET/CASPER_SESSION so a Casper-opened terminal's live env never leaks into swift test
-- [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — App must bind via `listenPath(for:)` (session-only); `resolve(for:)`/`.default` (env-override) is dial-only or it hijacks a running instance's socket
+- [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — a listener binds to the session-derived path only; the `CASPER_*_SOCKET` env override is dial-side or it hijacks a running instance's socket
 - [Real in-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — real keyDown->interpretKeyEvents->shell test recipe; fixed settle(0.6)/(0.4), not adaptive polling
 - [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menu bar is `.commands`; Format/Help stubs stripped on will+didUpdate; Services needs an App-menu `menuNeedsUpdate:` delegate proxy (the hooks fire after the menu is drawn); `.commands` must not observe volatile focus/spaces
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module checks only the .app root + a machine-local build path, never Contents/Resources; the runtime mirror is required, not redundant

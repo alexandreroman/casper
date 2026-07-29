@@ -65,12 +65,6 @@ enum DiffHighlighter {
     /// `DiffLineStyle.maxDisplayLineLength`).
     static let maxHighlightBytes = 512 * 1024
 
-    /// Whether `text` is too large to be worth highlighting (see
-    /// `maxHighlightBytes`). Measured in UTF-8 bytes to bound memory use.
-    static func exceedsHighlightBudget(_ text: String) -> Bool {
-        text.utf8.count > maxHighlightBytes
-    }
-
     /// One reused HighlightSwift instance (it keeps a single warm JavaScriptCore
     /// context). Constructing a fresh `Highlight()` per call — as this did before —
     /// spun up a new `JSContext` each time; under rapid diff refreshes those piled
@@ -90,12 +84,6 @@ enum DiffHighlighter {
     /// neutral text.
     static func highlightedLines(of text: String, forPath path: String) async -> [AttributedString]? {
         guard let language = language(forPath: path), !text.isEmpty, resourceBundleReady else {
-            return nil
-        }
-        // Skip huge generated files: their long lines are truncated at display
-        // anyway (see `DiffLineStyle.maxDisplayLineLength`), so highlighting a
-        // minified/generated blob only burns CPU and memory off-actor.
-        if exceedsHighlightBudget(text) {
             return nil
         }
 

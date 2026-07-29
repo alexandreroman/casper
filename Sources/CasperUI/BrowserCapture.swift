@@ -73,6 +73,13 @@ enum BrowserCapture {
         // wait for the real readiness signals (bounded and best-effort).
         await waitForFullRender(of: webView)
 
+        return try await snapshotPNG(of: webView)
+    }
+
+    /// Render `webView`'s current contents to a PNG at the display's backing scale.
+    /// Shared by the off-screen capture above and the live panel's
+    /// `BrowserCoordinator.snapshot()`; the caller owns any frame/readiness setup.
+    static func snapshotPNG(of webView: WKWebView) async throws -> Data {
         let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw BrowserCoordinatorError(message: "failed to render page snapshot")
@@ -112,11 +119,12 @@ enum BrowserCapture {
 
         // Race the readiness JS against the timeout with a one-shot resume guard.
         // `callAsyncJavaScript`'s bridge ignores cancellation, so the timeout must
-        // resume the waiter directly rather than by cancelling the JS task.
-        // Whichever fires first wins; the other resume is a no-op. Best-effort —
-        // a thrown JS error or the timeout both simply proceed to the snapshot.
+        // resume the waiter directly rather than by cancelling the JS task — which
+        // is therefore left unreferenced, to finish (or not) on its own. Whichever
+        // fires first wins; the other resume is a no-op. Best-effort — a thrown JS
+        // error or the timeout both simply proceed to the snapshot.
         let waiter = RenderWaiter()
-        let render = Task { @MainActor in
+        Task { @MainActor in
             _ = try? await webView.callAsyncJavaScript(
                 js, arguments: [:], in: nil, contentWorld: .page)
             waiter.resume()
@@ -126,7 +134,6 @@ enum BrowserCapture {
             waiter.resume()
         }
         await waiter.wait()
-        render.cancel()
         timeout.cancel()
     }
 }

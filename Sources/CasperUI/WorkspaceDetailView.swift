@@ -130,9 +130,6 @@ struct WorkspaceDetailView: View {
                 diff = summary
             }
         }
-        .onAppear {
-            if inspectorWidth == nil { inspectorWidth = workspace.inspector.width }
-        }
     }
 
     /// Allowed inspector-width range for the given container width: never below

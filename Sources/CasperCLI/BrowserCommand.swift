@@ -15,6 +15,23 @@ func unwrappedRawValue(_ json: String) -> String {
     return string
 }
 
+/// Build `{"<key>":<json>,"workspace":"<id>"}` from a payload the app already
+/// serialized. `json` is re-parsed so it embeds as a real JSON token instead of an
+/// escaped string — `Codable` can't emit raw JSON — falling back to `fallback`
+/// when it does not parse. Keys are sorted for deterministic, diff-friendly
+/// output.
+func jsonLine(key: String, json: String, fallback: Any, workspace: String) -> String {
+    let parsed = (try? JSONSerialization.jsonObject(
+        with: Data(json.utf8), options: [.fragmentsAllowed])) ?? fallback
+    let object: [String: Any] = [key: parsed, "workspace": workspace]
+    guard let data = try? JSONSerialization.data(
+            withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
+          let string = String(data: data, encoding: .utf8) else {
+        return "{}"
+    }
+    return string
+}
+
 /// `casper browser open <url>` / `casper browser close` — open a URL in, or
 /// collapse, the workspace's browser panel.
 struct BrowserCommand: ParsableCommand {
@@ -28,7 +45,7 @@ struct BrowserCommand: ParsableCommand {
             ScrollTop.self, ScrollBottom.self,
         ])
 
-    struct Open: ParsableCommand {
+    struct Open: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(abstract: "Open a URL in the browser panel.")
 
         @Argument(help: "URL to open.")
@@ -37,20 +54,13 @@ struct BrowserCommand: ParsableCommand {
 
         func makeCommand() throws -> ControlCommand {
             guard !url.isEmpty else { throw exitWithError("missing url") }
-            guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
-                throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
-            }
+            try requireAbsoluteURL(url)
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserOpen, workspace: selector, url: url)
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct Load: ParsableCommand {
+    struct Load: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Load a URL into the browser in the background (without opening the inspector panel).")
 
@@ -60,20 +70,13 @@ struct BrowserCommand: ParsableCommand {
 
         func makeCommand() throws -> ControlCommand {
             guard !url.isEmpty else { throw exitWithError("missing url") }
-            guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
-                throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
-            }
+            try requireAbsoluteURL(url)
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserLoad, workspace: selector, url: url)
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct Close: ParsableCommand {
+    struct Close: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Collapse the inspector if the browser panel is showing.")
 
@@ -81,11 +84,6 @@ struct BrowserCommand: ParsableCommand {
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserClose, workspace: try requireSelector(target))
-        }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 
@@ -113,11 +111,7 @@ struct BrowserCommand: ParsableCommand {
         func makeCommand() throws -> ControlCommand {
             if let width, width <= 0 { throw exitWithError("--width must be a positive number of pixels") }
             if let height, height <= 0 { throw exitWithError("--height must be a positive number of pixels") }
-            if let url {
-                guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
-                    throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
-                }
-            }
+            if let url { try requireAbsoluteURL(url) }
             let path = out ?? Self.temporaryScreenshotPath()
             return ControlCommand(
                 verb: .browserScreenshot, workspace: try requireSelector(target), url: url, path: path,
@@ -156,24 +150,9 @@ struct BrowserCommand: ParsableCommand {
             if raw {
                 print(unwrappedRawValue(value))
             } else {
-                print(Self.resultLine(value: value, workspace: response.workspace ?? ""))
+                print(jsonLine(
+                    key: "result", json: value, fallback: NSNull(), workspace: response.workspace ?? ""))
             }
-        }
-
-        /// Build `{"result":<value>,"workspace":"<id>"}`. `<value>` is the
-        /// already-serialized JSON the app returned, embedded as a parsed value so
-        /// it lands as a real JSON token — `Codable` can't emit raw JSON. Keys are
-        /// sorted for deterministic, diff-friendly output.
-        static func resultLine(value: String, workspace: String) -> String {
-            let parsed = (try? JSONSerialization.jsonObject(
-                with: Data(value.utf8), options: [.fragmentsAllowed])) ?? NSNull()
-            let object: [String: Any] = ["result": parsed, "workspace": workspace]
-            guard let data = try? JSONSerialization.data(
-                    withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
-                  let string = String(data: data, encoding: .utf8) else {
-                return "{}"
-            }
-            return string
         }
     }
 
@@ -228,7 +207,7 @@ struct BrowserCommand: ParsableCommand {
         }
     }
 
-    struct Click: ParsableCommand {
+    struct Click: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Click the first element matching a CSS selector.")
 
@@ -236,18 +215,15 @@ struct BrowserCommand: ParsableCommand {
         var selector: String
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             guard !selector.isEmpty else { throw exitWithError("missing selector") }
             return ControlCommand(verb: .browserClick, workspace: try requireSelector(target), selector: selector)
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct TypeText: ParsableCommand {
+    struct TypeText: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "type",
             abstract: "Type text into the first element matching a CSS selector.")
@@ -258,20 +234,17 @@ struct BrowserCommand: ParsableCommand {
         var text: String
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             guard !selector.isEmpty else { throw exitWithError("missing selector") }
             guard !text.isEmpty else { throw exitWithError("missing text") }
             return ControlCommand(
                 verb: .browserType, workspace: try requireSelector(target), selector: selector, value: text)
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct Key: ParsableCommand {
+    struct Key: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Dispatch a keydown/keyup KeyboardEvent to the page.")
 
@@ -281,16 +254,13 @@ struct BrowserCommand: ParsableCommand {
         var selector: String?
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             guard !key.isEmpty else { throw exitWithError("missing key") }
             if let selector, selector.isEmpty { throw exitWithError("empty selector") }
             return ControlCommand(
                 verb: .browserKey, workspace: try requireSelector(target), selector: selector, key: key)
-        }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 
@@ -315,27 +285,13 @@ struct BrowserCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            print(Self.consoleLine(entries: response.text ?? "[]", workspace: response.workspace ?? ""))
-        }
-
-        /// Build `{"console":[…],"workspace":"<id>"}` from the app's already-
-        /// serialized JSON array (mirrors `Eval.resultLine`). The array is re-parsed
-        /// so it embeds as a JSON token, not an escaped string. Keys are sorted for
-        /// deterministic output.
-        static func consoleLine(entries: String, workspace: String) -> String {
-            let parsed = (try? JSONSerialization.jsonObject(
-                with: Data(entries.utf8), options: [.fragmentsAllowed])) ?? []
-            let object: [String: Any] = ["console": parsed, "workspace": workspace]
-            guard let data = try? JSONSerialization.data(
-                    withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
-                  let string = String(data: data, encoding: .utf8) else {
-                return "{}"
-            }
-            return string
+            print(jsonLine(
+                key: "console", json: response.text ?? "[]", fallback: [],
+                workspace: response.workspace ?? ""))
         }
     }
 
-    struct Wait: ParsableCommand {
+    struct Wait: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Block until a selector or JS predicate condition holds.")
 
@@ -350,6 +306,11 @@ struct BrowserCommand: ParsableCommand {
         @Option(name: .long, help: "Timeout in milliseconds (default 5000).")
         var timeout: Int?
         @OptionGroup var target: WorkspaceTargetOption
+
+        // Give the socket read a margin beyond the app-side deadline (the same
+        // `--timeout` the command carries) so the reply always arrives before the
+        // client gives up.
+        var commandTimeout: TimeInterval { TimeInterval((timeout ?? 5000) / 1000 + 5) }
 
         func makeCommand() throws -> ControlCommand {
             let hasSelector = !(selector?.isEmpty ?? true)
@@ -370,18 +331,9 @@ struct BrowserCommand: ParsableCommand {
                 selector: hasSelector ? selector : nil, predicate: hasJS ? js : nil,
                 waitTimeout: ms, visible: visible ? true : nil, gone: gone ? true : nil)
         }
-
-        func run() throws {
-            let command = try makeCommand()
-            // Give the socket read a margin beyond the app-side deadline so the reply
-            // always arrives before the client gives up.
-            let socketTimeout = TimeInterval((command.waitTimeout ?? 5000) / 1000 + 5)
-            let response = try sendControl(command, retriable: false, timeout: socketTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct Reload: ParsableCommand {
+    struct Reload: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Reload the browser page, optionally waiting for it to finish loading.")
 
@@ -389,87 +341,76 @@ struct BrowserCommand: ParsableCommand {
         var wait = false
         @OptionGroup var target: WorkspaceTargetOption
 
+        // Deliberate simplification: unlike `wait` (whose socket timeout is derived
+        // from a user-supplied `--timeout`), reload's app-side wait deadline is a
+        // fixed 5 s, comfortably within the 15 s automation socket timeout — so no
+        // dynamic derivation is needed, regardless of `--wait`.
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .browserReload, workspace: try requireSelector(target),
                 waitReady: wait ? true : nil)
         }
-
-        func run() throws {
-            // Deliberate simplification: unlike `wait` (whose socket timeout is
-            // derived from a user-supplied `--timeout`), reload's app-side wait
-            // deadline is a fixed 5 s, comfortably within the 15 s automation socket
-            // timeout — so no dynamic derivation is needed, regardless of `--wait`.
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct ScrollUp: ParsableCommand {
+    // The four scroll verbs stay separate subcommands (rather than one
+    // `scroll <direction>`) because the `casper-browser` skill and the
+    // `.superpowers/` docs are written against these exact command names.
+
+    struct ScrollUp: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-up",
             abstract: "Scroll the browser page up by one viewport.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollUp, workspace: try requireSelector(target))
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct ScrollDown: ParsableCommand {
+    struct ScrollDown: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-down",
             abstract: "Scroll the browser page down by one viewport.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollDown, workspace: try requireSelector(target))
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct ScrollTop: ParsableCommand {
+    struct ScrollTop: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-top",
             abstract: "Scroll the browser page to the top.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollTop, workspace: try requireSelector(target))
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct ScrollBottom: ParsableCommand {
+    struct ScrollBottom: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-bottom",
             abstract: "Scroll the browser page to the bottom.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
+        var commandTimeout: TimeInterval { automationTimeout }
+
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollBottom, workspace: try requireSelector(target))
-        }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

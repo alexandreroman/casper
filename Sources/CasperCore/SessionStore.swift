@@ -83,6 +83,4 @@ public final class SessionStore: @unchecked Sendable {
         )
         try data.write(to: fileURL, options: .atomic)
     }
-
-    public func save(_ session: Session) throws { try write(encode(session)) }
 }

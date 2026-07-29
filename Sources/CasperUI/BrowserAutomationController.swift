@@ -150,38 +150,36 @@ final class BrowserAutomationController {
         }
     }
 
-    /// Click the first element matching `selector`.
-    func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    /// Run an input-driving script for its side effect only. The action verbs
+    /// (click, scroll, type, key) carry no payload, so their reply is always the
+    /// empty string and the script's own result is discarded.
+    private func runAction(_ js: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
         await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.click(selector: selector))
+            _ = try await $0.evaluate(js)
             return ""
         }
+    }
+
+    /// Click the first element matching `selector`.
+    func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+        await runAction(BrowserAutomation.click(selector: selector), in: workspaceID)
     }
 
     /// Scroll the browser page one viewport down (`down` true) or up.
     func controlBrowserScroll(down: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.scroll(down: down))
-            return ""
-        }
+        await runAction(BrowserAutomation.scroll(down: down), in: workspaceID)
     }
 
     /// Jump the browser page to the very bottom (`bottom` true) or top.
     func controlBrowserScrollToEdge(bottom: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.scrollToEdge(bottom: bottom))
-            return ""
-        }
+        await runAction(BrowserAutomation.scrollToEdge(bottom: bottom), in: workspaceID)
     }
 
     /// Type `value` into the first element matching `selector`.
     func controlBrowserType(
         selector: String, value: String, in workspaceID: UUID
     ) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.type(selector: selector, value: value))
-            return ""
-        }
+        await runAction(BrowserAutomation.type(selector: selector, value: value), in: workspaceID)
     }
 
     /// Dispatch a `keydown`/`keyup` for `key` on `selector`'s match, or on the
@@ -189,10 +187,7 @@ final class BrowserAutomationController {
     func controlBrowserKey(
         key: String, selector: String?, in workspaceID: UUID
     ) async -> Result<String, BrowserOpError> {
-        await withBrowserCoordinator(workspaceID) {
-            _ = try await $0.evaluate(BrowserAutomation.key(key: key, selector: selector))
-            return ""
-        }
+        await runAction(BrowserAutomation.key(key: key, selector: selector), in: workspaceID)
     }
 
     /// Return the browser console/error buffer serialized to a JSON array string

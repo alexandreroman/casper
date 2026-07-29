@@ -7,9 +7,9 @@ import SwiftUI
 /// a caller's `.foregroundStyle(...)` (or an enclosing control's tint) colors it
 /// like an SF Symbol.
 struct Octicon: View {
-    enum Name: String { case gitBranch, fileDirectory }
+    enum Name { case gitBranch, fileDirectory }
 
-    let name: Name
+    private let name: Name
 
     /// Every glyph uses Primer's native 16px viewBox; no caller renders at
     /// another size.

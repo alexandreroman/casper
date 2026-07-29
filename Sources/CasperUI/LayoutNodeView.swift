@@ -1,10 +1,10 @@
 import CasperCore
-import CasperGhostty
 import SwiftUI
 
 /// Renders a workspace's `LayoutNode` recursively: splits via
-/// `SplitContainerView` (system `Divider()` separators, so all separators in the
-/// app match), and each leaf as a single pane via `SurfaceHostView`.
+/// `SplitContainerView` (whose splitters draw a 1pt `.separatorColor` line, so
+/// all separators in the app match), and each leaf as a single pane via
+/// `SurfaceHostView`.
 struct LayoutNodeView: View {
     let model: AppModel
     let workspace: Workspace

@@ -3,10 +3,6 @@ import XCTest
 @testable import CasperGhostty
 
 final class SmokeTests: XCTestCase {
-    func testModuleLinksAndExposesPin() {
-        XCTAssertEqual(CasperGhostty.pinnedGhosttyVersion, "v1.3.1")
-    }
-
     /// Calls the real `ghostty_info` symbol from the linked GhosttyKit binary, so
     /// this test fails to *link* (not just assert) if the xcframework or headers
     /// are wrong. `ghostty_info` is safe to call with no prior `ghostty_init` and

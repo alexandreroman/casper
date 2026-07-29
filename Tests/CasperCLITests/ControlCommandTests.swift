@@ -203,7 +203,7 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testBrowserEvalResultLineEmbedsRawJSON() {
-        let line = BrowserCommand.Eval.resultLine(value: "{\"a\":1}", workspace: "w")
+        let line = jsonLine(key: "result", json: "{\"a\":1}", fallback: NSNull(), workspace: "w")
         XCTAssertEqual(line, "{\"result\":{\"a\":1},\"workspace\":\"w\"}")
     }
 
@@ -310,7 +310,7 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testBrowserConsoleLineEmbedsRawJSON() {
-        let line = BrowserCommand.Console.consoleLine(entries: "[{\"level\":\"log\"}]", workspace: "w")
+        let line = jsonLine(key: "console", json: "[{\"level\":\"log\"}]", fallback: [], workspace: "w")
         XCTAssertEqual(line, "{\"console\":[{\"level\":\"log\"}],\"workspace\":\"w\"}")
     }
 

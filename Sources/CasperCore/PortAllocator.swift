@@ -1,11 +1,17 @@
-import Foundation
-
 struct PortAllocationError: Error, Equatable {
     let reason: String
     init(reason: String) { self.reason = reason }
 }
 
 public struct PortAllocator: Equatable, Sendable {
+    /// Default block geometry, shared by `init` and `randomStartBase` so the two
+    /// can never disagree: a one-sided edit would make `randomStartBase` return a
+    /// base outside a default-constructed allocator's range, which `init` rejects
+    /// with a `precondition` (a startup crash).
+    public static let defaultRangeStart = 40000
+    public static let defaultRangeEnd = 49990
+    public static let defaultBlockSize = 10
+
     /// Lowest allowed block base.
     public let rangeStart: Int
     /// Highest allowed block *base* — not the highest allocatable port. Each
@@ -24,7 +30,9 @@ public struct PortAllocator: Equatable, Sendable {
     /// The `precondition`s assume trusted, code-constant arguments. Callers
     /// constructing an allocator from external or persisted input must validate
     /// the range and block size first, since a violation traps rather than throws.
-    public init(rangeStart: Int = 40000, rangeEnd: Int = 49990, blockSize: Int = 10,
+    public init(rangeStart: Int = PortAllocator.defaultRangeStart,
+                rangeEnd: Int = PortAllocator.defaultRangeEnd,
+                blockSize: Int = PortAllocator.defaultBlockSize,
                 startBase: Int? = nil) {
         precondition(blockSize > 0, "blockSize must be positive")
         precondition(rangeEnd >= rangeStart, "rangeEnd must be >= rangeStart")
@@ -42,15 +50,22 @@ public struct PortAllocator: Equatable, Sendable {
         self.used = []
     }
 
-    /// Number of aligned block bases in `[rangeStart, rangeEnd]`.
+    /// Number of aligned block bases in this allocator's `[rangeStart, rangeEnd]`.
+    private var blockCount: Int {
+        (rangeEnd - rangeStart) / blockSize + 1
+    }
+
+    /// Number of aligned block bases in `[rangeStart, rangeEnd]`. Static twin of
+    /// the instance `blockCount`, for `randomStartBase`, which has no instance.
     private static func blockCount(rangeStart: Int, rangeEnd: Int, blockSize: Int) -> Int {
         (rangeEnd - rangeStart) / blockSize + 1
     }
 
     /// A random aligned block base within `[rangeStart, rangeEnd]`, for seeding a
     /// per-instance `startBase`.
-    public static func randomStartBase(rangeStart: Int = 40000, rangeEnd: Int = 49990,
-                                       blockSize: Int = 10) -> Int {
+    public static func randomStartBase(rangeStart: Int = PortAllocator.defaultRangeStart,
+                                       rangeEnd: Int = PortAllocator.defaultRangeEnd,
+                                       blockSize: Int = PortAllocator.defaultBlockSize) -> Int {
         let blockCount = blockCount(rangeStart: rangeStart, rangeEnd: rangeEnd, blockSize: blockSize)
         return rangeStart + Int.random(in: 0..<blockCount) * blockSize
     }
@@ -67,7 +82,6 @@ public struct PortAllocator: Equatable, Sendable {
     }
 
     public mutating func allocate() throws -> Int {
-        let blockCount = Self.blockCount(rangeStart: rangeStart, rangeEnd: rangeEnd, blockSize: blockSize)
         let startIndex = (startBase - rangeStart) / blockSize
         for i in 0..<blockCount {
             let base = rangeStart + ((startIndex + i) % blockCount) * blockSize

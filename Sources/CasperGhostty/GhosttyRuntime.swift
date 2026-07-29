@@ -179,10 +179,10 @@ func casperGhosttyAction(
     _ target: ghostty_target_s,
     _ action: ghostty_action_s
 ) -> Bool {
-    // Cursor shape/visibility are surface-local: they apply directly to the target
-    // view and must NOT flow through the app-level `onAction` closure. Handle them
-    // here from the per-surface userdata (the same view-recovery mechanism the
-    // clipboard callbacks use), leaving every other action to the runtime unchanged.
+    // Surface-local actions apply directly to the target view and must NOT flow through
+    // the app-level `onAction` closure. Handle them here from the per-surface userdata
+    // (the same view-recovery mechanism the clipboard callbacks use), leaving every
+    // other action to the runtime unchanged.
     switch action.tag {
     case GHOSTTY_ACTION_MOUSE_SHAPE:
         guard let view = surfaceView(from: target) else { return false }
@@ -195,27 +195,32 @@ func casperGhosttyAction(
         MainActor.assumeIsolated { view.setCursorVisibility(visible) }
         return true
     case GHOSTTY_ACTION_SET_TITLE:
-        // Capture the OSC window title per-surface, then fall through (no `return`).
-        // The fall-through currently reaches no `setTitle` consumer: the app-level
-        // `onAction` closure handles only `.openURL`/`.quit`/`.closeWindow`, so
-        // title-to-window wiring is unimplemented. The capture above is what
-        // agent-state detection reads via `readOSCTitle()`.
+        // The OSC window title is per-surface state that agent-state detection reads
+        // back via `readOSCTitle()`, so the target view is its only consumer and the
+        // action terminates here. Handing a second decoded copy to the app-level
+        // `onAction` would allocate a fresh Swift `String` for nobody on every shell
+        // prompt — OSC titles carry the agent spinner animation, so this is the action
+        // hot path. Reported as consumed even when no view is recoverable, matching the
+        // app-level `handleAction`, which claims every action it is given.
         if let view = surfaceView(from: target) {
             let title = action.action.set_title.title.map { String(cString: $0) } ?? ""
             MainActor.assumeIsolated {
                 view.updateOSCTitle(title)
             }
         }
+        return true
     case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
         // Surface-scoped: deliver the child's exit status to the target view so a
-        // lifecycle-hook surface can react. Fall through (no `return`) so the
-        // existing close_surface_cb pane-teardown path stays untouched — the
-        // consumer decides based on the code. Truncating (not trapping) i32
-        // conversion matches GhosttyAction.decode's handling of this field.
+        // lifecycle-hook surface can react — the consumer decides based on the code.
+        // Independent of libghostty's own pane teardown, which arrives through the
+        // separate `close_surface_cb` callback and is unaffected by this return value.
+        // Truncating (not trapping) i32 conversion matches GhosttyAction.decode's
+        // handling of this field. Consumed unconditionally, as for SET_TITLE above.
         if let view = surfaceView(from: target) {
             let code = Int32(truncatingIfNeeded: action.action.child_exited.exit_code)
             MainActor.assumeIsolated { view.reportChildExit(code) }
         }
+        return true
     default:
         break
     }

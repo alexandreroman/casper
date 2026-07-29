@@ -3,7 +3,7 @@ import CasperCore
 
 /// `casper notify [--message <str>]` — raise the workspace's attention flag
 /// (sidebar dot); with `--message`, also post a macOS notification.
-struct NotifyCommand: ParsableCommand {
+struct NotifyCommand: WorkspaceRefCommand {
     static let configuration = CommandConfiguration(
         commandName: "notify",
         abstract: "Raise a workspace's attention flag (optionally with a message).")
@@ -16,10 +16,5 @@ struct NotifyCommand: ParsableCommand {
         ControlCommand(
             verb: .notify, workspace: try requireSelector(target),
             message: normalizedCommand(message))
-    }
-
-    func run() throws {
-        let response = try sendControl(makeCommand(), retriable: false)
-        emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
     }
 }

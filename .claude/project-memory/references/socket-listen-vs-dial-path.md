@@ -1,45 +1,50 @@
 ---
 name: "Socket listen-path vs dial-path resolution"
-description: "The App must bind its own control/debug socket via listenPath(for:), never resolve(for:)/.default, or it hijacks a differently-sessioned running instance's socket"
+description: "A listener binds to the session-derived socket path only; the CASPER_*_SOCKET env override is dial-side, or a listener hijacks another instance's socket"
 type: project
 ---
 
 # Socket listen-path vs dial-path resolution
 
-`ControlSocketPath` and `DebugSocketPath` (CasperCore) expose two distinct kinds
-of path resolution, and mixing them up reintroduces a real cross-instance
-socket hijack:
+Casper's two channels both distinguish **bind-side** from **dial-side** path
+resolution, and mixing them up causes a real cross-instance socket hijack. The
+two channels express the split differently:
 
-- `resolve(for:)` / `.default` — **dial-side**: `CASPER_CONTROL_SOCKET` /
-  `CASPER_DEBUG_SOCKET` env override wins, else the session-derived path. For a
-  CLI that wants to reach whatever socket its terminal is wired to (the
-  external `casper debug` CLI's `SocketOption.path` is the one live caller).
-- `listenPath(for:)` — **bind-side**: always `session.controlSocketPath()` /
-  `session.debugSocketPath`, unconditionally ignoring the env var. `AppDelegate`
-  must use this — and only this — to decide where its own `ControlServer` /
-  `DebugServer` binds.
+- **Control channel** — `SessionIdentity.controlSocketPath()` (CasperCore) is
+  bind-side and reads no environment variable at all. The
+  `CASPER_CONTROL_SOCKET` override lives purely on the dial side, in
+  `CasperCLI/ControlClient.swift`, which reads it directly when sending a
+  command. `AppDelegate` binds its `ControlServer` to
+  `controlSocketPath()`.
+- **Debug channel** (`DebugSocketPath`, DEBUG-only) — `resolve(for:)` and
+  `.default` are dial-side: the `CASPER_DEBUG_SOCKET` override wins, else the
+  session-derived path (the external `casper debug` CLI's `SocketOption.path`
+  is the live caller). `listenPath(for:)` is bind-side: always
+  `session.debugSocketPath`, unconditionally ignoring the env var.
+  `AppDelegate` binds its `DebugServer` via `listenPath(for:)`.
 
 **Why:** every terminal a running Casper.app opens unconditionally carries that
 instance's own `CASPER_CONTROL_SOCKET` (`ClaudeCodeAdapter.swift`, regardless of
-session — see [[domain-cli-control-channel]]). If `AppDelegate` binds via
-`resolve(for:)`, launching a second, differently `--session`-named instance (e.g.
-via the `debug-casper` harness, see [[app-sessions]]) **from inside a terminal the
-real instance opened** makes the new instance inherit the real instance's
-`CASPER_CONTROL_SOCKET`; its `ControlSocketServer.start()` then `unlink()`s and
-rebinds onto the REAL instance's socket, silently hijacking it even though
-`--session` was passed correctly. Binding via `listenPath(for:)` avoids this: the
-second instance binds its own session-derived socket and the first instance's
-socket file is untouched.
+session — see [[domain-cli-control-channel]]). If a listener resolved its bind
+path through the env override, launching a second, differently `--session`-named
+instance (e.g. via the `debug-casper` harness, see [[app-sessions]]) **from
+inside a terminal the real instance opened** would make the new instance inherit
+the real instance's socket path; its `start()` would then `unlink()` and rebind
+onto the REAL instance's socket, silently hijacking it even though `--session`
+was passed correctly. Session-derived bind paths avoid this: the second instance
+binds its own socket and the first instance's socket file stays untouched.
 
 **How to apply:**
 
-- Never call `resolve(for:)`/`.default` to decide a listener's own bind path —
-  only from a CLI/dial context that has no `SessionIdentity` of its own to fall
-  back to.
-- If a new bind site is ever added (a second app entry point, a preview target,
-  etc.), it must use `listenPath(for:)`.
-- `SessionIdentity.controlSocketPath()`/`.debugSocketPath` themselves read no
-  env var, so the disambiguation is purely the `--session` name — safe as long
-  as callers pick the right one of the two resolvers above.
+- Decide a listener's own bind path from the `SessionIdentity` alone. Honor a
+  `CASPER_*_SOCKET` env var only from a CLI/dial context, which has no
+  `SessionIdentity` of its own to fall back to.
+- Any new bind site (a second app entry point, a preview target, etc.) must use
+  `SessionIdentity.controlSocketPath()` or `DebugSocketPath.listenPath(for:)`.
+- `SessionIdentity.controlSocketPath()`/`.debugSocketPath` read no env var, so
+  the disambiguation is purely the `--session` name — safe as long as callers
+  pick the bind-side resolver.
+- `SocketPathResolutionTests` pins both halves: that a listen path is
+  session-derived, and that it ignores an ambient env override.
 - See [[app-sessions]] and [[domain-cli-control-channel]] for the surrounding
   session/env-injection design.

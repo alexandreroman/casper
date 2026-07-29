@@ -33,7 +33,7 @@ final class SessionStoreTests: XCTestCase {
         let store = SessionStore(fileURL: url)
 
         let session = makeSampleSession()
-        try store.save(session)
+        try store.write(store.encode(session))
         XCTAssertEqual(try store.load(), session)
     }
 
@@ -104,7 +104,7 @@ final class SessionStoreTests: XCTestCase {
         let store = SessionStore(fileURL: url)
 
         let session = makeSampleSession()
-        try store.save(session)
+        try store.write(store.encode(session))
 
         // Pretty-printed output indents with "\n  "; a compact encode has no
         // newline byte at all.

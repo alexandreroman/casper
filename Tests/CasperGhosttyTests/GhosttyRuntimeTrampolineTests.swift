@@ -14,19 +14,19 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
         runtime.onAction = { received = $0 }
 
         var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_RING_BELL
+        action.tag = GHOSTTY_ACTION_RENDER
 
         let handled = runtime.handleAction(action)
 
         XCTAssertTrue(handled)
-        XCTAssertEqual(received, .ringBell)
+        XCTAssertEqual(received, .render)
     }
 
     func testHandleActionReturnsTrueWithoutObserver() {
         let runtime = GhosttyRuntime.forTesting()
 
         var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_RING_BELL
+        action.tag = GHOSTTY_ACTION_RENDER
 
         XCTAssertTrue(runtime.handleAction(action))
     }
@@ -62,6 +62,25 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
 
         XCTAssertTrue(handled)
         XCTAssertNil(received)
+    }
+
+    /// `SET_TITLE` and `SHOW_CHILD_EXITED` are delivered surface-locally and must
+    /// terminate inside the trampoline, never reaching the runtime — otherwise the
+    /// payload gets decoded a second time on the action hot path (OSC titles fire on
+    /// every shell prompt). Driving a real surface-tagged target needs a live surface,
+    /// which is flaky headless, so this pins the branch from its app-tagged side: with
+    /// no recoverable view *and* no app to fall back to, the tags must still report
+    /// consumed, which only holds if the trampoline returns before the runtime handoff.
+    func testSurfaceScopedActionsAreConsumedInsideTheTrampoline() {
+        var target = ghostty_target_s()
+        target.tag = GHOSTTY_TARGET_APP
+
+        for tag in [GHOSTTY_ACTION_SET_TITLE, GHOSTTY_ACTION_SHOW_CHILD_EXITED] {
+            var action = ghostty_action_s()
+            action.tag = tag
+
+            XCTAssertTrue(casperGhosttyAction(nil, target, action), "tag \(tag.rawValue) must be consumed")
+        }
     }
 }
 

@@ -18,30 +18,6 @@ final class GhosttyActionTests: XCTestCase {
         XCTAssertEqual(GhosttyAction.decode(action), .setTitle(""))
     }
 
-    func testDecodesSetTabTitle() {
-        "worktree-a".withCString { cstr in
-            var action = ghostty_action_s()
-            action.tag = GHOSTTY_ACTION_SET_TAB_TITLE
-            action.action.set_tab_title.title = cstr
-            XCTAssertEqual(GhosttyAction.decode(action), .setTabTitle("worktree-a"))
-        }
-    }
-
-    func testDecodesPwd() {
-        "/tmp/wt".withCString { cstr in
-            var action = ghostty_action_s()
-            action.tag = GHOSTTY_ACTION_PWD
-            action.action.pwd.pwd = cstr
-            XCTAssertEqual(GhosttyAction.decode(action), .pwd("/tmp/wt"))
-        }
-    }
-
-    func testDecodesRingBell() {
-        var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_RING_BELL
-        XCTAssertEqual(GhosttyAction.decode(action), .ringBell)
-    }
-
     func testDecodesRender() {
         var action = ghostty_action_s()
         action.tag = GHOSTTY_ACTION_RENDER
@@ -60,20 +36,6 @@ final class GhosttyActionTests: XCTestCase {
         action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED
         action.action.child_exited.exit_code = UInt32.max
         XCTAssertEqual(GhosttyAction.decode(action), .childExited(exitCode: -1))
-    }
-
-    func testDecodesDesktopNotification() {
-        "Build finished".withCString { titleCStr in
-            "casper build succeeded".withCString { bodyCStr in
-                var action = ghostty_action_s()
-                action.tag = GHOSTTY_ACTION_DESKTOP_NOTIFICATION
-                action.action.desktop_notification.title = titleCStr
-                action.action.desktop_notification.body = bodyCStr
-                XCTAssertEqual(
-                    GhosttyAction.decode(action),
-                    .desktopNotification(title: "Build finished", body: "casper build succeeded"))
-            }
-        }
     }
 
     func testDecodesOpenURL() {

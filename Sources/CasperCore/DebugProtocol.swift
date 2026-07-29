@@ -1,6 +1,4 @@
 #if DEBUG
-import Foundation
-
 /// A single debug command sent from `casper debug` to the running GUI.
 /// One flat struct (rather than an enum with associated values) keeps the JSON
 /// wire form trivial and stable across the CLI/app boundary.

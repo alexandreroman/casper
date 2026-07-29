@@ -4,12 +4,10 @@ import Clibgit2
 public struct WorktreeInfo: Equatable, Sendable {
     public let name: String
     public let path: String
-    public let isLocked: Bool
 
-    public init(name: String, path: String, isLocked: Bool) {
+    public init(name: String, path: String) {
         self.name = name
         self.path = path
-        self.isLocked = isLocked
     }
 }
 
@@ -67,11 +65,7 @@ extension Repository {
     func worktreeInfo(fromPointer worktree: OpaquePointer, name: String) throws -> WorktreeInfo {
         let cPath = try requireNonNull(git_worktree_path(worktree), "worktree path")
         let path = String(cString: cPath)
-        var reason = git_buf()
-        let rc = git_worktree_is_locked(&reason, worktree)
-        git_buf_dispose(&reason)
-        if rc < 0 { try gitCheck(rc) }
-        return WorktreeInfo(name: name, path: path, isLocked: rc > 0)
+        return WorktreeInfo(name: name, path: path)
     }
 
     /// Names of all worktrees linked to this repository.

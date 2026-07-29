@@ -57,17 +57,11 @@ public struct GhosttySurfaceConfiguration {
         c.font_size = fontSize
 
         // Flatten the env dict into parallel C-string storage, then an array of
-        // ghostty_env_var_s pointing into it. `keys` and `values` iterate in
-        // corresponding order, so they line up index-for-index.
-        let envKeys = Array(environment.keys)
-        let envValues = Array(environment.values)
-        return withCStrings(envKeys) { keys in
-            withCStrings(envValues) { values in
-                var envVars = [ghostty_env_var_s]()
-                envVars.reserveCapacity(environment.count)
-                for i in envKeys.indices {
-                    envVars.append(ghostty_env_var_s(key: keys[i], value: values[i]))
-                }
+        // ghostty_env_var_s pointing into it. A dictionary's `keys` and `values`
+        // iterate in corresponding order, so `zip` pairs each key with its own value.
+        return withCStrings(Array(environment.keys)) { keys in
+            withCStrings(Array(environment.values)) { values in
+                var envVars = zip(keys, values).map { ghostty_env_var_s(key: $0, value: $1) }
                 return withOptionalCString(workingDirectory) { wd in
                     c.working_directory = wd
                     return envVars.withUnsafeMutableBufferPointer { buf in
@@ -81,17 +75,23 @@ public struct GhosttySurfaceConfiguration {
     }
 }
 
-/// Call `body` with an array of C strings valid for its duration.
+/// Call `body` with an array of C strings valid for its duration. The nesting is
+/// what keeps them alive: each `withCString` frame stays on the stack until
+/// `body` returns, so every pointer collected so far is still valid there.
 private func withCStrings<R>(
     _ strings: [String], _ body: ([UnsafePointer<CChar>]) -> R
 ) -> R {
-    func recurse(_ index: Int, _ acc: [UnsafePointer<CChar>]) -> R {
-        if index == strings.count { return body(acc) }
-        return strings[index].withCString { ptr in
-            recurse(index + 1, acc + [ptr])
+    var pointers = [UnsafePointer<CChar>]()
+    pointers.reserveCapacity(strings.count)
+
+    func recurse(_ index: Int) -> R {
+        if index == strings.count { return body(pointers) }
+        return strings[index].withCString { pointer in
+            pointers.append(pointer)
+            return recurse(index + 1)
         }
     }
-    return recurse(0, [])
+    return recurse(0)
 }
 
 private func withOptionalCString<R>(

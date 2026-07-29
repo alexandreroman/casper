@@ -43,46 +43,12 @@ extension DebugSocketError: SocketTransportError {}
 extension DebugResponse: SocketFailureResponse {}
 
 /// Listens on a Unix-domain socket for one `DebugCommand` per connection and
-/// writes back one `DebugResponse`. Thin facade over the shared
-/// `SocketServerEngine`.
-public final class DebugSocketServer: @unchecked Sendable {
-    private let engine: SocketServerEngine<DebugCommand, DebugResponse, DebugSocketError>
-
-    /// Invoked on the server queue with each decoded command and a `reply`
-    /// callback. The handler MUST call `reply` exactly once (it may hop threads
-    /// first). `reply` writes the response and closes the connection.
-    public var onCommand: ((DebugCommand, @escaping @Sendable (DebugResponse) -> Void) -> Void)? {
-        get { engine.onCommand }
-        set { engine.onCommand = newValue }
-    }
-    /// Invoked on the server queue if the listener fails.
-    public var onFailure: ((Error) -> Void)? {
-        get { engine.onFailure }
-        set { engine.onFailure = newValue }
-    }
-
-    public init(socketPath: String, bindTimeout: TimeInterval = 5) {
-        engine = SocketServerEngine(
-            socketPath: socketPath, bindTimeout: bindTimeout,
-            queueLabel: "casper.debug-socket.server")
-    }
-
-    public func start() throws { try engine.start() }
-
-    public func stop() { engine.stop() }
-}
+/// writes back one `DebugResponse`.
+public typealias DebugSocketServer =
+    SocketServerEngine<DebugCommand, DebugResponse, DebugSocketError>
 
 /// Sends one `DebugCommand` to the app's debug socket and returns the decoded
-/// `DebugResponse`. Synchronous by design: `casper debug` is short-lived. Thin
-/// facade over the shared `SocketClientEngine`.
-public enum DebugSocketClient {
-    public static func send(
-        _ command: DebugCommand, toSocketAt socketPath: String,
-        timeout: TimeInterval = 5, retriable: Bool = false
-    ) throws -> DebugResponse {
-        try SocketClientEngine<DebugCommand, DebugResponse, DebugSocketError>.send(
-            command, toSocketAt: socketPath, timeout: timeout, retriable: retriable,
-            queueLabel: "casper.debug-socket.client")
-    }
-}
+/// `DebugResponse`. Synchronous by design: `casper debug` is short-lived.
+public typealias DebugSocketClient =
+    SocketClientEngine<DebugCommand, DebugResponse, DebugSocketError>
 #endif

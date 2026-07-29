@@ -26,7 +26,6 @@ final class WorktreeTests: XCTestCase {
             name: "feature", atPath: wtPath, basedOn: nil)
 
         XCTAssertEqual(info.name, "feature")
-        XCTAssertFalse(info.isLocked)
         XCTAssertTrue(FileManager.default.fileExists(atPath: wtPath))
         XCTAssertTrue(try repo.branchExists("feature"))
         XCTAssertTrue(try repo.isBranchCheckedOut("feature"))

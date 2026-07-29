@@ -5,22 +5,15 @@ import CasperCore
 /// separate target object has to be kept alive. Mirrors SwiftUI `Button` actions
 /// for the AppKit context menu built by `AppModel.paneContextMenu(for:)`.
 @MainActor
-final class ClosureMenuItem: NSMenuItem, NSMenuItemValidation {
+final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
-    private let isEnabledProvider: (() -> Bool)?
 
-    init(title: String, systemImage: String? = nil, tint: NSColor? = nil,
-         isEnabled: (() -> Bool)? = nil, handler: @escaping () -> Void) {
+    init(title: String, systemImage: String? = nil, handler: @escaping () -> Void) {
         self.handler = handler
-        self.isEnabledProvider = isEnabled
         super.init(title: title, action: #selector(fire), keyEquivalent: "")
         target = self
         if let systemImage {
-            var symbolImage = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
-            if let tint {
-                symbolImage = symbolImage?.withSymbolConfiguration(.init(paletteColors: [tint])) ?? symbolImage
-            }
-            image = symbolImage
+            image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
         }
     }
 
@@ -28,8 +21,6 @@ final class ClosureMenuItem: NSMenuItem, NSMenuItemValidation {
     required init(coder: NSCoder) { fatalError("not supported") }
 
     @objc private func fire() { handler() }
-
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { isEnabledProvider?() ?? true }
 }
 
 extension AppModel {
@@ -53,7 +44,7 @@ extension AppModel {
         })
         menu.addItem(.separator())
         // Copy/Paste dispatch through the responder chain to the focused
-        // `GhosttySurfaceView`, exactly like `SurfaceHostView.dispatch`.
+        // `GhosttySurfaceView`, exactly like `SurfaceHostView.paneMenu`.
         menu.addItem(ClosureMenuItem(title: "Copy", systemImage: "doc.on.doc") {
             NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
         })

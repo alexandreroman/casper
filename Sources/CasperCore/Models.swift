@@ -1,6 +1,6 @@
 import Foundation
 
-public enum AgentState: String, Codable, Sendable, CaseIterable {
+public enum AgentState: String, Codable, Sendable {
     case working, blocked, idle, done, unknown, error
 }
 

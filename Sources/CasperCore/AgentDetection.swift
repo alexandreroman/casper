@@ -43,8 +43,6 @@ extension AgentSignal {
 public struct AgentDetectionRuleSet: Equatable, Sendable {
     /// Any single substring present ⇒ `working`.
     public var workingContains: [String]
-    /// Any group whose every substring is present ⇒ `working`.
-    public var workingAllOf: [[String]]
     /// Any group whose every substring is present ⇒ `blocked`.
     public var blockedAllOf: [[String]]
     /// Unicode scalar range whose prefix in the OSC title ⇒ `working`.
@@ -54,13 +52,11 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
 
     public init(
         workingContains: [String],
-        workingAllOf: [[String]],
         blockedAllOf: [[String]],
         titleWorkingScalars: ClosedRange<UInt32> = 0x2800...0x28FF,
         titleIdleScalar: UInt32? = 0x2733
     ) {
         self.workingContains = workingContains
-        self.workingAllOf = workingAllOf
         self.blockedAllOf = blockedAllOf
         self.titleWorkingScalars = titleWorkingScalars
         self.titleIdleScalar = titleIdleScalar
@@ -78,9 +74,7 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         if blockedAllOf.contains(where: { text.containsAll($0) }) {
             return .blocked
         }
-        let isWorking =
-            workingContains.contains(where: { text.range(of: $0, options: .caseInsensitive) != nil })
-            || workingAllOf.contains(where: { text.containsAll($0) })
+        let isWorking = workingContains.contains { text.range(of: $0, options: .caseInsensitive) != nil }
         return isWorking ? .working : .idle
     }
 
@@ -103,11 +97,7 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     public static let claudeCode = AgentDetectionRuleSet(
         workingContains: [
             "esc to interrupt",
-            "press esc to interrupt",
             "ctrl+c to interrupt",
-        ],
-        workingAllOf: [
-            ["running tools", "esc to interrupt"],
         ],
         blockedAllOf: [
             ["do you want to proceed?", "esc to cancel"],
