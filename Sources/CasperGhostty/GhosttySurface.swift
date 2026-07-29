@@ -151,7 +151,7 @@ final class GhosttySurface {
     /// so it is compiled only into debug builds (matching its sole consumer,
     /// `GhosttySurfaceView.debugGeometry()`).
     #if DEBUG
-    struct Geometry: Equatable, Sendable {
+    struct Geometry {
         let columns: Int
         let rows: Int
         let widthPixels: Int

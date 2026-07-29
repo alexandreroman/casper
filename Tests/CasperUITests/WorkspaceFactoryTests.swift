@@ -6,7 +6,7 @@ final class WorkspaceFactoryTests: XCTestCase {
     func testMakeSpaceGitBacked() {
         let space = WorkspaceFactory.makeSpace(
             folderURL: URL(fileURLWithPath: "/tmp/repo"),
-            probe: { _ in WorkspaceFactory.GitInfo(canonicalPath: "/tmp/repo", branch: "main", remoteURL: nil) },
+            info: WorkspaceFactory.GitInfo(canonicalPath: "/tmp/repo", branch: "main", remoteURL: nil),
             portBase: 40000)
         XCTAssertTrue(space.isGitRepo)
         XCTAssertEqual(space.name, "repo")
@@ -27,7 +27,7 @@ final class WorkspaceFactoryTests: XCTestCase {
     func testMakeSpaceNonGit() {
         let space = WorkspaceFactory.makeSpace(
             folderURL: URL(fileURLWithPath: "/tmp/plain"),
-            probe: { _ in nil }, portBase: 40000)
+            info: nil, portBase: 40000)
         XCTAssertFalse(space.isGitRepo)
         XCTAssertEqual(space.name, "plain")
         XCTAssertEqual(space.workspaces.count, 1)
@@ -45,9 +45,9 @@ final class WorkspaceFactoryTests: XCTestCase {
     func testMakeSpaceDerivesNameFromRemote() {
         let space = WorkspaceFactory.makeSpace(
             folderURL: URL(fileURLWithPath: "/tmp/checkout"),
-            probe: { _ in WorkspaceFactory.GitInfo(
+            info: WorkspaceFactory.GitInfo(
                 canonicalPath: "/tmp/checkout", branch: "main",
-                remoteURL: "https://github.com/acme/casper.git") },
+                remoteURL: "https://github.com/acme/casper.git"),
             portBase: 40000)
         XCTAssertEqual(space.name, "casper")
     }

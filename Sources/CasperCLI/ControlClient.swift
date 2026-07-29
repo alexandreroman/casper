@@ -35,6 +35,39 @@ func requireSelector(_ option: WorkspaceTargetOption) throws -> String {
     return selector
 }
 
+/// Reject a URL that is not absolute (scheme + host) with a clear message. Shared
+/// by every verb that takes a URL, so they all refuse the same inputs with the
+/// same wording.
+func requireAbsoluteURL(_ url: String) throws {
+    guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
+        throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
+    }
+}
+
+/// A workspace-scoped subcommand whose entire job is "send one control command,
+/// then print the workspace it landed in". Conformers supply only the command;
+/// the default `run()` below is the send-and-emit body they would otherwise all
+/// repeat verbatim.
+///
+/// None of these verbs is idempotent, hence the uniform `retriable: false`: a
+/// transport-level resend could apply the same mutation twice.
+protocol WorkspaceRefCommand: ParsableCommand {
+    func makeCommand() throws -> ControlCommand
+
+    /// How long to wait for the app's reply. Defaults to `sendControl`'s own 5 s;
+    /// override it for a verb the app answers more slowly.
+    var commandTimeout: TimeInterval { get }
+}
+
+extension WorkspaceRefCommand {
+    var commandTimeout: TimeInterval { 5 }
+
+    func run() throws {
+        let response = try sendControl(makeCommand(), retriable: false, timeout: commandTimeout)
+        emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+    }
+}
+
 /// Send a control command to the running app over `$CASPER_CONTROL_SOCKET`.
 /// Converts a transport failure or an `ok: false` reply into a thrown `ExitCode`
 /// (identical contract to the debug channel's `CasperCLI.run`).

@@ -9,7 +9,7 @@ struct DiffCommand: ParsableCommand {
         abstract: "Open or close the diff view of a workspace.",
         subcommands: [Open.self, Close.self])
 
-    struct Open: ParsableCommand {
+    struct Open: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(abstract: "Open the diff view.")
 
         @Argument(help: "File path to scroll the diff view to (optional).")
@@ -21,14 +21,9 @@ struct DiffCommand: ParsableCommand {
                 verb: .diffOpen, workspace: try requireSelector(target),
                 target: normalizedCommand(file))
         }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
-        }
     }
 
-    struct Close: ParsableCommand {
+    struct Close: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Collapse the inspector if the diff view is showing.")
 
@@ -36,11 +31,6 @@ struct DiffCommand: ParsableCommand {
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .diffClose, workspace: try requireSelector(target))
-        }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

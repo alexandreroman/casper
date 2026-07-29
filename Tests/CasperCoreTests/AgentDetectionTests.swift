@@ -13,7 +13,7 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromViewport: "ctrl+c to interrupt"), .working)
     }
 
-    func testWorkingAllOfGroupMatchesWhenEveryySubstringPresent() {
+    func testWorkingMatchesRunningToolsViewport() {
         let viewport = "Running tools…\n(esc to interrupt)"
         XCTAssertEqual(rules.signal(fromViewport: viewport), .working)
     }

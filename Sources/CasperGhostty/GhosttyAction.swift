@@ -7,21 +7,23 @@ public enum GhosttySplitDirection: Equatable, Sendable {
 
 /// A libghostty runtime action, decoded from the C `action_cb` callback into a
 /// Swift-native value. Decoding is total (see `decode`), but consumption is
-/// partial. CasperGhostty acts only on the OSC title (`.setTitle`, driving
-/// agent-state detection) and on mouse shape/visibility (delivered outside this
-/// enum). Layout actions (splits, tabs, close) are already dispatched by the
-/// runtime's layout handler, and the AppDelegate's `onAction` handles
-/// `.openURL`, `.quit`, and `.closeWindow`. The remaining cases — `.setTabTitle`,
-/// `.pwd`, `.ringBell`, `.render`, `.newWindow`, `.childExited`,
-/// `.desktopNotification` — are decoded but not yet acted on.
+/// partial. The surface-scoped payloads — the OSC title (driving agent-state
+/// detection) and the child exit status — are delivered straight to the target
+/// view by the `action_cb` trampoline (`updateOSCTitle` / `reportChildExit`) and
+/// never travel through the app-level `onAction`, so `.setTitle` and
+/// `.childExited` are produced by `decode` without being routed anywhere: a
+/// future consumer must hook the view, not `onAction`. Mouse shape/visibility are
+/// likewise surface-scoped, and delivered outside this enum. Layout actions
+/// (splits, tabs, close) are dispatched by the runtime's layout handler, and the
+/// AppDelegate's `onAction` handles `.openURL`, `.quit`, and `.closeWindow`;
+/// `.render` and `.newWindow` are decoded but not acted on yet. `.render` and
+/// `.childExited` are reserved by the agent-state design (a `.render`-driven
+/// re-read replacing the timer poll, and `error` on a non-zero exit code): see
+/// `.superpowers/themes/agent-state-detection.md`.
 public enum GhosttyAction: Equatable {
     case setTitle(String)
-    case setTabTitle(String)
-    case pwd(String)
-    case ringBell
     case render
     case childExited(exitCode: Int32)
-    case desktopNotification(title: String, body: String)
     /// Emitted on cmd+click of a terminal URL; carries the URL to open.
     case openURL(String)
     case newSplit(GhosttySplitDirection)
@@ -39,12 +41,6 @@ public enum GhosttyAction: Equatable {
         switch c.tag {
         case GHOSTTY_ACTION_SET_TITLE:
             return .setTitle(Self.string(c.action.set_title.title))
-        case GHOSTTY_ACTION_SET_TAB_TITLE:
-            return .setTabTitle(Self.string(c.action.set_tab_title.title))
-        case GHOSTTY_ACTION_PWD:
-            return .pwd(Self.string(c.action.pwd.pwd))
-        case GHOSTTY_ACTION_RING_BELL:
-            return .ringBell
         case GHOSTTY_ACTION_RENDER:
             return .render
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
@@ -52,11 +48,6 @@ public enum GhosttyAction: Equatable {
             // marked-text). Truncating (not trapping) conversion: exit_code is external
             // C data, and `Int32(UInt32)` would crash for any value above Int32.max.
             return .childExited(exitCode: Int32(truncatingIfNeeded: c.action.child_exited.exit_code))
-        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
-            // Decoded but not handled in v1.
-            return .desktopNotification(
-                title: Self.string(c.action.desktop_notification.title),
-                body: Self.string(c.action.desktop_notification.body))
         case GHOSTTY_ACTION_OPEN_URL:
             return .openURL(Self.string(c.action.open_url.url, len: c.action.open_url.len))
         case GHOSTTY_ACTION_NEW_SPLIT:

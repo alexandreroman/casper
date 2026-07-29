@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
         // Release control socket: the `casper` CLI's command channel, distinct
         // from the DEBUG-only debug channel below — this one ships in release.
-        let controlPath = ControlSocketPath.listenPath(for: model.sessionIdentity)
+        let controlPath = model.sessionIdentity.controlSocketPath()
         let control = ControlServer(socketPath: controlPath, model: model)
         do {
             try control.start()
@@ -184,20 +184,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
-    func applicationWillUpdate(_ notification: Notification) {
-        installAppMenuDelegateProxy()
-        stripServicesMenu()
+    func applicationWillUpdate(_ notification: Notification) { resyncMainMenu() }
+
+    func applicationDidUpdate(_ notification: Notification) { resyncMainMenu() }
+
+    /// Re-apply Casper's AppKit-side menu-bar fixups, resolving the App menu once
+    /// for the two steps scoped to it.
+    ///
+    /// Deliberately driven from BOTH `applicationWillUpdate` and
+    /// `applicationDidUpdate`: SwiftUI rebuilds `NSApp.mainMenu` in several passes
+    /// spanning ~250 ms, and the two hooks fire at different points relative to the
+    /// menu being drawn, so either one alone loses the race and the re-injected
+    /// stubs render in the gap.
+    private func resyncMainMenu() {
+        if let appMenu = NSApp.mainMenu?.items.first?.submenu {
+            installAppMenuDelegateProxy(on: appMenu)
+            // Safety net for Services re-injections that happen while no menu is
+            // being opened; the delegate proxy is what strips it in time.
+            stripServicesItems(fromAppMenu: appMenu)
+        }
         stripEmptyTopLevelMenus()
     }
 
-    func applicationDidUpdate(_ notification: Notification) {
-        installAppMenuDelegateProxy()
-        stripServicesMenu()
-        stripEmptyTopLevelMenus()
-    }
-
-    /// Strip every empty top-level menu from the main menu, on BOTH
-    /// `applicationWillUpdate` and `applicationDidUpdate`.
+    /// Strip every empty top-level menu from the main menu.
     ///
     /// SwiftUI's `.commands` cannot remove an entire top-level menu — an emptied
     /// `CommandGroup` (Casper empties `.textFormatting` and `.help`) leaves the
@@ -225,8 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// check runs on every update pass: whenever the current delegate is not our
     /// proxy, the new one gets wrapped in a fresh proxy. A proxy is never wrapped
     /// in another proxy — the delegate it was already forwarding to is reused.
-    private func installAppMenuDelegateProxy() {
-        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
+    private func installAppMenuDelegateProxy(on appMenu: NSMenu) {
         // Written as `if let` rather than comparing the two optionals: `nil === nil`
         // is true, which would skip the very first install on a delegate-less menu.
         if let installed = appMenuDelegateProxy, appMenu.delegate === installed { return }
@@ -239,13 +247,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
         let originalName = original.map { String(describing: type(of: $0)) } ?? "none"
         CasperLog.app.debug("installed App-menu delegate proxy over \(originalName, privacy: .public)")
-    }
-
-    /// Strip Services from the App menu on both update hooks, as a safety net for
-    /// re-injections that happen while no menu is being opened.
-    private func stripServicesMenu() {
-        guard let appMenu = NSApp.mainMenu?.items.first?.submenu else { return }
-        stripServicesItems(fromAppMenu: appMenu)
     }
 
     /// Tell libghostty the app regained focus (cursor blink, focus animation).

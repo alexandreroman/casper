@@ -38,18 +38,13 @@ struct ProgressCommand: ParsableCommand {
         }
     }
 
-    struct Clear: ParsableCommand {
+    struct Clear: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(abstract: "Clear all progress.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .progressClear, workspace: try requireSelector(target))
-        }
-
-        func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false)
-            emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
         }
     }
 }

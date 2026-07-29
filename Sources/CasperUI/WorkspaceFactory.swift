@@ -29,15 +29,10 @@ enum WorkspaceFactory {
         }
     }
 
-    static func makeSpace(
-        folderURL: URL, probe: (URL) -> GitInfo?, portBase: Int
-    ) -> Space {
-        makeSpace(folderURL: folderURL, info: probe(folderURL), portBase: portBase)
-    }
-
-    /// Variant taking an already-probed `info`, for callers that inspect the probe
-    /// result before deciding what to build (see `AppModel.addSpace`, which routes a
-    /// worktree of an open repository into that repository's Space instead).
+    /// Build a Space from an already-probed `info` (nil ⇒ the folder is not
+    /// Git-backed). The probe stays with the caller, which inspects its result
+    /// before deciding what to build — see `AppModel.addSpace`, which routes a
+    /// worktree of an already-open repository into that repository's Space instead.
     static func makeSpace(
         folderURL: URL, info: GitInfo?, portBase: Int
     ) -> Space {

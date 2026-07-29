@@ -35,6 +35,14 @@ public struct SessionIdentity: Sendable, Equatable {
 
     public var layoutFileName: String { "session\(pathSuffix).json" }
 
+    /// The control-channel socket path, derived purely from the session — and the
+    /// path the App itself must bind its listener to. Unlike the debug channel,
+    /// nothing here honors an environment variable: the `CASPER_CONTROL_SOCKET`
+    /// override is resolved on the dial side only, by the `casper` CLI
+    /// (`CasperCLI/ControlClient.swift`). A listener must never bind to that
+    /// override — the process may have inherited it from a terminal a *different*
+    /// running instance opened, and rebinding it would hijack that instance's
+    /// socket. This channel ships in release and is always available.
     public func controlSocketPath(temporaryDirectory: String = NSTemporaryDirectory()) -> String {
         (temporaryDirectory as NSString).appendingPathComponent("casper-control\(pathSuffix).sock")
     }

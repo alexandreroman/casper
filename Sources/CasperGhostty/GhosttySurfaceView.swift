@@ -12,7 +12,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let runtime: GhosttyRuntime
     private let configuration: GhosttySurfaceConfiguration
     private let surfaceID: UUID
-    var onFocus: (UUID) -> Void
+    let onFocus: (UUID) -> Void
     // Fired once this view is live in a window (see `viewDidMoveToWindow`). Lets
     // the host claim AppKit first responder for the surface it already considers
     // focused, which a SwiftUI `.onAppear` cannot do because the view may not yet
@@ -24,9 +24,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // (i.e. the terminal is not capturing the mouse). Returns nil to decline, in
     // which case the right-click is forwarded to libghostty as usual.
     let onContextMenu: ((NSEvent) -> NSMenu?)?
-    // Fired after a font-size action (increase/decrease/reset) changes this
-    // surface's live font size, reading back via `GhosttySurface.currentFontSize()`
-    // — libghostty exposes no getter to read a size change any other way.
+    // Fired after a font-size keybinding (⌘+/⌘-/⌘0, resolved inside libghostty)
+    // changes this surface's live font size, reading back via
+    // `GhosttySurface.currentFontSize()` — libghostty exposes no getter to read a
+    // size change any other way.
     let onFontSizeChange: (UUID, Float) -> Void
     // Fired when this surface's child process exits, carrying its status. Distinct
     // from `onClose` (which is a pane-teardown request); a lifecycle-hook surface
@@ -488,7 +489,6 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // is the focused (first-responder) surface. `copy(_:)`/`paste(_:)` are plain
     // selectors AppKit's Edit menu convention expects (not declared by
     // `NSResponder`); `selectAll(_:)` overrides the one `NSResponder` does declare.
-    // The font-size selectors are custom, not currently wired to any menu.
 
     @objc func copy(_ sender: Any?) {
         surface?.bindingAction("copy_to_clipboard")
@@ -502,24 +502,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface?.bindingAction("select_all")
     }
 
-    @objc func increaseFontSize(_ sender: Any?) {
-        surface?.bindingAction("increase_font_size:1")
-        reportFontSizeIfChanged()
-    }
-
-    @objc func decreaseFontSize(_ sender: Any?) {
-        surface?.bindingAction("decrease_font_size:1")
-        reportFontSizeIfChanged()
-    }
-
-    @objc func resetFontSize(_ sender: Any?) {
-        surface?.bindingAction("reset_font_size")
-        reportFontSizeIfChanged()
-    }
-
-    // Read the surface's live font size back after a binding-action font-size
-    // change and forward it to `onFontSizeChange` only when it actually moved,
-    // so `AppModel` is never asked to persist a no-op change.
+    // Read the surface's live font size back after libghostty applied one of its
+    // font-size keybindings, and forward it to `onFontSizeChange` only when it
+    // actually moved, so `AppModel` is never asked to persist a no-op change.
     private func reportFontSizeIfChanged() {
         guard let surface else { return }
         let size = surface.currentFontSize()
@@ -628,11 +613,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         let consumed = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
         // A consumed ⌘ combo may have been one of libghostty's own default
         // keybindings — including ⌘+/⌘-/⌘0's font-size resize, which libghostty
-        // resolves and applies entirely internally here, never going through
-        // increaseFontSize()/decreaseFontSize()/resetFontSize() below (those are
-        // for an explicit caller, e.g. a future menu item — nothing wires them to
-        // a physical keypress today). Check back so a real keypress-driven resize
-        // still gets captured and persisted, not just an explicit call.
+        // resolves and applies entirely internally here, notifying the embedder
+        // of nothing. Check the size back so a keypress-driven resize still gets
+        // captured and persisted.
         if consumed { reportFontSizeIfChanged() }
         return consumed
     }

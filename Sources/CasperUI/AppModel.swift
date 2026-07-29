@@ -239,7 +239,7 @@ final class AppModel {
 
     /// Re-probe a folder path for Git backing. Injectable for tests.
     @ObservationIgnored var gitReprobe: (String) -> WorkspaceFactory.GitInfo? = {
-        AppModel.gitProbePath($0)
+        AppModel.gitProbe(URL(fileURLWithPath: $0))
     }
 
     /// Test hook fired after each successful/attempted persist. nil in production.
@@ -1271,13 +1271,12 @@ final class AppModel {
         }
     }
 
-    /// Add a new terminal by splitting the anchored surface (or the focused one
-    /// when `anchor` is nil) to the RIGHT.
-    func applyNewTerminal(anchor: UUID? = nil) {
-        guard let target = anchor ?? focusedSurfaceID, let at = locateSurface(target) else { return }
+    /// Add a new terminal by splitting the focused surface to the RIGHT.
+    func applyNewTerminal() {
+        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
         let cwd = workspace(at: at).worktreePath
         insertSurfaceBySplitting(
-            at: at, focused: target, orientation: .horizontal, side: .after,
+            at: at, focused: focus, orientation: .horizontal, side: .after,
             surface: Surface.terminal(cwd: cwd))
     }
 
@@ -1349,11 +1348,12 @@ final class AppModel {
             focusActiveSurfaceView()
             return
         }
-        // Last surface in the workspace was closed. Discard its views, then close
-        // the workspace non-destructively — never taking down anything that depends
-        // on it (its worktree/branch, or a Space's linked workspaces).
+        // Last surface in the workspace was closed. Close the workspace
+        // non-destructively — never taking down anything that depends on it (its
+        // worktree/branch, or a Space's linked workspaces). Each branch below
+        // discards the workspace's surface views, either directly or through
+        // `removeWorkspace`/`removeSpace`.
         let ws = workspace(at: at)
-        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
         switch ws.kind {
         case .linked:
             // A linked workspace stands alone: drop it (its worktree and branch stay
@@ -1364,6 +1364,7 @@ final class AppModel {
             // The primary anchors the Space and its linked workspaces depend on it,
             // so removing the whole Space would destroy them too. Keep the Space and
             // re-seed the primary with a fresh terminal to keep it alive.
+            discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
             let fresh = Surface.terminal(cwd: ws.worktreePath)
             updateWorkspace(at: at) { $0.layout = .leaf(fresh) }
             if wasFocused || selectedWorkspaceID == ws.id { focusedSurfaceID = fresh.id }
@@ -1477,7 +1478,7 @@ final class AppModel {
     func browserCoordinator(for surface: Surface) -> BrowserCoordinator? {
         guard case .browser(let url) = surface.kind else { return nil }
         if let existing = browserCoordinators[surface.id] { return existing }
-        let coordinator = BrowserCoordinator(surfaceID: surface.id, url: url)
+        let coordinator = BrowserCoordinator(url: url)
         coordinator.onCommitURL = { [weak self] url in self?.setBrowserURL(surface.id, url) }
         coordinator.onFocus = { [weak self] in self?.focusSurface(surface.id) }
         browserCoordinators[surface.id] = coordinator
@@ -1816,27 +1817,19 @@ final class AppModel {
             isLinkedWorktree: repo.isLinkedWorktree)
     }
 
-    /// Path variant of `gitProbe` for re-probing an already-open Space.
-    static func gitProbePath(_ path: String) -> WorkspaceFactory.GitInfo? {
-        gitProbe(URL(fileURLWithPath: path))
-    }
-
     /// Error carrying a human-readable reason for a failed workspace creation.
-    struct WorkspaceCreationError: Error, CustomStringConvertible {
+    struct WorkspaceCreationError: Error {
         let message: String
-        var description: String { message }
     }
 
     /// Error carrying a human-readable reason for a rejected `diff open` request.
-    struct DiffOpenError: Error, CustomStringConvertible {
+    struct DiffOpenError: Error {
         let message: String
-        var description: String { message }
     }
 
     /// Error carrying a human-readable reason for a rejected `workspace delete`.
-    struct WorkspaceDeleteError: Error, CustomStringConvertible {
+    struct WorkspaceDeleteError: Error {
         let message: String
-        var description: String { message }
     }
 
     /// The outcome of `closeWorkspace(id:)`, distinguishing a merge failure (nothing
@@ -2304,24 +2297,8 @@ final class AppModel {
     /// already-shown web view instead of silently keeping the previous page.
     @discardableResult
     func controlOpenBrowser(url: URL, in workspaceID: UUID) -> Bool {
-        guard let at = locate(workspaceID) else { return false }
-        // Reuse the existing browser surface id (like `setBrowserURL`) so the cached
-        // `BrowserCoordinator`/`WKWebView` keyed on it is preserved rather than leaked,
-        // keeping the page and its history across reopens.
-        let existingID = workspace(at: at).inspector.browser.id
-        let surface = Surface(id: existingID, kind: .browser(url: url))
-        updateWorkspace(at: at) { $0.inspector.browser = surface }
+        guard navigateInspectorBrowser(to: url, in: workspaceID) else { return false }
         setInspectorTab(.browser, for: workspaceID)   // selects the browser tab, expands, persists
-        // A coordinator that already exists won't be re-initialized by the SwiftUI
-        // view, so it won't pick up the new URL on its own: create-or-navigate it
-        // explicitly. A freshly-created coordinator already loads the surface's URL
-        // at init, so only navigate again when it pre-existed — avoiding a redundant
-        // double load. (Same logic as `controlLoadBrowser`; the difference is that
-        // this method also selects and expands the browser tab above.)
-        let existed = browserCoordinators[existingID] != nil
-        if let coordinator = browserCoordinator(for: surface), existed {
-            coordinator.load(url)
-        }
         return true
     }
 
@@ -2331,17 +2308,28 @@ final class AppModel {
     /// background (useful for parallel automation of a browser that isn't visible).
     @discardableResult
     func controlLoadBrowser(url: URL, in workspaceID: UUID) -> Bool {
+        guard navigateInspectorBrowser(to: url, in: workspaceID) else { return false }
+        scheduleSave()   // persist the new URL exactly like `setBrowserURL`
+        return true
+    }
+
+    /// Point `workspaceID`'s inspector browser surface at `url` and make the cached
+    /// coordinator show it, without revealing or persisting anything — the caller
+    /// decides whether to expand the panel (`controlOpenBrowser`) or merely save
+    /// (`controlLoadBrowser`). Returns false when the workspace is unknown.
+    private func navigateInspectorBrowser(to url: URL, in workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID) else { return false }
-        // Reuse the existing browser surface id (like `controlOpenBrowser`) so the
-        // cached coordinator/web view keyed on it is preserved across loads.
+        // Reuse the existing browser surface id (like `setBrowserURL`) so the cached
+        // `BrowserCoordinator`/`WKWebView` keyed on it is preserved rather than leaked,
+        // keeping the page and its history across reopens.
         let existingID = workspace(at: at).inspector.browser.id
         let surface = Surface(id: existingID, kind: .browser(url: url))
         updateWorkspace(at: at) { $0.inspector.browser = surface }
-        scheduleSave()   // persist the new URL exactly like `setBrowserURL`
-        // The panel may be hidden/unselected, so the SwiftUI view won't lazily
-        // create the coordinator: create-or-navigate it explicitly. A freshly-created
-        // coordinator already loads the surface's URL at init, so only navigate again
-        // when it pre-existed — avoiding a redundant double load.
+        // A coordinator that already exists won't be re-initialized by the SwiftUI
+        // view (which may not even have mounted it, when the panel is hidden), so it
+        // won't pick up the new URL on its own: create-or-navigate it explicitly. A
+        // freshly-created coordinator already loads the surface's URL at init, so only
+        // navigate again when it pre-existed — avoiding a redundant double load.
         let existed = browserCoordinators[existingID] != nil
         if let coordinator = browserCoordinator(for: surface), existed {
             coordinator.load(url)
@@ -2386,19 +2374,21 @@ final class AppModel {
     /// holds either way.
     @discardableResult
     func controlCloseBrowser(in workspaceID: UUID) -> Bool {
-        guard let ws = workspace(id: workspaceID) else { return false }
-        if ws.inspector.tab == .browser {
-            setInspectorCollapsed(true, for: workspaceID)
-        }
-        return true
+        collapseInspector(ifTabIs: .browser, in: workspaceID)
     }
 
     /// Collapse the inspector if `workspaceID`'s active tab is `.diff`.
     /// Mirrors `controlCloseBrowser`.
     @discardableResult
     func controlCloseDiff(in workspaceID: UUID) -> Bool {
+        collapseInspector(ifTabIs: .diff, in: workspaceID)
+    }
+
+    /// Collapse `workspaceID`'s inspector when `tab` is the active one; leave it
+    /// alone otherwise. Returns false only when the workspace is unknown.
+    private func collapseInspector(ifTabIs tab: InspectorTab, in workspaceID: UUID) -> Bool {
         guard let ws = workspace(id: workspaceID) else { return false }
-        if ws.inspector.tab == .diff {
+        if ws.inspector.tab == tab {
             setInspectorCollapsed(true, for: workspaceID)
         }
         return true

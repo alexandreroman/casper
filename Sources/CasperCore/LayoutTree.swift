@@ -106,7 +106,7 @@ public enum LayoutTree {
                 return (.split(orientation: splitOrientation, children: children,
                                ratios: ratios), surface.id)
             }
-            if surfaceIDs(children[i]).contains(focused) {
+            if contains(children[i], id: focused) {
                 let (child, f) = split(children[i], focused: focused,
                                        orientation: orientation, side: side, surface: surface)
                 children[i] = child
@@ -127,7 +127,7 @@ public enum LayoutTree {
         case .leaf(let surface):
             return surface.id == id ? (nil, nil) : (node, nil)
         case .split(let orientation, var children, var ratios):
-            for i in children.indices where surfaceIDs(children[i]).contains(id) {
+            for i in children.indices where contains(children[i], id: id) {
                 let (child, f) = closeSurface(children[i], surface: id)
                 if let child {
                     children[i] = child
@@ -162,10 +162,10 @@ public enum LayoutTree {
     ) -> (LayoutNode, focus: UUID)? {
         guard surfaceID != targetID else { return nil }
         guard let source = surface(node, id: surfaceID) else { return nil }
-        guard surfaceIDs(node).contains(targetID) else { return nil }
+        guard contains(node, id: targetID) else { return nil }
 
         let (reduced, _) = closeSurface(node, surface: surfaceID)
-        guard let reduced, surfaceIDs(reduced).contains(targetID) else { return nil }
+        guard let reduced, contains(reduced, id: targetID) else { return nil }
 
         let (orientation, side) = orientationAndSide(for: direction)
         return split(reduced, focused: targetID, orientation: orientation, side: side, surface: source)
@@ -207,6 +207,17 @@ public enum LayoutTree {
     }
 
     // MARK: - Helpers
+
+    /// Whether the subtree rooted at `node` holds a surface with `id`. Stops at the
+    /// first match instead of materializing every id like `surfaceIDs`.
+    private static func contains(_ node: LayoutNode, id: UUID) -> Bool {
+        switch node {
+        case .leaf(let surface):
+            return surface.id == id
+        case .split(_, let children, _):
+            return children.contains { contains($0, id: id) }
+        }
+    }
 
     /// The `Surface` value with `id` from the tree, or `nil` if absent.
     private static func surface(_ node: LayoutNode, id: UUID) -> Surface? {

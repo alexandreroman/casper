@@ -1131,7 +1131,16 @@ final class AppModelTests: XCTestCase {
             throw XCTSkip("libghostty could not create a surface in this environment")
         }
 
-        view.increaseFontSize(nil)
+        XCTAssertTrue(window.makeFirstResponder(view))  // performKeyEquivalent requires it
+
+        // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
+        // ANSI keyboard. A genuine NSEvent, built the same way a real keypress
+        // arrives, so the whole capture path starts where the real one does.
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+            windowNumber: 0, context: nil, characters: "=",
+            charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24))
+        _ = view.performKeyEquivalent(with: event)
         RunLoop.current.run(until: Date().addingTimeInterval(0.3))
 
         let updated = LayoutTree.surfaces(model.spaces[0].workspaces[0].layout)

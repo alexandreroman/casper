@@ -22,16 +22,16 @@ enum WorkspaceFileCopier {
         from sourceRoot: String, to destinationRoot: String
     ) throws -> [String] {
         let fm = FileManager.default
-        let sourceURL = URL(fileURLWithPath: sourceRoot)
 
-        // Standardize once up front so relative paths are computed against a
-        // path-normalized (`.`/`..`/redundant slashes resolved, but symlinks left
-        // intact), trailing-slash-terminated source prefix.
+        // Standardize once up front and enumerate from that same standardized URL,
+        // so the enumerated paths are guaranteed to carry the `sourcePath` prefix
+        // the relative-path arithmetic below strips. Standardizing resolves
+        // `.`/`..`/redundant slashes but leaves symlinks intact.
         let sourceStd = URL(fileURLWithPath: sourceRoot, isDirectory: true).standardizedFileURL
         let sourcePath = sourceStd.path.hasSuffix("/") ? sourceStd.path : sourceStd.path + "/"
 
         guard let enumerator = fm.enumerator(
-            at: sourceURL, includingPropertiesForKeys: [.isDirectoryKey], options: []
+            at: sourceStd, includingPropertiesForKeys: [.isDirectoryKey], options: []
         ) else {
             return []
         }

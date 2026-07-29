@@ -97,10 +97,12 @@ struct SurfaceHostView: View {
         }
     }
 
-    /// The pane context menu. Splits always create a terminal. Copy/Paste are
-    /// dispatched down the responder chain to the focused `GhosttySurfaceView`
-    /// (see `SurfaceHostView.dispatch`), so on a browser/diff pane they act on
-    /// the focused terminal rather than the pane itself.
+    /// The pane context menu. Splits always create a terminal. Copy/Paste fire
+    /// their Edit-menu selector down the responder chain, reaching the focused
+    /// `GhosttySurfaceView` (mirrors the Edit-menu Copy/Paste in `CasperCommands`
+    /// (MenuCommands.swift), which also dispatch through the responder chain), so
+    /// on a browser/diff pane they act on the focused terminal rather than the
+    /// pane itself.
     @ViewBuilder
     private var paneMenu: some View {
         Button { model.applySplit(from: surface.id, direction: .up) } label: {
@@ -116,11 +118,11 @@ struct SurfaceHostView: View {
             Label("Split Right", systemImage: "rectangle.righthalf.filled")
         }
         Divider()
-        Button { dispatch(#selector(NSText.copy(_:))) } label: {
+        Button { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
         .keyboardShortcut("c", modifiers: .command)
-        Button { dispatch(#selector(NSText.paste(_:))) } label: {
+        Button { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) } label: {
             Label("Paste", systemImage: "clipboard")
         }
         .keyboardShortcut("v", modifiers: .command)
@@ -128,13 +130,5 @@ struct SurfaceHostView: View {
         Button(role: .destructive) { model.applyCloseSurface(surface.id) } label: {
             Label("Close Pane", systemImage: "xmark")
         }
-    }
-
-    /// Fire an Edit-menu selector through the responder chain, reaching the
-    /// focused `GhosttySurfaceView` (mirrors the Edit-menu Copy/Paste in
-    /// `CasperCommands` (MenuCommands.swift), which also dispatch through the
-    /// responder chain).
-    private func dispatch(_ selector: Selector) {
-        NSApp.sendAction(selector, to: nil, from: nil)
     }
 }

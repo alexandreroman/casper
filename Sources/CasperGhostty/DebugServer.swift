@@ -149,6 +149,12 @@ public final class DebugServer {
 
     private func resolve(_ command: DebugCommand) async -> DebugResponse {
         let surfaces = provider?.debugSurfaces() ?? []
+        // Every verb but `dumpState` and `focus` acts on a single surface, resolved
+        // the same way. `target(in:matching:)` is pure, so resolving it up front
+        // costs nothing for the two verbs that ignore it. Each verb still rejects an
+        // unresolved target itself, which keeps `screenshot`'s error precedence
+        // (missing path before missing surface) intact.
+        let handle = target(in: surfaces, matching: command.target)
 
         switch command.verb {
         case .dumpState:
@@ -167,58 +173,44 @@ public final class DebugServer {
             return .success(state: DebugState(surfaces: entries))
 
         case .readText:
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             guard let text = handle.readText(command.scrollback ?? false) else {
                 return .failure("read-text unavailable")
             }
             return .success(text: text)
 
         case .sendText:
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             guard let text = command.text else { return .failure("missing text") }
             handle.sendText(text, command.enter == true)
             return .success()
 
         case .sendKeys:
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             guard let text = command.text else { return .failure("missing text") }
             handle.sendKeys(text)
             return .success()
 
         case .sendKey:
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             guard let text = command.text else { return .failure("missing text") }
             handle.sendKey(text, command.mods ?? [])
             return .success()
 
         case .sendAction:
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             guard let text = command.text else { return .failure("missing text") }
             handle.sendAction(text)
             return .success()
 
         case .mouseMove:
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             handle.mouseMove(command.x ?? 0, command.y ?? 0)
             return .success()
 
         case .screenshot:
             guard let path = command.path else { return .failure("missing path") }
-            guard let handle = target(in: surfaces, matching: command.target) else {
-                return targetFailure(command.target)
-            }
+            guard let handle else { return targetFailure(command.target) }
             guard let window = handle.window else { return .failure("no window") }
             return await screenshot(window: window, to: path)
 

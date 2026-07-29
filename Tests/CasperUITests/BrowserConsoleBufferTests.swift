@@ -8,7 +8,7 @@ import CasperCore
 @MainActor
 final class BrowserConsoleBufferTests: XCTestCase {
     private func makeCoordinator() -> BrowserCoordinator {
-        BrowserCoordinator(surfaceID: UUID(), url: URL(string: "about:blank")!)
+        BrowserCoordinator(url: URL(string: "about:blank")!)
     }
 
     private func entry(_ level: String, _ message: String) -> ConsoleEntry {

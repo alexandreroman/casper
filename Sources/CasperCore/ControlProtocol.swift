@@ -112,7 +112,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
 /// < warn < error`. `browser console --level` uses this ordering as a threshold:
 /// `--level warn` returns `warn` and `error` entries only. `Comparable` is
 /// derived from the fixed `severity` rank so callers can filter with `>=`.
-public enum ConsoleLevel: String, Codable, Sendable, CaseIterable, Comparable {
+public enum ConsoleLevel: String, Codable, Sendable, Comparable {
     case debug
     case log
     case info

@@ -8,7 +8,6 @@ import WebKit
 /// browser `Surface.id`.
 @MainActor
 final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate {
-    let surfaceID: UUID
     let webView: WKWebView
     @Published var address: String = ""
     @Published var canGoBack = false
@@ -39,8 +38,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     private var consoleBuffer: [ConsoleEntry] = []
     private static let consoleBufferCapacity = 500
 
-    init(surfaceID: UUID, url: URL) {
-        self.surfaceID = surfaceID
+    init(url: URL) {
         // Build a configuration that captures the page's console output and uncaught
         // errors: a document-start user script wraps `console.*`, `window.onerror`,
         // and `unhandledrejection`, forwarding each entry to the `casperConsole`
@@ -208,16 +206,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         if webView.window == nil {
             webView.frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
         }
-        let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            throw BrowserCoordinatorError(message: "failed to render page snapshot")
-        }
-        let bitmap = NSBitmapImageRep(cgImage: cgImage)
-        bitmap.size = image.size
-        guard let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw BrowserCoordinatorError(message: "failed to encode snapshot as PNG")
-        }
-        return png
+        return try await BrowserCapture.snapshotPNG(of: webView)
     }
 
     /// Serialize an `evaluateJavaScript` result to a JSON string. `nil`/`NSNull`

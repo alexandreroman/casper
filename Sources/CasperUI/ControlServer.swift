@@ -121,70 +121,62 @@ final class ControlServer {
             }
         // Browser automation is async (WebKit's evaluateJavaScript / takeSnapshot),
         // so — like `workspaceDelete` — these await the AppModel call and reply on
-        // completion rather than returning a response synchronously.
+        // completion rather than returning a response synchronously. Each case
+        // extracts its arguments from the command, then hands `replyWhenReady` the
+        // op to await. `browserWait`/`browserReload` report no payload, so they map
+        // their `Void` success to the same empty text the action verbs return.
         case .browserScreenshot:
             let path = command.path ?? ""
             let width = command.width
             let height = command.height
             let url = command.url
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserScreenshot(
-                        in: id, to: path, width: width, height: height, url: url),
-                    workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserScreenshot(
+                    in: id, to: path, width: width, height: height, url: url)
             }
             return
         case .browserEval:
             guard let script = command.script else { reply(.failure("missing script")); return }
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserEval(script, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserEval(script, in: id)
             }
             return
         case .browserContent:
             let selector = command.selector
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserContent(selector: selector, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserContent(selector: selector, in: id)
             }
             return
         case .browserURL:
-            Task { @MainActor in
-                reply(Self.browserReply(await model.browserAutomation.controlBrowserURL(in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserURL(in: id)
             }
             return
         case .browserClick:
             guard let selector = command.selector else { reply(.failure("missing selector")); return }
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserClick(selector: selector, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserClick(selector: selector, in: id)
             }
             return
         case .browserType:
             guard let selector = command.selector else { reply(.failure("missing selector")); return }
             let value = command.value ?? ""
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserType(selector: selector, value: value, in: id),
-                    workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserType(selector: selector, value: value, in: id)
             }
             return
         case .browserKey:
             guard let key = command.key else { reply(.failure("missing key")); return }
             let selector = command.selector
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserKey(key: key, selector: selector, in: id),
-                    workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserKey(key: key, selector: selector, in: id)
             }
             return
         case .browserConsole:
             let level = command.level.flatMap { ConsoleLevel(rawValue: $0) }
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserConsole(
-                        level: level, clear: command.clear ?? false, in: id),
-                    workspace: id))
+            let clear = command.clear ?? false
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserConsole(level: level, clear: clear, in: id)
             }
             return
         case .browserWait:
@@ -192,51 +184,54 @@ final class ControlServer {
                 reply(.failure("wait needs a <selector> or --js <expr>")); return
             }
             let timeout = command.waitTimeout ?? 5000
-            Task { @MainActor in
-                switch await model.browserAutomation.controlBrowserWait(
-                    js: predicate, timeoutMs: timeout, description: description, in: id) {
-                case .success: reply(.success(workspace: id.uuidString))
-                case .failure(let error): reply(.failure(error.message))
-                }
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserWait(
+                    js: predicate, timeoutMs: timeout, description: description, in: id).map { _ in "" }
             }
             return
         case .browserReload:
             let waitReady = command.waitReady ?? false
             let timeout = command.waitTimeout ?? 5000
-            Task { @MainActor in
-                switch await model.browserAutomation.controlBrowserReload(
-                    waitReady: waitReady, timeoutMs: timeout, in: id) {
-                case .success: reply(.success(workspace: id.uuidString))
-                case .failure(let error): reply(.failure(error.message))
-                }
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserReload(
+                    waitReady: waitReady, timeoutMs: timeout, in: id).map { _ in "" }
             }
             return
         case .browserScrollUp:
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserScroll(down: false, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserScroll(down: false, in: id)
             }
             return
         case .browserScrollDown:
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserScroll(down: true, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserScroll(down: true, in: id)
             }
             return
         case .browserScrollTop:
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserScrollToEdge(bottom: false, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserScrollToEdge(bottom: false, in: id)
             }
             return
         case .browserScrollBottom:
-            Task { @MainActor in
-                reply(Self.browserReply(
-                    await model.browserAutomation.controlBrowserScrollToEdge(bottom: true, in: id), workspace: id))
+            replyWhenReady(workspace: id, reply: reply) {
+                await model.browserAutomation.controlBrowserScrollToEdge(bottom: true, in: id)
             }
             return
         case .workspaceList, .workspaceNew:
             reply(.failure("unreachable")); return  // handled above
+        }
+    }
+
+    /// Await one browser-automation op on the main actor and send its outcome as
+    /// the command's reply. Kept separate from the dispatch switch so each browser
+    /// case is just its argument extraction plus the op to run.
+    private func replyWhenReady(
+        workspace id: UUID,
+        reply: @escaping @Sendable (ControlResponse) -> Void,
+        _ op: @escaping @MainActor () async -> Result<String, BrowserOpError>
+    ) {
+        Task { @MainActor in
+            reply(Self.browserReply(await op(), workspace: id))
         }
     }
 
