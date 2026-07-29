@@ -47,6 +47,7 @@ workspace creation or surface lifecycle.
 **How to apply:** anything that must run in an unselected workspace's terminal
 needs its surface materialized (via the nursery) — merely queueing input or
 splitting is not enough until the workspace is selected. Off-screen surfaces
-read as occluded (render paused), but the PTY still runs. See also
+read as occluded (render paused), but the PTY still runs. The nursery window is
+never ordered on-screen — see [[offscreen-host-windows-unordered]]. See also
 [[surface-identity]], [[persistent-nsview-host-sharing]],
 [[observed-startup-dependencies]].
