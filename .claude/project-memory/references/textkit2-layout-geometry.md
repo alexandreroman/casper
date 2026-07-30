@@ -50,10 +50,18 @@ Facts measured in-process with the Xcode 26 toolchain, on an `NSTextView` at a
   fragment's origin; offset by `layoutFragmentFrame.origin` for container
   coordinates.
 - Layout-manager geometry is in **text-container** coordinates. A text view
-  shifts that by `textContainerInset`, and the container's own
+  shifts that by its `textContainerOrigin`, and the container's own
   `lineFragmentPadding` (5 pt by default) shows up in `frame.minX`. The layout
-  manager cannot convert — only the text view knows the inset — so a caller
-  holding view coordinates converts on the way in and on the way out.
+  manager cannot convert — only the text view knows where its container sits —
+  so a caller holding view coordinates converts on the way in and out.
+  `textContainerOrigin` is the property to read: it folds `textContainerInset`
+  together with any centering AppKit applies when the container is narrower than
+  the view, so the two coincide only while that centering is zero.
+- **A ruler's own chrome leaves no divider.** An `NSRulerView` whose
+  `drawHashMarksAndLabels(in:)` fills the passed rect itself paints nothing of
+  its own over it — measured on the ruler's trailing pixel column, which carries
+  whatever the override drew there (`DiffChromeTests`
+  `testTheGuttersTrailingEdgeCarriesTheRowTintAndNoDivider` pins it).
 
 ## Cost
 

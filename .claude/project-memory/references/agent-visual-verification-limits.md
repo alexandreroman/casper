@@ -27,6 +27,28 @@ or more simply the user's own eyes via `make dev`) do the actual visual
 check. Expect visual polish to be an iterative loop driven by the user's
 screenshots, not something an agent confirms end-to-end alone.
 
+**Offscreen rendering is a different mechanism and does work.** Pure AppKit
+drawing can be pixel-verified from any agent context without a screen-recording
+grant, because nothing captures the screen: render the view into
+`bitmapImageRepForCachingDisplay(in:)` via `cacheDisplay(in:to:)`, then read
+`NSBitmapImageRep.colorAt(x:y:)`. The rep comes back at the backing scale, so
+pixel coordinates are 2× points on a Retina display. `DiffChromeTests` uses this
+to assert the diff view's row tints, gutter stripe and line-number colors, which
+`DiffTextView` and `DiffGutterRuler` draw in `drawBackground(in:)` and
+`drawHashMarksAndLabels(in:)`. This covers **drawing code**, not composited
+SwiftUI hierarchies or window chrome — the limits below still hold for those.
+
+**Probe a partial dirty rect, not only the full bounds.** `cacheDisplay(in:to:)`
+accepts any sub-rect of the view and passes it through as the dirty rect, and
+that is the only way to distinguish the two halves of a coordinate conversion in
+a view that both *queries* geometry by the dirty rect and *fills* into view
+space. Over a full-bounds rect the queried set is the same whether or not the
+query converts, so a conversion missing on the query side alone reads as green.
+In production the dirty rect is the strip a scroll just exposed, and there the
+same code drops the rows straddling that strip's top edge on every frame. Sample
+a row that straddles the sub-rect's top edge: it must be drawn whole, because
+the fill covers the row's full height and the context clips the overflow.
+
 **Do not assume the interactive session can always capture either.** In some
 session configurations even the main-loop `Bash` tool's shell lacks the
 screen-recording grant: `screencapture -x` fails with `could not create image
