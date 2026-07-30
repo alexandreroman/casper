@@ -79,4 +79,5 @@
 - [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — the teardown split spawns fine in XCTest; drive `handleScriptSurfaceExit` for the child exit
 - [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views in XCTest; pixels still need human eyes
 - [Worktree deletion deletes the directory before pruning metadata](references/worktree-deletion-directory-first.md) — git_worktree_prune orphans the dir on read-only entries; FileManager-delete first, then metadata-only prune
+- [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — paragraphSpacingBefore lives inside layoutFragmentFrame; empty trailing line fragment; reading .layoutManager flips to TextKit 1; point probes and ensureLayout cost O(scroll offset)
 - [AttributedString interop limits](references/attributedstring-interop-limits.md) — HighlightSwift emits AppKit-scope colors (SwiftUI scope reads nil); AttributedString.utf16 needs macOS 26
