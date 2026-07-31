@@ -61,6 +61,101 @@ final class DiffTextView: NSTextView {
         }
     }
 
+    /// Narrows every selection so its highlight stops short of each line's
+    /// `+`/`-`/space cue.
+    ///
+    /// The cue is rendering rather than text (see
+    /// `DiffDocument.rangesExcludingCues(in:)`), and the reader should be able to
+    /// see that: a band running through the cue column says the cue is part of
+    /// what they grabbed. So one selection becomes several — AppKit's own
+    /// discontiguous selection, the same mechanism ⌘-drag uses — one per line, each
+    /// starting at the code.
+    ///
+    /// This is the single funnel every selection change goes through: mouse drag,
+    /// shift-click, double- and triple-click, ⌘A, and the coordinator's own calls.
+    /// Which is why the two pass-throughs below matter more than the carving:
+    ///
+    /// - **A caret is left alone.** Every plain click arrives here as a zero-length
+    ///   range, and carving one yields nothing — the reader would be unable to put
+    ///   the caret down at all.
+    /// - **A selection that is nothing but cues collapses to a caret** at the code's
+    ///   start, rather than to no selection whatsoever. `NSTextView` requires at
+    ///   least one range and double-clicking a `+` — its own punctuation run —
+    ///   produces exactly this case.
+    ///
+    /// Idempotent, because the carving is: AppKit hands back the ranges it was
+    /// given on the next change, and re-carving them must not shift them further.
+    ///
+    /// No storage/document length check here, unlike the pasteboard path below,
+    /// and deliberately so: every carved piece is a *subrange* of a range AppKit
+    /// derived from the storage itself, so a stale document can only put a
+    /// boundary in an odd place, never out of bounds. The check would cost an
+    /// `NSString` bridge of the whole diff text on every mouse-drag event to buy
+    /// nothing.
+    override func setSelectedRanges(
+        _ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool
+    ) {
+        guard let document else {
+            super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+            return
+        }
+        let carved: [NSRange] = ranges.map(\.rangeValue).flatMap { range -> [NSRange] in
+            guard range.length > 0 else { return [range] }
+            let pieces = document.rangesExcludingCues(in: range)
+            guard pieces.isEmpty else { return pieces }
+            return [NSRange(location: NSMaxRange(range), length: 0)]
+        }
+        super.setSelectedRanges(
+            carved.map { NSValue(range: $0) }, affinity: affinity, stillSelecting: stillSelecting)
+    }
+
+    /// Plain text only, so the cue-stripping below is the *whole* truth about
+    /// what a copy carries.
+    ///
+    /// `NSTextView` would also offer RTF here, and a paste target that prefers it
+    /// — Notes, Pages, a mail composer — would then get the representation that
+    /// still has the `+`/`-` in it. Losing the syntax colors on such a paste is a
+    /// fair trade: a diff is copied to be pasted as code.
+    override var writablePasteboardTypes: [NSPasteboard.PasteboardType] { [.string] }
+
+    /// Writes the selection with each line's `+`/`-`/space cue removed.
+    ///
+    /// `setSelectedRanges` has already carved the cues out of what the reader can
+    /// select, so on a live view this pass finds nothing left to carve. It stays
+    /// because the pasteboard is where the guarantee actually has to hold: a
+    /// selection set before the document arrived, or by some future caller that
+    /// bypasses the funnel, must still copy as code.
+    ///
+    /// The document and the storage can only disagree if they have drifted apart,
+    /// and the length check refuses to carve by another document's offsets when
+    /// they have: a verbatim copy is wrong in one small, bounded way, one sliced
+    /// by stale offsets is wrong in an arbitrary one. The selection is still
+    /// copied either way — a copy that silently yields nothing is worse than one
+    /// that yields a patch.
+    ///
+    /// `selectedRanges`, not `selectedRange`: a discontiguous (⌘-drag) selection
+    /// has several, and they are concatenated the way `NSTextView` concatenates
+    /// them.
+    override func writeSelection(to pasteboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard type == .string, let storage = textContentStorage?.textStorage else {
+            return super.writeSelection(to: pasteboard, type: type)
+        }
+        let selection = selectedRanges.map(\.rangeValue)
+        let ranges: [NSRange] =
+            if let document, storage.length == (document.text as NSString).length {
+                selection.flatMap { document.rangesExcludingCues(in: $0) }
+            } else {
+                selection
+            }
+
+        let text = storage.string as NSString
+        // Written even when empty — a selection covering nothing but cues copies
+        // nothing, and leaving the previous clipboard contents in place would let
+        // the reader paste something they never selected.
+        pasteboard.setString(ranges.map { text.substring(with: $0) }.joined(), forType: .string)
+        return true
+    }
+
     /// The tint behind one diff row, or `nil` when there is nothing to paint.
     ///
     /// Shared with `DiffGutterRuler`, which fills the same band across its own

@@ -402,10 +402,26 @@ the controller made the first paint depend on SwiftUI realizing the coordinator
 before `.onAppear`. The controller carries only events (scroll target, a file's
 highlight finishing). Nothing writes SwiftUI state during layout.
 
-**Tests.** `swift test` → 848 passing (2 skipped). `DiffDocumentTests`,
-`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests` and
-`DiffTextSurfaceTests` cover the flattening semantics, the color-only highlight
-rule, the fragment→line mapping, and the drawn chrome — the last via headless
+**Selection and copy.** The `+`/`-`/space cue is rendering, not text, so the
+reader can neither highlight it nor copy it. `DiffDocument.rangesExcludingCues`
+is the single definition of that (a selection minus each line's cue span);
+`DiffTextView.setSelectedRanges` applies it so a selection becomes one
+discontiguous range per line, each starting at the code, and
+`writeSelection(to:type:)` applies it again on the way to the pasteboard —
+plain text only, since an RTF representation would smuggle the cue back into a
+paste.
+A caret passes through untouched (carving a zero-length range yields nothing)
+and a cue-only selection collapses to a caret. A truncated line's
+`… (line truncated)` marker is deliberately **kept**: it is the only sign the
+copy is a prefix of the real line. ⌘A on a 2000-line document forces no layout
+beyond the viewport — the guard is a test, since thousands of ranges resolving
+their geometry would be the freeze this renderer removes.
+
+**Tests.** `swift test` → 867 passing (2 skipped). `DiffDocumentTests`,
+`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
+`DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
+color-only highlight rule, the fragment→line mapping, what a selection and a
+copy carry, and the drawn chrome — the last via headless
 `cacheDisplay` pixel probes (tint, stripe and number colors read back against
 `DiffLineStyle`'s own values, never literals). None of this was testable in the
 row-based renderer.

@@ -228,6 +228,67 @@ struct DiffDocument: Sendable, Equatable {
         files.firstIndex { $0.id == id }
     }
 
+    /// `selection` split into the pieces that are actually the reader's text: the
+    /// same characters minus every line's leading `+`/`-`/space cue.
+    ///
+    /// The cue is rendering, not source. So it is carved out of the selection even
+    /// though it is carved *in* to the text — a highlight running through it would
+    /// invite a copy that no longer compiles, and the alternative of keeping the
+    /// cue out of the storage entirely and drawing it like the gutter numbers
+    /// would also take it out of TextKit's character-accurate layout of the code
+    /// column.
+    ///
+    /// This is the one definition of "the cue is not part of the text", used both
+    /// for what `DiffTextView` lets the reader select and for what it puts on the
+    /// pasteboard. Those cannot disagree because there is nothing to disagree
+    /// with: applying it to an already-carved selection changes nothing.
+    ///
+    /// Everything else survives verbatim, terminators included, so a multi-line
+    /// selection keeps its line structure. In particular a truncated line's
+    /// `… (line truncated)` marker stays: it is the only signal that the text is a
+    /// prefix of the real line, and dropping it would hand the reader a silently
+    /// corrupt paste.
+    ///
+    /// Chrome lines have no cue — their `contentRange` starts where their `range`
+    /// does — so hunk headers and notes come through whole without a special case.
+    /// Returns an empty array for an empty selection, and for one that covers
+    /// nothing but cues.
+    func rangesExcludingCues(in selection: NSRange) -> [NSRange] {
+        let end = NSMaxRange(selection)
+        guard selection.length > 0 else { return [] }
+        // Past the end of the document there is no line to read a cue from, and
+        // nothing sensible to carve: hand the selection back untouched.
+        guard let firstLine = lineIndex(atCharacterOffset: selection.location) else { return [selection] }
+
+        var kept: [NSRange] = []
+        // The start of the next piece: everything from here to the next cue is
+        // copied. Advances past each cue instead of over it.
+        var cursor = selection.location
+
+        for line in lines[firstLine...] {
+            // Lines are ordered, so the first one starting at or after the
+            // selection's end ends the walk.
+            guard line.range.location < end else { break }
+            let cueStart = line.range.location
+            let cueEnd = line.contentRange.location
+            // No cue at all, or one the cursor has already passed — which is how
+            // a selection starting mid-line skips its own line's cue.
+            guard cueEnd > cueStart, cueEnd > cursor else { continue }
+
+            let clipped = max(cueStart, cursor)
+            if clipped > cursor {
+                kept.append(NSRange(location: cursor, length: clipped - cursor))
+            }
+            // Clamped to the selection, so a selection ending inside a cue does
+            // not reach past it.
+            cursor = min(cueEnd, end)
+        }
+        if cursor < end {
+            kept.append(NSRange(location: cursor, length: end - cursor))
+        }
+        return kept
+    }
+
     /// Every scalar TextKit starts a new paragraph on.
     private static let paragraphSeparators: Set<Unicode.Scalar> = [
         "\u{000A}",  // LINE FEED

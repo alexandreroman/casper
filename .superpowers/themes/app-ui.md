@@ -34,8 +34,13 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   text view, the accent stripe and line numbers in an `NSRulerView` gutter, the
   pinned file header as an overlay that reads layout and never feeds back into
   it. Text is character-selectable and copyable, and a copy yields clean code
-  because the numbers live in the ruler and the header band is paragraph spacing
-  rather than characters. Syntax colors are applied progressively per file
+  because the numbers live in the ruler, the header band is paragraph spacing
+  rather than characters, and the text view carves each line's leading `+`/`-`
+  cue out of the pasteboard on the way (plain text only, so no richer
+  representation can smuggle the cue back in). A truncated line's
+  `… (line truncated)` marker is deliberately kept — it is the only sign that
+  the copy is a prefix of the real line. Syntax colors are applied
+  progressively per file
   (HighlightSwift), **color attributes only**, so a highlight landing mid-scroll
   cannot change a line height and shift the text under the reader.
 
