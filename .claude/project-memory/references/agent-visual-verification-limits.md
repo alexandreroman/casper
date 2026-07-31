@@ -38,6 +38,19 @@ to assert the diff view's row tints, gutter stripe and line-number colors, which
 `drawHashMarksAndLabels(in:)`. This covers **drawing code**, not composited
 SwiftUI hierarchies or window chrome — the limits below still hold for those.
 
+**Capture the composed container, not each view on its own.** A capture taken
+from one view's bounds shows only what that view painted inside them, so a whole
+class of defect is invisible to it: one view painting *over* another. A ruler
+that fills past its column wipes the code beside it on screen while every
+per-view assertion stays green, because the escaping fill never reaches the text
+view's own bitmap (see [[nsrulerview-unclipped-drawing]]). Compose what the
+reader actually sees — `cacheDisplay` the scroll view, or a wrapper holding the
+surface under a stand-in for the chrome above it — and assert there. Two
+captures of the same wrapper, one before the surface is added and one after,
+compare cleanly pixel for pixel; an absolute color literal does not, because
+`NSBitmapImageRep` returns colors in its own space and a literal put through that
+conversion no longer matches itself.
+
 **Probe a partial dirty rect, not only the full bounds.** `cacheDisplay(in:to:)`
 accepts any sub-rect of the view and passes it through as the dirty rect, and
 that is the only way to distinguish the two halves of a coordinate conversion in
