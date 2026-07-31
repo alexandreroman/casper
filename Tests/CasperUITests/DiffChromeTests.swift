@@ -370,6 +370,132 @@ final class DiffChromeTests: XCTestCase {
         }
     }
 
+    // MARK: - The composed surface
+
+    /// The gutter drawn *inside its scroll view*, which is the only place its own
+    /// clipping is observable — and the case that shipped broken.
+    ///
+    /// AppKit hands `drawHashMarksAndLabels(in:)` a rect covering the scroll view's
+    /// whole content area rather than the ruler's column, and a ruler's drawing is
+    /// not clipped to its bounds. So a background fill of that raw rect lands on top
+    /// of the code the clip view has already drawn, and the diff renders as bare
+    /// line numbers over an empty panel.
+    ///
+    /// Every other pixel case here captures the two views **one at a time**, each
+    /// through a rect taken from its own bounds, so an escaping fill cannot reach the
+    /// text view's bitmap and none of them can see this. Which is exactly why this
+    /// one composes the scroll view instead: what a reader sees is the composition,
+    /// not either view alone.
+    func testTheGutterPaintsNothingOverTheCodeColumn() throws {
+        let document = makeMixedDocument()
+        let surface = makeSurface(document: document)
+        let scrollView = try XCTUnwrap(surface.textView.enclosingScrollView)
+        let layoutManager = try XCTUnwrap(surface.textView.textLayoutManager)
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
+        let geometry = DiffFragmentGeometry(layoutManager: layoutManager, document: document)
+
+        let canvas = try canvas(of: scrollView, repaintingFrom: 0)
+
+        let rows = geometry.fragments(
+            in: CGRect(x: 0, y: 0, width: surface.textView.bounds.width, height: 10_000))
+        let addition = try XCTUnwrap(
+            rows.first { document.lines[$0.lineIndex].diffKind == .addition },
+            "the fixture must hold an addition to look for a tint on")
+        // Text-view coordinates → the scroll view's: the text view sits right of the
+        // gutter, both are unscrolled, and the reserved header band is the text view's
+        // own inset above its container.
+        let codeX = surface.ruler.ruleThickness + addition.rect.maxX + 1
+        let rowY = addition.rect.midY + surface.textView.textContainerInset.height
+
+        // Past the row's last glyph, where only the tint can be — and where a fill
+        // that covered the code column would leave the plain background.
+        assertSameColor(
+            color(in: canvas, x: codeX, y: rowY),
+            NSColor(DiffLineStyle.background(for: .addition)),
+            "the added row's tint, \(codeX - surface.ruler.ruleThickness) pt into the code column")
+
+        // And the code itself is on screen: somewhere across the row's glyph span a
+        // pixel differs from the tint it sits on. The tint assertion above would still
+        // hold with every glyph painted over, which is the symptom a reader reports.
+        let tint = NSColor(DiffLineStyle.background(for: .addition))
+        let inked = stride(from: surface.ruler.ruleThickness, to: codeX, by: 0.5).contains { x in
+            stride(from: rowY - addition.rect.height / 2, to: rowY + addition.rect.height / 2, by: 0.5)
+                .contains { y in channelDistance(color(in: canvas, x: x, y: y), tint) > 0.02 }
+        }
+        XCTAssertTrue(inked, "the added row's glyphs are painted in the code column")
+    }
+
+    /// The gutter scrolled, with chrome above the panel it lives in — the second
+    /// direction the unclipped ruler paint escaped in.
+    ///
+    /// AppKit asks for a rect starting a header band's height *above* the ruler's
+    /// top edge, so the rows in that band — already scrolled out of the viewport —
+    /// have their tint, stripe and number placed above the gutter. Unclipped, they
+    /// land on whatever the panel puts over the surface, which in `InspectorPanel`
+    /// is the Diff | Browser selector.
+    func testTheGutterPaintsNothingAboveItsOwnColumn() throws {
+        let document = makeMixedDocument()
+        let surface = makeSurface(document: document)
+        let scrollView = try XCTUnwrap(surface.textView.enclosingScrollView)
+        let layoutManager = try XCTUnwrap(surface.textView.textLayoutManager)
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
+
+        // A viewport shorter than the document, under a strip standing in for the
+        // panel's chrome.
+        let strip: CGFloat = 40
+        let chrome = StripView(frame: NSRect(x: 0, y: 0, width: Self.scrollViewWidth, height: strip + 300))
+        // Captured before the surface is in it, as the reference for what the strip
+        // looks like untouched. Read back from a bitmap rather than compared to the
+        // color the strip fills with: `NSBitmapImageRep` hands colors back in its own
+        // space, and a literal put through that conversion no longer matches itself.
+        let untouched = try canvas(of: chrome, repaintingFrom: 0)
+
+        chrome.addSubview(scrollView)
+        scrollView.frame = NSRect(x: 0, y: strip, width: Self.scrollViewWidth, height: 300)
+        scrollView.tile()
+        // Scrolled far enough that several rows sit above the viewport's top edge.
+        let clipView = scrollView.contentView
+        clipView.scroll(to: CGPoint(x: clipView.bounds.origin.x, y: 120))
+        scrollView.reflectScrolledClipView(clipView)
+
+        let painted = try canvas(of: chrome, repaintingFrom: 0)
+
+        for x in stride(from: 0, to: Self.scrollViewWidth, by: 1) {
+            for y in stride(from: 0, to: strip, by: 1) {
+                assertSameColor(
+                    color(in: painted, x: x, y: y), color(in: untouched, x: x, y: y),
+                    "the strip above the surface, at (\(x), \(y))")
+            }
+        }
+    }
+
+    /// A flipped, uniformly filled stand-in for the chrome a panel puts above the
+    /// diff surface. Flipped so `y = 0` is its top edge, as `InspectorPanel`'s
+    /// stack and `DiffSurfaceContainerView` both are.
+    private final class StripView: NSView {
+        override var isFlipped: Bool { true }
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor(deviceRed: 1, green: 0, blue: 1, alpha: 1).setFill()
+            dirtyRect.fill()
+        }
+    }
+
+    /// What a canvas holds at a point in its view's coordinates. The probe's own
+    /// sampler is bound to its two per-view canvases; this reads a composed one.
+    private func color(in canvas: ChromeProbe.Canvas, x: CGFloat, y: CGFloat) -> NSColor {
+        let scale = CGFloat(canvas.bitmap.pixelsWide) / canvas.rect.width
+        let pixelX = Int((x - canvas.rect.minX) * scale)
+        let pixelY = Int((y - canvas.rect.minY) * scale)
+        guard (0..<canvas.bitmap.pixelsWide).contains(pixelX),
+              (0..<canvas.bitmap.pixelsHigh).contains(pixelY)
+        else {
+            XCTFail("(\(x), \(y)) falls outside the repainted \(canvas.rect)")
+            return .clear
+        }
+        return canvas.bitmap.colorAt(x: pixelX, y: pixelY) ?? .clear
+    }
+
     // MARK: - Partially configured views
 
     /// Both views are asked to draw as soon as they are in a window, which is before

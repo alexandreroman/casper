@@ -347,6 +347,8 @@ SwiftUI views. Landed on `main` in six commits:
 - `DiffGutterRuler.swift` — `NSRulerView` subclass drawing the row tint band,
   the 3 pt accent stripe and the right-aligned line number. Column positions
   match the old `DiffLineRow` exactly (8 pt number-to-code gap, stripe width).
+  It clips to its own `bounds` in `draw(_:)`, around `super` — see **Gutter
+  clipping** below.
 - `DiffStickyHeader.swift` — an overlay reproducing `pinnedViews:
   [.sectionHeaders]`, including the push behaviour. It only **reads** geometry
   and feeds nothing back into text layout.
@@ -356,6 +358,19 @@ SwiftUI views. Landed on `main` in six commits:
   `currentAnchor()`).
 - `DiffSurfaceView.swift` — SwiftUI, orchestration only: refresh, dedup,
   progressive highlighting, scroll target, empty states.
+
+**Gutter clipping** (`1dc0b09`). A custom `NSRulerView` is handed dirty rects
+that reach far outside its column — one draw pass arrives with the rect *and*
+the context's clip set to the whole coordinate plane, another with the scroll
+view's entire content area (500 pt wide beside a 42 pt gutter, starting a header
+band above its top edge) — and AppKit clips none of it. Three paints escaped:
+the background fill covered the code the clip view had already drawn (the diff
+rendered as bare line numbers over an empty panel); rows above the viewport had
+their chrome drawn over the inspector's Diff | Browser selector; and
+`NSRulerView`'s own trailing-edge hairline ran the full height of the infinite
+clip. The ruler now clips to `bounds` in `draw(_:)` around `super`, which is the
+only place that also covers the chrome no method of the class draws. Recorded in
+`.claude/project-memory/references/nsrulerview-unclipped-drawing.md`.
 
 **Gained.** Text is **selectable and copyable**, character-level, and a copy
 comes out as clean code: line numbers live in the ruler (not the text) and the
@@ -387,7 +402,7 @@ the controller made the first paint depend on SwiftUI realizing the coordinator
 before `.onAppear`. The controller carries only events (scroll target, a file's
 highlight finishing). Nothing writes SwiftUI state during layout.
 
-**Tests.** `swift test` → 846 passing (2 skipped). `DiffDocumentTests`,
+**Tests.** `swift test` → 848 passing (2 skipped). `DiffDocumentTests`,
 `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests` and
 `DiffTextSurfaceTests` cover the flattening semantics, the color-only highlight
 rule, the fragment→line mapping, and the drawn chrome — the last via headless
@@ -395,9 +410,24 @@ rule, the fragment→line mapping, and the drawn chrome — the last via headles
 `DiffLineStyle`'s own values, never literals). None of this was testable in the
 row-based renderer.
 
-**Still to verify.** Live confirmation on an actively-edited worktree with the
+Two of those probes capture the **composed** surface rather than one view: a
+capture taken from a single view's bounds shows only what that view painted
+inside them, so it is structurally blind to one view painting over another —
+which is exactly how the gutter's escaping fill shipped past a green suite.
+`testTheGutterPaintsNothingOverTheCodeColumn` captures the scroll view and
+`testTheGutterPaintsNothingAboveItsOwnColumn` a wrapper holding the surface
+under a stand-in for the panel's chrome; each was checked failing without the
+fix.
+
+**Verified live.** The renderer draws correctly in the running app on a
+multi-file working tree (modified, added and deleted files, four-digit line
+numbers): pinned header per file, inter-file header bands, gutter sized from the
+whole document, syntax colors, and nothing painted outside the panel.
+
+**Still to verify.** Live confirmation on an *actively-edited* worktree with the
 diff panel open — the only setup that has ever exercised the hang this rewrite
-removes. `MainThreadHangWatchdog` stays wired (DEBUG-only) until that lands.
+removes, and a different scenario from the static multi-file check above.
+`MainThreadHangWatchdog` stays wired (DEBUG-only) until that lands.
 
 ## Open in Editor — ✅
 
