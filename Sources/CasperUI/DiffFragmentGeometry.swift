@@ -119,6 +119,19 @@ struct DiffFragmentGeometry {
         return fragments
     }
 
+    /// Lays out the rows `rect` shows and no more — it *is* `fragments(in:)`,
+    /// under the same bound, with the rows thrown away.
+    ///
+    /// For the caller that needs the viewport laid out before reading it. The
+    /// sticky header resolves its bands with `warmTop(ofFileAt:)` and takes a file
+    /// with no geometry for one below the screen, which holds while scrolling
+    /// because every draw lays out what it paints. Right after a document swap
+    /// nothing has drawn yet, so the refresh path warms the viewport once instead
+    /// of letting the overlay conclude the diff is one file long.
+    func ensureLayout(in rect: CGRect) {
+        _ = fragments(in: rect)
+    }
+
     /// The `y` of the top of the blank band reserved for the file's sticky
     /// header, in **text-container** coordinates — so a caller holding a clip
     /// view's `bounds.origin.y` subtracts `textContainerInset.height` before
@@ -132,26 +145,42 @@ struct DiffFragmentGeometry {
     /// `nil` for an out-of-range index, or for a file TextKit cannot produce a
     /// laid-out fragment for.
     ///
-    /// Layout is *probed* first and only forced when the probe comes back
-    /// missing or not laid out. Forcing it unconditionally would put an
-    /// `ensureLayout(throughFileAt:)` walk — linear in how deep the file sits —
-    /// on the sticky header's per-scroll-notification path, which is exactly the
-    /// cost this whole renderer exists to remove: on a laid-out 20 000-line
-    /// document, 0.010 ms for the probe against 11.0 ms for the walk to the last
-    /// file. `testWarmFileTopCostsFarLessThanALayoutWalk` pins the gap, and
-    /// `testFileTopIsTheSameColdAsWarm` pins that the shortcut answers the same.
+    /// Layout is *probed* first — through `warmTop(ofFileAt:)`, so the two share
+    /// one probe — and only forced when the probe comes back cold. Forcing it
+    /// unconditionally would cost an `ensureLayout(throughFileAt:)` walk, linear
+    /// in how deep the file sits, for an answer the layout already holds: on a
+    /// laid-out 20 000-line document, 0.010 ms for the probe against 11.0 ms for
+    /// the walk to the last file. `testWarmFileTopCostsFarLessThanALayoutWalk`
+    /// pins the gap, and `testFileTopIsTheSameColdAsWarm` pins that the shortcut
+    /// answers the same.
+    ///
+    /// **This is the forcing variant, for one-shot jumps** — `scroll(toFileID:)`
+    /// and anchor restoration, where the walk buys a real frame instead of an
+    /// estimate and is paid once. Anything running per scroll notification asks
+    /// `warmTop(ofFileAt:)` instead and treats a cold file as out of view.
     func top(ofFileAt fileIndex: Int) -> CGFloat? {
+        if let warm = warmTop(ofFileAt: fileIndex) { return warm }
+        ensureLayout(throughFileAt: fileIndex)
+        return warmTop(ofFileAt: fileIndex)
+    }
+
+    /// The same band top as `top(ofFileAt:)`, but only for a file TextKit has
+    /// already laid out the first paragraph of: `nil` for a cold one, with no
+    /// `ensureLayout` fallback.
+    ///
+    /// The accessor for callers that may not force layout at all — the sticky
+    /// header, which recomputes out of a scroll bounds-change notification
+    /// several times per frame. A cold file there is not a failure to work
+    /// around: layout runs from the top down, so a file without geometry is a
+    /// file below everything TextKit has produced for the viewport.
+    ///
+    /// `nil` for an out-of-range index too, as `top(ofFileAt:)`.
+    func warmTop(ofFileAt fileIndex: Int) -> CGFloat? {
         guard document.files.indices.contains(fileIndex) else { return nil }
         let offset = document.files[fileIndex].range.location
-
-        if let warm = layoutFragment(atCharacterOffset: offset), warm.state == .layoutAvailable {
-            return bandTop(ofFirstParagraph: warm)
-        }
-        // A genuinely cold target — `scroll(toFileID:)` to a file the reader has
-        // never reached. Here the walk buys a real frame instead of an estimate,
-        // and happens once per jump rather than once per scroll notification.
-        ensureLayout(throughFileAt: fileIndex)
-        guard let fragment = layoutFragment(atCharacterOffset: offset) else { return nil }
+        guard let fragment = layoutFragment(atCharacterOffset: offset),
+              fragment.state == .layoutAvailable
+        else { return nil }
         return bandTop(ofFirstParagraph: fragment)
     }
 
@@ -201,7 +230,8 @@ struct DiffFragmentGeometry {
     /// the document's origin. On a cold 20 000-line document, reaching the last
     /// file lays out 99.5% of its height; and even over content already laid out,
     /// the walk itself costs 11.0 ms. That is why `top(ofFileAt:)` probes before
-    /// resorting to this, and why `fileIndex(atY:)` never calls it at all.
+    /// resorting to this, and why nothing on the per-scroll-notification path —
+    /// `fileIndex(atY:)`, `warmTop(ofFileAt:)` — reaches it at all.
     func ensureLayout(throughFileAt fileIndex: Int) {
         guard document.files.indices.contains(fileIndex) else { return }
         // Safe by `DiffDocument`'s invariant that every file owns at least one
@@ -218,7 +248,8 @@ struct DiffFragmentGeometry {
 
     /// The top of the blank band reserved ahead of the file whose **first**
     /// paragraph `fragment` lays out. One formula for both kinds of file, in one
-    /// place, so `top(ofFileAt:)` and `fileIndex(atY:)` cannot drift apart.
+    /// place, so the three members that answer in band tops — `top(ofFileAt:)`,
+    /// `warmTop(ofFileAt:)` and `fileIndex(atY:)` — cannot drift apart.
     ///
     /// The two kinds reserve their band by different mechanisms, which is why
     /// the row offset appears in the arithmetic at all:

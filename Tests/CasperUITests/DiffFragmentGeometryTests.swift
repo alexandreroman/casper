@@ -251,13 +251,37 @@ final class DiffFragmentGeometryTests: XCTestCase {
         XCTAssertEqual(coldTop, warmTop, accuracy: 0.5)
     }
 
+    /// `warmTop(ofFileAt:)` is `top(ofFileAt:)` with the fallback taken away: the
+    /// same answer for a file that is laid out, `nil` rather than a walk for one
+    /// that is not. `DiffStickyHeader` walks its bands with it on every scroll
+    /// notification and reads `nil` as "below the screen", so a variant that
+    /// quietly forced layout, or one that disagreed with `top`, would each be a
+    /// defect the overlay itself cannot show.
+    func testWarmTopAnswersOnlyForFilesAlreadyLaidOut() throws {
+        let document = makeDocument(fileCount: 30, linesPerFile: 20)
+        let target = document.files.count - 1
+        let coldView = makeTextView(document, layingOut: false)
+        let coldLayoutManager = try XCTUnwrap(coldView.textLayoutManager)
+        let cold = DiffFragmentGeometry(layoutManager: coldLayoutManager, document: document)
+        let warm = try makeGeometry(document)
+        let budget = try fullLayoutHeight(of: document) / 10
+
+        XCTAssertNil(cold.warmTop(ofFileAt: target), "a cold file has no warm answer")
+        XCTAssertLessThan(coldLayoutManager.usageBoundsForTextContainer.height, budget,
+                          "and asking for one must not have laid the document out")
+
+        XCTAssertEqual(try XCTUnwrap(warm.warmTop(ofFileAt: target)),
+                       try XCTUnwrap(warm.top(ofFileAt: target)), accuracy: 0.01)
+        XCTAssertNil(warm.warmTop(ofFileAt: document.files.count))
+    }
+
     /// `top(ofFileAt:)` must answer from the layout it finds, not from an
-    /// `ensureLayout` walk. Task 5 calls it out of the scroll bounds-change
-    /// notification, which fires several times per frame under momentum
-    /// scrolling, and the walk's cost grows with how deep the file sits — so
-    /// paying it there makes one scroll through a large diff quadratic in the
-    /// document. Nothing else here would notice, because the walk changes no
-    /// answer; it only costs.
+    /// `ensureLayout` walk whose cost grows with how deep the file sits. Nothing
+    /// else here would notice a regression: the walk changes no answer, it only
+    /// costs. The surface calls this on every refresh, once per anchor, so a walk
+    /// per call turns diff churn on a large document quadratic — and the
+    /// per-scroll-notification path, which cannot afford a walk at any depth, is
+    /// held to the stricter `warmTop(ofFileAt:)` instead.
     ///
     /// Stated as a ratio against a walk over the *same* layout manager rather
     /// than as a wall-clock budget, so what is pinned is the complexity and not

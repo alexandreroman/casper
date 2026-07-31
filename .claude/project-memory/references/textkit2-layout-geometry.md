@@ -87,3 +87,14 @@ decides what is cheap:
 - On a cold manager, reaching the last file's first paragraph lays out 99.5% of
   the document's height, because everything above it has to be laid out first.
   "Stop at the target's first paragraph" saves the target's *body*, no more.
+- **A hosted `NSTextView` lays the whole document out at its layout pass.** With
+  `isVerticallyResizable` it has to know its own height, so `layout()` forces
+  full layout — measured at 57 861 pt for a 3 002-paragraph document — however
+  little the viewport shows. What stays lazy is the window between a text-storage
+  swap and the layout pass after it: `setAttributedString` leaves the whole
+  document cold, and every bounds-change notification until the next frame reads
+  a cold manager. A diff recomputed on each file change sits in that window
+  constantly, so a per-notification reader takes the non-forcing
+  `DiffFragmentGeometry.warmTop(ofFileAt:)` and treats a file with no geometry as
+  off-screen; the refresh path warms the viewport once with
+  `ensureLayout(in:)` so the chrome has bands to find before anything draws.
