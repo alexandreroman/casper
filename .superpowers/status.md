@@ -183,6 +183,13 @@ driving both the diff surface and the title-bar `+/−` badge.
 > the right inspector panel (`Workspace.inspector`, see below). The `.browser`
 > layout-leaf path still exists; `.diff` does not. The diff rendering described
 > above is unchanged, just hosted by the inspector instead of a layout leaf.
+>
+> **Superseded:** the per-line SwiftUI rendering described above (a `LazyVStack`
+> of `DiffFileView` sections, one `DiffLineRow` per diff line, pinned
+> `Section` headers) was replaced by a **single TextKit 2 text document**. See
+> [Diff renderer](#diff-renderer--one-textkit-2-text-document-supersedes-ui-5-rows--)
+> below. The reading experience and the diff computation are unchanged; what
+> the reader sees drawn is now AppKit, not SwiftUI.
 
 All five CasperUI sub-projects are built. **Live GUI check: done.** Terminals
 render on a restored session and tab switching preserves content — verified via
@@ -305,6 +312,92 @@ the three `AppModel` inspector mutators, and the inspector-browser URL write-bac
 **Verified.** Live GUI pass (`debug-casper`): panel toggle, tab switch, browser
 survival across collapse/expand and workspace switch, and a terminal pane not
 blanked when toggling the panel (see `persistent-nsview-host-sharing`).
+
+## Diff renderer — one TextKit 2 text document (supersedes UI-5 rows) — ✅
+
+The diff is drawn as **one TextKit 2 text document** instead of thousands of
+SwiftUI views. Landed on `main` in six commits:
+
+- `5b84769` Add DiffDocument, the diff view's pure rendering model
+- `a4f5f22` Assemble the diff text storage from a DiffDocument
+- `fa08e55` Map TextKit fragments back to diff lines
+- `12ea054` Draw diff row tints and the gutter from fragment geometry
+- `dd9806a` Host the diff text view with a pinned file header overlay
+- `21de38f` Render the diff through the TextKit surface
+
+**Pipeline** (`Sources/CasperUI/`, pure → pixel):
+
+- `DiffDocument.swift` — a `Sendable` value flattening a `GitDiff` into flat
+  text plus per-file and per-line spans (`NSRange`s, kinds, gutter numbers,
+  truncation flags), built **off the main actor**. One `LineSpan` is exactly one
+  TextKit paragraph (embedded paragraph separators are flattened to spaces,
+  1:1), and every `FileSpan` owns at least one paragraph (a mode-only change
+  gets a `No content changes` note), so no two files share a start offset.
+- `DiffTextAssembly.swift` — builds the `NSTextStorage`: one document-wide
+  attribute pass plus overrides for the chrome lines and the reserved header
+  band. Also the **only** writer of attributes afterwards, and `applyHighlight`
+  sets nothing but `.foregroundColor` — a metric-bearing attribute would reflow
+  the document under a reader mid-scroll.
+- `DiffFragmentGeometry.swift` — the **single** reader of TextKit layout:
+  fragment → diff-line mapping, file tops, viewport enumeration. There is no
+  TextKit 1 fallback on purpose (a second backend could drift). Enumeration is
+  proportional to the visible rect, not to the document.
+- `DiffTextView.swift` — `NSTextView` subclass filling each changed row's tint
+  across the full view width in `drawBackground(in:)`.
+- `DiffGutterRuler.swift` — `NSRulerView` subclass drawing the row tint band,
+  the 3 pt accent stripe and the right-aligned line number. Column positions
+  match the old `DiffLineRow` exactly (8 pt number-to-code gap, stripe width).
+- `DiffStickyHeader.swift` — an overlay reproducing `pinnedViews:
+  [.sectionHeaders]`, including the push behaviour. It only **reads** geometry
+  and feeds nothing back into text layout.
+- `DiffTextSurface.swift` — `NSViewRepresentable` owning the scroll view, the
+  explicit TextKit 2 chain, the ruler and the overlay, with a narrow imperative
+  API (`apply(document:restoring:)`, `applyHighlight`, `scroll(toFileID:)`,
+  `currentAnchor()`).
+- `DiffSurfaceView.swift` — SwiftUI, orchestration only: refresh, dedup,
+  progressive highlighting, scroll target, empty states.
+
+**Gained.** Text is **selectable and copyable**, character-level, and a copy
+comes out as clean code: line numbers live in the ruler (not the text) and the
+header band is `paragraphSpacingBefore` (not characters), so neither ends up on
+the pasteboard. Scroll-to-file (`casper diff open <file>`) resolves through
+`ensureLayout(throughFileAt:)` instead of deferring a run-loop turn.
+
+**Removed.** `DiffFileView`, `DiffLineRow`, `DiffFileHeaderBar`,
+`DiffFileMetrics`, the `FileHighlight` identity-equality trick, the
+animation-disabling helper, and `DiffLineStyle.maxWrappedLinesPerRow` (there are
+no rows). No `LazyVStack`, pinned `Section`, `.scrollPosition` binding or
+`.scrollTargetLayout()` remains anywhere in the diff view.
+
+**Unchanged.** Diff computation (`DiffService.computeDiff` and its SIGBUS
+guard), the two FSEvents watchers and `diffRevision`, the byte-identical-diff
+dedup, the `DiffHighlighter` pipeline with its shared `Highlight()` instance and
+`maxHighlightBytes` cap, highlight carry-over for files whose hunks did not
+change, the diff-shape logging, and the three `DiffEmptyState` views.
+
+**Caps.** `DiffLineStyle.maxDisplayLineLength` (2000 chars) kept, with the
+`… (line truncated)` marker; `DiffDocument.maxLinesPerFile` (3000) kept; a new
+document-wide `DiffDocument.maxTotalLines` (20 000) added — display cost no
+longer scales with document length, but building the value and its attribute
+runs still does. `maxWrappedLinesPerRow` (40) is gone.
+
+**Data flow.** The document reaches the surface as a **representable property**
+keyed by a monotonic revision, not through the controller: routing it through
+the controller made the first paint depend on SwiftUI realizing the coordinator
+before `.onAppear`. The controller carries only events (scroll target, a file's
+highlight finishing). Nothing writes SwiftUI state during layout.
+
+**Tests.** `swift test` → 846 passing (2 skipped). `DiffDocumentTests`,
+`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests` and
+`DiffTextSurfaceTests` cover the flattening semantics, the color-only highlight
+rule, the fragment→line mapping, and the drawn chrome — the last via headless
+`cacheDisplay` pixel probes (tint, stripe and number colors read back against
+`DiffLineStyle`'s own values, never literals). None of this was testable in the
+row-based renderer.
+
+**Still to verify.** Live confirmation on an actively-edited worktree with the
+diff panel open — the only setup that has ever exercised the hang this rewrite
+removes. `MainThreadHangWatchdog` stays wired (DEBUG-only) until that lands.
 
 ## Open in Editor — ✅
 

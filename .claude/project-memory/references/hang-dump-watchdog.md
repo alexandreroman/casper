@@ -14,7 +14,11 @@ it: a background timer detects the main thread staying unresponsive past a
 threshold (default 2 s) and runs `/usr/bin/sample` against Casper's own pid, so
 the resulting stack dump shows what the main thread is blocked on. The whole
 file and its wiring sit behind `#if DEBUG`, so the shipped app carries none of
-it; the scaffolding is removed entirely once the hang is root-caused.
+it; the scaffolding is removed entirely once the hang is root-caused **and** the
+fix is confirmed live. The diff view's TextKit 2 renderer is the current
+candidate fix, and its confirmation rests on a live session — an instance left
+open on an actively-edited worktree with the diff panel open — so everything
+here stays wired until that lands.
 
 **Why:** a freeze is not a crash — the process stays alive, so macOS writes **no
 crash report**, and the published dSYM (see [[binary-size-budget]]) covers real
@@ -40,7 +44,12 @@ trade-off.
   run `sample $(pgrep -x casper) 10 -file /tmp/casper-hang.txt`, or the fuller
   `/tmp/casper-hang-dump.sh` recipe (sample + `lldb bt all` + spindump + log).
   This works without root because the release build is ad-hoc signed with **no
-  hardened runtime**.
+  hardened runtime**. The archived diff-hang dumps
+  `~/Library/Logs/Casper/hang-20260730-manual-{A,B}.txt` come from exactly this
+  recipe — `sample $(pgrep -x casper) 3 -file …` against a **release** build,
+  which auto-captures nothing since the watchdog is DEBUG-only. A 3 s sample is
+  enough for a spin: the main thread is busy, not waiting, so every sample lands
+  in the loop.
 - **Auto-captured dumps (dev builds, `make dev`):**
   `~/Library/Logs/Casper/hang-<yyyyMMdd-HHmmss>.txt`. Read the main thread
   (Thread 0) call tree — that is where the block is. A macOS notification

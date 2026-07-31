@@ -27,9 +27,25 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 - **Layout composition** — arbitrary nested splits and tab groups; leaves are
   terminal, browser, or diff surfaces. Consumes the decoded Ghostty split/tab
   actions.
-- **Diff viewer** — a SwiftUI surface backed by libgit2's `git_diff` (structured
-  hunks/lines, working tree vs base/HEAD). Per-file navigation, +/- line coloring
-  via `AttributedString`. Read-only in v1, no external highlighter.
+- **Diff viewer** — a read-only surface backed by libgit2's `git_diff`
+  (structured hunks/lines, working tree vs base/HEAD), rendered as **one TextKit
+  2 text document**. The diff is flattened into flat text plus per-file and
+  per-line spans, and AppKit draws everything on top of it: the row tints in the
+  text view, the accent stripe and line numbers in an `NSRulerView` gutter, the
+  pinned file header as an overlay that reads layout and never feeds back into
+  it. Text is character-selectable and copyable, and a copy yields clean code
+  because the numbers live in the ruler and the header band is paragraph spacing
+  rather than characters. Syntax colors are applied progressively per file
+  (HighlightSwift), **color attributes only**, so a highlight landing mid-scroll
+  cannot change a line height and shift the text under the reader.
+
+  > **Superseded:** the original design — a SwiftUI surface with per-file
+  > navigation, `+`/`-` line coloring via `AttributedString`, and no external
+  > highlighter — no longer holds on either count. The external highlighter
+  > arrived with the Claude Code color restyle
+  > (`plans/diff-view-claude-code-colors.md`); the per-line SwiftUI view tree
+  > was removed because it put the SwiftUI layout graph on the per-diff-line
+  > path, which is exactly what the text document exists to avoid.
 - **Browser** — a `WKWebView` surface (address bar, reload), aimed at previewing a
   `localhost:PORT` app started by the agent. No Chromium.
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
@@ -121,6 +137,13 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   surface kind was later **removed** — the diff view now lives **only** in the
   right inspector panel (`Workspace.inspector`). The rendering above is
   unchanged, just hosted by the inspector instead of a layout leaf.
+
+  > **Superseded:** the per-line rendering described above (a `LazyVStack` of
+  > per-file sections, one SwiftUI row per diff line, pinned `Section` headers)
+  > is replaced by a single TextKit 2 text document, which also adds text
+  > selection and copy. The diff computation, the FSEvents live refresh and the
+  > reading experience are unchanged. See `../status.md` → "Diff renderer —
+  > one TextKit 2 text document" for the as-built pipeline.
 
 ## Next action
 
