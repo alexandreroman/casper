@@ -402,22 +402,24 @@ the controller made the first paint depend on SwiftUI realizing the coordinator
 before `.onAppear`. The controller carries only events (scroll target, a file's
 highlight finishing). Nothing writes SwiftUI state during layout.
 
-**Selection and copy.** The `+`/`-`/space cue is rendering, not text, so the
-reader can neither highlight it nor copy it. `DiffDocument.rangesExcludingCues`
-is the single definition of that (a selection minus each line's cue span);
-`DiffTextView.setSelectedRanges` applies it so a selection becomes one
-discontiguous range per line, each starting at the code, and
-`writeSelection(to:type:)` applies it again on the way to the pasteboard —
-plain text only, since an RTF representation would smuggle the cue back into a
-paste.
-A caret passes through untouched (carving a zero-length range yields nothing)
-and a cue-only selection collapses to a caret. A truncated line's
-`… (line truncated)` marker is deliberately **kept**: it is the only sign the
-copy is a prefix of the real line. ⌘A on a 2000-line document forces no layout
-beyond the viewport — the guard is a test, since thousands of ranges resolving
-their geometry would be the freeze this renderer removes.
+**The `+`/`-` cue lives in the gutter, not in the text.** `DiffGutterRuler` draws
+it in a column of its own between the number and the code, in the code face and
+the row's accent, once per line rather than once per wrapped display row.
+`DiffDocument` emits the source text alone, so `contentRange == range` for every
+line but a truncated one. Three things fall away together: a wrapped line's
+display rows share one leading edge (prefixed to the text, the cue indented only
+the first of them — which is what surfaced this), a selection can no longer
+highlight a rendering artefact, and a copy needs no stripping, so `NSTextView`'s
+own selection and copy behaviour is left completely alone (shift-click and
+shift-arrow extension included). The cue column's width is the code font's `+`
+advance **rounded up**: every other term of `ruleThickness` is a whole number of
+points, and a fractional total leaves the trailing pixel of the column
+half-covered by the row tint — a seam down the gutter's edge, which a pixel probe
+caught as stray ink. A truncated line's `… (line truncated)` marker is the one
+piece of commentary kept inside the text: it is the only sign that a copy of that
+line is a prefix of the real one.
 
-**Tests.** `swift test` → 867 passing (2 skipped). `DiffDocumentTests`,
+**Tests.** `swift test` → 854 passing (2 skipped). `DiffDocumentTests`,
 `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
 `DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
 color-only highlight rule, the fragment→line mapping, what a selection and a

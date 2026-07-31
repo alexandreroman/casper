@@ -2,12 +2,15 @@ import AppKit
 import CasperGit
 
 /// The diff's gutter: per visible row a tint band, a 3 pt accent stripe flush
-/// against the leading edge, and the line number, right-aligned.
+/// against the leading edge, the line number right-aligned, and the `+`/`-` cue
+/// in a narrow column of its own between the number and the code.
 ///
-/// A ruler view rather than a second text column, because the numbers must stay
-/// *outside* the text storage: selecting twenty lines then copies twenty lines of
-/// code and nothing else — no numbers, no gutter padding — which the row-based
-/// renderer could not offer at all.
+/// A ruler view rather than a second text column, because the numbers **and the
+/// cue** must stay *outside* the text storage: selecting twenty lines then copies
+/// twenty lines of code and nothing else — no numbers, no cues, no gutter padding
+/// — which the row-based renderer could not offer at all. Keeping the cue out of
+/// the text is also what lets a wrapped line's display rows share one leading
+/// edge; prepended to the text it indented only the first of them.
 ///
 /// Rows are placed by `DiffFragmentGeometry`, the same reader `DiffTextView` uses
 /// for its tints, so the stripe and the code it belongs to cannot drift apart.
@@ -21,6 +24,30 @@ final class DiffGutterRuler: NSRulerView {
     /// `HStack(spacing: 8)`), and this rewrite has to be visually equivalent to
     /// it, so the number of points is part of the contract rather than taste.
     static let numberToCodeGap: CGFloat = 8
+
+    /// Air between the line number and the cue, so the two read as separate marks
+    /// rather than as one token (`12+`).
+    static let numberToCueGap: CGFloat = 4
+
+    /// The cue column: one glyph of the code face, which is monospaced, so `+` and
+    /// `-` are the same width and the code column's leading edge does not depend
+    /// on a row's kind.
+    ///
+    /// Measured from the font rather than hard-coded, so the column follows
+    /// `cueFont` if that ever changes size.
+    ///
+    /// **Rounded up**, and that is not cosmetic: every other term of
+    /// `ruleThickness` is a whole number of points, and a fractional total leaves
+    /// the ruler's trailing pixel only partly covered by the row tint — a seam
+    /// down the gutter's edge, and a half-transparent pixel that any pixel probe
+    /// over the column reads as stray ink. A whole-point column also keeps the
+    /// code's leading edge on a pixel boundary.
+    static let cueWidth: CGFloat = ("+" as NSString)
+        .size(withAttributes: [.font: cueFont]).width.rounded(.up)
+
+    /// The cue's face: the code's own, so the glyph is the size it was back when
+    /// it was the line's first character.
+    private static let cueFont = DiffTextAssembly.codeFont
 
     /// The document the numbers, tints and stripes come from. Must be the one the
     /// client text view's storage was assembled from, and is swapped together with
@@ -72,8 +99,13 @@ final class DiffGutterRuler: NSRulerView {
     /// plus the gap.
     func reflowWidth() {
         let widestGutter = document?.files.map(\.gutterWidth).max() ?? 0
-        ruleThickness = Self.stripeWidth + widestGutter + codeLeadingGap
+        ruleThickness = Self.stripeWidth + widestGutter + Self.cueColumnWidth + codeLeadingGap
     }
+
+    /// The cue's column, gap included. Part of the ruler's thickness rather than
+    /// of the code column, so the code starts at the same `x` on every row —
+    /// including the wrapped rows of a long line, which carry no cue at all.
+    static let cueColumnWidth: CGFloat = numberToCueGap + cueWidth
 
     /// The share of `numberToCodeGap` the ruler has to reserve itself, past the
     /// number column and before the code column starts.
@@ -158,10 +190,16 @@ final class DiffGutterRuler: NSRulerView {
                 stripe.setFill()
                 NSRect(x: band.minX, y: band.minY, width: Self.stripeWidth, height: band.height).fill()
             }
-            // A wrapped line covers several rows but is one line, so its number is
-            // printed once, on the row that starts it.
-            if row.isLineStart, let number = line.number {
+            // A wrapped line covers several rows but is one line, so its number and
+            // its cue are printed once, on the row that starts it. This is the
+            // whole reason the cue lives here: a wrapped row gets the tint and the
+            // stripe that say "still this line", and no second `+`.
+            guard row.isLineStart else { continue }
+            if let number = line.number {
                 draw(number: number, in: band, kind: kind)
+            }
+            if let cue = DiffLineStyle.cue(for: kind) {
+                draw(cue: cue, in: band, kind: kind)
             }
         }
     }
@@ -207,9 +245,22 @@ final class DiffGutterRuler: NSRulerView {
     private func draw(number: Int, in band: NSRect, kind: GitDiffLine.Kind) {
         let column = NSRect(
             x: band.minX + Self.stripeWidth, y: band.minY,
-            width: max(band.width - Self.stripeWidth - codeLeadingGap, 0),
+            width: max(band.width - Self.stripeWidth - Self.cueColumnWidth - codeLeadingGap, 0),
             height: band.height)
         (String(number) as NSString).draw(in: column, withAttributes: Self.numberAttributes(for: kind))
+    }
+
+    /// Draws one row's `+`/`-` in the cue column: the strip between the number
+    /// column and the code, sharing the number's accent.
+    ///
+    /// Left-aligned in the code face, so the glyph sits against the code column's
+    /// leading edge and every changed row's cue lands on the same `x` — the code
+    /// face being monospaced, `+` and `-` occupy the same advance.
+    private func draw(cue: String, in band: NSRect, kind: GitDiffLine.Kind) {
+        let column = NSRect(
+            x: max(band.maxX - codeLeadingGap - Self.cueWidth, band.minX), y: band.minY,
+            width: Self.cueWidth, height: band.height)
+        (cue as NSString).draw(in: column, withAttributes: Self.cueAttributes(for: kind))
     }
 
     /// The attributes one row's number is drawn with: context rows keep the
@@ -226,6 +277,30 @@ final class DiffGutterRuler: NSRulerView {
         case .context: contextNumberAttributes
         }
     }
+
+    /// The attributes one row's cue is drawn with. Only the two changed kinds
+    /// exist: `DiffLineStyle.cue(for:)` answers `nil` for a context row, so no
+    /// caller can ask for a third.
+    private static func cueAttributes(for kind: GitDiffLine.Kind) -> [NSAttributedString.Key: Any] {
+        kind == .addition ? additionCueAttributes : deletionCueAttributes
+    }
+
+    private static let additionCueAttributes = makeCueAttributes(color: additionAccent)
+    private static let deletionCueAttributes = makeCueAttributes(color: deletionAccent)
+
+    /// The cue keeps the **code** face, at the code's size: it used to be the
+    /// line's first character and reads as the same mark it always did, only in a
+    /// column of its own now.
+    private static func makeCueAttributes(color: NSColor) -> [NSAttributedString.Key: Any] {
+        [.font: cueFont, .foregroundColor: color, .paragraphStyle: leftAlignedNoWrap]
+    }
+
+    private static let leftAlignedNoWrap: NSParagraphStyle = {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .left
+        style.lineBreakMode = .byClipping
+        return style.copy() as! NSParagraphStyle
+    }()
 
     private static let additionNumberAttributes = makeNumberAttributes(color: additionAccent)
     private static let deletionNumberAttributes = makeNumberAttributes(color: deletionAccent)

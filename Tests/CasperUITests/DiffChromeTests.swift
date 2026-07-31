@@ -124,8 +124,17 @@ final class DiffChromeTests: XCTestCase {
         let codeColumn = surface.ruler.ruleThickness + padding
 
         // `DiffLineRow` laid out a 3 pt stripe, then a `gutterWidth`-wide
-        // right-aligned number, then 8 pt, then the code.
-        XCTAssertEqual(codeColumn, DiffGutterRuler.stripeWidth + gutterWidth + DiffGutterRuler.numberToCodeGap)
+        // right-aligned number, then 8 pt, then the code — whose first character
+        // was the `+`/`-` cue. The cue now has a column of its own at exactly that
+        // offset, so the code starts one cue column further right and every one of
+        // a wrapped line's display rows shares its leading edge.
+        XCTAssertEqual(
+            codeColumn,
+            DiffGutterRuler.stripeWidth + gutterWidth + DiffGutterRuler.cueColumnWidth
+                + DiffGutterRuler.numberToCodeGap)
+        // A whole number of points, or the row tint leaves the trailing pixel of
+        // the column half-covered — a seam down the gutter's edge.
+        XCTAssertEqual(surface.ruler.ruleThickness, surface.ruler.ruleThickness.rounded())
         XCTAssertGreaterThanOrEqual(
             surface.ruler.ruleThickness, DiffGutterRuler.stripeWidth + gutterWidth,
             "the column must still hold the widest number in the document")
@@ -139,11 +148,13 @@ final class DiffChromeTests: XCTestCase {
 
         surface.ruler.document = nil
 
-        // Nothing left to number, so the column collapses to its stripe and the gap
-        // the code column starts after.
+        // Nothing left to number, so the column collapses to its stripe, the cue
+        // column and the gap the code column starts after.
         let padding = try XCTUnwrap(surface.textView.textContainer).lineFragmentPadding
-        XCTAssertEqual(surface.ruler.ruleThickness + padding,
-                       DiffGutterRuler.stripeWidth + DiffGutterRuler.numberToCodeGap)
+        XCTAssertEqual(
+            surface.ruler.ruleThickness + padding,
+            DiffGutterRuler.stripeWidth + DiffGutterRuler.cueColumnWidth
+                + DiffGutterRuler.numberToCodeGap)
     }
 
     // MARK: - Drawn chrome
@@ -342,6 +353,38 @@ final class DiffChromeTests: XCTestCase {
                 "row \(row.lineIndex) (\(kind)) drew \(ink.color), expected \(expected)")
         }
         XCTAssertEqual(numbered, 10, "each file's five diff lines print one number each")
+    }
+
+    /// The `+`/`-` is drawn in the gutter's cue column, in its row's accent — and
+    /// a context row's column stays empty, where the cue used to be a space in the
+    /// text.
+    ///
+    /// This is the whole reason the cue moved: in the gutter it cannot indent the
+    /// code, so a wrapped line's display rows share one leading edge, and it
+    /// cannot land inside a selection or a copy.
+    func testChangedRowsDrawTheirCueInTheGutter() throws {
+        let probe = try makeProbe(makeMixedDocument())
+        var cued = 0
+
+        for row in probe.rows where row.isLineStart {
+            let ink = probe.cueInk(in: row)
+            // A context row announces nothing — where the cue used to be a space
+            // in its text — and a hunk header or note has no kind at all.
+            guard let kind = probe.kind(of: row), kind != .context else {
+                XCTAssertLessThan(ink.deviation, 0.02,
+                                  "row \(row.lineIndex) must leave its cue column empty")
+                continue
+            }
+            cued += 1
+            let expected = composite(NSColor(DiffLineStyle.accent(for: kind)),
+                                     over: probe.expectedBackground(of: row))
+
+            XCTAssertGreaterThan(ink.deviation, 0.1, "no cue drawn for row \(row.lineIndex) (\(kind))")
+            XCTAssertLessThan(
+                channelDistance(ink.color, expected), 0.1,
+                "row \(row.lineIndex) (\(kind)) drew \(ink.color), expected \(expected)")
+        }
+        XCTAssertEqual(cued, 6, "each file's two additions and one deletion carry a cue")
     }
 
     /// A wrapped line covers several visual rows but is one line, so its number is
@@ -720,10 +763,27 @@ final class DiffChromeTests: XCTestCase {
         /// number's width, the font's metrics and the right-alignment, none of which
         /// a test should have to predict.
         func numberInk(in row: DiffFragmentGeometry.Fragment) -> (color: NSColor, deviation: CGFloat) {
+            ink(in: row, from: DiffGutterRuler.stripeWidth, to: cueColumnStart)
+        }
+
+        /// The same, over the cue column — the trailing strip of the ruler the
+        /// `+`/`-` is drawn in, past where any digit can reach.
+        func cueInk(in row: DiffFragmentGeometry.Fragment) -> (color: NSColor, deviation: CGFloat) {
+            ink(in: row, from: cueColumnStart, to: ruler.ruleThickness)
+        }
+
+        /// Where the number column ends and the cue column begins.
+        private var cueColumnStart: CGFloat {
+            ruler.ruleThickness - DiffGutterRuler.cueColumnWidth
+        }
+
+        private func ink(
+            in row: DiffFragmentGeometry.Fragment, from minX: CGFloat, to maxX: CGFloat
+        ) -> (color: NSColor, deviation: CGFloat) {
             let background = expectedBackground(of: row)
             var ink = background
             var deviation: CGFloat = 0
-            for x in stride(from: DiffGutterRuler.stripeWidth, to: ruler.ruleThickness, by: 0.5) {
+            for x in stride(from: minX, to: maxX, by: 0.5) {
                 for y in stride(from: top(of: row), to: bottom(of: row), by: 0.5) {
                     let sample = gutterColor(x: x, y: y)
                     let distance = channelDistance(sample, background)
