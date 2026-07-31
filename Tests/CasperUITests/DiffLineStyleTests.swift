@@ -4,10 +4,12 @@ import XCTest
 @testable import CasperUI
 
 final class DiffLineStyleTests: XCTestCase {
-    func testPrefix() {
-        XCTAssertEqual(DiffLineStyle.prefix(for: .addition), "+")
-        XCTAssertEqual(DiffLineStyle.prefix(for: .deletion), "-")
-        XCTAssertEqual(DiffLineStyle.prefix(for: .context), " ")
+    /// `nil` for a context line, not a space: the cue is drawn in the gutter, and
+    /// a space would be a glyph painted for a row that has nothing to announce.
+    func testCue() {
+        XCTAssertEqual(DiffLineStyle.cue(for: .addition), "+")
+        XCTAssertEqual(DiffLineStyle.cue(for: .deletion), "-")
+        XCTAssertNil(DiffLineStyle.cue(for: .context))
     }
 
     func testTintsMatchClaudeCodeReference() {

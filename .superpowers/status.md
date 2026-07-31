@@ -402,10 +402,28 @@ the controller made the first paint depend on SwiftUI realizing the coordinator
 before `.onAppear`. The controller carries only events (scroll target, a file's
 highlight finishing). Nothing writes SwiftUI state during layout.
 
-**Tests.** `swift test` → 848 passing (2 skipped). `DiffDocumentTests`,
-`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests` and
-`DiffTextSurfaceTests` cover the flattening semantics, the color-only highlight
-rule, the fragment→line mapping, and the drawn chrome — the last via headless
+**The `+`/`-` cue lives in the gutter, not in the text.** `DiffGutterRuler` draws
+it in a column of its own between the number and the code, in the code face and
+the row's accent, once per line rather than once per wrapped display row.
+`DiffDocument` emits the source text alone, so `contentRange == range` for every
+line but a truncated one. Three things fall away together: a wrapped line's
+display rows share one leading edge (prefixed to the text, the cue indented only
+the first of them — which is what surfaced this), a selection can no longer
+highlight a rendering artefact, and a copy needs no stripping, so `NSTextView`'s
+own selection and copy behaviour is left completely alone (shift-click and
+shift-arrow extension included). The cue column's width is the code font's `+`
+advance **rounded up**: every other term of `ruleThickness` is a whole number of
+points, and a fractional total leaves the trailing pixel of the column
+half-covered by the row tint — a seam down the gutter's edge, which a pixel probe
+caught as stray ink. A truncated line's `… (line truncated)` marker is the one
+piece of commentary kept inside the text: it is the only sign that a copy of that
+line is a prefix of the real one.
+
+**Tests.** `swift test` → 854 passing (2 skipped). `DiffDocumentTests`,
+`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
+`DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
+color-only highlight rule, the fragment→line mapping, what a selection and a
+copy carry, and the drawn chrome — the last via headless
 `cacheDisplay` pixel probes (tint, stripe and number colors read back against
 `DiffLineStyle`'s own values, never literals). None of this was testable in the
 row-based renderer.

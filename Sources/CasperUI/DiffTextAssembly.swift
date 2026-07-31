@@ -79,32 +79,21 @@ enum DiffTextAssembly {
             }
 
             for line in fileLines {
-                guard let kind = line.diffKind else {
+                guard line.diffKind != nil else {
                     // A hunk header or a note: chrome, in the smaller face and
                     // the dimmer color.
                     storage.addAttributes(chromeAttributes(for: line.kind), range: paragraphRange(of: line))
                     continue
                 }
 
-                if let accent = accentColor(for: kind) {
-                    // The `+`/`-` cue is tinted like the stripe and the gutter
-                    // number, and sits outside `contentRange` so a syntax highlight
-                    // never overwrites it.
-                    storage.addAttribute(
-                        .foregroundColor, value: accent,
-                        range: NSRange(
-                            location: line.range.location,
-                            length: line.contentRange.location - line.range.location))
-                }
-
-                if line.truncated {
-                    // The `… (line truncated)` marker is our own commentary, not
-                    // part of the source line: it reads as chrome.
-                    let markerStart = NSMaxRange(line.contentRange)
-                    storage.addAttribute(
-                        .foregroundColor, value: NSColor.secondaryLabelColor,
-                        range: NSRange(location: markerStart, length: NSMaxRange(line.range) - markerStart))
-                }
+                // The `… (line truncated)` marker is our own commentary, not part
+                // of the source line: it reads as chrome. A code line carries no
+                // other override — its `+`/`-` cue is the gutter's business.
+                guard line.truncated else { continue }
+                let markerStart = NSMaxRange(line.contentRange)
+                storage.addAttribute(
+                    .foregroundColor, value: NSColor.secondaryLabelColor,
+                    range: NSRange(location: markerStart, length: NSMaxRange(line.range) - markerStart))
             }
         }
         storage.endEditing()
@@ -227,22 +216,6 @@ enum DiffTextAssembly {
         style.paragraphSpacingBefore = headerBandHeight + interFileGap
         return style.copy() as! NSParagraphStyle
     }()
-
-    /// `NSColor(_:)` wraps a SwiftUI `Color` in a freshly allocated dynamic
-    /// catalog color, so the accents are converted once instead of per line.
-    private static let insertionAccent = NSColor(DiffLineStyle.insertionTint)
-    private static let deletionAccent = NSColor(DiffLineStyle.deletionTint)
-
-    /// The accent for a line's `+`/`-` cue, or `nil` for a context line — whose
-    /// prefix is a space and whose accent is `Color.clear`, so there is nothing
-    /// to paint.
-    private static func accentColor(for kind: GitDiffLine.Kind) -> NSColor? {
-        switch kind {
-        case .addition: insertionAccent
-        case .deletion: deletionAccent
-        case .context: nil
-        }
-    }
 
     /// The line spans belonging to one file.
     private static func lines(

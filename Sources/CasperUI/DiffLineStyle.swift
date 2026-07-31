@@ -37,11 +37,18 @@ enum DiffLineStyle {
         return (String(content[content.startIndex..<cap]), true)
     }
 
-    static func prefix(for kind: GitDiffLine.Kind) -> String {
+    /// The `+`/`-` cue for a changed line, or `nil` for a context line — which
+    /// has nothing to announce.
+    ///
+    /// Drawn by `DiffGutterRuler` in a column of its own, *not* prepended to the
+    /// line's text: a cue in the text indents a wrapped line's first display row
+    /// by one character while its later rows start at the container's edge, and
+    /// puts a rendering artefact inside every selection and copy.
+    static func cue(for kind: GitDiffLine.Kind) -> String? {
         switch kind {
         case .addition: return "+"
         case .deletion: return "-"
-        case .context: return " "
+        case .context: return nil
         }
     }
 

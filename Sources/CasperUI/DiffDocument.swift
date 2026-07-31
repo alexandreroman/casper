@@ -62,9 +62,11 @@ struct DiffDocument: Sendable, Equatable {
         let number: Int?
         /// The paragraph's text, without its trailing `"\n"`.
         let range: NSRange
-        /// The source line's own text: `range` minus the leading `+`/`-`/space
-        /// cue and minus the truncation marker. A syntax highlight may only
-        /// ever be applied here.
+        /// The source line's own text: `range` minus the truncation marker. A
+        /// syntax highlight may only ever be applied here.
+        ///
+        /// Equal to `range` for every line that carries no marker, the `+`/`-`
+        /// cue being drawn in the gutter rather than kept in the text.
         let contentRange: NSRange
         let fileIndex: Int
         let truncated: Bool
@@ -111,12 +113,13 @@ struct DiffDocument: Sendable, Equatable {
         var hiddenLineCount = 0
         var remainingTotal = Self.maxTotalLines
 
-        /// Appends one paragraph and records its span. `prefixLength` and
-        /// `suffixLength` are the UTF-16 lengths carved out of `body` that
-        /// `contentRange` must exclude.
+        /// Appends one paragraph and records its span. `suffixLength` is the
+        /// UTF-16 length of the trailing commentary carved out of `body` that
+        /// `contentRange` must exclude — the truncation marker, and nothing else
+        /// so far.
         func append(
             _ body: String, kind: LineSpan.Kind, number: Int? = nil, fileIndex: Int,
-            prefixLength: Int = 0, suffixLength: Int = 0, truncated: Bool = false
+            suffixLength: Int = 0, truncated: Bool = false
         ) {
             let paragraph = Self.flatteningSeparators(body)
             let length = paragraph.utf16.count
@@ -125,9 +128,7 @@ struct DiffDocument: Sendable, Equatable {
             lines.append(LineSpan(
                 kind: kind, number: number,
                 range: NSRange(location: offset, length: length),
-                contentRange: NSRange(
-                    location: offset + prefixLength,
-                    length: length - prefixLength - suffixLength),
+                contentRange: NSRange(location: offset, length: length - suffixLength),
                 fileIndex: fileIndex, truncated: truncated))
             offset += length + 1  // + the paragraph terminator
         }
@@ -159,13 +160,16 @@ struct DiffDocument: Sendable, Equatable {
                         // emoji has `maxDisplayLineLength` clusters and a longer
                         // range. Nothing here requires them to be equal.
                         let display = DiffLineStyle.truncatedForDisplay(line.content)
-                        let prefix = DiffLineStyle.prefix(for: line.kind)
                         let marker = display.truncated ? Self.truncationMarker : ""
+                        // No `+`/`-` cue in the text: it is drawn in the gutter, by
+                        // `DiffGutterRuler`. Keeping it here would indent a line's
+                        // first display row by one character while its wrapped rows
+                        // started at the container's edge, and would put a
+                        // rendering artefact inside every selection and copy.
                         append(
-                            prefix + display.text + marker,
+                            display.text + marker,
                             kind: LineSpan.Kind(line.kind),
                             number: DiffLineStyle.lineNumber(for: line), fileIndex: fileIndex,
-                            prefixLength: prefix.utf16.count,
                             suffixLength: marker.utf16.count, truncated: display.truncated)
                     }
                     hiddenInFile += hunk.lines.count - emitted

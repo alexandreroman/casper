@@ -57,13 +57,15 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertNil(document.lines[0].number)
     }
 
-    func testDiffLineCarriesItsPrefixOutsideTheContentRange() {
+    /// A diff line is its source text and nothing else: the `+`/`-` cue is drawn
+    /// in the gutter, so it neither prefixes the text nor shifts `contentRange`.
+    func testDiffLineIsItsSourceTextWithNoCue() {
         let document = DiffDocument(diff: GitDiff(files: [
             file([hunk([line(.addition, "let x = 1", new: 7)])]),
         ]))
 
         let added = document.lines[1]
-        XCTAssertEqual(text(document, added.range), "+let x = 1")
+        XCTAssertEqual(text(document, added.range), "let x = 1")
         XCTAssertEqual(text(document, added.contentRange), "let x = 1")
         XCTAssertEqual(added.number, 7)
         XCTAssertFalse(added.truncated)
@@ -196,19 +198,19 @@ final class DiffDocumentTests: XCTestCase {
     /// lone trailing `\r` and U+2028 all reach the document as content. TextKit
     /// treats each of them as a paragraph break, which would split one diff line
     /// across several layout fragments — a doubled gutter number and a tinted row
-    /// with no `+`/`-` cue.
+    /// whose gutter number is printed once per fragment instead of once per line.
     func testSeparatorsInsideContentBecomeSpaces() {
         let content = "first\rsecond\u{2028}third\r"
         let document = DiffDocument(diff: GitDiff(files: [
             file([hunk(header: "@@ -1,1 +1,1 @@", [line(.addition, content, new: 1)])]),
         ]))
 
-        XCTAssertEqual(document.text, "@@ -1,1 +1,1 @@\n+first second third \n")
+        XCTAssertEqual(document.text, "@@ -1,1 +1,1 @@\nfirst second third \n")
         XCTAssertEqual(document.lines.count, 2)
         let added = document.lines[1]
         // The substitution is 1:1 in UTF-16 units, so the recorded lengths hold
         // without recomputation and a highlight still matches the content range.
-        XCTAssertEqual(added.range.length, "+".utf16.count + content.utf16.count)
+        XCTAssertEqual(added.range.length, content.utf16.count)
         XCTAssertEqual(text(document, added.contentRange), "first second third ")
         for (current, next) in zip(document.lines, document.lines.dropFirst()) {
             XCTAssertEqual(NSMaxRange(current.range) + 1, next.range.location)
@@ -223,8 +225,8 @@ final class DiffDocumentTests: XCTestCase {
             file([hunk(header: "@@ -1,1 +1,1 @@", [line(.addition, "a\r\nb", new: 1)])]),
         ]))
 
-        XCTAssertEqual(document.text, "@@ -1,1 +1,1 @@\n+a  b\n")
-        XCTAssertEqual(document.lines[1].range.length, "+a  b".utf16.count)
+        XCTAssertEqual(document.text, "@@ -1,1 +1,1 @@\na  b\n")
+        XCTAssertEqual(document.lines[1].range.length, "a  b".utf16.count)
     }
 
     /// Ranges are UTF-16 units and the content is arbitrary source text, so a
@@ -237,7 +239,7 @@ final class DiffDocumentTests: XCTestCase {
 
         let added = document.lines[1]
         XCTAssertEqual(text(document, added.contentRange), content)
-        XCTAssertEqual(added.range.length, "+".utf16.count + content.utf16.count)
+        XCTAssertEqual(added.range.length, content.utf16.count)
     }
 
     // MARK: - Budgets

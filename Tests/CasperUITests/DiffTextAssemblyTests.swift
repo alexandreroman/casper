@@ -50,16 +50,22 @@ final class DiffTextAssemblyTests: XCTestCase {
         XCTAssertEqual(storage.string, doc.text)
     }
 
-    func testPrefixCarriesTheAccentAndContentTheNeutralColor() {
+    /// A code line is one uniform color from its first character: the accented
+    /// `+`/`-` is `DiffGutterRuler`'s to draw, so the assembly writes no accent
+    /// anywhere in the text and cannot leave a tinted character in a copy.
+    func testACodeLineIsEntirelyTheNeutralColor() {
         let doc = document([GitDiffLine(kind: .addition, content: "let x = 1",
                                         oldLineNumber: nil, newLineNumber: 1)])
         let storage = DiffTextAssembly.makeTextStorage(for: doc)
         let span = doc.lines[1]
 
-        XCTAssertEqual(attribute(.foregroundColor, at: span.range.location, in: storage) as? NSColor,
-                       NSColor(DiffLineStyle.accent(for: .addition)))
-        XCTAssertEqual(attribute(.foregroundColor, at: span.contentRange.location, in: storage) as? NSColor,
-                       NSColor.labelColor)
+        XCTAssertEqual(span.contentRange.location, span.range.location)
+        for offset in [span.range.location, NSMaxRange(span.range) - 1] {
+            XCTAssertEqual(attribute(.foregroundColor, at: offset, in: storage) as? NSColor,
+                           NSColor.labelColor, "offset \(offset)")
+        }
+        XCTAssertNotEqual(attribute(.foregroundColor, at: span.range.location, in: storage) as? NSColor,
+                          NSColor(DiffLineStyle.accent(for: .addition)))
     }
 
     func testCodeLinesCarryTheCodeFont() {
@@ -201,11 +207,12 @@ final class DiffTextAssemblyTests: XCTestCase {
             forFileAt: 0, in: storage, document: doc)
 
         let span = doc.lines[1]
+        // A code line's content is the whole line, so the highlight reaches its
+        // first character too — there is no cue in front of it to preserve.
         XCTAssertEqual(attribute(.foregroundColor, at: span.contentRange.location, in: storage) as? NSColor,
                        NSColor.systemPink)
-        // The prefix keeps its accent: the diff cue must survive highlighting.
         XCTAssertEqual(attribute(.foregroundColor, at: span.range.location, in: storage) as? NSColor,
-                       NSColor(DiffLineStyle.accent(for: .addition)))
+                       NSColor.systemPink)
     }
 
     /// A SwiftUI-scope color is not what the highlighter emits, but reading that
