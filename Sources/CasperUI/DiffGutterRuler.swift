@@ -17,8 +17,8 @@ final class DiffGutterRuler: NSRulerView {
     static let stripeWidth: CGFloat = 3
 
     /// Distance from the line number's right edge to where the code's glyphs
-    /// start. `DiffLineRow` spaced its two columns by exactly this
-    /// (`HStack(spacing: 8)`), and this rewrite has to be visually equivalent to
+    /// start. The row-based renderer spaced its two columns by exactly this (an
+    /// `HStack(spacing: 8)`), and this rewrite has to be visually equivalent to
     /// it, so the number of points is part of the contract rather than taste.
     static let numberToCodeGap: CGFloat = 8
 
@@ -82,7 +82,7 @@ final class DiffGutterRuler: NSRulerView {
     /// own leading edge by `lineFragmentPadding` (5 pt by default), that edge is
     /// where the ruler ends, and so that inset falls *inside* the gap. Reserving
     /// the full 8 pt here would put the code a padding's width further right than
-    /// `DiffLineRow` had it — a small drift, but visual equivalence is the one
+    /// the row-based renderer had it — a small drift, but visual equivalence is the one
     /// hard requirement of this rewrite. Read off the container rather than
     /// assumed, so changing the padding keeps the columns where they are.
     private var codeLeadingGap: CGFloat {

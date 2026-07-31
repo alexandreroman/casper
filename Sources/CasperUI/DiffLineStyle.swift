@@ -16,22 +16,13 @@ enum DiffLineStyle {
     /// concrete color per line kind without erasing to `AnyShapeStyle`.
     static let contextNumberTint = Color(nsColor: .tertiaryLabelColor)
 
-    /// Caps a single diff row's width in characters, complementing
-    /// `DiffFileView.maxRenderedLines` (which caps the row *count*). Without it,
+    /// Caps a single diff line's length in characters, complementing
+    /// `DiffDocument.maxLinesPerFile` (which caps the line *count*). Without it,
     /// a multi-megabyte single line — a minified JS/CSS bundle, a one-line
     /// lockfile, or an inlined base64 blob — makes TextKit line-wrapping run on
     /// the main thread and freezes the app. Real source lines are far shorter
     /// (the 120-column convention), so this only ever trims generated content.
     static let maxDisplayLineLength = 2000
-
-    /// Caps how many wrapped visual lines a single diff row renders — the vertical
-    /// analog of `maxDisplayLineLength`. Without it, a long-but-under-cap line in a
-    /// narrow diff panel wraps into dozens of TextKit line fragments; across many
-    /// realized rows that feeds an unbounded StackLayout ⇄ _FlexFrameLayout ⇄
-    /// StyledText layout recursion that hangs the main thread. Real source lines
-    /// (the 120-column convention) wrap to only a handful of visual lines, so this
-    /// only ever bites generated/pathological content.
-    static let maxWrappedLinesPerRow = 40
 
     /// Caps `content` to `maxDisplayLineLength` characters for display. Returns
     /// the original string and `false` when it fits; otherwise the leading

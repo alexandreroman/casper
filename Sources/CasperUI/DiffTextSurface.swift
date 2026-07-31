@@ -26,6 +26,27 @@ final class DiffSurfaceController {
     weak var coordinator: DiffTextSurface.Coordinator?
 }
 
+/// One revision of the diff, everything needed to paint it from scratch.
+///
+/// This travels into `DiffTextSurface` as a **property**, not through
+/// `DiffSurfaceController`: the coordinator only exists once SwiftUI realizes
+/// the representable, so a document produced before that has nothing to push to.
+/// As a property it cannot be missed — SwiftUI calls `updateNSView` on
+/// realization and on every update after it — which makes the first paint
+/// independent of when `.onAppear` happens to run.
+struct DiffRendering {
+    /// Bumped once per document swap, and the only thing the surface compares.
+    /// `updateNSView` runs on every SwiftUI update while `DiffDocument` holds the
+    /// entire diff text, so comparing the documents themselves would walk the
+    /// whole diff for nothing.
+    let revision: Int
+    let document: DiffDocument
+    /// Syntax highlights carried over from the previous diff, painted right after
+    /// the swap: `DiffTextAssembly` builds the fresh storage from base attributes
+    /// only, and the files these belong to are deliberately not re-highlighted.
+    let highlights: [String: DiffFileHighlight]
+}
+
 /// The diff's rendering surface: a scroll view over one TextKit 2 text view, with
 /// the gutter ruler beside it and the pinned file header above it.
 ///
@@ -36,6 +57,9 @@ final class DiffSurfaceController {
 /// what the row-based renderer hung on.
 struct DiffTextSurface: NSViewRepresentable {
     let controller: DiffSurfaceController
+    /// What to render. One-way, SwiftUI to AppKit — no state is written back
+    /// during layout, which is the feedback path this renderer exists to remove.
+    let rendering: DiffRendering
 
     func makeCoordinator() -> Coordinator {
         let coordinator = Coordinator()
@@ -48,10 +72,10 @@ struct DiffTextSurface: NSViewRepresentable {
     }
 
     func updateNSView(_ containerView: DiffSurfaceContainerView, context: Context) {
-        // Nothing to push: the document, the scroll position and the highlights all
-        // arrive through the controller. Re-linking is all this does, so a
-        // `DiffSurfaceView` handed a fresh controller still reaches its surface.
+        // Re-linked so a `DiffSurfaceView` handed a fresh controller still reaches
+        // its surface for the scroll targets and highlights that arrive that way.
         controller.coordinator = context.coordinator
+        context.coordinator.render(rendering)
     }
 
     /// Owns the AppKit chain and exposes the narrow imperative API
@@ -76,6 +100,11 @@ struct DiffTextSurface: NSViewRepresentable {
         /// The document currently in the text storage — the one every span the
         /// chrome draws from belongs to.
         private(set) var document: DiffDocument?
+
+        /// `DiffRendering.revision` of the document in the text storage; `0`
+        /// before the first one lands. Nothing else may render a document, or the
+        /// surface would disagree with what this says it is showing.
+        private(set) var appliedRevision = 0
 
         /// The single reader of TextKit layout, rebuilt per call: it is a value over
         /// the layout manager and the current document, so holding one would only
@@ -145,6 +174,10 @@ struct DiffTextSurface: NSViewRepresentable {
 
             stickyHeader = DiffStickyHeader(frame: .zero)
             containerView = DiffSurfaceContainerView(scrollView: scrollView, stickyHeader: stickyHeader)
+            // How many bands the viewport shows depends on its height, so a resize
+            // — including the very first one, which lands after SwiftUI has already
+            // pushed a document in — has to re-resolve the bars.
+            containerView.viewportDidChange = { [weak self] in self?.resolveBarsOverTheViewport() }
 
             let clipView = scrollView.contentView
             clipView.postsBoundsChangedNotifications = true
@@ -162,6 +195,24 @@ struct DiffTextSurface: NSViewRepresentable {
         deinit {
             if let boundsObserver {
                 NotificationCenter.default.removeObserver(boundsObserver)
+            }
+        }
+
+        /// Renders one revision of the diff, at most once.
+        ///
+        /// SwiftUI calls this on every update of the enclosing view, so an
+        /// already-rendered revision has to be a cheap no-op: rebuilding the text
+        /// storage for a document that is already on screen is pure waste, and it
+        /// would drop the reader's selection along the way.
+        func render(_ rendering: DiffRendering) {
+            guard rendering.revision != appliedRevision else { return }
+            appliedRevision = rendering.revision
+            // The anchor is read here, immediately before the swap: applying
+            // rewrites the whole text storage, so where the reader is has to come
+            // off the live surface first.
+            apply(document: rendering.document, restoring: currentAnchor())
+            for (fileID, highlight) in rendering.highlights {
+                applyHighlight(highlight, forFileID: fileID)
             }
         }
 
@@ -184,10 +235,18 @@ struct DiffTextSurface: NSViewRepresentable {
             scrollView.tile()
 
             restore(anchor)
-            // The overlay only ever reads geometry TextKit already holds — its own
-            // path may force none — and no draw has happened since the storage was
-            // swapped, so the viewport is laid out here, once per refresh, for the
-            // overlay to find the bands it shows.
+            resolveBarsOverTheViewport()
+        }
+
+        /// Lays the viewport out and re-resolves the pinned bars over it.
+        ///
+        /// The overlay only ever reads geometry TextKit already holds — its own
+        /// path may force none — so it needs the viewport laid out first. Both of
+        /// the things that invalidate that are here: a document swap, after which
+        /// no draw has happened yet, and a viewport resize, which can arrive after
+        /// the swap because SwiftUI pushes the document in `updateNSView` and sizes
+        /// the view afterwards.
+        private func resolveBarsOverTheViewport() {
             geometry?.ensureLayout(in: visibleRectInContainer)
             updateStickyHeader()
         }
@@ -205,17 +264,22 @@ struct DiffTextSurface: NSViewRepresentable {
                 highlight, forFileAt: fileIndex, in: storage, document: document)
         }
 
-        /// Scrolls the file's header band to the viewport's top edge.
+        /// Scrolls the file's header band to the viewport's top edge, reporting
+        /// whether it could. It cannot when the rendered document doesn't hold
+        /// that file — a stale target, or one matched against a diff whose
+        /// document is still one SwiftUI update away from the surface.
         ///
         /// The target is usually far below what TextKit has laid out, which
         /// `ensureLayout(throughFileAt:)` settles outright — where the row-based
         /// renderer deferred a run-loop turn and hoped the row existed by then.
-        func scroll(toFileID fileID: String) {
+        @discardableResult
+        func scroll(toFileID fileID: String) -> Bool {
             guard let document, let geometry, let fileIndex = document.fileIndex(withID: fileID)
-            else { return }
+            else { return false }
             geometry.ensureLayout(throughFileAt: fileIndex)
-            guard let top = geometry.top(ofFileAt: fileIndex) else { return }
+            guard let top = geometry.top(ofFileAt: fileIndex) else { return false }
             scroll(toContainerY: top)
+            return true
         }
 
         /// Where the reader is now, for a later `apply(document:restoring:)` to
@@ -304,6 +368,15 @@ struct DiffTextSurface: NSViewRepresentable {
 /// gutter's thickness changes — and the overlay's whole contract is to constrain
 /// nothing.
 final class DiffSurfaceContainerView: NSView {
+    /// Called once the viewport has been re-tiled, for the owner to re-resolve
+    /// whatever it derived from the viewport's previous size.
+    ///
+    /// The pinned bars are such a thing, and a document can arrive before this
+    /// view has ever been sized — SwiftUI pushes it in `updateNSView`, which runs
+    /// before the frame it hands down. Without this the bars would stay resolved
+    /// against a zero-height viewport until the reader's first scroll.
+    var viewportDidChange: (@MainActor () -> Void)?
+
     private let scrollView: NSScrollView
     private let stickyHeader: DiffStickyHeader
 
@@ -340,5 +413,6 @@ final class DiffSurfaceContainerView: NSView {
         // the top edge. Covering the viewport is safe precisely because the overlay
         // is inert — it hit-tests through to the text and constrains no layout.
         stickyHeader.frame = viewport
+        viewportDidChange?()
     }
 }

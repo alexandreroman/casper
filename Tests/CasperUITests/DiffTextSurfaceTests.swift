@@ -28,22 +28,95 @@ final class DiffTextSurfaceTests: XCTestCase {
         return DiffDocument(diff: GitDiff(files: files))
     }
 
-    /// A surface hosted at a realistic panel size, laid out once.
-    ///
-    /// Pass `layingOutAfterApply: false` to stop before the layout pass that
-    /// follows the document swap, leaving everything past the viewport cold — what
-    /// a test measuring how much layout a call *forces* needs.
+    /// A surface hosted at a realistic panel size, laid out once, taking its
+    /// document the way `DiffSurfaceView` hands it over: as a property SwiftUI
+    /// pushes when it realizes the representable. No imperative call is involved.
     private func makeHostedSurface(
-        _ document: DiffDocument, layingOutAfterApply: Bool = true
+        _ document: DiffDocument, highlights: [String: DiffFileHighlight] = [:]
     ) -> (controller: DiffSurfaceController, host: NSView) {
         let controller = DiffSurfaceController()
         let host = NSHostingView(
-            rootView: DiffTextSurface(controller: controller).frame(width: 480, height: 600))
+            rootView: DiffTextSurface(
+                controller: controller,
+                rendering: DiffRendering(revision: 1, document: document, highlights: highlights))
+                .frame(width: 480, height: 600))
         host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
         host.layoutSubtreeIfNeeded()
-        controller.coordinator?.apply(document: document, restoring: nil)
-        if layingOutAfterApply { host.layoutSubtreeIfNeeded() }
         return (controller, host)
+    }
+
+    /// The scenario the whole property-based data flow exists for: the document is
+    /// produced **before** the surface is realized, which is what every first load
+    /// does — `DiffSurfaceView`'s body shows an empty state until the refresh
+    /// finishes, so the representable only appears once a document already exists.
+    ///
+    /// Realizing the surface must therefore be enough on its own. Nothing here
+    /// calls the coordinator, and nothing here relies on `.onAppear` running after
+    /// `makeCoordinator()` — an ordering SwiftUI does not document.
+    func testRealizingTheSurfaceRendersADocumentThatAlreadyExists() throws {
+        let document = makeDocument(fileCount: 3)
+        let controller = DiffSurfaceController()
+        let host = NSHostingView(
+            rootView: DiffTextSurface(
+                controller: controller,
+                rendering: DiffRendering(revision: 1, document: document, highlights: [:]))
+                .frame(width: 480, height: 600))
+        host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
+
+        host.layoutSubtreeIfNeeded()
+
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        XCTAssertEqual(coordinator.textView.string, document.text)
+        XCTAssertEqual(coordinator.appliedRevision, 1)
+    }
+
+    /// A refresh reaches the surface the same way, and the reader keeps their
+    /// place across it: the swap reads the anchor off the live surface itself, so
+    /// no caller has to remember to.
+    func testAnUpdateSwapsTheDocumentAndKeepsTheReadersPlace() throws {
+        let controller = DiffSurfaceController()
+        let host = NSHostingView(
+            rootView: DiffTextSurface(
+                controller: controller,
+                rendering: DiffRendering(revision: 1, document: makeDocument(fileCount: 4, linesPerFile: 40),
+                                         highlights: [:]))
+                .frame(width: 480, height: 600))
+        host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
+        host.layoutSubtreeIfNeeded()
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        coordinator.scroll(toFileID: "f2.swift")
+
+        let refreshed = makeDocument(fileCount: 4, linesPerFile: 41)
+        host.rootView = DiffTextSurface(
+            controller: controller,
+            rendering: DiffRendering(revision: 2, document: refreshed, highlights: [:]))
+            .frame(width: 480, height: 600)
+        host.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(coordinator.appliedRevision, 2)
+        XCTAssertEqual(coordinator.textView.string, refreshed.text)
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f2.swift")
+    }
+
+    /// Highlights carried over from the previous diff have to be repainted after a
+    /// swap: `DiffTextAssembly` builds the fresh storage from base attributes only,
+    /// and the files they belong to are deliberately not re-highlighted.
+    func testCarriedHighlightsArePaintedOntoTheFreshStorage() throws {
+        let document = makeDocument(fileCount: 1, linesPerFile: 3)
+        let carried = (1...3).map { index -> AttributedString in
+            var line = AttributedString("line \(index)")
+            line.foregroundColor = .purple
+            return line
+        }
+
+        let (controller, _) = makeHostedSurface(
+            document, highlights: ["f0.swift": DiffFileHighlight(new: carried, old: nil)])
+
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        let span = document.lines[1]
+        let color = coordinator.textView.textStorage?
+            .attribute(.foregroundColor, at: span.contentRange.location, effectiveRange: nil)
+        XCTAssertEqual(color as? NSColor, NSColor(Color.purple))
     }
 
     func testSurfaceComposesAndTakesTheDocument() throws {
@@ -99,7 +172,7 @@ final class DiffTextSurfaceTests: XCTestCase {
         let (controller, _) = makeHostedSurface(document)
         let coordinator = try XCTUnwrap(controller.coordinator)
 
-        coordinator.scroll(toFileID: "f3.swift")
+        XCTAssertTrue(coordinator.scroll(toFileID: "f3.swift"))
 
         XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f3.swift")
         XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
@@ -152,12 +225,15 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(color as? NSColor, NSColor(Color.purple))
     }
 
+    /// An unknown file is reported rather than mistaken for a scroll that landed:
+    /// `DiffSurfaceView` keys "apply this target later" off exactly that, so a
+    /// target naming a file only the next diff has isn't swallowed.
     func testUnknownFileIDsAreIgnored() throws {
         let (controller, _) = makeHostedSurface(makeDocument(fileCount: 1))
         let coordinator = try XCTUnwrap(controller.coordinator)
         let before = coordinator.clipView.bounds.origin.y
 
-        coordinator.scroll(toFileID: "nope.swift")
+        XCTAssertFalse(coordinator.scroll(toFileID: "nope.swift"))
         coordinator.applyHighlight(DiffFileHighlight(new: nil, old: nil), forFileID: "nope.swift")
 
         XCTAssertEqual(coordinator.clipView.bounds.origin.y, before, accuracy: 0.5)
@@ -297,9 +373,11 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// document's tail stays untouched — a wall-clock budget would pin this machine
     /// instead.
     func testResolvingTheBarsLaysOutNothingBeyondTheViewport() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 1500)
-        let (controller, _) = makeHostedSurface(document, layingOutAfterApply: false)
+        // Hosted on a trivial document and then swapped, with no layout pass after
+        // the swap: exactly where a refresh leaves the surface.
+        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 1, linesPerFile: 1))
         let coordinator = try XCTUnwrap(controller.coordinator)
+        coordinator.apply(document: makeDocument(fileCount: 2, linesPerFile: 1500), restoring: nil)
         let layoutManager = try XCTUnwrap(coordinator.textView.textLayoutManager)
         let viewportHeight = coordinator.clipView.bounds.height
         // Enough for the viewport and for TextKit overshooting it by a row or two,

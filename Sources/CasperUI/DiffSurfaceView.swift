@@ -2,137 +2,75 @@ import CasperCore
 import CasperGit
 import SwiftUI
 
-/// Runs `body` with implicit animations disabled (diff-view refresh-hang
-/// incident). Every state change this view publishes re-lays out the
-/// pinned-header `LazyVStack`, and an ANIMATED subview placement is exactly the
-/// non-converging `LazyStack.place` ⇄ `_FlexFrameLayout.sizeThatFits` recursion
-/// the hang spindump was stuck in — so no refresh, highlight publication, or
-/// programmatic scroll here may animate that relayout.
-private func withoutAnimation(_ body: () -> Void) {
-    var transaction = Transaction()
-    transaction.disablesAnimations = true
-    withTransaction(transaction, body)
-}
-
-/// Highlighted lines for one diff file, indexed by 1-based source line number.
-/// `new` covers the working-tree side (additions + context); `old` covers the
-/// HEAD side (deletions). Either may be nil when that side can't be highlighted.
+/// Read-only diff surface: the workspace's working tree vs HEAD, rendered as a
+/// single TextKit document by `DiffTextSurface`.
 ///
-/// A reference type with identity equality: publishing one file's highlight
-/// swaps in a new instance for that file only, so SwiftUI's `.equatable()`
-/// comparison stays O(1) (an `===` check) instead of deep-comparing the
-/// attributed-string arrays of every realized file on every per-file publish.
-private final class FileHighlight: Equatable {
-    let new: [AttributedString]?
-    let old: [AttributedString]?
-
-    init(new: [AttributedString]?, old: [AttributedString]?) {
-        self.new = new
-        self.old = old
-    }
-
-    static func == (lhs: FileHighlight, rhs: FileHighlight) -> Bool { lhs === rhs }
-}
-
-/// Per-file metrics precomputed once when the diff changes, so `body` never
-/// walks a file's lines to render its header stats or gutter. Equatable (all
-/// stored fields are), which lets `DiffFileView` be compared cheaply by value.
-private struct DiffFileMetrics: Equatable {
-    let insertions: Int
-    let deletions: Int
-    let gutterWidth: CGFloat
-    let hiddenLineCount: Int
-
-    init(file: GitDiffFile) {
-        var insertions = 0
-        var deletions = 0
-        var totalLines = 0
-        var widestLineNumber = 0
-        for hunk in file.hunks {
-            for line in hunk.lines {
-                totalLines += 1
-                switch line.kind {
-                case .addition: insertions += 1
-                case .deletion: deletions += 1
-                case .context: break
-                }
-                if let old = line.oldLineNumber { widestLineNumber = max(widestLineNumber, old) }
-                if let new = line.newLineNumber { widestLineNumber = max(widestLineNumber, new) }
-            }
-        }
-        self.insertions = insertions
-        self.deletions = deletions
-        // Widest line number sets the gutter width so it never truncates (e.g.
-        // 5-digit line numbers in a large file); one line number plus trailing
-        // padding, with a sensible minimum.
-        let maxDigits = max(String(widestLineNumber).count, 1)
-        self.gutterWidth = max(CGFloat(maxDigits * 9 + 12), 36)
-        self.hiddenLineCount = max(0, totalLines - DiffFileView.maxRenderedLines)
-    }
-}
-
-/// Read-only diff surface: the workspace's working tree vs HEAD, per-file, with
-/// +/- line coloring. Refreshes on open and on the button. Long code lines wrap
-/// rather than requiring horizontal scrolling.
+/// This view orchestrates and nothing else — refresh, dedup, progressive syntax
+/// highlighting, the scroll target and the empty states. Every pixel of the diff
+/// itself is drawn by AppKit, so no per-line SwiftUI layout exists to feed back
+/// into a refresh.
+///
+/// What to render travels down as a `DiffRendering` property, one way. The two
+/// things that are events rather than state — a scroll target, a file's syntax
+/// colors finishing — go through `controller` instead, which tolerates a surface
+/// that isn't there yet and is retried until it is.
 struct DiffSurfaceView: View {
     let model: AppModel
     let workspace: Workspace
+    /// The last computed diff, kept so a refresh can recognise a byte-identical
+    /// recompute and skip all content work.
     @State private var diff: GitDiff?
     @State private var loaded = false
-    /// Syntax highlights keyed by `GitDiffFile.id`; populated progressively as
-    /// each file finishes highlighting off the main actor. The stable key lets a
-    /// rebuild carry over highlights for files whose diff hasn't changed.
-    @State private var highlights: [String: FileHighlight] = [:]
-    /// Per-file metrics (line stats, gutter width, hidden-line count) keyed by
-    /// `GitDiffFile.id`, rebuilt once whenever `diff` is (re)assigned so `body`
-    /// never recomputes O(lines) values while rendering.
-    @State private var metrics: [String: DiffFileMetrics] = [:]
+    /// What the surface renders, built from `diff`. Handed to `DiffTextSurface`
+    /// as a property so the first paint doesn't depend on the surface already
+    /// existing when the refresh that produced it finishes — it usually does not.
+    @State private var rendering: DiffRendering?
+    /// Syntax highlights keyed by `GitDiffFile.id`, published to the surface as
+    /// each file finishes. Bookkeeping only — `body` never reads it — so that a
+    /// rebuild can carry highlights over and repaint them onto the fresh storage.
+    @State private var highlightCache: [String: DiffFileHighlight] = [:]
     @State private var highlightTask: Task<Void, Never>?
     /// The in-flight `refresh()` compute, cancelled before starting a new one so a
     /// rapid sequence of `diffRevision` bumps can't assign results out of order.
     @State private var refreshTask: Task<Void, Never>?
-    /// Top visible file across rebuilds, so a debounced refresh keeps scroll.
-    @State private var scrolledFileID: String?
     /// Nonce of the last `model.diffScrollTarget` this view acted on, so a target
     /// is applied once (not re-applied on every unrelated body re-evaluation).
     @State private var appliedScrollNonce = 0
+    /// The handle onto the AppKit surface. Its coordinator stays nil until SwiftUI
+    /// realizes the representable — one layout pass after the body that first
+    /// shows it — so every call through it has to tolerate nil.
+    @State private var controller = DiffSurfaceController()
 
     var body: some View {
         content
             .onAppear { if !loaded { refresh() } }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
             .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
+            // A target can name a file that only the freshly computed diff has, and
+            // the surface only holds that diff once SwiftUI has pushed the new
+            // `rendering` into it. This is the retry for that.
+            .onChange(of: rendering?.revision) { _, _ in applyPendingScroll() }
             .onDisappear { highlightTask?.cancel(); refreshTask?.cancel() }
     }
 
+    /// Branches on `rendering` rather than on `diff`: the two are assigned
+    /// together and a document exists for exactly the diffs that exist, so keying
+    /// on the value the surface actually needs leaves no unreachable branch.
     @ViewBuilder private var content: some View {
-        if let diff {
-            if diff.files.isEmpty {
+        if let rendering {
+            if rendering.document.files.isEmpty {
                 DiffEmptyState(
                     systemImage: "checkmark.circle", title: "No changes",
                     message: "The working tree matches HEAD.")
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        ForEach(diff.files) { file in
-                            let fileMetrics = metrics[file.id] ?? DiffFileMetrics(file: file)
-                            Section {
-                                DiffFileView(
-                                    file: file, highlight: highlights[file.id],
-                                    metrics: fileMetrics,
-                                    isLastFile: file.id == diff.files.last?.id)
-                                    .equatable()
-                            } header: {
-                                DiffFileHeaderBar(file: file, metrics: fileMetrics)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 24)
-                    .scrollTargetLayout()
-                }
-                .defaultScrollAnchor(.top)
-                .scrollPosition(id: $scrolledFileID, anchor: .top)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                DiffTextSurface(controller: controller, rendering: rendering)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The document is already in, pushed by the representable's own
+                    // update. A scroll target waiting on the surface is not: it goes
+                    // through the coordinator, which is created only when SwiftUI
+                    // realizes the representable, so this is where a target that
+                    // arrived before the surface catches up.
+                    .onAppear { applyPendingScroll() }
             }
         } else if model.isWorkspaceGitBacked(workspace) {
             DiffEmptyState(
@@ -147,7 +85,7 @@ struct DiffSurfaceView: View {
 
     private func refresh() {
         let previousFiles = diff?.files ?? []
-        let previousHighlights = highlights
+        let previousHighlights = highlightCache
         let started = Date()
         // Keep the previous `diff` on screen while the async compute runs (no blank
         // flash): `content` shows the last value until it's reassigned below.
@@ -155,30 +93,42 @@ struct DiffSurfaceView: View {
         refreshTask = Task { @MainActor in
             let newDiff = await model.diffService.computeDiff(for: workspace)
             if Task.isCancelled { return }
-            // Dedup redundant refreshes (diff-view refresh-hang incident): on an
-            // active worktree an FSEvents watcher bumps `model.diffRevision` very
-            // frequently, and many bumps recompute a byte-identical diff. Reassigning
-            // `diff`/`metrics` and re-driving `.scrollPosition` for an unchanged diff
-            // pushes the pinned-header `LazyVStack` into a non-converging animated
-            // relayout that never settles → permanent main-thread hang. On an
-            // unchanged diff, skip all content work; only a pending scroll target
-            // (which can arrive independent of a content change) still needs applying.
+            // Dedup redundant refreshes: on an active worktree an FSEvents watcher
+            // bumps `model.diffRevision` very frequently, and many bumps recompute a
+            // byte-identical diff. Rebuilding the document and swapping the whole
+            // text storage for an unchanged diff is pure waste, and it would drop
+            // the reader's selection along the way. On an unchanged diff, skip all
+            // content work; only a pending scroll target (which can arrive
+            // independent of a content change) still needs applying.
             if loaded, newDiff == diff {
                 applyPendingScroll()
                 return
             }
-            withoutAnimation {
-                diff = newDiff
-                // Precompute per-file metrics once here (off the render hot path),
-                // keyed by file id so `body` can look them up in O(1).
-                metrics = Dictionary(uniqueKeysWithValues: (newDiff?.files ?? []).map { ($0.id, DiffFileMetrics(file: $0)) })
+            let newDocument = await Self.makeDocument(for: newDiff)
+            if Task.isCancelled { return }
+            diff = newDiff
+            highlightCache = Self.carriedHighlights(
+                for: newDiff?.files ?? [], from: previousFiles, previousHighlights)
+            // Restarting the count when the diff disappears is safe: that tears the
+            // surface down with it, so the next revision 1 meets a fresh
+            // coordinator that has applied nothing.
+            let revision = (rendering?.revision ?? 0) + 1
+            rendering = newDocument.map {
+                DiffRendering(revision: revision, document: $0, highlights: highlightCache)
             }
             let computeMs = Int(Date().timeIntervalSince(started) * 1000)
             logDiffShape(computeMs: computeMs)
-            applyPendingScroll()
             loaded = true
-            startHighlighting(reusing: previousFiles, previousHighlights)
+            startHighlighting()
         }
+    }
+
+    /// Flattening a diff into the renderer's model walks every line of every file,
+    /// so it runs off the main actor; `DiffDocument` is `Sendable` and crosses
+    /// back.
+    private static func makeDocument(for diff: GitDiff?) async -> DiffDocument? {
+        guard let diff else { return nil }
+        return await Task.detached(priority: .userInitiated) { DiffDocument(diff: diff) }.value
     }
 
     /// Logs the freshly computed diff's shape so a diff-view freeze is
@@ -215,47 +165,57 @@ struct DiffSurfaceView: View {
     /// Apply a pending `model.diffScrollTarget` for this workspace once its file
     /// exists in the loaded diff. Idempotent via `appliedScrollNonce`, so it can
     /// be called both when the target changes and when the diff finishes loading.
+    ///
+    /// The nonce is consumed only once the surface has actually scrolled, so a
+    /// target that arrives before the surface is realized — or before the document
+    /// holding its file has reached it — is applied by a later call rather than
+    /// being silently swallowed.
     private func applyPendingScroll() {
-        guard let target = model.diffScrollTarget,
+        guard let coordinator = controller.coordinator,
+              let target = model.diffScrollTarget,
               target.workspaceID == workspace.id,
               target.nonce != appliedScrollNonce,
               let files = diff?.files,
               let matchID = DiffFileMatch.match(target.file, in: files) else { return }
+        guard coordinator.scroll(toFileID: matchID) else { return }
         appliedScrollNonce = target.nonce
-        // Defer one runloop so the ScrollView has laid the target file out before
-        // we drive its scroll position.
-        DispatchQueue.main.async {
-            withoutAnimation { scrolledFileID = matchID }
+    }
+
+    /// The highlights that survive a rebuild.
+    ///
+    /// A file whose `GitDiffFile` value is unchanged has byte-identical hunks vs
+    /// HEAD, which for the working-tree diff implies the text that was highlighted
+    /// is unchanged too — so its existing highlight is still valid and re-running
+    /// the highlighter over it is pure waste.
+    private static func carriedHighlights(
+        for files: [GitDiffFile], from previousFiles: [GitDiffFile],
+        _ previousHighlights: [String: DiffFileHighlight]
+    ) -> [String: DiffFileHighlight] {
+        // Index the previous diff by file id so an unchanged file is a lookup
+        // rather than a scan.
+        let previousByID = Dictionary(previousFiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var carried: [String: DiffFileHighlight] = [:]
+        for file in files {
+            if let previous = previousByID[file.id], previous == file,
+               let existing = previousHighlights[file.id] {
+                carried[file.id] = existing
+            }
         }
+        return carried
     }
 
     /// Kicks off a background pass that highlights each file's working-tree and
     /// HEAD text, publishing results per file so colors appear as they finish.
-    /// File reads stay on the main actor (quick, size-capped); only the actual
-    /// highlighting suspends off-actor, keeping the UI responsive.
+    /// File reads stay on the main actor — they are quick, and `DiffService` caps
+    /// them at `DiffHighlighter.maxHighlightBytes`; only the actual highlighting
+    /// suspends off-actor, keeping the UI responsive.
     ///
-    /// When the previous diff and its highlights are handed in, files whose
-    /// `GitDiffFile` value is unchanged keep their existing `FileHighlight`
-    /// instead of being re-highlighted: value-equality means the file's hunks
-    /// vs HEAD are byte-identical, which for the working-tree diff implies the
-    /// text used for highlighting is unchanged, so its cached highlight is still
-    /// valid.
-    private func startHighlighting(
-        reusing previousFiles: [GitDiffFile], _ previousHighlights: [String: FileHighlight]
-    ) {
+    /// Files already in `highlightCache` were carried over from the previous diff
+    /// and are skipped.
+    private func startHighlighting() {
         highlightTask?.cancel()
-        guard let files = diff?.files else { highlights = [:]; return }
-
-        // Index the previous diff by file id so we can carry over highlights for
-        // files whose diff is byte-identical, skipping a redundant re-highlight.
-        let previousByID = Dictionary(previousFiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var carried: [String: FileHighlight] = [:]
-        for file in files {
-            if let old = previousByID[file.id], old == file, let existing = previousHighlights[file.id] {
-                carried[file.id] = existing
-            }
-        }
-        withoutAnimation { highlights = carried }
+        guard let files = diff?.files else { highlightCache = [:]; return }
+        let carried = highlightCache
 
         highlightTask = Task {
             for file in files {
@@ -270,9 +230,13 @@ struct DiffSurfaceView: View {
                 let oldLines = await highlight(oldText, path: file.oldPath)
                 if Task.isCancelled { return }
 
-                // Kept per-file (rather than batched) so coloring still appears
-                // progressively as each file finishes.
-                withoutAnimation { highlights[file.id] = FileHighlight(new: newLines, old: oldLines) }
+                // Published per file (rather than batched) so coloring still appears
+                // progressively as each file finishes. It goes straight into the live
+                // text storage; the cache copy is only there to carry it over to the
+                // next rebuild.
+                let fileHighlight = DiffFileHighlight(new: newLines, old: oldLines)
+                highlightCache[file.id] = fileHighlight
+                controller.coordinator?.applyHighlight(fileHighlight, forFileID: file.id)
             }
         }
     }
@@ -309,219 +273,5 @@ private struct DiffEmptyState: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// Per-file header band, used as each file's pinned `Section` header (see
-/// `pinnedViews: [.sectionHeaders]` in `DiffSurfaceView.content`): file path +
-/// status on the left, the +N −N line summary pushed to the right by the
-/// title's flexible frame, sized to the diff panel's own width
-/// (`maxWidth: .infinity`) since there's no horizontal scrolling to diverge
-/// from. A 1pt hairline marks its bottom edge against the file content
-/// scrolling underneath it.
-private struct DiffFileHeaderBar: View {
-    let file: GitDiffFile
-    let metrics: DiffFileMetrics
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // The default center alignment is deliberate: do NOT reintroduce
-            // `.lastTextBaseline` (or any explicit baseline guide) here. As a
-            // pinned lazy-stack header, this row is re-placed on every layout
-            // pass, and resolving a baseline needs the flexible-width
-            // `Text(title)` child's baseline, which depends on the width the
-            // stack proposes — which is itself waiting on that baseline. The
-            // resulting `explicitAlignment` ⇄ `placeChildren` recursion never
-            // converges and hangs the main thread at ~98% CPU, with no crash
-            // report. Center alignment derives from the child's height, so it
-            // never re-enters placement.
-            HStack(spacing: 8) {
-                Text(title).font(.system(.body, design: .monospaced)).bold()
-                    .lineLimit(1).truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(file.status.rawValue).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize()
-                HStack(spacing: 8) {
-                    Text("+\(metrics.insertions)").foregroundStyle(DiffLineStyle.insertionTint)
-                    Text("\u{2212}\(metrics.deletions)").foregroundStyle(DiffLineStyle.deletionTint)
-                }
-                .font(.callout.monospacedDigit().bold())
-                .fixedSize()
-            }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.secondary.opacity(0.12))
-            .background(Color(nsColor: .windowBackgroundColor))
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(height: 1)
-        }
-    }
-
-    private var title: String {
-        if file.oldPath.isEmpty { return file.newPath }
-        if file.newPath.isEmpty { return file.oldPath }
-        return file.oldPath == file.newPath
-            ? file.newPath : "\(file.oldPath) → \(file.newPath)"
-    }
-}
-
-private struct DiffFileView: View, @MainActor Equatable {
-    let file: GitDiffFile
-    let highlight: FileHighlight?
-    /// Precomputed line stats, gutter width, and hidden-line count for this file.
-    let metrics: DiffFileMetrics
-    /// True for the diff's last file, so its trailing gap isn't doubled up
-    /// with the outer scroll content's own bottom padding.
-    let isLastFile: Bool
-
-    var body: some View {
-        // A plain VStack, not a nested LazyVStack: a lazy stack nested as a
-        // Section's content inside the outer LazyVStack/ScrollView can't report
-        // an exact height, so it over-reserves vertical space and leaves large
-        // empty gaps between files. The outer LazyVStack still virtualizes at
-        // the per-file level, and `maxRenderedLines` caps how many rows a
-        // realized file lays out.
-        VStack(alignment: .leading, spacing: 0) {
-            if file.isBinary {
-                Text("Binary file")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
-            } else {
-                ForEach(visibleHunks) { entry in
-                    Text(entry.hunk.header)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .padding(.top, 6).padding(.bottom, 2)
-                    ForEach(Array(entry.hunk.lines.prefix(entry.lineCount).enumerated()), id: \.offset) { _, line in
-                        DiffLineRow(
-                            line: line, gutterWidth: metrics.gutterWidth,
-                            highlighted: highlightedLine(for: line))
-                    }
-                }
-                if metrics.hiddenLineCount > 0 {
-                    Text("Diff too large — \(metrics.hiddenLineCount) more lines hidden")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .padding(.vertical, 6)
-                }
-            }
-        }
-        .padding(.bottom, isLastFile ? 0 : 14)
-    }
-
-    /// Per-file cap on rendered diff rows. A single pathologically large file
-    /// (e.g. a generated lockfile) would otherwise instantiate every line row at
-    /// once when it scrolls into the enclosing lazy stack; the overflow is
-    /// summarized by `hiddenLineCount` instead.
-    nonisolated fileprivate static let maxRenderedLines = 3000
-
-    /// One rendered hunk, trimmed to the leading `lineCount` lines that still fit
-    /// under `maxRenderedLines`. Hunks past the cap are dropped entirely.
-    private struct VisibleHunk: Identifiable {
-        let id: Int  // hunk offset within the file
-        let hunk: GitDiffHunk
-        let lineCount: Int
-    }
-
-    /// The file's hunks distributed across the per-file line budget, in order.
-    private var visibleHunks: [VisibleHunk] {
-        var remaining = Self.maxRenderedLines
-        var result: [VisibleHunk] = []
-        for (offset, hunk) in file.hunks.enumerated() {
-            guard remaining > 0 else { break }
-            let count = min(hunk.lines.count, remaining)
-            result.append(VisibleHunk(id: offset, hunk: hunk, lineCount: count))
-            remaining -= count
-        }
-        return result
-    }
-
-    /// The highlighted attributed text for a line, or nil when unavailable.
-    /// Deletions read from the HEAD side, additions and context from the
-    /// working-tree side, both indexed by their 1-based source line number.
-    private func highlightedLine(for line: GitDiffLine) -> AttributedString? {
-        switch line.kind {
-        case .deletion:
-            return lookup(highlight?.old, at: line.oldLineNumber)
-        case .addition, .context:
-            return lookup(highlight?.new, at: line.newLineNumber)
-        }
-    }
-
-    private func lookup(_ lines: [AttributedString]?, at number: Int?) -> AttributedString? {
-        guard let lines, let number, number >= 1, number <= lines.count else { return nil }
-        return lines[number - 1]
-    }
-}
-
-private struct DiffLineRow: View {
-    let line: GitDiffLine
-    let gutterWidth: CGFloat
-    let highlighted: AttributedString?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Leading accent stripe hugs the very left edge (clear for context).
-            Rectangle()
-                .fill(DiffLineStyle.accent(for: line.kind))
-                .frame(width: 3)
-            HStack(alignment: .top, spacing: 8) {
-                Text(DiffLineStyle.lineNumber(for: line).map(String.init) ?? "")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(numberColor)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .frame(width: gutterWidth, alignment: .trailing)
-                codeText
-                    .font(.system(size: 14, design: .monospaced))
-                    .lineLimit(DiffLineStyle.maxWrappedLinesPerRow)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DiffLineStyle.background(for: line.kind))
-    }
-
-    /// Context lines keep the neutral gray gutter; changed lines pick up the
-    /// same accent as the stripe, matching Claude Code's tinted line numbers.
-    /// A concrete `Color` in both cases, avoiding a per-pass `AnyShapeStyle`.
-    private var numberColor: Color {
-        line.kind == .context ? DiffLineStyle.contextNumberTint : DiffLineStyle.accent(for: line.kind)
-    }
-
-    /// The code column. When a highlight is available its runs carry their own
-    /// syntax colors (fonts stripped, so the monospaced font above applies
-    /// uniformly); the prefixed diff marker is tinted with the line's accent
-    /// color regardless of highlight availability. Falls back to plain text
-    /// with a uniform `.primary` foreground for the code when there is no
-    /// highlight. Wraps naturally instead of requiring horizontal scrolling.
-    @ViewBuilder private var codeText: some View {
-        let display = DiffLineStyle.truncatedForDisplay(line.content)
-        if display.truncated {
-            // Pathological single line (minified bundle, one-line lockfile, inlined
-            // base64): render a capped slice + marker and skip highlight, so TextKit
-            // never wraps a multi-megabyte string on the main thread — the diff-view
-            // freeze this guards against.
-            Text(DiffLineStyle.prefix(for: line.kind)).foregroundStyle(DiffLineStyle.accent(for: line.kind))
-                + Text(display.text).foregroundStyle(Color.primary)
-                + Text("  … (line truncated)").foregroundStyle(.secondary)
-        } else if let highlightedContent {
-            Text(highlightedContent)
-        } else {
-            Text(DiffLineStyle.prefix(for: line.kind)).foregroundStyle(DiffLineStyle.accent(for: line.kind))
-                + Text(line.content).foregroundStyle(Color.primary)
-        }
-    }
-
-    /// The diff marker prepended to the highlighted content, tinted with the
-    /// line's accent color; the appended runs keep their syntax colors.
-    private var highlightedContent: AttributedString? {
-        guard let highlighted else { return nil }
-        var prefix = AttributedString(DiffLineStyle.prefix(for: line.kind))
-        prefix.foregroundColor = DiffLineStyle.accent(for: line.kind)
-        prefix.append(highlighted)
-        return prefix
     }
 }
