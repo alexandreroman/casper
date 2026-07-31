@@ -89,6 +89,36 @@ final class DiffGutterRuler: NSRulerView {
         max(Self.numberToCodeGap - (textView.textContainer?.lineFragmentPadding ?? 0), 0)
     }
 
+    /// Confines every paint of this ruler — its own and `NSRulerView`'s — to the
+    /// gutter column.
+    ///
+    /// **A ruler is not clipped to its bounds, and AppKit asks it to draw with a
+    /// rect and a clip that reach far outside the column.** Measured beside a 42 pt
+    /// gutter: one pass arrives with both set to the whole coordinate plane
+    /// (`±8.9e307`), another with a rect spanning the scroll view's entire content
+    /// area, 500 pt wide and starting a header band's height *above* the ruler's top
+    /// edge. So anything painted here lands wherever it is aimed, and three separate
+    /// symptoms shipped from that:
+    ///
+    /// - The background fill covered the code the clip view had already drawn, and
+    ///   the whole diff came out as bare line numbers over an empty panel.
+    /// - The rows in the band above the viewport had their tint, stripe and number
+    ///   drawn above the gutter's top edge, out of the panel and over the
+    ///   inspector's Diff | Browser selector.
+    /// - `NSRulerView`'s own chrome — a hairline down the ruler's trailing edge —
+    ///   ran the full height of that infinite clip, well past the panel.
+    ///
+    /// The clip goes here, around `super`, precisely because that third one is not
+    /// drawn by any method of this class: confining the paints one by one inside
+    /// `drawHashMarksAndLabels(in:)` cannot reach it, and would leave every future
+    /// row of chrome to remember a rule that AppKit does not enforce.
+    override func draw(_ dirtyRect: NSRect) {
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        bounds.clip()
+        super.draw(dirtyRect)
+    }
+
     /// Draws the gutter's background, then the chrome of every row overlapping
     /// `rect`.
     ///
@@ -96,18 +126,24 @@ final class DiffGutterRuler: NSRulerView {
     /// on a client migrated to the TextKit 1 stack (no `textLayoutManager`), there
     /// is no geometry to place chrome by, so only the background is painted.
     override func drawHashMarksAndLabels(in rect: NSRect) {
+        // Narrowed to the column, which is the only part of the rect that can end up
+        // on screen — see `draw(_:)` for why the rect is so much larger than the
+        // ruler. This is about not *computing* chrome that the clip would throw
+        // away; the clip, not this line, is what guarantees nothing escapes.
+        let column = rect.intersection(bounds)
+
         // The gutter has to read as a continuation of the code column for the row
         // tints to run unbroken beneath it, so it starts from the text view's own
         // background instead of a ruler's default chrome. Painted before the guard
         // below on purpose: a not-yet-configured gutter should look empty rather
         // than show what a ruler would draw by default.
         (textView.drawsBackground ? textView.backgroundColor : .textBackgroundColor).setFill()
-        rect.fill()
+        column.fill()
 
         guard let document, let layoutManager = textView.textLayoutManager else { return }
         let geometry = DiffFragmentGeometry(layoutManager: layoutManager, document: document)
 
-        for row in geometry.fragments(in: containerRect(from: rect)) {
+        for row in geometry.fragments(in: containerRect(from: column)) {
             let line = document.lines[row.lineIndex]
             // Hunk headers and notes are chrome: no tint, no stripe, no number —
             // they had none in the row-based renderer either.
