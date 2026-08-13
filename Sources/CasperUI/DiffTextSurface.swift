@@ -44,7 +44,37 @@ struct DiffRendering {
     /// Syntax highlights carried over from the previous diff, painted right after
     /// the swap: `DiffTextAssembly` builds the fresh storage from base attributes
     /// only, and the files these belong to are deliberately not re-highlighted.
+    ///
+    /// Paint them through `highlightsInDocumentOrder`, never by iterating this
+    /// dictionary — the order is what keeps the paint from freezing the app.
     let highlights: [String: DiffFileHighlight]
+
+    /// The carried highlights to paint, paired with the index of the file they
+    /// belong to, in document order.
+    ///
+    /// The order is the fix for a freeze, not tidiness. `NSTextStorage` keeps its
+    /// attributes in a run-length array, and `DiffTextAssembly.applyHighlight`
+    /// writes one `.foregroundColor` run per syntax run: painting a file that sits
+    /// mid-document therefore memmoves every run belonging to the files below it.
+    /// Ascending file order only ever appends, which is linear in the diff's total
+    /// run count; `highlights`' own hash order is arbitrary, which makes the same
+    /// work quadratic. Measured on a synthetic diff, document order held flat at
+    /// 0.23 µs per run — 0.21 s for 64 files — while hash order quadrupled per
+    /// doubling of the file count and took 52 s for those same 64 files, with the
+    /// main thread spinning inside `_platform_memmove` throughout.
+    ///
+    /// Walking the document rather than sorting the dictionary is what makes the
+    /// order monotonic by construction: files carrying no highlight drop out, and a
+    /// highlight naming a file this document doesn't have — one that finished just
+    /// after it left the diff — is never looked at.
+    var highlightsInDocumentOrder: [(fileIndex: Int, highlight: DiffFileHighlight)] {
+        var ordered: [(fileIndex: Int, highlight: DiffFileHighlight)] = []
+        for (fileIndex, file) in document.files.enumerated() {
+            guard let highlight = highlights[file.id] else { continue }
+            ordered.append((fileIndex: fileIndex, highlight: highlight))
+        }
+        return ordered
+    }
 }
 
 /// The diff's rendering surface: a scroll view over one TextKit 2 text view, with
@@ -211,8 +241,11 @@ struct DiffTextSurface: NSViewRepresentable {
             // rewrites the whole text storage, so where the reader is has to come
             // off the live surface first.
             apply(document: rendering.document, restoring: currentAnchor())
-            for (fileID, highlight) in rendering.highlights {
-                applyHighlight(highlight, forFileID: fileID)
+            // In document order, which is the difference between a paint that is
+            // linear in the diff's run count and one that is quadratic — see
+            // `DiffRendering.highlightsInDocumentOrder`.
+            for (fileIndex, highlight) in rendering.highlightsInDocumentOrder {
+                applyHighlight(highlight, forFileAt: fileIndex)
             }
         }
 
@@ -257,8 +290,15 @@ struct DiffTextSurface: NSViewRepresentable {
         /// concurrently with refreshes, so a file finishing just after it left the
         /// diff is ordinary.
         func applyHighlight(_ highlight: DiffFileHighlight, forFileID fileID: String) {
-            guard let document, let fileIndex = document.fileIndex(withID: fileID),
-                  let storage = textView.textContentStorage?.textStorage
+            guard let fileIndex = document?.fileIndex(withID: fileID) else { return }
+            applyHighlight(highlight, forFileAt: fileIndex)
+        }
+
+        /// Paints one file's syntax colors, for a caller that already knows where
+        /// that file sits — the whole-document repaint, which walks the files in
+        /// order precisely so it never has to look an index up.
+        func applyHighlight(_ highlight: DiffFileHighlight, forFileAt fileIndex: Int) {
+            guard let document, let storage = textView.textContentStorage?.textStorage
             else { return }
             DiffTextAssembly.applyHighlight(
                 highlight, forFileAt: fileIndex, in: storage, document: document)

@@ -119,6 +119,74 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(color as? NSColor, NSColor(Color.purple))
     }
 
+    /// The order the carried highlights are painted in, which is a performance
+    /// invariant and not a cosmetic one: `NSTextStorage` holds its attributes in a
+    /// run-length array, so painting a mid-document file memmoves every run below
+    /// it. Ascending order appends and stays linear; the arbitrary order of
+    /// `DiffRendering.highlights` itself is quadratic, and froze the main thread
+    /// for minutes on a large diff.
+    ///
+    /// The order is unobservable in the finished storage — `applyHighlight` is
+    /// idempotent and its output order-independent — so this asserts on the pure
+    /// accessor `render(_:)` consumes. Fourteen files, because that is what makes a
+    /// Dictionary's hash order essentially never document order by accident.
+    func testCarriedHighlightsArePaintedInDocumentOrder() throws {
+        let document = makeDocument(fileCount: 14, linesPerFile: 2)
+        // Two files left unhighlighted — highlighting is progressive, so a swap
+        // routinely carries over fewer files than the diff has — plus one naming a
+        // file that has left the diff, which is what a highlight finishing just
+        // after a refresh looks like.
+        let highlighted = document.files.map(\.id).filter { $0 != "f3.swift" && $0 != "f11.swift" }
+        var highlights = Dictionary(
+            uniqueKeysWithValues: highlighted.map { ($0, DiffFileHighlight(new: nil, old: nil)) })
+        highlights["gone.swift"] = DiffFileHighlight(new: nil, old: nil)
+
+        let ordered = DiffRendering(revision: 1, document: document, highlights: highlights)
+            .highlightsInDocumentOrder
+
+        let indices = ordered.map(\.fileIndex)
+        XCTAssertEqual(indices, indices.sorted(), "highlights must be painted in ascending file order")
+        XCTAssertEqual(Set(indices).count, indices.count, "no file is painted twice")
+        XCTAssertEqual(indices, Array(0..<14).filter { $0 != 3 && $0 != 11 },
+                       "every highlighted file, only the highlighted ones, and no stale ID")
+        // Without this the fixture could pass while `render(_:)` iterated the
+        // dictionary: it is only a regression test if the hash order it must not
+        // use differs from the document's.
+        XCTAssertNotEqual(highlights.keys.compactMap { document.fileIndex(withID: $0) }, indices,
+                          "the fixture no longer discriminates hash order from document order")
+    }
+
+    /// Painting through the accessor still colors the text, so the ordering above
+    /// is not bought by dropping the highlights on the floor. Order-independent by
+    /// construction: what it checks is that every file named got painted.
+    func testHighlightsPaintedInDocumentOrderStillReachEveryFile() throws {
+        let document = makeDocument(fileCount: 14, linesPerFile: 2)
+        let purpleLines = (1...2).map { index -> AttributedString in
+            var line = AttributedString("line \(index)")
+            line.foregroundColor = .purple
+            return line
+        }
+        let highlights = Dictionary(
+            uniqueKeysWithValues: document.files.map {
+                ($0.id, DiffFileHighlight(new: purpleLines, old: nil))
+            })
+
+        let (controller, _) = makeHostedSurface(document, highlights: highlights)
+
+        let storage = try XCTUnwrap(controller.coordinator?.textView.textStorage)
+        // Every source line, skipping the chrome ones (hunk headers) that have no
+        // syntax to color.
+        let sourceLines = document.lines.filter { $0.diffKind != nil }
+        XCTAssertEqual(Set(sourceLines.map(\.fileIndex)).count, document.files.count,
+                       "the fixture must put colorable lines in every file")
+        for line in sourceLines {
+            let color = storage.attribute(
+                .foregroundColor, at: line.contentRange.location, effectiveRange: nil)
+            XCTAssertEqual(color as? NSColor, NSColor(Color.purple),
+                           "file \(line.fileIndex) went unpainted")
+        }
+    }
+
     func testSurfaceComposesAndTakesTheDocument() throws {
         let document = makeDocument(fileCount: 3)
         let (controller, _) = makeHostedSurface(document)
