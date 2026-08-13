@@ -419,7 +419,35 @@ caught as stray ink. A truncated line's `… (line truncated)` marker is the one
 piece of commentary kept inside the text: it is the only sign that a copy of that
 line is a prefix of the real one.
 
-**Tests.** `swift test` → 854 passing (2 skipped). `DiffDocumentTests`,
+**Highlight repaint order** (`be1445f`). The freeze the **Still to verify** note
+below was waiting on did happen, on an actively-edited worktree with the panel
+open — and it was not the rewrite's feedback path. `render(_:)` repainted the
+carried highlights by iterating `DiffRendering.highlights`, a dictionary, so
+files were coloured in hash order rather than the document's. `NSTextStorage`
+keeps its attributes in a run-length array and `applyHighlight` writes one
+`.foregroundColor` run per syntax run, so painting a file that sits mid-document
+memmoves every run belonging to the files below it; ascending order only ever
+appends. Measured on a synthetic diff, a 64-file repaint took **0.21 s in
+document order against 51.77 s in hash order**, document order holding flat at
+0.23 µs per run while hash order quadrupled per doubling of the file count.
+
+`maxTotalLines` bounds one repaint well under the minutes observed, so the
+freeze was these bursts *piling up*: `carriedHighlights` carries nearly every
+file across a refresh and `render(_:)` repaints all of them, so refreshes
+arrived faster than the bursts drained and the main thread never returned to
+idle. Painting now walks `DiffDocument.files` and looks each highlight up
+(`DiffRendering.highlightsInDocumentOrder`) — monotonic by construction,
+O(files), no sort. The order is unobservable in the finished storage
+(`applyHighlight` is idempotent and its output order-independent), so that
+accessor exists as the pure seam the regression test asserts ascending indices
+on. Recorded in
+`.claude/project-memory/references/nstextstorage-attribute-run-order.md`.
+
+Two things are deliberately still open: the repaint is one synchronous
+main-thread burst, and it repaints every carried file rather than only those
+whose text moved.
+
+**Tests.** `swift test` → 856 passing (2 skipped). `DiffDocumentTests`,
 `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
 `DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
 color-only highlight rule, the fragment→line mapping, what a selection and a
@@ -442,10 +470,13 @@ multi-file working tree (modified, added and deleted files, four-digit line
 numbers): pinned header per file, inter-file header bands, gutter sized from the
 whole document, syntax colors, and nothing painted outside the panel.
 
-**Still to verify.** Live confirmation on an *actively-edited* worktree with the
-diff panel open — the only setup that has ever exercised the hang this rewrite
-removes, and a different scenario from the static multi-file check above.
-`MainThreadHangWatchdog` stays wired (DEBUG-only) until that lands.
+**Still to verify.** The actively-edited-worktree check has now happened, and it
+froze — see **Highlight repaint order** above. The rewrite's own feedback path
+was not the cause (nothing wrote SwiftUI state during layout); the repaint's
+attribute-write order was. That is fixed and covered by a test, but the fix has
+**not** yet been confirmed live on an actively-edited worktree, which is the
+only setup that produced the freeze. `MainThreadHangWatchdog` stays wired
+(DEBUG-only) until it has.
 
 ## Open in Editor — ✅
 
