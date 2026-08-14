@@ -77,7 +77,7 @@
 - [Off-screen host windows stay unordered](references/offscreen-host-windows-unordered.md) — ordering a window parked at -100_000 wrecks Mission Control; hosting needs only `window != nil`; rAF never fires off-display
 - [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each Highlight() = a new JavaScriptCore JSContext; per-call construction under diff churn leaked GBs of JSC VM heap; use the shared DiffHighlighter instance
 - [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — the teardown split spawns fine in XCTest; drive `handleScriptSurfaceExit` for the child exit
-- [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views in XCTest; pixels still need human eyes
+- [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views in XCTest; pixels still need human eyes; CI runner measures differently (legacy scrollers, macOS 15)
 - [Worktree deletion deletes the directory before pruning metadata](references/worktree-deletion-directory-first.md) — git_worktree_prune orphans the dir on read-only entries; FileManager-delete first, then metadata-only prune
 - [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — draw rects reach far past the column (one is infinite) and nothing clips them; clip to `bounds` in `draw(_:)` around `super`
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — paragraphSpacingBefore lives inside layoutFragmentFrame; empty trailing line fragment; reading .layoutManager flips to TextKit 1; point probes and ensureLayout cost O(scroll offset)
@@ -85,3 +85,4 @@
 - [AttributedString interop limits](references/attributedstring-interop-limits.md) — HighlightSwift emits AppKit-scope colors (SwiftUI scope reads nil); AttributedString.utf16 needs macOS 26
 - [NSTextStorage attribute writes must go in ascending offset order](references/nstextstorage-attribute-run-order.md) — the RLE run array makes out-of-order attribute writes quadratic; a memmove freeze, measured
 - [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — the diff's +/- cue and line numbers go in the ruler; in the text they poison selection, copy and wrap alignment
+- [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore's clip move re-resolves them off the scroll path; tests drain the run loop to idle, not one pass

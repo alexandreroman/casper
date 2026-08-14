@@ -110,3 +110,11 @@ decides what is cheap:
   wants coalescing: a diff refresh invalidates layout once per storage swap and
   once per highlight painted into it, and only the last pass of the burst
   carries settled geometry.
+- **The estimates themselves are macOS-version-specific.** The same cold document
+  answers with a different total height on macOS 15 than on macOS 26 — measured
+  87 910 pt against 77 243 pt for one 906-paragraph diff of wrapping lines, from
+  an *identical* pre-swap real layout. So a container `y` maps to a different
+  part of the document depending on the OS: the same viewport top edge drew
+  lines 541–548 on macOS 15 and 598–605 on macOS 26. Real, forced layout agrees
+  everywhere; only the estimated regime diverges, which is why anything holding
+  an absolute `y` across a storage swap is holding a platform-dependent number.

@@ -475,6 +475,35 @@ synchronous, so the bar still cannot lag a frame behind the text it labels while
 scrolling. Recorded in
 `.claude/project-memory/references/textkit2-layout-geometry.md`.
 
+That guard's first CI run failed, on the runner rather than in the app.
+TextKit's cold-layout estimates are **macOS-version-specific** — the same
+document measures 87 910 pt estimated on macOS 15 against 77 243 pt on
+macOS 26 — so a container `y` maps to content thousands of points apart
+depending on the OS, and a fixture that placed one file boundary inside a
+600 pt window by arithmetic held only on the machine it was measured on. The
+runner drew lines 541–548 where development draws 598–605, leaving that
+boundary 4 800 pt below the viewport; the bars there were *right* (one pinned
+bar, no bands in view), and only the fixture's own preconditions failed. So the
+fixture is 300 short files rather than three tall ones: with every file shorter
+than the viewport, a boundary is in view wherever the viewport lands — by
+construction instead of by arithmetic. The band the overlay counts and the band
+the text draws are bounded the same way too, which the closer boundary spacing
+turned from a corner case into a routine one.
+
+Two things that fixture has to keep out of its own way, both proven by deleting
+the trigger and watching the test fail: the refresh **appends** a file instead
+of growing every file, so the anchor restores to the same container `y` and no
+bounds-change notification re-resolves the bars for free; and the reader sits
+half-way in, because `restore(_:)` forces real layout as far as the anchor, so
+an anchor near the end leaves nothing estimated and no residue to catch. The
+run-loop drain in the tests turns to idle rather than once, as well:
+`NSHostingView.rootView` may push the document a turn later, and the
+settled-layout re-resolution is queued by the layout pass that follows it — a
+one-pass drain read bars nothing had resolved yet, intermittently, depending on
+suite order. Recorded in
+`.claude/project-memory/references/sticky-bar-resolution-paths.md` and
+`headless-swiftui-layout-tests.md`.
+
 **Tests.** `swift test` → 858 passing (2 skipped). `DiffDocumentTests`,
 `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
 `DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the

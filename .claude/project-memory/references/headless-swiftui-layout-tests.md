@@ -41,3 +41,23 @@ Two caveats found in practice:
 When a view's fixed dimension is a bare literal, exposing it as a `static let` on
 the view and asserting against that is preferred over duplicating the number in
 the test.
+
+**A hosted view measures differently on the CI runner than on the development
+machine**, so a fixture must never depend on an absolute position or on which
+content a given offset lands on. Two divergences are measured, both from the same
+`NSHostingView` sized 480×600:
+
+- the runner shows **legacy scrollbars**, so an `NSScrollView`'s clip view is
+  465 pt wide there against 480 pt locally (overlay scrollers), and its text view
+  407 pt against 422 pt — enough to change where wrapped text breaks;
+- the runner is **macOS 15** while development is on macOS 26, and TextKit's cold
+  layout estimates differ between them — see [[textkit2-layout-geometry]].
+
+**How to apply:** build such a fixture so the property under test holds under any
+monotone mapping from offset to content. For "a file boundary must be visible in
+the viewport", that means many files each shorter than the viewport — a boundary
+is then in view wherever the viewport lands — rather than a few tall files with a
+single boundary placed by arithmetic that only holds on one OS. And when a bound
+is compared against a bound (a band the overlay emits against a band the text
+draws), make the two bounds agree explicitly instead of relying on the fixture
+never landing on the edge case.

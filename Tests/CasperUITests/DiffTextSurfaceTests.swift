@@ -515,55 +515,105 @@ final class DiffTextSurfaceTests: XCTestCase {
     ///
     /// The settling happens through a view layout pass, the way the app reaches it,
     /// rather than through an `NSTextLayoutManager.ensureLayout` call the app never
-    /// makes. Three files of 300 wrapping lines with the reader deep in the second
-    /// one; measured before the fix, the third file's bar sat 91 pt — three band
-    /// heights — above the band it belongs to.
+    /// makes.
+    ///
+    /// **Three hundred files of three wrapping lines, read 150 files deep, and the
+    /// refresh brings a 301st** — many short files rather than a few tall ones, because
+    /// the fixture must not depend on *which* part of the document the viewport lands
+    /// in. TextKit's estimated heights are platform-dependent: for the identical
+    /// pre-swap layout, the estimated document measures 87 910 pt on macOS 15 against
+    /// 77 243 pt on macOS 26, so the container `y` the clip view is parked at maps to
+    /// content thousands of points apart once the swap has left the layout cold. A
+    /// fixture asking for one file boundary inside a 600 pt window fails that lottery
+    /// on the OS it was not measured on — while with every file shorter than the
+    /// viewport, *any* window holds a boundary wherever it lands, so the bands this
+    /// needs exist by construction. Depth is the other half: the drawn positions rest
+    /// on the estimated pitch of every file above the viewport, so the gap between an
+    /// estimate-derived position and a settled one grows with the offset — 150 files
+    /// in, at a real pitch of 312 pt against an estimated 266, that is ~6 900 pt.
+    /// Measured with the settled-layout trigger removed, the bars name files 149 to 151
+    /// while the viewport draws file 176's band: every bar on a file that is nowhere on
+    /// screen.
+    ///
+    /// The refresh appends its file rather than growing every file by a line, so that
+    /// nothing *above* the reader changes size. The anchor then restores to the same
+    /// container `y`, which is what leaves TextKit's estimates as the only thing that
+    /// moves — a fixture whose reader lands somewhere else after the swap tests the
+    /// clip view's clamping arithmetic instead, and re-resolves the bars off the
+    /// scroll notification it triggers, which is the trigger this test must not lean
+    /// on. The swap still invalidates the whole layout, and the carried highlights
+    /// invalidate it again per file.
+    ///
+    /// Only the bands sitting comfortably inside the viewport are held against the
+    /// bars, and that is the two bounds agreeing rather than a loosening. The overlay
+    /// emits a bar for every band *top* above the bottom edge, while a band whose first
+    /// row falls past that edge is not drawn at all — routine now that a boundary comes
+    /// every 312 pt, and the trailing bar of this very fixture. Keeping the bands whose
+    /// first row is fully on screen is where both bounds agree, and where the settle
+    /// pass has certainly laid that row out.
     func testEveryBarSitsOnTheBandTheTextDrawsAfterARefresh() throws {
         let controller = DiffSurfaceController()
-        let initial = makeWrappingDocument(fileCount: 3, linesPerFile: 300)
+        let initial = makeWrappingDocument(fileCount: 300, linesPerFile: 3)
         let host = NSHostingView(rootView: hostedSurface(controller, revision: 1, document: initial))
         host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
         host.layoutSubtreeIfNeeded()
         let coordinator = try XCTUnwrap(controller.coordinator)
-        // Mid-document, which is where a refresh strands the bars: parked at the top
-        // there is nothing above the viewport for an estimate to be wrong about.
-        try scroll(coordinator, soThatFileAt: 2, sitsBelowTheTopEdgeBy: 200)
+        // Deep in the document, which is where a refresh strands the bars: parked at
+        // the top there is nothing above the viewport for an estimate to be wrong about.
+        try scroll(coordinator, soThatFileAt: 150, sitsBelowTheTopEdgeBy: 200)
 
         // Carrying the previous diff's highlights, as every Casper refresh does: they
         // are painted right after the swap has resolved the bars, and the edits
         // invalidate the very layout those bars were resolved over.
-        let refreshed = makeWrappingDocument(fileCount: 3, linesPerFile: 301)
+        let refreshed = makeWrappingDocument(fileCount: 301, linesPerFile: 3)
         host.rootView = hostedSurface(
             controller, revision: 2, document: refreshed,
-            highlights: makeWrappingHighlights(for: refreshed, linesPerFile: 301))
+            highlights: makeWrappingHighlights(for: refreshed, linesPerFile: 3))
         // One layout pass, which is all a refresh gets: SwiftUI pushes the document in
         // `updateNSView` and the text view lays itself out in the same pass.
         host.layoutSubtreeIfNeeded()
         drainPendingBarUpdates()
 
         let geometry = try XCTUnwrap(coordinator.geometry)
+        let viewportHeight = coordinator.clipView.bounds.height
         let current = try XCTUnwrap(geometry.fileIndex(atY: visibleTop(of: coordinator)))
         let bars = coordinator.stickyHeader.bars
-
-        var drawnBands: [(fileIndex: Int, y: CGFloat)] = []
-        for fileIndex in refreshed.files.indices where fileIndex > current {
-            guard let y = try drawnBandTop(ofFileAt: fileIndex, in: coordinator, document: refreshed)
-            else { continue }
-            drawnBands.append((fileIndex: fileIndex, y: y))
+        let bands = try drawnBands(in: coordinator, document: refreshed).filter {
+            // The set the overlay's own bands are drawn from: the file owning the top
+            // edge is described by the pinned bar instead, and a band whose first row
+            // falls past the bottom edge is one the overlay counts as visible while the
+            // text view does not draw it.
+            $0.fileIndex > current && $0.firstRowBottom <= viewportHeight
         }
-        XCTAssertFalse(drawnBands.isEmpty, "the fixture must draw a band for the bars to miss")
-        // A pinned bar mid-push carries the overlay's push arithmetic rather than the
-        // top edge, which the assertion below would misread.
-        XCTAssertGreaterThan(try XCTUnwrap(drawnBands.first).y, DiffTextAssembly.headerBandHeight,
-                             "the fixture must leave the pinned bar unpushed")
+        // Every failure below carries the geometry with it. Where in the document this
+        // viewport lands is up to TextKit's estimates, so a report from an OS nobody
+        // here has measured is only diagnosable if it says what the numbers were.
+        let report = """
+            viewport \(viewportHeight) pt, current file \(current), \
+            bands \(bands.map { "\($0.fileIndex)@\($0.y)" }), \
+            bars \(bars.map { "\($0.fileIndex)@\($0.y)" })
+            """
 
-        XCTAssertEqual(bars.map(\.fileIndex), [current] + drawnBands.map(\.fileIndex),
-                       "the pinned file's bar, then one per band the viewport draws")
-        XCTAssertEqual(try XCTUnwrap(bars.first).y, 0, accuracy: 1,
-                       "the pinned bar rests at the viewport's top edge")
-        for (bar, band) in zip(bars.dropFirst(), drawnBands) {
+        XCTAssertFalse(bands.isEmpty,
+                       "the fixture must draw a band for the bars to miss — \(report)")
+        XCTAssertEqual(bars.map(\.fileIndex), Array(current..<(current + bars.count)),
+                       "the pinned file's bar, then one per following band, none missing — \(report)")
+        // The exact push arithmetic is pinned by the three tests above, which drive it
+        // deliberately; here a band may or may not overlap the pinned bar, so what has
+        // to hold is only that the bar rests at the top edge or is displaced by at most
+        // the overlap.
+        let pinned = try XCTUnwrap(bars.first, report)
+        XCTAssertLessThanOrEqual(pinned.y, 0, "the pinned bar cannot hang below the top edge — \(report)")
+        XCTAssertGreaterThanOrEqual(pinned.y, -DiffTextAssembly.headerBandHeight,
+                                    "a band pushes the pinned bar out by the overlap, no further — \(report)")
+
+        for band in bands {
+            let bar = try XCTUnwrap(
+                bars.first { $0.fileIndex == band.fileIndex },
+                "file \(band.fileIndex)'s band is drawn at \(band.y) and carries no bar — \(report)")
             XCTAssertEqual(bar.y, band.y, accuracy: 1,
-                           "file \(bar.fileIndex)'s bar sits at \(bar.y), its band is drawn at \(band.y)")
+                           "file \(band.fileIndex)'s bar sits at \(bar.y), "
+                               + "its band is drawn at \(band.y) — \(report)")
         }
     }
 
@@ -602,10 +652,27 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(coordinator.stickyHeader.resolutionCount, before + 2)
     }
 
-    /// Runs the pending coalesced bar update, which the surface queues on the main
-    /// run loop — nothing turns that loop in a test.
+    /// Turns the main run loop until it has nothing left to do, which is where the
+    /// surface's coalesced bar update runs — nothing turns that loop in a test.
+    ///
+    /// **To idle, rather than one pass.** A single pass is not enough, because the work
+    /// this waits for can be two turns away: `NSHostingView.rootView` is not guaranteed
+    /// to push the document into `updateNSView` synchronously, so one pass can be spent
+    /// applying the swap and running the layout pass it provokes — which is what queues
+    /// the re-resolution, on the *next* turn, through `CFRunLoopPerformBlock`. Under a
+    /// full-suite run that ordering is what actually happens, and a one-pass drain then
+    /// reads bars nothing has resolved yet. The app never sees it: its run loop turns
+    /// continuously, so a queued block always runs on the following turn.
+    ///
+    /// Capped, so a repaint that re-queues itself fails a test instead of hanging the
+    /// suite — generously, since the cap is not a budget anything asserts on.
     private func drainPendingBarUpdates() {
-        CFRunLoopRunInMode(.defaultMode, 0, false)
+        for _ in 0..<100 {
+            // `.handledSource` means that pass ran something, so another may have been
+            // queued behind it; anything else means the loop found no work at all.
+            guard CFRunLoopRunInMode(.defaultMode, 0, false) == .handledSource else { return }
+        }
+        XCTFail("the main run loop still had work after 100 passes")
     }
 
     /// The view value SwiftUI hosts, for a test that has to hand it a second one:
@@ -636,29 +703,44 @@ final class DiffTextSurfaceTests: XCTestCase {
             uniqueKeysWithValues: document.files.map { ($0.id, DiffFileHighlight(new: lines, old: nil)) })
     }
 
-    /// Where the text view draws the top of a file's reserved band, in the overlay's
-    /// coordinates — or `nil` when the viewport shows no row of that file.
+    /// One reserved band the text view draws inside the viewport.
+    private struct DrawnBand {
+        let fileIndex: Int
+        /// The band's top edge, relative to the viewport's own top edge — the very
+        /// coordinate a `DiffStickyHeader.Bar` carries.
+        let y: CGFloat
+        /// The bottom of the file's first row, in the same coordinates. What tells a
+        /// band drawn whole from one straddling the viewport's bottom edge.
+        let firstRowBottom: CGFloat
+    }
+
+    /// Every reserved band the text view draws inside the viewport, top-down, in the
+    /// overlay's coordinates.
     ///
-    /// Read through `fragments(in:)` over the viewport, which is the call
-    /// `DiffTextView.drawBackground(in:)` itself makes, so this is the position the
+    /// Read through a single `fragments(in:)` call over the viewport, which is the call
+    /// `DiffTextView.drawBackground(in:)` itself makes, so these are the positions the
     /// row tints and the gutter's stripes are lining up with — the only frame of
     /// reference in which a misplaced bar means anything.
     ///
     /// A file's band abuts its first row: TextKit folds `headerBandHeight +
     /// interFileGap` into the layout fragment ahead of that row, and the band is the
-    /// lower `headerBandHeight` of it.
-    private func drawnBandTop(
-        ofFileAt fileIndex: Int, in coordinator: DiffTextSurface.Coordinator, document: DiffDocument
-    ) throws -> CGFloat? {
+    /// lower `headerBandHeight` of it. So the bands on screen are exactly the drawn
+    /// rows that open a file.
+    private func drawnBands(
+        in coordinator: DiffTextSurface.Coordinator, document: DiffDocument
+    ) throws -> [DrawnBand] {
         let geometry = try XCTUnwrap(coordinator.geometry)
         let topEdge = visibleTop(of: coordinator)
         let viewport = CGRect(x: 0, y: topEdge, width: coordinator.clipView.bounds.width,
                               height: coordinator.clipView.bounds.height)
-        let firstLineIndex = document.files[fileIndex].firstLineIndex
-        guard let row = geometry.fragments(in: viewport)
-            .first(where: { $0.lineIndex == firstLineIndex && $0.isLineStart })
-        else { return nil }
-        return row.rect.minY - DiffTextAssembly.headerBandHeight - topEdge
+        let fileIndexByFirstLine = Dictionary(
+            uniqueKeysWithValues: document.files.indices.map { (document.files[$0].firstLineIndex, $0) })
+        return geometry.fragments(in: viewport).compactMap { row in
+            guard row.isLineStart, let fileIndex = fileIndexByFirstLine[row.lineIndex] else { return nil }
+            return DrawnBand(fileIndex: fileIndex,
+                             y: row.rect.minY - DiffTextAssembly.headerBandHeight - topEdge,
+                             firstRowBottom: row.rect.maxY - topEdge)
+        }
     }
 
     /// The viewport's top edge in the text container's coordinates, which is what
