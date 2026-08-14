@@ -12,8 +12,19 @@ concurrency:
 
 jobs:
   test:
-    name: Build & Test (macOS, arm64)
-    runs-on: macos-15
+    name: Build & Test (${{ matrix.os }}, arm64)
+    # Both ends of the supported range. macos-15 is the deployment target's own
+    # floor and the leg that must stay green; macos-26 is what development runs
+    # on, and the pair is what catches an OS-dependent difference in either
+    # direction — TextKit's cold-layout height estimates differ between the two,
+    # which a single leg only ever shows as a failure on the *other* machine.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One leg's failure must not cancel the other: which of the two fails is
+      # the diagnosis.
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
     steps:
       - uses: actions/checkout@v7
 
@@ -29,9 +40,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-macos-15-${{ hashFiles('Package.resolved') }}
+          key: swiftpm-${{ matrix.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            swiftpm-macos-15-
+            swiftpm-${{ matrix.os }}-
 
       - name: Install libgit2
         run: brew install libgit2 pkgconf
