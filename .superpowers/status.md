@@ -447,7 +447,35 @@ Two things are deliberately still open: the repaint is one synchronous
 main-thread burst, and it repaints every carried file rather than only those
 whose text moved.
 
-**Tests.** `swift test` → 856 passing (2 skipped). `DiffDocumentTests`,
+**Header bars and settled layout** (`427380f`). `DiffStickyHeader.bars` is a
+cache, so what invalidates it is part of its contract. Two things did — a
+document swap or a viewport resize, and the clip view's bounds changing — and
+TextKit finishing its layout was not among them. A swap invalidates the whole
+layout while `resolveBarsOverTheViewport()` warms only the viewport, so the
+positions the bars resolve from rest on *estimated* heights for everything the
+real layout has not reached; the text view's next layout pass replaces those
+estimates and moves every fragment below. The row tints and the gutter read
+`DiffFragmentGeometry` at draw time and follow the text there, which is why the
+bars alone were left behind — stranded inside a file's code with their own bands
+blank, healing on the reader's next scroll.
+
+The text view therefore reports its layout passes (`DiffTextView.didLayout`,
+after `super.layout()`, where TextKit 2 lays the viewport out) and the
+coordinator re-resolves the bars from them — through `updateStickyHeader()`, not
+`resolveBarsOverTheViewport()`, which forces layout and so has no business
+running inside a layout pass. The re-resolutions are **coalesced**: a refresh
+invalidates the layout once per storage swap and once per highlight painted into
+it, only the last pass of the burst carries settled geometry, and resolving
+costs an O(scroll offset) `fileIndex(atY:)` probe — 1.17 ms deep into a
+20 000-line diff. A burst queues exactly one re-resolution via
+`CFRunLoopPerformBlock`, whose modes include the nested loops a
+`DispatchQueue.main.async` block would sit out
+(see `main-queue-starved-by-modal-loops`). The bounds-change path stays
+synchronous, so the bar still cannot lag a frame behind the text it labels while
+scrolling. Recorded in
+`.claude/project-memory/references/textkit2-layout-geometry.md`.
+
+**Tests.** `swift test` → 858 passing (2 skipped). `DiffDocumentTests`,
 `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
 `DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
 color-only highlight rule, the fragment→line mapping, what a selection and a
@@ -468,7 +496,10 @@ fix.
 **Verified live.** The renderer draws correctly in the running app on a
 multi-file working tree (modified, added and deleted files, four-digit line
 numbers): pinned header per file, inter-file header bands, gutter sized from the
-whole document, syntax colors, and nothing painted outside the panel.
+whole document, syntax colors, and nothing painted outside the panel. A refresh
+taken mid-document also lands every bar in its own band with no scroll to shake
+them loose — six files of wrapping lines, the view scrolled to the fourth, then
+lines inserted above the viewport.
 
 **Still to verify.** The actively-edited-worktree check has now happened, and it
 froze — see **Highlight repaint order** above. The rewrite's own feedback path

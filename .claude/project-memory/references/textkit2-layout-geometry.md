@@ -98,3 +98,15 @@ decides what is cheap:
   `DiffFragmentGeometry.warmTop(ofFileAt:)` and treats a file with no geometry as
   off-screen; the refresh path warms the viewport once with
   `ensureLayout(in:)` so the chrome has bands to find before anything draws.
+- **A position read before layout settles is provisional.** A fragment's frame
+  rests on the *estimated* heights of everything the real layout has not
+  reached, so the layout pass that replaces those estimates moves it —
+  measured at 90.65 pt for a file two screens into a six-file document of
+  wrapping lines, read right after a text-storage swap. Chrome reading geometry
+  inside its own `draw` follows the text there for free; chrome that **caches**
+  a position needs an invalidation hook on the layout pass itself
+  (`NSTextView.layout()`, after `super`, is where TextKit 2 lays the viewport
+  out), or it holds the estimate until the next scroll notification. That hook
+  wants coalescing: a diff refresh invalidates layout once per storage swap and
+  once per highlight painted into it, and only the last pass of the burst
+  carries settled geometry.
