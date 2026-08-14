@@ -23,6 +23,23 @@ final class DiffTextView: NSTextView {
         didSet { needsDisplay = true }
     }
 
+    /// Called after every layout pass, for whoever holds geometry this view's
+    /// layout has just invalidated.
+    ///
+    /// TextKit answers with *estimated* heights for content it has not laid out
+    /// yet, and a layout pass replaces those estimates with real ones — which
+    /// moves every fragment below whatever moved. Chrome that reads
+    /// `DiffFragmentGeometry` at draw time follows on its own; the pinned header,
+    /// which caches the positions it resolved, needs telling.
+    var didLayout: (@MainActor () -> Void)?
+
+    /// `super.layout()` is where TextKit 2 lays the viewport out, so the callback
+    /// runs after it, with the settled geometry in place.
+    override func layout() {
+        super.layout()
+        didLayout?()
+    }
+
     /// Fills the row tints, over the view's background and under everything else.
     ///
     /// The selection highlight is drawn later in the draw cycle, so a selection

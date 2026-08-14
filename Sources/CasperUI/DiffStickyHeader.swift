@@ -38,8 +38,37 @@ final class DiffStickyHeader: NSView {
         }
     }
 
-    /// The bars as of the last `update(geometry:visibleTop:)`, top-down.
+    /// The bars as of the last `update(geometry:visibleTop:visibleHeight:)`,
+    /// top-down.
+    ///
+    /// A cache, which makes what invalidates it part of the contract. Three things
+    /// do, and all three are wired in `DiffTextSurface.Coordinator`:
+    ///
+    /// - the viewport's top edge moving, off the clip view's bounds-change
+    ///   notification;
+    /// - a document swap or a viewport resize, through
+    ///   `resolveBarsOverTheViewport()`;
+    /// - **TextKit's layout settling**, through the text view's `didLayout`. The
+    ///   first two resolve the bars over whatever geometry TextKit holds at that
+    ///   moment, and past the point its real layout has reached that geometry is
+    ///   *estimated*; a layout pass replaces the estimates with real heights and
+    ///   every fragment below moves. Without this trigger the bars keep their
+    ///   estimate-derived `y` until the reader's next scroll — bars stranded in the
+    ///   middle of a file's code, reserved bands left blank.
+    ///
+    /// Every other piece of diff chrome — the row tints in `DiffTextView`, the
+    /// stripe and numbers in `DiffGutterRuler` — reads `DiffFragmentGeometry` at
+    /// *draw* time and so needs no such list.
     private(set) var bars: [Bar] = []
+
+    /// How many times `update(geometry:visibleTop:visibleHeight:)` has been
+    /// reached.
+    ///
+    /// Here for `DiffTextSurfaceTests`, which pins that a burst of layout passes
+    /// collapses into a single re-resolution: resolving costs an O(scroll offset)
+    /// point probe, and the finished bars record nothing about how many times they
+    /// were computed.
+    private(set) var resolutionCount = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -69,8 +98,12 @@ final class DiffStickyHeader: NSView {
     /// has caught up with a resize.
     ///
     /// Repaints only when a bar actually moved, since this runs several times per
-    /// frame under momentum scrolling.
+    /// frame under momentum scrolling. That is also what keeps the settled-layout
+    /// path from repainting for nothing: a layout pass that moved no band leaves
+    /// the overlay alone, and the overlay is a sibling view whose `needsDisplay`
+    /// cannot dirty the text view's layout back.
     func update(geometry: DiffFragmentGeometry?, visibleTop: CGFloat, visibleHeight: CGFloat) {
+        resolutionCount += 1
         let updated = resolveBars(
             geometry: geometry, visibleTop: visibleTop, visibleHeight: visibleHeight)
         guard updated != bars else { return }
