@@ -208,6 +208,12 @@ struct DiffTextSurface: NSViewRepresentable {
             // — including the very first one, which lands after SwiftUI has already
             // pushed a document in — has to re-resolve the bars.
             containerView.viewportDidChange = { [weak self] in self?.resolveBarsOverTheViewport() }
+            // The third thing that invalidates the bars, and the only one the
+            // surface does not do to itself: TextKit replacing the estimated
+            // geometry the bars were resolved from with real layout. Coalesced, and
+            // deliberately *not* `resolveBarsOverTheViewport()` — that one forces
+            // layout, which is not a thing to do from inside a layout pass.
+            textView.didLayout = { [weak self] in self?.scheduleStickyHeaderUpdate() }
 
             let clipView = scrollView.contentView
             clipView.postsBoundsChangedNotifications = true
@@ -274,15 +280,75 @@ struct DiffTextSurface: NSViewRepresentable {
         /// Lays the viewport out and re-resolves the pinned bars over it.
         ///
         /// The overlay only ever reads geometry TextKit already holds — its own
-        /// path may force none — so it needs the viewport laid out first. Both of
-        /// the things that invalidate that are here: a document swap, after which
-        /// no draw has happened yet, and a viewport resize, which can arrive after
-        /// the swap because SwiftUI pushes the document in `updateNSView` and sizes
-        /// the view afterwards.
+        /// path may force none — so it needs the viewport laid out first. The two
+        /// invalidations the surface causes itself are here: a document swap, after
+        /// which no draw has happened yet, and a viewport resize, which can arrive
+        /// after the swap because SwiftUI pushes the document in `updateNSView` and
+        /// sizes the view afterwards.
+        ///
+        /// Neither is the last word on where the bars go. What this lays out starts
+        /// wherever TextKit's real layout had reached, so past that point the
+        /// viewport's fragments are placed over *estimated* heights, and the text
+        /// view's next layout pass moves them — which is what
+        /// `scheduleStickyHeaderUpdate()` is for.
         private func resolveBarsOverTheViewport() {
             geometry?.ensureLayout(in: visibleRectInContainer)
             updateStickyHeader()
         }
+
+        /// Queues one re-resolution of the pinned bars, and collapses a burst of
+        /// layout passes into it.
+        ///
+        /// Casper recomputes the diff on every file change, and each refresh
+        /// invalidates TextKit's layout several times over — the storage swap, then
+        /// every carried and progressive highlight painted into it — so the layout
+        /// passes that answer those invalidations arrive in bursts. Re-resolving
+        /// costs a `DiffFragmentGeometry.fileIndex(atY:)` point probe, which is
+        /// O(scroll offset) and 1.17 ms near the bottom of a 20 000-line diff, and
+        /// only the last pass of a burst has the settled geometry — so paying it per
+        /// pass would burn the time for answers that are thrown away.
+        ///
+        /// `CFRunLoopPerformBlock` rather than `DispatchQueue.main.async`: a main
+        /// queue block does not run while a modal session or a menu is tracking (see
+        /// the `main-queue-starved-by-modal-loops` memory note), which would leave
+        /// the bars stale for as long as one of those is up. The two nested modes
+        /// are named for the same reason.
+        ///
+        /// The cost of coalescing is that the bars can be one run-loop turn behind
+        /// the layout that moved them — the same tolerance `DiffStickyHeader`'s own
+        /// walk already takes for a band that has just come into view, and for the
+        /// same reason: a turn is not something a reader can see.
+        private func scheduleStickyHeaderUpdate() {
+            guard !stickyHeaderUpdateIsPending else { return }
+            stickyHeaderUpdateIsPending = true
+            let mainRunLoop = CFRunLoopGetMain()
+            CFRunLoopPerformBlock(mainRunLoop, Self.stickyHeaderRunLoopModes) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // Cleared before the work, not after: a layout pass provoked
+                    // from inside the update has to be able to queue the next one
+                    // rather than be swallowed by a flag that is still set.
+                    self.stickyHeaderUpdateIsPending = false
+                    self.updateStickyHeader()
+                }
+            }
+            // A run loop asleep in `mach_msg` sits on the block until its next
+            // event, which on an idle app is however long the reader stays idle.
+            CFRunLoopWakeUp(mainRunLoop)
+        }
+
+        /// Whether a re-resolution is already queued. One block in flight at a
+        /// time, so a burst of layout passes queues exactly one.
+        private var stickyHeaderUpdateIsPending = false
+
+        /// The modes the queued re-resolution is enqueued for: the common modes for
+        /// ordinary event processing, plus the two nested loops AppKit spins on its
+        /// own. Built once, since a burst asks for it repeatedly.
+        private static let stickyHeaderRunLoopModes: CFArray = [
+            CFRunLoopMode.commonModes.rawValue,
+            RunLoop.Mode.modalPanel.rawValue as CFString,
+            RunLoop.Mode.eventTracking.rawValue as CFString,
+        ] as CFArray
 
         /// Paints one file's syntax colors into the live text storage.
         ///
