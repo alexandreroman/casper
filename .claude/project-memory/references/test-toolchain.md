@@ -21,6 +21,6 @@ with `rm -rf .build`. Without a global switch, use
 every XCTest file using `URL`/`Data`/`FileManager`/`UUID`/`JSONEncoder` must
 `import Foundation` explicitly.
 
-Tests also run in **GitHub Actions CI** on `macos-15` (Xcode present) —
+Tests also run in **GitHub Actions CI** on a `macos-15` / `macos-26` matrix —
 `.github/workflows/ci.yml`. See [[swift-toolchain-floor]] for the required
 Xcode version pin.

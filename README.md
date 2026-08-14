@@ -137,8 +137,11 @@ for the full rationale.
 
 ### Continuous integration
 
-Tests run on every push to `main` and every pull request via GitHub Actions on
-`macos-15` ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)). Tagging a
+Tests run on every push to `main` and every pull request via GitHub Actions, on
+both `macos-15` (the deployment target's floor) and `macos-26`
+([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — some AppKit layout
+behaviour differs between the two, so a single runner would only ever show it as
+a failure on the other machine. Tagging a
 `v*` release builds and publishes `Casper.app` as a GitHub Release
 ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), along with
 the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs

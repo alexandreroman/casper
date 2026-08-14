@@ -19,6 +19,8 @@ compilers reject it with `error: unknown attribute 'MainActor'`, cascading into
 the `macos-15` runner image ships Xcode 16.0–16.4 plus 26.0.1–26.3, so both
 workflows must select a 26.x explicitly (the default is 16.4, which fails).
 Both pins must move together, or the release build breaks even when CI passes.
+CI runs a `macos-15` / `macos-26` matrix, so a pin bump has to be a version
+present on **both** images.
 
 Any code relying on `@MainActor` isolated conformances or other Swift 6.2+
 syntax will compile locally (dev toolchain is Xcode 26.x) but silently gate the
