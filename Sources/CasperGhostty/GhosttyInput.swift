@@ -107,7 +107,16 @@ func ghosttyTextRidesOnKeyEvent(_ text: String) -> Bool {
 /// Codepoint of the base key with modifiers ignored, which libghostty uses to
 /// resolve keybindings against the physical key. Zero when the event exposes no
 /// such scalar.
+///
+/// Only key events carry characters: `-[NSEvent charactersIgnoringModifiers]` *raises*
+/// `NSInternalInconsistencyException` ("Invalid message sent to event ...") for every
+/// other event type, and `GhosttySurfaceView.flagsChanged(with:)` feeds exactly those
+/// in — a modifier transition is a `.flagsChanged` event. The raise unwound out of
+/// `ghosttyKeyEvent` before `sendKey` could run, so no modifier press or release
+/// reached libghostty at all. A modifier transition has no base codepoint anyway, so
+/// non-key events resolve to 0, which is what Ghostty's own `keyAction` sends.
 private func ghosttyUnshiftedCodepoint(from event: NSEvent) -> UInt32 {
+    guard event.type == .keyDown || event.type == .keyUp else { return 0 }
     guard let scalar = event.charactersIgnoringModifiers?.unicodeScalars.first else { return 0 }
     return scalar.value
 }
@@ -125,8 +134,14 @@ private func ghosttyUnshiftedCodepoint(from event: NSEvent) -> UInt32 {
 /// still carries the real produced letter. Scoped to Control combos on mapped letters
 /// (a–z); digits, punctuation, and combos like Ctrl-[ or Ctrl-Space keep their real
 /// keycode, since there is no evidence they are affected and no safe remap target.
+///
+/// Non-key events return nil and keep their real `event.keyCode`: reading characters
+/// off them raises, which used to abort the whole `ghosttyKeyEvent` build before
+/// `sendKey` (see `ghosttyUnshiftedCodepoint`). Control itself going down or up is a
+/// `.flagsChanged` event with `.control` set, so it would otherwise reach the read here.
 private func ghosttyControlComboKeycode(for event: NSEvent) -> UInt32? {
-    guard event.modifierFlags.contains(.control),
+    guard event.type == .keyDown || event.type == .keyUp,
+        event.modifierFlags.contains(.control),
         let base = event.charactersIgnoringModifiers?.lowercased().first,
         let keycode = qwertyLetterKeyCodes[base]
     else { return nil }
