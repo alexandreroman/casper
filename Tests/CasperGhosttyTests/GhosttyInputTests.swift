@@ -95,6 +95,32 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("c").value))
         XCTAssertNil(key.text)
     }
+
+    /// Guards the fix where building a key event for a modifier press raised
+    /// `NSInternalInconsistencyException` — AppKit rejects `charactersIgnoringModifiers` on a
+    /// `.flagsChanged` event — and the throw unwound before `sendKey`, so no modifier state ever
+    /// reached libghostty. A modifier transition must encode as its own keycode with no base
+    /// codepoint and no text, exactly like Ghostty's reference `keyAction`.
+    func testControlPressFlagsChangedEventEncodesWithoutRaising() {
+        let event = makeControlFlagsChangedEvent(modifierFlags: [.control])
+        let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
+        XCTAssertEqual(key.unshifted_codepoint, 0)
+        XCTAssertEqual(key.keycode, UInt32(controlKeyCode))
+        XCTAssertNil(key.text)
+        XCTAssertNotEqual(key.mods.rawValue & GHOSTTY_MODS_CTRL.rawValue, 0)
+    }
+
+    /// The release half of `testControlPressFlagsChangedEventEncodesWithoutRaising`: letting
+    /// Control go is also a `.flagsChanged` event, and it must encode with the Ctrl bit cleared
+    /// rather than raise on the character read.
+    func testControlReleaseFlagsChangedEventEncodesWithoutRaising() {
+        let event = makeControlFlagsChangedEvent(modifierFlags: [])
+        let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_RELEASE)
+        XCTAssertEqual(key.unshifted_codepoint, 0)
+        XCTAssertEqual(key.keycode, UInt32(controlKeyCode))
+        XCTAssertNil(key.text)
+        XCTAssertEqual(key.mods.rawValue, GHOSTTY_MODS_NONE.rawValue)
+    }
 }
 
 /// Build a synthetic Ctrl-C keyDown. A real Control press remaps `characters` to the control
@@ -112,5 +138,28 @@ private func makeControlCKeyEvent() -> NSEvent {
         charactersIgnoringModifiers: "c",
         isARepeat: false,
         keyCode: 8  // kVK_ANSI_C
+    )!
+}
+
+/// Virtual keycode of the left Control key (kVK_Control), the physical key whose transitions
+/// AppKit reports as `.flagsChanged`.
+private let controlKeyCode: UInt16 = 0x3B
+
+/// Build a synthetic `.flagsChanged` event for the Control key: `modifierFlags: [.control]` is the
+/// press, `[]` the release. `NSEvent.keyEvent(with:...)` accepts the type and requires character
+/// strings, but AppKit raises when they are *read* back off a non-key event — which is exactly the
+/// behaviour these tests pin down, so the empty strings passed here are never observable.
+private func makeControlFlagsChangedEvent(modifierFlags: NSEvent.ModifierFlags) -> NSEvent {
+    NSEvent.keyEvent(
+        with: .flagsChanged,
+        location: .zero,
+        modifierFlags: modifierFlags,
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "",
+        charactersIgnoringModifiers: "",
+        isARepeat: false,
+        keyCode: controlKeyCode
     )!
 }
