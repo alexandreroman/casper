@@ -86,4 +86,5 @@
 - [NSTextStorage attribute writes must go in ascending offset order](references/nstextstorage-attribute-run-order.md) — the RLE run array makes out-of-order attribute writes quadratic; a memmove freeze, measured
 - [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — the diff's +/- cue and line numbers go in the ruler; in the text they poison selection, copy and wrap alignment
 - [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore's clip move re-resolves them off the scroll path; tests drain the run loop to idle, not one pass
+- [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off a `.flagsChanged` event raises
 - [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — hide the title bar's title with `.toolbar(removing: .title)`; an AppKit `titleVisibility` hide flashes at launch and lags
