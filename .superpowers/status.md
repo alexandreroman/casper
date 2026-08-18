@@ -291,10 +291,11 @@ clamped 240–1400) shown only when expanded. The `Divider()` doubles as a drag 
 width lives in view `@State`, so it is **preserved across collapse/expand** and,
 because the left region stays `maxWidth: .infinity`, **unaffected by adding
 terminals**. It is a side region, not an `HSplitView` pane (which would reset the
-width on re-add). Width is not yet persisted across workspace switches or restarts. `InspectorPanel` is a native segmented Browser|Diff
-selector pinned to the top over **full-bleed** content (no insets — a native
-`TabView`'s mandatory content inset was rejected), reusing `BrowserSurfaceView` (on
-`inspector.browser`) and `DiffSurfaceView` unchanged. The panel is collapsed only
+width on re-add). Width is not yet persisted across workspace switches or
+restarts. `InspectorPanel` pins a vertical, icon-only Diff/Browser tab rail to
+its right edge, alongside **full-bleed** content (no insets — a native
+`TabView`'s mandatory content inset was rejected), reusing `BrowserSurfaceView`
+(on `inspector.browser`) and `DiffSurfaceView` unchanged. The panel is collapsed only
 via the title-bar toggle (no in-panel collapse button). The panel browser's
 `WKWebView` survives collapse/expand and workspace switches via the existing
 surface-view cache (stable `Surface.id`); its address-bar URL write-back reaches

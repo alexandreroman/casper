@@ -475,7 +475,7 @@ final class DiffChromeTests: XCTestCase {
     /// top edge, so the rows in that band — already scrolled out of the viewport —
     /// have their tint, stripe and number placed above the gutter. Unclipped, they
     /// land on whatever the panel puts over the surface, which in `InspectorPanel`
-    /// is the Diff | Browser selector.
+    /// is the separator continuing the workspace title bar's line.
     func testTheGutterPaintsNothingAboveItsOwnColumn() throws {
         let document = makeMixedDocument()
         let surface = makeSurface(document: document)
