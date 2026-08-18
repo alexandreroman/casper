@@ -52,6 +52,13 @@ struct RootView: View {
                 // half-done, so the sheet stays up until the operation clears it.
                 .interactiveDismissDisabled()
         }
+        // Asks SwiftUI not to put a title in the title bar. SwiftUI owns
+        // `titleVisibility` — it writes it from the window controller and again on
+        // every view-graph update — so removing the title item here is what keeps the
+        // title from ever being drawn; see `WindowConfigurator` for why hiding it at
+        // the AppKit level can only be a fallback. Attached to the whole `Group` so it
+        // covers the empty-state and the split-view branch alike.
+        .toolbar(removing: .title)
         .background(WindowConfigurator(model: model))
         .onChange(of: model.spaces.isEmpty) { _, empty in
             // When the first space is added, expand the sidebar by default. Only
@@ -62,12 +69,16 @@ struct RootView: View {
     }
 }
 
-/// Hides the hosting window's title text (the centered title in the title bar)
-/// while keeping the title bar and toolbar. Applied per-window so it does not
-/// depend on app-activation timing.
+/// Applies the per-window AppKit settings `RootView` needs: the toolbar's
+/// display-mode customization is turned off, occlusion changes are forwarded to
+/// the model, and the window title text is hidden as a fallback.
 ///
-/// The `NavigationSplitView` re-shows the title whenever the sidebar collapses,
-/// so a `Coordinator` observes the window and re-hides it on every update.
+/// `.toolbar(removing: .title)` on `RootView` — not this — is what keeps the
+/// title off screen. Hiding it here cannot be the primary mechanism because it
+/// always loses the launch race: SwiftUI sets the title while the window loads,
+/// long before `makeNSView`'s async hop reaches `attach(to:)`, so the title is
+/// drawn for that whole gap. A `Coordinator` still re-hides it on every window
+/// update, as a cheap safety net.
 private struct WindowConfigurator: NSViewRepresentable {
     let model: AppModel
 
@@ -135,6 +146,10 @@ private struct WindowConfigurator: NSViewRepresentable {
                     // The toolbar can be recreated on updates, so re-apply this
                     // unconditionally rather than behind the title-visibility guard.
                     window.toolbar?.allowsDisplayModeCustomization = false
+                    // Fallback only, and a lagging one: a re-shown title stays on
+                    // screen until the *next* window update — in practice until the
+                    // user moves the mouse. `.toolbar(removing: .title)` is what
+                    // actually keeps it away.
                     guard window.titleVisibility != .hidden else { return }
                     window.titleVisibility = .hidden
                 }
