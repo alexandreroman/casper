@@ -47,18 +47,55 @@ struct WorkspaceInfoPanel: View {
         .frame(width: Self.width)
     }
 
-    /// A published endpoint is almost always local, so an http(s) link opens in
-    /// this workspace's own browser panel rather than leaving the app; every
-    /// other scheme returns `false` so `NSTextView`'s own system-open handles it.
+    /// Holding this while clicking a link sends it to the system's default
+    /// browser instead of the workspace's own browser panel.
     ///
-    /// Module-visible (not `private`) so `WorkspaceInfoPanelTests` can pin both
-    /// branches of the scheme predicate against a real, seeded `AppModel` —
-    /// `MarkdownTextViewTests` only drives the coordinator with an injected stub
-    /// closure, which decides the outcome itself and never reaches this guard.
-    func openURL(_ url: URL) -> Bool {
+    /// Command, because that is the macOS convention for "same click, other
+    /// destination" and it is the one modifier `NSTextView` does not already
+    /// spend on a click of its own: Shift extends the selection, Control opens
+    /// the context menu, and Option starts a rectangular selection.
+    static let systemBrowserModifier: NSEvent.ModifierFlags = .command
+
+    /// Where a clicked link goes, as a value, so the routing rule can be pinned
+    /// by tests without any of the three outcomes actually being performed.
+    enum LinkDestination: Equatable {
+        /// This workspace's own browser panel.
+        case workspaceBrowser
+        /// The system's default browser, via `NSWorkspace`.
+        case systemBrowser
+        /// Not ours to open — `NSTextView`'s own system-open handles it.
+        case system
+    }
+
+    /// A published endpoint is almost always local, so a plain click on an
+    /// http(s) link opens in this workspace's own browser panel rather than
+    /// leaving the app; holding `systemBrowserModifier` overrides that and hands
+    /// the URL to the default browser. Every other scheme is left to the system
+    /// either way — those already open outside the app, so the modifier has
+    /// nothing to switch between.
+    static func destination(for url: URL, modifiers: NSEvent.ModifierFlags) -> LinkDestination {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
-            return false
+            return .system
         }
-        return model.controlOpenBrowser(url: url, in: workspace.id)
+        return modifiers.contains(systemBrowserModifier) ? .systemBrowser : .workspaceBrowser
+    }
+
+    /// Performs what `destination(for:modifiers:)` decided, returning `true` when
+    /// the click was handled here and `false` to let `NSTextView`'s own
+    /// system-open take it.
+    ///
+    /// Module-visible (not `private`) so `WorkspaceInfoPanelTests` can pin the
+    /// workspace-browser branch against a real, seeded `AppModel` —
+    /// `MarkdownTextViewTests` only drives the coordinator with an injected stub
+    /// closure, which decides the outcome itself and never reaches this method.
+    func openURL(_ url: URL, modifiers: NSEvent.ModifierFlags = []) -> Bool {
+        switch Self.destination(for: url, modifiers: modifiers) {
+        case .system:
+            return false
+        case .systemBrowser:
+            return NSWorkspace.shared.open(url)
+        case .workspaceBrowser:
+            return model.controlOpenBrowser(url: url, in: workspace.id)
+        }
     }
 }

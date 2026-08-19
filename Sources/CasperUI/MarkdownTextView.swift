@@ -100,11 +100,14 @@ final class LinkCursorTextView: NSTextView {
 struct MarkdownTextView: NSViewRepresentable {
     private let markdown: String
     private let width: CGFloat
-    /// Returns `true` when the click was handled, which suppresses
-    /// `NSTextView`'s own system open; `false` lets the system handle the URL.
-    private let onOpenURL: (URL) -> Bool
+    /// Called with the clicked URL and the modifier keys held down at the time
+    /// of the click, so the caller can route the same link to a different place
+    /// depending on them. Returns `true` when the click was handled, which
+    /// suppresses `NSTextView`'s own system open; `false` lets the system handle
+    /// the URL.
+    private let onOpenURL: (URL, NSEvent.ModifierFlags) -> Bool
 
-    init(markdown: String, width: CGFloat, onOpenURL: @escaping (URL) -> Bool) {
+    init(markdown: String, width: CGFloat, onOpenURL: @escaping (URL, NSEvent.ModifierFlags) -> Bool) {
         self.markdown = markdown
         self.width = width
         self.onOpenURL = onOpenURL
@@ -227,7 +230,7 @@ struct MarkdownTextView: NSViewRepresentable {
     /// `mainactor-isolated-delegate-conformance` project memory note).
     @MainActor
     final class Coordinator: NSObject, @MainActor NSTextViewDelegate {
-        var onOpenURL: (URL) -> Bool
+        var onOpenURL: (URL, NSEvent.ModifierFlags) -> Bool
 
         /// The Markdown the text storage was last built from; `nil` until the first
         /// update, so even an empty message renders once.
@@ -236,7 +239,7 @@ struct MarkdownTextView: NSViewRepresentable {
         /// rebuild guard.
         var renderedWidth: CGFloat?
 
-        init(onOpenURL: @escaping (URL) -> Bool) {
+        init(onOpenURL: @escaping (URL, NSEvent.ModifierFlags) -> Bool) {
             self.onOpenURL = onOpenURL
         }
 
@@ -244,7 +247,20 @@ struct MarkdownTextView: NSViewRepresentable {
             // A `.link` attribute is allowed to hold a plain string; leave anything
             // that is not a URL to `NSTextView`'s own handling rather than guessing.
             guard let url = link as? URL else { return false }
-            return onOpenURL(url)
+            return onOpenURL(url, Self.modifiers())
+        }
+
+        /// The modifier keys held for the click being delivered right now.
+        ///
+        /// `clickedOnLink` is one of the AppKit callbacks that does not carry the
+        /// originating `NSEvent`, so the flags are read back off the application's
+        /// current event — the very mouse-up AppKit is dispatching from, since the
+        /// delegate is called synchronously inside its handling. Masked to the
+        /// device-independent bits so the raw left/right-key and numeric-pad bits
+        /// cannot make an exact-match comparison fail.
+        static func modifiers() -> NSEvent.ModifierFlags {
+            guard let event = NSApp.currentEvent else { return [] }
+            return event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         }
     }
 }

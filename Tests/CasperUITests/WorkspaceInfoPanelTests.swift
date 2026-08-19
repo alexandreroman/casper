@@ -154,6 +154,35 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         XCTAssertEqual(opened, url)
     }
 
+    /// Holding the system-browser modifier must take the very same http(s) link
+    /// out of the app instead. Pinned on the routing decision rather than
+    /// through `openURL`, which would really launch the default browser mid-test.
+    func testSystemBrowserModifierRoutesHTTPSOutOfTheApp() {
+        let url = URL(string: "https://example.com")!
+
+        XCTAssertEqual(
+            WorkspaceInfoPanel.destination(for: url, modifiers: WorkspaceInfoPanel.systemBrowserModifier),
+            .systemBrowser)
+        XCTAssertEqual(WorkspaceInfoPanel.destination(for: url, modifiers: []), .workspaceBrowser)
+    }
+
+    /// The modifier only ever switches between two in-app answers for a link the
+    /// panel owns; a scheme it does not own is the system's either way, so
+    /// holding the modifier must not claim the click.
+    func testSystemBrowserModifierLeavesNonHTTPSchemesToTheSystem() throws {
+        let (model, workspace) = Self.seeded()
+        let panel = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: "")
+        let url = URL(string: "mailto:someone@example.com")!
+
+        XCTAssertEqual(
+            WorkspaceInfoPanel.destination(for: url, modifiers: WorkspaceInfoPanel.systemBrowserModifier),
+            .system)
+        XCTAssertFalse(panel.openURL(url, modifiers: WorkspaceInfoPanel.systemBrowserModifier))
+
+        let ws = try XCTUnwrap(model.workspace(id: workspace.id))
+        XCTAssertNotEqual(ws.inspector.tab, .browser)
+    }
+
     /// Every other scheme must fall through to the system instead — pinned
     /// against a real model so deleting the guard (routing everything into the
     /// workspace browser) cannot pass silently: the inspector would stay off

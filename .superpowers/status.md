@@ -716,7 +716,12 @@ duplicate a shortcut that already works. Images render as alt text only, so the
 panel issues no network requests. The panel measures the rendered height itself
 via `MarkdownTextView.height(for:width:)` and hugs it up to `maxHeight`, then
 scrolls; an `http(s)` link opens in the workspace's own browser panel instead of
-leaving the app.
+leaving the app, unless `systemBrowserModifier` (⌘) is held, which sends it to
+the system's default browser. That routing is a pure decision
+(`WorkspaceInfoPanel.destination(for:modifiers:)`) so tests can pin the
+⌘ branch without a browser really launching; `MarkdownTextView` stays generic
+and only reports the flags, read off `NSApp.currentEvent` because AppKit's
+`clickedOnLink` callback carries no event of its own.
 
 **Tests.** Headless `NSHostingView` layout tests cover the empty/non-empty
 button states and that `AppModel.markInfoSeen` clears `infoUnread`

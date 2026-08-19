@@ -232,6 +232,10 @@ at 256 KB; `--message` and `--file` together are an error; and a bare
 `casper info set` at an interactive terminal errors instead of waiting on
 stdin (pipe, redirect, or the explicit `-` marker all still work).
 
+Clicking a link in the message opens it in the workspace's own browser panel,
+since a published endpoint is almost always local; **Command-clicking** it
+opens the same link in the system's default browser instead.
+
 ### Per-repository configuration (`.casper.json`)
 
 A repository can drop a `.casper.json` file at its root to tailor how Casper

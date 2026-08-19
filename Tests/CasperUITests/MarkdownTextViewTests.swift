@@ -93,7 +93,7 @@ final class MarkdownTextViewTests: XCTestCase {
         }
 
         let host = NSHostingView(
-            rootView: MarkdownTextView(markdown: markdown, width: Self.width) { _ in true }
+            rootView: MarkdownTextView(markdown: markdown, width: Self.width) { _, _ in true }
                 .frame(width: Self.width, height: 400))
         host.frame = CGRect(x: 0, y: 0, width: Self.width, height: 400)
         host.layoutSubtreeIfNeeded()
@@ -104,7 +104,7 @@ final class MarkdownTextViewTests: XCTestCase {
         // Reassigning `rootView` on the same `NSHostingView` is how SwiftUI drives
         // `updateNSView` on the same, already-realized text view — a fresh
         // `NSHostingView` would only exercise `makeNSView` again.
-        host.rootView = MarkdownTextView(markdown: markdown, width: widerWidth) { _ in true }
+        host.rootView = MarkdownTextView(markdown: markdown, width: widerWidth) { _, _ in true }
             .frame(width: widerWidth, height: 400)
         host.frame = CGRect(x: 0, y: 0, width: widerWidth, height: 400)
         host.layoutSubtreeIfNeeded()
@@ -178,7 +178,7 @@ final class MarkdownTextViewTests: XCTestCase {
 
     func testHandledLinkClickSuppressesTheSystemOpen() {
         var opened: URL?
-        let coordinator = MarkdownTextView.Coordinator { url in
+        let coordinator = MarkdownTextView.Coordinator { url, _ in
             opened = url
             return true
         }
@@ -194,7 +194,7 @@ final class MarkdownTextViewTests: XCTestCase {
     /// falls back to its own system open, so the link still works.
     func testDeclinedLinkClickFallsBackToTheSystem() {
         var opened: URL?
-        let coordinator = MarkdownTextView.Coordinator { url in
+        let coordinator = MarkdownTextView.Coordinator { url, _ in
             opened = url
             return false
         }
@@ -206,11 +206,29 @@ final class MarkdownTextViewTests: XCTestCase {
         XCTAssertEqual(opened, url)
     }
 
+    /// The click's modifier keys are handed to the closure alongside the URL, so
+    /// the caller can route the same link elsewhere when one is held. Headless
+    /// there is no event in flight, which is exactly the fallback pinned here:
+    /// no current event means no modifiers, never a stale set left over from an
+    /// earlier one.
+    func testLinkClickReportsTheModifiersHeldForIt() {
+        var received: NSEvent.ModifierFlags?
+        let coordinator = MarkdownTextView.Coordinator { _, modifiers in
+            received = modifiers
+            return true
+        }
+        let url = try? XCTUnwrap(URL(string: "http://localhost:8080"))
+
+        _ = coordinator.textView(NSTextView(), clickedOnLink: url as Any, at: 0)
+
+        XCTAssertEqual(received, [])
+    }
+
     /// A `.link` attribute may legitimately hold a plain string; such a click is
     /// left entirely to `NSTextView` rather than guessed at.
     func testNonURLLinkIsLeftToTheSystem() {
         var invoked = false
-        let coordinator = MarkdownTextView.Coordinator { _ in
+        let coordinator = MarkdownTextView.Coordinator { _, _ in
             invoked = true
             return true
         }
@@ -227,7 +245,7 @@ final class MarkdownTextViewTests: XCTestCase {
     /// against the very text view `makeNSView`/`updateNSView` produced.
     private func hostedTextView(markdown: String) throws -> NSTextView {
         let host = NSHostingView(
-            rootView: MarkdownTextView(markdown: markdown, width: Self.width) { _ in true }
+            rootView: MarkdownTextView(markdown: markdown, width: Self.width) { _, _ in true }
                 .frame(width: Self.width, height: 400))
         host.frame = CGRect(x: 0, y: 0, width: Self.width, height: 400)
         host.layoutSubtreeIfNeeded()
