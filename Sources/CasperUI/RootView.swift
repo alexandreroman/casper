@@ -15,7 +15,9 @@ struct RootView: View {
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView(model: model)
-                        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 400)
+                        // `ideal` is the width the sidebar opens at: enough room for a typical
+                        // branch label beside the row's leading glyphs and trailing 20pt slot.
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 290, max: 400)
                 } detail: {
                     if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
                         // Give the detail a per-workspace identity so SwiftUI recreates the
