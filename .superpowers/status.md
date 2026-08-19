@@ -661,6 +661,74 @@ notifications, the reporter's delay and ownership rules, and two overlapping
 destroys for the same workspace id are covered headlessly; the 30 s timeout path
 is not (no test can reach it without waiting it out).
 
+## Workspace info panel — ✅
+
+`casper info set` (Markdown via `--message`, `--file`, or stdin) publishes a
+message that shows up as a toolbar button next to the branch/space title;
+`casper info clear` removes it. Design:
+`.superpowers/sdd/2026-08-18-workspace-info-panel-plan/`.
+
+**Control channel.** `ControlCommand.Verb.infoSet`/`.infoClear`, routed by
+`ControlServer` into `AppModel.controlSetInfo(markdown:for:)`/
+`controlClearInfo(for:)`. `Workspace.infoMarkdown`/`infoUnread` are transient
+— excluded from `Codable` persistence like `pendingNotification` — so a
+relaunch never resurrects a stale message. Setting a new message always marks
+it unread; there is no coupling to the sidebar's attention flag.
+
+**The button.** `WorkspaceInfoButton` is a bare `info.circle` glyph with no
+capsule chrome — unlike its toolbar neighbours, the branch/space title
+(`titleCapsule`) and the diff badge, which both draw one — sharing one
+`ToolbarItem` with them so AppKit's inter-item spacing cannot push it away. It
+is always mounted but collapses to a 6 pt slot (`collapsedWidth`, not all the
+way to zero — that residual gap is what keeps the branch title clear of the diff
+badge), zero opacity and `allowsHitTesting(false)` without a message. Unread
+state is carried by the symbol fill (`info.circle.fill` at full `.primary`
+strength, `info.circle` in `.secondary` once seen) plus a repeating
+`symbolEffect(.pulse)` — no hue, so it never competes with the diff counter's
+tints. Appearance and disappearance animate by **property** (opacity, scale,
+slot width), never by a `transition`: insertion transitions do not play inside
+an AppKit-hosted toolbar item, the same reason `ScriptToolbarButton` animates
+its entrance from `onAppear`. Hovering reveals the panel after `hoverDelay` —
+150 ms, tighter than the design's ~300 ms so the reveal still reads as immediate
+to a deliberate hover while still requiring the pointer to sit still for a
+moment, and still enough that crossing the toolbar never pops it open — and
+dismissal waits out `dismissGrace` (250 ms) so the pointer can travel from the
+button into the popover; a click reveals it immediately. Revealing the panel
+calls `AppModel.markInfoSeen(for:)`, which stops the pulse. The popover anchors
+on the glyph, so the chip's interior padding stays symmetric inside the button's
+label and the trailing separation from the diff badge sits OUTSIDE the
+`.popover` in the modifier chain — folding it back in drifts the arrow off the
+icon.
+
+**The panel.** `WorkspaceInfoPanel` renders the Markdown through a native
+TextKit path, not a third-party package: `MarkdownAttributedString`
+(`Sources/CasperUI/MarkdownAttributedString.swift`) turns Foundation's parsed
+`AttributedString` (`interpretedSyntax: .full`, GFM) into a styled
+`NSAttributedString` — headings, lists, code blocks, block quotes, and GFM
+tables (via `NSTextTable`) — and `MarkdownTextView`
+(`Sources/CasperUI/MarkdownTextView.swift`) hosts it in a read-only, selectable
+`NSTextView`, which gives the panel both text selection and the native
+pointing-hand cursor over a link (see the `nstextview-link-cursor-and-selection`
+memory note). The panel carries no Copy button, unlike the design: a single
+`NSTextView` answers ⌘A/⌘C over the whole message natively, unlike the earlier
+`Text`-per-block renderer it replaced, so a dedicated button would only
+duplicate a shortcut that already works. Images render as alt text only, so the
+panel issues no network requests. The panel measures the rendered height itself
+via `MarkdownTextView.height(for:width:)` and hugs it up to `maxHeight`, then
+scrolls; an `http(s)` link opens in the workspace's own browser panel instead of
+leaving the app.
+
+**Tests.** Headless `NSHostingView` layout tests cover the empty/non-empty
+button states and that `AppModel.markInfoSeen` clears `infoUnread`
+(`WorkspaceInfoButtonTests`; no headless click or hover-dwell drives the
+button's own `reveal()`, so this pins the model primitive it calls, not the
+button), alongside the earlier control-channel/model
+tests (Tasks 1–3), `MarkdownTextViewTests` and `MarkdownAttributedStringTests`
+(the TextKit renderer and its hosting view), and `WorkspaceInfoPanelTests`
+(layout smoke tests for the panel's Markdown rendering). The visual
+hover/pulse/link-cursor/link-routing pass needs a human — see the
+`agent-visual-verification-limits` memory note.
+
 ## Developer tooling (`#if DEBUG`)
 
 - **Debug & observability channel — ✅.** `DebugProtocol`/`DebugSocket`/
@@ -713,11 +781,10 @@ producer + authority release. It was believed to only fit an *agent-as-command*
 surface that Casper couldn't create — but `command` is not actually inert: the
 embedded libghostty (a sandbox/host-managed fork) execs it via a hardcoded
 `bash -l -c "exec <command>"`, regardless of the user's real login shell, which
-does replace the shell process (see [[surface-command-bash-exec]]). This
-reopens the *agent-as-command* option; it hasn't been re-evaluated since. The
-`--command` reliability fix itself (typed via `initial_input`, no `exec`) has
-shipped; it deliberately does not use `exec`, so it does not itself enable an
-agent-as-command surface.
+does replace the shell process. This reopens the *agent-as-command* option; it
+hasn't been re-evaluated since. The `--command` reliability fix itself (typed
+via `initial_input`, no `exec`) has shipped; it deliberately does not use
+`exec`, so it does not itself enable an agent-as-command surface.
 Agents currently still run inside a shell; `error` has no detected producer and
 authority release is deferred to the timeout mechanism (option B). The initial
 implementation was removed. See the theme's "Process lifecycle" section.

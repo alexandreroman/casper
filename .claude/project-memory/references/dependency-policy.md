@@ -24,7 +24,8 @@ Only **five** external dependencies are sanctioned — **GhosttyKit** (libghostt
 terminal engine), **swift-argument-parser** (CLI), **libgit2** (Git, wrapped
 in an in-house `CasperGit` module; no external `git` binary),
 **HighlightSwift** (appstefan, MIT — language-aware syntax highlighting for the
-inspector diff view), and **Sparkle** (auto-update). Everything else must use system frameworks
+inspector diff view), and **Sparkle** (auto-update). Everything else must use
+system frameworks
 (Network.framework, WebKit, UserNotifications, AppKit/SwiftUI, Foundation/Codable).
 Build **arm64-only**, release with `-Osize` + LTO + strip. Before adding any new
 package, stop and justify it against this policy.
@@ -48,3 +49,18 @@ owning. It ships a universal `Sparkle.framework` (~10 MB in the bundle) — the 
 place where the smallest-binary rule is knowingly traded away. Casper stays
 ad-hoc signed, so the EdDSA appcast signature is the only trust anchor: see
 [`.superpowers/plans/sparkle-auto-update.md`](../../../.superpowers/plans/sparkle-auto-update.md).
+
+**Workspace info panel rendering:** the panel renders Markdown supplied by the
+`casper info` CLI without any external package. macOS parses Markdown natively
+(`AttributedString(markdown:)` with `interpretedSyntax: .full`), and
+`MarkdownAttributedString` (`Sources/CasperUI/MarkdownAttributedString.swift`)
+turns the resulting block-level `presentationIntent` into a styled
+`NSAttributedString` — headings, lists, code blocks, block quotes, and GFM
+tables (via `NSTextTable`) all come from that hand-rolled renderer, not a
+library. `MarkdownTextView` (`Sources/CasperUI/MarkdownTextView.swift`) hosts
+that attributed string in a read-only, selectable `NSTextView` (TextKit),
+which is also what gives the panel the native pointing-hand cursor over a
+link — a SwiftUI `Text` cannot do that (see the
+`nstextview-link-cursor-and-selection` project memory note). Images
+(`![alt](url)`) render as their alt text only, so the panel makes no network
+requests of its own.

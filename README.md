@@ -189,6 +189,12 @@ casper status set working                    # set the agent state (working|bloc
 casper progress set --total 5 --current 2 --label "run tests"
 casper progress clear
 casper notify --message "needs review"       # raise the attention flag + notify
+casper info set --message "## App ready
+- API: <http://localhost:8080>"
+casper info set --file docs/endpoints.md     # read the Markdown message from a file
+printf '## App ready\n' | casper info set    # or read it from stdin
+printf '## App ready\n' | casper info set -  # same, with an explicit '-' marker
+casper info clear                            # empty the panel and hide its button
 casper terminal new                          # open a terminal (split right)
 casper terminal list                         # list the workspace's terminals
 casper terminal close <id>                   # close a terminal by id
@@ -218,6 +224,13 @@ primary workspace.
 Casper has no agent-hook integration: an agent reports its state by calling these
 commands itself (e.g. `casper status set working`), so the surface is explicit
 and agent-agnostic.
+
+The info panel keeps only the latest `casper info set` message and never
+persists it across app restarts; it's reached by hovering or clicking the
+info button next to the workspace's branch/space title. A message is capped
+at 256 KB; `--message` and `--file` together are an error; and a bare
+`casper info set` at an interactive terminal errors instead of waiting on
+stdin (pipe, redirect, or the explicit `-` marker all still work).
 
 ### Per-repository configuration (`.casper.json`)
 

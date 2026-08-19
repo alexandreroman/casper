@@ -200,14 +200,14 @@ was implemented and then **removed**, because it only makes sense for an
 that the embedded libghostty simply didn't honor a surface's `command` at all;
 that turned out to be wrong — the pinned fork (`libghostty-spm`, a
 sandbox/host-managed-oriented fork) does run it, but via a hardcoded
-`bash -l -c "exec <command>"` that ignored the user's real shell (see
-[[surface-command-bash-exec]]). The shipped fix (`terminal new --command`) now
-runs reliably, but deliberately via `ghostty_surface_config_s.initial_input`
-typed as plain text — not `exec`'d, and not using `command` at all — so it does
-not replace the shell process. Agents therefore still always run **inside a
-shell** (the user types `claude`, or `--command claude` types it for them); the
-shell survives when the agent exits, and no agent-scoped exit event is
-available. See the CasperGhostty note in `themes/cli-agents.md`.
+`bash -l -c "exec <command>"` that ignored the user's real shell. The shipped
+fix (`terminal new --command`) now runs reliably, but deliberately via
+`ghostty_surface_config_s.initial_input` typed as plain text — not `exec`'d,
+and not using `command` at all — so it does not replace the shell process.
+Agents therefore still always run **inside a shell** (the user types `claude`,
+or `--command claude` types it for them); the shell survives when the agent
+exits, and no agent-scoped exit event is available. See the CasperGhostty note
+in `themes/cli-agents.md`.
 
 Given the shell-hosted reality:
 - **`done`** is still produced by the resolver's own `working → idle` derivation
