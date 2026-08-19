@@ -7,7 +7,7 @@ import WebKit
 /// commits (URL, back/forward availability) back to the model/UI. One per
 /// browser `Surface.id`.
 @MainActor
-final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate {
+final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
     @Published var address: String = ""
     @Published var canGoBack = false
@@ -38,6 +38,11 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     private var consoleBuffer: [ConsoleEntry] = []
     private static let consoleBufferCapacity = 500
 
+    /// KVO observations on the web view's navigation state, kept for the
+    /// coordinator's lifetime (`NSKeyValueObservation` invalidates itself on
+    /// dealloc, so no explicit teardown is needed).
+    private var navObservations: [NSKeyValueObservation] = []
+
     init(url: URL) {
         // Build a configuration that captures the page's console output and uncaught
         // errors: a document-start user script wraps `console.*`, `window.onerror`,
@@ -59,6 +64,19 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         messageHandler.coordinator = self
         web.onFocus = { [weak self] in self?.onFocus?() }
         web.navigationDelegate = self
+        web.uiDelegate = self
+        // Same-document navigations — `history.pushState`/`replaceState` and hash
+        // changes, i.e. what SPA client-side routing does — fire no
+        // `WKNavigationDelegate` callback at all, so the delegate alone leaves the
+        // address bar, the persisted URL and the back/forward state stale even
+        // though `pushState` did push a back-forward entry. These three properties
+        // are KVO-compliant and do report them; KVO for them is delivered on the
+        // main thread, hence `assumeIsolated`.
+        navObservations = [
+            web.observe(\.url) { [weak self] _, _ in MainActor.assumeIsolated { self?.syncNav() } },
+            web.observe(\.canGoBack) { [weak self] _, _ in MainActor.assumeIsolated { self?.syncNav() } },
+            web.observe(\.canGoForward) { [weak self] _, _ in MainActor.assumeIsolated { self?.syncNav() } }
+        ]
         self.address = url == .aboutBlank ? "" : url.absoluteString
         web.load(URLRequest(url: url))
     }
@@ -288,6 +306,13 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     })();
     """
 
+    /// Push the web view's navigation state into the published properties. Also
+    /// runs from KVO, which fires as soon as a navigation goes *provisional* — so
+    /// the address bar shows the pending URL while it loads (what every browser
+    /// does) and `onCommitURL` persists it before it commits. That is deliberate:
+    /// every later commit, finish and failure re-syncs, so the persisted URL
+    /// converges on the real one, and a load still in flight is exactly what a
+    /// restored surface should re-open.
     private func syncNav() {
         canGoBack = webView.canGoBack
         canGoForward = webView.canGoForward
@@ -310,6 +335,39 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         loadError = error.localizedDescription
         syncNav()
     }
+
+    // MARK: - WKUIDelegate
+
+    /// Adopt `window.open(…)` and `target="_blank"` navigations into this same web
+    /// view. WebKit asks the UI delegate to supply a web view for them and, with no
+    /// UI delegate at all, silently drops the navigation — such a link simply does
+    /// nothing. Casper's browser is a single pane with no tabs, so loading the
+    /// request here is the closest honest behaviour. Returning nil tells WebKit no
+    /// new web view was created, which is correct: the caller's `window.open` gets
+    /// null back, as it would from a blocked popup.
+    func webView(
+        _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if Self.shouldAdoptPopup(
+            url: navigationAction.request.url, hasTargetFrame: navigationAction.targetFrame != nil) {
+            webView.load(navigationAction.request)
+        }
+        return nil
+    }
+
+    /// Whether a popup navigation should be loaded in place. `hasTargetFrame` is
+    /// false when WebKit has no frame to load into, i.e. it really is asking for a
+    /// new window; anything else already has a home and must not be hijacked. Only
+    /// `http`/`https` are adopted, mirroring the address bar's scheme policy
+    /// (`BrowserSurfaceView.normalize`), so a `file:` or custom-scheme popup is
+    /// ignored rather than handed a full-privilege load.
+    nonisolated static func shouldAdoptPopup(url: URL?, hasTargetFrame: Bool) -> Bool {
+        guard !hasTargetFrame, let scheme = url?.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
+    // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         loadError = nil
