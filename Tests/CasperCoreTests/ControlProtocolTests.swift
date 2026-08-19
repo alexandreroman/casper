@@ -57,4 +57,18 @@ final class ControlProtocolTests: XCTestCase {
     func testRunVerbRawValueIsStable() {
         XCTAssertEqual(ControlCommand.Verb.run.rawValue, "run")
     }
+
+    func testInfoSetRoundTripsMarkdownInMessage() throws {
+        let command = ControlCommand(
+            verb: .infoSet, workspace: "feature-x", message: "## Ready\n- <http://localhost:8080>\n")
+        let data = try JSONEncoder().encode(command)
+        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
+        XCTAssertEqual(decoded, command)
+        XCTAssertEqual(decoded.message, "## Ready\n- <http://localhost:8080>\n")
+    }
+
+    func testInfoVerbRawValuesAreStable() {
+        XCTAssertEqual(ControlCommand.Verb.infoSet.rawValue, "infoSet")
+        XCTAssertEqual(ControlCommand.Verb.infoClear.rawValue, "infoClear")
+    }
 }

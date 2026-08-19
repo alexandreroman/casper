@@ -133,6 +133,57 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(response.workspace, id.uuidString)
     }
 
+    func testInfoSetRoutesToTheModel() throws {
+        let (server, id) = try seededServer()
+        let model = try XCTUnwrap(self.model)
+        let response = handleSync(
+            server, ControlCommand(verb: .infoSet, workspace: id.uuidString, message: "## Ready"))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(model.workspace(id: id)?.infoMarkdown, "## Ready")
+    }
+
+    func testInfoSetWithoutMessageFails() throws {
+        let (server, id) = try seededServer()
+        let response = handleSync(server, ControlCommand(verb: .infoSet, workspace: id.uuidString))
+        XCTAssertFalse(response.ok)
+    }
+
+    /// The server's own guard trims before checking emptiness — dropping just
+    /// that trim would let a whitespace-only message (never rejected by the nil
+    /// check above) through to `controlSetInfo`, showing an effectively blank
+    /// panel.
+    func testInfoSetWithWhitespaceOnlyMessageFails() throws {
+        let (server, id) = try seededServer()
+        let response = handleSync(
+            server, ControlCommand(verb: .infoSet, workspace: id.uuidString, message: "   \n\t "))
+        XCTAssertFalse(response.ok)
+    }
+
+    /// `InfoCommand.Set` enforces `infoMessageMaxBytes` client-side, but the server
+    /// must not trust that: mirror the bound here so an oversized payload sent by
+    /// any other caller is rejected too, not stored and rendered by the panel.
+    func testInfoSetRejectsAnOversizedMessage() throws {
+        let (server, id) = try seededServer()
+        let model = try XCTUnwrap(self.model)
+        let oversized = String(repeating: "a", count: ControlCommand.infoMessageMaxBytes + 1)
+
+        let response = handleSync(
+            server, ControlCommand(verb: .infoSet, workspace: id.uuidString, message: oversized))
+
+        XCTAssertFalse(response.ok)
+        XCTAssertNil(model.workspace(id: id)?.infoMarkdown)
+    }
+
+    func testInfoClearRoutesToTheModel() throws {
+        let (server, id) = try seededServer()
+        let model = try XCTUnwrap(self.model)
+        model.controlSetInfo(markdown: "## Ready", for: id)
+
+        _ = handleSync(server, ControlCommand(verb: .infoClear, workspace: id.uuidString))
+
+        XCTAssertNil(model.workspace(id: id)?.infoMarkdown)
+    }
+
     // MARK: - Browser automation (async dispatch)
 
     /// The browser verbs reply asynchronously (WebKit's `evaluateJavaScript` /

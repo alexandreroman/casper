@@ -2,8 +2,8 @@ import ArgumentParser
 import CasperAgents
 
 /// The root `casper` command. Ships the domain commands (`status`, `progress`,
-/// `notify`, `terminal`, `browser`, `diff`, `workspace`); `casper debug` is
-/// added only in debug builds.
+/// `notify`, `info`, `terminal`, `browser`, `diff`, `workspace`); `casper debug`
+/// is added only in debug builds.
 public struct CasperCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "casper",
@@ -13,7 +13,7 @@ public struct CasperCommand: ParsableCommand {
         version: casperAgentsVersion,
         subcommands: {
             var subs: [ParsableCommand.Type] = [
-                StatusCommand.self, ProgressCommand.self, NotifyCommand.self,
+                StatusCommand.self, ProgressCommand.self, NotifyCommand.self, InfoCommand.self,
                 TerminalCommand.self, BrowserCommand.self, DiffCommand.self,
                 WorkspaceCommand.self, RunCommand.self,
             ]

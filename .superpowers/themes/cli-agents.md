@@ -25,18 +25,24 @@ handful of verbs:
   todo progress.
 - `notify [--message <str>]` — raise the attention flag; `--message` also
   posts a macOS notification (suppressed when the target is already focused).
+- `info set [--message <str> | --file <path> | -]` — replace the workspace's
+  info-panel Markdown message, read from the flag, a file, or stdin. `-`
+  reads stdin explicitly; a bare invocation reads stdin too, but only when it
+  is not a TTY (piped or redirected) — at an interactive terminal it errors
+  instead of hanging. `info clear` — empty the panel and hide its button. The
+  panel keeps only the latest message and never persists it across restarts.
 - `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
   split right (cwd defaults to the worktree); `terminal list` — list the
   workspace's terminals; `terminal close <id>` — close a terminal by id.
   `--command` types the given text into the newly opened terminal's real login
   shell once it starts (via `ghostty_surface_config_s.initial_input`, not the
-  vendored fork's broken `command`/`bash -l -c "exec"` path — see
-  [[surface-command-bash-exec]]), so it inherits the user's actual `$SHELL`
-  and PATH (Homebrew, mise, etc., from `~/.zprofile`/`~/.zshrc` for a zsh
-  user). It is typed as plain text, not `exec`'d: after the command exits, the
-  terminal returns to an interactive shell prompt rather than closing, and a
-  compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
-  instruction, not persisted — restoring a saved session never re-runs it.
+  vendored fork's broken `command`/`bash -l -c "exec"` path), so it inherits the
+  user's actual `$SHELL` and PATH (Homebrew, mise, etc., from
+  `~/.zprofile`/`~/.zshrc` for a zsh user). It is typed as plain text, not
+  `exec`'d: after the command exits, the terminal returns to an interactive
+  shell prompt rather than closing, and a compound command (`a ; b ; c`) runs
+  in full. A launch command is a one-shot instruction, not persisted —
+  restoring a saved session never re-runs it.
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
   workspace's single **inspector** browser surface and select the browser tab.
   Browser surfaces can also be layout panes (`Surface.Kind.browser`, the "New
@@ -48,6 +54,9 @@ handful of verbs:
   `workspace delete` — enumerate, identify, create, and destroy workspaces.
   `workspace delete` is **destructive** (prunes the worktree folder, deletes the
   branch, drops it from the UI) and **refuses a primary workspace**.
+- `run [<name>]` — run a named command from the workspace's `.casper.json` in
+  a new visible terminal (defaults to the command named `run`). Not scoped
+  under its own noun like the others, but still a workspace-targeted verb.
 
 Every workspace-scoped command shares a `--workspace <id-or-name>` option,
 defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is
@@ -70,10 +79,9 @@ including the affected `workspace` id — e.g. `status set blocked` →
 `{"status":"blocked","workspace":"<id>"}`; verbs with no meaningful state
 (`progress clear`, `notify`, `browser open`, `diff open`) → `{"workspace":"<id>"}`.
 `terminal new` carries `working-dir` (always) and `command` (when given);
-`terminal list` carries only `working-dir` (it no longer carries `command` —
-a terminal's launch command is a one-shot instruction, not durable state, see
-[[surface-command-bash-exec]]); `workspace new`/`list`/`current` carry the
-worktree `path`
+`terminal list` carries only `working-dir` (it no longer carries `command` — a
+terminal's launch command is a one-shot instruction, not durable state);
+`workspace new`/`list`/`current` carry the worktree `path`
 (`branch` omitted for a degenerate, non-Git space). On **error** it prints
 `{"error":"<msg>"}` to stderr and exits **non-zero** — a command in error never
 returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's

@@ -19,11 +19,11 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 1. **Native & performant** — macOS-native UI; GPU-accelerated terminal rendering
    via libghostty.
 2. **Prefer built-in macOS frameworks** over third-party code.
-3. **Minimum dependencies** — only four external deps (GhosttyKit,
-   swift-argument-parser, libgit2 behind the in-house `CasperGit`, and
-   HighlightSwift for diff syntax highlighting); everything else uses system
-   frameworks. See [[dependency-policy]] for the full rule, rationale, and the
-   arm64 / `-Osize` build stance.
+3. **Minimum dependencies** — only five external deps (GhosttyKit,
+   swift-argument-parser, libgit2 behind the in-house `CasperGit`,
+   HighlightSwift for diff syntax highlighting, and Sparkle for auto-update);
+   everything else uses system frameworks. See [[dependency-policy]] for the
+   full rule, rationale, and the arm64 / `-Osize` build stance.
 4. **No notarization.**
 
 ## Locked decisions
@@ -42,15 +42,15 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 
 ## Module boundaries
 
-| Module | Responsibility | Theme |
-| --- | --- | --- |
-| **CasperGit** | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base | `themes/git-worktrees.md` |
-| **CasperCore** | Models, `SessionStore`, `WorktreeManager`, `PortAllocator`, control-channel protocol + socket. Pure Swift, no UI | `themes/core.md` |
-| **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API | `themes/terminal.md` |
-| **CasperAgents** | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals | `themes/cli-agents.md` |
-| **CasperCLI** | `casper` subcommand dispatch (swift-argument-parser) | `themes/cli-agents.md` |
-| **CasperUI** | SwiftUI sidebar, chrome, diff, browser + AppKit bridges | `themes/app-ui.md` |
-| **Casper** (app) | Wiring, window, lifecycle, GUI/CLI dispatch | all |
+| Module            | Responsibility                                                                                                   | Theme                     |
+|-------------------|------------------------------------------------------------------------------------------------------------------|---------------------------|
+| **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                        | `themes/git-worktrees.md` |
+| **CasperCore**    | Models, `SessionStore`, `WorktreeManager`, `PortAllocator`, control-channel protocol + socket. Pure Swift, no UI | `themes/core.md`          |
+| **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API   | `themes/terminal.md`      |
+| **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals   | `themes/cli-agents.md`    |
+| **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                             | `themes/cli-agents.md`    |
+| **CasperUI**      | SwiftUI sidebar, chrome, diff, browser + AppKit bridges                                                          | `themes/app-ui.md`        |
+| **Casper** (app)  | Wiring, window, lifecycle, GUI/CLI dispatch                                                                      | all                       |
 
 Rationale: instability (libghostty), Git specifics (libgit2), and agent
 specifics (Claude Code) are each confined to one module, so churn stays local.
@@ -66,6 +66,8 @@ Session
          ├─ agentState: working | blocked | idle | done | unknown | error
          ├─ todos: [Todo{content, status: pending|in_progress|completed}]
          ├─ pendingNotification: Bool
+         ├─ infoMarkdown: String?                // latest `casper info set` message; transient
+         ├─ infoUnread: Bool                     // drives the info button's pulse; transient
          ├─ portBase: Int                        // 10-port block; env CASPER_PORT if linked
          ├─ layout: LayoutNode
          └─ inspector: InspectorState            // right panel: collapsed, tab, browser, width
@@ -88,14 +90,14 @@ their target, `portBase` is restored as-is.
 
 ## Risks & mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| libghostty API instability | All access behind `GhosttyRuntime`; pinned version |
-| Worktree op fails (branch checked out, dirty) | Clear UI error, never crash |
-| PTY dies | Surface marked closed, restartable |
-| App crash | Agents lost (accepted); relaunch restores layout cold |
-| Agent never calls the CLI | State inferred from the terminal; `unknown` only when unreadable |
-| Binary size creep | Four justified externals only; arm64-only; `-Osize` + LTO |
+| Risk                                          | Mitigation                                                       |
+|-----------------------------------------------|------------------------------------------------------------------|
+| libghostty API instability                    | All access behind `GhosttyRuntime`; pinned version               |
+| Worktree op fails (branch checked out, dirty) | Clear UI error, never crash                                      |
+| PTY dies                                      | Surface marked closed, restartable                               |
+| App crash                                     | Agents lost (accepted); relaunch restores layout cold            |
+| Agent never calls the CLI                     | State inferred from the terminal; `unknown` only when unreadable |
+| Binary size creep                             | Five justified externals only; arm64-only; `-Osize` + LTO        |
 
 ## Testing strategy
 
@@ -110,7 +112,10 @@ their target, `portBase` is restored as-is.
 
 **In:** worktree=workspace, free-form splits, terminal + browser + diff
 surfaces, per-workspace 10-port reservation, Claude Code state + todo progress,
-enriched sidebar, session persistence, single GUI+CLI binary, arm64-only.
+enriched sidebar, session persistence, single GUI+CLI binary, arm64-only, a
+workspace info panel (`casper info set`/`clear`, control-channel `infoSet`/
+`infoClear` verbs) publishing a Markdown message into a toolbar-anchored
+popover.
 
 **Out (later):** persistent daemon (agents surviving restart), multi-agent
 orchestration, more agent adapters (Codex, Gemini), editable diffs, notarized

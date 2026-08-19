@@ -6,7 +6,7 @@
 > updating. **Do NOT take any action** — no tool calls, no file writes — until
 > confirmed.
 
-- [Dependency policy](references/dependency-policy.md) — default to native macOS APIs (check the OS before reinventing/importing); only GhosttyKit + swift-argument-parser + libgit2 + HighlightSwift
+- [Dependency policy](references/dependency-policy.md) — default to native macOS APIs (check the OS before reinventing/importing); only GhosttyKit + swift-argument-parser + libgit2 + HighlightSwift + Sparkle
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
 - [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — GIT_DIFF_SHOW_UNTRACKED_CONTENT required or untracked text misflags binary + badge undercounts
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning from Homebrew's libgit2 is benign; left unsuppressed on purpose
@@ -78,6 +78,7 @@
 - [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each Highlight() = a new JavaScriptCore JSContext; per-call construction under diff churn leaked GBs of JSC VM heap; use the shared DiffHighlighter instance
 - [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — the teardown split spawns fine in XCTest; drive `handleScriptSurfaceExit` for the child exit
 - [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views in XCTest; pixels still need human eyes; CI runner measures differently (legacy scrollers, macOS 15)
+- [Testing a guarded no-write with withObservationTracking](references/observation-tracking-guard-tests.md) — pins that a guarded mutation skips writing an `@Observable` property, no production-code instrumentation needed
 - [Worktree deletion deletes the directory before pruning metadata](references/worktree-deletion-directory-first.md) — git_worktree_prune orphans the dir on read-only entries; FileManager-delete first, then metadata-only prune
 - [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — draw rects reach far past the column (one is infinite) and nothing clips them; clip to `bounds` in `draw(_:)` around `super`
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — paragraphSpacingBefore lives inside layoutFragmentFrame; empty trailing line fragment; reading .layoutManager flips to TextKit 1; point probes and ensureLayout cost O(scroll offset)
@@ -88,3 +89,8 @@
 - [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore's clip move re-resolves them off the scroll path; tests drain the run loop to idle, not one pass
 - [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off a `.flagsChanged` event raises
 - [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — hide the title bar's title with `.toolbar(removing: .title)`; an AppKit `titleVisibility` hide flashes at launch and lags
+- [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — adding a `ControlCommand.Verb` case breaks CasperUI's build until routed; those two plan tasks must share one commit
+- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — NSTextView gives selection and exposes the index under the pointer; the pointing-hand cursor still has to be driven explicitly
+- [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a bare NSTextBlock border (width+color set) drew nothing; known Apple-acknowledged AppKit bugs, headless pixel tests can't confirm either way, avoid margins where a border is unavoidable
+- [Markdown block spacing is one-sided](references/markdown-one-sided-spacing.md) — every block-to-block gap is the following block's own paragraphSpacingBefore; a bordered block (quote bar, table header) takes a dedicated spacer paragraph instead
+- [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its explicit size to the parent regardless of padding nested inside it; bake the value into the frame or move padding outside

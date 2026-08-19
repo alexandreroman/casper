@@ -34,6 +34,16 @@ Facts measured in-process with the Xcode 26 toolchain, on an `NSTextView` at a
   `testFileOwnershipStartsAtTheReservedBandNotAtTheLayoutFragment` and
   `testFirstFilesBandTopSitsAboveTheContainerOrigin` pin the geometry that comes
   out.
+- **A paragraph's style comes from its first character, and a paragraph ends at
+  a newline** — not at an attribute-run boundary. So the `"\n"` joining two
+  blocks belongs to the *preceding* block's paragraph, and any
+  `NSParagraphStyle` set on that newline alone is never read: measured at 0 pt
+  realized against 12 pt of `paragraphSpacing` asked for. A gap that has to
+  land between two specific paragraphs needs a paragraph of its own —
+  newline-delimited on both sides, with `minimumLineHeight ==
+  maximumLineHeight` fixing its height and a 1 pt font so the metrics
+  underneath don't fight that height (`MarkdownAttributedString`'s
+  `Builder.separator`).
 - TextKit **ignores `paragraphSpacingBefore` on the document's first
   paragraph**, so its first row sits at `typographicBounds.minY == 0` and the
   same formula yields a *negative* band top. Space reserved ahead of it has

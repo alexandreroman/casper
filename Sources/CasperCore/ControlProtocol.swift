@@ -8,6 +8,8 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case progressSet
         case progressClear
         case notify
+        case infoSet
+        case infoClear
         case terminalNew
         case terminalList
         case terminalClose
@@ -35,6 +37,14 @@ public struct ControlCommand: Codable, Equatable, Sendable {
         case browserScrollTop
         case browserScrollBottom
     }
+
+    /// Upper bound on an `infoSet` message, in UTF-8 bytes. Enforced both by the
+    /// CLI (before it sends the command) and by the control server (so the bound
+    /// holds regardless of caller), because it bounds what the info panel renders
+    /// — a panel meant for a short note, not a place for an unbounded document.
+    /// The control socket itself frames at 8 MB; this is a much tighter sanity
+    /// limit well below that transport ceiling.
+    public static let infoMessageMaxBytes = 256 * 1024
 
     public var verb: Verb
     public var workspace: String?   // target selector: workspace id or name (nil = app's selected)

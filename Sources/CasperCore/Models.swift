@@ -275,6 +275,12 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     public var todos: [Todo]
     public var pendingNotification: Bool
     public var pendingNotificationMessage: String?
+    /// Latest Markdown message published by `casper info set`, rendered in the
+    /// workspace's info panel. Transient: a single message, never persisted.
+    public var infoMarkdown: String?
+    /// Whether `infoMarkdown` has yet to be shown to the user — drives the info
+    /// button's pulse and filled appearance. Transient, like `infoMarkdown`.
+    public var infoUnread: Bool
     public var portBase: Int
     public var layout: LayoutNode
     public var kind: WorkspaceKind
@@ -294,6 +300,8 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         pendingNotificationMessage: String? = nil,
         portBase: Int,
         layout: LayoutNode,
+        infoMarkdown: String? = nil,
+        infoUnread: Bool = false,
         kind: WorkspaceKind = .primary,
         baseBranch: String? = nil,
         inspector: InspectorState = InspectorState(),
@@ -310,6 +318,8 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.pendingNotificationMessage = pendingNotificationMessage
         self.portBase = portBase
         self.layout = layout
+        self.infoMarkdown = infoMarkdown
+        self.infoUnread = infoUnread
         self.kind = kind
         self.baseBranch = baseBranch
         self.inspector = inspector
@@ -319,27 +329,28 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
 
     // Full case set required now that both `init(from:)` and `encode(to:)` are
     // hand-rolled; case names match the property names so the on-disk keys stay
-    // stable. The four transient cases (agentState, todos, pendingNotification,
-    // pendingNotificationMessage) remain listed but are neither read nor written — see
-    // the coders below.
+    // stable. The six transient cases (agentState, todos, pendingNotification,
+    // pendingNotificationMessage, infoMarkdown, infoUnread) remain listed but
+    // are neither read nor written — see the coders below.
     private enum CodingKeys: String, CodingKey {
         case id, name, worktreePath, branch, agentState, todos
         case pendingNotification, pendingNotificationMessage
+        case infoMarkdown, infoUnread
         case portBase, layout, kind, baseBranch, inspector, lastUsedEditor, lastUsedScript
     }
 
-    /// Encodes every persisted field, deliberately omitting the four transient
+    /// Encodes every persisted field, deliberately omitting the six transient
     /// runtime fields (`agentState`, `todos`, `pendingNotification`,
-    /// `pendingNotificationMessage`): they are driven by the `casper` CLI (control
-    /// channel), never restored from disk.
+    /// `pendingNotificationMessage`, `infoMarkdown`, `infoUnread`): they are
+    /// driven by the `casper` CLI (control channel), never restored from disk.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
         try c.encode(name, forKey: .name)
         try c.encode(worktreePath, forKey: .worktreePath)
         try c.encode(branch, forKey: .branch)
-        // agentState / todos / pendingNotification / pendingNotificationMessage
-        // are transient runtime state — never persisted.
+        // agentState / todos / pendingNotification / pendingNotificationMessage /
+        // infoMarkdown / infoUnread are transient runtime state — never persisted.
         try c.encode(portBase, forKey: .portBase)
         try c.encode(layout, forKey: .layout)
         try c.encode(kind, forKey: .kind)
@@ -351,11 +362,11 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
 
     /// Decodes every persisted field normally and defaults `inspector` when it's
     /// absent, so legacy `session.json` files (written before the inspector
-    /// existed) load with a collapsed, default inspector. The four transient
+    /// existed) load with a collapsed, default inspector. The six transient
     /// runtime fields (`agentState`, `todos`, `pendingNotification`,
-    /// `pendingNotificationMessage`) are never read from disk — they always reset
-    /// to their defaults on load, whether the file omits them (current shape) or
-    /// still carries them (legacy shape).
+    /// `pendingNotificationMessage`, `infoMarkdown`, `infoUnread`) are never read
+    /// from disk — they always reset to their defaults on load, whether the file
+    /// omits them (current shape) or still carries them (legacy shape).
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(UUID.self, forKey: .id)
@@ -366,6 +377,8 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.todos = []
         self.pendingNotification = false
         self.pendingNotificationMessage = nil
+        self.infoMarkdown = nil
+        self.infoUnread = false
         self.portBase = try container.decode(Int.self, forKey: .portBase)
         self.layout = try container.decode(LayoutNode.self, forKey: .layout)
         self.kind = try container.decode(WorkspaceKind.self, forKey: .kind)
