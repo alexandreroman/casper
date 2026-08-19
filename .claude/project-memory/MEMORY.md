@@ -70,6 +70,7 @@
 - [libghostty set_occlusion param is `visible` not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread; inverting it freezes visible surfaces (grid still updates, no frames)
 - [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply .titleCapsule() inside the Button's label, not after .buttonStyle(.plain), or only the glyph is clickable
 - [Browser automation CLI](references/browser-automation-cli.md) — casper browser automation + console/wait/reload verbs: JS-synthesized input, takeSnapshot, off-screen behavior, WeakScriptMessageHandler retain-cycle proxy, control-socket-in-$TMPDIR gotcha
+- [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a WKUIDelegate
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — NSAllowsArbitraryLoads=true in both Info.plists; ATS blocks plain-HTTP to public-qualified hostnames (nip.io) it can't see resolve to loopback
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — CSigbusGuard turns mmap-truncation SIGBUS in diff into a graceful throw; body must be @escaping (not withoutActuallyEscaping)
 - [App icon design and generation pipeline](references/app-icon.md) — full-bleed split-terminal mark; prod+dev masters → `make icon` → committed .icns via CFBundleIconFile; PLUS macOS 26 Icon Composer AppIcon.icon → actool → Assets.car via CFBundleIconName (dual-key, additive)
