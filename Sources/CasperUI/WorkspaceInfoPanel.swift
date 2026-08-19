@@ -14,7 +14,7 @@ struct WorkspaceInfoPanel: View {
     let workspace: Workspace
     let markdown: String
 
-    static let width: CGFloat = 380
+    static let width: CGFloat = 520
     static let maxHeight: CGFloat = 420
     /// Floor under the `ScrollView`'s height so a very short (or empty)
     /// message does not collapse the popover to an unusably thin sliver.
