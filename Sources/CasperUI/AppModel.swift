@@ -575,9 +575,9 @@ final class AppModel {
     /// collapsing is only sound while none of the grouped fields is an input to
     /// `MenuFlagsFingerprint` (which captures only `selectedWorkspaceID`, each Space's
     /// `isGitRepo`, and each workspace's `id → kind`) — a future grouping that touches
-    /// a fingerprint input must not be collapsed. The five sites that group writes
-    /// today touch only `inspector.*` and `pendingNotification*`, none of which is a
-    /// fingerprint input.
+    /// a fingerprint input must not be collapsed. The seven sites that group writes
+    /// today touch only `inspector.*`, `pendingNotification*`, and `infoMarkdown` /
+    /// `infoUnread`, none of which is a fingerprint input.
     private func updateWorkspace(at index: WorkspaceIndex, _ body: (inout Workspace) -> Void) {
         body(&spaces[index.space].workspaces[index.workspace])
     }
@@ -2103,6 +2103,42 @@ final class AppModel {
     private func isWithinNotificationCooldown(_ workspaceID: UUID) -> Bool {
         guard let last = lastNotifiedAt[workspaceID] else { return false }
         return Date().timeIntervalSince(last) < Self.notificationCooldown
+    }
+
+    /// Replace the workspace's info-panel message and mark it unread, so the
+    /// toolbar button pulses until the panel is shown. Deliberately independent
+    /// of the attention subsystem: publishing info never raises the sidebar
+    /// attention flag, posts no macOS notification, and never expands a
+    /// collapsed Space — it is a passive act, unlike `controlRaiseNotification`.
+    @discardableResult
+    func controlSetInfo(markdown: String, for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        updateWorkspace(at: at) {
+            $0.infoMarkdown = markdown
+            $0.infoUnread = true
+        }
+        return true
+    }
+
+    /// Empty the workspace's info panel, which also hides its toolbar button.
+    /// Clearing the unread flag alongside the message keeps a stale pulse from
+    /// outliving the content that justified it.
+    @discardableResult
+    func controlClearInfo(for workspaceID: UUID) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        updateWorkspace(at: at) {
+            $0.infoMarkdown = nil
+            $0.infoUnread = false
+        }
+        return true
+    }
+
+    /// Mark the current info message as read — called when the panel is shown.
+    /// Guarded on the flag so a repeated reveal does not write to `spaces` (and
+    /// so does not fire its `didSet`) for nothing.
+    func markInfoSeen(for workspaceID: UUID) {
+        guard let at = locate(workspaceID), workspace(at: at).infoUnread else { return }
+        updateWorkspace(at: at) { $0.infoUnread = false }
     }
 
     /// Dismiss the attention bubble of the selected workspace once it is focused

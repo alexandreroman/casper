@@ -70,6 +70,22 @@ final class ControlServer {
         case .notify:
             reply(model.controlRaiseNotification(message: command.message, for: id)
                 ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+        case .infoSet:
+            guard let markdown = command.message,
+                  !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                reply(.failure("missing or blank message")); return
+            }
+            guard markdown.utf8.count <= ControlCommand.infoMessageMaxBytes else {
+                reply(.failure(
+                    "message too large (\(markdown.utf8.count) bytes, max "
+                        + "\(ControlCommand.infoMessageMaxBytes))"))
+                return
+            }
+            reply(model.controlSetInfo(markdown: markdown, for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+        case .infoClear:
+            reply(model.controlClearInfo(for: id)
+                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
         case .terminalNew:
             guard let info = model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd) else {
                 reply(.failure("cannot open terminal")); return

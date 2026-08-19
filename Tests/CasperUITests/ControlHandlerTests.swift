@@ -1,6 +1,7 @@
 import XCTest
 import CasperCore
 import Clibgit2
+import Observation
 import UserNotifications
 @testable import CasperGit
 @testable import CasperUI
@@ -644,6 +645,107 @@ final class ControlHandlerTests: XCTestCase {
         model.isWindowKey = { true }             // app frontmost
         model.selectWorkspace(id)                // (re)selecting the focused workspace clears it
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+    }
+
+    // MARK: - Info panel
+
+    func testSetInfoStoresMarkdownAsUnread() {
+        let (model, id) = seededModel()
+
+        XCTAssertTrue(model.controlSetInfo(markdown: "## Ready", for: id))
+
+        XCTAssertEqual(model.workspace(id: id)?.infoMarkdown, "## Ready")
+        XCTAssertTrue(model.workspace(id: id)?.infoUnread ?? false)
+    }
+
+    func testMarkInfoSeenClearsUnreadButKeepsMessage() {
+        let (model, id) = seededModel()
+        model.controlSetInfo(markdown: "## Ready", for: id)
+
+        model.markInfoSeen(for: id)
+
+        XCTAssertEqual(model.workspace(id: id)?.infoMarkdown, "## Ready")
+        XCTAssertFalse(model.workspace(id: id)?.infoUnread ?? true)
+    }
+
+    /// `markInfoSeen`'s already-read guard exists so a repeated reveal does not
+    /// write to `spaces`, whose `didSet` (`refreshMenuFlags`) is hot. `AppModel`
+    /// is `@Observable`, so `withObservationTracking` can see a real write to
+    /// `spaces` without instrumenting production code: `updateWorkspace` mutates
+    /// through a `spaces` subscript, which fires `spaces`'s own willSet/didSet
+    /// machinery and is what Observation tracks.
+    func testMarkInfoSeenSkipsTheWriteWhenAlreadyRead() {
+        let (model, id) = seededModel()
+        model.controlSetInfo(markdown: "## Ready", for: id)
+        model.markInfoSeen(for: id)   // first reveal: clears infoUnread, does write
+        XCTAssertFalse(model.workspace(id: id)?.infoUnread ?? true)
+
+        // `onChange` is `@Sendable`, even though `AppModel` only ever mutates on
+        // the main actor this test also runs on — `nonisolated(unsafe)` is safe
+        // here for the same reason the codebase already accepts it elsewhere
+        // (see the `isolated-deinit-ci-sigabrt` project memory note).
+        nonisolated(unsafe) var spacesChanged = false
+        withObservationTracking {
+            _ = model.spaces
+        } onChange: {
+            spacesChanged = true
+        }
+
+        model.markInfoSeen(for: id)   // second reveal: already read
+
+        XCTAssertFalse(spacesChanged, "markInfoSeen must not write `spaces` once already read")
+    }
+
+    func testSecondSetInfoMarksUnreadAgain() {
+        let (model, id) = seededModel()
+        model.controlSetInfo(markdown: "## First", for: id)
+        model.markInfoSeen(for: id)
+
+        model.controlSetInfo(markdown: "## Second", for: id)
+
+        XCTAssertEqual(model.workspace(id: id)?.infoMarkdown, "## Second")
+        XCTAssertTrue(model.workspace(id: id)?.infoUnread ?? false)
+    }
+
+    func testClearInfoDropsMessageAndUnreadFlag() {
+        let (model, id) = seededModel()
+        model.controlSetInfo(markdown: "## Ready", for: id)
+
+        XCTAssertTrue(model.controlClearInfo(for: id))
+
+        XCTAssertNil(model.workspace(id: id)?.infoMarkdown)
+        XCTAssertFalse(model.workspace(id: id)?.infoUnread ?? true)
+    }
+
+    /// `controlRaiseNotification` does four things on the same workspace this
+    /// panel-message path also touches: raises the attention bubble, expands a
+    /// collapsed Space, delivers an OS notification, and persists. This pins that
+    /// `controlSetInfo` does none of the first three — a plain Markdown message is
+    /// not itself an attention event.
+    func testSetInfoLeavesTheAttentionSubsystemAlone() {
+        let (model, id) = seededModel()
+        let spaceID = model.spaces[0].id
+        // Seed a collapsed Space so "does not expand it" is actually reachable —
+        // `seededModel` starts every Space expanded, so without this the
+        // assertion below would trivially hold no matter what `controlSetInfo` did.
+        model.toggleSpaceCollapsed(id: spaceID)
+        XCTAssertTrue(model.spaces[0].isCollapsed, "test setup: space must start collapsed")
+
+        var notificationDelivered = false
+        model.deliverNotification = { _, _, _, _ in notificationDelivered = true }
+
+        model.controlSetInfo(markdown: "## Ready", for: id)
+
+        XCTAssertFalse(model.workspace(id: id)?.pendingNotification ?? true)
+        XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
+        XCTAssertTrue(model.spaces[0].isCollapsed, "controlSetInfo must not expand a collapsed Space")
+        XCTAssertFalse(notificationDelivered, "controlSetInfo must not deliver an OS notification")
+    }
+
+    func testInfoHandlersRejectAnUnknownWorkspace() {
+        let (model, _) = seededModel()
+        XCTAssertFalse(model.controlSetInfo(markdown: "## Ready", for: UUID()))
+        XCTAssertFalse(model.controlClearInfo(for: UUID()))
     }
 
     func testSelectingDoneWorkspaceCollapsesToIdle() {
