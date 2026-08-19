@@ -60,13 +60,13 @@ struct WorkspaceDetailView: View {
                 // The inspector region (divider + panel) is ALWAYS mounted and
                 // pinned at its full width; collapsing animates the OUTER clip
                 // width to zero instead of unmounting the panel with a `.move`
-                // transition. A freshly inserted AppKit-hosted view — the
-                // segmented `Picker` (an NSSegmentedControl) — does not follow
-                // SwiftUI's per-frame transition offset: it snaps to its final
-                // frame and visibly lags the sliding chrome. Revealing by
-                // clipping keeps that control at fixed coordinates (content
-                // pinned to the trailing edge, which is the window's fixed right
-                // edge) so nothing translates, mirroring `SplitContainerView`'s
+                // transition. A freshly inserted view — the hand-rolled,
+                // icon-only vertical tab rail — does not follow SwiftUI's
+                // per-frame transition offset: it snaps to its final frame and
+                // visibly lags the sliding chrome. Revealing by clipping keeps
+                // that rail at fixed coordinates (content pinned to the
+                // trailing edge, which is the window's fixed right edge) so
+                // nothing translates, mirroring `SplitContainerView`'s
                 // always-mounted, frame-animated approach. The divider lives
                 // inside the same clipped container so it reveals with the panel
                 // rather than popping in as a separate mount.
@@ -83,8 +83,19 @@ struct WorkspaceDetailView: View {
             .animation(.easeInOut(duration: 0.18), value: workspace.inspector.collapsed)
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) { title }.flatToolbarItem()
-            ToolbarItem(placement: .navigation) { diffBadge }.flatToolbarItem()
+            // These three leading chips share ONE toolbar item: AppKit inserts its
+            // own spacing between separate toolbar items, which left the
+            // glyph-only info chip visually adrift from its neighbours. Each chip
+            // keeps its own interior padding, so that padding — not the system's
+            // inter-item gap — is what separates them now.
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 0) {
+                    title
+                    WorkspaceInfoButton(model: model, workspace: workspace)
+                    diffBadge
+                }
+            }
+            .flatToolbarItem()
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
@@ -199,7 +210,14 @@ struct WorkspaceDetailView: View {
         }
         // Chrome-less on purpose: the title is not a control, so it keeps the
         // shared capsule metrics (alignment with the chips) without the pill.
-        .titleCapsule(filled: false)
+        // Asymmetric interior padding (not the shared `titleCapsule`'s symmetric
+        // 10 pt): the leading edge still owes its distance to the window edge,
+        // while the trailing edge is tuned so the title-to-glyph gap (this
+        // inset + the info button's own 2 pt inner padding) matches the
+        // glyph-to-badge gap on the other side of the info chip.
+        .padding(.leading, 10)
+        .padding(.trailing, 6)
+        .titleCapsuleShell(filled: false)
     }
 
     @ViewBuilder private var diffBadge: some View {
