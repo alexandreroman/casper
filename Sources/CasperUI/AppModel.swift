@@ -1877,7 +1877,7 @@ final class AppModel {
         }
         var config = GhosttySurfaceConfiguration(
             workingDirectory: cwd, fontSize: terminal.fontSize ?? 0)
-        config.environment = ClaudeCodeAdapter.surfaceEnvironment(
+        config.environment = AgentEnvironment.surfaceEnvironment(
             workspaceId: workspace.id,
             // Only linked worktrees need an offset port block; the primary working
             // tree keeps the project's default ports. The rule is kind-based, not

@@ -24,7 +24,7 @@ two channels express the split differently:
   `AppDelegate` binds its `DebugServer` via `listenPath(for:)`.
 
 **Why:** every terminal a running Casper.app opens unconditionally carries that
-instance's own `CASPER_CONTROL_SOCKET` (`ClaudeCodeAdapter.swift`, regardless of
+instance's own `CASPER_CONTROL_SOCKET` (`AgentEnvironment.swift`, regardless of
 session — see [[domain-cli-control-channel]]). If a listener resolved its bind
 path through the env override, launching a second, differently `--session`-named
 instance (e.g. via the `debug-casper` harness, see [[app-sessions]]) **from

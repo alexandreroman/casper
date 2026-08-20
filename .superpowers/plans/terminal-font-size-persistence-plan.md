@@ -706,7 +706,7 @@ Replace `surfaceConfiguration(for:terminal:)` (currently lines 995-1011):
         }
         var config = GhosttySurfaceConfiguration(
             workingDirectory: cwd, command: command, fontSize: terminal.fontSize ?? 0)
-        config.environment = ClaudeCodeAdapter.surfaceEnvironment(
+        config.environment = AgentEnvironment.surfaceEnvironment(
             workspaceId: workspace.id,
             portBase: workspace.portBase,
             casperDirectory: casperDirectory,

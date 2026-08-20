@@ -14,7 +14,7 @@ override the session-derived socket path — intentional for the `casper`
 CLI/`casper debug`, but every
 terminal Casper opens (dev or a bundled `Casper.app`, including an unnamed
 default-session instance) injects `CASPER_CONTROL_SOCKET` (and
-`CASPER_SESSION` for named sessions) via `ClaudeCodeAdapter.surfaceEnvironment`.
+`CASPER_SESSION` for named sessions) via `AgentEnvironment.surfaceEnvironment`.
 Running `swift test` directly inside such a terminal (a normal dogfooding
 workflow for this repo) therefore leaks the live instance's real socket path
 into the test process.

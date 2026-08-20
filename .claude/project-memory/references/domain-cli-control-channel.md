@@ -109,7 +109,7 @@ tool) calls `casper status set …` / `progress set …` / `notify …` itself. 
 only agent-facing runtime coupling is the per-surface environment
 (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in `linked`
 workspaces only, and `CASPER_SESSION` under a named session) that
-`ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal.
+`AgentEnvironment.surfaceEnvironment` injects into every Casper terminal.
 
 **Why:** an explicit, agent-agnostic, machine-readable surface — every workspace
 action has its own namespaced verb, emits JSON, and the stable per-surface

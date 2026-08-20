@@ -133,7 +133,7 @@ any tool) running in a Casper terminal calls `casper status set …`,
 agent**; the user runs their agent manually.
 
 The only agent-facing runtime coupling is the per-surface environment
-`ClaudeCodeAdapter.surfaceEnvironment` injects into every Casper terminal:
+`AgentEnvironment.surfaceEnvironment` injects into every Casper terminal:
 `CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in `linked`
 workspaces only (a `primary` workspace gets none, so its dev servers keep the
 project's default ports), and — when a debug build runs under `--session <name>`

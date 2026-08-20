@@ -4,21 +4,21 @@ import CasperCore
 
 final class SurfaceEnvironmentControlTests: XCTestCase {
     func testInjectsControlSocketWhenProvided() {
-        let env = ClaudeCodeAdapter.surfaceEnvironment(
+        let env = AgentEnvironment.surfaceEnvironment(
             workspaceId: UUID(), portBase: 40000,
             controlSocketPath: "/control.sock")
         XCTAssertEqual(env["CASPER_CONTROL_SOCKET"], "/control.sock")
     }
 
     func testOmitsControlSocketWhenNil() {
-        let env = ClaudeCodeAdapter.surfaceEnvironment(
+        let env = AgentEnvironment.surfaceEnvironment(
             workspaceId: UUID(), portBase: 40000)
         XCTAssertNil(env["CASPER_CONTROL_SOCKET"])
     }
 
     func testControlSocketAndWorkspaceIdPresent() {
         let workspaceId = UUID()
-        let env = ClaudeCodeAdapter.surfaceEnvironment(
+        let env = AgentEnvironment.surfaceEnvironment(
             workspaceId: workspaceId, portBase: 40000,
             controlSocketPath: "/control.sock")
         XCTAssertEqual(env["CASPER_CONTROL_SOCKET"], "/control.sock")

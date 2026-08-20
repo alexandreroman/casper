@@ -58,7 +58,7 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`
   (`Repository.open`) rather than `discover`.
 
 ### CasperAgents + CasperCLI — ✅
-`ClaudeCodeAdapter.surfaceEnvironment` (per-surface env injection); the `casper`
+`AgentEnvironment.surfaceEnvironment` (per-surface env injection); the `casper`
 executable with the GUI/CLI fork and the domain CLI
 (`status`/`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`) that emits
 JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero). There is **no hook
