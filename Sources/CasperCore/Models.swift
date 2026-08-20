@@ -465,11 +465,55 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
 public struct Session: Codable, Equatable, Sendable {
     public var spaces: [Space]
     /// The workspace selected when the session was last saved, re-selected on
-    /// relaunch. Optional, so its synthesized `Codable` decodes an absent key
-    /// (legacy `session.json` files) to nil.
+    /// relaunch. Optional, so an absent key (legacy `session.json` files) decodes
+    /// to nil.
     public var selectedWorkspaceID: UUID?
-    public init(spaces: [Space] = [], selectedWorkspaceID: UUID? = nil) {
+    /// `CodingAgent.reminderID` values of the coding agents whose integration
+    /// reminder the user dismissed. One entry per agent, so dismissing one reminder
+    /// leaves the others showing. Deliberately `Set<String>` rather than a set of
+    /// agent enum cases: the persisted file then survives an agent being added,
+    /// renamed, or dropped — an id matching no known agent is simply ignored instead
+    /// of failing the whole session decode.
+    public var dismissedAgentReminders: Set<String>
+
+    public init(spaces: [Space] = [], selectedWorkspaceID: UUID? = nil,
+                dismissedAgentReminders: Set<String> = []) {
         self.spaces = spaces
         self.selectedWorkspaceID = selectedWorkspaceID
+        self.dismissedAgentReminders = dismissedAgentReminders
+    }
+
+    // Full case set is required now that both coders are hand-rolled; case names
+    // match the property names so the on-disk keys stay stable.
+    private enum CodingKeys: String, CodingKey {
+        case spaces, selectedWorkspaceID, dismissedAgentReminders
+    }
+
+    /// Encodes `dismissedAgentReminders` as a **sorted** array. `SessionStore`
+    /// encodes with `.sortedKeys` to keep `session.json` byte-stable across saves;
+    /// a `Set` would defeat that, since its iteration order depends on a hash seed
+    /// that changes every launch — an otherwise unchanged session would serialize
+    /// differently each time, making the file noisy to diff and to compare when
+    /// diagnosing a `session.json.corrupt` backup. Sorting costs nothing at this
+    /// size and keeps repeated writes identical.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(spaces, forKey: .spaces)
+        try container.encodeIfPresent(selectedWorkspaceID, forKey: .selectedWorkspaceID)
+        try container.encode(dismissedAgentReminders.sorted(), forKey: .dismissedAgentReminders)
+    }
+
+    /// Decodes `dismissedAgentReminders` to an empty set when the key is absent, so
+    /// legacy `session.json` files (written before the reminders existed) load with
+    /// nothing dismissed. A defaulted non-optional rather than the optional shape
+    /// used by `selectedWorkspaceID`: there, nil carries the distinct meaning "no
+    /// workspace was selected", whereas here "key never written" and "nothing
+    /// dismissed" are the same state, and callers should never have to unwrap it.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.spaces = try container.decode([Space].self, forKey: .spaces)
+        self.selectedWorkspaceID = try container.decodeIfPresent(UUID.self, forKey: .selectedWorkspaceID)
+        self.dismissedAgentReminders =
+            try container.decodeIfPresent(Set<String>.self, forKey: .dismissedAgentReminders) ?? []
     }
 }
