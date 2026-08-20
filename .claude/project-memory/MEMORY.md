@@ -99,3 +99,4 @@
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
 - [Casper.app bundle codesign seal](references/app-bundle-codesign-seal.md) — dylibs, executable, bundle — never `--deep` (it breaks Sparkle)
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
+- [Line width is measured in characters](references/line-width-in-characters.md) — em dashes are 3 bytes; count characters, not bytes

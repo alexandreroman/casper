@@ -319,6 +319,10 @@ final class AppModel {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Drives the Dock icon's bounce and unread badge. Injectable for tests, which
+    /// must not reach for `NSApp`.
+    @ObservationIgnored var dockAttention: any DockAttentionPresenting = DockAttention()
+
     /// Set during Task 7 bootstrap once the Ghostty runtime and IPC socket exist.
     var runtime: GhosttyRuntime?
     @ObservationIgnored var casperDirectory: String?
@@ -691,6 +695,8 @@ final class AppModel {
         var updated = spaces.filter { !absorbedIDs.contains($0.id) }
         updated.append(space)
         spaces = Self.sortedByName(updated)
+        // `reunify` may have dropped a workspace that still carried an unread.
+        refreshDockAttention()
         selectWorkspace(space.workspaces.first?.id)
         persist()
     }
@@ -875,6 +881,11 @@ final class AppModel {
     ///
     /// Shared by every path that drops a workspace (`removeSpace`, `removeWorkspace`,
     /// `reunify`) so the three can't drift apart.
+    ///
+    /// The Dock badge is deliberately *not* refreshed here, even though a dropped
+    /// workspace's unread must not linger in it: `refreshDockAttention` counts what is
+    /// in `spaces`, and `reunify` retires before its own write to `spaces` lands. Each
+    /// of the three callers refreshes once its write has settled instead.
     private func retire(_ ws: Workspace) {
         portAllocator.release(ws.portBase)
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
@@ -888,6 +899,7 @@ final class AppModel {
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
         }
+        refreshDockAttention()
         persist()
     }
 
@@ -1023,6 +1035,7 @@ final class AppModel {
         if selectedWorkspaceID == id {
             selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }
+        refreshDockAttention()
         persist()
     }
 
@@ -2058,6 +2071,7 @@ final class AppModel {
             $0.pendingNotificationMessage = nil
             $0.pendingNotification = false
         }
+        refreshDockAttention()
     }
 
     /// The notification text for a detected state, or `nil` when the state needs
@@ -2147,6 +2161,34 @@ final class AppModel {
         return true
     }
 
+    /// Push the number of workspaces still carrying an attention bubble to the Dock
+    /// badge, so the icon reads as an unread counter across every Space. Reaching zero
+    /// also releases any outstanding bounce request: a badge-free Dock icon must never
+    /// be left bouncing.
+    ///
+    /// Derived state only — it reads `spaces` and writes nothing, so calling it from a
+    /// guarded path cannot introduce a spurious `persist()` or `@Observable` write.
+    private func refreshDockAttention() {
+        let unread = spaces.reduce(0) { $0 + $1.workspaces.filter(\.pendingNotification).count }
+        dockAttention.updateBadge(count: unread)
+        if unread == 0 { dockAttention.cancelBounce() }
+    }
+
+    /// Release the Dock bounce request, without touching the badge.
+    ///
+    /// Called as Casper comes to the front — macOS has already stopped the bounce, and
+    /// cancelling frees the request id so the next notification starts a fresh one —
+    /// and again as it goes to the back, where a request made while it was active (one
+    /// `bounce()` declined to make, but which a race could still have left behind)
+    /// would be meaningless.
+    ///
+    /// The badge is deliberately left alone in both cases: it is an unread counter, and
+    /// an unread clears only when its own workspace is dealt with, not merely because
+    /// Casper changed places with another app.
+    func releaseDockBounce() {
+        dockAttention.cancelBounce()
+    }
+
     /// Raise a workspace notification. Both the persistent attention bubble and the
     /// macOS notification (when a message is given) are suppressed when the target is
     /// focused (selected AND the window is key) — the user is already looking at it.
@@ -2175,6 +2217,12 @@ final class AppModel {
                 $0.pendingNotificationMessage = message
             }
             wrote = true
+            // The one and only place a bounce starts: arming a bubble is the event that
+            // asks the user to come back. Losing focus later must NOT re-bounce — the
+            // badge already carries that unread, and the window the user just left is
+            // not news.
+            dockAttention.bounce()
+            refreshDockAttention()
         }
         // A notification means "look at this workspace". If its owning Space is
         // collapsed, the workspace row (and any attention bubble) is hidden, so expand
@@ -2254,6 +2302,7 @@ final class AppModel {
             $0.pendingNotification = false
             $0.pendingNotificationMessage = nil
         }
+        refreshDockAttention()
         persist()
     }
 

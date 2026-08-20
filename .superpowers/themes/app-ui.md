@@ -24,6 +24,34 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   error ✕ / idle ○), name, Git branch/worktree label, todo progress
   (`completed/total` + current `in_progress` label), and a pending-notification
   dot.
+- **Dock attention** — the sidebar dot's out-of-app counterpart, owned by
+  `DockAttention` (a `DockAttentionPresenting` seam on `AppModel`, over a
+  `DockAttentionBackend` seam on `NSApp`, so both the wiring and the latch are
+  testable without a running application). Arming a workspace's attention bubble
+  starts a `.criticalRequest` Dock bounce — one that keeps bouncing until Casper
+  is activated, not a single hop — and refreshes a Dock badge carrying the
+  number of workspaces with an unread notification across every Space.
+
+  **Attention is never requested while Casper is the active application.** That
+  is AppKit's own contract for `requestUserAttention`, and following it is what
+  keeps the latch honest: a request made in front bounces nothing, yet the
+  request id it stores would be released by no one (`applicationDidBecomeActive`
+  does not fire for an app that never left the front) and would swallow the
+  next real bounce. The arming edge itself is not focus-gated (a notification
+  for a workspace that is merely *not selected* arms while the window is key),
+  so this rule lives in `DockAttention`, not in its caller.
+
+  The two clear on different events, deliberately. The **bounce** starts only on
+  the edge that arms a bubble, never on a later focus loss: the badge already
+  carries that unread, and a window the user just left is not news. It is
+  released on `applicationDidBecomeActive` (macOS has stopped it by then; this
+  frees the request id so the next notification starts a fresh one), on
+  `applicationDidResignActive` (nothing requested in front may outlive the
+  activation), and whenever the unread count reaches zero, so a badge-free Dock
+  icon can never be left bouncing. The **badge** survives activation and only
+  counts down as each workspace is individually cleared — by focusing it
+  (`clearNotificationForFocusedWorkspace`), by the agent resuming work
+  (`done → working`), or by the workspace being deleted or closed.
 - **Layout composition** — arbitrary nested splits and tab groups; leaves are
   terminal, browser, or diff surfaces. Consumes the decoded Ghostty split/tab
   actions.

@@ -258,15 +258,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         CasperLog.app.debug("installed App-menu delegate proxy over \(originalName, privacy: .public)")
     }
 
-    /// Tell libghostty the app regained focus (cursor blink, focus animation).
+    /// Tell libghostty the app regained focus (cursor blink, focus animation), and
+    /// release the Dock bounce the user just answered.
     func applicationDidBecomeActive(_ notification: Notification) {
         AppModel.shared.runtime?.setAppFocus(true)
+        AppModel.shared.releaseDockBounce()
     }
 
     /// Tell libghostty the app lost focus. Complementary to occlusion — this does
-    /// not pause rendering, only quiets focus-driven work.
+    /// not pause rendering, only quiets focus-driven work. Also releases the Dock
+    /// bounce, so nothing an active Casper may have requested outlives its activation.
     func applicationDidResignActive(_ notification: Notification) {
         AppModel.shared.runtime?.setAppFocus(false)
+        AppModel.shared.releaseDockBounce()
     }
 }
 
