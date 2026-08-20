@@ -12,8 +12,8 @@ per workspace, and bundles a native browser and diff viewer.
 > core layers — the terminal engine, the Git worktree layer, and the `casper`
 > control CLI — and the SwiftUI app (Space-grouped sidebar, linked worktrees,
 > tmux-style split panes, browser, and diff viewer) are built and have passed a
-> live GUI verification pass; polish is ongoing. Claude Code is the first
-> supported agent.
+> live GUI verification pass; polish is ongoing. Claude Code, OpenAI Codex CLI,
+> and opencode are supported, all through the same agent-agnostic `casper` CLI.
 
 ## Features
 
@@ -26,6 +26,11 @@ per workspace, and bundles a native browser and diff viewer.
   pending-notification dots. State is inferred from terminal output by built-in
   detection (no hooks) and can also be set explicitly via the `casper` CLI
   (see below).
+- **Agent integrations** — works with Claude Code, OpenAI Codex CLI, and
+  opencode, and launches none of them. Casper detects whether each agent's
+  Casper integration is installed and current, and shows a quiet, dismissible
+  reminder in the sidebar when one needs attention; it never writes another
+  tool's configuration. See [Coding agents](#coding-agents).
 - **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
   tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
   native diff view per workspace. Each terminal remembers the font size you set
@@ -40,6 +45,63 @@ per workspace, and bundles a native browser and diff viewer.
 - **Native & lean** — prefers built-in macOS frameworks; only five external
   dependencies (libghostty, swift-argument-parser, libgit2, HighlightSwift for
   diff syntax highlighting, and Sparkle for auto-update); **arm64-only**.
+
+## Coding agents
+
+Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI**, and
+**opencode** — and treats them alike: agent state, progress, notifications and
+the info panel all work the same whichever one you use. Casper never launches an
+agent for you; you start yours in a Casper terminal yourself.
+
+Agents talk to Casper through the `casper` CLI (see [CLI](#cli)). You can call
+those commands by hand, but the usual route is a small **integration plugin**
+installed into the agent, which wires the agent's own lifecycle to them so the
+sidebar badge, the progress bar and the notification dot work without you
+instrumenting anything. Each agent installs that plugin with its own installer:
+**Casper never writes another tool's configuration.** All Casper does is detect
+what an installer left behind.
+
+### Integration reminders
+
+At launch — and again when you switch back to Casper, at most once every five
+minutes — Casper asks one question per agent, for the whole app rather than per
+workspace: do you have that agent's CLI, and is its Casper integration installed
+and current? An agent whose CLI you don't have is ignored entirely. No reminder
+for it ever appears, and Casper reads nothing on your disk to work that out.
+
+When there is something to say, one quiet line per agent appears in the sidebar
+just above **Add Folder…**; when there isn't, nothing is drawn at all:
+
+- **"… integration not installed"** — you have the agent, but not its Casper
+  integration. A plugin you have explicitly switched off says the same thing:
+  none of its hooks run, so an install that is disabled is functionally absent.
+- **"… integration is outdated"** — installed, but older than the plugin version
+  this build of Casper expects.
+- **"Codex integration needs approval in /hooks"** — informational rather than a
+  fault; see below.
+
+Click a line to open that agent's integration guide, or the **×** beside it to
+dismiss it for good. A dismissal silences that one problem, not the agent: once
+the integration reports healthy the dismissal is retired, so if it later breaks
+or you uninstall it, Casper tells you again.
+
+Casper errs towards silence throughout. An integration whose version it cannot
+read counts as current, and an integration recorded in several places is judged
+by the newest record — a reminder you did not need is worse than one you missed.
+
+### Codex specifics
+
+Codex hashes command hooks it did not install itself and refuses to run them
+until you review and approve them with `/hooks` in its TUI. A Codex integration
+can therefore be installed, current, and completely inert, and nothing on disk
+records whether you have approved it — so rather than guess, Casper always
+states the caveat while your Codex integration is otherwise healthy. That line
+dismisses under its own key, independently of the other reminders.
+
+Codex detection is also built from Codex's published documentation and has never
+been verified against a real Codex install. If Casper reports your Codex
+integration as missing when you know it is there, that is the likeliest
+explanation — dismiss the line.
 
 ## Installation
 
@@ -266,9 +328,10 @@ it prints `{"error":"…"}` to stderr and exits non-zero. `workspace delete` is
 destructive (it removes the worktree folder and its branch) and refuses the
 primary workspace.
 
-Casper has no agent-hook integration: an agent reports its state by calling these
-commands itself (e.g. `casper status set working`), so the surface is explicit
-and agent-agnostic.
+Casper installs and serves no agent hooks of its own: an agent reports its state
+by calling these commands itself (e.g. `casper status set working`), so the
+surface is explicit and agent-agnostic. A per-agent integration plugin is only a
+convenience on top — it wires the agent's lifecycle to exactly these commands.
 
 The info panel keeps only the latest `casper info set` message and never
 persists it across app restarts; it's reached by hovering or clicking the

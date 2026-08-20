@@ -1,7 +1,8 @@
 # Theme: CLI & Agent Environment (CasperCLI + CasperAgents)
 
 **Modules:** CasperCLI + CasperAgents · **Status:** ✅ built (see `../status.md`)
-· **Code:** `Sources/CasperCLI/`, `Sources/CasperAgents/`
+· **Code:** `Sources/CasperCLI/`, `Sources/CasperAgents/`,
+`Sources/CasperCore/AgentIntegration{,Probe}.swift`
 
 The single GUI+CLI binary, its domain command surface, and the per-surface
 environment that lets an agent in a terminal report its state through the CLI.
@@ -151,3 +152,192 @@ injected socket path already points at the right instance). See
 
 The control socket class uses `@unchecked Sendable` + serial-queue discipline
 under Swift 6 — see [[swift6-network-concurrency]].
+
+### Agent integration detection
+
+Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI** and
+**opencode** — and each reaches the CLI above through a plugin the user installs
+into the agent itself. **Casper never writes another tool's configuration**:
+every agent ships its own installer, so all Casper does is *detect* what an
+installer left behind and remind the user when something is missing or stale.
+There is deliberately no install, repair or enable action anywhere in the app —
+writing a file Casper does not own makes it responsible for migrating one.
+See [[agent-integration-policy]].
+
+The probe is **global**: one answer per agent for the whole app, never per
+workspace. "The user has Codex but not the integration" is a property of the
+machine, not of a worktree, so there is nothing per-workspace to key it on.
+
+Three layers, deliberately separated:
+
+- `CasperCore/AgentIntegration.swift` — the **policy** half: the agent
+  catalogue, the status vocabulary, the version comparison, and one pure parser
+  per agent. It performs no I/O at all (no `FileManager`, `Process` or
+  `ProcessInfo`), so every awkward input — a registry missing a key, a config
+  full of comments, a version nobody can parse — is a plain unit test. All three
+  input formats are owned by other projects and can change under us.
+- `CasperCore/AgentIntegrationProbe.swift` — the **I/O** half: path
+  construction, the order evidence is consulted in, and the few judgements that
+  only exist once real files are involved. Every side effect goes through an
+  injectable `Environment` (executable lookup, file contents, directory entries,
+  home directory), so the whole resolution runs against in-memory fixtures.
+- `CasperUI` — `AppModel` § *Agent-integration reminders* (scheduling,
+  dismissals, the published list) and `AgentIntegrationReminderView.swift` (the
+  sidebar rows).
+
+#### Status model
+
+`AgentIntegrationStatus` has four cases, and the agent's own CLI gates all of
+them:
+
+- `notInstalled` — the agent's CLI is absent, so the user does not use this
+  agent. Renders **nothing at all**, ever: advertising an integration for a tool
+  someone never installed is pure noise. It also short-circuits everything else,
+  so Casper reads not a single file for an agent the user does not have.
+- `missing` — the CLI is present, a working integration is not.
+- `outdated(installed:)` — installed, but below
+  `AgentIntegration.requiredPluginVersion`.
+- `installed` — installed and current; normally nothing to report.
+
+CLI presence is resolved through the user's **login shell** (`LoginShellPath`,
+shared with the rest of CasperCore), not through the process `PATH`. Casper is
+launched from Finder or the Dock, so its own `PATH` is the bare launchd default
+— no Homebrew, no nvm, no `~/.local/bin`. Probing that would report every agent
+`notInstalled` for exactly the people who have the agents installed.
+
+#### Per-agent markers
+
+**Claude Code.** `~/.claude/plugins/installed_plugins.json` maps a plugin id to
+an **array** of install records, one per scope, each carrying a `version`. The
+id is `casper@casper-agents`; `AgentIntegration.legacyPluginID`
+(`casper@Casper`) is matched as well and reports `outdated` whatever version it
+carries — a compatibility branch for the pre-publication local dev install, not
+migration support for a published plugin. The current id is consulted first, and
+versions are never mixed across the two, since the registrations are separate
+installs. Enablement lives separately, in `~/.claude/settings.json` under
+`enabledPlugins`.
+
+**opencode.** Two independent install shapes, either of which counts: a
+`casper.js` file in `~/.config/opencode/plugin` or `…/plugins` (opencode's
+loader globs both spellings), or a top-level `plugin[]` entry in
+`~/.config/opencode/opencode.json` / `.jsonc` naming the npm package
+`casper-agents` or a local `casper.js`. Both forms are matched *whole* rather
+than by substring, so `@evil/casper-agents-fork` and `./plugin/notcasper.js`
+are not mistaken for the integration. Despite the `.json` name the config format
+is **JSONC**, and real files carry comments, so comments are stripped before
+parsing — never inside a string literal, since opencode's own default config
+holds `"$schema": "https://opencode.ai/config.json"`. The version exists only
+inside a local plugin file, as `export const CASPER_PLUGIN_VERSION = "…"`; a
+config-only install has none to read and is `installed`, not `outdated`.
+
+**Codex.** Installs land in
+`~/.codex/plugins/cache/<marketplace>/casper/<version>/`, so the version is a
+path segment. Every marketplace is enumerated and every version directory
+gathered before one winner is picked: `contentsOfDirectory` returns them in no
+defined order, so stopping at the first would make the answer depend on
+enumeration order. Dot-prefixed names are dropped first, so a directory left
+behind holding nothing but a `.DS_Store` reads as an absent install rather than
+as version `.DS_Store`. Disabled plugins are recorded in `~/.codex/config.toml`
+as a `[plugins."casper@casper-agents"]` section carrying `enabled = false`,
+matched by a targeted five-line scan — a TOML dependency to read one boolean
+does not earn its place under the dependency policy, and every limitation of the
+scan misses in the safe direction (an unseen `enabled = false` reads as
+enabled, never the reverse).
+
+Two Codex traps, both able to produce a confidently wrong answer:
+
+- **No plugin manifest is read.** The plugin repository ships only
+  `.claude-plugin/plugin.json` and relies on Codex's manifest discovery order
+  falling through to it, so probing by manifest file name matches nothing.
+- **`~/.codex/hooks.json` is never evidence of anything**, and no code reads it.
+  It appears on machines with no Codex installed at all — unrelated tools write
+  to it — and the plugin never writes to it.
+
+**The Codex cache layout is taken from published documentation and has never
+been verified against a real install**, on either the app or the plugin side. It
+is the parser most likely to need correcting, the source says so where it
+matters, and the UI states the caveat rather than implying certainty. See
+[[codex-detection-caveats]].
+
+#### Disabled is missing
+
+An integration the user has **explicitly disabled** reports `missing`, not
+`installed`: none of its hooks fire, so an install that is switched off is
+functionally absent, and reporting it healthy would tell the user everything is
+fine while nothing happens. Each tool records this in its own polarity —
+Claude Code an enablement flag in `settings.json`, Codex a disabled flag in
+`config.toml` — and both ids are consulted on the Claude side, so an explicit
+`false` under either spelling switches the same integration off.
+
+An **absent** key means enabled, never disabled. The map holds only the plugins
+whose global state the user has actually touched, and enablement can also be set
+per project, so a missing key is evidence of nothing. Unreadable or unexpected
+JSON degrades to enabled for the same reason.
+
+#### Never produce a false nag
+
+The governing rule of the whole feature: a reminder the user did not need costs
+more trust than one they missed. Everything ambiguous therefore resolves towards
+silence.
+
+- An installed integration whose version cannot be determined reports
+  `installed`. That covers the literal `"unknown"` Claude Code records for a
+  plugin whose manifest omits `version` (it occurs in real registries),
+  pre-release suffixes, and outright garbage. An unreadable version is not
+  evidence of a stale install.
+- Every registry reports its version as an unordered set of candidates — one
+  Claude record per scope, one Codex cache directory per marketplace — and the
+  **highest** wins. Taking the first would turn "installed from two places, one
+  of them stale" into a false `outdated`.
+- The version comparison is numeric and component-wise (`0.10.0` beats `0.9.0`,
+  `0.2` equals `0.2.0`), and the rule is `installed < required`, never `!=`: a
+  user *ahead* of Casper's build is current, so a plugin release never forces a
+  Casper release just to stop the nagging. See [[plugin-version-coupling]].
+
+#### Codex hook trust
+
+Codex hashes non-managed command hooks and refuses to run them until the user
+approves them through `/hooks` in its TUI. A Codex install can therefore be
+complete on disk and do absolutely nothing, and trust state is not observable
+from disk — so the UI states the caveat instead of guessing, showing an
+informational line for as long as Codex reports `installed`.
+
+This is a **presentation** flag on the agent (`CodingAgent.requiresHookTrust`)
+and deliberately not a fifth `AgentIntegrationStatus` case: the status
+vocabulary describes what was found on disk and stays agent-neutral, while this
+describes how to word it.
+
+#### Reminders in the sidebar
+
+`AppModel` publishes an ordered `agentIntegrationReminders` list, one line per
+agent that has something to say: `missing`/`outdated` produce an *action-needed*
+line, `installed` produces a *trust notice* for an agent that requires hook
+trust, and `notInstalled` produces nothing. The mapping is an exhaustive switch,
+so a new status case forces a decision rather than defaulting to silence, and
+the list is driven by `CodingAgent.allCases` — dictionary order depends on a
+per-process hash seed and would shuffle the rows between launches.
+
+The probe runs **off the main actor** at launch and again on app activation,
+throttled to five minutes: a cold `statuses()` spawns three sequential login
+shells (1–2.5 s of real work on a machine with a populated `~/.zprofile`), and
+Casper is a terminal app people activate constantly. Re-probing on activation is
+what lets a user install the plugin, tab back, and watch the reminder disappear
+without relaunching.
+
+The rows sit between the scrolling workspace list and the "Add Folder…" footer,
+and render **nothing at all** — no divider, no padding, no container — when
+there is nothing to say, which is most of the time. They stay advisory in tone
+(no destructive red) because Casper nudges and never repairs. The row button and
+the dismiss button are **siblings**, never nested, so a dismiss click cannot
+also open the documentation URL.
+
+A dismissal is persisted in `Session.dismissedAgentReminders` (encoded as a
+sorted array, so an unchanged session serialises identically across launches)
+under `CodingAgent.reminderID` — stable strings spelled out independently of the
+enum's `rawValue`, so renaming a case can never silently invalidate a dismissal
+the user already made. It silences the *current problem, not the agent*: as soon
+as an agent reports `installed`, its action-needed dismissal is retired, so a
+later regression reminds again instead of staying silent for good. The trust
+notice carries a key of its own (`<id>-trust`) precisely because it appears
+*while* the agent reports `installed`; sharing the key would un-dismiss it the
+instant it became relevant.

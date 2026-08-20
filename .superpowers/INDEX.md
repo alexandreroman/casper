@@ -38,11 +38,11 @@ is [`status.md`](status.md).
   hook-driven workspace is permanently under `explicitAuthority` and never
   gets a detected `done`; selecting a `done` workspace collapses it back to
   `idle` (**partly shipped** — the Casper-side collapse is built, the
-  `casper-claude-plugin` hook is not).
+  `casper-agents` hook is not).
 - [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
   `done` should raise a notification (**shipped** — spans this repo and
-  `casper-claude-plugin`).
+  `casper-agents`).
 - [`plans/space-project.md`](plans/space-project.md) — Space + workspace diff
   summary (**superseded 2026-07-06**: model landed in UI-2; the diff summary is
   dropped). Kept for reference only.
@@ -85,7 +85,11 @@ is [`status.md`](status.md).
 - [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
   — task-by-task companion to `stop-hook-explicit-done.md`; the Casper-side half
   (selecting a `done` workspace collapses it to `idle`) has **shipped**, the
-  `casper-claude-plugin` `hooks/stop.sh` half has not.
+  `casper-agents` `hooks/stop.sh` half has not.
+
+The agent-plugin repository these plans refer to is `casper-agents`; older plan
+text under `plans/` still calls it `casper-claude-plugin`. It ships the `casper`
+plugin for all three supported agents, installed as `casper@casper-agents`.
 
 Completed plans are marked done in place here until they are cleaned up; the
 original design specs are recoverable from Git history (tracked under the
