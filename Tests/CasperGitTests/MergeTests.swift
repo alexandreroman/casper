@@ -137,6 +137,44 @@ final class MergeTests: XCTestCase {
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }
 
+    func testMergeUnrelatedHistoriesThrowsDedicatedError() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let main = try repo.headBranchName()
+        try makeOrphanBranch(repo, name: "orphan")
+        let beforeOID = try tipOID(repo, branch: main)
+
+        XCTAssertThrowsError(
+            try repo.mergeBranchHeadless("orphan", into: main, message: "merge orphan")
+        ) { error in
+            XCTAssertEqual(
+                error as? MergeUnrelatedHistoriesError,
+                MergeUnrelatedHistoriesError(sourceBranch: "orphan", targetBranch: main),
+                "expected a dedicated unrelated-histories error, got \(error)")
+        }
+        XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
+    }
+
+    /// Point branch `name` at a fresh *root* commit (no parents) reusing HEAD's tree,
+    /// so it shares no ancestor with the default branch — `git_merge_base` then
+    /// reports GIT_ENOTFOUND.
+    private func makeOrphanBranch(_ repo: Repository, name: String) throws {
+        var headRef: OpaquePointer?
+        try gitCheck(git_repository_head(&headRef, repo.pointer))
+        defer { git_reference_free(headRef) }
+        var tree: OpaquePointer?
+        try gitCheck(git_reference_peel(&tree, headRef, GIT_OBJECT_TREE))
+        defer { git_object_free(tree) }
+
+        var signature: UnsafeMutablePointer<git_signature>?
+        try gitCheck(git_signature_now(&signature, "Casper Test", "test@casper.local"))
+        defer { git_signature_free(signature) }
+
+        var commitOid = git_oid()
+        try gitCheck(git_commit_create(
+            &commitOid, repo.pointer, "refs/heads/\(name)",
+            signature, signature, nil, "Unrelated root commit", tree, 0, nil))
+    }
+
     func testMergeMissingTargetBranchThrows() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         _ = try repo.addWorktree(name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)

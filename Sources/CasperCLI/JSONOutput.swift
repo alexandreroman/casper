@@ -25,6 +25,43 @@ func emit<T: Encodable>(_ value: T) {
     print(jsonLine(value))
 }
 
+/// Print one read-only result: with `--raw` the bare value, ready to pipe into
+/// another shell command, otherwise the command's JSON object. `browser eval`,
+/// `browser content`, and `browser url` differ only in what those two renderings
+/// are, so only the unused one is left unevaluated.
+func emitResult(raw: Bool, plain: @autoclosure () -> String, json: @autoclosure () -> String) {
+    print(raw ? plain() : json())
+}
+
+/// Unwrap a JSON-serialized value for `--raw` shell piping: a top-level JSON
+/// string prints as its bare contents (no surrounding quotes), while every other
+/// JSON token (number, bool, null, object, array) prints verbatim. Mirrors the
+/// app-side `content` unwrap so `eval --raw` and `content --raw` behave alike.
+func unwrappedRawValue(_ json: String) -> String {
+    guard let value = try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed]),
+          let string = value as? String else {
+        return json
+    }
+    return string
+}
+
+/// Build `{"<key>":<json>,"workspace":"<id>"}` from a payload the app already
+/// serialized. `json` is re-parsed so it embeds as a real JSON token instead of an
+/// escaped string — `Codable` can't emit raw JSON — falling back to `fallback`
+/// when it does not parse. Keys are sorted for deterministic, diff-friendly
+/// output.
+func jsonLine(key: String, json: String, fallback: Any, workspace: String) -> String {
+    let parsed = (try? JSONSerialization.jsonObject(
+        with: Data(json.utf8), options: [.fragmentsAllowed])) ?? fallback
+    let object: [String: Any] = [key: parsed, "workspace": workspace]
+    guard let data = try? JSONSerialization.data(
+            withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
+          let string = String(data: data, encoding: .utf8) else {
+        return "{}"
+    }
+    return string
+}
+
 // MARK: - Success output shapes
 
 /// `{"status":"<state>","workspace":"<id>"}`

@@ -1,10 +1,12 @@
 ---
 name: "AttributedString interop limits"
-description: "HighlightSwift emits AppKit-scope attributes on macOS, and AttributedString.utf16 is unavailable at the macOS 15 floor"
+description: "HighlightSwift emits AppKit-scope attributes on macOS, AttributedString.utf16 needs macOS 26, and the AppKit scope can only be edited through NSAttributedString"
 type: reference
 ---
 
 # AttributedString interop limits
+
+## Carrying HighlightSwift output into AppKit
 
 Two properties of `AttributedString` bound how HighlightSwift's output can be
 carried into AppKit text. The working recipe for both lives in
@@ -40,3 +42,31 @@ available as a test input: under `swift test`, `Bundle.main` is the toolchain's
 [[highlightswift-resource-bundle]]). Note that a test comparing colors needs
 `import SwiftUI` for `Color`-typed literals to resolve, and that
 `NSColor.purple` and `NSColor(Color.purple)` are different colors.
+
+## Editing the AppKit scope goes through `NSAttributedString`
+
+Four constraints hold on this toolchain, each established by `swiftc -typecheck`
+probes and runtime checks:
+
+- **`AttributedString` has no `removeAttribute` / `removeAttributes`.** Both
+  names resolve only to the `AttributeContainer` dynamic-member subscript and
+  fail to type-check.
+- **The `Sendable` requirement sits on the attribute *key*, not on the write.**
+  Every typed reference to `AttributeScopes.AppKitAttributes.FontAttribute`
+  warns — writing `nil`, a plain read (`_ = line.appKit.font`) and subscripting
+  by key type alike. `transformingAttributes(FontKey.self) { $0.value = nil }`
+  is a hard **error**, not a warning.
+- **`@preconcurrency import AppKit` does not suppress it.** It changes nothing.
+- **`including: \.swiftUI` is not a superset of `including: \.appKit`.**
+  Decoding an `NSAttributedString` through the SwiftUI scope leaves
+  `run.attributes.appKit.foregroundColor` nil, so it cannot substitute for the
+  AppKit decode. The reverse nesting does hold: `including: \.appKit` nests the
+  Foundation scope (a `.link` survives), and an `AttributedString` →
+  `NSMutableAttributedString` → `AttributedString(including: \.appKit)` round
+  trip is lossless for AppKit-scope input, colors and links intact.
+
+**How to apply:** strip an AppKit-scope attribute with the untyped
+`NSAttributedString.Key` (e.g. `.font`) on a bridged `NSMutableAttributedString`
+and decode the result back with `including: \.appKit`, which keeps the
+`Sendable` check out of it. `droppingFonts(_:)` in
+`Sources/CasperUI/DiffHighlighter.swift` is the working example.

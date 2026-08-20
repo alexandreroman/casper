@@ -34,6 +34,12 @@ final class WorkspaceShortcutKeyMonitor {
     init(model: AppModel, holdDuration: TimeInterval = 0.25) {
         self.model = model
         self.tracker = CommandHoldTracker(holdDuration: holdDuration) { show in
+            // Guarded write: the tracker reports every release, including the many that
+            // never revealed anything (any Cmd-then-Cmd+Shift combo releases a hold that
+            // was still pending). `showWorkspaceShortcutHints` is `@Observable`, and an
+            // unconditional write notifies every sidebar row even when the value is
+            // unchanged — the same reason `AppModel.refreshMenuFlags` guards its own.
+            guard model.showWorkspaceShortcutHints != show else { return }
             model.showWorkspaceShortcutHints = show
         }
     }
@@ -90,15 +96,14 @@ final class WorkspaceShortcutKeyMonitor {
             // Match the physical key position, not the character: on an AZERTY
             // layout the number-row keys emit "& é …" unshifted, so matching by
             // `charactersIgnoringModifiers` would miss Cmd+1…9 there.
-            guard
-                relevantFlags == .command,
-                let digit = Self.digitKeyCodes[event.keyCode],
-                model.workspaceShortcutNumbers.values.contains(digit)
+            guard relevantFlags == .command, let digit = Self.digitKeyCodes[event.keyCode]
             else {
                 return event
             }
-            model.selectWorkspace(atShortcutNumber: digit)
-            return nil
+            // The switch itself reports whether a workspace carries that number, so the
+            // event is consumed only when it did something — and the numbering is built
+            // once instead of once to check and once to look up.
+            return model.selectWorkspace(atShortcutNumber: digit) ? nil : event
         default:
             return event
         }

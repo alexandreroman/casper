@@ -130,6 +130,19 @@ while otool -l "$BUNDLED_BIN" | grep -qF "path $RPATH"; do
     install_name_tool -delete_rpath "$RPATH" "$BUNDLED_BIN" 2>/dev/null || break
 done
 install_name_tool -add_rpath "$RPATH" "$BUNDLED_BIN"
+# Hard fail on anything but a single entry: duplicates make dyld warn on every
+# launch, and none at all means the bundled dylibs are unreachable. Trailing
+# slashes are normalized away first, since `--install-path` and the Makefile's
+# dev bundle spell the same rpath without one.
+rpath_count="$(otool -l "$BUNDLED_BIN" \
+    | awk '/ cmd LC_RPATH$/ {in_rpath = 1; next} in_rpath && / path / {print $2; in_rpath = 0}' \
+    | sed 's:/*$::' \
+    | grep -cxF '@executable_path/../Frameworks' || true)"
+if [ "$rpath_count" -ne 1 ]; then
+    echo "error: $BUNDLED_BIN has $rpath_count @executable_path/../Frameworks LC_RPATH entries, expected 1" >&2
+    otool -l "$BUNDLED_BIN" | grep -A2 LC_RPATH >&2 || true
+    exit 1
+fi
 # Re-sign every bundled dylib ad-hoc as well: dylibbundler rewrote their install
 # names, invalidating any prior signature, and an invalid signature is worse than
 # an ad-hoc one on the target Mac. Sign nested code before the main executable.
@@ -149,6 +162,11 @@ echo "Saved debug symbols -> $DSYM"
 
 codesign --force --sign - "$BUNDLED_BIN"
 
+# Seal the bundle itself so Contents/Resources and Info.plist are covered too.
+# Deliberately NOT --deep: that would re-sign the nested Sparkle.framework ad-hoc
+# and destroy the Apple signature it must keep (verified below).
+codesign --force --sign - "$APP"
+
 # Sparkle is deliberately left out of the re-signing above: it keeps the Apple
 # signature it shipped with. Assert the framework survived dylibbundler intact —
 # a flattened Sparkle only shows up as a failed update months later.
@@ -162,6 +180,7 @@ if ! otool -L "$BUNDLED_BIN" | grep -q 'Sparkle\.framework/Versions/B/Sparkle'; 
     exit 1
 fi
 codesign --verify "$APP/Contents/Frameworks/Sparkle.framework"
+codesign --verify --strict "$APP"
 
 # Self-check (hard fail): every Mach-O in the bundle must reference only system
 # libraries or relocatable (@rpath/@executable_path/@loader_path) paths. Any

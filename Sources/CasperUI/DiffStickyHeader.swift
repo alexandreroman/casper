@@ -34,6 +34,7 @@ final class DiffStickyHeader: NSView {
             // they are dropped rather than redrawn; the surface recomputes them
             // from the new geometry in the same breath.
             bars = []
+            labels = []
             needsDisplay = true
         }
     }
@@ -108,7 +109,54 @@ final class DiffStickyHeader: NSView {
             geometry: geometry, visibleTop: visibleTop, visibleHeight: visibleHeight)
         guard updated != bars else { return }
         bars = updated
+        labels = updated.map { bar in file(at: bar.fileIndex).map(Labels.init) }
         needsDisplay = true
+    }
+
+    /// The text of each bar in `bars`, at the same position — the two are only
+    /// ever assigned together. `nil` for a bar naming a file the document does
+    /// not have, which draws nothing at all.
+    ///
+    /// Built here rather than in `draw`: a bar's text changes only when the
+    /// reader crosses a file boundary, while the overlay is redrawn whenever
+    /// anything above the text needs repainting.
+    private var labels: [Labels?] = []
+
+    /// The file a bar describes, or `nil` once the bar has outlived its
+    /// document.
+    private func file(at fileIndex: Int) -> DiffDocument.FileSpan? {
+        guard let document, document.files.indices.contains(fileIndex) else { return nil }
+        return document.files[fileIndex]
+    }
+
+    /// One bar's text, in the order `draw(_:in:)` places it.
+    ///
+    /// `@MainActor` because it reads the header's static attribute dictionaries, which
+    /// are main-actor state: `[NSAttributedString.Key: Any]` is not `Sendable`, so they
+    /// stay isolated and this type — only ever built from `update(...)`, alongside
+    /// `bars` — declares where it is built instead.
+    @MainActor
+    private struct Labels {
+        let title: NSAttributedString
+        /// The pieces pushed to the right, rightmost first.
+        let trailing: [NSAttributedString]
+
+        init(_ file: DiffDocument.FileSpan) {
+            title = Self.piece(file.title, DiffStickyHeader.titleAttributes)
+            trailing = [
+                // U+2212 MINUS SIGN, not a hyphen: it lines up with the `+`
+                // above it.
+                Self.piece("\u{2212}\(file.deletions)", DiffStickyHeader.deletionCountAttributes),
+                Self.piece("+\(file.insertions)", DiffStickyHeader.insertionCountAttributes),
+                Self.piece(file.status, DiffStickyHeader.statusAttributes),
+            ]
+        }
+
+        private static func piece(
+            _ string: String, _ attributes: [NSAttributedString.Key: Any]
+        ) -> NSAttributedString {
+            NSAttributedString(string: string, attributes: attributes)
+        }
     }
 
     /// One bar per reserved band the viewport shows, at the band's own `y`, plus the
@@ -160,12 +208,12 @@ final class DiffStickyHeader: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let document else { return }
-        for bar in bars where document.files.indices.contains(bar.fileIndex) {
+        for (bar, labels) in zip(bars, labels) {
+            guard let labels else { continue }
             let frame = NSRect(x: bounds.minX, y: bar.y, width: bounds.width,
                                height: DiffTextAssembly.headerBandHeight)
             guard frame.intersects(dirtyRect) else { continue }
-            draw(document.files[bar.fileIndex], in: frame)
+            draw(labels, in: frame)
         }
     }
 
@@ -175,7 +223,7 @@ final class DiffStickyHeader: NSView {
     /// Same content, faces and spacing as the row-based renderer's header, and the
     /// hairline is drawn *inside* the bar rather than under it so a bar occupies
     /// exactly the band the text flow reserved for it.
-    private func draw(_ file: DiffDocument.FileSpan, in frame: NSRect) {
+    private func draw(_ labels: Labels, in frame: NSRect) {
         // Two fills, as the row-based renderer had them: the window background so
         // the code cannot be read through the bar, and the translucent gray that
         // sets it apart from the code column.
@@ -196,17 +244,16 @@ final class DiffStickyHeader: NSView {
         // measure and the title takes whatever is left — the flexible frame the
         // row-based renderer gave it.
         var trailing = content.maxX
-        for piece in [deletions(file), insertions(file), status(file)] {
+        for piece in labels.trailing {
             let size = piece.size()
             piece.draw(in: NSRect(x: trailing - size.width, y: centeredY(of: size, in: content),
                                   width: size.width, height: size.height))
             trailing -= size.width + Self.itemSpacing
         }
 
-        let title = title(file)
-        let size = title.size()
-        title.draw(in: NSRect(x: content.minX, y: centeredY(of: size, in: content),
-                              width: max(trailing - content.minX, 0), height: size.height))
+        let size = labels.title.size()
+        labels.title.draw(in: NSRect(x: content.minX, y: centeredY(of: size, in: content),
+                                     width: max(trailing - content.minX, 0), height: size.height))
     }
 
     /// Centers a piece vertically in the bar, matching the row-based renderer's
@@ -214,23 +261,6 @@ final class DiffStickyHeader: NSView {
     /// guide there having been one suspect in the layout hang.
     private func centeredY(of size: NSSize, in content: NSRect) -> CGFloat {
         content.minY + (content.height - size.height) / 2
-    }
-
-    private func title(_ file: DiffDocument.FileSpan) -> NSAttributedString {
-        NSAttributedString(string: file.title, attributes: Self.titleAttributes)
-    }
-
-    private func status(_ file: DiffDocument.FileSpan) -> NSAttributedString {
-        NSAttributedString(string: file.status, attributes: Self.statusAttributes)
-    }
-
-    private func insertions(_ file: DiffDocument.FileSpan) -> NSAttributedString {
-        NSAttributedString(string: "+\(file.insertions)", attributes: Self.insertionCountAttributes)
-    }
-
-    private func deletions(_ file: DiffDocument.FileSpan) -> NSAttributedString {
-        // U+2212 MINUS SIGN, not a hyphen: it lines up with the `+` above it.
-        NSAttributedString(string: "\u{2212}\(file.deletions)", attributes: Self.deletionCountAttributes)
     }
 
     private static let horizontalPadding: CGFloat = 8

@@ -12,9 +12,10 @@ handler closures: the framework's handlers are `@Sendable` and capture
 non-Sendable `self`. Converting such a class to an `actor` is rejected because
 it would force the public API to become `async`.
 
-Established convention for the release control channel (used by
-`ControlSocketServer` in `Sources/CasperCore/ControlSocket.swift`, and mirrored
-by the DEBUG `DebugSocketServer`):
+Established convention for the shared socket engine in
+`Sources/CasperCore/SocketTransport.swift`, which both the release control
+channel (`ControlSocketServer`) and the DEBUG `DebugSocketServer` are typealiases
+of:
 
 - Mark the class `final class X: @unchecked Sendable` when it must keep a
   synchronous public interface (`start()` / `stop()` etc.).
@@ -22,9 +23,12 @@ by the DEBUG `DebugSocketServer`):
   compiler cannot verify — set closure properties (e.g. `onMessage`,
   `onFailure`) before `start()`, and perform all I/O on the owned serial
   `DispatchQueue`.
-- Avoid a *second* `@unchecked`: instead of a mutable local `var buffer`
-  captured across nested receive callbacks, thread accumulated state by value
-  through a helper method (e.g. `receiveChunk(on:accumulated:)`).
+- Do not capture a mutable local `var buffer` across nested receive callbacks.
+  Accumulate into a small queue-confined reference box instead (`ReadBuffer`,
+  passed into `readExactly(_:on:into:completion:)`): `Network.framework`
+  delivers a connection's callbacks serially on the queue it was started on, so
+  the box is never shared across reads, and that confinement is what justifies
+  its own `@unchecked Sendable`.
 - Cross-thread mutable state (e.g. a set of in-flight connections touched by
   both `stop()` on the caller's thread and receive loops on the queue) is
   guarded by an `OSAllocatedUnfairLock`. When the guarded state is itself

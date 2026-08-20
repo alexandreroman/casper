@@ -64,13 +64,13 @@ extension AppModel {
     /// default-button treatment as `presentCloseWorkspaceConfirmation`.
     func presentDeleteWorkspaceConfirmation(id workspaceID: UUID) {
         guard let ws = workspace(id: workspaceID) else { return }
-        // Fail safe toward SHOWING the warning: `!= true` treats both a thrown probe
-        // error and a genuinely-dirty tree as dirty, so a probe failure never silently
-        // hides the "changes will be lost" warning on this destructive delete.
-        let dirty = (try? WorktreeManager.isClean(repoPath: ws.worktreePath)) != true
-        guard WorkspaceAlerts.confirmDelete(name: ws.name, branch: ws.branch, dirty: dirty) else { return }
-        // As in presentCloseWorkspaceConfirmation: modal confirmation, async work.
+        // The whole body runs in a Task because the cleanliness probe is off-actor
+        // (`isWorktreeClean`): the alert must not be entered until it has returned, or
+        // `runModal` would park the main thread with the probe still in flight.
         Task { @MainActor in
+            let clean = await self.isWorktreeClean(ws.worktreePath)
+            guard WorkspaceAlerts.confirmDelete(name: ws.name, branch: ws.branch, dirty: !clean)
+            else { return }
             let result = await self.deleteWorkspace(id: workspaceID) { status in
                 self.reportTeardownHookFailure(status, workspace: ws.name, id: workspaceID, verb: "deleted")
             }

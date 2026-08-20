@@ -28,14 +28,18 @@ per workspace, and bundles a native browser and diff viewer.
   (see below).
 - **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
   tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
-  native diff view per workspace.
+  native diff view per workspace. Each terminal remembers the font size you set
+  with ⌘+ / ⌘- / ⌘0 and restores it on relaunch.
+- **Open in Editor** — a title-bar split button opens the workspace's worktree
+  in Visual Studio Code, IntelliJ IDEA, or Xcode; each workspace remembers the
+  editor it was last opened with.
 - **Per-workspace port reservation** — a contiguous block of 10 ports per
   workspace, injected as `CASPER_PORT` in worktree workspaces only, so the same
   app can run once per worktree without collisions. The repository's main
   working tree gets no `CASPER_PORT` and keeps the project's default ports.
-- **Native & lean** — prefers built-in macOS frameworks; only four external
-  dependencies (libghostty, swift-argument-parser, libgit2, and HighlightSwift
-  for diff syntax highlighting); **arm64-only**.
+- **Native & lean** — prefers built-in macOS frameworks; only five external
+  dependencies (libghostty, swift-argument-parser, libgit2, HighlightSwift for
+  diff syntax highlighting, and Sparkle for auto-update); **arm64-only**.
 
 ## Installation
 
@@ -45,13 +49,30 @@ Casper is distributed as a standalone `Casper.app`.
 2. Unzip it and move `Casper.app` to your `/Applications` folder.
 3. Launch it like any other macOS app.
 
-**Requirements:** macOS 15 or later, on Apple Silicon (arm64). On first launch,
-Casper wires up its code-agent integration for you — no manual setup.
+**Requirements:** macOS 15 or later, on Apple Silicon (arm64). The `casper` CLI
+needs no installation: Casper injects it into the `PATH` of every terminal it
+opens, so agents and shells running inside a workspace can call it directly.
 
 **Updates:** Casper checks for new releases once a day and offers them through
 **Casper ▸ Check for Updates…**; nothing is installed without your say-so. Every
 update is verified against a signing key embedded in the app, so a tampered
 download is refused.
+
+## Keyboard shortcuts
+
+| Shortcut  | Action                                         |
+| --------- | ---------------------------------------------- |
+| `⌘O`      | Add Folder… — open a repository as a new Space |
+| `⌘D`      | Split Right                                    |
+| `⌘⇧D`     | Split Down                                     |
+| `⌘1`–`⌘9` | Switch to the sidebar's 1st–9th workspace      |
+| `⌘C`      | Copy the terminal selection                    |
+| `⌘V`      | Paste into the terminal                        |
+| `⌘A`      | Select all in the terminal                     |
+| `⌘+`/`⌘-` | Grow / shrink the focused terminal's font      |
+| `⌘0`      | Reset the focused terminal's font size         |
+
+Holding ⌘ for a moment reveals the `⌘1`–`⌘9` number hints in the sidebar.
 
 ## Building from source
 
@@ -195,7 +216,7 @@ casper info set --file docs/endpoints.md     # read the Markdown message from a 
 printf '## App ready\n' | casper info set    # or read it from stdin
 printf '## App ready\n' | casper info set -  # same, with an explicit '-' marker
 casper info clear                            # empty the panel and hide its button
-casper terminal new                          # open a terminal (split right)
+casper terminal new                          # open a terminal (split below)
 casper terminal list                         # list the workspace's terminals
 casper terminal close <id>                   # close a terminal by id
 casper browser open https://example.com      # load a URL in the inspector browser
@@ -205,15 +226,39 @@ casper diff close                            # collapse the inspector if the dif
 casper workspace list                        # enumerate workspaces
 casper workspace current                     # print the current workspace + path
 casper workspace new feature/x               # create a Git worktree workspace
+casper workspace new feature/x --base main --command "claude"
 casper workspace delete                      # destroy a workspace (worktree + branch)
 casper run [name]                            # run a named .casper.json command in a split (defaults to 'run')
 ```
 
+`casper workspace new <branch>` takes the branch name as a positional argument;
+`--base <ref>` forks from a ref other than the space's base branch, and
+`--command <cmd>` seeds the workspace's first terminal with a command to run.
+
+The browser panel doubles as an automation surface, so a coding agent can drive
+and inspect the page it just changed:
+
+```bash
+casper browser load https://localhost:8080   # navigate without opening the panel
+casper browser screenshot --out out.png      # PNG of the page (--width/--height/--url)
+casper browser content                       # dump the page's HTML
+casper browser url                           # print the page's current URL
+casper browser eval "document.title"         # evaluate JavaScript in the page
+casper browser click "button.submit"         # click the first matching element
+casper browser type "input[name=q]" casper   # type into the first matching element
+casper browser key Enter                     # dispatch a keydown/keyup to the page
+casper browser console                       # captured console output + uncaught errors (--level)
+casper browser wait ".ready"                 # block until a selector holds (or --js <expr>)
+casper browser reload                        # reload the page
+casper browser scroll-down                   # also scroll-up / scroll-top / scroll-bottom
+```
+
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
-workspace other than the current one. Commands talk to the running app over a
-Unix domain socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal
-alongside `$CASPER_WORKSPACE_ID` — and, in worktree workspaces only,
-`$CASPER_PORT`.
+workspace other than the current one. The one exception is `workspace current`,
+which reports the terminal's own workspace from `$CASPER_WORKSPACE_ID` and takes
+no target. Commands talk to the running app over a Unix domain socket named by
+`$CASPER_CONTROL_SOCKET`, injected per terminal alongside
+`$CASPER_WORKSPACE_ID` — and, in worktree workspaces only, `$CASPER_PORT`.
 
 Every command is machine-readable: on success it prints a JSON object (or array)
 to stdout describing the affected `workspace` and any resulting state; on error

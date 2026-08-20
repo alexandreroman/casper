@@ -196,14 +196,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// spanning ~250 ms, and the two hooks fire at different points relative to the
     /// menu being drawn, so either one alone loses the race and the re-injected
     /// stubs render in the gap.
+    ///
+    /// Both hooks fire after essentially every event AppKit processes — mouse-moved
+    /// included, so this runs while the user is merely typing in a terminal. Everything
+    /// below therefore reads the menus through `item(at:)` and `numberOfItems`: `items`
+    /// bridges a whole ObjC array into a fresh Swift array on each access, and each of
+    /// the three steps used to ask for one.
     private func resyncMainMenu() {
-        if let appMenu = NSApp.mainMenu?.items.first?.submenu {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        if let appMenu = mainMenu.item(at: 0)?.submenu {
             installAppMenuDelegateProxy(on: appMenu)
             // Safety net for Services re-injections that happen while no menu is
             // being opened; the delegate proxy is what strips it in time.
             stripServicesItems(fromAppMenu: appMenu)
         }
-        stripEmptyTopLevelMenus()
+        stripEmptyTopLevelMenus(in: mainMenu)
     }
 
     /// Strip every empty top-level menu from the main menu.
@@ -219,10 +226,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// (always populated), so it cannot make a real menu disappear, and once the
     /// stubs are removed a subsequent pass finds nothing to strip. Matching empty
     /// submenus (rather than titles) keeps it locale-independent.
-    private func stripEmptyTopLevelMenus() {
-        guard let mainMenu = NSApp.mainMenu else { return }
-        for item in mainMenu.items where item.submenu?.numberOfItems == 0 {
-            mainMenu.removeItem(item)
+    private func stripEmptyTopLevelMenus(in mainMenu: NSMenu) {
+        // Walked backwards by index so removals don't disturb the positions still to be
+        // visited — the price of not snapshotting `items` on every pass.
+        for index in stride(from: mainMenu.numberOfItems - 1, through: 0, by: -1)
+        where mainMenu.item(at: index)?.submenu?.numberOfItems == 0 {
+            mainMenu.removeItem(at: index)
         }
     }
 
@@ -362,13 +371,17 @@ private final class AppMenuDelegateProxy: NSObject, NSMenuDelegate {
 /// orphaned submenu — but as an effect, never as a precondition.
 @MainActor
 private func stripServicesItems(fromAppMenu appMenu: NSMenu) {
-    let submenuItems = appMenu.items.filter { $0.submenu != nil }
-    guard !submenuItems.isEmpty else { return }
-
-    for item in submenuItems {
-        appMenu.removeItem(item)
+    // Backwards by index, like `stripEmptyTopLevelMenus`: this runs on every update
+    // pass, and the overwhelmingly common outcome is "nothing to remove", which must
+    // not cost an array bridge plus a `filter` allocation.
+    var removedAny = false
+    for index in stride(from: appMenu.numberOfItems - 1, through: 0, by: -1) {
+        guard let item = appMenu.item(at: index), item.submenu != nil else { continue }
+        appMenu.removeItem(at: index)
+        removedAny = true
         CasperLog.app.debug("removed App-menu submenu item: \(item.title, privacy: .public)")
     }
+    guard removedAny else { return }
     NSApp.servicesMenu = nil
     // AppKit brackets the Services item with separators, so removing it leaves two
     // adjacent ones behind.
@@ -379,10 +392,10 @@ private func stripServicesItems(fromAppMenu appMenu: NSMenu) {
 /// removed item does not leave a visible gap behind.
 private func normalizeSeparators(in menu: NSMenu) {
     for index in stride(from: menu.numberOfItems - 1, through: 0, by: -1) {
-        guard menu.items[index].isSeparatorItem else { continue }
+        guard menu.item(at: index)?.isSeparatorItem == true else { continue }
         let isFirstItem = index == 0
         let isLastItem = index == menu.numberOfItems - 1
-        let followsAnotherSeparator = index > 0 && menu.items[index - 1].isSeparatorItem
+        let followsAnotherSeparator = index > 0 && menu.item(at: index - 1)?.isSeparatorItem == true
         if isFirstItem || isLastItem || followsAnotherSeparator {
             menu.removeItem(at: index)
         }

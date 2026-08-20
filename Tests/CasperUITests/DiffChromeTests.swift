@@ -98,7 +98,7 @@ final class DiffChromeTests: XCTestCase {
 
         if let document {
             textView.textContentStorage?.textStorage?
-                .setAttributedString(DiffTextAssembly.makeTextStorage(for: document))
+                .setAttributedString(DiffTextAssembly.makeAttributedText(for: document))
             textView.document = document
             ruler.document = document
         }

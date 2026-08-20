@@ -130,8 +130,7 @@ struct MarkdownTextView: NSViewRepresentable {
     /// The container matches the real view's `lineFragmentPadding = 0` so both
     /// wrap at exactly the same width.
     static func height(for markdown: String, width: CGFloat) -> CGFloat {
-        let content = MarkdownAttributedString.make(
-            markdown, font: Style.font, textColor: Style.textColor, contentWidth: width)
+        let content = renderedContent(for: markdown, width: width)
         guard content.length > 0 else { return 0 }
 
         let contentStorage = NSTextContentStorage()
@@ -147,6 +146,31 @@ struct MarkdownTextView: NSViewRepresentable {
         // laid-out text actually occupies in the container.
         return ceil(layoutManager.usageBoundsForTextContainer.height)
     }
+
+    /// The rendered Markdown, built at most once per `(markdown, width)` pair.
+    ///
+    /// The panel measures the message and then renders it, and both go through
+    /// the full pipeline — parsing, one pass over every block, a rasterized rule
+    /// per thematic break. Sharing one build between the two halves is what
+    /// keeps a panel that reopens or re-lays-out from paying for it again.
+    ///
+    /// Deliberately a single entry rather than a dictionary: only one message is
+    /// on screen at a time, so one slot serves every hit this is here for, and a
+    /// map keyed by arbitrary user-supplied Markdown could grow without bound.
+    private static func renderedContent(for markdown: String, width: CGFloat) -> NSAttributedString {
+        if let cached = lastRendered, cached.markdown == markdown, cached.width == width {
+            return cached.content
+        }
+        let content = MarkdownAttributedString.make(
+            markdown, font: Style.font, textColor: Style.textColor, contentWidth: width)
+        lastRendered = (markdown: markdown, width: width, content: content)
+        return content
+    }
+
+    /// Main-actor state, like every other member of this view: the two callers
+    /// are `height(for:width:)`, reached from a SwiftUI `body`, and
+    /// `updateNSView`.
+    private static var lastRendered: (markdown: String, width: CGFloat, content: NSAttributedString)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onOpenURL: onOpenURL)
@@ -215,8 +239,7 @@ struct MarkdownTextView: NSViewRepresentable {
         // leave a selection alone.
         guard context.coordinator.renderedMarkdown != markdown
             || context.coordinator.renderedWidth != width else { return }
-        textView.textStorage?.setAttributedString(
-            MarkdownAttributedString.make(markdown, font: Style.font, textColor: Style.textColor, contentWidth: width))
+        textView.textStorage?.setAttributedString(Self.renderedContent(for: markdown, width: width))
         context.coordinator.renderedMarkdown = markdown
         context.coordinator.renderedWidth = width
     }

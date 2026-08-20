@@ -118,7 +118,7 @@ final class DiffCopyTests: XCTestCase {
         textView.isEditable = false
         textView.isSelectable = true
         contentStorage.textStorage?.setAttributedString(
-            DiffTextAssembly.makeTextStorage(for: document))
+            DiffTextAssembly.makeAttributedText(for: document))
         textView.document = document
         return textView
     }

@@ -17,7 +17,7 @@ containers pointing at the same shared view — the incoming/surviving one and a
 outgoing one SwiftUI is about to remove. Whichever container ends up detached
 while holding the view leaves its pane **blank**.
 
-**The mechanism (current):** a **window-membership-driven ownership coordinator**.
+**The mechanism:** a **window-membership-driven ownership coordinator**.
 `SharedHostContainer` (an `NSView`) registers itself per shared view and calls
 `SharedViewOwnership.reconcile(hostedView)` from `viewDidMoveToWindow()`. On every
 window transition (a container entering **or** leaving a window), `reconcile`
@@ -27,11 +27,12 @@ when it enters the window (drag-relocate), and a survivor reclaims it when the
 outgoing container leaves the window (collapse). `PersistentNSViewHost`'s
 `makeNSView`/`updateNSView` just call `reconcile` — no unconditional re-attach.
 
-**Do NOT** revert to the earlier one-shot `DispatchQueue.main.async` window-guarded
-reconcile. It bailed permanently (`guard container.window != nil else { return }`
-with no retry) when it ran **before** the winning container was added to the
-window — exactly what a drag-relocate does — orphaning the shared view and
-blanking the pane for good. The event-driven coordinator has no such timing race.
+**Do NOT** replace it with a one-shot `DispatchQueue.main.async` window-guarded
+reconcile. Such a reconcile bails permanently (`guard container.window != nil
+else { return }` with no retry) whenever it runs **before** the winning container
+is added to the window — exactly what a drag-relocate does — orphaning the shared
+view and blanking the pane for good. The event-driven coordinator has no such
+timing race.
 
 **Why:** any feature that renders **multiple** surfaces at once and restructures
 the layout re-triggers this. The pre-tmux tab model rendered one surface per group

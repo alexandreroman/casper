@@ -43,7 +43,14 @@ struct DiffSurfaceView: View {
 
     var body: some View {
         content
-            .onAppear { if !loaded { refresh() } }
+            // Reappearing with the state intact resumes highlighting instead of
+            // recomputing the diff: `.onDisappear` cancelled the highlight task
+            // wherever it had got to, and without this restart the files it had
+            // not reached stay uncolored until the next `diffRevision` bump —
+            // which on a quiet worktree never comes. Already-highlighted files
+            // are skipped by `highlightCache`, so the resumed pass picks up
+            // exactly where the cancelled one stopped.
+            .onAppear { if loaded { startHighlighting() } else { refresh() } }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
             .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
             // A target can name a file that only the freshly computed diff has, and
@@ -85,7 +92,6 @@ struct DiffSurfaceView: View {
 
     private func refresh() {
         let previousFiles = diff?.files ?? []
-        let previousHighlights = highlightCache
         let started = Date()
         // Keep the previous `diff` on screen while the async compute runs (no blank
         // flash): `content` shows the last value until it's reassigned below.
@@ -107,6 +113,13 @@ struct DiffSurfaceView: View {
             let newDocument = await Self.makeDocument(for: newDiff)
             if Task.isCancelled { return }
             diff = newDiff
+            // Read here rather than before the awaits above: the previous
+            // highlight task keeps publishing into the cache until
+            // `startHighlighting()` cancels it below, and a snapshot taken
+            // ahead of the compute would miss everything it finished in the
+            // meantime — sending those files back through the highlighter for
+            // colors that were already computed.
+            let previousHighlights = highlightCache
             highlightCache = Self.carriedHighlights(
                 for: newDiff?.files ?? [], from: previousFiles, previousHighlights)
             // Restarting the count when the diff disappears is safe: that tears the
@@ -214,11 +227,17 @@ struct DiffSurfaceView: View {
     /// and are skipped.
     private func startHighlighting() {
         highlightTask?.cancel()
-        guard let files = diff?.files else { highlightCache = [:]; return }
+        // `diff` and `rendering` are assigned together in `refresh()`, so either
+        // both are there or neither is; with no document there is nothing to
+        // paint and nothing worth keeping in the cache.
+        guard let files = diff?.files, let document = rendering?.document else {
+            highlightCache = [:]
+            return
+        }
         let carried = highlightCache
 
         highlightTask = Task {
-            for file in files {
+            for (fileIndex, file) in files.enumerated() {
                 if Task.isCancelled { return }
                 guard !file.isBinary else { continue }
                 if carried[file.id] != nil { continue }  // already have a valid highlight — skip
@@ -234,7 +253,15 @@ struct DiffSurfaceView: View {
                 // progressively as each file finishes. It goes straight into the live
                 // text storage; the cache copy is only there to carry it over to the
                 // next rebuild.
+                //
+                // Pruned before either of them sees it: the highlighter colors
+                // the whole file, and holding those thousands of unrendered
+                // lines is this renderer's largest avoidable allocation (see
+                // `DiffFileHighlight.prunedToRenderedLines(ofFileAt:in:)`).
+                // `files` is the document's own file list, so the indices line
+                // up.
                 let fileHighlight = DiffFileHighlight(new: newLines, old: oldLines)
+                    .prunedToRenderedLines(ofFileAt: fileIndex, in: document)
                 highlightCache[file.id] = fileHighlight
                 controller.coordinator?.applyHighlight(fileHighlight, forFileID: file.id)
             }

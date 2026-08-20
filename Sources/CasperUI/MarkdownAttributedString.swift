@@ -187,21 +187,50 @@ private enum Layout {
 /// Font derivations shared by every block renderer. `NSFontManager` is the
 /// standard AppKit way to add traits (bold, italic) to an arbitrary base font
 /// without assuming it is a system font.
-private enum Fonts {
-    static func applying(_ traits: NSFontTraitMask, to base: NSFont) -> NSFont {
-        traits.isEmpty ? base : NSFontManager.shared.convert(base, toHaveTrait: traits)
+///
+/// Memoized for the lifetime of one `make` call, because every inline run asks
+/// for the face its emphasis needs while a document draws from a handful of
+/// base fonts (body, one per heading level, the bold table-header face) times
+/// the four trait combinations. A reference type, so the `Builder` value that
+/// owns one can fill it in from its non-mutating render methods.
+private final class Fonts {
+    private var cache: [Key: NSFont] = [:]
+
+    private struct Key: Hashable {
+        let base: NSFont
+        /// `NSFontTraitMask.rawValue`, or `nil` for the monospaced derivation —
+        /// which swaps the family outright rather than adding a trait.
+        let traits: UInt?
     }
 
-    static func bold(_ base: NSFont) -> NSFont {
+    func applying(_ traits: NSFontTraitMask, to base: NSFont) -> NSFont {
+        guard !traits.isEmpty else { return base }
+        return derived(Key(base: base, traits: traits.rawValue)) {
+            NSFontManager.shared.convert(base, toHaveTrait: traits)
+        }
+    }
+
+    func bold(_ base: NSFont) -> NSFont {
         applying(.boldFontMask, to: base)
     }
 
-    static func monospaced(_ base: NSFont) -> NSFont {
-        NSFont.monospacedSystemFont(ofSize: base.pointSize, weight: .regular)
+    func monospaced(_ base: NSFont) -> NSFont {
+        derived(Key(base: base, traits: nil)) {
+            NSFont.monospacedSystemFont(ofSize: base.pointSize, weight: .regular)
+        }
     }
 
+    /// Not memoized: one heading block asks for one resize, so a cache entry
+    /// would never be read twice.
     static func resized(_ base: NSFont, to size: CGFloat) -> NSFont {
         NSFont(descriptor: base.fontDescriptor, size: size) ?? base
+    }
+
+    private func derived(_ key: Key, _ make: () -> NSFont) -> NSFont {
+        if let cached = cache[key] { return cached }
+        let font = make()
+        cache[key] = font
+        return font
     }
 }
 
@@ -213,61 +242,62 @@ private struct Block {
     var runs: [(text: String, inline: InlinePresentationIntent, link: URL?)] = []
 }
 
+/// Every predicate below walks `components` directly. A shared
+/// `components.map(\.kind)` would read better but allocates an array per
+/// access, and one block's render reads about a dozen of these.
 private extension Block {
-    var kinds: [PresentationIntent.Kind] { components.map(\.kind) }
-
     var headerLevel: Int? {
-        for kind in kinds { if case .header(let level) = kind { return level } }
+        for component in components { if case .header(let level) = component.kind { return level } }
         return nil
     }
 
     var isCodeBlock: Bool {
-        kinds.contains { if case .codeBlock = $0 { return true }; return false }
+        components.contains { if case .codeBlock = $0.kind { return true }; return false }
     }
 
     var isThematicBreak: Bool {
-        kinds.contains { if case .thematicBreak = $0 { return true }; return false }
+        components.contains { if case .thematicBreak = $0.kind { return true }; return false }
     }
 
     var isBlockQuote: Bool {
-        kinds.contains { if case .blockQuote = $0 { return true }; return false }
+        components.contains { if case .blockQuote = $0.kind { return true }; return false }
     }
 
     var isOrderedList: Bool {
-        kinds.contains { if case .orderedList = $0 { return true }; return false }
+        components.contains { if case .orderedList = $0.kind { return true }; return false }
     }
 
     var listItemOrdinal: Int? {
-        for kind in kinds { if case .listItem(let ordinal) = kind { return ordinal } }
+        for component in components { if case .listItem(let ordinal) = component.kind { return ordinal } }
         return nil
     }
 
     /// Nesting depth used for indentation: one level per ancestor list item.
     var listDepth: Int {
-        kinds.filter { if case .listItem = $0 { return true }; return false }.count
+        components.count { if case .listItem = $0.kind { return true }; return false }
     }
 
     var quoteDepth: Int {
-        kinds.filter { if case .blockQuote = $0 { return true }; return false }.count
+        components.count { if case .blockQuote = $0.kind { return true }; return false }
     }
 
     var isTableHeaderRow: Bool {
-        kinds.contains { if case .tableHeaderRow = $0 { return true }; return false }
+        components.contains { if case .tableHeaderRow = $0.kind { return true }; return false }
     }
 
     var tableRowIndex: Int? {
-        for kind in kinds { if case .tableRow(let rowIndex) = kind { return rowIndex } }
+        for component in components { if case .tableRow(let rowIndex) = component.kind { return rowIndex } }
         return nil
     }
 
     var tableColumnIndex: Int? {
-        for kind in kinds { if case .tableCell(let columnIndex) = kind { return columnIndex } }
+        for component in components { if case .tableCell(let columnIndex) = component.kind { return columnIndex } }
         return nil
     }
 
-    /// The enclosing table's stable identity and column count, read from its
-    /// `IntentType` rather than `kinds`, because only `IntentType` carries the
-    /// identity every cell of the same table needs to share.
+    /// The enclosing table's stable identity and column count. The identity
+    /// lives on the `IntentType` rather than on its `kind`, and every cell of
+    /// the same table needs to share it.
     var table: (identity: Int, columnCount: Int)? {
         for component in components {
             if case .table(let columns) = component.kind {
@@ -275,6 +305,15 @@ private extension Block {
             }
         }
         return nil
+    }
+
+    /// The indent a block inherits from whatever it is nested inside: one step
+    /// per ancestor list item, one quote indent per ancestor block quote.
+    /// Composed by every renderer that draws its own chrome on top of it, so
+    /// that a code fence, a rule or a table under `- ` / `> ` keeps its
+    /// ancestors' offset.
+    var ambientIndent: CGFloat {
+        CGFloat(listDepth) * Layout.indentStep + CGFloat(quoteDepth) * Layout.blockQuoteIndent
     }
 
     /// True exactly for the two block kinds that draw a block quote's leading
@@ -305,14 +344,17 @@ private extension Block {
 }
 
 /// Assembles one document's worth of blocks into a single `NSAttributedString`.
-/// A plain value type: it exists only for the duration of one `make` call, and
-/// carries no state beyond the two styling inputs it was given.
+/// It exists only for the duration of one `make` call, and carries no state
+/// beyond the three styling inputs it was given and the font derivations it
+/// memoizes along the way.
 private struct Builder {
     let font: NSFont
     let textColor: NSColor
     /// The width the caller lays this text out at, needed only to size the
     /// thematic break's rasterized rule (see `renderThematicBreak`).
     let contentWidth: CGFloat
+    /// Scoped to this build, so nothing outlives the call — see `Fonts`.
+    let fonts = Fonts()
 
     func build(_ text: AttributedString) -> NSAttributedString {
         let result = NSMutableAttributedString()
@@ -482,6 +524,24 @@ private struct Builder {
     /// A range with no interior `\n` (the common case: most blocks are one
     /// paragraph) takes the fast path of covering the whole range with
     /// `style` unchanged.
+    /// The tail every unbordered block shares: indent both head indents by
+    /// `indent`, open `spacingBefore` above the block, and hand the result to
+    /// `applyLeadingSpacing` so the gap lands on the block's first paragraph
+    /// only. Returns `text`, styled in place.
+    ///
+    /// A block that needs more of the style than this — a list item's hanging
+    /// indent and tab stop, a bordered block's `textBlocks` — builds its own.
+    private func styled(
+        _ text: NSMutableAttributedString, indent: CGFloat, spacingBefore: CGFloat
+    ) -> NSAttributedString {
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = indent
+        style.headIndent = indent
+        style.paragraphSpacingBefore = spacingBefore
+        applyLeadingSpacing(style, to: text)
+        return text
+    }
+
     private func applyLeadingSpacing(_ style: NSMutableParagraphStyle, to text: NSMutableAttributedString) {
         let firstNewline = (text.string as NSString).range(of: "\n").location
         let firstParagraphLength = firstNewline == NSNotFound ? text.length : firstNewline + 1
@@ -506,12 +566,12 @@ private struct Builder {
             var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: textColor]
 
             if run.inline.contains(.code) {
-                attributes[.font] = Fonts.monospaced(baseFont)
+                attributes[.font] = fonts.monospaced(baseFont)
             } else {
                 var traits: NSFontTraitMask = []
                 if run.inline.contains(.stronglyEmphasized) { traits.insert(.boldFontMask) }
                 if run.inline.contains(.emphasized) { traits.insert(.italicFontMask) }
-                attributes[.font] = Fonts.applying(traits, to: baseFont)
+                attributes[.font] = fonts.applying(traits, to: baseFont)
             }
 
             if run.inline.contains(.strikethrough) {
@@ -529,18 +589,16 @@ private struct Builder {
     // MARK: - Block renderers
 
     private func renderParagraph(_ block: Block, isFirstBlock: Bool) -> NSAttributedString {
-        let text = inlineAttributedText(block, baseFont: font)
-        let style = NSMutableParagraphStyle()
-        style.paragraphSpacingBefore = spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock)
         // A paragraph carrying a hard line break (`alpha␣␣\nbeta`) arrives as
         // one run with an embedded `\n`; see `applyLeadingSpacing`.
-        applyLeadingSpacing(style, to: text)
-        return text
+        styled(
+            inlineAttributedText(block, baseFont: font), indent: 0,
+            spacingBefore: spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock))
     }
 
     private func renderHeading(_ block: Block, level: Int, isFirstBlock: Bool) -> NSAttributedString {
         let scale = Layout.headingScale[level] ?? 1.0
-        let headingFont = Fonts.bold(Fonts.resized(font, to: font.pointSize * scale))
+        let headingFont = fonts.bold(Fonts.resized(font, to: font.pointSize * scale))
 
         let text = inlineAttributedText(block, baseFont: headingFont)
         let style = NSMutableParagraphStyle()
@@ -562,10 +620,10 @@ private struct Builder {
         // leading rule on top of its own marker and hanging indent, instead
         // of the quote's chrome being dropped because this branch runs first
         // in `render(_:tables:isFirstBlock:)`.
-        let listIndent = CGFloat(block.listDepth) * Layout.indentStep
-        let quoteIndent = CGFloat(block.quoteDepth) * Layout.blockQuoteIndent
-        let indent = listIndent + quoteIndent
+        let indent = block.ambientIndent
 
+        // Its own style rather than `styled(_:indent:spacingBefore:)`: an item's
+        // text hangs past its marker, and a quoted one carries the bar.
         let style = NSMutableParagraphStyle()
         style.firstLineHeadIndent = indent
         style.headIndent = indent + Layout.listHangingIndent
@@ -663,7 +721,7 @@ private struct Builder {
     }
 
     private func renderCodeBlock(_ block: Block, isFirstBlock: Bool) -> NSAttributedString {
-        let codeFont = Fonts.monospaced(font)
+        let codeFont = fonts.monospaced(font)
         var text = block.runs.map(\.text).joined()
         // The parser's own trailing newline would otherwise stack with the
         // block separator `build` appends, leaving a spurious blank line.
@@ -679,19 +737,13 @@ private struct Builder {
         // indented under `- ` or quoted with `> `) adds that ancestor's
         // indent on top of the block's own base indent, instead of sitting at
         // the same fixed indent as a top-level code block.
-        let indent = Layout.codeBlockIndent
-            + CGFloat(block.listDepth) * Layout.indentStep
-            + CGFloat(block.quoteDepth) * Layout.blockQuoteIndent
-
-        let style = NSMutableParagraphStyle()
-        style.headIndent = indent
-        style.firstLineHeadIndent = indent
-        style.paragraphSpacingBefore = spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock)
+        //
         // The whole fence is one run with an embedded `\n` per source line —
-        // exactly the case `applyLeadingSpacing` exists to handle, so the
-        // gap opens once before the block instead of before every line.
-        applyLeadingSpacing(style, to: attributed)
-        return attributed
+        // exactly the case `applyLeadingSpacing` exists to handle, so the gap
+        // opens once before the block instead of before every line.
+        return styled(
+            attributed, indent: Layout.codeBlockIndent + block.ambientIndent,
+            spacingBefore: spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock))
     }
 
     private func renderThematicBreak(_ block: Block, isFirstBlock: Bool) -> NSAttributedString {
@@ -716,30 +768,26 @@ private struct Builder {
         // An embedded image is a different, well-supported path instead —
         // `NSTextAttachment` composites like any inline image — so the rule
         // below is rasterized into a 1pt-tall `NSImage` and embedded that way.
-        let indent = CGFloat(block.listDepth) * Layout.indentStep
-            + CGFloat(block.quoteDepth) * Layout.blockQuoteIndent
+        let indent = block.ambientIndent
         let ruleWidth = max(contentWidth - indent, 1)
 
         let attachment = NSTextAttachment()
         attachment.image = ruleImage(width: ruleWidth)
         attachment.bounds = CGRect(x: 0, y: 0, width: ruleWidth, height: Layout.thematicBreakThickness)
 
-        let style = NSMutableParagraphStyle()
-        style.headIndent = indent
-        style.firstLineHeadIndent = indent
-        style.paragraphSpacingBefore = spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock)
-
         let text = NSMutableAttributedString(attachment: attachment)
-        let range = NSRange(location: 0, length: text.length)
         // A tiny font on the attachment run itself, not the body font:
         // TextKit sizes an attachment-only line fragment from the larger of
         // the attachment's own bounds and its run's font metrics, so
         // inheriting the body font here would reserve a full line of
         // ascent/descent around a 1pt image — the same "tall blank gap" the
         // underline attempt above already left behind.
-        text.addAttribute(.font, value: NSFont.systemFont(ofSize: Layout.thematicBreakThickness), range: range)
-        text.addAttribute(.paragraphStyle, value: style, range: range)
-        return text
+        text.addAttribute(
+            .font, value: NSFont.systemFont(ofSize: Layout.thematicBreakThickness),
+            range: NSRange(location: 0, length: text.length))
+        return styled(
+            text, indent: indent,
+            spacingBefore: spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock))
     }
 
     /// Rasterizes the thematic break's rule so it can ride as an
@@ -770,8 +818,7 @@ private struct Builder {
             // (itself an `NSTextBlock`) carries a margin independent of each
             // cell's own border/padding, verified against a live table/cell
             // pair before relying on it here.
-            let ambientIndent = CGFloat(block.listDepth) * Layout.indentStep
-                + CGFloat(block.quoteDepth) * Layout.blockQuoteIndent
+            let ambientIndent = block.ambientIndent
             if ambientIndent > 0 {
                 table.setWidth(ambientIndent, type: .absoluteValueType, for: .margin, edge: .minX)
             }
@@ -791,7 +838,7 @@ private struct Builder {
         cellBlock.setBorderColor(textColor.withAlphaComponent(Layout.chromeAlpha))
         cellBlock.setWidth(Layout.tableCellPadding, type: .absoluteValueType, for: .padding)
 
-        let cellFont = isHeader ? Fonts.bold(font) : font
+        let cellFont = isHeader ? fonts.bold(font) : font
         let text = inlineAttributedText(block, baseFont: cellFont)
 
         let style = NSMutableParagraphStyle()

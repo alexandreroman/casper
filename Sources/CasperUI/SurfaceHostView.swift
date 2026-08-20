@@ -22,6 +22,9 @@ struct SurfaceHostView: View {
     }
 
     var body: some View {
+        // Hoisted: `canDrag` walks the whole layout tree and builds two arrays, and
+        // every pane's body reads it three times.
+        let canDrag = canDrag
         ZStack {
             content
             if canDrag {
@@ -72,63 +75,36 @@ struct SurfaceHostView: View {
             clearHover: { [model, id = surface.id] in model.clearDropHover(target: id) })
     }
 
-    /// A short label for the drag preview: the terminal's directory name, the
-    /// browser host, or a static tag for other surfaces.
+    /// A short label for the drag preview: the terminal's directory name.
     private var dragLabel: String {
-        switch surface.kind {
-        case .terminal(let cwd):
-            let name = (cwd as NSString).lastPathComponent
-            return name.isEmpty ? "Terminal" : name
-        case .browser(let url):
-            return url.host ?? "Browser"
-        }
+        guard case .terminal(let cwd) = surface.kind else { return "Terminal" }
+        let name = (cwd as NSString).lastPathComponent
+        return name.isEmpty ? "Terminal" : name
     }
 
     @ViewBuilder
     private var content: some View {
         if let view = model.surfaceView(for: surface, in: workspace) {
             PersistentNSViewHost(view: view).id(surface.id)
-        } else if case .terminal = surface.kind {
-            Color.black  // runtime not ready yet
         } else {
-            ContentUnavailableView(
-                "Unsupported surface", systemImage: "rectangle.dashed",
-                description: Text("This surface kind isn't supported yet."))
+            Color.black  // runtime not ready yet
         }
     }
 
-    /// The pane context menu. Splits always create a terminal. Copy/Paste fire
-    /// their Edit-menu selector down the responder chain, reaching the focused
-    /// `GhosttySurfaceView` (mirrors the Edit-menu Copy/Paste in `CasperCommands`
-    /// (MenuCommands.swift), which also dispatch through the responder chain), so
-    /// on a browser/diff pane they act on the focused terminal rather than the
-    /// pane itself.
+    /// The pane context menu, rendered from the shared
+    /// `PaneMenuItem.groups(model:surfaceID:)` description so it stays identical to
+    /// the AppKit twin in `PaneContextMenu.swift`.
     @ViewBuilder
     private var paneMenu: some View {
-        Button { model.applySplit(from: surface.id, direction: .up) } label: {
-            Label("Split Up", systemImage: "rectangle.tophalf.filled")
-        }
-        Button { model.applySplit(from: surface.id, direction: .down) } label: {
-            Label("Split Down", systemImage: "rectangle.bottomhalf.filled")
-        }
-        Button { model.applySplit(from: surface.id, direction: .left) } label: {
-            Label("Split Left", systemImage: "rectangle.lefthalf.filled")
-        }
-        Button { model.applySplit(from: surface.id, direction: .right) } label: {
-            Label("Split Right", systemImage: "rectangle.righthalf.filled")
-        }
-        Divider()
-        Button { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) } label: {
-            Label("Copy", systemImage: "doc.on.doc")
-        }
-        .keyboardShortcut("c", modifiers: .command)
-        Button { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) } label: {
-            Label("Paste", systemImage: "clipboard")
-        }
-        .keyboardShortcut("v", modifiers: .command)
-        Divider()
-        Button(role: .destructive) { model.applyCloseSurface(surface.id) } label: {
-            Label("Close Pane", systemImage: "xmark")
+        let groups = PaneMenuItem.groups(model: model, surfaceID: surface.id)
+        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+            if index > 0 { Divider() }
+            ForEach(group, id: \.title) { item in
+                Button(role: item.isDestructive ? .destructive : nil, action: item.action) {
+                    Label(item.title, systemImage: item.systemImage)
+                }
+                .keyboardShortcut(item.commandKey.map { KeyboardShortcut(KeyEquivalent($0), modifiers: .command) })
+            }
         }
     }
 }

@@ -13,6 +13,8 @@ type: project
 - Automation: `screenshot [--out]`, `eval <js> [--raw]`, `content [--selector]
   [--raw]`, `url [--raw]`, `click <selector>`, `type <selector> <text>`,
   `key <key> [--selector]`.
+- Scrolling: `scroll-up`, `scroll-down` (one viewport each), `scroll-top`,
+  `scroll-bottom`.
 - Debug: `console [--level L] [--clear]`, `wait <selector>|--js <expr>
   [--visible|--gone] [--timeout ms]`, `reload [--wait]`.
 

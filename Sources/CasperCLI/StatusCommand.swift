@@ -27,7 +27,7 @@ struct StatusCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
-            emit(StatusOut(status: state.rawValue, workspace: response.workspace ?? ""))
+            emit(StatusOut(status: state.rawValue, workspace: response.workspaceRef))
         }
     }
 }

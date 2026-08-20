@@ -19,6 +19,5 @@ pixels, so ScreenCaptureKit is the only correct replacement. The migration made
 callers in the same file.
 
 **How to access:** the `casper debug screenshot <path>` CLI (see the `debug-casper`
-skill) works as before. It now requires the **screen-recording permission** (as the
-old API also did on recent macOS); if a capture returns empty or fails, check that
-permission for the debug binary. Release builds omit this path entirely (`#if DEBUG`).
+skill) requires the **screen-recording permission**; if a capture returns empty or
+fails, check that permission for the debug binary. Release builds omit this path entirely (`#if DEBUG`).

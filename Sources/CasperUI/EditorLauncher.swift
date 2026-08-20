@@ -3,11 +3,26 @@ import CasperCore
 import Foundation
 
 /// Detects and launches external code editors (VS Code, IntelliJ IDEA,
-/// Xcode) for a workspace's worktree. Stateless — detection is cheap enough
-/// (it only resolves app bundle identifiers, spawning no processes) to call
-/// once at app startup and cache the result on `AppModel`, rather than
-/// caching inside this type.
+/// Xcode) for a workspace's worktree. `detectInstalled()` is cheap enough (it
+/// only resolves app bundle identifiers, spawning no processes) to call once at
+/// app startup and cache the result on `AppModel`.
+///
+/// The two expensive lookups are memoized here instead, because their callers
+/// cannot afford to hit the system: `icon(for:)` runs on every
+/// `WorkspaceDetailView` body pass (once per editor menu entry, and a `Menu`'s
+/// content is built eagerly), and `resolveCLIPath` spawns a **login** shell,
+/// which sources the user's profile — routinely hundreds of milliseconds of
+/// blocked main thread. Neither result can change during a session, so both are
+/// resolved at most once. Main-actor-isolated for that shared state; every
+/// caller is already on the main actor.
+@MainActor
 enum EditorLauncher {
+    private static var iconCache: [EditorKind: NSImage] = [:]
+    /// Keyed by CLI command. The value is optional so a command that resolves to
+    /// nothing is cached too — a missing shim is the case that pays the full
+    /// login-shell cost, so it is the one that most needs remembering.
+    private static var cliPathCache: [String: String?] = [:]
+
     /// Editors whose app bundle resolves via a known bundle identifier. The
     /// CLI shim is *not* required: some editors (IntelliJ IDEA) don't
     /// auto-install theirs, leaving it missing on most users' `PATH` even
@@ -22,7 +37,11 @@ enum EditorLauncher {
     }
 
     static func icon(for kind: EditorKind) -> NSImage? {
-        resolveBundleURL(kind).map { NSWorkspace.shared.icon(forFile: $0.path) }
+        if let cached = iconCache[kind] { return cached }
+        guard let bundleURL = resolveBundleURL(kind) else { return nil }
+        let icon = NSWorkspace.shared.icon(forFile: bundleURL.path)
+        iconCache[kind] = icon
+        return icon
     }
 
     /// Launches `kind` for `path`, preferring its CLI shim when one resolves:
@@ -72,6 +91,15 @@ enum EditorLauncher {
     /// last non-empty line of stdout (profile banners print before `which`, so
     /// the resolved path is last); `nil` on a non-zero exit or empty output.
     private static func resolveCLIPath(_ command: String) -> String? {
+        if let cached = cliPathCache[command] { return cached }
+        let resolved = runWhich(command)
+        cliPathCache[command] = resolved
+        return resolved
+    }
+
+    /// Runs `$SHELL -lc 'which <command>'` and returns the resolved path, or `nil`.
+    /// Blocking and expensive — only ever called through `resolveCLIPath`'s cache.
+    private static func runWhich(_ command: String) -> String? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)

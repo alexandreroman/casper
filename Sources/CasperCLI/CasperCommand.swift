@@ -1,5 +1,14 @@
 import ArgumentParser
 import CasperAgents
+import Foundation
+
+/// The version `casper --version` reports. A packaged `Casper.app` carries the
+/// real one in `CFBundleShortVersionString` (substituted by
+/// `Scripts/bundle-app.sh` at packaging time); an unbundled binary — `swift run`,
+/// or the executable invoked outside the app — has no Info.plist to read, so it
+/// falls back to the compiled-in module version.
+private let casperVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    ?? casperAgentsVersion
 
 /// The root `casper` command. Ships the domain commands (`status`, `progress`,
 /// `notify`, `info`, `terminal`, `browser`, `diff`, `workspace`); `casper debug`
@@ -8,9 +17,9 @@ public struct CasperCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "casper",
         abstract: "Casper — per-worktree agent terminal workspaces.",
-        // Wired to the CasperAgents module version so `--version` (routed to the
-        // CLI by `LaunchMode.detect`) prints instead of erroring.
-        version: casperAgentsVersion,
+        // `--version` is routed to the CLI by `LaunchMode.detect`; wiring a value
+        // here is what makes it print instead of erroring.
+        version: casperVersion,
         subcommands: {
             var subs: [ParsableCommand.Type] = [
                 StatusCommand.self, ProgressCommand.self, NotifyCommand.self, InfoCommand.self,

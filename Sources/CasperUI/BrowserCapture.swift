@@ -46,14 +46,21 @@ enum BrowserCapture {
         let window = NSWindow(
             contentRect: NSRect(x: -100_000, y: -100_000, width: CGFloat(width), height: CGFloat(height)),
             styleMask: .borderless, backing: .buffered, defer: false)
+        // A programmatically created window defaults to releasing itself on `close()`,
+        // which over-releases the ARC-owned local below; clearing the flag first makes
+        // `close()` a plain removal from the application's window list.
+        window.isReleasedWhenClosed = false
         window.contentView = webView
 
         let delegate = NavigationLoadDelegate(url: url)
         webView.navigationDelegate = delegate
 
+        // Closing the window is what actually drops it from AppKit's window list; without
+        // it every capture leaks a window and defers teardown of the WKWebView it hosted.
         defer {
             webView.navigationDelegate = nil
             window.contentView = nil
+            window.close()
         }
 
         webView.load(URLRequest(url: url))
@@ -182,7 +189,9 @@ private final class RenderWaiter {
 private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     private let url: URL
     private var continuation: CheckedContinuation<Void, Error>?
-    private var settled = false
+    /// The outcome of the first `settle`, kept so a callback landing before
+    /// `waitForLoad()` installs its continuation is replayed instead of lost.
+    private var outcome: Result<Void, Error>?
 
     init(url: URL) { self.url = url }
 
@@ -190,7 +199,11 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     /// timeout via `fail(message:)`).
     func waitForLoad() async throws {
         try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
+            if let outcome {
+                continuation.resume(with: outcome)
+            } else {
+                self.continuation = continuation
+            }
         }
     }
 
@@ -200,8 +213,8 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     }
 
     private func settle(_ result: Result<Void, Error>) {
-        guard !settled else { return }
-        settled = true
+        guard outcome == nil else { return }
+        outcome = result
         continuation?.resume(with: result)
         continuation = nil
     }

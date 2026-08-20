@@ -1,6 +1,7 @@
-struct PortAllocationError: Error, Equatable {
-    let reason: String
-    init(reason: String) { self.reason = reason }
+/// Thrown by `PortAllocator.allocate()` when the range holds no free block.
+/// Public because `allocate()` is: a cross-module caller must be able to catch it.
+public struct PortAllocationError: Error, Equatable {
+    public let reason: String
 }
 
 public struct PortAllocator: Equatable, Sendable {
@@ -50,13 +51,8 @@ public struct PortAllocator: Equatable, Sendable {
         self.used = []
     }
 
-    /// Number of aligned block bases in this allocator's `[rangeStart, rangeEnd]`.
-    private var blockCount: Int {
-        (rangeEnd - rangeStart) / blockSize + 1
-    }
-
-    /// Number of aligned block bases in `[rangeStart, rangeEnd]`. Static twin of
-    /// the instance `blockCount`, for `randomStartBase`, which has no instance.
+    /// Number of aligned block bases in `[rangeStart, rangeEnd]`. Static so
+    /// `randomStartBase`, which has no instance, can share it with `allocate()`.
     private static func blockCount(rangeStart: Int, rangeEnd: Int, blockSize: Int) -> Int {
         (rangeEnd - rangeStart) / blockSize + 1
     }
@@ -83,6 +79,7 @@ public struct PortAllocator: Equatable, Sendable {
 
     public mutating func allocate() throws -> Int {
         let startIndex = (startBase - rangeStart) / blockSize
+        let blockCount = Self.blockCount(rangeStart: rangeStart, rangeEnd: rangeEnd, blockSize: blockSize)
         for i in 0..<blockCount {
             let base = rangeStart + ((startIndex + i) % blockCount) * blockSize
             if used.insert(base).inserted { return base }

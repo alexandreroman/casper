@@ -27,12 +27,21 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
   `/tmp/casper-debug-<name>.sock`, and an external driver targets a session by
   exporting `CASPER_SESSION=<name>` (the CLI derives the same path). See
   [[app-sessions]].
-- **Verbs** — `dump-state` (windows/surfaces/cwd/title/cols/rows/focus),
-  `read-text [--scrollback]`, `send-text <str> [--enter]`, `screenshot <path>`.
+- **Verbs** — nine, in three groups:
+  - *Observe* — `dump-state` (windows/surfaces/cwd/title/cols/rows/focus),
+    `read-text [--scrollback]`, `screenshot <path>`.
+  - *Inject* — `send-text <str> [--enter]` (writes the text straight into the
+    surface), `send-keys <str>` (the same text as real per-character press +
+    release key events), `send-key <key> [--mods …]` (one key with modifiers as
+    a real key event, so modifier and special keys are reachable),
+    `send-action <name>` (trigger a libghostty keybinding action such as
+    `copy_to_clipboard`), and `mouse-move --x --y` (a mouse position in
+    libghostty top-left coordinates).
+  - *Address* — `focus <id>`.
 - **Surface addressing** — each surface has a stable string `id`; `dump-state`
-  reports it. `focus <id>` moves UI focus; `--target <id>` on
-  `send-text`/`read-text`/`screenshot` acts on a specific surface **without**
-  moving focus. An unmatched target fails cleanly (no silent fallback).
+  reports it. `focus <id>` moves UI focus; `--target <id>` on every other verb
+  acts on a specific surface **without** moving focus. An unmatched target fails
+  cleanly (no silent fallback).
 - **`debug-casper` skill** — the observe-act-verify runbook (build debug, launch,
   wait for the socket, drive, teardown).
 
@@ -44,12 +53,14 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
   directions** (a plain half-close intermittently failed with `ENETDOWN`); an
   8 MB length guard bounds each read.
 - **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot` are retriable
-  (up to 4 attempts); `send-text` and `focus` are **not** (they mutate).
+  (up to 4 attempts); every injecting verb and `focus` are **not** (they
+  mutate).
 - Logging emits `debug server listening`, `debug command: <verb>`,
   `debug command failed: …`; read via the absolute `/usr/bin/log` (a zsh builtin
   shadows `log`).
 
 ## Out of scope
 
-Mouse/click injection, `send-key` for modifier/special keys, non-terminal
-component addressing, and any non-local transport.
+Mouse *button* injection (only `mouse-move` positions the pointer; clicks go
+through `CGEvent` — see [[gui-synthetic-input]]), non-terminal component
+addressing, and any non-local transport.

@@ -67,7 +67,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var path: String?        // browserScreenshot: output PNG path
     public var level: String?       // browserConsole: severity threshold (ConsoleLevel raw value)
     public var predicate: String?   // browserWait: JavaScript predicate (--js form)
-    public var waitTimeout: Int?    // browserWait/browserReload: deadline in milliseconds
+    public var waitTimeout: Int?    // browserWait: deadline in milliseconds
     public var clear: Bool?         // browserConsole: drain the buffer after reading
     public var visible: Bool?       // browserWait: require the selector to be visible
     public var gone: Bool?          // browserWait: require the selector to be absent

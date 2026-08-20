@@ -34,7 +34,7 @@ struct ProgressCommand: ParsableCommand {
             let response = try sendControl(makeCommand(), retriable: false)
             emit(ProgressOut(
                 progress: ProgressBody(total: total, current: current, label: label),
-                workspace: response.workspace ?? ""))
+                workspace: response.workspaceRef))
         }
     }
 

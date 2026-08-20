@@ -59,7 +59,11 @@ path = sys.argv[1]
 item = os.environ["ITEM"]
 with open(path, encoding="utf-8") as f:
     xml = f.read()
-xml = xml.replace("    <!-- ITEMS -->", item, 1)
+marker = "    <!-- ITEMS -->"
+found = xml.count(marker)
+if found != 1:
+    sys.exit(f"error: expected exactly 1 '{marker.strip()}' marker in {path}, found {found}")
+xml = xml.replace(marker, item, 1)
 with open(path, "w", encoding="utf-8") as f:
     f.write(xml)
 PY

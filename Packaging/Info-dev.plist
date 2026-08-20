@@ -12,6 +12,14 @@
     <string>APPL</string>
     <key>CFBundleIconFile</key>
     <string>AppIconDev</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0-dev</string>
+    <key>CFBundleVersion</key>
+    <string>0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>The debug-casper skill captures a screenshot of the running app to verify UI changes during development.</string>
     <!-- Casper's browser previews local dev servers reached via public-qualified hostnames (nip.io/sslip.io) that resolve to loopback but which ATS evaluates by hostname, not resolved IP; NSAllowsLocalNetworking does not cover them, so arbitrary loads are permitted. -->

@@ -32,28 +32,61 @@ handful of verbs:
   instead of hanging. `info clear` — empty the panel and hide its button. The
   panel keeps only the latest message and never persists it across restarts.
 - `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
-  split right (cwd defaults to the worktree); `terminal list` — list the
+  split below (cwd defaults to the worktree); `terminal list` — list the
   workspace's terminals; `terminal close <id>` — close a terminal by id.
   `--command` types the given text into the newly opened terminal's real login
-  shell once it starts (via `ghostty_surface_config_s.initial_input`, not the
-  vendored fork's broken `command`/`bash -l -c "exec"` path), so it inherits the
-  user's actual `$SHELL` and PATH (Homebrew, mise, etc., from
-  `~/.zprofile`/`~/.zshrc` for a zsh user). It is typed as plain text, not
-  `exec`'d: after the command exits, the terminal returns to an interactive
-  shell prompt rather than closing, and a compound command (`a ; b ; c`) runs
-  in full. A launch command is a one-shot instruction, not persisted —
-  restoring a saved session never re-runs it.
+  shell once it starts, via `ghostty_surface_text` right after the surface is
+  created. Both of libghostty's own config fields are deliberately left unused:
+  `command` (the vendored fork execs it as `bash -l -c "exec …"`, ignoring the
+  user's real shell) and `initial_input` (it mojibakes non-ASCII — see
+  [[ghostty-initial-input-utf8]]). The text therefore inherits the user's actual
+  `$SHELL` and PATH (Homebrew, mise, etc., from `~/.zprofile`/`~/.zshrc` for a
+  zsh user). It is typed as plain text, not `exec`'d: after the command exits,
+  the terminal returns to an interactive shell prompt rather than closing, and a
+  compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
+  instruction, not persisted — restoring a saved session never re-runs it.
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
   workspace's single **inspector** browser surface and select the browser tab.
   Browser surfaces can also be layout panes (`Surface.Kind.browser`, the "New
   browser" split), but this verb specifically targets the inspector browser, not
-  a layout pane.
+  a layout pane. `browser load <url>` is the same navigation **without** opening
+  or selecting the inspector (a background load). `browser close` — collapse the
+  inspector if the browser tab is the one showing.
+- **Browser automation and debugging** — the same inspector browser doubles as a
+  drivable surface, so an agent can verify the frontend change it just made.
+  Every verb targets a workspace by id independently of selection and works
+  off-screen:
+  - `browser screenshot [--out <path>] [--width <n>] [--height <n>]
+    [--url <url>]` — write a PNG (a temp file when `--out` is omitted); a sized
+    or `--url` capture renders in a dedicated off-screen `WKWebView`.
+  - `browser content [--selector <css>] [--raw]` / `browser url [--raw]` —
+    print the page's HTML, or its current URL.
+  - `browser eval <js> [--raw]` — evaluate JavaScript and print the result.
+  - `browser click <selector>` / `browser type <selector> <text>` /
+    `browser key <key> [--selector <css>]` — JS-synthesized input against the
+    first matching element (`key` defaults to the focused one).
+  - `browser console [--level <lvl>] [--clear]` — print the captured `console.*`
+    output and uncaught errors (a 500-entry ring buffer fed by an injected
+    `WKUserScript`).
+  - `browser wait <selector> | --js <expr> [--visible|--gone] [--timeout <ms>]`
+    — block until a selector is present/visible/gone or a JS predicate holds.
+  - `browser reload [--wait]` — reload the page.
+  - `browser scroll-up` / `scroll-down` / `scroll-top` / `scroll-bottom` —
+    scroll by one viewport, or jump to either end.
+
+  See [[browser-automation-cli]] for the synthesized-input, snapshot and
+  off-screen caveats.
 - `diff open [<file>]` — open the diff view and scroll to `<file>` (which must
-  exist on disk and be inside the worktree, else an error).
-- `workspace list` / `workspace current` / `workspace new --branch [--base]` /
-  `workspace delete` — enumerate, identify, create, and destroy workspaces.
-  `workspace delete` is **destructive** (prunes the worktree folder, deletes the
-  branch, drops it from the UI) and **refuses a primary workspace**.
+  exist on disk and be inside the worktree, else an error). `diff close` —
+  collapse the inspector if the diff tab is the one showing.
+- `workspace list` / `workspace current` /
+  `workspace new <branch> [--base <ref>] [--command <cmd>]` /
+  `workspace delete` — enumerate, identify, create, and destroy workspaces. The
+  branch name is a **positional argument**, not a flag; `--base` forks from a
+  ref other than the space's base branch, and `--command` seeds the workspace's
+  first terminal. `workspace delete` is **destructive** (prunes the worktree
+  folder,
+  deletes the branch, drops it from the UI) and **refuses a primary workspace**.
 - `run [<name>]` — run a named command from the workspace's `.casper.json` in
   a new visible terminal (defaults to the command named `run`). Not scoped
   under its own noun like the others, but still a workspace-targeted verb.
@@ -61,7 +94,10 @@ handful of verbs:
 Every workspace-scoped command shares a `--workspace <id-or-name>` option,
 defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is
 why plain `casper status set working` works with no flags inside a Casper
-terminal but needs `--workspace` from anywhere else.
+terminal but needs `--workspace` from anywhere else. The one deliberate
+exception is `workspace current`: it answers "which workspace is *this*
+terminal", so it reads `$CASPER_WORKSPACE_ID` only and takes no target option —
+outside a Casper terminal it errors rather than defaulting to something.
 
 Each command sends a `ControlCommand` to the running app over a Unix domain
 socket named by `$CASPER_CONTROL_SOCKET` (also per-surface env, alongside

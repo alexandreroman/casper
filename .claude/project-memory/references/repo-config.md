@@ -16,7 +16,7 @@ and rationale that are NOT obvious from the code. Implementation STATUS lives in
 
 - Reserved keys `setup`/`teardown` are lifecycle hooks — run automatically, never
   invocable by hand (`RepoScripts.reservedNames`; `resolveRunCommand` `.denied`s
-  them; `spawnScriptSurface` is still private, now on `ScriptHookRunner`, whose
+  them; `spawnScriptSurface` is private to `ScriptHookRunner`, whose
   only internal entry points for a hook spawn are the narrow `runSetupHook` that
   `createLinkedWorkspace` calls and the `runTeardown` the destroy paths await).
 - Every other key is a named command, run on demand from the UI or `casper run`.
@@ -84,7 +84,7 @@ a `defer`. A probe sited further from the claim is NOT safe here: the git work
 runs off the main actor, so any suspension point between the two lets a second
 destroy pass the guard, clobber the first's continuation (permanent hang, leaked
 continuation, undismissable sheet) and run concurrent libgit2 writes against one
-repo — the main actor no longer serializes them.
+repo, which the main actor does not serialize once the work is off it.
 
 Teardown waits are additionally scoped by a monotonic generation
 (`isTeardownCurrent`). The 30 s timer is never cancelled, so without the
@@ -104,10 +104,9 @@ alphabetical.
 
 ## Gotcha when live-testing on a dev machine
 
-The user's zsh profile puts the installed release `~/Applications/Casper.app`
-ahead of the branch's `Casper-dev.app` in PATH, so a bare `casper` in a Casper
-terminal runs the OLD release. Test with the full dev-binary path or a temporary
-alias. `casper debug` only enumerates terminal surfaces, not SwiftUI toolbar/menu
+A bare `casper` in a Casper terminal can resolve to an installed release build
+rather than the branch's `Casper-dev.app` — address the dev binary explicitly,
+per [[cli-availability]]. `casper debug` only enumerates terminal surfaces, not SwiftUI toolbar/menu
 chrome, so the split lifecycle (setup auto-close/keep-open, teardown wait) must be
 watched by a human — see [[agent-visual-verification-limits]].
 

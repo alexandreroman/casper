@@ -18,12 +18,11 @@ public enum AgentSignal: String, Equatable, Sendable {
     case working, blocked, idle, absent
 }
 
-extension AgentSignal {
-    /// Rolls several surfaces' signals up to the single most urgent one, using
-    /// the priority `blocked > working > idle > absent`. An empty input (no
-    /// surfaces observed) is `absent`.
-    public static func aggregate(_ signals: [AgentSignal]) -> AgentSignal {
-        signals.max(by: { $0.urgency < $1.urgency }) ?? .absent
+/// Ordered by urgency, `absent < idle < working < blocked`, so rolling several
+/// surfaces' signals up to the most urgent one is just a `max`.
+extension AgentSignal: Comparable {
+    public static func < (lhs: AgentSignal, rhs: AgentSignal) -> Bool {
+        lhs.urgency < rhs.urgency
     }
 
     /// Higher wins during aggregation.
@@ -34,6 +33,15 @@ extension AgentSignal {
         case .idle: return 1
         case .absent: return 0
         }
+    }
+}
+
+extension AgentSignal {
+    /// Rolls several surfaces' signals up to the single most urgent one. An empty
+    /// input (no surfaces observed) is `absent`. Callers combining a fixed pair of
+    /// signals can use `max(_:_:)` directly instead.
+    public static func aggregate(_ signals: [AgentSignal]) -> AgentSignal {
+        signals.max() ?? .absent
     }
 }
 

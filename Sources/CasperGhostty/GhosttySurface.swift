@@ -1,5 +1,4 @@
 import GhosttyKit
-import Foundation
 
 /// Owns a libghostty `ghostty_surface_t` and frees it on deinit (same ownership
 /// pattern as `CasperGit.Repository`). Main-thread affine; not `Sendable`.
@@ -117,6 +116,12 @@ final class GhosttySurface {
         }
     }
 
+    /// Point the surface at the display it is shown on, so libghostty drives its
+    /// internal display link at that screen's refresh rate.
+    func setDisplayID(_ id: UInt32) {
+        ghostty_surface_set_display_id(surface, id)
+    }
+
     /// Trigger a libghostty keybinding action by name (e.g. `"copy_to_clipboard"`,
     /// `"paste_from_clipboard"`, `"select_all"`), bypassing key-event translation.
     /// Returns whether the action was recognized and performed.
@@ -143,7 +148,12 @@ final class GhosttySurface {
         defer { ghostty_surface_free_text(surface, &out) }
         guard ghostty_surface_read_text(surface, selection, &out) else { return nil }
         guard let bytes = out.text else { return "" }
-        return String(decoding: Data(bytes: bytes, count: Int(out.text_len)), as: UTF8.self)
+        // Decode straight off libghostty's buffer: an intermediate `Data` would copy
+        // the whole scrollback (megabytes with `scrollback: true`) a second time, and
+        // this sits on the agent-state detection poll path. The `defer` above frees the
+        // buffer only after the String has been built.
+        return String(decoding: UnsafeRawBufferPointer(start: bytes, count: Int(out.text_len)),
+                      as: UTF8.self)
     }
 
     /// Full readback of `ghostty_surface_size`: grid dimensions plus the pixel

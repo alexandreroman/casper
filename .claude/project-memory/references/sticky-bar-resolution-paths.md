@@ -1,6 +1,6 @@
 ---
 name: "Sticky bars have three invalidation paths, and a test must isolate one"
-description: "The anchor restore moves the clip view during the layout pass, so the scroll path re-resolves the diff's sticky bars and can hide a missing settled-layout trigger"
+description: "The anchor restore moves the clip view during the layout pass, so the scroll path re-resolves the diff's sticky bars and can hide a missing settled-layout trigger; only the container path forces layout"
 type: reference
 ---
 
@@ -45,3 +45,27 @@ end of the document leaves almost nothing estimated: at 250 files of 300 the
 residue is 0 and the fixture has no teeth. Around half-way in it is thousands of
 points. Any fixture in this area has to be proven by deleting the trigger and
 watching it fail.
+
+## Only the container-driven path may force layout
+
+The container-driven trigger — `DiffSurfaceContainerView.layout()` →
+`containerView.viewportDidChange` — resolves the bars with the forcing
+`resolveBarsOverTheViewport()`. The settled-layout trigger uses the coalescing,
+non-forcing `scheduleStickyHeaderUpdate()`, and the rule against forcing layout
+covers that hook alone: `DiffTextView.didLayout` fires from inside the pass that
+is settling, while the container's own `layout()` is a safe place to lay out.
+
+Two reasons the container path is exempt, both stated in the code comment at
+`Sources/CasperUI/DiffTextSurface.swift:210-230`:
+
+- The viewport the container has just tiled reaches further into the document
+  than TextKit's real layout does, so every band past that point is cold and a
+  non-forcing walk stops at the first cold one.
+- Forcing from there re-enters nothing, because the text view lays itself out
+  after the container's pass.
+
+`DiffTextSurfaceTests.testEveryBandOnScreenCarriesItsOwnBar` pins it: with the
+non-forcing variant on this path a 600 pt viewport carries a single bar instead
+of more than three, and the first barless file's top measures 74 pt. The forcing
+variant keeps `DiffChromeTests`, `DiffTextSurfaceTests` and
+`DiffFragmentGeometryTests` green (52 tests).

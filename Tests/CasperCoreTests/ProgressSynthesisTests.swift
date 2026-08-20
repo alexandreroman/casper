@@ -25,4 +25,12 @@ final class ProgressSynthesisTests: XCTestCase {
         XCTAssertNil(ProgressSynthesis.todos(total: 3, current: 0, label: "x"))
         XCTAssertNil(ProgressSynthesis.todos(total: 3, current: 4, label: "x"))
     }
+
+    func testTotalIsBoundedSoUntrustedInputCannotExhaustMemory() throws {
+        let ceiling = ProgressSynthesis.maxSynthesizedTotal
+        let atCeiling = try XCTUnwrap(ProgressSynthesis.todos(total: ceiling, current: 1, label: "x"))
+        XCTAssertEqual(atCeiling.count, ceiling)
+        XCTAssertNil(ProgressSynthesis.todos(total: ceiling + 1, current: 1, label: "x"))
+        XCTAssertNil(ProgressSynthesis.todos(total: .max, current: 1, label: "x"))
+    }
 }

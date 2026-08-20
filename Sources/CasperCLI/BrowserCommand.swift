@@ -2,36 +2,6 @@ import ArgumentParser
 import CasperCore
 import Foundation
 
-/// Unwrap a JSON-serialized value for `--raw` shell piping: a top-level JSON
-/// string prints as its bare contents (no surrounding quotes), while every other
-/// JSON token (number, bool, null, object, array) prints verbatim. Mirrors the
-/// app-side `content` unwrap so `eval --raw` and `content --raw` behave alike.
-func unwrappedRawValue(_ json: String) -> String {
-    guard let data = json.data(using: .utf8),
-          let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
-          let string = value as? String else {
-        return json
-    }
-    return string
-}
-
-/// Build `{"<key>":<json>,"workspace":"<id>"}` from a payload the app already
-/// serialized. `json` is re-parsed so it embeds as a real JSON token instead of an
-/// escaped string — `Codable` can't emit raw JSON — falling back to `fallback`
-/// when it does not parse. Keys are sorted for deterministic, diff-friendly
-/// output.
-func jsonLine(key: String, json: String, fallback: Any, workspace: String) -> String {
-    let parsed = (try? JSONSerialization.jsonObject(
-        with: Data(json.utf8), options: [.fragmentsAllowed])) ?? fallback
-    let object: [String: Any] = [key: parsed, "workspace": workspace]
-    guard let data = try? JSONSerialization.data(
-            withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
-          let string = String(data: data, encoding: .utf8) else {
-        return "{}"
-    }
-    return string
-}
-
 /// `casper browser open <url>` / `casper browser close` — open a URL in, or
 /// collapse, the workspace's browser panel.
 struct BrowserCommand: ParsableCommand {
@@ -112,7 +82,7 @@ struct BrowserCommand: ParsableCommand {
             if let width, width <= 0 { throw exitWithError("--width must be a positive number of pixels") }
             if let height, height <= 0 { throw exitWithError("--height must be a positive number of pixels") }
             if let url { try requireAbsoluteURL(url) }
-            let path = out ?? Self.temporaryScreenshotPath()
+            let path = out.map(absolutePath) ?? Self.temporaryScreenshotPath()
             return ControlCommand(
                 verb: .browserScreenshot, workspace: try requireSelector(target), url: url, path: path,
                 width: width, height: height)
@@ -121,7 +91,7 @@ struct BrowserCommand: ParsableCommand {
         func run() throws {
             let command = try makeCommand()
             let response = try sendControl(command, retriable: false, timeout: automationTimeout)
-            emit(ScreenshotOut(screenshot: response.text ?? command.path ?? "", workspace: response.workspace ?? ""))
+            emit(ScreenshotOut(screenshot: response.text ?? command.path ?? "", workspace: response.workspaceRef))
         }
 
         /// A unique temp PNG path used when `--out` is omitted.
@@ -147,12 +117,9 @@ struct BrowserCommand: ParsableCommand {
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
             let value = response.text ?? "null"
-            if raw {
-                print(unwrappedRawValue(value))
-            } else {
-                print(jsonLine(
-                    key: "result", json: value, fallback: NSNull(), workspace: response.workspace ?? ""))
-            }
+            emitResult(
+                raw: raw, plain: unwrappedRawValue(value),
+                json: jsonLine(key: "result", json: value, fallback: NSNull(), workspace: response.workspaceRef))
         }
     }
 
@@ -171,13 +138,11 @@ struct BrowserCommand: ParsableCommand {
         }
 
         func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            let response = try sendControl(makeCommand(), retriable: true, timeout: automationTimeout)
             let html = response.text ?? ""
-            if raw {
-                print(html)
-            } else {
-                emit(ContentOut(content: html, workspace: response.workspace ?? ""))
-            }
+            emitResult(
+                raw: raw, plain: html,
+                json: jsonLine(ContentOut(content: html, workspace: response.workspaceRef)))
         }
     }
 
@@ -197,13 +162,11 @@ struct BrowserCommand: ParsableCommand {
         }
 
         func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            let response = try sendControl(makeCommand(), retriable: true, timeout: automationTimeout)
             let url = response.text ?? ""
-            if raw {
-                print(url)
-            } else {
-                emit(URLOut(url: url, workspace: response.workspace ?? ""))
-            }
+            emitResult(
+                raw: raw, plain: url,
+                json: jsonLine(URLOut(url: url, workspace: response.workspaceRef)))
         }
     }
 
@@ -284,10 +247,13 @@ struct BrowserCommand: ParsableCommand {
         }
 
         func run() throws {
-            let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
+            // Reading the buffer is idempotent, but `--clear` drains it: a
+            // transport-level resend would then lose the entries the first
+            // attempt already returned.
+            let response = try sendControl(makeCommand(), retriable: !clear, timeout: automationTimeout)
             print(jsonLine(
                 key: "console", json: response.text ?? "[]", fallback: [],
-                workspace: response.workspace ?? ""))
+                workspace: response.workspaceRef))
         }
     }
 

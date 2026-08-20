@@ -22,7 +22,7 @@ type: reference
 `casper debug send-action <name>`): `paste_from_clipboard`, `copy_to_clipboard`,
 `select_all` (no argument). Font-size actions take a `:<amount>` suffix:
 `increase_font_size:1`, `decrease_font_size:1`, `reset_font_size` (no argument);
-one step moves the demo's default cell from 17×37 px to 18×40 px. Verify a
+one step moves a default-configuration cell from 17×37 px to 18×40 px. Verify a
 font-size action by watching `cellWidthPixels`/`cellHeightPixels` in
 `casper debug dump-state` change around each `send-action`.
 
@@ -35,3 +35,13 @@ convert the pointer to a trivial `UInt` bit-pattern *before* entering the closur
 then reconstruct `UnsafeMutableRawPointer(bitPattern:)` inside it. See
 `casperGhosttyReadClipboard`/`casperGhosttyConfirmReadClipboard` in
 `Sources/CasperGhostty/GhosttyRuntime.swift`.
+
+**Swift 6 stored-closure gotcha:** a closure *property* on a `@MainActor` type
+must carry `@MainActor` in its own **type**
+(`static var approveUntrusted: @MainActor (String) -> Bool`), or assigning a
+main-actor-isolated function as its default is rejected with *converting
+function value ... loses global actor 'MainActor'* — the type's isolation does
+not flow into the closure type. Call sites that substitute another closure
+annotate their parameter the same way
+(`@escaping @MainActor (String) -> Bool`). See
+[[osc52-clipboard-write-confirmation]].

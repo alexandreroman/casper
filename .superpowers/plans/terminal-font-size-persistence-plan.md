@@ -834,7 +834,8 @@ Run: `make dev`, then in the app:
 
 Expected: the first terminal reopens visibly larger than before; the second,
 untouched terminal reopens at the default size. This is the design's
-originally-specified manual acceptance check (`.superpowers/plans/terminal-font-size-persistence.md`,
+originally-specified manual acceptance check
+(`.superpowers/plans/terminal-font-size-persistence.md`,
 Testing section) — Task 1's automated spike test and Task 6's integration
 test already give strong confidence in the underlying mechanism, so this
 step is a final visual sanity pass, not a substitute for them.

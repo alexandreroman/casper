@@ -43,6 +43,18 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// dealloc, so no explicit teardown is needed).
     private var navObservations: [NSKeyValueObservation] = []
 
+    /// The observed navigation state as of the last `syncNav`, so a navigation that
+    /// changes all three properties syncs once instead of three times. `nil` until
+    /// the first sync.
+    private var lastSyncedNav: NavigationState?
+
+    /// The three KVO-observed web-view properties `syncNav` reacts to.
+    private struct NavigationState: Equatable {
+        let url: URL?
+        let canGoBack: Bool
+        let canGoForward: Bool
+    }
+
     init(url: URL) {
         // Build a configuration that captures the page's console output and uncaught
         // errors: a document-start user script wraps `console.*`, `window.onerror`,
@@ -314,12 +326,20 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// converges on the real one, and a load still in flight is exactly what a
     /// restored surface should re-open.
     private func syncNav() {
-        canGoBack = webView.canGoBack
-        canGoForward = webView.canGoForward
+        // The three observations fire separately, and a single navigation typically
+        // changes all of them — plus `didCommit`/`didFinish` sync again. Only the
+        // first of those calls has anything to do.
+        let nav = NavigationState(
+            url: webView.url, canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+        guard nav != lastSyncedNav else { return }
+        lastSyncedNav = nav
+
+        canGoBack = nav.canGoBack
+        canGoForward = nav.canGoForward
         // about:blank is the initial placeholder load (see `init`), not a committed
         // URL: never surface it as text or persist it, so a never-navigated surface
         // keeps its empty address (which shows the placeholder).
-        if let url = webView.url, url != .aboutBlank {
+        if let url = nav.url, url != .aboutBlank {
             // Persist the committed URL regardless, but leave the visible text
             // alone while the user is mid-edit so their typing isn't clobbered.
             if !isEditingAddress { address = url.absoluteString }

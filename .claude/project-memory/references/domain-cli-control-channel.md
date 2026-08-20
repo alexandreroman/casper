@@ -12,6 +12,7 @@ with a handful of verbs. Full surface:
 - `status set <state>`
 - `progress set --total --current --label` / `progress clear`
 - `notify [--message <str>]`
+- `info set [--message <str> | --file <path> | -]` / `info clear`
 - `terminal new [--command <cmd>] [--working-dir <dir>]` / `terminal list` /
   `terminal close <id>`
 - `browser open <url>` (the url must be absolute — scheme **and** host) /
@@ -29,12 +30,17 @@ with a handful of verbs. Full surface:
   <selector>|--js <expr> [--visible|--gone] [--timeout <ms>]` /
   `browser reload [--wait]` — web-app debugging: page console/error capture,
   deterministic waits, reload (see [[browser-automation-cli]])
-- `diff open [<file>]`
+- `diff open [<file>]` / `diff close`
 - `workspace list` / `workspace current` / `workspace new <branch> [--base]
   [--command]` / `workspace delete` (the branch is a required positional)
+- `run [<name>]` — run a named `.casper.json` command in a visible split
+  (defaults to the command named `run`); a workspace-targeted verb that sits at
+  the top level rather than under a noun
 
 Every workspace-scoped command accepts `--workspace <id-or-name>`, defaulting to
-`$CASPER_WORKSPACE_ID` (set in every Casper terminal). Each command sends a
+`$CASPER_WORKSPACE_ID` (set in every Casper terminal). `workspace current` is the
+one exception: it answers "which workspace is *this* terminal", so it reads
+`$CASPER_WORKSPACE_ID` only and takes no target option. Each command sends a
 `ControlCommand` to the running app over a Unix domain socket named by
 `$CASPER_CONTROL_SOCKET` (per-surface env, alongside `$CASPER_WORKSPACE_ID`,
 `$CASPER_PORT` in `linked` workspaces only, and — under `--session <name>`, a

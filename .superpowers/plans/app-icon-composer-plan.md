@@ -1,24 +1,42 @@
 # Icon Composer Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 >
 > **Project rule:** per `CLAUDE.md`, every change to a source file (SVG, shell
 > script, Makefile, plist, Markdown docs) MUST be made by the **skillbox:code-writer**
 > agent — never edit those files directly. This plan's code blocks are the
 > instructions to hand that agent.
 
-**Goal:** Ship a macOS 26 Liquid Glass app icon (Default / Dark / Clear appearances) for the release build via a GUI-authored, committed `AppIcon.icon` compiled by `actool`, while keeping the existing `AppIcon.icns` as the macOS 15–25 fallback.
+**Goal:** Ship a macOS 26 Liquid Glass app icon (Default / Dark / Clear
+appearances) for the release build via a GUI-authored, committed `AppIcon.icon`
+compiled by `actool`, while keeping the existing `AppIcon.icns` as the macOS
+15–25 fallback.
 
-**Architecture:** Purely additive. A new `actool` step in `Scripts/bundle-app.sh` compiles `Packaging/AppIcon/AppIcon.icon` into `Contents/Resources/Assets.car`; the release `Info.plist` gains `CFBundleIconName` alongside the retained `CFBundleIconFile`. Layer art is extracted from the existing `icon.svg` to seed a one-time manual Icon Composer session that produces the committed `.icon`. The dev icon and the SVG→`.icns` pipeline are untouched.
+**Architecture:** Purely additive. A new `actool` step in
+`Scripts/bundle-app.sh` compiles `Packaging/AppIcon/AppIcon.icon` into
+`Contents/Resources/Assets.car`; the release `Info.plist` gains
+`CFBundleIconName` alongside the retained `CFBundleIconFile`. Layer art is
+extracted from the existing `icon.svg` to seed a one-time manual Icon Composer
+session that produces the committed `.icon`. The dev icon and the SVG→`.icns`
+pipeline are untouched.
 
-**Tech Stack:** Bash, Make, `resvg`, `xcrun actool` (Xcode 26), Icon Composer.app, `iconutil`/`assetutil`/`plutil` (macOS), SwiftPM (unaffected).
+**Tech Stack:** Bash, Make, `resvg`, `xcrun actool` (Xcode 26), Icon
+Composer.app, `iconutil`/`assetutil`/`plutil` (macOS), SwiftPM (unaffected).
 
 ## Global Constraints
 
 - Platform: macOS 15+, arm64-only. `LSMinimumSystemVersion` = `15.0`.
-- Toolchain for the icon build: **Xcode 26** selected via `xcode-select` (dev machine confirmed on macOS 26.5.2 / Xcode 26.6).
-- The `.icon` bundle is named `AppIcon.icon`; `actool --app-icon AppIcon` ⇒ `CFBundleIconName = AppIcon`, matching the existing `AppIcon.icns` / `CFBundleIconFile = AppIcon`.
-- Do NOT remove `AppIcon.icns` or `CFBundleIconFile` — they are the pre-Tahoe fallback. Do NOT use the split-icon workaround (`--enable-icon-stack-fallback-generation`), unsupported as of Xcode 26.1.
+- Toolchain for the icon build: **Xcode 26** selected via `xcode-select` (dev
+  machine confirmed on macOS 26.5.2 / Xcode 26.6).
+- The `.icon` bundle is named `AppIcon.icon`; `actool --app-icon AppIcon` ⇒
+  `CFBundleIconName = AppIcon`, matching the existing `AppIcon.icns` /
+  `CFBundleIconFile = AppIcon`.
+- Do NOT remove `AppIcon.icns` or `CFBundleIconFile` — they are the pre-Tahoe
+  fallback. Do NOT use the split-icon workaround
+  (`--enable-icon-stack-fallback-generation`), unsupported as of Xcode 26.1.
 - Dev build (`Casper-dev.app` / `Info-dev.plist`) stays `.icns`-only — do not touch it.
 - Icon Composer max 4 foreground groups; this design uses 2.
 - All source-file edits go through the `skillbox:code-writer` agent.
@@ -27,27 +45,39 @@
 
 ## Task ordering note
 
-Tasks 1–3 and 6 are **agent-executable**. **Task 4 is a manual human step** (the Icon Composer GUI session — no CLI can author the `.icon`). Task 5 (docs) and Task 7 (final integration + memory) are agent-executable but Task 7's full `make bundle` verification only produces a layered icon *after* Task 4 has committed `AppIcon.icon`. Until then, the `actool` step in Task 3 no-ops with a warning so builds keep working.
+Tasks 1–3 and 6 are **agent-executable**. **Task 4 is a manual human step**
+(the Icon Composer GUI session — no CLI can author the `.icon`). Task 5 (docs)
+and Task 7 (final integration + memory) are agent-executable, but Task 7's full
+`make bundle` verification only produces a layered icon *after* Task 4 has
+committed `AppIcon.icon`. Until then, the `actool` step in Task 3 no-ops with a
+warning so builds keep working.
 
 ---
 
-### Task 1: Layer sources + `make icon-layers`
+### Task 1: Layer sources
 
-Extract the two foreground layer groups from `icon.svg` as standalone transparent SVGs, and add a target that rasterizes them to 1024×1024 PNGs for Icon Composer import.
+Extract the two foreground layer groups from `icon.svg` as standalone
+transparent SVGs, committed as the hand-editable source Icon Composer imports.
+
+> **As built:** the planned `make icon-layers` target and
+> `Scripts/make-icon-layers.sh` rasterizer were **not** built. Icon Composer
+> imports the `layers/*.svg` sources directly, so there are no generated PNGs
+> and nothing to gitignore.
 
 **Files:**
 - Create: `Packaging/AppIcon/layers/terminal.svg`
 - Create: `Packaging/AppIcon/layers/sparkle.svg`
-- Create: `Scripts/make-icon-layers.sh`
-- Modify: `Makefile` (add `icon-layers` target + `.PHONY`)
-- Modify: `.gitignore` (ignore generated layer PNGs)
 
 **Interfaces:**
-- Produces: `make icon-layers` → `Packaging/AppIcon/layers/{terminal,sparkle}.png` at 1024×1024, transparent background. These PNGs are the manual-authoring inputs consumed by Task 4.
+- Produces: `Packaging/AppIcon/layers/{terminal,sparkle}.svg` at 1024×1024,
+  transparent background. These are the manual-authoring inputs consumed by
+  Task 4.
+
 
 - [ ] **Step 1: Create `Packaging/AppIcon/layers/terminal.svg`**
 
-Split line + cream caret only, transparent background, same coordinate transforms as `icon.svg` so it aligns at 1024×1024:
+Split line + cream caret only, transparent background, same coordinate
+transforms as `icon.svg` so it aligns at 1024×1024:
 
 ```svg
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casper icon terminal layer">
@@ -62,7 +92,8 @@ Split line + cream caret only, transparent background, same coordinate transform
 
 - [ ] **Step 2: Create `Packaging/AppIcon/layers/sparkle.svg`**
 
-The sparkle only, keeping its gradient, WITHOUT the glow filter (glow becomes an Icon Composer material effect), transparent background:
+The sparkle only, keeping its gradient, WITHOUT the glow filter (glow becomes an
+Icon Composer material effect), transparent background:
 
 ```svg
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Casper icon sparkle layer">
@@ -78,71 +109,14 @@ The sparkle only, keeping its gradient, WITHOUT the glow filter (glow becomes an
 </svg>
 ```
 
-- [ ] **Step 3: Create `Scripts/make-icon-layers.sh`**
+- [x] **Step 3: Commit the layer sources**
+
+The two SVGs are the committed, hand-editable source of truth; Icon Composer
+imports them directly, so no rasterization step and no generated PNGs exist.
 
 ```bash
-#!/usr/bin/env bash
-# Rasterize the Icon Composer foreground layer sources to 1024x1024 PNGs.
-# These PNGs are import assets for the manual Icon Composer session that
-# produces Packaging/AppIcon/AppIcon.icon; they are generated (gitignored),
-# not committed. The committed AppIcon.icon is the source of truth.
-#
-# Usage: Scripts/make-icon-layers.sh
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-
-if ! command -v resvg >/dev/null 2>&1; then
-    echo "error: resvg not found — install with 'brew install resvg'" >&2
-    exit 1
-fi
-
-LAYERS="$ROOT/Packaging/AppIcon/layers"
-for name in terminal sparkle; do
-    resvg --width 1024 --height 1024 "$LAYERS/$name.svg" "$LAYERS/$name.png"
-    echo "Built $LAYERS/$name.png"
-done
-```
-
-Then make it executable: `chmod +x Scripts/make-icon-layers.sh`.
-
-- [ ] **Step 4: Add the `icon-layers` target to `Makefile`**
-
-Locate the existing `icon` target and its `.PHONY` declaration. Add alongside:
-
-```make
-icon-layers:
-	Scripts/make-icon-layers.sh
-```
-
-Add `icon-layers` to the `.PHONY` list that already contains `icon`.
-
-- [ ] **Step 5: Ignore generated PNGs in `.gitignore`**
-
-Append:
-
-```gitignore
-# Icon Composer layer PNGs are generated from layers/*.svg via `make icon-layers`
-Packaging/AppIcon/layers/*.png
-```
-
-- [ ] **Step 6: Run the target and verify output**
-
-Run: `make icon-layers && sips -g pixelWidth -g pixelHeight Packaging/AppIcon/layers/terminal.png Packaging/AppIcon/layers/sparkle.png`
-Expected: two "Built …" lines; each PNG reports `pixelWidth: 1024` and `pixelHeight: 1024`.
-
-- [ ] **Step 7: Verify the PNGs are gitignored**
-
-Run: `git status --porcelain Packaging/AppIcon/layers/`
-Expected: only `terminal.svg` and `sparkle.svg` show as new (`??`); no `.png` entries.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add Packaging/AppIcon/layers/terminal.svg Packaging/AppIcon/layers/sparkle.svg \
-        Scripts/make-icon-layers.sh Makefile .gitignore
-git commit -m "Add Icon Composer layer sources and make icon-layers target"
+git add Packaging/AppIcon/layers/terminal.svg Packaging/AppIcon/layers/sparkle.svg
+git commit -m "Add Icon Composer layer sources"
 ```
 
 ---
@@ -153,7 +127,10 @@ git commit -m "Add Icon Composer layer sources and make icon-layers target"
 - Modify: `Packaging/Info.plist` (add key after the existing `CFBundleIconFile`, lines 15–16)
 
 **Interfaces:**
-- Produces: release `Info.plist` carrying both `CFBundleIconName = AppIcon` and `CFBundleIconFile = AppIcon`. Consumed by macOS 26 (`CFBundleIconName` → `Assets.car` from Task 3) and macOS 15–25 (`CFBundleIconFile` → `AppIcon.icns`).
+- Produces: release `Info.plist` carrying both `CFBundleIconName = AppIcon` and
+  `CFBundleIconFile = AppIcon`. Consumed by macOS 26 (`CFBundleIconName` →
+  `Assets.car` from Task 3) and macOS 15–25 (`CFBundleIconFile` →
+  `AppIcon.icns`).
 
 - [ ] **Step 1: Add the key**
 
@@ -192,13 +169,17 @@ git commit -m "Add CFBundleIconName to release Info.plist for Liquid Glass icon"
 
 ### Task 3: Compile `AppIcon.icon` into the bundle via `actool`
 
-Add the `actool` step to the release bundler and a toolchain guard. The step is conditional on `AppIcon.icon` existing so builds keep working until Task 4 authors it.
+Add the `actool` step to the release bundler and a toolchain guard. The step is
+conditional on `AppIcon.icon` existing so builds keep working until Task 4
+authors it.
 
 **Files:**
-- Modify: `Scripts/bundle-app.sh` (add temp dir + trap near the top; add `actool` block right after the `AppIcon.icns` copy at line 38)
+- Modify: `Scripts/bundle-app.sh` (add temp dir + trap near the top; add
+  `actool` block right after the `AppIcon.icns` copy at line 38)
 
 **Interfaces:**
-- Consumes: `Packaging/AppIcon/AppIcon.icon` (produced by Task 4) if present; `CFBundleIconName` from Task 2.
+- Consumes: `Packaging/AppIcon/AppIcon.icon` (produced by Task 4) if present;
+  `CFBundleIconName` from Task 2.
 - Produces: `Casper.app/Contents/Resources/Assets.car` (when the `.icon` exists).
 
 - [ ] **Step 1: Add a temp dir with cleanup near the top of `bundle-app.sh`**
@@ -262,7 +243,10 @@ The `.icon` does not exist yet, so exercise the guard logic without a full relea
 test -d Packaging/AppIcon/AppIcon.icon && echo "icon present" || echo "icon absent (expected pre-Task-4)"
 ```
 
-Expected: `icon absent (expected pre-Task-4)` — confirming the `else` branch (warn + continue) is the path a build would take now. (Full `make bundle` verification is deferred to Task 7, after the `.icon` is committed, because it is a slow release build.)
+Expected: `icon absent (expected pre-Task-4)` — confirming the `else` branch
+(warn + continue) is the path a build would take now. (Full `make bundle`
+verification is deferred to Task 7, after the `.icon` is committed, because it
+is a slow release build.)
 
 - [ ] **Step 5: Commit**
 
@@ -286,10 +270,10 @@ git commit -m "Compile AppIcon.icon into Assets.car during release bundling"
 - Consumes: `Packaging/AppIcon/layers/{terminal,sparkle}.png` (Task 1).
 - Produces: `Packaging/AppIcon/AppIcon.icon` consumed by Task 3's `actool` step.
 
-- [ ] **Step 1: Generate the import PNGs**
+- [ ] **Step 1: Locate the import sources**
 
-Run: `make icon-layers`
-Expected: `terminal.png` and `sparkle.png` in `Packaging/AppIcon/layers/`.
+The layer sources are `Packaging/AppIcon/layers/terminal.svg` and
+`sparkle.svg`, committed by Task 1; Icon Composer imports them directly.
 
 - [ ] **Step 2: Author the icon in Icon Composer**
 
@@ -297,9 +281,11 @@ Open Icon Composer (Xcode 26 ▸ Open Developer Tool ▸ Icon Composer, or the s
 1. New icon; set the canvas to macOS.
 2. **Background**: a linear gradient, `#3C3C3C` (top) → `#1E1E1E` (bottom).
 3. Add **`terminal.png`** as a foreground layer group (the split line + caret).
-4. Add **`sparkle.png`** as a second foreground layer group; apply a glow/specular material so it reads as the glowing agent sparkle.
+4. Add **`sparkle.png`** as a second foreground layer group; apply a
+   glow/specular material so it reads as the glowing agent sparkle.
 5. **Dark** appearance: darken the background gradient, brighten the sparkle.
-6. **Clear** appearance: confirm the sparkle + caret silhouettes read as a clean monochrome; adjust layer opacity if muddy.
+6. **Clear** appearance: confirm the sparkle + caret silhouettes read as a clean
+   monochrome; adjust layer opacity if muddy.
 
 - [ ] **Step 3: Save into the repo**
 
@@ -318,7 +304,8 @@ xcrun actool Packaging/AppIcon/AppIcon.icon --compile /tmp/casper-icon-check \
   && assetutil --info /tmp/casper-icon-check/Assets.car | grep -i AppIcon
 ```
 
-Expected: `actool` exits 0 with no errors; `assetutil` lists an `AppIcon` entry. (Warnings are acceptable.)
+Expected: `actool` exits 0 with no errors; `assetutil` lists an `AppIcon` entry.
+(Warnings are acceptable.)
 
 - [ ] **Step 5: Commit**
 
@@ -332,7 +319,8 @@ git commit -m "Add Icon Composer AppIcon.icon (Default/Dark/Clear appearances)"
 ### Task 5: Documentation
 
 **Files:**
-- Modify: `CLAUDE.md` (Build & run section — icon prerequisites + `make icon-layers` + manual authoring pointer)
+- Modify: `CLAUDE.md` (Build & run section — icon prerequisites + layer sources
+  + manual authoring pointer)
 
 **Interfaces:** none (docs only).
 
@@ -347,14 +335,16 @@ The app icon ships in two forms: the legacy `Packaging/AppIcon/AppIcon.icns`
 (Icon Composer bundle, compiled to `Assets.car` by `actool` during `make bundle`).
 Both `CFBundleIconName` and `CFBundleIconFile` are set. Compiling the `.icon`
 requires **Xcode 26** selected (`sudo xcode-select -s /Applications/Xcode.app`).
-To re-author the layered icon: `make icon-layers` regenerates the foreground
-PNGs from `layers/*.svg`, then edit `AppIcon.icon` in Icon Composer and commit it.
+To re-author the layered icon: edit the layer sources
+`Packaging/AppIcon/layers/*.svg`, re-import them into Icon Composer, and commit
+the updated `AppIcon.icon`.
 ```
 
 - [ ] **Step 2: Verify Markdown formatting**
 
 Run: `grep -n "AppIcon.icon" CLAUDE.md`
-Expected: at least one line matches; confirm lines stay within the project's 80-column Markdown limit.
+Expected: at least one line matches; confirm lines stay within the project's
+80-column Markdown limit.
 
 - [ ] **Step 3: Commit**
 
@@ -367,7 +357,8 @@ git commit -m "Document Icon Composer icon workflow in CLAUDE.md"
 
 ### Task 6: Integration verification + project memory
 
-Runs after Task 4 has committed `AppIcon.icon`. Verifies the full bundle produces a layered icon and records the decision.
+Runs after Task 4 has committed `AppIcon.icon`. Verifies the full bundle
+produces a layered icon and records the decision.
 
 **Files:**
 - Create: a `skillbox:project-memory` note (via the skill; location per the skill).
@@ -377,7 +368,8 @@ Runs after Task 4 has committed `AppIcon.icon`. Verifies the full bundle produce
 - [ ] **Step 1: Build the bundle**
 
 Run: `make bundle`
-Expected: ends with `Built …/Casper.app …`; includes the line `Compiled …/AppIcon.icon -> Contents/Resources/Assets.car`.
+Expected: ends with `Built …/Casper.app …`; includes the line
+`Compiled …/AppIcon.icon -> Contents/Resources/Assets.car`.
 
 - [ ] **Step 2: Verify both icon mechanisms are in the bundle**
 
@@ -391,15 +383,24 @@ test -f Casper.app/Contents/Resources/AppIcon.icns && echo "AppIcon.icns present
 assetutil --info Casper.app/Contents/Resources/Assets.car | grep -i AppIcon
 ```
 
-Expected: `AppIcon`, `AppIcon`, `Assets.car present`, `AppIcon.icns present`, and an `AppIcon` entry from `assetutil`.
+Expected: `AppIcon`, `AppIcon`, `Assets.car present`, `AppIcon.icns present`,
+and an `AppIcon` entry from `assetutil`.
 
 - [ ] **Step 3: Visual check on macOS 26 (Tahoe)**
 
-Launch the bundled app (or reveal it in Finder) and inspect the Dock/Finder icon under System Settings ▸ Appearance in **Light**, **Dark**, and a **Tinted** highlight color. Optionally capture with the `debug-casper` screenshot skill. Expected: distinct Default and Dark renderings; a clean monochrome Tinted rendering.
+Launch the bundled app (or reveal it in Finder) and inspect the Dock/Finder icon
+under System Settings ▸ Appearance in **Light**, **Dark**, and a **Tinted**
+highlight color. Optionally capture with the `debug-casper` screenshot skill.
+Expected: distinct Default and Dark renderings; a clean monochrome Tinted
+rendering.
 
 - [ ] **Step 4: Record the decision in project memory**
 
-Invoke the `skillbox:project-memory` skill to save a note capturing: the dual-key pipeline (`CFBundleIconName` + `CFBundleIconFile`), keeping `AppIcon.icns` for macOS 15–25, the GUI-authored committed `AppIcon.icon`, the `actool` bundling step, and the rationale for rejecting scripted `icon.json` and the split-icon workaround. Reference `.superpowers/plans/app-icon-composer.md`.
+Invoke the `skillbox:project-memory` skill to save a note capturing: the
+dual-key pipeline (`CFBundleIconName` + `CFBundleIconFile`), keeping
+`AppIcon.icns` for macOS 15–25, the GUI-authored committed `AppIcon.icon`, the
+`actool` bundling step, and the rationale for rejecting scripted `icon.json` and
+the split-icon workaround. Reference `.superpowers/plans/app-icon-composer.md`.
 
 - [ ] **Step 5: Verify the memory note and index**
 
@@ -422,13 +423,18 @@ git commit -m "Record Icon Composer icon-pipeline decision in project memory"
 - Layer art extracted from `icon.svg` → Task 1. ✓
 - `actool` step producing `Assets.car` → Task 3 (+ verified in Task 6). ✓
 - `CFBundleIconName` added, `CFBundleIconFile` retained → Task 2. ✓
-- Makefile toolchain guard + `make icon-layers` → Task 1 (target) + Task 3 (guard). ✓
+- Makefile toolchain guard → Task 3 (guard); committed layer sources → Task 1. ✓
 - Manual authoring documented → Task 4 + Task 5. ✓
 - Project-memory note → Task 6. ✓
-- Dev build untouched → asserted in Global Constraints; no task modifies `Info-dev.plist`/dev icon. ✓
-- Backward-compat (both files/keys, no split-icon workaround) → Tasks 2, 3, and Global Constraints. ✓
+- Dev build untouched → asserted in Global Constraints; no task modifies
+  `Info-dev.plist`/dev icon. ✓
+- Backward-compat (both files/keys, no split-icon workaround) → Tasks 2, 3, and
+  Global Constraints. ✓
 - Verification (`assetutil`, `plutil`, visual) → Task 6. ✓
 
-**Placeholder scan:** No TBD/TODO; every code step contains complete file content or exact commands. ✓
+**Placeholder scan:** No TBD/TODO; every code step contains complete file
+content or exact commands. ✓
 
-**Type/name consistency:** `AppIcon.icon`, `--app-icon AppIcon`, `CFBundleIconName = AppIcon`, `Assets.car`, `terminal.svg`/`sparkle.svg` → `terminal.png`/`sparkle.png` used consistently across Tasks 1–6. ✓
+**Type/name consistency:** `AppIcon.icon`, `--app-icon AppIcon`,
+`CFBundleIconName = AppIcon`, `Assets.car`, `terminal.svg`/`sparkle.svg` →
+`terminal.png`/`sparkle.png` used consistently across Tasks 1–6. ✓

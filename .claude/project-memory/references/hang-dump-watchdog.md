@@ -14,11 +14,9 @@ it: a background timer detects the main thread staying unresponsive past a
 threshold (default 2 s) and runs `/usr/bin/sample` against Casper's own pid, so
 the resulting stack dump shows what the main thread is blocked on. The whole
 file and its wiring sit behind `#if DEBUG`, so the shipped app carries none of
-it; the scaffolding is removed entirely once the hang is root-caused **and** the
-fix is confirmed live. The diff view's TextKit 2 renderer is the current
-candidate fix, and its confirmation rests on a live session — an instance left
-open on an actively-edited worktree with the diff panel open — so everything
-here stays wired until that lands.
+it. The scaffolding is deliberately temporary: it comes out entirely once the
+hang is root-caused **and** the fix is confirmed live (which takes a live
+session — see [[diff-view-refresh-hang]]).
 
 **Why:** a freeze is not a crash — the process stays alive, so macOS writes **no
 crash report**, and the published dSYM (see [[binary-size-budget]]) covers real

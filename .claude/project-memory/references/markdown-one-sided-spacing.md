@@ -32,14 +32,14 @@ each measured to realize **0 pt** of the 12 pt they asked for:
 - **`paragraphSpacingBefore` on the bordered paragraph itself.** TextKit folds
   it into the very `layoutFragmentFrame` the `NSTextTableBlock` border wraps,
   so the border box grows upwards over the gap instead of space opening above
-  it. Measured on a laid-out TextKit 2 stack: the table's border edge sat at
-  the exact `y` the preceding paragraph's last line ended at, with the 12 pt
-  inside the border.
-- **`paragraphSpacing` on the `"\n"` that joins the two blocks.** A paragraph
-  is delimited by newline *characters*, not by attribute runs, so that `"\n"`
-  is the last character of the *preceding* block's paragraph — whose style
-  TextKit resolves from its **first** character. The style set on the
-  separator is simply never read.
+  it: the table's border edge sits at the exact `y` the preceding paragraph's
+  last line ended at, with the 12 pt inside the border.
+- **`paragraphSpacing` on the `"\n"` that joins the two blocks.** That newline
+  belongs to the *preceding* block's paragraph, whose style TextKit resolves
+  from its first character, so the style set on the separator is never read.
+
+Both are consequences of the same two TextKit 2 layout rules — see
+[[textkit2-layout-geometry]] for the measurements and the general formula.
 
 The working mechanism (`Builder.separator`, keyed off `Block.hasBlockQuoteRule`
 and `Block.opensTableBorder(after:)`) emits the gap as real occupied height:

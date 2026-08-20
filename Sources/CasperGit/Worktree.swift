@@ -78,35 +78,22 @@ extension Repository {
     /// Look up a single worktree by name. Throws a `GitError` (`GIT_ENOTFOUND`)
     /// when no worktree with that name is registered.
     public func worktreeInfo(name: String) throws -> WorktreeInfo {
-        var worktree: OpaquePointer?
-        let code = git_worktree_lookup(&worktree, pointer, name)
-        defer { git_worktree_free(worktree) }
-        if code == GIT_ENOTFOUND.rawValue {
-            throw GitError(code: GIT_ENOTFOUND.rawValue, message: "worktree not found: \(name)")
+        try withWorktree(name: name, ifMissing: { throw Self.worktreeNotFound(name) }) { worktree in
+            try worktreeInfo(fromPointer: worktree, name: name)
         }
-        try gitCheck(code)
-        let handle = try requireNonNull(worktree, "worktree")
-        return try worktreeInfo(fromPointer: handle, name: name)
     }
 
     /// Prune the worktree named `name`, removing both its admin entry and its
-    /// working-tree directory.
+    /// working-tree directory. Throws a `GitError` (`GIT_ENOTFOUND`) when no
+    /// worktree with that name is registered.
     ///
     /// Does not set `GIT_WORKTREE_PRUNE_LOCKED`, so a locked worktree is not
     /// pruned. Casper never locks its worktrees.
-    public func pruneWorktree(name: String) throws {
-        var worktree: OpaquePointer?
-        try gitCheck(git_worktree_lookup(&worktree, pointer, name))
-        defer { git_worktree_free(worktree) }
-
-        var options = git_worktree_prune_options()
-        try gitCheck(git_worktree_prune_options_init(
-            &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION)))
-        options.flags =
-            GIT_WORKTREE_PRUNE_VALID.rawValue
-            | GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue
-
-        try gitCheck(git_worktree_prune(worktree, &options))
+    func pruneWorktree(name: String) throws {
+        try prune(
+            name: name,
+            flags: GIT_WORKTREE_PRUNE_VALID.rawValue | GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue,
+            ifMissing: { throw Self.worktreeNotFound(name) })
     }
 
     /// Prune only the admin metadata (`.git/worktrees/<name>`) of the worktree
@@ -121,17 +108,38 @@ extension Repository {
     /// touched. Idempotent: a `GIT_ENOTFOUND` lookup (the entry is already gone)
     /// is a no-op success.
     public func pruneWorktreeMetadata(name: String) throws {
+        try prune(name: name, flags: GIT_WORKTREE_PRUNE_VALID.rawValue, ifMissing: {})
+    }
+
+    /// Shared body of the two prune entry points, which differ only in `flags` and
+    /// in how they treat a missing worktree — see each one's documentation.
+    private func prune(name: String, flags: UInt32, ifMissing: () throws -> Void) throws {
+        try withWorktree(name: name, ifMissing: ifMissing) { worktree in
+            var options = git_worktree_prune_options()
+            try gitCheck(git_worktree_prune_options_init(
+                &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION)))
+            options.flags = flags
+            try gitCheck(git_worktree_prune(worktree, &options))
+        }
+    }
+
+    /// Look up the worktree named `name` and run `body` with its handle, freeing the
+    /// handle afterward. Runs `ifMissing` instead when no worktree with that name is
+    /// registered — a closure rather than a plain value (unlike `withLocalBranch`)
+    /// because callers here split between throwing on a missing worktree and
+    /// treating it as a no-op success. The handle is valid only during `body`.
+    private func withWorktree<T>(
+        name: String, ifMissing: () throws -> T, _ body: (OpaquePointer) throws -> T
+    ) throws -> T {
         var worktree: OpaquePointer?
         let code = git_worktree_lookup(&worktree, pointer, name)
         defer { git_worktree_free(worktree) }
-        if code == GIT_ENOTFOUND.rawValue { return }
+        if code == GIT_ENOTFOUND.rawValue { return try ifMissing() }
         try gitCheck(code)
+        return try body(try requireNonNull(worktree, "worktree"))
+    }
 
-        var options = git_worktree_prune_options()
-        try gitCheck(git_worktree_prune_options_init(
-            &options, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION)))
-        options.flags = GIT_WORKTREE_PRUNE_VALID.rawValue
-
-        try gitCheck(git_worktree_prune(worktree, &options))
+    private static func worktreeNotFound(_ name: String) -> GitError {
+        GitError(code: GIT_ENOTFOUND.rawValue, message: "worktree not found: \(name)")
     }
 }

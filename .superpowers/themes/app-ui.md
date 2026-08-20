@@ -22,8 +22,8 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 - **Sidebar** — one row per workspace, grouped by repository (the Space, see
   `space-project.md`). Each row: state badge (working ● / blocked ◐ / done ✓ /
   error ✕ / idle ○), name, Git branch/worktree label, todo progress
-  (`completed/total` + current `in_progress` label), pending-notification dot,
-  and the `+/−` diff summary.
+  (`completed/total` + current `in_progress` label), and a pending-notification
+  dot.
 - **Layout composition** — arbitrary nested splits and tab groups; leaves are
   terminal, browser, or diff surfaces. Consumes the decoded Ghostty split/tab
   actions.
@@ -97,19 +97,24 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   whole Space, leaving worktrees/branches on disk); a degenerate Space is promoted
   to Git when its folder gains a `.git` (detected live by the filesystem watcher,
   and once per Space at launch), and demoted back if the `.git` is removed. The
-  `+/−` diff summary is deferred to UI-5.
+  per-workspace `+/−` diff summary is **dropped** (decision 2026-07-06) — see
+  the "Next action" note below.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
   `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar (rounded
   "pill" tabs sharing the width equally, centered titles; the active tab a filled
   bordered pill and inactive tabs blended into a fixed dark neutral chrome — no
   accent color; each tab has a leading hover-revealed `×` close button and the
   whole pill is clickable; a trailing circular `+` menu) and renders **only its
-  active surface**. Two deferred follow-ups: deriving the tab shades from the live
-  terminal background (as Ghostty does — Casper does not yet read the libghostty
-  background color), and per-tab `⌘N` switch shortcuts (not wired, so no `⌘N`
-  hint is shown). Inactive surfaces stay alive in a persistent view cache keyed
-  by `Surface.id` (their PTYs keep running; libghostty reads the PTY independently
-  of rendering) and re-attach on re-selection. Rendering only the active surface
+  active surface**. One deferred follow-up: deriving the tab shades from the
+  live terminal background (as Ghostty does — Casper does not yet read the
+  libghostty background color). The `⌘N` switch shortcuts moved scope from tabs
+  to **workspaces** and are wired: `AppModel.workspaceShortcutNumbers` assigns
+  1–9 down the sidebar, `WorkspaceShortcutKeyMonitor` maps ⌘1–⌘9 by physical
+  key code (so AZERTY works) into `selectWorkspace(atShortcutNumber:)`, and
+  holding ⌘ for ≥250 ms reveals the number hints in the sidebar rows. Inactive
+  surfaces stay alive in a persistent view cache keyed by `Surface.id` (their
+  PTYs keep running; libghostty reads the PTY independently of rendering) and
+  re-attach on re-selection. Rendering only the active surface
   avoids overlapping libghostty `CAMetalLayer`-backed terminals, which ignore
   SwiftUI `.opacity` and would occlude one another. The cache also makes a
   terminal's PTY survive split/collapse/reorder restructuring (surface identity is

@@ -35,4 +35,15 @@ final class GitBranchNameTests: XCTestCase {
         XCTAssertEqual(GitBranchName.sanitize("foo-.lock"), "foo")
         XCTAssertEqual(GitBranchName.sanitize("a.lock-.lock"), "a")
     }
+
+    func testSanitizeSquashesOnlyRunsOfTheSameSeparator() {
+        XCTAssertEqual(GitBranchName.sanitize("a---b"), "a-b")
+        XCTAssertEqual(GitBranchName.sanitize("a----....b"), "a-.b")
+        // Alternating separators are not a run: each one survives.
+        XCTAssertEqual(GitBranchName.sanitize("a.-.b"), "a.-.b")
+        XCTAssertEqual(GitBranchName.sanitize("a-.-b"), "a-.-b")
+        // Slashes are separators for the per-component rules but are never squashed
+        // as a run; empty components are dropped instead.
+        XCTAssertEqual(GitBranchName.sanitize("a//b"), "a/b")
+    }
 }

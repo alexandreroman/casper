@@ -20,6 +20,11 @@ struct WorkspaceRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        // Derived once per body pass: `Workspace.progress`, `.progressFraction`,
+        // `.isComplete` and `.currentTask` each rescan `todos`, and the layout, the
+        // progress bar, the caption and the `.animation(value:)` below all need them.
+        // The sidebar re-renders every row on any agent-state or progress tick.
+        let state = RowDisplayState(workspace: workspace)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
                 AgentStatusIcon(state: workspace.agentState, isSelected: isSelected)
@@ -43,16 +48,16 @@ struct WorkspaceRow: View {
                 .frame(width: 20)
                 .animation(.easeInOut(duration: 0.15), value: showShortcutHints)
             }
-            if workspace.progress.total > 0 || captionLabel != nil {
+            if state.showsProgress || state.caption != nil {
                 VStack(alignment: .leading, spacing: 6) {
-                    if workspace.progress.total > 0 {
+                    if state.showsProgress {
                         ProgressBar(
-                            fraction: workspace.progressFraction,
-                            complete: workspace.isComplete,
+                            fraction: state.progressFraction,
+                            complete: state.isComplete,
                             isSelected: isSelected)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    if let caption = captionLabel {
+                    if let caption = state.caption {
                         Text(caption)
                             .font(.caption)
                             .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
@@ -81,39 +86,44 @@ struct WorkspaceRow: View {
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: rowAnimationState)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: state)
     }
+}
 
-    private var rowAnimationState: RowAnimationState {
-        RowAnimationState(
-            agentState: workspace.agentState,
-            showsProgress: workspace.progress.total > 0,
-            progressFraction: workspace.progressFraction,
-            isComplete: workspace.isComplete,
-            caption: captionLabel)
-    }
-
+/// Everything a row renders and animates on, derived from a workspace in a single
+/// pass over its todos. `Equatable` so it can drive `.animation(value:)` directly.
+private struct RowDisplayState: Equatable {
+    let agentState: AgentState
+    let showsProgress: Bool
+    let progressFraction: Double
+    let isComplete: Bool
     /// The caption line under the branch label. A pending notification message
     /// takes priority over the progress task label — it's the more urgent
     /// signal — and stays shown until the notification clears (the workspace
     /// becomes focused, per `AppModel.clearNotificationForFocusedWorkspace`).
     /// Falls back to the progress task label so existing progress captions are
     /// unaffected once there is no pending message.
-    private var captionLabel: String? {
-        workspace.pendingNotificationMessage ?? taskLabel
-    }
-
-    private var taskLabel: String? {
-        workspace.currentTask ?? (workspace.isComplete ? "Done" : nil)
-    }
-}
-
-private struct RowAnimationState: Equatable {
-    let agentState: AgentState
-    let showsProgress: Bool
-    let progressFraction: Double
-    let isComplete: Bool
     let caption: String?
+
+    init(workspace: Workspace) {
+        var completed = 0
+        var currentTask: String?
+        for todo in workspace.todos {
+            switch todo.status {
+            case .completed: completed += 1
+            case .inProgress: if currentTask == nil { currentTask = todo.content }
+            case .pending: break
+            }
+        }
+        let total = workspace.todos.count
+        let isComplete = total > 0 && completed == total
+
+        agentState = workspace.agentState
+        showsProgress = total > 0
+        progressFraction = total > 0 ? Double(completed) / Double(total) : 0
+        self.isComplete = isComplete
+        caption = workspace.pendingNotificationMessage ?? currentTask ?? (isComplete ? "Done" : nil)
+    }
 }
 
 /// A full-width thin progress bar: accent while running, green once complete.

@@ -98,8 +98,9 @@ public enum WorktreeManager {
         } catch let error as RepoConfigError {
             throw WorktreeError(.configInvalid(error.reason))
         }
-        let patterns = config?.copyFiles(default: WorkspaceFileCopier.defaultPatterns)
-            ?? WorkspaceFileCopier.defaultPatterns
+        // A missing `.casper.json` behaves exactly like one that omits `copyFiles`,
+        // so an empty config resolves the default in one place.
+        let patterns = (config ?? RepoConfig()).copyFiles(default: WorkspaceFileCopier.defaultPatterns)
 
         let info = try mapGitError {
             try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)

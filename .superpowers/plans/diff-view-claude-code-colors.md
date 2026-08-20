@@ -20,12 +20,12 @@ no syntax highlighting to preserve; Casper's does and keeps it).
 
 Reference colors, sampled by pixel from the user-supplied screenshot:
 
-| Element                       | Hex       |
-|--------------------------------|-----------|
-| Deletion row background        | `#300B03` |
-| Addition row background        | `#152606` |
-| Deletion text/accent tint      | `#B96A5E` |
-| Addition text/accent tint      | `#87C163` |
+| Element                   | Hex       |
+| ------------------------- | --------- |
+| Deletion row background   | `#300B03` |
+| Addition row background   | `#152606` |
+| Deletion text/accent tint | `#B96A5E` |
+| Addition text/accent tint | `#87C163` |
 
 The screenshot also shows a single line-number column (not two side-by-side
 old/new columns as Casper has today): `27, 28, 29, 30, 30, 31, ...` — the same

@@ -21,9 +21,9 @@ and its recursive rmdir fails with "Permission denied" (rc -14) on
 read-only entries — a directory at mode 0555 (Go module cache, Cargo/npm
 caches) whose files can't be unlinked. The admin entry is then already
 gone, so a retry finds nothing to prune and the directory is orphaned on
-disk forever, while the delete still reports success. The old code also
-name-matched via `WorktreeManager.list` and swallowed its error with
-`try?`/`?? []`, skipping removal for the healthy target too.
+disk forever, while the delete still reports success. Two related traps:
+name-matching the worktree via `WorktreeManager.list` and swallowing that
+call's error with `try?`/`?? []` skips removal for a healthy target too.
 
 **How to access:** `forceRemoveDirectory` restores owner write+execute on
 the root and every directory beneath it (write on regular files, skipping

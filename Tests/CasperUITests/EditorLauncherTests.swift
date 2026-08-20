@@ -2,6 +2,9 @@ import XCTest
 import CasperCore
 @testable import CasperUI
 
+/// `@MainActor` because `EditorLauncher` is: it memoizes icon and CLI-path
+/// lookups in shared state, isolated to the actor every caller already runs on.
+@MainActor
 final class EditorLauncherTests: XCTestCase {
     /// `detectInstalled()` depends on what's actually installed on the machine
     /// running the test, so this only checks the invariant that holds

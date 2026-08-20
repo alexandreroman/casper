@@ -1,7 +1,7 @@
 # Open in Editor — Design
 
 **Date:** 2026-07-09
-**Status:** Draft
+**Status:** Shipped
 **Scope:** Add a title-bar split-button to `WorkspaceDetailView`'s toolbar that
 launches the current workspace's worktree in an external code editor
 (VS Code, IntelliJ IDEA, or Xcode), detecting which of the three are actually
@@ -102,8 +102,12 @@ public var lastUsedEditor: EditorKind?
 
 - `init(...)`: new parameter `lastUsedEditor: EditorKind? = nil`.
 - `CodingKeys` (`Models.swift:273-277`): add `case lastUsedEditor`.
-- `encode(to:)` (`Models.swift:283-296`): `try c.encodeIfPresent(lastUsedEditor, forKey: .lastUsedEditor)`.
-- `init(from:)` (`Models.swift:305-321`): `self.lastUsedEditor = try container.decodeIfPresent(EditorKind.self, forKey: .lastUsedEditor)` (defaults to `nil` — no legacy file has ever had a value here, unlike `inspector`, so no `??` fallback is needed).
+- `encode(to:)` (`Models.swift:283-296`):
+  `try c.encodeIfPresent(lastUsedEditor, forKey: .lastUsedEditor)`.
+- `init(from:)` (`Models.swift:305-321`):
+  `self.lastUsedEditor = try container.decodeIfPresent(EditorKind.self, forKey: .lastUsedEditor)`
+  (defaults to `nil` — no legacy file has ever had a value here, unlike
+  `inspector`, so no `??` fallback is needed).
 
 ### `EditorLauncher` — new file `Sources/CasperUI/EditorLauncher.swift`
 

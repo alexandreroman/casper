@@ -21,6 +21,10 @@ public final class DirectoryWatcher: @unchecked Sendable {
     /// event paths are ignored on purpose: callers recompute state wholesale.
     private let onChange: @Sendable () -> Void
     private let queue = DispatchQueue(label: "casper.directory-watcher")
+    /// Marks `queue` so `stop()` can recognize it is already running on it and
+    /// skip the `queue.sync` barrier, which would otherwise deadlock. The key is
+    /// per-instance (not static) so one watcher's queue never reads as another's.
+    private let queueKey = DispatchSpecificKey<Bool>()
     private var stream: FSEventStreamRef?
 
     /// Start watching `path` (recursively). Returns nil if the FSEvents stream
@@ -33,6 +37,7 @@ public final class DirectoryWatcher: @unchecked Sendable {
         onChange: @escaping @Sendable () -> Void
     ) {
         self.onChange = onChange
+        queue.setSpecific(key: queueKey, value: true)
 
         // FSEvents needs canonical, symlink-free paths: a watched path that
         // traverses a symlink (e.g. /var -> /private/var, /tmp -> /private/tmp)
@@ -100,20 +105,27 @@ public final class DirectoryWatcher: @unchecked Sendable {
 
     /// Stop, invalidate, and release the stream. Idempotent.
     ///
-    /// Invariant: must be called from outside the callback `queue` (in practice,
-    /// only from the main actor via the owner's reconfigure path or `deinit`).
-    /// The trailing `queue.sync {}` barrier lets any in-flight or queued callback
-    /// drain on the serial queue before teardown returns, closing the
-    /// use-after-free window against the unretained context; calling `stop()`
-    /// from within the callback would therefore deadlock. The owner's `onChange`
-    /// hop uses `DispatchQueue.main.async` (non-blocking), so it never blocks the
-    /// queue and cannot deadlock with this barrier.
+    /// Expected to be called from outside the callback `queue` (in practice, from
+    /// the main actor via the owner's reconfigure path or `deinit`). The trailing
+    /// `queue.sync {}` barrier lets any in-flight or queued callback drain on the
+    /// serial queue before teardown returns, closing the use-after-free window
+    /// against the unretained context. The owner's `onChange` hop uses
+    /// `DispatchQueue.main.async` (non-blocking), so it never blocks the queue and
+    /// cannot deadlock with this barrier.
+    ///
+    /// Calling it *from* `queue` would self-deadlock on that barrier, and `deinit`
+    /// can legitimately land there — releasing the last reference inside the
+    /// callback destroys the instance on the callback queue. So detect that case
+    /// via the queue's `DispatchSpecificKey` and tear down inline: on `queue`, the
+    /// current callback *is* the only in-flight one, so there is nothing left to
+    /// drain and the barrier's guarantee already holds.
     public func stop() {
         guard let stream else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
         self.stream = nil
+        guard DispatchQueue.getSpecific(key: queueKey) == nil else { return }
         // Barrier: drain any running/queued callback before returning, so no
         // callback can touch a deallocating instance after stop().
         queue.sync {}

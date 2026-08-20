@@ -207,12 +207,27 @@ struct DiffTextSurface: NSViewRepresentable {
             // How many bands the viewport shows depends on its height, so a resize
             // — including the very first one, which lands after SwiftUI has already
             // pushed a document in — has to re-resolve the bars.
+            //
+            // The forcing variant, and it has to be. This fires from the
+            // *container's* own `layout()`, at a point where the viewport it has
+            // just tiled reaches further into the document than TextKit's real
+            // layout does; every band past that point is cold, and the non-forcing
+            // walk stops at the first cold one. A viewport showing twelve one-line
+            // files then carries a single bar instead of one per band —
+            // `DiffTextSurfaceTests.testEveryBandOnScreenCarriesItsOwnBar`, which
+            // is what a swap to `scheduleStickyHeaderUpdate()` fails on.
+            //
+            // Laying out from here is also safe, which is what separates it from
+            // the hook below: the pass in progress is this container's, and the
+            // text view lays itself out afterwards, so `ensureLayout` re-enters
+            // nothing.
             containerView.viewportDidChange = { [weak self] in self?.resolveBarsOverTheViewport() }
             // The third thing that invalidates the bars, and the only one the
             // surface does not do to itself: TextKit replacing the estimated
             // geometry the bars were resolved from with real layout. Coalesced, and
-            // deliberately *not* `resolveBarsOverTheViewport()` — that one forces
-            // layout, which is not a thing to do from inside a layout pass.
+            // deliberately *not* `resolveBarsOverTheViewport()` — this one fires
+            // from inside `DiffTextView.layout()`, so the layout it would force is
+            // the very pass that is settling.
             textView.didLayout = { [weak self] in self?.scheduleStickyHeaderUpdate() }
 
             let clipView = scrollView.contentView
@@ -266,7 +281,7 @@ struct DiffTextSurface: NSViewRepresentable {
         func apply(document: DiffDocument, restoring anchor: DiffScrollAnchor?) {
             self.document = document
             textView.textContentStorage?.textStorage?
-                .setAttributedString(DiffTextAssembly.makeTextStorage(for: document))
+                .setAttributedString(DiffTextAssembly.makeAttributedText(for: document))
             textView.document = document
             // Reflows the column's width itself, from its own setter.
             gutter.document = document

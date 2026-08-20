@@ -37,3 +37,9 @@ same shape. See [[hang-dump-watchdog]].
 Corollary for any main-thread liveness probe: a main-queue round trip measures
 "the main queue is draining", **not** "the main thread is alive". The two differ
 for the whole duration of every modal and every menu track.
+
+**Counterweight:** this run-loop route is for work that must run *while* a modal
+loop is up. Where the hazard is instead re-entering a library mid-tick, the main
+queue is the right hop precisely because it cannot run inside the current tick —
+see [[osc52-clipboard-write-confirmation]] for the rule that picks between the
+two.

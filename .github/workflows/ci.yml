@@ -58,6 +58,6 @@ jobs:
       # a test-process abort. Ask the Swift runtime itself to print a backtrace
       # to stderr instead — cheap defense-in-depth for any future crash.
       - name: Test
-        run: swift test
+        run: make test
         env:
           SWIFT_BACKTRACE: enable=yes

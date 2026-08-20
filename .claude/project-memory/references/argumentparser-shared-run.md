@@ -9,7 +9,7 @@ type: reference
 Subcommands whose `run()` bodies are identical share one implementation through a
 protocol that refines `ParsableCommand` and provides `run()` in its extension —
 `WorkspaceRefCommand` in `Sources/CasperCLI/ControlClient.swift`, adopted by the
-16 subcommands whose whole job is "send one control command, emit
+19 subcommands whose whole job is "send one control command, emit
 `{"workspace":"<id>"}`".
 
 `ParsableCommand` already ships a default `run()` (it throws a help request), so

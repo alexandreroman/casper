@@ -63,14 +63,14 @@ people to disable notifications for the app entirely.
 
 ## Criteria
 
-| State | Meaning | Notifies? | Interruption level | Message |
-| --- | --- | --- | --- | --- |
-| `working` | agent actively executing | No | — | — |
-| `idle` (seen) | at rest, user has already looked | No | — | — |
-| `done` (unseen) | task finished, not yet looked at | **Yes** | `.passive` | "Task finished" |
-| `blocked` | waiting on the user mid-task | **Yes** | `.active` | "Waiting for your input" |
-| `error` | unrecoverable failure | **Yes** | `.active` | "Something went wrong" |
-| `unknown` | nothing readable / no foreground agent | No | — | — |
+| State           | Meaning                                | Notifies? | Interruption level | Message                  |
+| --------------- | -------------------------------------- | --------- | ------------------ | ------------------------ |
+| `working`       | agent actively executing               | No        | —                  | —                        |
+| `idle` (seen)   | at rest, user has already looked       | No        | —                  | —                        |
+| `done` (unseen) | task finished, not yet looked at       | **Yes**   | `.passive`         | "Task finished"          |
+| `blocked`       | waiting on the user mid-task           | **Yes**   | `.active`          | "Waiting for your input" |
+| `error`         | unrecoverable failure                  | **Yes**   | `.active`          | "Something went wrong"   |
+| `unknown`       | nothing readable / no foreground agent | No        | —                  | —                        |
 
 The deciding question: **does the user need to act, or look at something they
 haven't seen?** A turn ending on its own is neither — it's only ever an input

@@ -6,13 +6,65 @@ import SwiftUI
 /// number. `new` covers the working-tree side (additions and context lines),
 /// `old` the HEAD side (deletions); either is `nil` when that side could not be
 /// highlighted (unknown language, oversized file, highlighter failure).
+///
+/// An entry may also be a deliberately empty `AttributedString`, standing for a
+/// line the document does not render — see `prunedToRenderedLines(ofFileAt:in:)`.
 struct DiffFileHighlight: Sendable {
     let new: [AttributedString]?
     let old: [AttributedString]?
+
+    /// The same highlight with every line the document does not render blanked
+    /// out, keeping the surviving lines at the very indices `DiffTextAssembly`
+    /// looks them up by.
+    ///
+    /// The highlighter colors a whole file — up to `maxHighlightBytes`, so some
+    /// 15 000 lines per side — while a diff of that file usually renders a few
+    /// dozen of them. Everything else is text and attribute runs the cache would
+    /// hold for the diff's whole lifetime and nothing would ever read, which
+    /// makes this the renderer's largest avoidable allocation.
+    ///
+    /// A blanked line is an empty `AttributedString` rather than a hole, so the
+    /// array stays indexable by line number; painting one is a no-op, since its
+    /// length cannot match the line's.
+    ///
+    /// Pruning is against *this* document, and a carried highlight is never
+    /// recomputed — so a later document that renders more of the same
+    /// unchanged file (the shared `maxTotalLines` budget having freed up above
+    /// it) leaves those extra lines neutral until the file itself changes. That
+    /// only reaches lines a truncation note already warns the reader about.
+    func prunedToRenderedLines(ofFileAt fileIndex: Int, in document: DiffDocument) -> DiffFileHighlight {
+        guard document.files.indices.contains(fileIndex) else { return self }
+        let file = document.files[fileIndex]
+
+        var newNumbers: Set<Int> = []
+        var oldNumbers: Set<Int> = []
+        for line in document.lines[file.firstLineIndex..<(file.firstLineIndex + file.lineCount)] {
+            // The same three conditions `DiffTextAssembly.applyHighlight` skips
+            // on: chrome carries no source line, and a truncated line's content
+            // is only a prefix of one, so neither is ever looked up.
+            guard let kind = line.diffKind, let number = line.number, !line.truncated else { continue }
+            if kind == .deletion {
+                oldNumbers.insert(number)
+            } else {
+                newNumbers.insert(number)
+            }
+        }
+        return DiffFileHighlight(
+            new: Self.keeping(newNumbers, of: new), old: Self.keeping(oldNumbers, of: old))
+    }
+
+    /// `lines` with everything outside `numbers` (1-based) blanked, truncated
+    /// past the last number that survives.
+    private static func keeping(_ numbers: Set<Int>, of lines: [AttributedString]?) -> [AttributedString]? {
+        guard let lines else { return nil }
+        guard let highest = numbers.max() else { return [] }
+        let kept = min(highest, lines.count)
+        return (0..<kept).map { numbers.contains($0 + 1) ? lines[$0] : AttributedString() }
+    }
 }
 
-/// Turns a `DiffDocument` into an `NSTextStorage`, and paints syntax-highlight
-/// colors onto an already-assembled one.
+/// Turns a `DiffDocument` into the attributed text a text storage is filled
+/// from, and paints syntax-highlight colors onto an already-assembled one.
 ///
 /// This is the only writer of text attributes in the diff renderer, which is
 /// what makes the color-only rule enforceable: `applyHighlight` sets nothing but
@@ -21,9 +73,10 @@ struct DiffFileHighlight: Sendable {
 ///
 /// `@MainActor` for two reasons. The `NSFont` and `NSParagraphStyle` statics
 /// below are not `Sendable`, so they need an actor to live on — the `NSColor`
-/// ones would not, `NSColor` being `Sendable`. And the `NSTextStorage` these
-/// functions mutate is read by a text view on the main thread, so the isolation
-/// is what statically stops a later caller from writing to it off-main.
+/// ones would not, `NSColor` being `Sendable`. And the text storage
+/// `applyHighlight` mutates is read by a text view on the main thread, so the
+/// isolation is what statically stops a later caller from writing to it
+/// off-main.
 @MainActor
 enum DiffTextAssembly {
     /// The code column's font. Line numbers live in the ruler, so the whole
@@ -56,15 +109,20 @@ enum DiffTextAssembly {
     /// the same 14 pt the row-based renderer put after every file but the last.
     static let interFileGap: CGFloat = 14
 
-    /// Builds the storage: one document-wide pass for the attributes almost every
-    /// paragraph shares, then the handful of overrides.
+    /// Builds the document's attributed text: one document-wide pass for the
+    /// attributes almost every paragraph shares, then the handful of overrides.
     ///
     /// The text itself comes verbatim from `document.text`, so every offset the
     /// renderer holds keeps pointing at the same characters.
-    static func makeTextStorage(for document: DiffDocument) -> NSTextStorage {
-        let storage = NSTextStorage(string: document.text)
-        storage.beginEditing()
-        storage.setAttributes(codeAttributes, range: NSRange(location: 0, length: storage.length))
+    ///
+    /// A plain `NSMutableAttributedString` rather than an `NSTextStorage`: this
+    /// value only ever feeds `setAttributedString`, which copies it into the live
+    /// storage, and a storage of its own would have made that a second full copy
+    /// of the text and of every attribute run — up to 20 000 paragraphs, on the
+    /// main actor, on a path an FSEvents watcher drives.
+    static func makeAttributedText(for document: DiffDocument) -> NSMutableAttributedString {
+        let attributed = NSMutableAttributedString(string: document.text)
+        attributed.setAttributes(codeAttributes, range: NSRange(location: 0, length: attributed.length))
 
         for (fileIndex, file) in document.files.enumerated() {
             let fileLines = lines(of: file, in: document)
@@ -74,7 +132,7 @@ enum DiffTextAssembly {
             // paragraph, so the first file's band comes from the text view's
             // `textContainerInset` instead.
             if fileIndex > 0, let first = fileLines.first {
-                storage.addAttribute(
+                attributed.addAttribute(
                     .paragraphStyle, value: laterFileStyle, range: paragraphRange(of: first))
             }
 
@@ -82,7 +140,7 @@ enum DiffTextAssembly {
                 guard line.diffKind != nil else {
                     // A hunk header or a note: chrome, in the smaller face and
                     // the dimmer color.
-                    storage.addAttributes(chromeAttributes(for: line.kind), range: paragraphRange(of: line))
+                    attributed.addAttributes(chromeAttributes(for: line.kind), range: paragraphRange(of: line))
                     continue
                 }
 
@@ -91,13 +149,12 @@ enum DiffTextAssembly {
                 // other override — its `+`/`-` cue is the gutter's business.
                 guard line.truncated else { continue }
                 let markerStart = NSMaxRange(line.contentRange)
-                storage.addAttribute(
+                attributed.addAttribute(
                     .foregroundColor, value: NSColor.secondaryLabelColor,
                     range: NSRange(location: markerStart, length: NSMaxRange(line.range) - markerStart))
             }
         }
-        storage.endEditing()
-        return storage
+        return attributed
     }
 
     /// Paints one file's syntax colors onto `storage`, which must have been
@@ -113,7 +170,7 @@ enum DiffTextAssembly {
     /// on, so re-highlighting a file cannot leave an earlier pass's colors on a
     /// line this pass skips, and the promise above holds unconditionally.
     static func applyHighlight(
-        _ highlight: DiffFileHighlight, forFileAt fileIndex: Int, in storage: NSTextStorage,
+        _ highlight: DiffFileHighlight, forFileAt fileIndex: Int, in storage: NSMutableAttributedString,
         document: DiffDocument
     ) {
         guard document.files.indices.contains(fileIndex) else { return }
@@ -121,7 +178,7 @@ enum DiffTextAssembly {
         // A storage assembled from a different document has unrelated offsets,
         // so this document's ranges would recolor arbitrary text — or raise an
         // out-of-bounds exception. Refuse rather than guess.
-        guard storage.length == (document.text as NSString).length else { return }
+        guard storage.length == document.textLength else { return }
 
         storage.beginEditing()
         defer { storage.endEditing() }

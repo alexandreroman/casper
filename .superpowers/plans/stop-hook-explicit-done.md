@@ -1,7 +1,9 @@
 # Stop Hook Explicit `done` — Design
 
 **Date:** 2026-07-09
-**Status:** Design (not yet implemented)
+**Status:** Partly shipped — the Casper-side half (selecting a `done`
+workspace collapses it to `idle`) is built; the `casper-claude-plugin`
+`hooks/stop.sh` half is not
 **Scope:** Make Claude Code's `Stop` hook explicitly report `done` instead of
 `idle`, and make the app collapse an unseen `done` back to `idle` when the
 workspace is finally selected. Spans two repos: `casper-claude-plugin`

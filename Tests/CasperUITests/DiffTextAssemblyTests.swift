@@ -18,7 +18,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     }
 
     private func attribute(
-        _ key: NSAttributedString.Key, at offset: Int, in storage: NSTextStorage
+        _ key: NSAttributedString.Key, at offset: Int, in storage: NSAttributedString
     ) -> Any? {
         storage.attribute(key, at: offset, effectiveRange: nil)
     }
@@ -45,7 +45,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testStorageTextMatchesTheDocument() {
         let doc = document([GitDiffLine(kind: .addition, content: "let x = 1",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         XCTAssertEqual(storage.string, doc.text)
     }
@@ -56,7 +56,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testACodeLineIsEntirelyTheNeutralColor() {
         let doc = document([GitDiffLine(kind: .addition, content: "let x = 1",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let span = doc.lines[1]
 
         XCTAssertEqual(span.contentRange.location, span.range.location)
@@ -71,7 +71,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testCodeLinesCarryTheCodeFont() {
         let doc = document([GitDiffLine(kind: .addition, content: "let x = 1",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let span = doc.lines[1]
 
         XCTAssertEqual(attribute(.font, at: span.contentRange.location, in: storage) as? NSFont,
@@ -94,7 +94,7 @@ final class DiffTextAssemblyTests: XCTestCase {
             GitDiffFile(oldPath: "logo.png", newPath: "logo.png", status: .modified,
                         isBinary: true, hunks: []),
         ]))
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         let header = doc.lines[0]
         XCTAssertEqual(header.kind, .hunkHeader)
@@ -123,7 +123,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testEveryLineIsWordWrappingSoNothingScrollsHorizontally() {
         let doc = document([GitDiffLine(kind: .context, content: "x",
                                         oldLineNumber: 1, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         for span in doc.lines {
             let style = attribute(.paragraphStyle, at: span.range.location, in: storage)
@@ -145,7 +145,7 @@ final class DiffTextAssemblyTests: XCTestCase {
             GitDiffFile(oldPath: "b.swift", newPath: "b.swift", status: .modified,
                         isBinary: false, hunks: [hunk]),
         ]))
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         for span in doc.lines {
             let style = attribute(.paragraphStyle, at: span.range.location, in: storage)
@@ -166,7 +166,7 @@ final class DiffTextAssemblyTests: XCTestCase {
             GitDiffFile(oldPath: "b.swift", newPath: "b.swift", status: .modified,
                         isBinary: false, hunks: [hunk]),
         ]))
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         let firstStyle = attribute(.paragraphStyle, at: doc.files[0].range.location, in: storage)
         let secondStyle = attribute(.paragraphStyle, at: doc.files[1].range.location, in: storage)
@@ -184,7 +184,7 @@ final class DiffTextAssemblyTests: XCTestCase {
         let long = String(repeating: "x", count: DiffLineStyle.maxDisplayLineLength + 10)
         let doc = document([GitDiffLine(kind: .addition, content: long,
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let span = doc.lines[1]
         XCTAssertTrue(span.truncated)
 
@@ -199,7 +199,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testHighlightRecolorsTheContentOnly() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let highlighted = try highlight([("abc", .systemPink)])
 
         DiffTextAssembly.applyHighlight(
@@ -220,7 +220,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testASwiftUIScopeColorIsStillHonoured() {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         var highlighted = AttributedString("abc")
         highlighted.foregroundColor = .purple
 
@@ -238,7 +238,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testEachRunLandsOnItsOwnCharacters() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "let xy = 1",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let segments: [(String, NSColor)] = [("let", .systemPink), (" xy", .systemTeal), (" = 1", .systemYellow)]
         let highlighted = try highlight(segments)
         XCTAssertEqual(highlighted.runs.count, segments.count)
@@ -264,7 +264,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testNonASCIIContentIsColoredAtTheRightOffsets() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "let é = 😀",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let highlighted = try highlight([("let", .systemPink), (" é = 😀", .systemTeal)])
 
         DiffTextAssembly.applyHighlight(
@@ -285,7 +285,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testHighlightNeverChangesLayoutMetrics() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let span = doc.lines[1]
         let before = storage.attributes(at: span.contentRange.location, effectiveRange: nil)
         var highlighted = try highlight([("abc", .systemPink)])
@@ -316,7 +316,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testLengthMismatchLeavesTheLineNeutral() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let wrongLength = try highlight([("abcdef", .systemPink)])
 
         DiffTextAssembly.applyHighlight(
@@ -332,7 +332,7 @@ final class DiffTextAssemblyTests: XCTestCase {
         let long = String(repeating: "x", count: DiffLineStyle.maxDisplayLineLength + 10)
         let doc = document([GitDiffLine(kind: .addition, content: long,
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         // Exactly the displayed content, so the length guard agrees and being
         // truncated is the only reason this line can be skipped.
         let displayed = String(long.prefix(DiffLineStyle.maxDisplayLineLength))
@@ -351,7 +351,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testDeletionReadsTheHeadSideOfTheHighlight() throws {
         let doc = document([GitDiffLine(kind: .deletion, content: "old",
                                         oldLineNumber: 1, newLineNumber: nil)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let newSide = try highlight([("old", .systemTeal)])
         let oldSide = try highlight([("old", .systemPink)])
 
@@ -369,7 +369,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testHunkHeaderKeepsItsChromeStylingInAHighlightedFile() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let highlighted = try highlight([("abc", .systemPink)])
 
         DiffTextAssembly.applyHighlight(
@@ -386,7 +386,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testHighlightForAFileIndexOutOfRangeIsIgnored() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         let highlighted = try highlight([("abc", .systemPink)])
 
         DiffTextAssembly.applyHighlight(
@@ -407,7 +407,7 @@ final class DiffTextAssemblyTests: XCTestCase {
                                         oldLineNumber: nil, newLineNumber: 1)])
         let other = document([GitDiffLine(kind: .addition, content: "a considerably longer line",
                                           oldLineNumber: nil, newLineNumber: 1)], path: "b.swift")
-        let storage = DiffTextAssembly.makeTextStorage(for: other)
+        let storage = DiffTextAssembly.makeAttributedText(for: other)
         let highlighted = try highlight([("abc", .systemPink)])
 
         DiffTextAssembly.applyHighlight(
@@ -426,7 +426,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testReapplyingADriftedHighlightRestoresTheNeutralColor() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         DiffTextAssembly.applyHighlight(
             DiffFileHighlight(new: [try highlight([("abc", .systemPink)])], old: nil),
             forFileAt: 0, in: storage, document: doc)
@@ -443,7 +443,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     func testAnUncoloredRunResetsAPreviouslyColoredLine() throws {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeTextStorage(for: doc)
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
         DiffTextAssembly.applyHighlight(
             DiffFileHighlight(new: [try highlight([("abc", .systemPink)])], old: nil),
             forFileAt: 0, in: storage, document: doc)
@@ -455,5 +455,50 @@ final class DiffTextAssemblyTests: XCTestCase {
         XCTAssertEqual(
             attribute(.foregroundColor, at: doc.lines[1].contentRange.location, in: storage) as? NSColor,
             NSColor.labelColor)
+    }
+
+    // MARK: - Pruning
+
+    /// A highlight covers the whole file while the diff shows a few lines of it,
+    /// so everything the document does not render is dropped before the cache
+    /// ever holds it — and what it does render keeps the very colors it would
+    /// have had.
+    func testPruningKeepsTheRenderedLinesAndDropsTheRest() throws {
+        // Line 3 of a 5-line file is the only one the diff renders.
+        let doc = document([GitDiffLine(kind: .addition, content: "three",
+                                        oldLineNumber: nil, newLineNumber: 3)])
+        let file = try XCTUnwrap(doc.files.first)
+        let full = DiffFileHighlight(
+            new: try (1...5).map { try highlight([("line\($0)", .systemPink)]) },
+            old: try [highlight([("gone", .systemTeal)])])
+
+        let pruned = full.prunedToRenderedLines(ofFileAt: 0, in: doc)
+
+        // Truncated at the last rendered line, with the ones before it blanked:
+        // the surviving entry has to stay at the index its line number points to.
+        XCTAssertEqual(pruned.new?.map { String($0.characters) }, ["", "", "line3"])
+        // Nothing on this file's deletion side is rendered, so nothing is kept.
+        XCTAssertEqual(pruned.old?.isEmpty, true)
+        XCTAssertEqual(file.lineCount, 2, "one hunk header plus the rendered line")
+
+        // And the kept entry still paints, which a blanked one would not.
+        let storage = DiffTextAssembly.makeAttributedText(for: doc)
+        DiffTextAssembly.applyHighlight(pruned, forFileAt: 0, in: storage, document: doc)
+        XCTAssertEqual(
+            attribute(.foregroundColor, at: doc.lines[1].contentRange.location, in: storage) as? NSColor,
+            NSColor.systemPink)
+    }
+
+    /// An absent side stays absent rather than becoming an empty array: `nil`
+    /// means "this side could not be highlighted at all", which the painter
+    /// skips outright.
+    func testPruningLeavesAnAbsentSideAbsent() {
+        let doc = document([GitDiffLine(kind: .addition, content: "abc",
+                                        oldLineNumber: nil, newLineNumber: 1)])
+
+        let pruned = DiffFileHighlight(new: nil, old: nil).prunedToRenderedLines(ofFileAt: 0, in: doc)
+
+        XCTAssertNil(pruned.new)
+        XCTAssertNil(pruned.old)
     }
 }

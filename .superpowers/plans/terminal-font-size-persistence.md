@@ -1,7 +1,7 @@
 # Per-Terminal Font Size Persistence — Design
 
 **Date:** 2026-07-08
-**Status:** Draft — pending user review
+**Status:** Shipped
 **Scope:** Remember each terminal surface's current font size (as adjusted via
 Cmd+/Cmd-/Cmd0) and restore it the next time Casper launches, per terminal.
 

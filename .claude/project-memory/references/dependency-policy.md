@@ -27,7 +27,7 @@ in an in-house `CasperGit` module; no external `git` binary),
 inspector diff view), and **Sparkle** (auto-update). Everything else must use
 system frameworks
 (Network.framework, WebKit, UserNotifications, AppKit/SwiftUI, Foundation/Codable).
-Build **arm64-only**, release with `-Osize` + LTO + strip. Before adding any new
+Build **arm64-only**, release with `-Osize` + strip. Before adding any new
 package, stop and justify it against this policy.
 
 **HighlightSwift exception (approved):** macOS ships no general-purpose,
@@ -40,7 +40,7 @@ dependency, Swift 6 strict-concurrency clean, SwiftUI-native, and produces an
 system framework), so only the JS text asset is bundled — no extra binary. Pinned
 at 1.1.0.
 
-**Sparkle exception (approved by Alexandre):** macOS offers no in-app update
+**Sparkle exception (sanctioned):** macOS offers no in-app update
 mechanism outside the App Store, and Casper is distributed as a direct download.
 Sparkle is the de facto standard and the only realistic option; writing an
 updater in-house means re-implementing signature verification and atomic bundle

@@ -19,7 +19,7 @@ construction work in tests but **crashes real parsing**. Assigning an
 "resolved value" state; when ArgumentParser later reads the argument *definition*
 during `.parse()` / `.main()` it aborts:
 
-```
+```text
 ArgumentParser/Parsed.swift:68: Fatal error: Trying to get the argument set
 from a resolved/parsed property.   (exit 133)
 ```
