@@ -2104,24 +2104,51 @@ final class AppModel {
     // MARK: - Agent-integration reminders
     //
     // The machine-wide answer to "does the user have a coding agent whose Casper
-    // integration is missing or stale?". The policy and the probing live in
-    // CasperCore (`AgentIntegration`, `AgentIntegrationProbe`); this is only the
-    // wiring: run the probe off the main actor, fold the dismissals in, and publish
+    // integration is missing, stale, or installed but not yet active?". The policy
+    // and the probing live in CasperCore (`AgentIntegration`, `AgentIntegrationProbe`);
+    // this is only the wiring: run the probe off the main actor, fold the dismissals
+    // in, and publish
     // an ordered list the sidebar can render. Casper never repairs an agent's
     // configuration — see `.superpowers/themes/agent-state-detection.md` and the
     // agent-integration policy: detect and remind, nothing more.
 
-    /// One sidebar reminder line: an agent whose own CLI is installed but whose
-    /// Casper integration is missing or out of date.
+    /// One sidebar reminder line about a coding agent's Casper integration.
     struct AgentIntegrationReminder: Identifiable, Equatable {
+
+        /// What the line is telling the user. Not derivable from `status` alone:
+        /// `.installed` means "nothing to do" for most agents, but "one manual step
+        /// left" for an agent whose hooks stay inert until they are approved.
+        enum Kind: Equatable {
+            /// The integration is missing or stale — the user installs or updates it.
+            case actionNeeded
+            /// The integration is installed but does nothing until its hooks are trusted.
+            case trustNotice
+        }
+
         let agent: CodingAgent
         let status: AgentIntegrationStatus
+        let kind: Kind
 
-        /// The dismissal id, which is also the stable list identity — an agent's
-        /// row must not lose its SwiftUI identity when its status changes.
-        var id: String { agent.reminderID }
+        /// The dismissal id, which is also the stable list identity — a row must not
+        /// lose its SwiftUI identity when its status changes.
+        var id: String { Self.dismissalKey(agent: agent, kind: kind) }
 
         var documentationURL: URL { agent.documentationURL }
+
+        /// The key a dismissal of this line is persisted under, in
+        /// `Session.dismissedAgentReminders`.
+        ///
+        /// The two kinds deliberately use *different* keys.
+        /// `applyAgentIntegrationStatuses` retires an agent's action-needed dismissal
+        /// as soon as that agent reports `.installed`. A trust notice only ever appears
+        /// *while* the agent reports `.installed`, so sharing the key would un-dismiss
+        /// it the instant it became relevant, leaving it impossible to silence.
+        static func dismissalKey(agent: CodingAgent, kind: Kind) -> String {
+            switch kind {
+            case .actionNeeded: return agent.reminderID
+            case .trustNotice: return "\(agent.reminderID)-trust"
+            }
+        }
     }
 
     /// Minimum delay between two throttled probes.
@@ -2194,13 +2221,13 @@ final class AppModel {
         refreshAgentIntegrations()
     }
 
-    /// Dismiss one agent's reminder, permanently as far as this problem is concerned.
+    /// Dismiss one reminder line, permanently as far as this problem is concerned.
     ///
-    /// Keyed by `reminderID`, never `rawValue`: the two differ deliberately
-    /// (`"claude-code"` vs `"claudeCode"`) and only the former is what `session.json`
-    /// stores, so the wrong key would make every dismissal a silent no-op.
-    func dismissAgentReminder(_ agent: CodingAgent) {
-        guard dismissedAgentReminders.insert(agent.reminderID).inserted else { return }
+    /// Keyed by `AgentIntegrationReminder.id`, never an agent's `rawValue`: those ids
+    /// outlive the process in `session.json` (`"claude-code"`, not `"claudeCode"`), so
+    /// the wrong key would make every dismissal a silent no-op.
+    func dismissAgentReminder(_ reminder: AgentIntegrationReminder) {
+        guard dismissedAgentReminders.insert(reminder.id).inserted else { return }
         refreshAgentIntegrationReminders()
         persist()
     }
@@ -2213,7 +2240,13 @@ final class AppModel {
         // agent's integration is healthy the dismissal has done its job, so drop it:
         // if the user later breaks or uninstalls that integration, they get reminded
         // again. Without this, one dismissal blinds them to that agent for good.
-        let healed = statuses.filter { $0.value == .installed }.map(\.key.reminderID)
+        //
+        // Only the action-needed key is retired. A trust notice keys off `.installed`
+        // itself, so clearing its key here would un-dismiss it the moment it became
+        // relevant — which is exactly why it carries a key of its own.
+        let healed = statuses
+            .filter { $0.value == .installed }
+            .map { AgentIntegrationReminder.dismissalKey(agent: $0.key, kind: .actionNeeded) }
         let remaining = dismissedAgentReminders.subtracting(healed)
         if remaining != dismissedAgentReminders {
             dismissedAgentReminders = remaining
@@ -2229,24 +2262,32 @@ final class AppModel {
     /// sidebar's lines would shuffle from one launch to the next.
     private func refreshAgentIntegrationReminders() {
         let reminders = CodingAgent.allCases.compactMap { agent -> AgentIntegrationReminder? in
-            guard let status = agentIntegrationStatuses[agent], Self.needsReminder(status) else { return nil }
-            guard !dismissedAgentReminders.contains(agent.reminderID) else { return nil }
-            return AgentIntegrationReminder(agent: agent, status: status)
+            guard let status = agentIntegrationStatuses[agent],
+                  let kind = Self.reminderKind(for: status, of: agent) else { return nil }
+            let reminder = AgentIntegrationReminder(agent: agent, status: status, kind: kind)
+            guard !dismissedAgentReminders.contains(reminder.id) else { return nil }
+            return reminder
         }
         guard reminders != agentIntegrationReminders else { return }
         agentIntegrationReminders = reminders
     }
 
-    /// Whether a status is worth telling the user about. Exhaustive on purpose, so a
-    /// new `AgentIntegrationStatus` case forces a decision here rather than silently
+    /// Which line, if any, a status earns. Exhaustive on purpose, so a new
+    /// `AgentIntegrationStatus` case forces a decision here rather than silently
     /// defaulting to "say nothing".
-    private static func needsReminder(_ status: AgentIntegrationStatus) -> Bool {
+    private static func reminderKind(
+        for status: AgentIntegrationStatus,
+        of agent: CodingAgent
+    ) -> AgentIntegrationReminder.Kind? {
         switch status {
-        case .missing, .outdated: return true
+        case .missing, .outdated: return .actionNeeded
         // The agent's CLI is absent, so the user does not use it: advertising an
         // integration for a tool they never installed is pure noise.
-        case .notInstalled: return false
-        case .installed: return false
+        case .notInstalled: return nil
+        // Installed and current is normally nothing to report. The exception is an
+        // agent whose hooks stay inert until approved — the install is real, but it
+        // does nothing at all until the user takes that last step.
+        case .installed: return agent.requiresHookTrust ? .trustNotice : nil
         }
     }
 
