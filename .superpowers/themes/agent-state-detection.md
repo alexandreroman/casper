@@ -270,6 +270,10 @@ from their own callers (`hooks/notification.py`, the `casper-status`
 skill), so mirroring `setDetectedAgentState` there would double the
 notification. See `plans/stop-hook-explicit-done.md`.
 
+Arming the bubble also drives the Dock icon — a bounce that runs until Casper is
+activated, plus a badge counting the unread workspaces. Their exact clearing
+rules live in `app-ui.md` § Design → "Dock attention".
+
 ## Deferred / out of scope
 
 - **`.render`-driven trigger** — replace the ~250 ms timer poll with a

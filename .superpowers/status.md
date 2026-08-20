@@ -809,6 +809,45 @@ implementation was removed. See the theme's "Process lifecycle" section.
 authority release; per-surface status (option B); agents beyond Claude Code
 (per-agent rule sets).
 
+## Dock bounce + unread badge — ✅
+
+Carries the sidebar's attention dot out of the app and onto the Dock icon, so a
+`blocked`/`done`/`error` workspace is noticed while Casper is in the background.
+Design: `themes/app-ui.md` § Design → "Dock attention".
+
+**Built.** `CasperUI/DockAttention.swift` — a `DockAttentionPresenting`
+protocol (`bounce()`, `cancelBounce()`, `updateBadge(count:)`) over a
+`DockAttentionBackend` protocol (is-active, request/cancel attention, badge
+label) whose production implementation drives `NSApp`. The presenter is
+injected into `AppModel` as `dockAttention`, alongside the existing
+`deliverNotification` / `isWindowKey` seams, so the wiring is testable
+headlessly; the backend seam does the same one layer down, for the request-id
+latch itself. `AppModel.refreshDockAttention()` counts `pendingNotification`
+across every Space, pushes it to the badge, and cancels the bounce at zero; it
+is derived state and writes nothing, so it adds no `persist()` and no
+`@Observable` write. Called from the arming branch of
+`controlRaiseNotification`, from `clearNotificationForFocusedWorkspace` and
+`clearNotificationOnResume`, and from the three paths that drop a workspace
+(`removeWorkspace`, `removeSpace`, `addSpace`'s `reunify` — the shared `retire`
+runs before `spaces` settles, so it can't own the refresh itself).
+
+The bounce is `.criticalRequest` (bounces until activation, not once) and starts
+**only** on the edge that arms a bubble — a later focus loss must not re-bounce.
+It is also never requested while Casper is the active application: AppKit says
+so, and since the arming edge is not focus-gated (a notification for a
+non-selected workspace arms with the window key), a request latched in front
+would be released by nothing and would swallow the next real bounce. Both
+`AppDelegate.applicationDidBecomeActive` and `applicationDidResignActive` call
+`AppModel.releaseDockBounce()`, which cancels the request and deliberately
+leaves the badge alone: the badge is an unread counter that counts down per
+workspace, not per activation.
+
+Sixteen tests (`DockAttentionTests.swift`): eleven drive the `AppModel` matrix
+through a recording spy — including the `addSpace`/`reunify` drop path and the
+cancel-without-touching-the-badge release — and five drive `DockAttention`
+itself against a fake backend, pinning the latch, the id handed to the cancel,
+the badge's zero → no-label mapping, and the never-bounce-while-active rule.
+
 ## Remaining work — dependency-ordered
 
 1. **CasperGit `git_diff` — ✅ built** (`diffWorkdirToHead()`); the diff viewer is
