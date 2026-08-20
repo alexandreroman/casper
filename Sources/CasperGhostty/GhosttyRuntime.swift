@@ -261,7 +261,17 @@ private func clipboardView(from userdata: UnsafeMutableRawPointer?) -> GhosttySu
 }
 
 /// `read_clipboard_cb`: `bool (*)(void*, ghostty_clipboard_e, void*)`. Called
-/// when libghostty needs the system pasteboard's contents (e.g. ⌘V).
+/// when libghostty needs the system pasteboard's contents (e.g. ⌘V, or an OSC 52
+/// read requested by the terminal's own output).
+///
+/// The text is handed back with `confirmed: false`, as upstream Ghostty does. That
+/// flag means "the user has already approved this": `true` short-circuits
+/// libghostty's `clipboard-read` policy, so the OSC 52 response is emitted without
+/// `confirm_read_clipboard_cb` ever firing and `GhosttyClipboardRead`'s prompt never
+/// runs. `false` lets core apply the policy and ask, which is the only thing that
+/// makes the gate reachable at all. Confirmation then arrives in
+/// `casperGhosttyConfirmReadClipboard`, which is also where an ordinary paste is
+/// confirmed on sight.
 func casperGhosttyReadClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
@@ -274,17 +284,31 @@ func casperGhosttyReadClipboard(
     // `casperGhosttyWakeup`, rather than sending the raw pointer itself.
     let stateAddress = UInt(bitPattern: state)
     MainActor.assumeIsolated {
-        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        let text = GhosttyClipboardRead.systemPasteboard.string(forType: .string) ?? ""
         view.surface?.completeClipboardRequest(
-            text, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+            text, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: false)
     }
     return true
 }
 
 /// `confirm_read_clipboard_cb`:
-/// `void (*)(void*, const char*, void*, ghostty_clipboard_request_e)`. Called
-/// after a paste is decoded, to confirm delivery (e.g. for OSC 52 reads that
-/// would otherwise need a user prompt).
+/// `void (*)(void*, const char*, void*, ghostty_clipboard_request_e)`. Called when
+/// libghostty's clipboard-read policy wants a decoded read confirmed before its text
+/// is delivered.
+///
+/// Only `GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ` — the terminal's own output asking for
+/// the clipboard, with the answer written back to the asking program — raises a prompt.
+/// Every other request keeps the confirm-on-sight behaviour: a `..._PASTE` request is
+/// libghostty's `clipboard-paste-protection` check on an ordinary ⌘V, and Casper has not
+/// implemented that separate prompt, so gating ⌘V here would break pasting outright.
+///
+/// The OSC 52 prompt is DEFERRED to the next main-queue turn for the reason spelled out
+/// above `casperGhosttyWriteClipboard`: it runs modally, and spinning a nested run loop
+/// here would park libghostty mid-tick. `DispatchQueue.main.async` is again the right hop
+/// rather than the modal-proof `CFRunLoopPerformBlock` route — the guarantee that matters
+/// is that the block cannot run inside the current tick, and a prompt queued behind an
+/// alert already on screen belongs after it. The request stays pending across that hop,
+/// which is exactly what a read the user has not answered yet should be.
 func casperGhosttyConfirmReadClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ string: UnsafePointer<CChar>?,
@@ -305,14 +329,28 @@ func casperGhosttyConfirmReadClipboard(
     if text == nil {
         CasperLog.ghostty.warning("confirm-read callback fired with unresolved string; completing empty")
     }
+    let clipboard = text ?? ""
     // Cross the actor boundary as a trivial address (Sendable); see
     // `casperGhosttyReadClipboard`.
     let stateAddress = UInt(bitPattern: state)
-    // v1: auto-confirm every read (including risky OSC 52 requests); a
-    // confirmation dialog is a future refinement.
-    MainActor.assumeIsolated {
-        view.surface?.completeClipboardRequest(
-            text ?? "", state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+    guard request == GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ else {
+        MainActor.assumeIsolated {
+            view.surface?.completeClipboardRequest(
+                clipboard, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+        }
+        return
+    }
+    DispatchQueue.main.async { [weak view] in
+        MainActor.assumeIsolated {
+            // A denied read is completed with empty text rather than abandoned — upstream
+            // Ghostty drops the request, but that is the same hazard the nil-string case
+            // above guards: an unresolved request leaves libghostty holding pending state
+            // and the program that emitted the escape sequence waiting for an answer it
+            // will never read. Empty text says "nothing", which is the honest answer.
+            let answer = GhosttyClipboardRead.resolveUntrusted(clipboard)
+            view?.surface?.completeClipboardRequest(
+                answer, state: UnsafeMutableRawPointer(bitPattern: stateAddress), confirmed: true)
+        }
     }
 }
 
@@ -320,11 +358,20 @@ func casperGhosttyConfirmReadClipboard(
 /// `void (*)(void*, ghostty_clipboard_e, const ghostty_clipboard_content_s*, size_t, bool)`.
 /// Called when libghostty wants to write to the system pasteboard (e.g. ⌘C).
 ///
-/// v1: the `confirm` flag is intentionally NOT gated — writes are applied
-/// unconditionally, mirroring the auto-confirm paste policy used for reads
-/// (see `casperGhosttyConfirmReadClipboard`). Honoring `confirm` — to keep
-/// untrusted terminal output (e.g. OSC 52) from silently overwriting the
-/// user's clipboard — is a deferred follow-up, pending a confirmation UI.
+/// A user-initiated write (`confirm == false`) is applied straight away. A write
+/// libghostty flags as untrusted (`confirm == true` — an OSC 52 sequence in the
+/// terminal's output) is confirmed with the user first, and that prompt is DEFERRED
+/// to the next main-queue turn, like `casperGhosttyCloseSurface` below: a
+/// confirmation runs modally, and spinning a nested run loop here would park
+/// libghostty mid-tick. The text is decoded before the hop because `content` only
+/// lives for the duration of this call.
+///
+/// The deferral is `DispatchQueue.main.async` rather than the modal-proof
+/// `CFRunLoopPerformBlock` route (`ScriptHookRunner.onMainRunLoop`): a work item that
+/// waits behind an alert already on screen is the right outcome here — nothing in
+/// libghostty is blocked on this write, and the prompt belongs after that dialog, not
+/// stacked on it. What the main queue does guarantee is the part that matters, that
+/// the block cannot run inside the current tick.
 func casperGhosttyWriteClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
@@ -335,10 +382,12 @@ func casperGhosttyWriteClipboard(
     guard location == GHOSTTY_CLIPBOARD_STANDARD, let text = clipboardString(from: content, count: count) else {
         return
     }
-    let pasteboard = NSPasteboard.general
-    MainActor.assumeIsolated {
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+    guard confirm else {
+        MainActor.assumeIsolated { GhosttyClipboardWrite.apply(text, confirm: false) }
+        return
+    }
+    DispatchQueue.main.async {
+        MainActor.assumeIsolated { GhosttyClipboardWrite.apply(text, confirm: true) }
     }
 }
 

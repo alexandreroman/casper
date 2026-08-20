@@ -33,6 +33,8 @@
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null; wake the display and poll
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
+- [OSC 52 clipboard writes](references/osc52-clipboard-write-confirmation.md) — untrusted writes need approval; needs `clipboard-write = ask`
+- [OSC 52 clipboard reads](references/osc52-clipboard-read-confirmation.md) — untrusted reads need approval; completing as confirmed skips the policy
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring; the pinned binary's effect is unconfirmed
 - [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side; shape actions are surface-scoped
 - [libghostty scroll mods packed layout](references/ghostty-scroll-mods-layout.md) — opaque `int` = packed i32: precision bit, then momentum
