@@ -23,11 +23,12 @@ while bringing `GhosttySurfaceView` to upstream mouse parity.
   3→`GHOSTTY_MOUSE_FOUR`, 4→`GHOSTTY_MOUSE_FIVE` (`GHOSTTY_MOUSE_UNKNOWN` for the
   rest). Middle-click paste is handled by the core once the button is forwarded.
 
-- **`ghostty_input_scroll_mods_t` is `typedef int`** with an undocumented packed
-  bit layout (the header says so explicitly). Momentum/precision encoding is left
-  at `0` rather than guessed. The one scroll fix that matters is doubling
-  `scrollingDeltaX/Y` when `event.hasPreciseScrollingDeltas` (trackpad deltas
-  arrive at ~half the magnitude of wheel deltas).
+- **Scroll modifiers** — `ghostty_input_scroll_mods_t` is `typedef int` with an
+  undocumented packed bit layout; `scrollWheel` sets both the precision bit and
+  the momentum phase. See [[ghostty-scroll-mods-layout]] for the layout and why
+  the precision bit is mandatory. Alongside it, `scrollingDeltaX/Y` is doubled
+  when `event.hasPreciseScrollingDeltas` (trackpad deltas arrive at ~half the
+  magnitude of wheel deltas).
 
 - **The resting I-beam is the app's default, NOT a libghostty action.** libghostty
   emits `GHOSTTY_ACTION_MOUSE_SHAPE` only to *change* the shape (pointing-hand over a

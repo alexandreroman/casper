@@ -1,7 +1,7 @@
 # Auto-Reselect on Workspace Close — Design
 
 **Date:** 2026-07-09
-**Status:** Design
+**Status:** Shipped
 **Scope:** When a workspace is removed from the session (deleted outright,
 closed via merge, or dropped along with its whole Space), the UI selection
 must never be left dangling or reset to nothing when a reasonable alternative

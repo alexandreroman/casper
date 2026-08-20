@@ -33,6 +33,19 @@ final class DiffDocumentTests: XCTestCase {
         (document.text as NSString).substring(with: range)
     }
 
+    /// What each `"Diff too large — N more lines hidden"` note reports, in
+    /// document order.
+    ///
+    /// The notes are the document's whole account of what the budgets dropped —
+    /// nothing exposes a total — so a truncation assertion is an assertion about
+    /// them. A note of another kind ("Binary file", "No content changes") parses
+    /// to no number and drops out.
+    private func hiddenCounts(in document: DiffDocument) -> [Int] {
+        document.lines
+            .filter { $0.kind == .note }
+            .compactMap { Int(text(document, $0.range).split(separator: " ").dropFirst(4).first ?? "") }
+    }
+
     // MARK: - Shape
 
     func testEmptyDiffProducesEmptyDocument() {
@@ -41,7 +54,6 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertTrue(document.text.isEmpty)
         XCTAssertTrue(document.files.isEmpty)
         XCTAssertTrue(document.lines.isEmpty)
-        XCTAssertEqual(document.hiddenLineCount, 0)
     }
 
     func testHunkHeaderPrecedesItsLines() {
@@ -253,7 +265,7 @@ final class DiffDocumentTests: XCTestCase {
 
         let diffLines = document.lines.filter { $0.diffKind != nil }
         XCTAssertEqual(diffLines.count, DiffDocument.maxLinesPerFile)
-        XCTAssertEqual(document.hiddenLineCount, overflow)
+        XCTAssertEqual(hiddenCounts(in: document), [overflow])
         XCTAssertEqual(document.lines.last?.kind, .note)
         XCTAssertEqual(
             text(document, document.lines.last!.range),
@@ -277,7 +289,10 @@ final class DiffDocumentTests: XCTestCase {
 
         XCTAssertEqual(document.lines.filter { $0.diffKind != nil }.count,
                        DiffDocument.maxTotalLines)
-        XCTAssertEqual(document.hiddenLineCount, fileCount * perFile - DiffDocument.maxTotalLines)
+        // Split across the notes of the files the budget ran out on, which
+        // together account for everything the document did not emit.
+        XCTAssertEqual(hiddenCounts(in: document).reduce(0, +),
+                       fileCount * perFile - DiffDocument.maxTotalLines)
         // Every file is still present, so the sticky header and the file list
         // stay complete even when the tail renders as notes only.
         XCTAssertEqual(document.files.count, fileCount)
@@ -308,7 +323,7 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(headers.map { text(document, $0.range) }, ["@@ fitting @@", "@@ partial @@"])
         XCTAssertEqual(document.lines.filter { $0.diffKind != nil }.count,
                        DiffDocument.maxLinesPerFile)
-        XCTAssertEqual(document.hiddenLineCount, 90)
+        XCTAssertEqual(hiddenCounts(in: document), [90])
     }
 
     // MARK: - Lookups

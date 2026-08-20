@@ -35,7 +35,7 @@ extracted artifact instead of re-resolving.
 ```bash
 make vendor  # sync the pinned libghostty header (Vendor/ghostty/ghostty.h)
 make build   # compile
-make dev     # recompile and launch the app (swift run casper)
+make dev     # rebuild + launch Casper-dev.app under a per-branch dev session
 make test    # run the test suite
 make release # size-optimized release build (arm64)
 make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)

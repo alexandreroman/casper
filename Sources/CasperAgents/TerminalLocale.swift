@@ -30,7 +30,7 @@ public enum TerminalLocale {
 
     /// Builds `<lang>_<REGION>.UTF-8` from the locale using the modern language
     /// and region APIs; returns `nil` if either component is missing.
-    static func posixUTF8Identifier(from locale: Locale) -> String? {
+    private static func posixUTF8Identifier(from locale: Locale) -> String? {
         guard let language = locale.language.languageCode?.identifier,
               let region = locale.region?.identifier
         else {

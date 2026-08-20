@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 import CasperCore
+import Observation
 @testable import CasperUI
 
 @MainActor
@@ -11,11 +12,15 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         return SessionStore(fileURL: url)
     }
 
-    private func flagsChangedEvent(command: Bool) -> NSEvent {
-        NSEvent.keyEvent(
+    private func flagsChangedEvent(
+        command: Bool, extraModifiers: NSEvent.ModifierFlags = []
+    ) -> NSEvent {
+        var flags = extraModifiers
+        if command { flags.insert(.command) }
+        return NSEvent.keyEvent(
             with: .flagsChanged,
             location: .zero,
-            modifierFlags: command ? [.command] : [],
+            modifierFlags: flags,
             timestamp: 0,
             windowNumber: 0,
             context: nil,
@@ -92,6 +97,36 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         _ = monitor.handle(flagsChangedEvent(command: true))
         _ = monitor.handle(flagsChangedEvent(command: false))
 
+        XCTAssertFalse(model.showWorkspaceShortcutHints)
+    }
+
+    /// Pressing Shift while Cmd is held — the start of any Cmd+Shift shortcut, e.g.
+    /// Cmd+Shift+D ("Split Down") — releases a hold that never revealed anything. The
+    /// hints flag is already false, so nothing may write it: an unconditional write to
+    /// an `@Observable` property notifies every sidebar row for no change.
+    ///
+    /// `withObservationTracking` proves the absence of that write with no test-only
+    /// instrumentation in production code (the `observation-tracking-guard-tests` note).
+    func testAbandonedCommandHoldDoesNotWriteTheHintsFlag() {
+        let model = AppModel(sessionStore: makeStore())
+        // Long hold so the reveal timer is still pending when Shift arrives.
+        let monitor = WorkspaceShortcutKeyMonitor(model: model, holdDuration: 10)
+        _ = monitor.handle(flagsChangedEvent(command: true))
+        XCTAssertFalse(model.showWorkspaceShortcutHints)
+
+        // `onChange` is `@Sendable`, even though this test only ever touches the model
+        // on the main actor it also runs on — the same rationale the codebase already
+        // accepts for `nonisolated(unsafe)` elsewhere.
+        nonisolated(unsafe) var wrote = false
+        withObservationTracking {
+            _ = model.showWorkspaceShortcutHints
+        } onChange: {
+            wrote = true
+        }
+
+        _ = monitor.handle(flagsChangedEvent(command: true, extraModifiers: .shift))
+
+        XCTAssertFalse(wrote, "releasing a hold that never revealed must not write the flag")
         XCTAssertFalse(model.showWorkspaceShortcutHints)
     }
 

@@ -168,7 +168,7 @@ public final class Repository {
         let entries = (try? fm.contentsOfDirectory(
             at: workdirURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         var result: [String] = []
-        for url in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+        for url in entries {
             let name = url.lastPathComponent
             guard name != ".git" else { continue }
             guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
@@ -176,7 +176,11 @@ public final class Repository {
                 result.append(url.path)
             }
         }
-        return result
+        // Sort the (typically handful of) ignored paths rather than every entry: a
+        // `URL.lastPathComponent` comparator allocates a String on each comparison.
+        // Paths share the same parent directory, so ordering by full path matches
+        // ordering by name.
+        return result.sorted()
     }
 
     /// The URL of the named remote, or nil when the remote does not exist or has
@@ -229,12 +233,12 @@ public final class Repository {
             guard let deltaPtr = git_patch_get_delta(patch) else { continue }
             files.append(try Repository.buildFile(delta: deltaPtr, patch: patch))
         }
-        // Present files in a stable alphabetical order by their display path
-        // (`newPath`, or `oldPath` for deletions), matching how the diff view lists
-        // them. `localizedStandardCompare` gives case-insensitive natural ordering.
+        // Present files in a stable alphabetical order by their display path,
+        // matching how the diff view lists them. `localizedStandardCompare` gives
+        // case-insensitive natural ordering.
         files.sort { lhs, rhs in
-            // `GitDiffFile.id` is the display path (`newPath`, or `oldPath` for
-            // deletions) — reuse it so the sort key can't drift from the identity.
+            // `GitDiffFile.id` is the display path — reuse it so the sort key can't
+            // drift from the identity (see its doc comment for how it is derived).
             lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
         }
         return GitDiff(files: files)
@@ -259,8 +263,10 @@ public final class Repository {
 
         if git_blob_is_binary(blob) == 1 { return nil }
         guard let rawContent = git_blob_rawcontent(blob) else { return nil }
-        let data = Data(bytes: rawContent, count: Int(git_blob_rawsize(blob)))
-        return String(data: data, encoding: .utf8)
+        // `String(bytes:encoding:)` still validates UTF-8 (returning nil on invalid
+        // bytes, as documented above), but copies the blob once instead of twice.
+        let raw = UnsafeRawBufferPointer(start: rawContent, count: Int(git_blob_rawsize(blob)))
+        return String(bytes: raw, encoding: .utf8)
     }
 
     /// The HEAD commit's tree, or nil when HEAD is unborn / not found.
@@ -310,9 +316,17 @@ public final class Repository {
                 try gitCheck(git_patch_get_hunk(&hunkPtr, &lineCount, patch, h))
                 guard let hp = hunkPtr else { continue }
                 let hunk = hp.pointee
+                // Trim the header's newlines on the bytes: building a Foundation
+                // `CharacterSet` per hunk just to strip one `\n` off a short ASCII
+                // `@@ ... @@` line is pure overhead.
                 let header = withUnsafeBytes(of: hunk.header) { raw -> String in
-                    String(decoding: raw.prefix(Int(hunk.header_len)), as: UTF8.self)
-                }.trimmingCharacters(in: CharacterSet(charactersIn: "\n"))
+                    let newline = UInt8(ascii: "\n")
+                    var start = 0
+                    var end = Int(hunk.header_len)
+                    while start < end, raw[start] == newline { start += 1 }
+                    while end > start, raw[end - 1] == newline { end -= 1 }
+                    return String(decoding: raw[start..<end], as: UTF8.self)
+                }
 
                 var lines: [GitDiffLine] = []
                 for l in 0..<lineCount {
@@ -362,21 +376,22 @@ public final class Repository {
             return nil
         default: kind = .context
         }
-        let content = line.content.map {
-            String(decoding: UnsafeRawBufferPointer(start: $0, count: line.content_len),
-                   as: UTF8.self)
+        // Strip the trailing line terminator, handling both LF and CRLF. Only drop a
+        // `\r` that immediately precedes the stripped `\n` (CRLF); a lone trailing
+        // `\r` is legitimate content (e.g. a CR-terminated final line) and must be
+        // preserved. Trimming on the raw bytes rather than the decoded String keeps
+        // this to a single copy — every diff line goes through here.
+        let content = line.content.map { bytes -> String in
+            let raw = UnsafeRawBufferPointer(start: bytes, count: line.content_len)
+            var count = raw.count
+            if count > 0, raw[count - 1] == UInt8(ascii: "\n") {
+                count -= 1
+                if count > 0, raw[count - 1] == UInt8(ascii: "\r") { count -= 1 }
+            }
+            return String(decoding: raw.prefix(count), as: UTF8.self)
         } ?? ""
-        // Strip the trailing line terminator, handling both LF and CRLF. Only
-        // drop a `\r` that immediately precedes the stripped `\n` (CRLF); a lone
-        // trailing `\r` is legitimate content (e.g. a CR-terminated final line)
-        // and must be preserved.
-        var trimmed = content
-        if trimmed.hasSuffix("\n") {
-            trimmed.removeLast()
-            if trimmed.hasSuffix("\r") { trimmed.removeLast() }
-        }
         return GitDiffLine(
-            kind: kind, content: trimmed,
+            kind: kind, content: content,
             oldLineNumber: line.old_lineno >= 0 ? Int(line.old_lineno) : nil,
             newLineNumber: line.new_lineno >= 0 ? Int(line.new_lineno) : nil)
     }

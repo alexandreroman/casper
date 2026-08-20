@@ -12,6 +12,20 @@ public struct MergeConflictError: Error, Equatable, Sendable {
     public init() {}
 }
 
+/// Thrown when the two branches share no common ancestor, so there is no base to
+/// merge against (`git merge` calls this "refusing to merge unrelated histories").
+/// Distinguishable from a missing branch, which surfaces as a `GitError`. Nothing
+/// is written to the repository when this is thrown.
+public struct MergeUnrelatedHistoriesError: Error, Equatable, Sendable {
+    public let sourceBranch: String
+    public let targetBranch: String
+
+    public init(sourceBranch: String, targetBranch: String) {
+        self.sourceBranch = sourceBranch
+        self.targetBranch = targetBranch
+    }
+}
+
 extension Repository {
     /// Merge local branch `branchName` into local branch `targetBranch`,
     /// advancing `targetBranch`'s ref. Always writes a 2-parent merge commit
@@ -30,7 +44,14 @@ extension Repository {
         let targetOid = git_object_id(targetCommit)
         let sourceOid = git_object_id(sourceCommit)
         var baseOid = git_oid()
-        try gitCheck(git_merge_base(&baseOid, pointer, targetOid, sourceOid))
+        let baseCode = git_merge_base(&baseOid, pointer, targetOid, sourceOid)
+        if baseCode == GIT_ENOTFOUND.rawValue {
+            // Two independent histories. Refusing is deliberate for v1: a headless
+            // merge must not silently stitch unrelated trees together, and a raw
+            // libgit2 GIT_ENOTFOUND here is indistinguishable from a missing branch.
+            throw MergeUnrelatedHistoriesError(sourceBranch: branchName, targetBranch: targetBranch)
+        }
+        try gitCheck(baseCode)
         if git_oid_equal(&baseOid, sourceOid) != 0 {
             return .upToDate
         }

@@ -14,15 +14,16 @@ directory, so `git status` reports every merged file as `deleted:` and
 touched.
 
 **Why it matters:** any logic that inspects a base-branch worktree's cleanliness
-to decide whether to act on it (e.g. `AppModel.closeWorkspace`'s post-merge
-resync of the sibling worktree) must capture that cleanliness **before** calling
-the merge. Checking `isClean()` after the merge always sees "dirty" and wrongly
-skips. So the resync is gated on a pre-merge
-`cleanBaseBranchWorktree(baseBranch:in:)` snapshot, and the mechanical
-`WorktreeManager.resyncWorkingTree` (force `git_checkout_head`) runs afterward.
+to decide whether to act on it must read that cleanliness **before** calling the
+merge. Checking `isClean()` afterwards always sees "dirty" and draws the wrong
+conclusion. `AppModel.closeWorkspace` therefore checks both the workspace's and
+the primary's worktree up front and refuses the close if either is dirty; the
+post-merge `WorktreeManager.resyncWorkingTree` (force `git_checkout_head`) then
+runs **unconditionally**, since the precondition already established that the
+primary was clean.
 
 **How to access:** see `Sources/CasperUI/AppModel.swift`
-(`closeWorkspace` + `cleanBaseBranchWorktree`), `Sources/CasperGit/Merge.swift`
+(`closeWorkspace`), `Sources/CasperGit/Merge.swift`
 (`mergeBranchHeadless`, `forceCheckoutHead`), and
 `Sources/CasperCore/WorktreeManager.swift` (`resyncWorkingTree`). Reproduce with:
 `git commit-tree` a merge commit, `git update-ref refs/heads/<base> <oid>`

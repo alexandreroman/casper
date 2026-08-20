@@ -19,9 +19,9 @@ loopback — ATS treats them as public domains and blocks the plain-HTTP load
 ("the App Transport Security policy requires the use of a secure connection").
 `NSAllowsLocalNetworking` only exempts unqualified / `.local` / IP-literal hosts,
 so it does **not** cover these; only `NSAllowsArbitraryLoads` does. Casper's
-browser is a dev-server preview tool (behaves like Safari/Chrome, which ignore
-ATS anyway) and is not App-Store-distributed, so the app-wide relaxation was
-judged acceptable and explicitly authorized by the user.
+browser is a dev-server preview tool (it behaves like Safari/Chrome, which ignore
+ATS anyway) and is not App-Store-distributed, so the app-wide relaxation is a
+sanctioned trade-off.
 
 **How to apply:** ATS is read from `Info.plist` at process launch, so the app
 must be relaunched (not just rebuilt) after this key changes. This is a

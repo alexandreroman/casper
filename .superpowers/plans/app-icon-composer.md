@@ -62,7 +62,7 @@ is authored once by hand in the GUI and committed, rather than scripted.
 
 ## Repo layout
 
-```
+```text
 Packaging/AppIcon/
   icon.svg, icon-dev.svg        # unchanged (SVG masters)
   AppIcon.icns, AppIconDev.icns # unchanged (fallback, committed)

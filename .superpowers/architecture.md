@@ -43,7 +43,7 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 ## Module boundaries
 
 | Module            | Responsibility                                                                                                   | Theme                     |
-|-------------------|------------------------------------------------------------------------------------------------------------------|---------------------------|
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                        | `themes/git-worktrees.md` |
 | **CasperCore**    | Models, `SessionStore`, `WorktreeManager`, `PortAllocator`, control-channel protocol + socket. Pure Swift, no UI | `themes/core.md`          |
 | **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API   | `themes/terminal.md`      |
@@ -57,7 +57,7 @@ specifics (Claude Code) are each confined to one module, so churn stays local.
 
 ## Data model (canonical)
 
-```
+```text
 Session
  └─ [Space]                          // a Git repository (see themes/space-project.md)
      └─ [Workspace]
@@ -66,14 +66,17 @@ Session
          ├─ agentState: working | blocked | idle | done | unknown | error
          ├─ todos: [Todo{content, status: pending|in_progress|completed}]
          ├─ pendingNotification: Bool
-         ├─ infoMarkdown: String?                // latest `casper info set` message; transient
-         ├─ infoUnread: Bool                     // drives the info button's pulse; transient
-         ├─ portBase: Int                        // 10-port block; env CASPER_PORT if linked
+         ├─ pendingNotificationMessage: String?   // body of the pending notification
+         ├─ infoMarkdown: String?                 // latest `casper info set` message; transient
+         ├─ infoUnread: Bool                      // drives the info button's pulse; transient
+         ├─ portBase: Int                         // 10-port block; env CASPER_PORT if linked
          ├─ layout: LayoutNode
-         └─ inspector: InspectorState            // right panel: collapsed, tab, browser, width
+         ├─ inspector: InspectorState             // right panel: collapsed, tab, browser, width
+         ├─ lastUsedEditor: EditorKind?           // vscode | intellijIdea | xcode
+         └─ lastUsedScript: String?               // last `.casper.json` command run here
 
 LayoutNode = Split(orientation, children, ratios) | Leaf(Surface)
-Surface    = Terminal(cwd, command?) | Browser(url)
+Surface    = id + fontSize: Float? + kind: Terminal(cwd) | Browser(url)
 ```
 
 The diff view is **not** a layout-tree surface kind — it lives in the
@@ -91,13 +94,13 @@ their target, `portBase` is restored as-is.
 ## Risks & mitigations
 
 | Risk                                          | Mitigation                                                       |
-|-----------------------------------------------|------------------------------------------------------------------|
+| --------------------------------------------- | ---------------------------------------------------------------- |
 | libghostty API instability                    | All access behind `GhosttyRuntime`; pinned version               |
 | Worktree op fails (branch checked out, dirty) | Clear UI error, never crash                                      |
 | PTY dies                                      | Surface marked closed, restartable                               |
 | App crash                                     | Agents lost (accepted); relaunch restores layout cold            |
 | Agent never calls the CLI                     | State inferred from the terminal; `unknown` only when unreadable |
-| Binary size creep                             | Five justified externals only; arm64-only; `-Osize` + LTO        |
+| Binary size creep                             | Five justified externals only; arm64-only; `-Osize` + strip      |
 
 ## Testing strategy
 

@@ -9,8 +9,8 @@ type: reference
 Current Claude Code encodes its live run-state in the **OSC terminal title**,
 not in the visible viewport: a leading **Braille spinner glyph** (any scalar in
 `U+2800…U+28FF`) while a turn runs, reverting to a leading `✳` (`U+2733`) at
-rest. The older viewport hint `esc to interrupt` is **gone** from current Claude
-Code (kept in Casper only as a resilience fallback matcher). Casper's detection
+rest. Current Claude Code emits no `esc to interrupt` viewport hint; Casper
+carries a matcher for it only as a resilience fallback. Casper's detection
 therefore reads the title via `GHOSTTY_ACTION_SET_TITLE` → `readOSCTitle()` and
 classifies it in `AgentDetectionRuleSet.signal(fromTitle:)`.
 

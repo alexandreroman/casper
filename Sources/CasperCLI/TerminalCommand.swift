@@ -1,5 +1,6 @@
 import ArgumentParser
 import CasperCore
+import Foundation
 
 /// `casper terminal new|list|close` — open, enumerate, and close terminals in a
 /// workspace.
@@ -23,14 +24,14 @@ struct TerminalCommand: ParsableCommand {
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .terminalNew, workspace: try requireSelector(target),
-                command: normalizedCommand(command), cwd: workingDir)
+                command: normalizedCommand(command), cwd: workingDir.map(absolutePath))
         }
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
             guard let info = response.terminals?.first else { throw exitWithError("no terminal returned") }
             emit(TerminalNewOut(
-                terminal: info.id, workspace: response.workspace ?? "",
+                terminal: info.id, workspace: response.workspaceRef,
                 command: normalizedCommand(command), workingDir: info.cwd))
         }
     }
@@ -66,7 +67,7 @@ struct TerminalCommand: ParsableCommand {
 
         func run() throws {
             let r = try sendControl(makeCommand(), retriable: false)
-            emit(TerminalCloseOut(terminal: id, workspace: r.workspace ?? ""))
+            emit(TerminalCloseOut(terminal: id, workspace: r.workspaceRef))
         }
     }
 }

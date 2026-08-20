@@ -1,6 +1,6 @@
 # Theme: Git & Worktrees (CasperGit)
 
-**Modules:** CasperGit + Clibgit2 · **Status:** ◐ partial (see `../status.md`) ·
+**Modules:** CasperGit + Clibgit2 · **Status:** ✅ built (see `../status.md`) ·
 **Code:** `Sources/CasperGit/`, `Sources/Clibgit2/`
 
 A thin in-house Swift wrapper over the **libgit2** C API — no external `git`

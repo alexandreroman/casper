@@ -1,19 +1,36 @@
 /// A structured diff of a working tree against a base tree. Plain value data —
 /// no libgit2 handles escape here.
 public struct GitDiff: Equatable, Sendable {
-    public var files: [GitDiffFile]
-    public init(files: [GitDiffFile]) { self.files = files }
+    /// Immutable so the line counts below, derived once in `init`, can never go
+    /// stale — and so `Equatable` stays a function of `files` alone.
+    public let files: [GitDiffFile]
 
     /// Total added lines across every hunk — the diff summary's "+" count.
-    public var insertions: Int { lineCount(of: .addition) }
+    public let insertions: Int
 
     /// Total removed lines across every hunk — the diff summary's "−" count.
-    public var deletions: Int { lineCount(of: .deletion) }
+    public let deletions: Int
 
-    private func lineCount(of kind: GitDiffLine.Kind) -> Int {
-        // `.lazy` streams the nested flatMap/filter without materializing the
-        // intermediate hunk and line arrays.
-        files.lazy.flatMap(\.hunks).flatMap(\.lines).filter { $0.kind == kind }.count
+    public init(files: [GitDiffFile]) {
+        self.files = files
+        // Counted once here rather than on every read: the diff view re-reads both
+        // counts on each SwiftUI body evaluation, and walking every file/hunk/line
+        // per read made re-rendering a large diff O(lines) several times over.
+        var insertions = 0
+        var deletions = 0
+        for file in files {
+            for hunk in file.hunks {
+                for line in hunk.lines {
+                    switch line.kind {
+                    case .addition: insertions += 1
+                    case .deletion: deletions += 1
+                    case .context: break
+                    }
+                }
+            }
+        }
+        self.insertions = insertions
+        self.deletions = deletions
     }
 }
 
@@ -26,10 +43,15 @@ public struct GitDiffFile: Equatable, Sendable, Identifiable {
     public var status: Status
     public var isBinary: Bool
     public var hunks: [GitDiffHunk]
-    /// Stable identity for a file across successive diff computations. Unique
-    /// within a single diff: additions carry a non-empty `newPath`, deletions
-    /// have an empty `newPath` (so fall back to `oldPath`), and
-    /// modifications/renames use `newPath`.
+    /// Stable identity for a file across successive diff computations, and the path
+    /// it is displayed under. Unique within a single diff.
+    ///
+    /// libgit2 fills `git_diff_delta.new_file.path` on every delta — a deletion
+    /// carries the same path as `old_file.path`, the two only diverging for a rename
+    /// (pinned by `DiffTests.testDeletedFileIsDeletion`) — so a diff read off a real
+    /// repository never takes the `oldPath` branch. It stays as the defined answer for
+    /// a directly constructed value with an empty `newPath`, which is what
+    /// `DiffDocument`'s own title fallback expects.
     public var id: String { newPath.isEmpty ? oldPath : newPath }
     public init(
         oldPath: String, newPath: String, status: Status,

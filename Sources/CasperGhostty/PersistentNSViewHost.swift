@@ -82,10 +82,16 @@ enum SharedViewOwnership {
     /// If several are transiently in-window (mid-transition), any pick is fine:
     /// when the losers leave the window this runs again and converges.
     static func reconcile(_ view: NSView) {
-        let key = ObjectIdentifier(view)
-        guard let containers = registry[key]?.allObjects else { return }
-        guard let winner = containers.first(where: { $0.window != nil }) else { return }
-        if view.superview !== winner { place(view, in: winner) }
+        guard let containers = registry[ObjectIdentifier(view)] else { return }
+        // Enumerate the table lazily and stop at the first in-window container.
+        // `allObjects` would bridge a fresh Array out of the table on every call, and
+        // this runs from `updateNSView` — i.e. on every SwiftUI state change, not just
+        // the structural ones that can actually move the shared view.
+        for case let winner as SharedHostContainer in containers.objectEnumerator()
+        where winner.window != nil {
+            if view.superview !== winner { place(view, in: winner) }
+            return
+        }
     }
 
     /// Drop registry entries whose tables have emptied out. The tables hold
@@ -95,6 +101,10 @@ enum SharedViewOwnership {
     /// `viewDidMoveToWindow`), which is exactly when a torn-down container leaves its
     /// table empty, so the registry stays bounded without paying the full-rebuild cost
     /// on the `updateNSView`/reconcile hot path (which fires on every SwiftUI update).
+    ///
+    /// Emptiness is tested with `allObjects.isEmpty`, not `count`: `NSHashTable.count`
+    /// is documented as unreliable for weak tables (it can still report entries whose
+    /// objects have been deallocated but not yet cleared).
     static func pruneEmptyTables() {
         registry = registry.filter { !$0.value.allObjects.isEmpty }
     }

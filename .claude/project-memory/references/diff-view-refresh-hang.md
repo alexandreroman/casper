@@ -1,6 +1,6 @@
 ---
 name: "Diff-view main-thread layout hang"
-description: "The diff view's non-converging SwiftUI layout cycle: its measured sample signature, why frame counts and diff size mislead, the diagnostic recipe, and the outstanding live confirmation"
+description: "The diff view's non-converging SwiftUI layout cycle: its measured sample signature, why frame counts and diff size mislead, and the diagnostic recipe"
 type: project
 ---
 
@@ -100,14 +100,11 @@ document reaches the surface without writing state during layout, and
 [[textkit2-layout-geometry]] for the fragment-geometry facts the per-line chrome
 depends on.
 
-## Confirmation outstanding
+## Only a live session confirms a fix
 
-Live confirmation of that renderer is outstanding. The hang has never reproduced
-headlessly: an unbundled debug binary's window counts as not-visible, so
-`applyWatcherVisibility` stops the FSEvents watchers and no refresh fires —
-see [[agent-visual-verification-limits]]. No automated layout-convergence guard
-exists; one was declined on 2026-07-30 in favour of live verification, and the
-headless fragment-geometry smoke tests are not one. Confirmation therefore needs
-a visible real instance left open on an actively-edited worktree with the diff
-panel showing, and the `MainThreadHangWatchdog` scaffolding stays wired until
-such an instance runs clean.
+The hang does not reproduce headlessly: an unbundled debug binary's window counts
+as not-visible, so `applyWatcherVisibility` stops the FSEvents watchers and no
+refresh ever fires — see [[agent-visual-verification-limits]]. There is no
+automated layout-convergence guard, and the headless fragment-geometry smoke
+tests are not one. Confirming any candidate fix therefore takes a visible real
+instance left open on an actively-edited worktree with the diff panel showing.

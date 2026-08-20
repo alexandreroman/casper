@@ -38,20 +38,18 @@ public enum AgentState: String, Codable, Sendable {
 }
 ```
 
-This revises the enum recorded in `architecture.md` (`idle | running | waiting |
-done | error`): `running` becomes `working`, `waiting` becomes `blocked`,
-`unknown` is promoted to a real case, and `error` is kept. The field stays
-**transient** — not persisted, resets on load — exactly like today (`core.md`,
-`SessionStore`).
+This is the same enum `architecture.md` records. The field is **transient** —
+not persisted, reset on load — like the rest of the agent-facing runtime state
+(`core.md`, `SessionStore`).
 
-| State | Meaning | Producer |
-| --- | --- | --- |
-| `working` | executing | detection (OSC title spinner) |
-| `blocked` | waiting on the user | detection (viewport) |
-| `idle` | at rest, seen | detection (OSC title / viewport) |
-| `done` | at rest, unseen | derived (see resolver) |
-| `error` | abnormal exit | `.childExited(exitCode: ≠0)` |
-| `unknown` | no signal | resolver default |
+| State     | Meaning             | Producer                         |
+| --------- | ------------------- | -------------------------------- |
+| `working` | executing           | detection (OSC title spinner)    |
+| `blocked` | waiting on the user | detection (viewport)             |
+| `idle`    | at rest, seen       | detection (OSC title / viewport) |
+| `done`    | at rest, unseen     | derived (see resolver)           |
+| `error`   | abnormal exit       | `.childExited(exitCode: ≠0)`     |
+| `unknown` | no signal           | resolver default                 |
 
 ## Detection
 
@@ -201,9 +199,10 @@ that the embedded libghostty simply didn't honor a surface's `command` at all;
 that turned out to be wrong — the pinned fork (`libghostty-spm`, a
 sandbox/host-managed-oriented fork) does run it, but via a hardcoded
 `bash -l -c "exec <command>"` that ignored the user's real shell. The shipped
-fix (`terminal new --command`) now runs reliably, but deliberately via
-`ghostty_surface_config_s.initial_input` typed as plain text — not `exec`'d,
-and not using `command` at all — so it does not replace the shell process.
+fix (`terminal new --command`) runs reliably, but deliberately types the text
+into the already-spawned login shell via `ghostty_surface_text` — not `exec`'d,
+and using neither the `command` nor the `initial_input` config field — so it
+does not replace the shell process. See [[ghostty-initial-input-utf8]].
 Agents therefore still always run **inside a shell** (the user types `claude`,
 or `--command claude` types it for them); the shell survives when the agent
 exits, and no agent-scoped exit event is available. See the CasperGhostty note

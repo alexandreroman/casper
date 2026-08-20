@@ -2,6 +2,32 @@ import AppKit
 import CasperCore
 import SwiftUI
 
+/// The one separator contract every divider in the app follows, so the terminal
+/// splits (`SplitContainerView`), the inspector divider (`WorkspaceDetailView`)
+/// and the inspector's own edge (`InspectorPanel`) cannot drift apart: a 1 pt
+/// visible hairline in a single colour, plus a wider transparent grab strip
+/// straddling it that carries the resize cursor and drag without reserving any
+/// visible layout width.
+enum SeparatorMetrics {
+    /// Thickness of the visible line (Ghostty's `splitterVisibleSize`).
+    static let visibleWidth: CGFloat = 1
+
+    /// Total thickness of the grab target, line included. Deliberate deviation from
+    /// Ghostty (whose 6 pt `splitterInvisibleSize` makes a 7 pt hitbox): Casper
+    /// widens it for an easier grab, while keeping it short enough that, straddling
+    /// the line symmetrically, it stays clear of the pane drag-grip's dots
+    /// (`PaneDragHandleView`, a 24 pt band at the pane's top edge, dots centered
+    /// ~y=12).
+    static let grabWidth: CGFloat = 18
+
+    /// The transparent thickness around the line: `grabWidth` minus the line
+    /// itself, reaching half of it into each neighbour.
+    static var invisibleWidth: CGFloat { grabWidth - visibleWidth }
+
+    /// Fill of the visible line, so every separator reads as the same colour.
+    static let fill = Color(nsColor: .separatorColor)
+}
+
 /// A custom split renderer for a `LayoutNode.split`, mirroring Ghostty's macOS
 /// `SplitView` (the reference implementation) generalized from a binary split to
 /// this project's N-ary `LayoutNode`.
@@ -19,9 +45,9 @@ import SwiftUI
 /// to the terminal surface's own `cursorUpdate` (see the terminal-overlay-cursor
 /// note).
 ///
-/// The visible 1pt line is filled with `NSColor.separatorColor` so every separator
-/// in the app — sidebar edge, inspector edge, and the terminal splits — reads as
-/// the same colour.
+/// The visible 1pt line and the grab strip's width both come from the shared
+/// `SeparatorMetrics`, so every separator in the app — sidebar edge, inspector
+/// edge, and the terminal splits — reads the same.
 ///
 /// A resize drives the live drag via local `@State fractions`; the model
 /// (`AppModel.setSplitRatios`) is written back only once the drag ends (mouse-up) —
@@ -40,15 +66,6 @@ struct SplitContainerView: View {
 
     /// Smallest length a pane may shrink to during a resize drag.
     private static let minPaneLength: CGFloat = 60
-    /// Thickness of the visible divider line (Ghostty's `splitterVisibleSize`).
-    private static let splitterVisibleSize: CGFloat = 1
-    /// Extra transparent thickness straddling the line, widening the grab target;
-    /// the hitbox is visible + invisible. Deliberate deviation from Ghostty (whose
-    /// `splitterInvisibleSize` is 6, a 7pt hitbox): Casper widens it to an 18pt hitbox
-    /// for an easier grab. It straddles the line symmetrically, reaching 9pt into each
-    /// pane — kept short enough that it stays clear of the pane drag-grip's dots
-    /// (`PaneDragHandleView`, a 24pt band at the pane's top edge, dots centered ~y=12).
-    private static let splitterInvisibleSize: CGFloat = 17
 
     /// Per-child size fractions along the axis (sum ≈ 1). Seeded from `ratios`
     /// when it matches and is usable, else an even split.
@@ -121,7 +138,7 @@ struct SplitContainerView: View {
     }
 
     /// A single pane, framed to sit strictly inside its two boundaries with a
-    /// `splitterVisibleSize` gap so neighbouring Metal views never overlap the
+    /// `SeparatorMetrics.visibleWidth` gap so neighbouring Metal views never overlap the
     /// divider line or each other. Fills the full cross axis at cross offset 0.
     @ViewBuilder
     private func pane(
@@ -142,14 +159,14 @@ struct SplitContainerView: View {
         }
     }
 
-    /// Axis offset and length for pane `index`, leaving a half-`splitterVisibleSize`
+    /// Axis offset and length for pane `index`, leaving a half-`SeparatorMetrics.visibleWidth`
     /// gap on each interior side. Lengths clamp to `max(0, …)` so nothing goes
     /// negative before layout settles.
     private func paneAxisFrame(
         index: Int, boundaries: [CGFloat], axisLength: CGFloat
     ) -> (offset: CGFloat, length: CGFloat) {
         let last = children.count - 1
-        let half = Self.splitterVisibleSize / 2
+        let half = SeparatorMetrics.visibleWidth / 2
         let before = index == 0 ? 0 : boundaries[index - 1]
         let after = index == last ? axisLength : boundaries[index]
         let offset: CGFloat
@@ -162,7 +179,7 @@ struct SplitContainerView: View {
             length = axisLength - before - half
         } else {
             offset = before + half
-            length = (after - before) - Self.splitterVisibleSize
+            length = (after - before) - SeparatorMetrics.visibleWidth
         }
         return (offset, max(0, length))
     }
@@ -177,17 +194,17 @@ struct SplitContainerView: View {
         index: Int, boundaries: [CGFloat], axisLength: CGFloat, crossLength: CGFloat
     ) -> some View {
         let boundary = boundaries[index]
-        let hitThickness = Self.splitterVisibleSize + Self.splitterInvisibleSize
+        let hitThickness = SeparatorMetrics.grabWidth
         let center: CGPoint = orientation == .horizontal
             ? CGPoint(x: boundary, y: crossLength / 2)
             : CGPoint(x: crossLength / 2, y: boundary)
         return ZStack {
             // Visible 1pt line, drawn by SwiftUI behind the transparent handle.
             Rectangle()
-                .fill(Color(nsColor: .separatorColor))
+                .fill(SeparatorMetrics.fill)
                 .frame(
-                    width: orientation == .horizontal ? Self.splitterVisibleSize : crossLength,
-                    height: orientation == .horizontal ? crossLength : Self.splitterVisibleSize)
+                    width: orientation == .horizontal ? SeparatorMetrics.visibleWidth : crossLength,
+                    height: orientation == .horizontal ? crossLength : SeparatorMetrics.visibleWidth)
             // Transparent AppKit grab strip: cursor + drag + double-click.
             SplitterHandle(
                 orientation: orientation,
@@ -327,6 +344,9 @@ final class SplitterHandleView: NSView {
     /// independently of the live `boundary`, which SwiftUI mutates mid-drag.
     private var dragStartBoundary: CGFloat = 0
     private var dragStartWindowLocation: NSPoint = .zero
+    /// Whether the press actually moved the divider, so a plain click commits
+    /// nothing and a double-click commits only once (via `onEqualize`).
+    private var didDrag = false
 
     init(orientation: LayoutNode.Orientation, boundary: CGFloat,
          onResize: @escaping (CGFloat) -> Void, onCommit: @escaping () -> Void,
@@ -389,12 +409,14 @@ final class SplitterHandleView: NSView {
             onEqualize()
             return
         }
+        didDrag = false
         dragStartBoundary = boundary
         dragStartWindowLocation = event.locationInWindow
         resizeCursor.set()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        didDrag = true
         let now = event.locationInWindow
         // Window coordinates are y-up; the vertical-split axis grows downward, so
         // invert dy. The horizontal-split axis (x) shares the window's direction.
@@ -407,7 +429,11 @@ final class SplitterHandleView: NSView {
     override func mouseUp(with event: NSEvent) {
         // No `super`: this whole view is the grab strip. The live drag has kept the
         // caller's `fractions` current; commit them to the model once, here, instead
-        // of mutating the observable tree on every `mouseDragged` frame.
+        // of mutating the observable tree on every `mouseDragged` frame. A press that
+        // never moved has nothing to commit — and a double-click has already
+        // persisted through `onEqualize`, so committing again would write twice.
+        guard didDrag else { return }
+        didDrag = false
         onCommit()
     }
 }

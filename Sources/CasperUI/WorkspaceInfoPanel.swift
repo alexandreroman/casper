@@ -29,15 +29,16 @@ struct WorkspaceInfoPanel: View {
     /// so neither can disagree with the other about where a line wraps.
     private static let contentWidth: CGFloat = width - 2 * padding
 
-    /// `MarkdownTextView.height(for:width:)` measures on the very TextKit 2
-    /// engine the hosted view below renders with (see that method's doc
-    /// comment), so this is the real laid-out height, not an estimate — no
-    /// `onGeometryChange` round-trip through a live view is needed to learn it.
-    private var contentHeight: CGFloat {
-        MarkdownTextView.height(for: markdown, width: Self.contentWidth)
-    }
-
     var body: some View {
+        // The real laid-out height, not an estimate:
+        // `MarkdownTextView.height(for:width:)` measures on the very TextKit 2
+        // engine the hosted view below renders with (see that method's doc
+        // comment), so no `onGeometryChange` round-trip through a live view is
+        // needed to learn it.
+        //
+        // Bound once and read by both frames below: measuring renders the whole
+        // message and lays it out, which is not work to do twice for one pass.
+        let contentHeight = MarkdownTextView.height(for: markdown, width: Self.contentWidth)
         ScrollView {
             MarkdownTextView(markdown: markdown, width: Self.contentWidth, onOpenURL: openURL)
                 .frame(width: Self.contentWidth, height: contentHeight)

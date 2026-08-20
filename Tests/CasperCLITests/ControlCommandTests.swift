@@ -66,6 +66,20 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.cwd, "/some/dir")
     }
 
+    func testTerminalNewAbsolutizesRelativeWorkingDir() throws {
+        // The app resolves the path it receives against its own working directory
+        // (`/` when launched from Finder), so a relative `--working-dir` has to be
+        // made absolute here, against the shell the CLI was invoked from.
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "sub/dir"])
+        let expected = FileManager.default.currentDirectoryPath + "/sub/dir"
+        XCTAssertEqual(try new.makeCommand().cwd, expected)
+    }
+
+    func testTerminalNewKeepsAbsoluteWorkingDirUnchanged() throws {
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "/some/dir"])
+        XCTAssertEqual(try new.makeCommand().cwd, "/some/dir")
+    }
+
     func testTerminalNewTreatsEmptyCommandAsNil() throws {
         let new = try TerminalCommand.New.parse(["--workspace", "feature", "--command", ""])
         XCTAssertNil(try new.makeCommand().command)
@@ -145,6 +159,14 @@ final class ControlCommandTests: XCTestCase {
     func testBrowserScreenshotCarriesOutPath() throws {
         let shot = try BrowserCommand.Screenshot.parse(["--out", "/tmp/x.png", "--workspace", "feature"])
         XCTAssertEqual(try shot.makeCommand().path, "/tmp/x.png")
+    }
+
+    func testBrowserScreenshotAbsolutizesRelativeOutPath() throws {
+        // Same reason as `terminal new --working-dir`: the app would otherwise write
+        // the PNG relative to its own working directory, not the caller's.
+        let shot = try BrowserCommand.Screenshot.parse(["--out", "shot.png", "--workspace", "feature"])
+        let expected = FileManager.default.currentDirectoryPath + "/shot.png"
+        XCTAssertEqual(try shot.makeCommand().path, expected)
     }
 
     func testBrowserScreenshotCarriesWidthAndHeight() throws {
@@ -460,6 +482,20 @@ final class ControlCommandTests: XCTestCase {
         let current = try WorkspaceCommand.Current.parse([])
         XCTAssertEqual(current.resolve(environment: ["CASPER_WORKSPACE_ID": "abc"]), "abc")
         XCTAssertNil(current.resolve(environment: [:]))
+    }
+
+    func testWorkspaceCurrentTreatsBlankEnvAsAbsent() throws {
+        // A blank id must reach the "not inside a Casper terminal" error path rather
+        // than print `{"workspace":""}` and exit 0.
+        let current = try WorkspaceCommand.Current.parse([])
+        XCTAssertNil(current.resolve(environment: ["CASPER_WORKSPACE_ID": ""]))
+        XCTAssertNil(current.resolve(environment: ["CASPER_WORKSPACE_ID": "  \n "]))
+        XCTAssertEqual(current.resolve(environment: ["CASPER_WORKSPACE_ID": " abc "]), "abc")
+    }
+
+    func testWorkspaceCurrentBuildsCommand() throws {
+        let current = try WorkspaceCommand.Current.parse([])
+        XCTAssertEqual(current.makeCommand().verb, .workspaceList)
     }
 
     func testNormalizedCommand() {

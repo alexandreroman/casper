@@ -28,31 +28,55 @@ public protocol SocketFailureResponse {
     static func failure(_ message: String) -> Self
 }
 
-/// Reads exactly `count` bytes from `connection`, then invokes `completion` with
-/// them — or with `nil` if the peer reaches EOF (or errors) first. Shared by
-/// both directions: the server reads the request frame, the client reads the
-/// response frame. `accumulated` is threaded by value across the `@Sendable`
-/// receive callback so nothing mutable is captured. `maximumLength` is capped at
-/// the bytes still needed so a read never spills past the requested frame.
+/// Accumulator for one framed read, passed by reference through the chain of
+/// `@Sendable` receive callbacks so each arriving chunk appends in place instead
+/// of copying everything read so far.
+///
+/// `@unchecked Sendable` is sound because the box is queue-confined: a buffer is
+/// created for a single `readExactly` call and touched only from that
+/// connection's receive callbacks, which `Network.framework` delivers serially on
+/// the queue the connection was started on. It is never shared across reads.
+private final class ReadBuffer: @unchecked Sendable {
+    var data = Data()
+}
+
+/// Reads exactly `count` bytes from `connection` into `buffer`, then invokes
+/// `completion` with them — or with `nil` if the peer reaches EOF (or errors)
+/// first. Shared by both directions: the server reads the request frame, the
+/// client reads the response frame. `maximumLength` is capped at the bytes still
+/// needed so a read never spills past the requested frame.
 private func readExactly(
-    _ count: Int, on connection: NWConnection, accumulated: Data = Data(),
+    _ count: Int, on connection: NWConnection, into buffer: ReadBuffer,
     completion: @escaping @Sendable (Data?) -> Void
 ) {
-    if accumulated.count >= count {
-        completion(accumulated)
+    // Size the buffer for the whole frame once, so the per-chunk appends below
+    // stay amortized O(1) and the read as a whole is O(count). Accumulating by
+    // value instead made every chunk re-copy everything received so far — an
+    // 8 MB reply arriving in 64 KB chunks cost ~500 MB of memcpy.
+    buffer.data.reserveCapacity(count)
+    readChunk(count, on: connection, into: buffer, completion: completion)
+}
+
+/// Recursive core of `readExactly`: pulls one chunk at a time into `buffer` until
+/// it holds `count` bytes.
+private func readChunk(
+    _ count: Int, on connection: NWConnection, into buffer: ReadBuffer,
+    completion: @escaping @Sendable (Data?) -> Void
+) {
+    if buffer.data.count >= count {
+        completion(buffer.data)
         return
     }
     connection.receive(
-        minimumIncompleteLength: 1, maximumLength: count - accumulated.count
+        minimumIncompleteLength: 1, maximumLength: count - buffer.data.count
     ) { data, _, isComplete, error in
-        var buffer = accumulated
-        if let data { buffer.append(data) }
-        if buffer.count >= count {
-            completion(buffer)
+        if let data { buffer.data.append(data) }
+        if buffer.data.count >= count {
+            completion(buffer.data)
         } else if isComplete || error != nil {
             completion(nil)  // EOF or error before the full frame arrived
         } else {
-            readExactly(count, on: connection, accumulated: buffer, completion: completion)
+            readChunk(count, on: connection, into: buffer, completion: completion)
         }
     }
 }
@@ -97,8 +121,16 @@ public final class SocketServerEngine<
     /// against firing after teardown. `uncheckedState` because `NWConnection`
     /// carries no `Sendable` guarantee across SDKs; the lock still provides the
     /// mutual exclusion.
+    ///
+    /// `listener` lives here too rather than in a bare `var`: it is written by
+    /// `start()`/`stop()` on the caller's thread and read by the listener's
+    /// `stateUpdateHandler` on `queue`. `abandoned` records that `start()` gave up
+    /// on the listener and threw, so a state update arriving afterwards is not
+    /// reported to a caller who believes the server never started.
     private struct State {
         var stopped = false
+        var abandoned = false
+        var listener: NWListener?
         var conns: [ObjectIdentifier: ConnEntry] = [:]
     }
 
@@ -112,8 +144,12 @@ public final class SocketServerEngine<
     private let socketPath: String
     private let bindTimeout: TimeInterval
     private let queue: DispatchQueue
-    private var listener: NWListener?
     private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
+    /// Decoder for incoming command frames, built once per server rather than once
+    /// per command. An instance property, not a static one: a static shared by
+    /// every channel would be touched from several servers' queues at once,
+    /// whereas this one is confined to `dispatch`, which only ever runs on `queue`.
+    private let commandDecoder = JSONDecoder()
 
     /// Invoked on the server queue with each decoded command and a `reply`
     /// callback. The handler MUST call `reply` exactly once (it may hop threads
@@ -152,15 +188,18 @@ public final class SocketServerEngine<
             case .failed(let error):
                 // A failure before the listener ever went live is a bind failure:
                 // record it for `start()` to throw and do NOT also call
-                // `onFailure` (that would surface the same error twice). A failure
-                // after readiness is a runtime failure: route it to `onFailure`.
-                let wasReadied = readied.withLock { $0 }
-                if wasReadied {
-                    self?.onFailure?(error)
-                } else {
+                // `onFailure` (that would surface the same error twice).
+                guard readied.withLock({ $0 }) else {
                     bindError.withLock { $0 = error }
                     bound.signal()
+                    return
                 }
+                // A failure after readiness is a runtime failure — unless `start()`
+                // already gave up on this listener and threw. The caller then
+                // believes no server was ever started, so reporting a failure for
+                // it would be a callback for a server that, to them, never existed.
+                guard let self, !self.state.withLockUnchecked({ $0.abandoned }) else { return }
+                self.onFailure?(error)
             default:
                 break
             }
@@ -168,21 +207,31 @@ public final class SocketServerEngine<
         listener.newConnectionHandler = { [weak self] connection in
             self?.receive(on: connection)
         }
-        self.listener = listener
+        state.withLockUnchecked { $0.listener = listener }
         listener.start(queue: queue)
 
         // Bound the wait so a listener that never reaches `.ready`/`.failed`
         // cannot hang the caller forever.
         if bound.wait(timeout: .now() + bindTimeout) == .timedOut {
-            listener.cancel()
-            self.listener = nil
+            abandonListener()
             throw TransportError(reason: "timed out binding socket at \(socketPath)")
         }
         if let error = bindError.withLock({ $0 }) {
-            listener.cancel()
-            self.listener = nil
+            abandonListener()
             throw error
         }
+    }
+
+    /// Give up on the listener `start()` created: mark the server abandoned so no
+    /// later state update reaches `onFailure`, then drop and cancel it.
+    private func abandonListener() {
+        let listener = state.withLockUnchecked { current -> NWListener? in
+            current.abandoned = true
+            let listener = current.listener
+            current.listener = nil
+            return listener
+        }
+        listener?.cancel()
     }
 
     public func stop() {
@@ -191,15 +240,16 @@ public final class SocketServerEngine<
         // (no drainer) and any later `dispatch` sees its connection gone and stays
         // silent — closing the race where a queued receive callback invokes
         // `onCommand` after `stop()` returns.
-        let inflight = state.withLockUnchecked { current -> [NWConnection] in
+        let (listener, inflight) = state.withLockUnchecked { current -> (NWListener?, [NWConnection]) in
             current.stopped = true
             let entries = Array(current.conns.values)
             current.conns.removeAll()
             entries.forEach { $0.lingerFallback?.cancel() }
-            return entries.map(\.connection)
+            let listener = current.listener
+            current.listener = nil
+            return (listener, entries.map(\.connection))
         }
         listener?.cancel()
-        listener = nil
         for connection in inflight {
             connection.cancel()
         }
@@ -232,7 +282,7 @@ public final class SocketServerEngine<
         // intentionally no idle/read timeout here: this is a local, single-peer
         // channel; the >8 MB length guard bounds memory, and the client bounds
         // its own wait with `timeout`.
-        readExactly(4, on: connection) { [weak self] header in
+        readExactly(4, on: connection, into: ReadBuffer()) { [weak self] header in
             guard let self else { return }
             guard let header else {
                 self.drop(connection)  // client closed before sending a full header
@@ -243,7 +293,7 @@ public final class SocketServerEngine<
                 self.reply(.failure("invalid request length: \(length) bytes"), on: connection)
                 return
             }
-            readExactly(Int(length), on: connection) { [weak self] payload in
+            readExactly(Int(length), on: connection, into: ReadBuffer()) { [weak self] payload in
                 guard let self else { return }
                 guard let payload else {
                     self.drop(connection)  // client closed before sending the full payload
@@ -255,7 +305,7 @@ public final class SocketServerEngine<
     }
 
     private func dispatch(_ payload: Data, on connection: NWConnection) {
-        guard let command = try? JSONDecoder().decode(Command.self, from: payload) else {
+        guard let command = try? commandDecoder.decode(Command.self, from: payload) else {
             reply(.failure("undecodable command"), on: connection)
             return
         }
@@ -437,7 +487,7 @@ public enum SocketClientEngine<
         // surface a spurious `ENETDOWN`). `finish` records the first result
         // only, so that teardown error never overrides the delivered response.
         @Sendable func receiveResponse() {
-            readExactly(4, on: connection) { header in
+            readExactly(4, on: connection, into: ReadBuffer()) { header in
                 guard let header else {
                     finish(.failure(TransportError(reason: "no response from \(socketPath)")))
                     connection.cancel()
@@ -449,7 +499,7 @@ public enum SocketClientEngine<
                     connection.cancel()
                     return
                 }
-                readExactly(Int(length), on: connection) { payload in
+                readExactly(Int(length), on: connection, into: ReadBuffer()) { payload in
                     guard let payload else {
                         finish(.failure(TransportError(reason: "truncated response from \(socketPath)")))
                         connection.cancel()

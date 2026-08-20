@@ -6,7 +6,7 @@ type: feedback
 
 # Surface identity
 
-Every surface (terminal, and later browser/diff) carries a unique, stable
+Every surface — terminal, browser, diff — carries a unique, stable
 `Surface.id: UUID`, assigned at creation and persisted. This id must never change
 — it is invariant across the surface's **kind** (terminal/browser/diff), its
 **state** (agent state, todos, focus, activity), and its **location in the UI**
@@ -23,6 +23,5 @@ must be avoided.
 **How to apply:** never regenerate a surface id when moving it in the tree —
 `LayoutTree` operations move `Surface` values verbatim and mint new ids only for
 genuinely new surfaces. UI hosting for every surface kind keys off `Surface.id`
-(terminals today via the surface-view cache; browser/diff surfaces in UI-4/UI-5
-must follow the same pattern). Do not attach identity to a surface's kind, state,
-or position.
+through the surface-view cache. Do not attach identity to a surface's kind,
+state, or position.

@@ -71,6 +71,31 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(TodoStatus.completed.rawValue, "completed")
     }
 
+    func testFirstOrderedWorkspaceIDAgreesWithOrderedWorkspaces() {
+        func workspace(_ name: String, kind: WorkspaceKind) -> Workspace {
+            Workspace(
+                name: name, worktreePath: "/r/\(name)", branch: name,
+                portBase: 40000,
+                layout: .leaf(Surface(kind: .terminal(cwd: "/r/\(name)"))),
+                kind: kind)
+        }
+        // Deliberately out of display order: a linked workspace sorting before the
+        // primary by name, so a comparator that ignored `kind` would disagree.
+        let space = Space(
+            name: "app", folderPath: "/r", isGitRepo: true,
+            workspaces: [
+                workspace("beta", kind: .linked),
+                workspace("main", kind: .primary),
+                workspace("alpha", kind: .linked),
+            ])
+        XCTAssertEqual(space.firstOrderedWorkspaceID, space.orderedWorkspaces.first?.id)
+        XCTAssertEqual(space.orderedWorkspaces.first?.name, "main")
+
+        let empty = Space(name: "e", folderPath: "/e", isGitRepo: false, workspaces: [])
+        XCTAssertNil(empty.firstOrderedWorkspaceID)
+        XCTAssertEqual(empty.firstOrderedWorkspaceID, empty.orderedWorkspaces.first?.id)
+    }
+
     func testSpaceSessionRoundTrip() throws {
         let primary = Workspace(
             name: "app", worktreePath: "/r", branch: "main",

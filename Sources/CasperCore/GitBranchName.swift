@@ -2,6 +2,11 @@ import Foundation
 
 /// Sanitizes arbitrary user text into a valid Git branch name.
 public enum GitBranchName {
+    /// Separators Git forbids at either edge of a ref name (it also forbids a
+    /// trailing `.`). Built once: `sanitize` trims with it on every pass of its
+    /// fixpoint loop.
+    private static let edgeSeparators = CharacterSet(charactersIn: "-./")
+
     /// Lowercase, collapse whitespace to `-`, replace ref-forbidden characters
     /// (including ASCII control characters and the `@{` sequence), collapse
     /// repeated separators, then iterate Git's per-component leading-`.`/trailing-`.lock`
@@ -26,10 +31,18 @@ public enum GitBranchName {
         // the sequence, so a single pass suffices.
         s = s.replacingOccurrences(of: "@{", with: "-")
 
-        // Collapse repeated separators. Both use a loop because a single
-        // non-overlapping pass would leave `--` in `---` and `..` in `...`.
-        while s.contains("--") { s = s.replacingOccurrences(of: "--", with: "-") }
-        while s.contains("..") { s = s.replacingOccurrences(of: "..", with: ".") }
+        // Collapse runs of a repeated separator to a single one. A character walk
+        // does it in one pass: repeated `replacingOccurrences` passes would each
+        // allocate a fresh string and still need looping, since one non-overlapping
+        // pass leaves `--` in `---` and `..` in `...`.
+        var squashed = ""
+        squashed.reserveCapacity(s.count)
+        for character in s {
+            let isSeparator = character == "-" || character == "."
+            if isSeparator, squashed.last == character { continue }
+            squashed.append(character)
+        }
+        s = squashed
 
         // Apply the per-component normalization and the whole-string edge-trim to
         // a fixpoint. The two steps can re-expose work for each other: trimming a
@@ -57,7 +70,7 @@ public enum GitBranchName {
 
             // Trim any separator left at the whole-string edges (leading/trailing
             // `-`, `.`, or `/`; Git also forbids a trailing `.`).
-            s = s.trimmingCharacters(in: CharacterSet(charactersIn: "-./"))
+            s = s.trimmingCharacters(in: edgeSeparators)
         } while s != previous
 
         if s.isEmpty || s == "@" { return nil }

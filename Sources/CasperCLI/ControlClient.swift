@@ -44,6 +44,18 @@ func requireAbsoluteURL(_ url: String) throws {
     }
 }
 
+/// Resolve a filesystem path against the CLI process's working directory.
+///
+/// Paths travel over the control socket as plain strings and are used by the GUI
+/// app, whose own working directory is `/` when it was launched from Finder — so
+/// a relative path must be absolutized here, on the side that still knows the
+/// user's shell directory. Resolving it CLI-side also makes the echoed JSON
+/// report the path the file actually landed at.
+func absolutePath(_ path: String) -> String {
+    let workingDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+    return URL(fileURLWithPath: path, relativeTo: workingDirectory).standardizedFileURL.path
+}
+
 /// A workspace-scoped subcommand whose entire job is "send one control command,
 /// then print the workspace it landed in". Conformers supply only the command;
 /// the default `run()` below is the send-and-emit body they would otherwise all
@@ -64,8 +76,15 @@ extension WorkspaceRefCommand {
 
     func run() throws {
         let response = try sendControl(makeCommand(), retriable: false, timeout: commandTimeout)
-        emit(WorkspaceRefOut(workspace: response.workspace ?? ""))
+        emit(WorkspaceRefOut(workspace: response.workspaceRef))
     }
+}
+
+extension ControlResponse {
+    /// The workspace the command landed in, as the CLI prints it. A reply without
+    /// one renders as an empty string rather than a missing key, so every success
+    /// shape keeps the same set of keys.
+    var workspaceRef: String { workspace ?? "" }
 }
 
 /// Send a control command to the running app over `$CASPER_CONTROL_SOCKET`.

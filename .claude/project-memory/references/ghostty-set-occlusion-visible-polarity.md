@@ -1,5 +1,5 @@
 ---
-name: "libghostty ghostty_surface_set_occlusion parameter is `visible`, not `occluded`"
+name: "libghostty `ghostty_surface_set_occlusion` parameter is `visible`, not `occluded`"
 description: "the bool passed to ghostty_surface_set_occlusion means visible (true = on-screen, render); false pauses the render thread — inverting it silently freezes visible surfaces"
 type: reference
 ---

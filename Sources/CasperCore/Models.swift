@@ -442,12 +442,23 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
     /// Workspaces in display order: the primary workspace (the repo's default
     /// branch) first, then the linked workspaces sorted by name.
     public var orderedWorkspaces: [Workspace] {
-        workspaces.sorted { lhs, rhs in
-            if (lhs.kind == .primary) != (rhs.kind == .primary) {
-                return lhs.kind == .primary
-            }
-            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        workspaces.sorted(by: Space.precedesInDisplayOrder)
+    }
+
+    /// The id of the first workspace in display order — the same value as
+    /// `orderedWorkspaces.first?.id`, without sorting and without copying every
+    /// workspace (each carries a layout tree and a todo list) into a fresh array.
+    public var firstOrderedWorkspaceID: UUID? {
+        workspaces.min(by: Space.precedesInDisplayOrder)?.id
+    }
+
+    /// Display-order comparator, shared by `orderedWorkspaces` and
+    /// `firstOrderedWorkspaceID` so the two can never disagree.
+    private static func precedesInDisplayOrder(_ lhs: Workspace, _ rhs: Workspace) -> Bool {
+        if (lhs.kind == .primary) != (rhs.kind == .primary) {
+            return lhs.kind == .primary
         }
+        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
     }
 }
 

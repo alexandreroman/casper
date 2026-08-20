@@ -17,16 +17,16 @@ Layout:
 
 ## Themes
 
-| Theme | Doc |
-| --- | --- |
-| Core (CasperCore) | [`themes/core.md`](themes/core.md) |
-| Git & worktrees (CasperGit) | [`themes/git-worktrees.md`](themes/git-worktrees.md) |
-| CLI & agent environment (CasperCLI + CasperAgents) | [`themes/cli-agents.md`](themes/cli-agents.md) |
-| Terminal embedding (CasperGhostty) | [`themes/terminal.md`](themes/terminal.md) |
-| App & UI (CasperUI) | [`themes/app-ui.md`](themes/app-ui.md) |
-| Agent state detection | [`themes/agent-state-detection.md`](themes/agent-state-detection.md) |
-| Debug & observability | [`themes/debug.md`](themes/debug.md) |
-| Space (project) | [`themes/space-project.md`](themes/space-project.md) |
+| Theme                                              | Doc                                                                  |
+| -------------------------------------------------- | -------------------------------------------------------------------- |
+| Core (CasperCore)                                  | [`themes/core.md`](themes/core.md)                                   |
+| Git & worktrees (CasperGit)                        | [`themes/git-worktrees.md`](themes/git-worktrees.md)                 |
+| CLI & agent environment (CasperCLI + CasperAgents) | [`themes/cli-agents.md`](themes/cli-agents.md)                       |
+| Terminal embedding (CasperGhostty)                 | [`themes/terminal.md`](themes/terminal.md)                           |
+| App & UI (CasperUI)                                | [`themes/app-ui.md`](themes/app-ui.md)                               |
+| Agent state detection                              | [`themes/agent-state-detection.md`](themes/agent-state-detection.md) |
+| Debug & observability                              | [`themes/debug.md`](themes/debug.md)                                 |
+| Space (project)                                    | [`themes/space-project.md`](themes/space-project.md)                 |
 
 Per-theme status markers appear in each doc's header; the authoritative aggregate
 is [`status.md`](status.md).
@@ -37,7 +37,8 @@ is [`status.md`](status.md).
   `Stop` hook reports `done` explicitly instead of `idle`, since every
   hook-driven workspace is permanently under `explicitAuthority` and never
   gets a detected `done`; selecting a `done` workspace collapses it back to
-  `idle` (**design**, spans this repo and `casper-claude-plugin`).
+  `idle` (**partly shipped** — the Casper-side collapse is built, the
+  `casper-claude-plugin` hook is not).
 - [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
   `done` should raise a notification (**shipped** — spans this repo and
@@ -65,7 +66,26 @@ is [`status.md`](status.md).
   [`plans/workspace-close-selection-plan.md`](plans/workspace-close-selection-plan.md)
   — closing/deleting/merging a workspace reselects a sibling in the same Space
   first, falling back to the first workspace of the first remaining Space
-  (**design**).
+  (**shipped**).
+- [`plans/app-icon-composer.md`](plans/app-icon-composer.md) +
+  [`plans/app-icon-composer-plan.md`](plans/app-icon-composer-plan.md) — macOS 26
+  Liquid Glass `AppIcon.icon` compiled to `Assets.car` by `actool` during
+  `make bundle`, alongside the legacy `.icns` (**shipped**).
+- [`plans/open-in-editor.md`](plans/open-in-editor.md) +
+  [`plans/open-in-editor-plan.md`](plans/open-in-editor-plan.md) — title-bar
+  split-button launching the worktree in VS Code / IntelliJ IDEA / Xcode, with a
+  per-workspace `lastUsedEditor` (**shipped**).
+- [`plans/run-close-on-success.md`](plans/run-close-on-success.md) — a named
+  `.casper.json` command's split closes on exit 0 and stays open with a live
+  shell on failure (**shipped**).
+- [`plans/terminal-font-size-persistence.md`](plans/terminal-font-size-persistence.md) +
+  [`plans/terminal-font-size-persistence-plan.md`](plans/terminal-font-size-persistence-plan.md)
+  — per-surface terminal font size persisted as `Surface.fontSize` and reapplied
+  on restore (**shipped**).
+- [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
+  — task-by-task companion to `stop-hook-explicit-done.md`; the Casper-side half
+  (selecting a `done` workspace collapses it to `idle`) has **shipped**, the
+  `casper-claude-plugin` `hooks/stop.sh` half has not.
 
 Completed plans are marked done in place here until they are cleaned up; the
 original design specs are recoverable from Git history (tracked under the

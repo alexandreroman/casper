@@ -34,11 +34,11 @@ focus-dependent `.disabled`); `applyNewSplit` gates itself with
 `NSApp.mainMenu.items` **in place** (same `NSMenu` object identity) and wiping
 the custom File/Edit/View while re-injecting SwiftUI's Format/Help — the
 intermittent "File/Edit disappeared" bug. This is closed-source internal
-behaviour with no public API to suppress; reasserting the custom menu only on
-specific notifications (the old miniaturize/deminiaturize observers) was
-whack-a-mole that missed every other trigger. Letting SwiftUI **own** the menu
+behaviour with no public API to suppress; reasserting a custom menu only on
+specific notifications (miniaturize/deminiaturize observers, say) is
+whack-a-mole that misses every other trigger. Letting SwiftUI **own** the menu
 makes the resync harmless: SwiftUI re-applies the same `.commands` on every
-resync, so the important menus can no longer vanish.
+resync, so the important menus survive it.
 
 **How to apply:** never mutate `NSApp.mainMenu` imperatively to define menus in
 this app — express menus in `.commands`. One genuine SwiftUI limitation remains:
@@ -109,10 +109,34 @@ The identity guard must be `if let installed = proxy, menu.delegate === installe
 and **not** `menu.delegate !== proxy`: `nil === nil` is true, which would skip
 the first install on a delegate-less menu.
 
-The `stripServicesMenu()` call in `applicationWillUpdate`/`DidUpdate` is
-**kept**, before `stripEmptyTopLevelMenus()` (so the empty-stub pass sees the
-final menu), as a safety net for re-injections that happen with no menu open. It
-is a safety net, not the fix.
+`stripServicesItems(fromAppMenu:)` also runs from
+`applicationWillUpdate`/`DidUpdate`, before `stripEmptyTopLevelMenus()` (so the
+empty-stub pass sees the final menu). That call is a safety net for
+re-injections that happen with no menu open — not the fix.
+
+## The resync pass runs unconditionally — do not add an early-out cache
+
+`resyncMainMenu()` resolves `NSApp.mainMenu` once and passes it down;
+`stripEmptyTopLevelMenus(in:)`, `stripServicesItems(fromAppMenu:)` and
+`normalizeSeparators(in:)` all walk indices backwards through
+`item(at:)`/`numberOfItems` rather than touching `.items`, which bridges a whole
+ObjC array into a fresh Swift array on every access. Both update hooks fire after
+essentially every event AppKit processes — mouse-moved included — so that
+bridging, not the menu work itself, was the cost worth removing.
+
+Skipping the pass when `NSApp.mainMenu`'s identity **and** `numberOfItems` are
+unchanged is the obvious next optimization, and it is **rejected**:
+
+- A matching main-menu identity and count does not imply the App menu is
+  unchanged. A Services re-injection alters only the *App submenu's* item count,
+  which the main menu's own count cannot see — so the early-out would skip
+  precisely the idle re-injection this whole mechanism exists to catch.
+- It cannot tell a SwiftUI rebuild that happens to land on the same item count
+  from no rebuild at all. Winning that race is why the will/did double hook
+  exists in the first place.
+
+With the array bridging gone, one pass is a handful of ObjC message sends, so the
+cache would buy very little for that risk.
 
 The proxy is confirmed working against a human click, and the same logs settle
 the mechanism: on the first opening, `menuNeedsUpdate:` logged
@@ -183,14 +207,14 @@ churn free.)
 Hide/Quit) and Window menu (Minimize/Zoom/window-list). There is no public API to
 re-add a single default group, and `.systemServices`/`.windowList` are AppKit-
 populated (`NSApp.servicesMenu`/`NSApp.windowsMenu`) — not reproducible in pure
-SwiftUI without the imperative-menu approach this project abandoned. So Format/Help
+SwiftUI without the imperative-menu approach this project rejects. So Format/Help
 must be emptied-and-stripped, not removed.
 
 **The Split UX trade-off** (deliberate): greying a menu item requires SwiftUI to
 observe the enable-state, and any change re-asserts the menu → recreates the stubs
 → one flicker. So on a focus change that legitimately flips Split's enabled-state
 (terminal↔browser), greying and zero-flash are mutually exclusive under SwiftUI.
-The user chose **zero-flash**: Split stays always-enabled and `applyNewSplit`
+Casper takes **zero-flash**: Split stays always-enabled and `applyNewSplit`
 no-ops when `focusedSurfaceIsTerminal()` is false. `focusedSurfaceID` does not
 change when focus moves to the browser's **address bar** (a non-surface first
 responder), so a `focusedSurfaceID`-based *enable-state* could never be fully

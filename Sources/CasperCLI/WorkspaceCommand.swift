@@ -28,9 +28,17 @@ struct WorkspaceCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Print the current workspace id ($CASPER_WORKSPACE_ID).")
 
+        /// The workspace this terminal belongs to. A blank or whitespace-only value
+        /// counts as absent — matching `WorkspaceTargetOption.resolvedSelector` — so
+        /// `run()` reports the error instead of succeeding with an empty id.
         func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
-            environment["CASPER_WORKSPACE_ID"]
+            environment["CASPER_WORKSPACE_ID"].flatMap { value in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
         }
+
+        func makeCommand() -> ControlCommand { ControlCommand(verb: .workspaceList) }
 
         func run() throws {
             guard let id = resolve() else {
@@ -39,7 +47,7 @@ struct WorkspaceCommand: ParsableCommand {
             // Resolve the path via the control channel: a Casper terminal always has
             // the app running, so the standard "Casper is not running" error is fine
             // if the socket is unset/unreachable.
-            let response = try sendControl(ControlCommand(verb: .workspaceList), retriable: true)
+            let response = try sendControl(makeCommand(), retriable: true)
             let match = response.workspaces?.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
             emit(CurrentOut(
                 workspace: match?.id ?? id, name: match?.name,

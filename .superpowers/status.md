@@ -15,13 +15,13 @@ linked Git worktrees), **UI-3** (recursive splits/tabs layout), **UI-4** (WKWebV
 browser surface), and **UI-5** (read-only diff viewer). The live GUI verification
 pass on a real desktop is complete. The v1 agent target is Claude Code only.
 
-| Plan | Module | Status |
-| --- | --- | --- |
-| 1 | CasperCore | ✅ |
-| 2 | CasperGit (+ Clibgit2) | ✅ worktrees/status/`remoteURL`/`git_diff` built |
-| 3 | CasperCLI + CasperAgents | ✅ |
-| 4 | CasperGhostty | ✅ one terminal + splits/tabs composed by UI-3 |
-| 5 | CasperUI + app | ✅ UI-1..UI-5 built (sidebar + worktrees + splits/tabs + browser + diff); live GUI check done |
+| Plan | Module                   | Status                                                                                       |
+| ---- | ------------------------ | -------------------------------------------------------------------------------------------- |
+| 1    | CasperCore               | ✅                                                                                            |
+| 2    | CasperGit (+ Clibgit2)   | ✅ worktrees/status/`remoteURL`/`git_diff` built                                              |
+| 3    | CasperCLI + CasperAgents | ✅                                                                                            |
+| 4    | CasperGhostty            | ✅ one terminal + splits/tabs composed by UI-3                                                |
+| 5    | CasperUI + app           | ✅ UI-1..UI-5 built (sidebar + worktrees + splits/tabs + browser + diff); live GUI check done |
 
 Two developer-tooling features are built on top (both `#if DEBUG`): the
 debug/observability channel and debug surface addressing. The Space (project)
@@ -77,7 +77,7 @@ the `domain-cli-control-channel` memory note for the current surface.
   the panel into a debug surface: page `console.*` + uncaught-error capture (a
   500-entry ring buffer fed by an injected `WKUserScript`), deterministic waits
   (selector present/visible/gone or a `--js` predicate), and reload. Verified
-  end-to-end against a live page. See the `browser-console-capture` memory note.
+  end-to-end against a live page. See the `browser-automation-cli` memory note.
 - **Background browser — ✅.** `browser load <url>` mirrors `open` but does not
   open/select the inspector (a background navigation, for driving a hidden
   browser in parallel), and `screenshot --width/--height` set the off-screen
@@ -89,10 +89,12 @@ the `domain-cli-control-channel` memory note for the current surface.
   off-screen — see the `browser-automation-cli` note's off-screen caveats.
 
 ### CasperGhostty — ✅ (one terminal end-to-end)
-`GhosttyRuntime`, `GhosttyAction`, `GhosttySurface`, `GhosttySurfaceView`,
-`GhosttySurfaceRepresentable`, `GhosttyDemo`, `GhosttyMenu`,
-`GhosttyActionDispatcher`. Rendering is display-link driven, so
-`GHOSTTY_ACTION_RENDER` needs no explicit `draw()` wiring.
+`GhosttyRuntime`, `GhosttyAction`, `GhosttySurface` (+
+`GhosttySurfaceConfiguration`), `GhosttySurfaceView`, `GhosttyInput`,
+`GhosttyDefaultConfig`, `GhosttyActionDispatcher`, and `PersistentNSViewHost`
+(the SwiftUI bridge that re-parents an existing `NSView` instead of recreating
+it). Rendering is display-link driven, so `GHOSTTY_ACTION_RENDER` needs no
+explicit `draw()` wiring.
 - **Keyboard & clipboard — ✅.** Control/Option/⌘ combos all work (Ctrl-C/D,
   ⌘C/⌘V/⌘A via NSPasteboard, ⌘±/0 font size, ⌘Q, ⌘W); macOS menu bar
   (App/Edit/View/Window); `macos-option-as-alt` wired (inert in the pinned
@@ -102,11 +104,15 @@ the `domain-cli-control-channel` memory note for the current surface.
   emits `GHOSTTY_ACTION_OPEN_URL` when a terminal link is cmd+clicked; the action
   decodes into `GhosttyAction.openURL` and opens via `NSWorkspace`, matching
   upstream Ghostty (any parsable URL, no scheme restriction).
-- Remaining for CasperUI: splits/tabs layout composition (actions are decoded
-  and routed through `GhosttyActionDispatcher`, but not composed into a layout —
-  **UI-3**; UI-1 renders only the single-terminal case); clipboard
-  paste-confirmation UI (v1 auto-confirms); `flagsChanged` press/release
-  semantics and scroll precision/momentum.
+- **Layout composition — ✅.** Decoded actions are routed through
+  `GhosttyActionDispatcher` into CasperUI's `LayoutActionHandler` (installed on
+  `GhosttyRuntime.actionHandler` by `AppDelegate`), which composes them into the
+  recursive tmux-style `LayoutNode` tree — see "Surface layout" below.
+- **`flagsChanged` press/release and scroll precision/momentum — ✅.** Modifier
+  transitions report press-while-held / release-when-let-go from the physical
+  key code, and `scrollWheel` packs the precision bit and momentum phase into
+  `ghostty_input_scroll_mods_t`.
+- Remaining for CasperUI: clipboard paste-confirmation UI (v1 auto-confirms).
 
 ### CasperUI — ✅ UI-1..UI-5 built (live GUI check done)
 The module exists. **UI-1** is done: a SwiftUI `App` scene
@@ -285,14 +291,19 @@ persisted.
 
 **UI.** `WorkspaceDetailView` lays the detail out as an `HStack`: the tmux
 `LayoutNodeView` (`maxWidth: .infinity`), a `Divider()` (system separator, matching
-the sidebar/content edge), then `InspectorPanel` at a state-driven `width` (default 480,
-clamped 240–1400) shown only when expanded. The `Divider()` doubles as a drag handle
-(transparent 10 pt hit area, left-right resize cursor) that resizes the panel; the
-width lives in view `@State`, so it is **preserved across collapse/expand** and,
-because the left region stays `maxWidth: .infinity`, **unaffected by adding
-terminals**. It is a side region, not an `HSplitView` pane (which would reset the
-width on re-add). Width is not yet persisted across workspace switches or
-restarts. `InspectorPanel` pins a vertical, icon-only Diff/Browser tab rail to
+the sidebar/content edge), then `InspectorPanel` at a state-driven `width`
+(`InspectorState.defaultWidth` = 780, clamped 240–1400). The panel is **always
+mounted**; collapsing animates an outer clip container's width to zero rather
+than unmounting it, so the icon rail pinned to the trailing edge never
+translates — see [[swiftui-inspector-width]]. The `Divider()` doubles as a drag
+handle (transparent 10 pt hit area, left-right resize cursor) that resizes the
+panel, and lives inside the same clipped container so it reveals with the panel.
+Because the left region stays `maxWidth: .infinity`, the width is **unaffected
+by adding terminals**. It is a side region, not an `HSplitView` pane (which
+would reset the width on re-add). The width is **persisted**:
+`InspectorState.width` is `Codable` with its own coding key, and a legacy
+`session.json` without it decodes to the default. `InspectorPanel` pins a
+vertical, icon-only Diff/Browser tab rail to
 its right edge, alongside **full-bleed** content (no insets — a native
 `TabView`'s mandatory content inset was rejected), reusing `BrowserSurfaceView`
 (on `inspector.browser`) and `DiffSurfaceView` unchanged. The panel is collapsed only
@@ -613,15 +624,13 @@ prune (CLI `timeout: 35`). The child-exit-before-close ordering invariant and
 its correctness corollaries are recorded in the `repo-config` project-memory
 note.
 
-**Docs & tests.** `README.md` documents `.casper.json` and `casper run`. See the
-ledger (`.superpowers/sdd/progress.md`) for the per-task history.
+**Docs & tests.** `README.md` documents `.casper.json` and `casper run`.
 
 ## Workspace close/delete progress — ✅
 
 A window-modal sheet reports what a "Merge and Close Workspace…" or a "Delete
 Workspace…" is doing, so a slow `teardown` hook, a large worktree or a slow
-base resync no longer looks like a frozen app. Design (gitignored scratch, like
-the ledger): `.superpowers/sdd/2026-07-26-workspace-close-progress-design.md`.
+base resync no longer looks like a frozen app.
 
 **Off the main actor.** `closeWorkspace(id:)` and `deleteWorkspace(id:)` are
 `async` and return their outcome directly; every `WorktreeManager` call on those
@@ -665,8 +674,7 @@ is not (no test can reach it without waiting it out).
 
 `casper info set` (Markdown via `--message`, `--file`, or stdin) publishes a
 message that shows up as a toolbar button next to the branch/space title;
-`casper info clear` removes it. Design:
-`.superpowers/sdd/2026-08-18-workspace-info-panel-plan/`.
+`casper info clear` removes it.
 
 **Control channel.** `ControlCommand.Verb.infoSet`/`.infoClear`, routed by
 `ControlServer` into `AppModel.controlSetInfo(markdown:for:)`/
@@ -737,8 +745,9 @@ hover/pulse/link-cursor/link-routing pass needs a human — see the
 ## Developer tooling (`#if DEBUG`)
 
 - **Debug & observability channel — ✅.** `DebugProtocol`/`DebugSocket`/
-  `DebugServer`/`DebugCLICommand`; verbs `dump-state`/`read-text`/`send-text`/
-  `screenshot`. As-built deviations are recorded in the observability spec §6.
+  `DebugServer`/`DebugCLICommand`; nine verbs — `dump-state`, `read-text`,
+  `send-text`, `send-keys`, `send-key`, `send-action`, `mouse-move`,
+  `screenshot`, `focus`. As-built deviations are recorded in `themes/debug.md`.
 - **Debug surface addressing — ✅.** Stable surface `id`, `focus` verb,
   `--target` option.
 
@@ -787,9 +796,11 @@ surface that Casper couldn't create — but `command` is not actually inert: the
 embedded libghostty (a sandbox/host-managed fork) execs it via a hardcoded
 `bash -l -c "exec <command>"`, regardless of the user's real login shell, which
 does replace the shell process. This reopens the *agent-as-command* option; it
-hasn't been re-evaluated since. The `--command` reliability fix itself (typed
-via `initial_input`, no `exec`) has shipped; it deliberately does not use
-`exec`, so it does not itself enable an agent-as-command surface.
+hasn't been re-evaluated since. The `--command` reliability fix itself has
+shipped; the queued text is typed into the already-spawned login shell via
+`ghostty_surface_text` (libghostty's own `initial_input` field is left null —
+it mojibakes non-ASCII; see [[ghostty-initial-input-utf8]]), with no `exec`, so
+it does not itself enable an agent-as-command surface.
 Agents currently still run inside a shell; `error` has no detected producer and
 authority release is deferred to the timeout mechanism (option B). The initial
 implementation was removed. See the theme's "Process lifecycle" section.

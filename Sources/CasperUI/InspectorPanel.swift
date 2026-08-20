@@ -36,7 +36,7 @@ struct InspectorPanel: View {
             // Spans the full panel width, including the rail, so the line
             // continues the workspace title bar's line uninterrupted.
             Rectangle()
-                .fill(Color(nsColor: .separatorColor))
+                .fill(SeparatorMetrics.fill)
                 .frame(height: 2)
                 .padding(.top, -1)
                 .padding(.leading, -1)

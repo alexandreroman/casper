@@ -18,15 +18,19 @@ release ships `GhosttyKit.xcframework` built from upstream Ghostty **`v1.3.1`**
 - Consume **only** the `GhosttyKit` product (the raw C-API re-export). Never
   `GhosttyTerminal`/`ShellCraftKit`/`GhosttyTheme` — those add an `MSDisplayLink`
   dependency. `MSDisplayLink` appears in `Package.resolved` (full manifest graph)
-  but is **not linked** into Casper, so the three-external-deps policy holds.
+  but is **not linked** into Casper, so the five-external-deps policy holds
+  (see [[dependency-policy]]).
 - Required linker settings on the CasperGhostty target: `.linkedLibrary("c++")`
   and `.linkedFramework("Carbon", .when(platforms: [.macOS]))`.
-- The API source of truth is the vendored header `Vendor/ghostty/ghostty.h`,
-  pinned to Ghostty **v1.3.1** (sha256
-  `a619c107e9ab8841f71f91d06bf2bcea7b7c64bf6df252b151812cb932ac9b61`, 1178
-  lines), synced by Carvel `vendir` (`vendir.yml` / `vendir.lock.yml`, `make
-  vendor`). Use v1.3.1, **not** `main`: `main` inserts
-  `GHOSTTY_ACTION_SELECTION_CHANGED` mid-enum and renumbers every later action
+- The API source of truth is the vendored header `Vendor/ghostty/ghostty.h`
+  (sha256 `145d9e9f733c5c22615b80f17397b9640860448fd45394bc5fb1807fb4a33db7`,
+  1196 lines), synced by Carvel `vendir` (`vendir.yml` / `vendir.lock.yml`,
+  `make vendor`). It is copied out of the **extracted xcframework's own
+  Headers directory**, so it mirrors the fork Casper actually links — not
+  upstream Ghostty, whose struct layout differs. `make vendor` therefore
+  requires a build to have downloaded and extracted the artifact first.
+  Upstream `main` is doubly wrong as a reference: it also inserts
+  `GHOSTTY_ACTION_SELECTION_CHANGED` mid-enum, renumbering every later action
   tag.
 
 **Why:** the libghostty embedding API is unstable and changes between versions;

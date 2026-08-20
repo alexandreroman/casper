@@ -13,7 +13,7 @@ without reworking the release pipeline.
 `macos-15`). But that produces a bare Mach-O executable with a **hard dynamic
 dependency on Homebrew's libgit2**:
 
-```
+```console
 $ otool -L .build/.../release/casper
     /opt/homebrew/opt/libgit2/lib/libgit2.1.9.dylib
 ```
@@ -61,19 +61,19 @@ downloadable artifact** and the release automation to publish it.
 **`Packaging/Info.plist`** — template with a `__SHORT_VERSION__` /
 `__BUNDLE_VERSION__` placeholder pair. Keys:
 
-| Key | Value |
-| --- | --- |
-| `CFBundleName` | `Casper` |
-| `CFBundleExecutable` | `casper` |
-| `CFBundleIdentifier` | `com.github.alexandreroman.casper` |
-| `CFBundlePackageType` | `APPL` |
-| `CFBundleShortVersionString` | `__SHORT_VERSION__` (marketing, e.g. `0.1.0`) |
-| `CFBundleVersion` | `__BUNDLE_VERSION__` (monotonic integer, see below) |
-| `LSMinimumSystemVersion` | `15.0` |
-| `NSHighResolutionCapable` | `true` |
-| `LSApplicationCategoryType` | `public.app-category.developer-tools` |
-| `SUFeedURL` *(reserved)* | `https://github.com/alexandreroman/casper/releases/latest/download/appcast.xml` |
-| `SUPublicEDKey` *(reserved, TODO)* | empty — filled when the EdDSA keypair exists |
+| Key                                | Value                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| `CFBundleName`                     | `Casper`                                                                        |
+| `CFBundleExecutable`               | `casper`                                                                        |
+| `CFBundleIdentifier`               | `com.github.alexandreroman.casper`                                              |
+| `CFBundlePackageType`              | `APPL`                                                                          |
+| `CFBundleShortVersionString`       | `__SHORT_VERSION__` (marketing, e.g. `0.1.0`)                                   |
+| `CFBundleVersion`                  | `__BUNDLE_VERSION__` (monotonic integer, see below)                             |
+| `LSMinimumSystemVersion`           | `15.0`                                                                          |
+| `NSHighResolutionCapable`          | `true`                                                                          |
+| `LSApplicationCategoryType`        | `public.app-category.developer-tools`                                           |
+| `SUFeedURL` *(reserved)*           | `https://github.com/alexandreroman/casper/releases/latest/download/appcast.xml` |
+| `SUPublicEDKey` *(reserved, TODO)* | empty — filled when the EdDSA keypair exists                                    |
 
 No `LSUIElement` — the app uses `setActivationPolicy(.regular)` and is a normal
 foreground app. The `SU*` keys are inert until Sparkle is integrated but document
@@ -186,7 +186,7 @@ signature, not a Developer ID, is what authenticates an update.
 
 ## Data Flow
 
-```
+```text
 git push tag v0.1.0
   └─ release.yml (macos-15, arm64)
        ├─ pinned Xcode + brew install libgit2 pkgconf dylibbundler

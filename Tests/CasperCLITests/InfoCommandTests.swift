@@ -83,6 +83,17 @@ final class InfoCommandTests: XCTestCase {
             try set.resolveMarkdown(readStdin: { oversized }, isStandardInputATTY: { false }))
     }
 
+    func testSetRejectsOversizedFile() throws {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("info-\(UUID().uuidString).md")
+        let oversized = String(repeating: "a", count: ControlCommand.infoMessageMaxBytes + 1)
+        try oversized.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let set = try InfoCommand.Set.parse(["--file", url.path, "--workspace", "feature"])
+        XCTAssertThrowsError(try set.resolveMarkdown())
+    }
+
     func testClearBuildsCommand() throws {
         let clear = try InfoCommand.Clear.parse(["--workspace", "feature"])
         let command = try clear.makeCommand()

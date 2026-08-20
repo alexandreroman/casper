@@ -53,6 +53,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // giving up, so a single null does not permanently kill the pane.
     private var surfaceCreationAttempts = 0
     private static let maxSurfaceCreationAttempts = 3
+    // The one retry currently armed, held so a window re-entry can retire it before
+    // restoring the budget. Without that, leaving and re-entering the window inside
+    // the retry delay would leave two independent retry chains running on this view.
+    private var pendingSurfaceRetry: DispatchWorkItem?
     // Shown in place of the terminal when surface creation ultimately fails, so the
     // user gets an explanation instead of a silently blank pane.
     private var errorOverlay: NSView?
@@ -134,6 +138,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // The budget stays bounded — it resets at most once per window entry, and
         // the nominal path (surface already created) skips this entirely.
         if surface == nil {
+            cancelPendingSurfaceRetry()
             surfaceCreationAttempts = 0
             removeErrorOverlay()
         }
@@ -165,6 +170,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             // clipboard callbacks, letting them recover this view.
             surface = try GhosttySurface(
                 runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+            cancelPendingSurfaceRetry()
             surfaceCreationAttempts = 0
             removeErrorOverlay()
             syncLayerContentsScale()
@@ -181,13 +187,28 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             surfaceCreationAttempts += 1
             if surfaceCreationAttempts < Self.maxSurfaceCreationAttempts {
                 // Transient null: retry shortly, as long as the view is still hosted.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                    self?.createSurfaceIfNeeded()
-                }
+                scheduleSurfaceRetry()
             } else {
                 showErrorOverlay()
             }
         }
+    }
+
+    // Arm the single pending surface-creation retry, replacing any earlier one so at
+    // most one retry chain is ever live for this view.
+    private func scheduleSurfaceRetry() {
+        cancelPendingSurfaceRetry()
+        let retry = DispatchWorkItem { [weak self] in
+            self?.pendingSurfaceRetry = nil
+            self?.createSurfaceIfNeeded()
+        }
+        pendingSurfaceRetry = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: retry)
+    }
+
+    private func cancelPendingSurfaceRetry() {
+        pendingSurfaceRetry?.cancel()
+        pendingSurfaceRetry = nil
     }
 
     // Present a centered message where the terminal would render, so a surface that
@@ -397,7 +418,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         guard let surface, let screen = window?.screen else { return }
         let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         guard let id = number?.uint32Value else { return }
-        ghostty_surface_set_display_id(surface.surface, id)
+        surface.setDisplayID(id)
     }
 
     // MARK: Focus
@@ -556,22 +577,25 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
             return
         }
-        for text in committed {
-            guard ghosttyTextRidesOnKeyEvent(text) else {
-                // A bare control character (Ctrl-C, Ctrl-D): send the bare key event
-                // and let the keycode drive libghostty's own control-char encoding,
-                // exactly as the empty-accumulator fallback above does — same reason
-                // `consumedMods` is omitted here.
-                _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
-                continue
-            }
-            // `key.text` must outlive the send, so keep the C buffer alive across
-            // `sendKey` with `withCString`. `consumedMods` is passed here because this
-            // is the composed-text path: Option was consumed to produce `text`.
-            text.withCString { textPtr in
-                _ = surface.sendKey(
-                    ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: textPtr, consumedMods: consumedMods))
-            }
+        // `interpretKeyEvents` can call `insertText` several times for one physical
+        // key (dictation, some input sources), so join the chunks and emit exactly ONE
+        // press: `keyUp` always sends a single release, and a press per chunk would
+        // leave libghostty's press/release bookkeeping unbalanced for that keystroke.
+        let text = committed.joined()
+        guard ghosttyTextRidesOnKeyEvent(text) else {
+            // A bare control character (Ctrl-C, Ctrl-D): send the bare key event
+            // and let the keycode drive libghostty's own control-char encoding,
+            // exactly as the empty-accumulator fallback above does — same reason
+            // `consumedMods` is omitted here.
+            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
+            return
+        }
+        // `key.text` must outlive the send, so keep the C buffer alive across
+        // `sendKey` with `withCString`. `consumedMods` is passed here because this
+        // is the composed-text path: Option was consumed to produce `text`.
+        text.withCString { textPtr in
+            _ = surface.sendKey(
+                ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS, text: textPtr, consumedMods: consumedMods))
         }
     }
 

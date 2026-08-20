@@ -25,17 +25,6 @@ struct WorkspaceDetailView: View {
     /// inspector's maximum width.
     private static let minDetailWidth: Double = 320
 
-    /// Width of the inspector's visible 1pt separator line. Named so the reveal
-    /// container can size itself to divider + panel in one place. The transparent
-    /// grab strip is a wider OVERLAY (`inspectorGrabWidth`) that straddles this
-    /// line without consuming layout width, so no background-coloured band shows
-    /// between the terminal and the panel.
-    private static let inspectorDividerWidth: Double = 1
-
-    /// Width of the transparent grab strip overlaid on the 1pt line, widening the
-    /// drag target (mirrors `SplitContainerView`'s splitter hitbox).
-    private static let inspectorGrabWidth: Double = 18
-
     /// Stable coordinate space for the inspector divider drag, anchored to the
     /// full-width detail container so the pointer's absolute location is read
     /// against a fixed origin (the divider itself moves as the panel resizes).
@@ -75,7 +64,7 @@ struct WorkspaceDetailView: View {
                     InspectorPanel(model: model, workspace: workspace)
                         .frame(width: width)
                 }
-                .frame(width: workspace.inspector.collapsed ? 0 : Self.inspectorDividerWidth + width,
+                .frame(width: workspace.inspector.collapsed ? 0 : SeparatorMetrics.visibleWidth + width,
                        alignment: .trailing)
                 .clipped()
             }
@@ -152,19 +141,19 @@ struct WorkspaceDetailView: View {
         return InspectorState.minWidth...upper
     }
 
-    /// A self-drawn vertical divider (mirrors `SplitContainerView`'s splitter): a
-    /// 1pt separator line for layout, with a wider transparent grab strip overlaid
-    /// on top — straddling the line and carrying the column-resize pointer — so the
-    /// hit area never reserves visible layout width. Dragging it resizes the
-    /// inspector; the model is persisted only on drag-end.
+    /// A self-drawn vertical divider (mirrors `SplitContainerView`'s splitter): the
+    /// shared `SeparatorMetrics` line for layout, with the equally shared transparent
+    /// grab strip overlaid on top — straddling the line and carrying the
+    /// column-resize pointer — so the hit area never reserves visible layout width.
+    /// Dragging it resizes the inspector; the model is persisted only on drag-end.
     private func inspectorDivider(total: Double, range: ClosedRange<Double>) -> some View {
         Rectangle()
-            .fill(Color(nsColor: .separatorColor))
-            .frame(width: Self.inspectorDividerWidth)
+            .fill(SeparatorMetrics.fill)
+            .frame(width: SeparatorMetrics.visibleWidth)
             .frame(maxHeight: .infinity)
             .overlay {
                 Color.clear
-                    .frame(width: Self.inspectorGrabWidth)
+                    .frame(width: SeparatorMetrics.grabWidth)
                     .contentShape(Rectangle())
                     .pointerStyle(.columnResize)
                     .gesture(
@@ -250,55 +239,24 @@ struct WorkspaceDetailView: View {
 
     private var editorButton: some View {
         let current = model.resolvedEditor(nil, for: workspace)
-        let content = HStack(spacing: 0) {
-            Button {
-                model.openInEditor(nil, for: workspace.id)
-            } label: {
-                Group {
-                    if let current {
-                        editorLabel(current)
-                    } else {
-                        Text("Editor")
-                    }
-                }
-                // Carry the capsule's interior geometry INSIDE the label so the whole
-                // pill region (leading padding + full height) triggers the primary
-                // action, not just the glyph/text (see the `title-capsule-hit-area`
-                // memory note). No `maxWidth` — the button stays sized to its content.
-                .padding(.leading, 10)
-                .padding(.trailing, 4)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+        return TitleSplitButton {
+            model.openInEditor(nil, for: workspace.id)
+        } primaryLabel: {
+            if let current {
+                editorLabel(current)
+            } else {
+                Text("Editor")
             }
-            .buttonStyle(.plain)
-
-            Menu {
-                ForEach(model.availableEditors, id: \.self) { kind in
-                    Button {
-                        model.selectEditor(kind, for: workspace.id)
-                    } label: {
-                        editorLabel(kind)
-                    }
+        } menuContent: {
+            ForEach(model.availableEditors, id: \.self) { kind in
+                Button {
+                    model.selectEditor(kind, for: workspace.id)
+                } label: {
+                    editorLabel(kind)
                 }
-            } label: {
-                // .menuStyle(.borderlessButton) always appends its own disclosure chevron
-                // after the label, so a label chevron here would render twice (⌄⌄). Keep
-                // the label empty and let the style's own arrow be the only visible one.
-                Color.clear.frame(width: 4, height: 20)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            // Fill the capsule's right inset so its trailing edge isn't a dead zone.
-            .padding(.trailing, 10)
         }
-        // The capsule SHELL wraps the WHOLE HStack (primary button + chevron menu) so it
-        // is one visible shape enclosing both: Menu's own primaryAction chrome renders
-        // its disclosure chevron OUTSIDE the label view, so styling only the label never
-        // produces a visible enclosing pill. Interior padding lives inside each control's
-        // label (not on the shell) so the whole pill is clickable, not just the glyphs.
-        return content
-            .titleCapsuleShell(interactive: true)
-            .help("Open in Editor")
+        .help("Open in Editor")
     }
 
     @ViewBuilder
@@ -312,6 +270,49 @@ struct WorkspaceDetailView: View {
 
 }
 
+/// A title-bar split button: a primary `Button` and a borderless `Menu` sharing
+/// one capsule shell, as used by the Run Script and Editor chips.
+///
+/// The geometry is the load-bearing part (see the `title-capsule-hit-area` memory
+/// note). The capsule SHELL wraps the WHOLE `HStack` so it is one visible shape
+/// enclosing both controls: a `Menu` renders its disclosure chevron OUTSIDE its
+/// label view, so styling only the label never produces an enclosing pill. The
+/// capsule's interior insets therefore live INSIDE each control's label rather than
+/// on the shell — no child can reach into the shell's own padding — which is what
+/// makes the whole pill clickable instead of just the glyph/text. The primary
+/// button takes no `maxWidth`, so it stays content-sized and never stretches the
+/// toolbar.
+private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
+    let action: () -> Void
+    @ViewBuilder let primaryLabel: () -> PrimaryLabel
+    @ViewBuilder let menuContent: () -> MenuContent
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: action) {
+                primaryLabel()
+                    .padding(.leading, 10)
+                    .padding(.trailing, 4)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Menu(content: menuContent) {
+                // .menuStyle(.borderlessButton) always appends its own disclosure chevron
+                // after the label, so a label chevron here would render twice (⌄⌄). Keep
+                // the label empty and let the style's own arrow be the only visible one.
+                Color.clear.frame(width: 4, height: 20)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            // Fill the capsule's right inset so its trailing edge isn't a dead zone.
+            .padding(.trailing, 10)
+        }
+        .titleCapsuleShell(interactive: true)
+    }
+}
+
 /// The "Run Script" toolbar split-button. A separate view so it carries its own
 /// `@State`: `WorkspaceDetailView` is recreated per workspace (`.id`), so this
 /// mounts fresh on each switch and plays an entrance animation via `onAppear`.
@@ -323,45 +324,24 @@ private struct ScriptToolbarButton: View {
     var body: some View {
         let commands = model.namedCommands(for: workspace.id)
         let current = model.resolvedScript(for: workspace)
-        return HStack(spacing: 0) {
-            Button {
-                if let current { model.runScript(current.name, for: workspace.id) }
-            } label: {
-                Label(current?.displayName ?? "Run", systemImage: "play.fill")
-                    .labelStyle(.titleAndIcon)
-                    // Carry the capsule's interior geometry INSIDE the label so the
-                    // whole pill region (leading padding + full height) triggers the
-                    // primary action, not just the glyph/text (see the
-                    // `title-capsule-hit-area` memory note). No `maxWidth` — the
-                    // button stays sized to its content so the toolbar doesn't stretch.
-                    .padding(.leading, 10)
-                    .padding(.trailing, 4)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Menu {
-                ForEach(commands, id: \.name) { command in
-                    Button {
-                        model.selectScript(command.name, for: workspace.id)
-                    } label: {
-                        if command.name == current?.name {
-                            Label(command.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(command.displayName)
-                        }
+        return TitleSplitButton {
+            if let current { model.runScript(current.name, for: workspace.id) }
+        } primaryLabel: {
+            Label(current?.displayName ?? "Run", systemImage: "play.fill")
+                .labelStyle(.titleAndIcon)
+        } menuContent: {
+            ForEach(commands, id: \.name) { command in
+                Button {
+                    model.selectScript(command.name, for: workspace.id)
+                } label: {
+                    if command.name == current?.name {
+                        Label(command.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(command.displayName)
                     }
                 }
-            } label: {
-                Color.clear.frame(width: 4, height: 20)
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            // Fill the capsule's right inset so its trailing edge isn't a dead zone.
-            .padding(.trailing, 10)
         }
-        .titleCapsuleShell(interactive: true)
         .help("Run Script")
         .opacity(appeared ? 1 : 0)
         .scaleEffect(appeared ? 1 : 0.85)

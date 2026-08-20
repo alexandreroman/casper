@@ -1,17 +1,18 @@
 ---
 name: "Driving the Casper GUI with synthetic mouse input"
-description: "The debug channel has no mouse verb; drive CGEvent mouse events to verify pointer interactions, but the window must be key first"
+description: "The debug channel positions the pointer but injects no clicks; drive CGEvent mouse events to verify pointer interactions, and make the window key first"
 type: reference
 ---
 
 # Driving the Casper GUI with synthetic mouse input
 
-The `debug-casper` debug channel exposes only text/observation verbs
-(`dump-state`, `read-text`, `send-text`, `screenshot`) — **no mouse verb**. To
-verify pointer-driven interactions (divider drag-resize, pane drag-relocate,
-hover cursors) drive **`CGEvent` mouse events** (`.leftMouseDown` /
-`.leftMouseDragged` / `.leftMouseUp` / `.mouseMoved`, posted to `.cghidEventTap`)
-from a small throwaway Swift script.
+The `debug-casper` debug channel's only pointer verb is `mouse-move`, which
+feeds a position straight to a surface (`DebugCommand.Verb.mouseMove`,
+`casper debug mouse-move --x --y`) — there is **no button/click verb** and no
+drag. To verify pointer-driven interactions (divider drag-resize, pane
+drag-relocate, hover cursors) drive **`CGEvent` mouse events** (`.leftMouseDown`
+/ `.leftMouseDragged` / `.leftMouseUp` / `.mouseMoved`, posted to
+`.cghidEventTap`) from a small throwaway Swift script.
 
 **Why:** these interactions can only be exercised through real pointer events;
 without this you cannot confirm them end-to-end in the running app.

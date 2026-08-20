@@ -6,19 +6,30 @@ import Foundation
 public enum LayoutTree {
     public enum InsertSide: Equatable { case before, after }
 
+    /// Visits every surface in visual (depth-first) order without building any
+    /// array. Prefer it over `surfaces` whenever the caller only reads each
+    /// surface: no per-level throwaway array, and no copy of the `Surface` values.
+    public static func forEachSurface(_ node: LayoutNode, _ body: (Surface) -> Void) {
+        switch node {
+        case .leaf(let surface):
+            body(surface)
+        case .split(_, let children, _):
+            for child in children { forEachSurface(child, body) }
+        }
+    }
+
     /// All surface ids in visual (depth-first) order.
     public static func surfaceIDs(_ node: LayoutNode) -> [UUID] {
-        surfaces(node).map(\.id)
+        var ids: [UUID] = []
+        forEachSurface(node) { ids.append($0.id) }
+        return ids
     }
 
     /// All surfaces in visual (depth-first) order.
     public static func surfaces(_ node: LayoutNode) -> [Surface] {
-        switch node {
-        case .leaf(let surface):
-            return [surface]
-        case .split(_, let children, _):
-            return children.flatMap { surfaces($0) }
-        }
+        var result: [Surface] = []
+        forEachSurface(node) { result.append($0) }
+        return result
     }
 
     /// Replace the surface with `id` in the tree by applying `transform` to
@@ -49,6 +60,14 @@ public enum LayoutTree {
     public static func updateRatios(
         in tree: LayoutNode, at path: [Int], ratios: [Double]
     ) -> LayoutNode {
+        updateRatios(in: tree, at: path[...], ratios: ratios)
+    }
+
+    /// Recursive core of `updateRatios`, walking the path as a slice so descending
+    /// a level is a bounds adjustment rather than a fresh array per depth.
+    private static func updateRatios(
+        in tree: LayoutNode, at path: ArraySlice<Int>, ratios: [Double]
+    ) -> LayoutNode {
         guard let index = path.first else {
             // Empty path: `tree` is the target split whose ratios we replace.
             guard case .split(let orientation, let children, _) = tree,
@@ -62,7 +81,7 @@ public enum LayoutTree {
             return tree
         }
         children[index] = updateRatios(
-            in: children[index], at: Array(path.dropFirst()), ratios: ratios)
+            in: children[index], at: path.dropFirst(), ratios: ratios)
         return .split(orientation: orientation, children: children, ratios: currentRatios)
     }
 
@@ -85,16 +104,32 @@ public enum LayoutTree {
         _ node: LayoutNode, focused: UUID,
         orientation: LayoutNode.Orientation, side: InsertSide, surface: Surface
     ) -> (LayoutNode, focus: UUID) {
+        splitting(node, focused: focused, orientation: orientation, side: side, surface: surface)
+            ?? (node, focused)
+    }
+
+    /// Recursive core of `split`, returning nil when `focused` is not in this
+    /// subtree. Reporting the miss in the return value is what lets each subtree be
+    /// walked once: probing with `contains` first and then recursing into the same
+    /// subtree walked every matching branch twice.
+    private static func splitting(
+        _ node: LayoutNode, focused: UUID,
+        orientation: LayoutNode.Orientation, side: InsertSide, surface: Surface
+    ) -> (LayoutNode, focus: UUID)? {
         let newLeaf = LayoutNode.leaf(surface)
 
         // Root itself is the target leaf: no parent to flatten into.
-        if case .leaf(let s) = node, s.id == focused {
+        if case .leaf(let s) = node {
+            guard s.id == focused else { return nil }
             return (pair(orientation, node, newLeaf, side), surface.id)
         }
         guard case .split(let splitOrientation, var children, let ratios) = node else {
-            return (node, focused)
+            return nil
         }
         for i in children.indices {
+            // A matching *direct* child is handled here rather than by the
+            // recursion: only the parent knows whether the new leaf can join it as
+            // a flat sibling.
             if case .leaf(let s) = children[i], s.id == focused {
                 if splitOrientation == orientation {
                     let at = side == .after ? i + 1 : i
@@ -106,15 +141,14 @@ public enum LayoutTree {
                 return (.split(orientation: splitOrientation, children: children,
                                ratios: ratios), surface.id)
             }
-            if contains(children[i], id: focused) {
-                let (child, f) = split(children[i], focused: focused,
-                                       orientation: orientation, side: side, surface: surface)
-                children[i] = child
-                return (.split(orientation: splitOrientation, children: children,
-                               ratios: ratios), f)
-            }
+            guard let (child, f) = splitting(children[i], focused: focused,
+                                             orientation: orientation, side: side, surface: surface)
+            else { continue }
+            children[i] = child
+            return (.split(orientation: splitOrientation, children: children,
+                           ratios: ratios), f)
         }
-        return (node, focused)
+        return nil
     }
 
     /// Remove the leaf holding `surface`, dropping its ratio and replacing a
@@ -123,12 +157,22 @@ public enum LayoutTree {
     public static func closeSurface(
         _ node: LayoutNode, surface id: UUID
     ) -> (node: LayoutNode?, focus: UUID?) {
+        closing(node, surface: id) ?? (node, nil)
+    }
+
+    /// Recursive core of `closeSurface`, returning nil when `id` is not in this
+    /// subtree so each subtree is walked once (a `contains` probe followed by a
+    /// recursion into the same subtree walked it twice). A hit whose node is nil
+    /// means removing the surface emptied the subtree.
+    private static func closing(
+        _ node: LayoutNode, surface id: UUID
+    ) -> (node: LayoutNode?, focus: UUID?)? {
         switch node {
         case .leaf(let surface):
-            return surface.id == id ? (nil, nil) : (node, nil)
+            return surface.id == id ? (nil, nil) : nil
         case .split(let orientation, var children, var ratios):
-            for i in children.indices where contains(children[i], id: id) {
-                let (child, f) = closeSurface(children[i], surface: id)
+            for i in children.indices {
+                guard let (child, f) = closing(children[i], surface: id) else { continue }
                 if let child {
                     children[i] = child
                     return (.split(orientation: orientation, children: children,
@@ -145,7 +189,7 @@ public enum LayoutTree {
                                ratios: LayoutNode.evenRatios(children.count)),
                         surfaceIDs(focusChild).first)
             }
-            return (node, nil)
+            return nil
         }
     }
 

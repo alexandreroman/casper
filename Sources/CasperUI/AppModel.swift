@@ -137,30 +137,61 @@ final class AppModel {
     /// `canCloseSelectedWorkspace` also reads the selected workspace's `baseBranch`,
     /// but a workspace's `baseBranch` is fixed at creation and never mutated after,
     /// so membership + kind already capture every way it can flip.
-    private struct MenuFlagsFingerprint: Equatable {
-        struct SpaceFingerprint: Equatable {
+    private struct MenuFlagsFingerprint {
+        struct WorkspaceFingerprint {
+            let id: UUID
+            let kind: WorkspaceKind
+        }
+        struct SpaceFingerprint {
             let isGitRepo: Bool
-            let workspaceKinds: [UUID: WorkspaceKind]
+            /// In `Space.workspaces` order, so the comparison can walk both in step.
+            let workspaces: [WorkspaceFingerprint]
         }
         let selectedWorkspaceID: UUID?
         let spaces: [SpaceFingerprint]
     }
 
-    /// Last fingerprint `refreshMenuFlags()` acted on. `nil` sentinel never equals a
-    /// real fingerprint, so the first call (seeded at the end of `init`) always
-    /// proceeds rather than being skipped.
+    /// Last fingerprint `refreshMenuFlags()` acted on. `nil` sentinel never matches the
+    /// current state, so the first call (seeded at the end of `init`) always proceeds
+    /// rather than being skipped.
     @ObservationIgnored private var lastMenuFlagsFingerprint: MenuFlagsFingerprint?
 
     /// Build the current menu-flags fingerprint in a single pass over `spaces`.
     private func menuFlagsFingerprint() -> MenuFlagsFingerprint {
         let spaceFingerprints = spaces.map { space in
-            var kinds: [UUID: WorkspaceKind] = [:]
-            for workspace in space.workspaces { kinds[workspace.id] = workspace.kind }
-            return MenuFlagsFingerprint.SpaceFingerprint(
-                isGitRepo: space.isGitRepo, workspaceKinds: kinds)
+            MenuFlagsFingerprint.SpaceFingerprint(
+                isGitRepo: space.isGitRepo,
+                workspaces: space.workspaces.map {
+                    MenuFlagsFingerprint.WorkspaceFingerprint(id: $0.id, kind: $0.kind)
+                })
         }
         return MenuFlagsFingerprint(
             selectedWorkspaceID: selectedWorkspaceID, spaces: spaceFingerprints)
+    }
+
+    /// Whether the current state still matches `fingerprint`, compared by walking both
+    /// in step and bailing on the first difference.
+    ///
+    /// Deliberately not `==` on a freshly built fingerprint: this runs on every single
+    /// `spaces` mutation, including a divider drag's 60–120 writes per second, and
+    /// materializing a snapshot to throw away would allocate more than the linear scans
+    /// the guard exists to skip. Walking allocates nothing in the unchanged case; only a
+    /// genuine change pays for a rebuild.
+    ///
+    /// Order-sensitive: reordering a Space's workspaces without changing membership
+    /// reads as a change. That errs toward recomputing — where the flags' own guarded
+    /// writes then notify no one — never toward missing a flip.
+    private func matchesMenuFlagsFingerprint(_ fingerprint: MenuFlagsFingerprint) -> Bool {
+        guard fingerprint.selectedWorkspaceID == selectedWorkspaceID,
+              fingerprint.spaces.count == spaces.count else { return false }
+        for (recordedSpace, space) in zip(fingerprint.spaces, spaces) {
+            guard recordedSpace.isGitRepo == space.isGitRepo,
+                  recordedSpace.workspaces.count == space.workspaces.count else { return false }
+            for (recorded, workspace) in zip(recordedSpace.workspaces, space.workspaces) {
+                guard recorded.id == workspace.id, recorded.kind == workspace.kind else { return false }
+            }
+        }
+        return true
     }
 
     /// Recompute each menu flag from its computed property, writing only on a real
@@ -176,9 +207,8 @@ final class AppModel {
     /// writes. Correctness hinges on the fingerprint changing whenever any flag
     /// input changes (see `MenuFlagsFingerprint`), or a menu item could get stuck.
     private func refreshMenuFlags() {
-        let fingerprint = menuFlagsFingerprint()
-        guard fingerprint != lastMenuFlagsFingerprint else { return }
-        lastMenuFlagsFingerprint = fingerprint
+        if let lastMenuFlagsFingerprint, matchesMenuFlagsFingerprint(lastMenuFlagsFingerprint) { return }
+        lastMenuFlagsFingerprint = menuFlagsFingerprint()
 
         if menuHasSelectedWorkspace != hasSelectedWorkspace { menuHasSelectedWorkspace = hasSelectedWorkspace }
         if menuCanCreateWorkspace != canCreateWorkspace { menuCanCreateWorkspace = canCreateWorkspace }
@@ -203,6 +233,11 @@ final class AppModel {
     func endPaneDrag() { draggingSurfaceID = nil; dropHoverTarget = nil; dropHoverZone = nil }
     func setDropHover(target: UUID, zone: LayoutTree.DropZone) {
         guard target != draggingSurfaceID else { return }  // don't highlight the source pane
+        // `PaneDropDelegate.dropUpdated` calls this on every drag-update callback, and
+        // Swift Observation invalidates on every `set` regardless of equality — so an
+        // unguarded write would re-render every pane of the workspace on each pointer
+        // move, exactly while the drag needs to stay smooth.
+        guard dropHoverTarget != target || dropHoverZone != zone else { return }
         dropHoverTarget = target
         dropHoverZone = zone
     }
@@ -450,8 +485,10 @@ final class AppModel {
         resolveGitBacking()
         self.availableEditors = EditorLauncher.detectInstalled()
         reconfigureWorktreeWatcher()
-        // `didSet` does not fire during `init`, so seed the menu flags once now that
-        // all three raw inputs are assigned.
+        // `spaces.didSet` has already fired for the writes above that follow the
+        // initializing assignment (the `isCollapsed` expansion, `resolveGitBacking`),
+        // but a session with no Space at all reaches here having never fired it, so
+        // seed the flags explicitly now that all three raw inputs are assigned.
         refreshMenuFlags()
     }
 
@@ -464,24 +501,36 @@ final class AppModel {
     /// All workspaces across every Space, in sidebar order.
     var allWorkspaces: [Workspace] { spaces.flatMap(\.workspaces) }
 
-    /// Maps eligible workspaces to their `Cmd+N` shortcut (1-9), following
-    /// sidebar display order: `spaces` in list order, collapsed spaces
-    /// skipped entirely (their workspaces aren't visible, so they get no
-    /// shortcut while hidden), each visible space's workspaces in
-    /// `orderedWorkspaces` order. Feeds both the sidebar hint label and
-    /// `selectWorkspace(atShortcutNumber:)` — the two can never drift apart
-    /// since they share this one lookup.
-    var workspaceShortcutNumbers: [UUID: Int] {
+    /// Every Space paired with the workspaces the sidebar draws under it, in display
+    /// order: `orderedWorkspaces` for an expanded Space, none for a collapsed one —
+    /// its rows are hidden, so they are neither drawn nor eligible for a shortcut.
+    ///
+    /// The sidebar builds this once per body pass and derives both its rows and its
+    /// shortcut hints from it, instead of sorting every Space's workspaces twice.
+    func spacesWithVisibleWorkspaces() -> [(space: Space, workspaces: [Workspace])] {
+        spaces.map { ($0, $0.isCollapsed ? [] : $0.orderedWorkspaces) }
+    }
+
+    /// Maps eligible workspaces to their `Cmd+N` shortcut (1-9), numbering
+    /// `spacesWithVisibleWorkspaces()` in order. The single definition of the
+    /// numbering: the sidebar hint labels and `selectWorkspace(atShortcutNumber:)` both
+    /// go through it, on the same input, so the two can never drift apart.
+    static func shortcutNumbers(for spaces: [(space: Space, workspaces: [Workspace])]) -> [UUID: Int] {
         var numbers: [UUID: Int] = [:]
         var next = 1
-        for space in spaces where !space.isCollapsed {
-            for workspace in space.orderedWorkspaces {
+        for space in spaces {
+            for workspace in space.workspaces {
                 guard next <= 9 else { return numbers }
                 numbers[workspace.id] = next
                 next += 1
             }
         }
         return numbers
+    }
+
+    /// The `Cmd+N` shortcut numbers for the sidebar as it currently stands.
+    var workspaceShortcutNumbers: [UUID: Int] {
+        Self.shortcutNumbers(for: spacesWithVisibleWorkspaces())
     }
 
     /// Whether the sidebar should show the `Cmd+N` shortcut hint in place of
@@ -582,6 +631,21 @@ final class AppModel {
         body(&spaces[index.space].workspaces[index.workspace])
     }
 
+    /// Resolve `workspaceID` and mutate its workspace in place, reporting whether it
+    /// existed. The `locate` + `updateWorkspace` pair every simple per-workspace setter
+    /// would otherwise repeat, so none of them can forget the guard.
+    ///
+    /// Only for mutations that are unconditional once the workspace resolves: a setter
+    /// that must read the workspace before deciding whether to write keeps its own
+    /// `locate`, because `updateWorkspace` fires `spaces`' observation whatever the body
+    /// does — a "changed nothing" body still notifies every observer.
+    @discardableResult
+    private func mutate(_ workspaceID: UUID, _ body: (inout Workspace) -> Void) -> Bool {
+        guard let at = locate(workspaceID) else { return false }
+        updateWorkspace(at: at, body)
+        return true
+    }
+
     /// Adopt `folderURL` into the session, keeping one Space per Git repository:
     ///
     /// - a folder that is a linked worktree of a repository already open joins that
@@ -643,7 +707,7 @@ final class AppModel {
     private func trackedWorkspaceID(atCanonicalPath canonical: String) -> UUID? {
         for space in spaces {
             if Self.canonicalPath(space.folderPath) == canonical {
-                return space.orderedWorkspaces.first?.id
+                return space.firstOrderedWorkspaceID
             }
             if let match = space.workspaces.first(where: {
                 Self.canonicalPath($0.worktreePath) == canonical
@@ -705,16 +769,17 @@ final class AppModel {
     /// absorbed Spaces themselves are dropped by the caller, in the same write that
     /// installs `space`.
     private func reunify(_ absorbed: [Space], into space: inout Space) {
-        guard !absorbed.isEmpty, let primary = space.workspaces.first else { return }
+        // Resolve the primary by kind, not position: absorbed workspaces fork off the
+        // absorbing Space's own branch, so reading a linked workspace here would base
+        // them on the wrong branch.
+        guard !absorbed.isEmpty,
+              let primary = space.workspaces.first(where: { $0.kind == .primary }) else { return }
         space.workspaces.append(contentsOf: Self.linkedWorkspaces(
             absorbing: absorbed, baseBranch: primary.branch,
             excluding: Self.canonicalPath(primary.worktreePath)))
         let moved = Set(space.workspaces.map(\.id))
         for workspace in absorbed.flatMap(\.workspaces) where !moved.contains(workspace.id) {
-            portAllocator.release(workspace.portBase)
-            discardSurfaceViews(
-                LayoutTree.surfaceIDs(workspace.layout) + [workspace.inspector.browser.id])
-            pruneTransientState(for: workspace)
+            retire(workspace)
         }
     }
 
@@ -783,7 +848,7 @@ final class AppModel {
     /// remaining workspace of `space` in display order if it still has one,
     /// otherwise the first workspace of the first remaining Space overall.
     private func fallbackSelection(preferring space: Space?) -> UUID? {
-        space?.orderedWorkspaces.first?.id ?? spaces.first?.orderedWorkspaces.first?.id
+        space?.firstOrderedWorkspaceID ?? spaces.first?.firstOrderedWorkspaceID
     }
 
     /// Prune every transient, non-persisted map keyed by a workspace being
@@ -802,16 +867,24 @@ final class AppModel {
         scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
     }
 
+    /// Release everything a workspace being dropped from the model still holds: its
+    /// reserved port block, its cached surface views — the inspector browser lives
+    /// outside the layout tree, so its coordinator has to be named explicitly alongside
+    /// the terminal surfaces — and its entries in the transient per-workspace maps,
+    /// which would otherwise accumulate across a long session's workspace churn.
+    ///
+    /// Shared by every path that drops a workspace (`removeSpace`, `removeWorkspace`,
+    /// `reunify`) so the three can't drift apart.
+    private func retire(_ ws: Workspace) {
+        portAllocator.release(ws.portBase)
+        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
+        pruneTransientState(for: ws)
+    }
+
     func removeSpace(id: UUID) {
         guard let index = spaces.firstIndex(where: { $0.id == id }) else { return }
         let removed = spaces.remove(at: index)
-        for ws in removed.workspaces {
-            portAllocator.release(ws.portBase)
-            // The inspector browser lives outside the layout tree, so its coordinator
-            // must be discarded explicitly alongside the terminal surfaces.
-            discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
-            pruneTransientState(for: ws)
-        }
+        for ws in removed.workspaces { retire(ws) }
         if let sel = selectedWorkspaceID, removed.workspaces.contains(where: { $0.id == sel }) {
             selectWorkspace(fallbackSelection(preferring: nil))
         }
@@ -881,7 +954,10 @@ final class AppModel {
             return .failure(WorkspaceCreationError(message: "invalid branch name: \(name)"))
         }
         let folder = spaces[si].folderPath
-        let base = baseOverride ?? (spaces[si].workspaces.first?.branch ?? "")
+        // Resolve the primary by kind, not position, so a future reordering of a Space's
+        // workspaces can't silently fork the new branch off a linked one.
+        let base = baseOverride
+            ?? (spaces[si].workspaces.first(where: { $0.kind == .primary })?.branch ?? "")
         let folderURL = URL(fileURLWithPath: folder)
         let basePath = folderURL.deletingLastPathComponent()
             .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
@@ -929,7 +1005,7 @@ final class AppModel {
         // off-screen so it runs now, in the background, instead of waiting for the user to
         // select the workspace. (UI creation takes the `select` path above and mounts its
         // views normally, so this is scoped to the silent path.) The `setup` split just
-        // above is NOT covered here: `insertHookSurface` materializes every hook split
+        // above is NOT covered here: `insertTerminal` materializes every hook split
         // itself, so each site brings up exactly the surfaces whose input it queued.
         if !select, command != nil, let created = workspace(id: ws.id) {
             materializePendingSurfacesOffscreen(in: created)
@@ -943,13 +1019,7 @@ final class AppModel {
         guard let at = locate(id) else { return }
         guard workspace(at: at).kind == .linked else { return }
         let ws = spaces[at.space].workspaces.remove(at: at.workspace)
-        portAllocator.release(ws.portBase)
-        // The inspector browser lives outside the layout tree, so its coordinator
-        // must be discarded explicitly alongside the terminal surfaces.
-        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
-        // Prune the transient maps so they don't grow unbounded across a long session
-        // (both the close and control-destroy paths funnel through here).
-        pruneTransientState(for: ws)
+        retire(ws)
         if selectedWorkspaceID == id {
             selectWorkspace(fallbackSelection(preferring: spaces[at.space]))
         }
@@ -965,11 +1035,17 @@ final class AppModel {
     /// mounted terminal's `onAttach` covers the not-yet-attached case. When `id` is
     /// nil or resolves to no workspace, only the selection changes.
     func selectWorkspace(_ id: UUID?) {
+        // Re-selecting the workspace that is already selected is an ordinary call —
+        // tapping its sidebar row, or a notification raised for it. The rest of the body
+        // still matters there: it is how the attention bubble clears and how a `done`
+        // workspace collapses back to `idle`. Only the two expensive steps, the
+        // `.casper.json` disk read and the session encode, are gated on a real change.
+        let changed = (selectedWorkspaceID != id)
         selectedWorkspaceID = id
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
         guard let id, let ws = workspace(id: id) else { return }
-        refreshNamedCommands(for: id)
+        if changed { refreshNamedCommands(for: id) }
         // A selected workspace must be visible: expand its owning Space if it was
         // collapsed. Only mutate when actually collapsed, so an already-expanded
         // Space doesn't run a redundant no-op animation.
@@ -992,15 +1068,20 @@ final class AppModel {
         if let at = locate(id), workspace(at: at).agentState == .done {
             updateWorkspace(at: at) { $0.agentState = .idle }
         }
-        persist()
+        if changed { persist() }
     }
 
     /// Switches to the workspace at `number` (1-9) in `workspaceShortcutNumbers`
-    /// order. A number with no matching workspace (e.g. `Cmd+7` with only four
-    /// workspaces) is a no-op.
-    func selectWorkspace(atShortcutNumber number: Int) {
-        guard let match = workspaceShortcutNumbers.first(where: { $0.value == number })?.key else { return }
+    /// order, reporting whether one was there. A number with no matching workspace
+    /// (e.g. `Cmd+7` with only four workspaces) is a no-op and returns false, which is
+    /// what tells `WorkspaceShortcutKeyMonitor` to let the key event keep propagating
+    /// — so the monitor never has to build the numbering a second time to find out.
+    @discardableResult
+    func selectWorkspace(atShortcutNumber number: Int) -> Bool {
+        guard let match = workspaceShortcutNumbers.first(where: { $0.value == number })?.key
+        else { return false }
         selectWorkspace(match)
+        return true
     }
 
     /// Reconcile the current selection's Git backing (promote-only — safe at
@@ -1224,10 +1305,15 @@ final class AppModel {
         guard let id = focusedSurfaceID else { return false }
         for space in spaces {
             for ws in space.workspaces {
-                if let surface = LayoutTree.surfaces(ws.layout).first(where: { $0.id == id }) {
-                    if case .terminal = surface.kind { return true }
-                    return false
+                // `forEachSurface` rather than `surfaces(_:)`: the latter materializes a
+                // fresh `[Surface]` — full values, browser URLs included — per workspace,
+                // and this runs on every Cmd+D.
+                var isTerminal: Bool?
+                LayoutTree.forEachSurface(ws.layout) { surface in
+                    guard surface.id == id else { return }
+                    if case .terminal = surface.kind { isTerminal = true } else { isTerminal = false }
                 }
+                if let isTerminal { return isTerminal }
             }
         }
         return false
@@ -1523,18 +1609,17 @@ final class AppModel {
 
     /// Flip the inspector panel's collapsed state for a workspace (toolbar toggle).
     func toggleInspectorCollapsed(for workspaceID: UUID) {
-        guard let at = locate(workspaceID) else { return }
-        updateWorkspace(at: at) { $0.inspector.collapsed.toggle() }
+        guard mutate(workspaceID, { $0.inspector.collapsed.toggle() }) else { return }
         persist()
     }
 
     /// Select the inspector's active tab, expanding the panel if it was collapsed.
     func setInspectorTab(_ tab: InspectorTab, for workspaceID: UUID) {
-        guard let at = locate(workspaceID) else { return }
-        updateWorkspace(at: at) {
+        let mutated = mutate(workspaceID) {
             $0.inspector.tab = tab
             $0.inspector.collapsed = false
         }
+        guard mutated else { return }
         persist()
     }
 
@@ -1559,8 +1644,7 @@ final class AppModel {
 
     /// Explicitly set the inspector's collapsed state (the panel's collapse button).
     func setInspectorCollapsed(_ collapsed: Bool, for workspaceID: UUID) {
-        guard let at = locate(workspaceID) else { return }
-        updateWorkspace(at: at) { $0.inspector.collapsed = collapsed }
+        guard mutate(workspaceID, { $0.inspector.collapsed = collapsed }) else { return }
         persist()
     }
 
@@ -1594,8 +1678,7 @@ final class AppModel {
     /// used by the dropdown's picker rows, which only set the selection; only the
     /// split-button's primary action (`openInEditor`) actually launches.
     func selectEditor(_ kind: EditorKind, for workspaceID: UUID) {
-        guard let at = locate(workspaceID) else { return }
-        updateWorkspace(at: at) { $0.lastUsedEditor = kind }
+        guard mutate(workspaceID, { $0.lastUsedEditor = kind }) else { return }
         persist()
     }
 
@@ -1648,8 +1731,7 @@ final class AppModel {
     /// Remember a workspace's script without running it — the toolbar menu's
     /// action (mirrors `selectEditor`); the primary button runs the remembered one.
     func selectScript(_ name: String, for workspaceID: UUID) {
-        guard let at = locate(workspaceID) else { return }
-        updateWorkspace(at: at) { $0.lastUsedScript = name }
+        guard mutate(workspaceID, { $0.lastUsedScript = name }) else { return }
         persist()
     }
 
@@ -1658,9 +1740,7 @@ final class AppModel {
     func runScript(_ name: String, for workspaceID: UUID) {
         switch controlRun(name: name, in: workspaceID) {
         case .success:
-            if let at = locate(workspaceID) {
-                updateWorkspace(at: at) { $0.lastUsedScript = name }
-            }
+            mutate(workspaceID) { $0.lastUsedScript = name }
             scriptRunError = nil
             persist()
         case .failure(let error):
@@ -1899,15 +1979,22 @@ final class AppModel {
     func runAgentDetectionTick() {
         detectionTickCount &+= 1
         let scrapeBackground = detectionTickCount % Self.backgroundDetectionStride == 0
-        for space in spaces {
-            for ws in space.workspaces {
+        // Indexed so a detected change can be written straight at its workspace instead
+        // of re-scanning every Space to find it again. Safe to hold across the body: a
+        // detection pass only ever writes a workspace's transient state and expands a
+        // collapsed Space — it never adds or removes one.
+        for (si, space) in spaces.enumerated() {
+            for (wi, ws) in space.workspaces.enumerated() {
                 if explicitAuthority.contains(ws.id) { continue }  // detection stopped for W
                 let isSelected = (ws.id == selectedWorkspaceID)
                 if !isSelected && !scrapeBackground { continue }  // background: reduced sub-cadence
 
-                let terminalIDs = LayoutTree.surfaces(ws.layout).compactMap { surface -> UUID? in
-                    guard case .terminal = surface.kind else { return nil }
-                    return surface.id
+                // Collect the ids through `forEachSurface`: `surfaces(_:)` would build a
+                // throwaway array of full `Surface` values, for every workspace, 4× a second.
+                var terminalIDs: [UUID] = []
+                LayoutTree.forEachSurface(ws.layout) { surface in
+                    guard case .terminal = surface.kind else { return }
+                    terminalIDs.append(surface.id)
                 }
                 let signals = terminalIDs.compactMap { id -> AgentSignal? in
                     guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
@@ -1926,7 +2013,7 @@ final class AppModel {
                 var resolver = agentResolvers[ws.id] ?? AgentStateResolver()
                 let state = resolver.resolve(signal: aggregated, seen: seen)
                 agentResolvers[ws.id] = resolver  // persist the mutated resolver back
-                setDetectedAgentState(state, for: ws.id)
+                setDetectedAgentState(state, at: (space: si, workspace: wi))
             }
         }
     }
@@ -1937,9 +2024,16 @@ final class AppModel {
     /// Exposed (internal, not private) as a test seam so the notify-wiring can be
     /// unit-tested directly, like `isUnderExplicitAuthority` / `runAgentDetectionTick`.
     func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
-        guard let at = locate(workspaceID),
-              workspace(at: at).agentState != state else { return }
+        guard let at = locate(workspaceID) else { return }
+        setDetectedAgentState(state, at: at)
+    }
+
+    /// The core of `setDetectedAgentState`, for a caller that has already resolved the
+    /// workspace: `runAgentDetectionTick` walks `spaces` itself, so re-locating each
+    /// workspace by id would rescan every Space once per detected change.
+    private func setDetectedAgentState(_ state: AgentState, at: WorkspaceIndex) {
         let previous = workspace(at: at).agentState
+        guard previous != state else { return }
         // agentState is transient (deliberately not encoded by Session's Codable),
         // so the @Observable mutation refreshes the sidebar with no need to persist.
         updateWorkspace(at: at) { $0.agentState = state }
@@ -1949,7 +2043,7 @@ final class AppModel {
         // the user is alerted without installing any agent hook. Reached only on an
         // actual change thanks to the guard above (edge-triggered, no extra dedup).
         if let message = Self.notificationMessage(for: state) {
-            controlRaiseNotification(message: message, for: workspaceID)
+            controlRaiseNotification(message: message, for: workspace(at: at).id)
         }
     }
 
@@ -2069,11 +2163,18 @@ final class AppModel {
         // workspace you are NOT looking at. If the target is already focused
         // (selected AND the window is key), raising either is noise, so skip both.
         let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
+        // Whether either branch below actually changed the model. Raising a
+        // notification on a workspace that is both focused and already expanded writes
+        // nothing, and that case is reached on every detected `blocked`/`done` edge and
+        // every `casper notify` — so it must not encode the whole session and queue a
+        // disk write for a state nobody changed.
+        var wrote = false
         if !focused {
             updateWorkspace(at: at) {
                 $0.pendingNotification = true
                 $0.pendingNotificationMessage = message
             }
+            wrote = true
         }
         // A notification means "look at this workspace". If its owning Space is
         // collapsed, the workspace row (and any attention bubble) is hidden, so expand
@@ -2082,6 +2183,7 @@ final class AppModel {
         // avoid a redundant no-op animation.
         if spaces[at.space].isCollapsed {
             withAnimation(.snappy) { spaces[at.space].isCollapsed = false }
+            wrote = true
         }
         if let message, !focused, !isWithinNotificationCooldown(workspaceID) {
             // The interruption level follows the workspace's current agent state: the
@@ -2094,6 +2196,7 @@ final class AppModel {
                 Self.interruptionLevel(for: state))
             lastNotifiedAt[workspaceID] = Date()
         }
+        guard wrote else { return true }
         persist()
         return true
     }
@@ -2112,12 +2215,10 @@ final class AppModel {
     /// collapsed Space — it is a passive act, unlike `controlRaiseNotification`.
     @discardableResult
     func controlSetInfo(markdown: String, for workspaceID: UUID) -> Bool {
-        guard let at = locate(workspaceID) else { return false }
-        updateWorkspace(at: at) {
+        mutate(workspaceID) {
             $0.infoMarkdown = markdown
             $0.infoUnread = true
         }
-        return true
     }
 
     /// Empty the workspace's info panel, which also hides its toolbar button.
@@ -2125,12 +2226,10 @@ final class AppModel {
     /// outliving the content that justified it.
     @discardableResult
     func controlClearInfo(for workspaceID: UUID) -> Bool {
-        guard let at = locate(workspaceID) else { return false }
-        updateWorkspace(at: at) {
+        mutate(workspaceID) {
             $0.infoMarkdown = nil
             $0.infoUnread = false
         }
-        return true
     }
 
     /// Mark the current info message as read — called when the panel is shown.
@@ -2189,22 +2288,41 @@ final class AppModel {
         in workspaceID: UUID, command: String? = nil, cwd: String? = nil,
         orientation: LayoutNode.Orientation = .vertical
     ) -> ControlTerminalInfo? {
+        guard let resolvedCwd = cwd ?? workspace(id: workspaceID)?.worktreePath else { return nil }
+        let surface = Surface.terminal(cwd: resolvedCwd)
+        guard insertTerminal(surface, in: workspaceID, command: command, orientation: orientation)
+        else { return nil }
+        return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
+    }
+
+    /// Insert `surface` into `workspaceID` by splitting its top-left surface along
+    /// `orientation`, with `command` queued as the surface's initial input. Returns
+    /// false when the workspace or its split anchor can't be resolved.
+    ///
+    /// The surface comes from the caller because `ScriptHookRunner` mints and tags its
+    /// hook splits by id *before* the split runs, which is what lets it correlate their
+    /// child-exit.
+    ///
+    /// A background (non-selected) workspace's views never mount on their own, so a
+    /// queued command would never run: its surface would get no `GhosttySurfaceView` and
+    /// no PTY, which for a `teardown` hook means no child-exit and a full 30 s timeout on
+    /// every delete of an unselected workspace. Bring the pending surfaces up off-screen
+    /// here, once, for both callers. The workspace is re-fetched because the one resolved
+    /// above predates the split and does not carry the new surface.
+    private func insertTerminal(
+        _ surface: Surface, in workspaceID: UUID, command: String?,
+        orientation: LayoutNode.Orientation
+    ) -> Bool {
         guard let ws = workspace(id: workspaceID),
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
-              let at = locateSurface(anchor) else { return nil }
-        let resolvedCwd = cwd ?? ws.worktreePath
-        let surface = Surface.terminal(cwd: resolvedCwd)
+              let at = locateSurface(anchor) else { return false }
         if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: orientation, side: .after, surface: surface)
-        // A background (non-selected) workspace's views never mount on their own, so a
-        // queued command would otherwise never run. Bring its pending surfaces up off-screen
-        // now — mirroring the silent-creation path in createLinkedWorkspace. Re-fetch the
-        // workspace fresh: the earlier `ws` predates the split and lacks the new surface.
         if command != nil, selectedWorkspaceID != workspaceID, let refreshed = workspace(id: workspaceID) {
             materializePendingSurfacesOffscreen(in: refreshed)
         }
-        return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
+        return true
     }
 
     // MARK: - `.casper.json` lifecycle hooks
@@ -2214,35 +2332,14 @@ final class AppModel {
     /// can capture a fully-initialized `self`; all three capture it WEAKLY, because
     /// this model owns the runner and a strong capture would close the retain cycle.
     @ObservationIgnored private lazy var scriptHooks = ScriptHookRunner(
+        // Hook splits are plain terminal splits stacked below the anchor; the hook
+        // policy stays in the runner, which owns the surface's identity.
         insertSurface: { [weak self] workspaceID, surface, command in
-            self?.insertHookSurface(surface, in: workspaceID, command: command) ?? false
+            self?.insertTerminal(surface, in: workspaceID, command: command, orientation: .vertical)
+                ?? false
         },
         worktreePath: { [weak self] id in self?.workspace(id: id)?.worktreePath },
         reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) })
-
-    /// Insert `surface` into `workspaceID` as a visible split-down (top/bottom stack),
-    /// running `command` (already hook-wrapped by the runner) on first mount. Returns
-    /// false if the workspace/anchor can't be resolved. The layout mutation and the
-    /// queued-input map live here; the hook policy lives in `ScriptHookRunner`, which
-    /// owns the surface's identity so it can tag it before this split runs.
-    private func insertHookSurface(_ surface: Surface, in workspaceID: UUID, command: String) -> Bool {
-        guard let ws = workspace(id: workspaceID),
-              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
-              let at = locateSurface(anchor) else { return false }
-        pendingInitialInput[surface.id] = command
-        insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
-        // A background (non-selected) workspace's views never mount on their own, so the
-        // split just inserted would get no `GhosttySurfaceView`, no PTY, and the hook would
-        // never run — leaving `runTeardown` to end on its 30 s timeout on every delete of an
-        // unselected workspace. Bring it up off-screen now, mirroring the queued-command
-        // paths in `controlOpenTerminal` / `createLinkedWorkspace`. Re-fetch the workspace
-        // fresh: the `ws` above predates the split and lacks the new surface.
-        if selectedWorkspaceID != workspaceID, let refreshed = workspace(id: workspaceID) {
-            materializePendingSurfacesOffscreen(in: refreshed)
-        }
-        return true
-    }
 
     /// Called when a surface's child process exits (via GhosttySurfaceView.onChildExit).
     /// A no-op for ordinary panes (those not tagged in the runner's `scriptSurfaces`) —
@@ -2476,6 +2573,19 @@ final class AppModel {
         _ body: @escaping @Sendable () throws -> T
     ) async throws -> T {
         try await Task.detached(priority: .userInitiated, operation: body).value
+    }
+
+    /// Whether the worktree at `path` has no uncommitted changes, probed off the main
+    /// actor through `offloadGit` like every other git call on the close/delete path —
+    /// a full libgit2 status scan on a large worktree stalls the main thread for long
+    /// enough to be seen (and to trip the DEBUG hang watchdog).
+    ///
+    /// Fails safe toward "not clean": a thrown probe error reads the same as a genuinely
+    /// dirty tree, so a failure can never silently hide the destructive-delete warning
+    /// that depends on this.
+    func isWorktreeClean(_ path: String) async -> Bool {
+        let clean = try? await Self.offloadGit { try WorktreeManager.isClean(repoPath: path) }
+        return clean ?? false
     }
 
     /// The progress reporter for one close/delete run, wired to the published

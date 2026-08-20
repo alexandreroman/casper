@@ -21,6 +21,6 @@ against the same embedded-libghostty constraints.
 
 **How to apply:** before implementing such a feature, read the matching file under
 Ghostty's `macos/Sources/` and adopt its mechanism. Deviate only for a genuine
-Casper-specific constraint (e.g. no `Info.plist`, see
+Casper-specific constraint (e.g. drag-and-drop transport, see
 [[intra-app-drag-pasteboard-type]]), and say so. Related:
 [[terminal-overlay-cursor]].

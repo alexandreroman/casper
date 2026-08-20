@@ -6,92 +6,94 @@
 > updating. **Do NOT take any action** — no tool calls, no file writes — until
 > confirmed.
 
-- [Dependency policy](references/dependency-policy.md) — default to native macOS APIs (check the OS before reinventing/importing); only GhosttyKit + swift-argument-parser + libgit2 + HighlightSwift + Sparkle
+- [Dependency policy](references/dependency-policy.md) — prefer native macOS APIs; five sanctioned externals, listed
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
-- [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — GIT_DIFF_SHOW_UNTRACKED_CONTENT required or untracked text misflags binary + badge undercounts
-- [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning from Homebrew's libgit2 is benign; left unsuppressed on purpose
-- [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes SwiftUI ScrollView centers undersized content; pin it top-leading via `.defaultScrollAnchor(.top)`
+- [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — without the untracked-content flag, text misflags as binary
+- [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
+- [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes ScrollView centers undersized content; anchor it
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
-- [Swift toolchain floor](references/swift-toolchain-floor.md) — code uses Swift 6.2 isolated conformances; CI/release Xcode pin must stay >= 26 (currently 26.3)
+- [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
-- [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in gitignored `.superpowers/sdd/`, not `docs/superpowers/specs/`
-- [English only](references/english-only.md) — all generated text (docs, code, UI, commit messages) is English; commit subjects use verb + action
-- [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — NWListener classes: `@unchecked Sendable` + serial-queue discipline
-- [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf (drops in-process writes), realpath-canonicalize paths, barrier stop()
-- [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — worktree watcher (excl. .git) + reflog watcher on <gitdir>/logs; second one refreshes diff after commit
-- [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the Space +/− branch-vs-merge-base row badge is not built; only Space rename remains open
-- [Domain CLI and control channel](references/domain-cli-control-channel.md) — domain CLI emits JSON over `$CASPER_CONTROL_SOCKET` (verbs + shapes, errors exit non-zero); no hook mechanism
-- [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning `@Option`/`@Argument` wrapped values crashes real `.parse()`; test via `.parse([...])`, not direct construction
-- [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a protocol refining ParsableCommand carries the common `run()`; its witness beats ArgumentParser's default
-- [App sessions (--session)](references/app-sessions.md) — `--session <name>` (DEBUG builds only) suffixes layout+sockets and sets `CASPER_SESSION`; live-verify the GUI under session `dev` to isolate from the real instance
-- [CLI availability](references/cli-availability.md) — no global install/shim; reachable only in Casper terminals via PATH injection
-- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1; GhosttyKit product only; vendored header via vendir
-- [libghostty initial_input mojibakes non-ASCII](references/ghostty-initial-input-utf8.md) — don't use `initial_input` (or the `command` field); inject queued input via `ghostty_surface_text` (UTF-8-safe) post-spawn
-- [Debug channel and logging gating](references/debug-channel-gating.md) — debug control channel is `#if DEBUG` only, never in release; verbose logs gated, `.error`/`.fault` kept
-- [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync layer.contentsScale to window.backingScaleFactor or the render upscales ×2
-- [libghostty Control-combo key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint; bare Control-letter combos also need the keycode normalized to its QWERTY position (AZERTY)
-- [Implementation workflow](references/implementation-workflow.md) — execute plans subagent-driven: one code-writer per task, review between, commit per task
-- [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null in some sessions; wake the display + poll, or verify build-only
-- [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — userdata is per-surface (the view), callbacks run on main thread, confirmed binding action names, Swift 6 pointer-sending fix
-- [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring; pinned binary's config effect on it is unconfirmed e2e
-- [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side (no click-count param); tracking-area position stream drives it; mouse-shape/visibility actions are surface-scoped via `ghostty_surface_userdata`
-- [libghostty scroll mods packed layout](references/ghostty-scroll-mods-layout.md) — opaque `int` = packed i32: bit 0 precision (else pixels read as lines → scroll too fast), bits 1–3 momentum
-- [Surface identity](references/surface-identity.md) — every Surface has a unique, stable `Surface.id` invariant across kind/state/UI-location; all UI identity anchors on it
-- [Observed startup dependencies](references/observed-startup-dependencies.md) — startup-set @Observable props a view gates rendering on must not be @ObservationIgnored; live-verify the restore path
-- [PersistentNSViewHost shared-view ownership](references/persistent-nsview-host-sharing.md) — one cached NSView per surface; a window-membership-driven coordinator converges it into the in-window container (splits, collapses, drag-relocate)
-- [Custom resizable inspector panel](references/swiftui-inspector-width.md) — Casper hand-rolls the inspector (native .inspector aborts on macOS 26 drag); custom HStack + absolute-location divider; always-mounted, revealed by trailing clip width
-- [Intra-app drag pasteboard type](references/intra-app-drag-pasteboard-type.md) — pane drag-drop transports over standard `public.utf8-plain-text`; a code-only custom UTType is ignored by SwiftUI .onDrop (no Info.plist)
-- [Debug screenshot uses ScreenCaptureKit](references/debug-screenshot-screencapturekit.md) — macOS 15 target obsoletes CGWindowListCreateImage; DEBUG screenshot uses async SCScreenshotManager + screen-recording permission
-- [Agents cannot self-verify SwiftUI visual changes](references/agent-visual-verification-limits.md) — subagents lack screen-recording TCC even when the session's own terminal has it; visual polish needs human screenshots, but offscreen cacheDisplay pixel checks do work for AppKit drawing
-- [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a native Menu mid-hierarchy breaks glassEffect's compositing; use explicit Color background + strokeBorder instead
-- [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — for native macOS terminal UI/interaction features, match Ghostty's macOS Swift source instead of improvising
-- [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — overlays set the cursor via cursorUpdate AND mouseEntered, reset to arrow on exit; never push/pop or addCursorRect alone
-- [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — no debug mouse verb; use CGEvent but make the window key first, park cursor off-window for clean captures
-- [Browser address bar select-all on click](references/browser-address-bar-select-all.md) — field is already first-responder on tab show; select-all in NSTextField.mouseDown after super, gated on empty selection
-- [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — aborts with no bundle id; `make dev` has one via Casper-dev.app, so notifications work; guard on `Bundle.main.bundleIdentifier` stays
-- [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — custom sound falls back to default; OS-level bug, not signing; fix is reboot+reinstall, not code
-- [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — a @MainActor class conforming to a non-@MainActor Cocoa delegate needs `@MainActor` on the conformance; @MainActor-annotated protocols don't
-- [Agent-state working signal lives in the OSC title](references/agent-state-osc-title.md) — Claude Code signals working via OSC-title Braille spinner; pinned libghostty fork forwards titles; detection is version-coupled
-- [libghostty macOS config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — bundled Casper.app misses the user's Ghostty config (empty bundle-id-scoped dir) → vanilla gray; hence the baked-in default theme
-- [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — after mergeBranchHeadless the base worktree reports deleted files; capture cleanliness before merging to decide any resync
-- [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_CONTROL_SOCKET/CASPER_DEBUG_SOCKET/CASPER_SESSION so a Casper-opened terminal's live env never leaks into swift test
-- [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — a listener binds to the session-derived path only; the `CASPER_*_SOCKET` env override is dial-side or it hijacks a running instance's socket
-- [Real in-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — real keyDown->interpretKeyEvents->shell test recipe; fixed settle(0.6)/(0.4), not adaptive polling
-- [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menu bar is `.commands`; Format/Help stubs stripped on will+didUpdate; Services needs an App-menu `menuNeedsUpdate:` delegate proxy (the hooks fire after the menu is drawn); `.commands` must not observe volatile focus/spaces
-- [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module checks only the .app root + a machine-local build path, never Contents/Resources; the runtime mirror is required, not redundant
-- [Diff-view main-thread layout hang](references/diff-view-refresh-hang.md) — ~100% CPU spin, no crash report; lazy-stack item-phase ⇄ layout cycle; explicitAlignment counts and diff size mislead; sample recipe; live confirmation outstanding
-- [Main-thread hang watchdog and dump exploitation](references/hang-dump-watchdog.md) — DEBUG-only watchdog auto-samples on a >2s main-thread block to ~/Library/Logs/Casper/hang-*.txt; how to read dumps + os_log marker, env tuning, manual capture on any build (temporary, revert once fixed)
-- [Release binary size budget](references/binary-size-budget.md) — measured size levers: strip -x −3.76 MB, -Osize −0.31 MB, -dead_strip exactly 0; Sparkle thinning and OpenSSL-free libgit2 left on the table, and why
-- [Nested modal loops starve the main dispatch queue](references/main-queue-starved-by-modal-loops.md) — `DispatchQueue.main.async` never runs during `runModal`/menu tracking; use `CFRunLoopPerformBlock` + modal/tracking modes
-- [Workspace selection invariant](references/workspace-selection-invariant.md) — non-empty `spaces` always has a resolvable `selectedWorkspaceID`; homepage shows only when `spaces.isEmpty`; watch `selectWorkspace` sets-before-validates
-- [.casper.json scripts — design decisions & invariants](references/repo-config.md) — copyFiles + named commands + setup/teardown hooks: the child-exit/close race invariant, hook-wrap vs subshell-wrap, async destroy + synchronous claim, menu ordering
-- [Project memory conventions](references/project-memory-conventions.md) — don't prefix memory filenames with `casper`; implementation status goes in `.superpowers/status.md`, not memory (durable decisions only)
-- [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI; use plain deinit + nonisolated(unsafe)
-- [libghostty set_occlusion param is `visible` not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread; inverting it freezes visible surfaces (grid still updates, no frames)
-- [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply .titleCapsule() inside the Button's label, not after .buttonStyle(.plain), or only the glyph is clickable
-- [Browser automation CLI](references/browser-automation-cli.md) — casper browser automation + console/wait/reload verbs: JS-synthesized input, takeSnapshot, off-screen behavior, WeakScriptMessageHandler retain-cycle proxy, control-socket-in-$TMPDIR gotcha
-- [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a WKUIDelegate
-- [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — NSAllowsArbitraryLoads=true in both Info.plists; ATS blocks plain-HTTP to public-qualified hostnames (nip.io) it can't see resolve to loopback
-- [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — CSigbusGuard turns mmap-truncation SIGBUS in diff into a graceful throw; body must be @escaping (not withoutActuallyEscaping)
-- [App icon design and generation pipeline](references/app-icon.md) — full-bleed split-terminal mark; prod+dev masters → `make icon` → committed .icns via CFBundleIconFile; PLUS macOS 26 Icon Composer AppIcon.icon → actool → Assets.car via CFBundleIconName (dual-key, additive)
-- [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY; queued commands + hook splits need the nursery
-- [Off-screen host windows stay unordered](references/offscreen-host-windows-unordered.md) — ordering a window parked at -100_000 wrecks Mission Control; hosting needs only `window != nil`; rAF never fires off-display
-- [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each Highlight() = a new JavaScriptCore JSContext; per-call construction under diff churn leaked GBs of JSC VM heap; use the shared DiffHighlighter instance
-- [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — the teardown split spawns fine in XCTest; drive `handleScriptSurfaceExit` for the child exit
-- [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views in XCTest; pixels still need human eyes; CI runner measures differently (legacy scrollers, macOS 15)
-- [Testing a guarded no-write with withObservationTracking](references/observation-tracking-guard-tests.md) — pins that a guarded mutation skips writing an `@Observable` property, no production-code instrumentation needed
-- [Worktree deletion deletes the directory before pruning metadata](references/worktree-deletion-directory-first.md) — git_worktree_prune orphans the dir on read-only entries; FileManager-delete first, then metadata-only prune
-- [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — draw rects reach far past the column (one is infinite) and nothing clips them; clip to `bounds` in `draw(_:)` around `super`
-- [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — paragraphSpacingBefore lives inside layoutFragmentFrame; empty trailing line fragment; reading .layoutManager flips to TextKit 1; point probes and ensureLayout cost O(scroll offset)
-- [Diff surface data flow](references/diff-surface-data-flow.md) — document reaches the surface as a representable property keyed by a revision; only events use the controller; SwiftUI sizes the view after updateNSView
-- [AttributedString interop limits](references/attributedstring-interop-limits.md) — HighlightSwift emits AppKit-scope colors (SwiftUI scope reads nil); AttributedString.utf16 needs macOS 26
-- [NSTextStorage attribute writes must go in ascending offset order](references/nstextstorage-attribute-run-order.md) — the RLE run array makes out-of-order attribute writes quadratic; a memmove freeze, measured
-- [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — the diff's +/- cue and line numbers go in the ruler; in the text they poison selection, copy and wrap alignment
-- [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore's clip move re-resolves them off the scroll path; tests drain the run loop to idle, not one pass
-- [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off a `.flagsChanged` event raises
-- [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — hide the title bar's title with `.toolbar(removing: .title)`; an AppKit `titleVisibility` hide flashes at launch and lags
-- [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — adding a `ControlCommand.Verb` case breaks CasperUI's build until routed; those two plan tasks must share one commit
-- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — NSTextView gives selection and exposes the index under the pointer; the pointing-hand cursor still has to be driven explicitly
-- [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a bare NSTextBlock border (width+color set) drew nothing; known Apple-acknowledged AppKit bugs, headless pixel tests can't confirm either way, avoid margins where a border is unavoidable
-- [Markdown block spacing is one-sided](references/markdown-one-sided-spacing.md) — every block-to-block gap is the following block's own paragraphSpacingBefore; a bordered block (quote bar, table header) takes a dedicated spacer paragraph instead
-- [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its explicit size to the parent regardless of padding nested inside it; bake the value into the frame or move padding outside
+- [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
+- [English only](references/english-only.md) — all generated text is English; commit subjects use verb + action
+- [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline
+- [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
+- [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — a worktree watcher plus a reflog one, so a commit refreshes
+- [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the branch-vs-merge-base row badge is not built, and why
+- [Domain CLI and control channel](references/domain-cli-control-channel.md) — the full verb surface and JSON shapes; no hook mechanism
+- [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning wrapped values crashes `.parse()`
+- [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
+- [App sessions (--session)](references/app-sessions.md) — DEBUG-only `--session <name>` isolates layout, sockets and env
+- [CLI availability](references/cli-availability.md) — no global install; PATH injection only, and it can be outranked
+- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — pinned exact; GhosttyKit product only; header vendored via vendir
+- [libghostty initial_input mojibakes non-ASCII](references/ghostty-initial-input-utf8.md) — inject queued input via `ghostty_surface_text`
+- [Debug channel and logging gating](references/debug-channel-gating.md) — `#if DEBUG` only, never in release; verbose logs gated
+- [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync contentsScale to the backing scale or it upscales ×2
+- [libghostty Control-combo key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint + a QWERTY-normalized keycode
+- [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
+- [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null; wake the display and poll
+- [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
+- [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring; the pinned binary's effect is unconfirmed
+- [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side; shape actions are surface-scoped
+- [libghostty scroll mods packed layout](references/ghostty-scroll-mods-layout.md) — opaque `int` = packed i32: precision bit, then momentum
+- [Surface identity](references/surface-identity.md) — a unique, stable `Surface.id` anchors every UI identity
+- [Observed startup dependencies](references/observed-startup-dependencies.md) — a startup-set @Observable prop must not be @ObservationIgnored
+- [PersistentNSViewHost view ownership](references/persistent-nsview-host-sharing.md) — window membership picks the container holding a shared view
+- [Custom resizable inspector panel](references/swiftui-inspector-width.md) — hand-rolled: native .inspector aborts on a macOS 26 drag
+- [Intra-app drag pasteboard type](references/intra-app-drag-pasteboard-type.md) — a code-only UTType is ignored by SwiftUI `.onDrop`; use a standard
+- [Debug screenshot uses ScreenCaptureKit](references/debug-screenshot-screencapturekit.md) — SCScreenshotManager + a screen-recording grant
+- [Agents cannot self-verify SwiftUI visual changes](references/agent-visual-verification-limits.md) — subagents lack screen-recording TCC
+- [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a nested Menu breaks glassEffect's compositing
+- [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — match Ghostty's macOS Swift source rather than improvising
+- [Cursor for chrome over the terminal](references/terminal-overlay-cursor.md) — set the cursor from cursorUpdate AND mouseEntered; reset on exit
+- [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — the debug channel never clicks; use CGEvent on a key window
+- [Browser address bar select-all](references/browser-address-bar-select-all.md) — select-all in mouseDown after super, if the selection is empty
+- [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays
+- [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
+- [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
+- [The working signal lives in the OSC title](references/agent-state-osc-title.md) — an OSC-title Braille spinner; version-coupled detection
+- [libghostty config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — a bundle misses the user's config
+- [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, never after
+- [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips the CASPER_* vars so no live env leaks in
+- [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — the env override is dial-side only, never listen-side
+- [In-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — the real-keyDown recipe; fixed settles, not polling
+- [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menus are `.commands`; Services needs a delegate proxy
+- [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module never checks Contents/Resources
+- [Diff-view main-thread layout hang](references/diff-view-refresh-hang.md) — the measured signature, why size misleads, the sample recipe
+- [Main-thread hang watchdog and dump exploitation](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
+- [Release binary size budget](references/binary-size-budget.md) — the measured levers, which are applied, and which are declined
+- [Nested modal loops starve the main dispatch queue](references/main-queue-starved-by-modal-loops.md) — use `CFRunLoopPerformBlock` + modal modes
+- [Workspace selection invariant](references/workspace-selection-invariant.md) — a non-empty `spaces` always resolves `selectedWorkspaceID`
+- [.casper.json scripts — decisions & invariants](references/repo-config.md) — copyFiles + commands + hooks: the child-exit race and wrap choices
+- [Project memory conventions](references/project-memory-conventions.md) — no `casper` filename prefix; status lives in `status.md`
+- [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI
+- [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
+- [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply it inside the Button's label, or only the glyph is live
+- [Browser automation CLI](references/browser-automation-cli.md) — the automation/scroll/debug verbs, and their off-screen behavior
+- [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a UIDelegate
+- [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — ATS blocks plain-HTTP to public-qualified hostnames
+- [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — an mmap-truncation SIGBUS becomes a graceful throw
+- [App icon design and generation pipeline](references/app-icon.md) — SVG masters → `.icns`, plus an Icon Composer `.icon` → Assets.car
+- [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY, so queued work needs it
+- [Off-screen host windows stay unordered](references/offscreen-host-windows-unordered.md) — ordering an off-screen window wrecks Mission Control
+- [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each one is a new JSContext; reuse the shared instance
+- [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — drive `handleScriptSurfaceExit` for the child exit in XCTest
+- [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views
+- [Testing a guarded no-write](references/observation-tracking-guard-tests.md) — pins that a guarded mutation writes nothing
+- [Worktree deletion deletes the directory first](references/worktree-deletion-directory-first.md) — delete the directory, then prune metadata only
+- [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — nothing clips its draw rects; clip in `draw(_:)`
+- [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — spacing lives inside layoutFragmentFrame; probes cost more
+- [Diff surface data flow](references/diff-surface-data-flow.md) — a revision-keyed property carries the document; events use the controller
+- [AttributedString interop limits](references/attributedstring-interop-limits.md) — AppKit-scope colors; `.utf16` needs macOS 26
+- [NSTextStorage attribute writes go in ascending order](references/nstextstorage-attribute-run-order.md) — out-of-order attribute writes go quadratic
+- [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — in the text they poison selection
+- [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore re-resolves them off the scroll path
+- [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
+- [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — use `.toolbar(removing: .title)`, not AppKit
+- [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — a new verb case breaks CasperUI until routed; one commit
+- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — the pointing hand has to be driven explicitly
+- [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a set border can draw nothing; avoid needing one
+- [Markdown block spacing is one-sided](references/markdown-one-sided-spacing.md) — a bordered block needs a dedicated spacer paragraph
+- [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
+- [Casper.app bundle codesign seal](references/app-bundle-codesign-seal.md) — dylibs, executable, bundle — never `--deep` (it breaks Sparkle)
+- [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside

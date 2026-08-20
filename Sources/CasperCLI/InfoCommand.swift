@@ -47,10 +47,7 @@ struct InfoCommand: ParsableCommand {
             if let message {
                 raw = message
             } else if let file {
-                guard let contents = try? String(contentsOfFile: file, encoding: .utf8) else {
-                    throw exitWithError("cannot read file '\(file)'")
-                }
-                raw = contents
+                raw = try Self.readMarkdownFile(file)
             } else {
                 // An explicit '-' means the caller means it: read stdin unconditionally.
                 // With no source at all, only fall back to stdin when it is not an
@@ -71,6 +68,28 @@ struct InfoCommand: ParsableCommand {
                     "message too large (\(raw.utf8.count) bytes, max \(ControlCommand.infoMessageMaxBytes))")
             }
             return raw
+        }
+
+        /// Read `--file` as UTF-8, rejecting an oversized file on its stat rather
+        /// than after loading it whole. The underlying error is reported verbatim so
+        /// a permissions problem, a missing file, and non-UTF-8 content stay
+        /// distinguishable.
+        static func readMarkdownFile(_ path: String) throws -> String {
+            let byteCount: Int
+            do {
+                byteCount = (try FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
+            } catch {
+                throw exitWithError("cannot read file '\(path)': \(error.localizedDescription)")
+            }
+            guard byteCount <= ControlCommand.infoMessageMaxBytes else {
+                throw exitWithError(
+                    "file '\(path)' too large (\(byteCount) bytes, max \(ControlCommand.infoMessageMaxBytes))")
+            }
+            do {
+                return try String(contentsOfFile: path, encoding: .utf8)
+            } catch {
+                throw exitWithError("cannot read file '\(path)': \(error.localizedDescription)")
+            }
         }
 
         /// Drain stdin as UTF-8. Split out so `resolveMarkdown` stays testable.

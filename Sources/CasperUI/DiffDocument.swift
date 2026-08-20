@@ -43,7 +43,7 @@ struct DiffDocument: Sendable, Equatable {
 
     /// One rendered paragraph.
     struct LineSpan: Sendable, Equatable {
-        enum Kind: String, Sendable {
+        enum Kind: Sendable {
             case context, addition, deletion, hunkHeader, note
 
             init(_ diffKind: GitDiffLine.Kind) {
@@ -97,10 +97,12 @@ struct DiffDocument: Sendable, Equatable {
     static let truncationMarker = "  … (line truncated)"
 
     let text: String
+    /// `text`'s length in UTF-16 units — the unit every span here counts in.
+    /// Accumulated as the text is built, because asking a Swift `String` for it
+    /// walks the whole document, and the renderer asks once per file painted.
+    let textLength: Int
     let files: [FileSpan]
     let lines: [LineSpan]
-    /// Diff lines dropped by either budget, across the whole document.
-    let hiddenLineCount: Int
 
     init(diff: GitDiff) {
         var text = ""
@@ -110,7 +112,6 @@ struct DiffDocument: Sendable, Equatable {
         var offset = 0
         var files: [FileSpan] = []
         var lines: [LineSpan] = []
-        var hiddenLineCount = 0
         var remainingTotal = Self.maxTotalLines
 
         /// Appends one paragraph and records its span. `suffixLength` is the
@@ -197,13 +198,12 @@ struct DiffDocument: Sendable, Equatable {
                 gutterWidth: metrics.gutterWidth,
                 range: NSRange(location: fileStart, length: offset - fileStart),
                 firstLineIndex: firstLineIndex, lineCount: lines.count - firstLineIndex))
-            hiddenLineCount += hiddenInFile
         }
 
         self.text = text
+        self.textLength = offset
         self.files = files
         self.lines = lines
-        self.hiddenLineCount = hiddenLineCount
     }
 
     /// The line whose paragraph contains `offset`, or `nil` past the end of the

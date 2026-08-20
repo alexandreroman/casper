@@ -7,9 +7,10 @@ type: reference
 # Custom resizable inspector panel
 
 Casper's inspector is a **hand-rolled side panel**, not SwiftUI's native
-`.inspector`. It lives in `Sources/CasperUI/WorkspaceDetailView.swift`
-(`InspectorPanel` renders the content): a plain `HStack` of the detail area, a
-self-drawn draggable divider, and `InspectorPanel` pinned via `.frame(width:)`.
+`.inspector`. `Sources/CasperUI/WorkspaceDetailView.swift` lays it out — a plain
+`HStack` of the detail area, a self-drawn draggable divider, and the panel pinned
+via `.frame(width:)` — and `Sources/CasperUI/InspectorPanel.swift` renders the
+panel's own content.
 
 **Why not the native `.inspector`:** on macOS 26 it **aborts the instant its
 divider is dragged**. The AppKit-hosted `SplitViewChildController` reports a
@@ -34,17 +35,17 @@ the **segmented tab `Picker` lag** the sliding chrome: it is an AppKit
 `NSSegmentedControl`, and AppKit-hosted views don't follow a SwiftUI
 transition's per-frame offset (a freshly inserted `NSView` is laid out straight
 at its final frame). This mirrors `SplitContainerView`, which animates hosted
-Metal views by frame/offset on always-mounted views for the same reason. Because
-the panel now stays mounted while collapsed, `InspectorPanel` **gates its heavy
+Metal views by frame/offset on always-mounted views for the same reason. Since
+the panel stays mounted while collapsed, `InspectorPanel` **gates its heavy
 `content`** (the diff / browser views) on the expanded state, so no diff
 computation or `WKWebView` runs while collapsed. Trailing (not leading)
 alignment is load-bearing: the detail area is `maxWidth: .infinity`, so the
 inspector's *right* edge is fixed and its *left* edge moves — leading alignment
-would translate the tabs and reintroduce the lag.
+translates the tabs and brings the lag back.
 
 **Divider drag — track the pointer by ABSOLUTE location** (the same principle as
 `SplitContainerView`'s splitter, which maps absolute movement rather than
-accumulated translation — though that one now drives its drag from AppKit): the
+accumulated translation, driven from AppKit): the
 inspector's `DragGesture` reads `value.location.x` in a
 stable **named coordinate space** anchored to the full-width container
 (`.coordinateSpace(.named(...))` on the `HStack`), and sets
@@ -61,5 +62,5 @@ drag looks correct but feels laggy.
 area). The live width is a per-workspace `@State` in `WorkspaceDetailView`,
 seeded on `.onAppear` (re-seeded per workspace because the detail view carries a
 per-workspace `.id`) and persisted **on drag-end only** via
-`AppModel.setInspectorWidth(_:for:)` (clamped, debounced). `InspectorPanel` no
-longer measures its own width — it fills whatever `.frame(width:)` it is given.
+`AppModel.setInspectorWidth(_:for:)` (clamped, debounced). `InspectorPanel` does
+not measure its own width — it fills whatever `.frame(width:)` it is given.

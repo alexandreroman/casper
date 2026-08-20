@@ -1,7 +1,7 @@
 # Auto-Close a `casper run` Terminal on Success — Design
 
 **Date:** 2026-07-15
-**Status:** Design
+**Status:** Shipped
 **Scope:** A terminal opened by `casper run <script>` should disappear from the
 workspace layout when the script succeeds (exit code 0). On failure (any
 non-zero exit) the terminal stays open with a live interactive shell, its error
@@ -13,7 +13,7 @@ output visible above the prompt, so the user can inspect or re-run.
 into the interactive shell, wrapped by `subshellWrappedScriptCommand`
 (`AppModel.swift:2091`), which today produces:
 
-```
+```bash
 (
 <command>
 )
@@ -77,7 +77,7 @@ static func subshellWrappedScriptCommand(_ command: String) -> String {
 
 producing:
 
-```
+```bash
 (
 <command>
 )

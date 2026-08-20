@@ -5,24 +5,24 @@ struct SidebarView: View {
     let model: AppModel
 
     var body: some View {
-        // `workspaceShortcutNumbers` is a computed property that rebuilds the whole
-        // `[UUID: Int]` map on every access. Read it once per body pass so indexing
-        // it per row stays O(N) instead of rebuilding the dictionary for each row.
-        let shortcutNumbers = model.workspaceShortcutNumbers
+        // Resolve the display order once per body pass: each Space's `orderedWorkspaces`
+        // is a fresh sort, and the rows and the `Cmd+N` hints both need it. Deriving the
+        // shortcut numbers from this very list — through the model's own numbering rule —
+        // is what keeps the hints and `selectWorkspace(atShortcutNumber:)` in agreement.
+        let ordered = model.spacesWithVisibleWorkspaces()
+        let shortcutNumbers = AppModel.shortcutNumbers(for: ordered)
         return VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(model.spaces) { space in
+                    ForEach(ordered, id: \.space.id) { space, workspaces in
                         SpaceHeaderView(model: model, space: space)
                             .contextMenu {
                                 Button("Remove Space", role: .destructive) {
                                     model.removeSpace(id: space.id)
                                 }
                             }
-                        if !space.isCollapsed {
-                            ForEach(space.orderedWorkspaces) { workspace in
-                                row(for: workspace, in: space, shortcutNumber: shortcutNumbers[workspace.id])
-                            }
+                        ForEach(workspaces) { workspace in
+                            row(for: workspace, in: space, shortcutNumber: shortcutNumbers[workspace.id])
                         }
                     }
                 }

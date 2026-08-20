@@ -42,11 +42,11 @@ label: on the primary button's label add `.padding(.leading, 10)`,
 `.padding(.trailing, 4)`, `.frame(maxHeight: .infinity)`, `.contentShape(Rectangle())`
 (never `maxWidth: .infinity` — the button must stay content-sized or it
 stretches the toolbar); on the `Menu` add `.padding(.trailing, 10)`. Visible
-result is pixel-identical; the full pill height + leading padding now fire the
-primary action.
+result is pixel-identical, and the full pill height plus its leading padding all
+fire the primary action.
 
 **How to access:** the pattern lives in
 `Sources/CasperUI/WorkspaceDetailView.swift`; see `inspectorToggle` and
-`diffBadge` (single-button, capsule inside label) and `ScriptToolbarButton` +
-`editorButton` (split-button, `titleCapsuleShell` + interior padding). Related:
-[[swiftui-inspector-width]].
+`diffBadge` (single-button, capsule inside label) and `TitleSplitButton`
+(split-button, `titleCapsuleShell` + interior padding), which `editorButton` and
+`ScriptToolbarButton` both render. Related: [[swiftui-inspector-width]].

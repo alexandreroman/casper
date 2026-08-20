@@ -8,15 +8,32 @@
 > file is retained for historical reference. See `../status.md` and
 > `../themes/space-project.md`.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Per the project convention ([[implementation-workflow]]), dispatch **one `skillbox:code-writer` per task**, review between tasks, and commit per task.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking. Per the project convention
+> ([[implementation-workflow]]), dispatch **one `skillbox:code-writer` per
+> task**, review between tasks, and commit per task.
 
-**Goal:** Add the CasperCore + CasperGit substrate for the **Space (project)** concept and the **per-workspace branch-divergence diff summary**, fully unit-tested, ready for the Plan 5 sidebar to consume.
+**Goal:** Add the CasperCore + CasperGit substrate for the **Space (project)**
+concept and the **per-workspace branch-divergence diff summary**, fully
+unit-tested, ready for the Plan 5 sidebar to consume.
 
-**Architecture:** Insert a `Space` level between `Session` and `Workspace` (a Space is one Git repository; it owns `repoPath`, which moves off `Workspace`). Each `Workspace` gains a `kind` (`primary | linked`) and a `baseBranch`. Repo-name derivation and Space assembly are pure/composed helpers in CasperCore; the +/− line counts come from a new libgit2 tree-to-tree divergence computation in CasperGit. The diff summary is **derived on demand** (`WorktreeManager.diffStat`), never persisted.
+**Architecture:** Insert a `Space` level between `Session` and `Workspace` (a
+Space is one Git repository; it owns `repoPath`, which moves off `Workspace`).
+Each `Workspace` gains a `kind` (`primary | linked`) and a `baseBranch`.
+Repo-name derivation and Space assembly are pure/composed helpers in CasperCore;
+the +/− line counts come from a new libgit2 tree-to-tree divergence computation
+in CasperGit. The diff summary is **derived on demand**
+(`WorktreeManager.diffStat`), never persisted.
 
 **Tech Stack:** Swift 6 / SwiftPM, XCTest, libgit2 via the `Clibgit2` module map behind `CasperGit`.
 
-**Scope boundary — deferred to Plan 5 (CasperUI):** the collapsible Space header and workspace rows, rendering the green/red counts, hiding an empty summary, the `git init` confirmation flow, and the FSEvents/hook refresh trigger that recomputes `diffStat`. This plan stops at the tested model + git substrate those consume.
+**Scope boundary — deferred to Plan 5 (CasperUI):** the collapsible Space header
+and workspace rows, rendering the green/red counts, hiding an empty summary, the
+`git init` confirmation flow, and the FSEvents/hook refresh trigger that
+recomputes `diffStat`. This plan stops at the tested model + git substrate those
+consume.
 
 ## Global Constraints
 
@@ -26,7 +43,7 @@
 - Tests use **XCTest** and need the full Xcode toolchain
   (`sudo xcode-select -s /Applications/Xcode.app`); run with `swift test`.
 - Every `git commit` message is **verb + action performed, in English**
-  ([[commit-message-style]]) and ends with the trailer:
+  ([[english-only]]) and ends with the trailer:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - `diffStat` is **derived, never persisted** (spec §6): realized as the
   `WorktreeManager.diffStat(...)` function, not a stored `Workspace` field.
@@ -60,14 +77,20 @@ site must compile together, so this is one task.
 **Files:**
 - Modify: `Sources/CasperCore/Models.swift`
 - Test: `Tests/CasperCoreTests/ModelsTests.swift`
-- Mechanical call-site fixes (drop `repoPath:`, nesting): `Tests/CasperCoreTests/SessionStoreTests.swift`, `Tests/CasperCoreTests/AgentStateReducerTests.swift`, `Tests/CasperCoreTests/AgentStateStoreTests.swift`, `Tests/CasperCoreTests/ProgressTests.swift`, `Tests/CasperCLITests/EndToEndHookTests.swift`
+- Mechanical call-site fixes (drop `repoPath:`, nesting):
+  `Tests/CasperCoreTests/SessionStoreTests.swift`,
+  `Tests/CasperCoreTests/AgentStateReducerTests.swift`,
+  `Tests/CasperCoreTests/AgentStateStoreTests.swift`,
+  `Tests/CasperCoreTests/ProgressTests.swift`,
+  `Tests/CasperCLITests/EndToEndHookTests.swift`
 
 **Interfaces:**
 - Produces:
   - `Session(spaces: [Space] = [])`, `Session.spaces: [Space]`
   - `Space(id: UUID = UUID(), name: String, repoPath: String, workspaces: [Workspace] = [])`, `Identifiable`
   - `Workspace.Kind` = `.primary | .linked` (`String`-backed `Codable`)
-  - `Workspace(id:name:kind:.linked default,worktreePath:branch:baseBranch:String? = nil,agentState:.idle,todos:[],pendingNotification:false,portBase:layout:)` — **no `repoPath`**; `baseBranch` defaults to `branch` when `nil`
+  - `Workspace(id:name:kind:.linked default,worktreePath:branch:baseBranch:String? = nil,agentState:.idle,todos:[],pendingNotification:false,portBase:layout:)`
+    — **no `repoPath`**; `baseBranch` defaults to `branch` when `nil`
   - `DiffStat(insertions: Int, deletions: Int)` with `var isEmpty: Bool`
 
 - [ ] **Step 1: Rewrite the ModelsTests sample to the nested shape (failing test)**
@@ -143,7 +166,8 @@ final class ModelsTests: XCTestCase {
 - [ ] **Step 2: Run it to confirm it fails to compile**
 
 Run: `swift test --filter CasperCoreTests.ModelsTests`
-Expected: build failure — `Space` unknown, `Workspace` has no `kind`/`baseBranch`, `Session` has no `spaces`.
+Expected: build failure — `Space` unknown, `Workspace` has no
+`kind`/`baseBranch`, `Session` has no `spaces`.
 
 - [ ] **Step 3: Rewrite the model in `Sources/CasperCore/Models.swift`**
 
@@ -364,11 +388,13 @@ EOF
 ## Task 3: CasperGit — read the origin remote URL
 
 **Files:**
-- Modify: `Sources/CasperGit/Repository.swift` (add a method to the `Repository` class, after `isClean()` ~line 146)
+- Modify: `Sources/CasperGit/Repository.swift` (add a method to the `Repository`
+  class, after `isClean()` ~line 146)
 - Test: `Tests/CasperGitTests/RepositoryTests.swift`
 
 **Interfaces:**
-- Produces: `Repository.remoteURL(named: String = "origin") throws -> String?` — `nil` when the remote is absent.
+- Produces: `Repository.remoteURL(named: String = "origin") throws -> String?` —
+  `nil` when the remote is absent.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -458,8 +484,11 @@ branch (three-dot divergence, commits included), via tree-to-tree diff stats.
 - Test: `Tests/CasperGitTests/DiffTests.swift`
 
 **Interfaces:**
-- Consumes: `Repository` (from CasperGit); `git_merge_base`, `git_diff_tree_to_tree`, `git_diff_get_stats`.
-- Produces: `Repository.divergenceLineStats(branch: String, base: String) throws -> (insertions: Int, deletions: Int)` — `(0, 0)` when the branch equals its base / has not diverged.
+- Consumes: `Repository` (from CasperGit); `git_merge_base`,
+  `git_diff_tree_to_tree`, `git_diff_get_stats`.
+- Produces:
+  `Repository.divergenceLineStats(branch: String, base: String) throws -> (insertions: Int, deletions: Int)`
+  — `(0, 0)` when the branch equals its base / has not diverged.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -645,7 +674,10 @@ EOF
 - Test: `Tests/CasperCoreTests/SpaceTests.swift`
 
 **Interfaces:**
-- Produces: `enum SpaceNaming { static func defaultName(remoteURL: String?, folderName: String) -> String }` — last URL segment without a trailing `.git`; falls back to `folderName` when there is no remote or the URL yields no name.
+- Produces:
+  `enum SpaceNaming { static func defaultName(remoteURL: String?, folderName: String) -> String }`
+  — last URL segment without a trailing `.git`; falls back to `folderName` when
+  there is no remote or the URL yields no name.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -762,10 +794,14 @@ EOF
 - Test: `Tests/CasperCoreTests/SpaceTests.swift`
 
 **Interfaces:**
-- Consumes: `Repository.open/workdirPath/headBranchName/remoteURL` (CasperGit); `SpaceNaming.defaultName` (Task 5).
+- Consumes: `Repository.open/workdirPath/headBranchName/remoteURL` (CasperGit);
+  `SpaceNaming.defaultName` (Task 5).
 - Produces:
   - `struct SpaceError: Error, Equatable { enum Reason { case repositoryNotFound, gitFailure(String) }; let reason: Reason }`
-  - `enum SpaceManager { static func open(repoPath: String, portBase: Int) throws -> Space }` — opens an existing repo, returns a Space with one `.primary` workspace on the repo's main working tree (`branch = baseBranch = HEAD`, a single-terminal layout). The caller supplies the port block.
+  - `enum SpaceManager { static func open(repoPath: String, portBase: Int) throws -> Space }`
+    — opens an existing repo, returns a Space with one `.primary` workspace on
+    the repo's main working tree (`branch = baseBranch = HEAD`, a
+    single-terminal layout). The caller supplies the port block.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -939,7 +975,9 @@ This is the on-demand value the Plan 5 sidebar calls per workspace.
 
 **Interfaces:**
 - Consumes: `Repository.divergenceLineStats` (Task 4); `DiffStat` (Task 1).
-- Produces: `extension WorktreeManager { static func diffStat(repoPath: String, branch: String, baseBranch: String) throws -> DiffStat }` — `.isEmpty` when the branch has not diverged (the sidebar hides it then).
+- Produces:
+  `extension WorktreeManager { static func diffStat(repoPath: String, branch: String, baseBranch: String) throws -> DiffStat }`
+  — `.isEmpty` when the branch has not diverged (the sidebar hides it then).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1024,15 +1062,34 @@ EOF
 ## Self-Review
 
 **Spec coverage:**
-- §2 Space = Git repo, ≥1 primary workspace → Task 1 (`Space`, `Workspace.Kind`), Task 6 (`SpaceManager.open`). ✓
-- §2.1 Naming (remote last segment sans `.git`; folder fallback; renamable) → Task 5 (`SpaceNaming`); renamable = `Space.name` is a `var`. ✓
-- §3 Data model (`repoPath` moves up; `kind`; `baseBranch`; `diffStat` derived) → Task 1; `diffStat` realized as a function in Task 7 (documented in Global Constraints). ✓
-- §4 Sidebar → **deferred to Plan 5** (stated in scope boundary); substrate consumed: `Space`, `Workspace`, `DiffStat`, `diffStat()`. ✓
-- §5 Lifecycle: open → Task 6; `git init` for a non-repo folder = UI (Plan 5); add-workspace = existing `WorktreeManager.create` (unchanged); non-destructive removal = UI drops the `Space` from `Session` + releases ports (pure model already supports it — `Session.spaces` is a `var`). ✓
-- §6 Diff summary (branch vs merge-base of base; +/− lines only; hidden when empty; libgit2, no parsing; derived) → Task 4 (git), Task 7 (`diffStat`), `DiffStat.isEmpty` for hiding. ✓
-- §7 Unchanged (ports per workspace, hooks global, no `CASPER_PROJECT`, persistence tree) → `portBase` stays on `Workspace`; Task 2 covers persistence migration. ✓
+- §2 Space = Git repo, ≥1 primary workspace → Task 1 (`Space`,
+  `Workspace.Kind`), Task 6 (`SpaceManager.open`). ✓
+- §2.1 Naming (remote last segment sans `.git`; folder fallback; renamable) →
+  Task 5 (`SpaceNaming`); renamable = `Space.name` is a `var`. ✓
+- §3 Data model (`repoPath` moves up; `kind`; `baseBranch`; `diffStat` derived)
+  → Task 1; `diffStat` realized as a function in Task 7 (documented in Global
+  Constraints). ✓
+- §4 Sidebar → **deferred to Plan 5** (stated in scope boundary); substrate
+  consumed: `Space`, `Workspace`, `DiffStat`, `diffStat()`. ✓
+- §5 Lifecycle: open → Task 6; `git init` for a non-repo folder = UI (Plan 5);
+  add-workspace = existing `WorktreeManager.create` (unchanged); non-destructive
+  removal = UI drops the `Space` from `Session` + releases ports (pure model
+  already supports it — `Session.spaces` is a `var`). ✓
+- §6 Diff summary (branch vs merge-base of base; +/− lines only; hidden when
+  empty; libgit2, no parsing; derived) → Task 4 (git), Task 7 (`diffStat`),
+  `DiffStat.isEmpty` for hiding. ✓
+- §7 Unchanged (ports per workspace, hooks global, no `CASPER_PROJECT`,
+  persistence tree) → `portBase` stays on `Workspace`; Task 2 covers persistence
+  migration. ✓
 - §10 Persistence / migration of old files → Task 2. ✓
 
 **Placeholder scan:** none — every step carries real code and exact commands.
 
-**Type consistency:** `DiffStat(insertions:deletions:)`, `Workspace.Kind.primary/.linked`, `Space(name:repoPath:workspaces:)`, `Session(spaces:)`, `SpaceError.Reason.repositoryNotFound`, `WorktreeError.Reason.repositoryNotFound`, `Repository.remoteURL(named:)`, `Repository.divergenceLineStats(branch:base:)`, `Repository.repositoryFixture(at:)`, `SpaceManager.open(repoPath:portBase:)`, `WorktreeManager.diffStat(repoPath:branch:baseBranch:)` — all defined once and referenced consistently across tasks.
+**Type consistency:** `DiffStat(insertions:deletions:)`,
+`Workspace.Kind.primary/.linked`, `Space(name:repoPath:workspaces:)`,
+`Session(spaces:)`, `SpaceError.Reason.repositoryNotFound`,
+`WorktreeError.Reason.repositoryNotFound`, `Repository.remoteURL(named:)`,
+`Repository.divergenceLineStats(branch:base:)`,
+`Repository.repositoryFixture(at:)`, `SpaceManager.open(repoPath:portBase:)`,
+`WorktreeManager.diffStat(repoPath:branch:baseBranch:)` — all defined once and
+referenced consistently across tasks.

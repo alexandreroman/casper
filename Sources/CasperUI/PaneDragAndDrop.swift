@@ -11,9 +11,10 @@ import UniformTypeIdentifiers
 /// the whole `bounds` is the grip — Ghostty drives the cursor the same way, via
 /// `cursorUpdate(with:)` over the bounds (open hand, or closed hand while dragging).
 final class PaneDragHandleView: NSView, NSDraggingSource {
-    // Mutable so `PaneDragHandle.updateNSView` can refresh them: a browser pane
-    // mints a new `Surface` on navigation, so the id and preview label must follow
-    // rather than staying pinned to whatever was captured at `makeNSView` time.
+    // Mutable so `PaneDragHandle.updateNSView` can refresh them: the backing view
+    // outlives the SwiftUI struct that made it, and a pane keeps its view across
+    // layout churn, so the inputs must follow rather than staying pinned to
+    // whatever was captured at `makeNSView` time.
     fileprivate var surfaceID: UUID
     fileprivate var label: String
     fileprivate var onDragStateChange: (Bool) -> Void
@@ -239,8 +240,8 @@ struct PaneDragHandle: NSViewRepresentable {
 
     func updateNSView(_ nsView: PaneDragHandleView, context: Context) {
         // Keep the backing view in sync with the current inputs; otherwise a pane
-        // that swaps its `Surface` (e.g. a browser navigation) would keep dragging
-        // the old id and preview label.
+        // reused for a different `Surface` would keep dragging the old id, preview
+        // label and drag-state callback.
         nsView.surfaceID = surfaceID
         nsView.label = label
         nsView.onDragStateChange = onDragStateChange

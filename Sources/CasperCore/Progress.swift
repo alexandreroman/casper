@@ -1,7 +1,9 @@
 public extension Workspace {
     var progress: (completed: Int, total: Int) {
-        let completed = todos.filter { $0.status == .completed }.count
-        return (completed, todos.count)
+        // `count(where:)` rather than `filter { }.count`: the intermediate array
+        // was allocated and thrown away on every read, and the sidebar reads this
+        // for every workspace row on every model change.
+        (completed: todos.count { $0.status == .completed }, total: todos.count)
     }
 
     var currentTask: String? {
@@ -9,13 +11,14 @@ public extension Workspace {
     }
 
     var progressFraction: Double {
-        let (completed, total) = progress
-        return total > 0 ? Double(completed) / Double(total) : 0
+        guard !todos.isEmpty else { return 0 }
+        return Double(todos.count { $0.status == .completed }) / Double(todos.count)
     }
 
+    /// Every todo completed, and at least one todo. `allSatisfy` stops at the first
+    /// unfinished item instead of counting the whole list.
     var isComplete: Bool {
-        let (completed, total) = progress
-        return total > 0 && completed == total
+        !todos.isEmpty && todos.allSatisfy { $0.status == .completed }
     }
 
     /// The Git branch to show for this workspace, falling back to the workspace

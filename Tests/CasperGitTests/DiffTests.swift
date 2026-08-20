@@ -70,6 +70,10 @@ final class DiffTests: XCTestCase {
         try FileManager.default.removeItem(at: dir.appendingPathComponent("README.md"))
         let file = try repo.diffWorkdirToHead().files.first { $0.oldPath == "README.md" }
         XCTAssertEqual(file?.status, .deleted)
+        // libgit2 mirrors `old_file.path` into `new_file.path` for a deletion (the two
+        // only diverge for a rename), so a deletion still has a usable display path and
+        // `GitDiffFile.id` never has to fall back to `oldPath`.
+        XCTAssertEqual(file?.newPath, "README.md")
         XCTAssertTrue((file?.hunks.flatMap(\.lines) ?? []).allSatisfy { $0.kind == .deletion })
     }
 

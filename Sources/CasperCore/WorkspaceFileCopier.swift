@@ -50,7 +50,13 @@ enum WorkspaceFileCopier {
             let name = fileURL.lastPathComponent
             guard patterns.contains(where: { fnmatch($0, name, 0) == 0 }) else { continue }
 
+            // Enumerating from `sourceStd` is expected to yield paths under
+            // `sourcePath`, but verify it instead of assuming: dropping the prefix
+            // length blindly would turn any standardization divergence into a
+            // truncated relative path, which then gets joined onto
+            // `destinationRoot` and writes outside the intended location.
             let fileStd = fileURL.standardizedFileURL
+            guard fileStd.path.hasPrefix(sourcePath) else { continue }
             let relativePath = String(fileStd.path.dropFirst(sourcePath.count))
             let destinationURL = URL(fileURLWithPath: destinationRoot)
                 .appendingPathComponent(relativePath)

@@ -47,7 +47,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// Pass `layingOut: false` to leave the layout manager cold, which is what a
     /// test measuring how much layout a call *forces* needs.
     private func makeTextView(_ document: DiffDocument, layingOut: Bool = true) -> NSTextView {
-        let storage = DiffTextAssembly.makeTextStorage(for: document)
+        let storage = DiffTextAssembly.makeAttributedText(for: document)
         let textView = NSTextView(frame: CGRect(x: 0, y: 0, width: width, height: 10_000))
         textView.textContentStorage?.textStorage?.setAttributedString(storage)
         textView.textContainer?.size = CGSize(width: width, height: .greatestFiniteMagnitude)

@@ -25,6 +25,15 @@ func ghosttyKeyEvent(
     _ event: NSEvent, action: ghostty_input_action_e,
     consumedMods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 ) -> ghostty_input_key_s {
+    // Read the base characters once, here: `charactersIgnoringModifiers` bridges a
+    // fresh Swift String out of an NSString on every access, and both helpers below
+    // need it — on every keystroke. It is also *raising* on any non-key event (see
+    // `ghosttyUnshiftedCodepoint`), so the event-type guard both helpers used to
+    // repeat lives here instead; nil then makes each of them fall back correctly.
+    let baseCharacters: String? = switch event.type {
+    case .keyDown, .keyUp: event.charactersIgnoringModifiers
+    default: nil
+    }
     var key = ghostty_input_key_s()
     key.action = action
     key.mods = ghosttyMods(from: event.modifierFlags)
@@ -32,10 +41,11 @@ func ghosttyKeyEvent(
     // For a Control-letter combo, send the letter's QWERTY-position keycode rather than
     // the real physical keycode (see `ghosttyControlComboKeycode`); every other key
     // keeps its real `event.keyCode`.
-    key.keycode = ghosttyControlComboKeycode(for: event) ?? UInt32(event.keyCode)
+    key.keycode = ghosttyControlComboKeycode(for: event, baseCharacters: baseCharacters)
+        ?? UInt32(event.keyCode)
     key.composing = false
     key.text = nil
-    key.unshifted_codepoint = ghosttyUnshiftedCodepoint(from: event)
+    key.unshifted_codepoint = ghosttyUnshiftedCodepoint(from: baseCharacters)
     return key
 }
 
@@ -113,11 +123,11 @@ func ghosttyTextRidesOnKeyEvent(_ text: String) -> Bool {
 /// other event type, and `GhosttySurfaceView.flagsChanged(with:)` feeds exactly those
 /// in — a modifier transition is a `.flagsChanged` event. The raise unwound out of
 /// `ghosttyKeyEvent` before `sendKey` could run, so no modifier press or release
-/// reached libghostty at all. A modifier transition has no base codepoint anyway, so
-/// non-key events resolve to 0, which is what Ghostty's own `keyAction` sends.
-private func ghosttyUnshiftedCodepoint(from event: NSEvent) -> UInt32 {
-    guard event.type == .keyDown || event.type == .keyUp else { return 0 }
-    guard let scalar = event.charactersIgnoringModifiers?.unicodeScalars.first else { return 0 }
+/// reached libghostty at all. `ghosttyKeyEvent` therefore passes nil `baseCharacters`
+/// for a non-key event. A modifier transition has no base codepoint anyway, so that
+/// resolves to 0, which is what Ghostty's own `keyAction` sends.
+private func ghosttyUnshiftedCodepoint(from baseCharacters: String?) -> UInt32 {
+    guard let scalar = baseCharacters?.unicodeScalars.first else { return 0 }
     return scalar.value
 }
 
@@ -135,17 +145,24 @@ private func ghosttyUnshiftedCodepoint(from event: NSEvent) -> UInt32 {
 /// (a–z); digits, punctuation, and combos like Ctrl-[ or Ctrl-Space keep their real
 /// keycode, since there is no evidence they are affected and no safe remap target.
 ///
-/// Non-key events return nil and keep their real `event.keyCode`: reading characters
-/// off them raises, which used to abort the whole `ghosttyKeyEvent` build before
-/// `sendKey` (see `ghosttyUnshiftedCodepoint`). Control itself going down or up is a
-/// `.flagsChanged` event with `.control` set, so it would otherwise reach the read here.
-private func ghosttyControlComboKeycode(for event: NSEvent) -> UInt32? {
-    guard event.type == .keyDown || event.type == .keyUp,
-        event.modifierFlags.contains(.control),
-        let base = event.charactersIgnoringModifiers?.lowercased().first,
-        let keycode = qwertyLetterKeyCodes[base]
+/// `baseCharacters` is nil for a non-key event, which then keeps its real
+/// `event.keyCode`: Control itself going down or up is a `.flagsChanged` event with
+/// `.control` set, and reading characters off one raises (see
+/// `ghosttyUnshiftedCodepoint`), so the caller reads them only for key events.
+private func ghosttyControlComboKeycode(for event: NSEvent, baseCharacters: String?) -> UInt32? {
+    guard event.modifierFlags.contains(.control),
+        let scalar = baseCharacters?.unicodeScalars.first,
+        let keycode = qwertyLetterKeyCodes[Character(asciiLowercased(scalar))]
     else { return nil }
     return keycode
+}
+
+/// ASCII-lowercase a single scalar, leaving everything else untouched. The table it
+/// feeds holds a-z only, so full `String.lowercased()` folding buys nothing and costs
+/// a String allocation on every Control combo.
+private func asciiLowercased(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+    guard ("A"..."Z").contains(scalar) else { return scalar }
+    return Unicode.Scalar(scalar.value + 0x20) ?? scalar
 }
 
 /// macOS ANSI virtual keycodes (`kVK_ANSI_*`) named rather than inlined so the maps
