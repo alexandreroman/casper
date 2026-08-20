@@ -115,6 +115,17 @@ public enum AgentIntegration {
     /// declared by the plugin's manifest in the `casper-agents` repository.
     public static let pluginID = "casper@casper-agents"
 
+    /// The identifier the plugin was registered under before its marketplace was
+    /// renamed, still present in every pre-rename user's Claude Code registry.
+    ///
+    /// A Claude Code plugin id is `<plugin>@<marketplace>`, and the old
+    /// marketplace declared `"name": "Casper"` — so this value is *deterministic*
+    /// and shared by all those users, not a per-machine accident. Recognising it is
+    /// what turns "you already have the integration, from the old marketplace" into
+    /// `.outdated`, which points at update instructions, instead of `.missing`,
+    /// which would tell the user to install something they demonstrably have.
+    public static let legacyPluginID = "casper@Casper"
+
     /// The plugin version Casper requires — the single place to change it.
     ///
     /// It must track the version the `casper` plugin declares in its own manifest.
@@ -215,9 +226,27 @@ public enum AgentIntegration {
 
     // MARK: - Claude Code
 
-    /// Reads the installed plugin version out of Claude Code's plugin registry
-    /// (`~/.claude/plugins/installed_plugins.json`), or nil when the plugin is not
-    /// registered there.
+    /// A Casper plugin registration found in Claude Code's plugin registry.
+    ///
+    /// Carries which id matched as well as the version, because the two answers lead
+    /// to different advice: a legacy registration has to move to the new
+    /// marketplace whatever version it holds, while a current one is judged on its
+    /// version alone.
+    public struct ClaudePluginRegistration: Equatable, Sendable {
+        /// The highest version recorded across the matched id's install records.
+        public let version: String
+        /// Whether the match came from `legacyPluginID` rather than `pluginID`.
+        public let usesLegacyPluginID: Bool
+
+        public init(version: String, usesLegacyPluginID: Bool) {
+            self.version = version
+            self.usesLegacyPluginID = usesLegacyPluginID
+        }
+    }
+
+    /// Reads the installed plugin registration out of Claude Code's plugin registry
+    /// (`~/.claude/plugins/installed_plugins.json`), or nil when neither the current
+    /// nor the legacy plugin id is registered there.
     ///
     /// The verified shape (the file's own `"version": 2`) maps each plugin id to an
     /// **array** of install records, one per scope:
@@ -236,17 +265,40 @@ public enum AgentIntegration {
     /// A recorded `"unknown"` is returned verbatim when nothing parses —
     /// `isOutdated` is the one place that decides what an unparseable version means.
     ///
+    /// Both ids are looked up, `pluginID` first, and the reported version always
+    /// comes from the id that matched — versions are never mixed across ids, since
+    /// the two registrations are separate installs.
+    ///
     /// `JSONSerialization` rather than `Codable` on purpose: the schema is loose,
     /// partly untyped and owned by another project, so every unexpected shape has to
     /// degrade to nil rather than throw.
-    public static func parseClaudeRegistry(_ data: Data, pluginID: String = AgentIntegration.pluginID) -> String? {
+    public static func parseClaudeRegistry(
+        _ data: Data,
+        pluginID: String = AgentIntegration.pluginID,
+        legacyPluginID: String = AgentIntegration.legacyPluginID
+    ) -> ClaudePluginRegistration? {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let plugins = root["plugins"] as? [String: Any],
-              let records = plugins[pluginID] as? [Any]
+              let plugins = root["plugins"] as? [String: Any]
         else {
             return nil
         }
 
+        // The current id is consulted first, and a match there ends the search: a
+        // user who has migrated but never cleaned up the old registration is
+        // current, not outdated, and must not be nagged for a leftover record.
+        if let version = highestRecordedVersion(in: plugins, for: pluginID) {
+            return ClaudePluginRegistration(version: version, usesLegacyPluginID: false)
+        }
+        if let version = highestRecordedVersion(in: plugins, for: legacyPluginID) {
+            return ClaudePluginRegistration(version: version, usesLegacyPluginID: true)
+        }
+        return nil
+    }
+
+    /// The highest version across the install records filed under one plugin id, or
+    /// nil when the id is absent or none of its records carry a usable version.
+    private static func highestRecordedVersion(in plugins: [String: Any], for pluginID: String) -> String? {
+        guard let records = plugins[pluginID] as? [Any] else { return nil }
         let versions = records.compactMap { ($0 as? [String: Any])?["version"] as? String }
         return highestVersion(among: versions)
     }
@@ -276,14 +328,25 @@ public enum AgentIntegration {
     /// is: someone who types `0` there means false. A *quoted* `"false"` is not a
     /// boolean and reads as enabled — the safe direction for a value nobody meant as
     /// a flag.
-    public static func parseClaudeEnabled(_ data: Data, pluginID: String = AgentIntegration.pluginID) -> Bool {
+    public static func parseClaudeEnabled(
+        _ data: Data,
+        pluginID: String = AgentIntegration.pluginID,
+        legacyPluginID: String = AgentIntegration.legacyPluginID
+    ) -> Bool {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let enabledPlugins = root["enabledPlugins"] as? [String: Any],
-              let enabled = enabledPlugins[pluginID] as? Bool
+              let enabledPlugins = root["enabledPlugins"] as? [String: Any]
         else {
             return true
         }
-        return enabled
+
+        // Both ids are consulted, because a pre-rename user's key here is the legacy
+        // one: an explicit `false` under either spelling switches the same
+        // integration off, and reading only the current id would report a plugin the
+        // user has deliberately disabled as live.
+        for identifier in [pluginID, legacyPluginID] {
+            if let enabled = enabledPlugins[identifier] as? Bool, !enabled { return false }
+        }
+        return true
     }
 
     // MARK: - opencode

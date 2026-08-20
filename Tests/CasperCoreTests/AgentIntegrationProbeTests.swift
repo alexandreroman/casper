@@ -36,6 +36,21 @@ final class AgentIntegrationProbeTests: XCTestCase {
         """
     }
 
+    /// The pre-rename registry shape, `installPath` and `gitCommitSha` included, as
+    /// found on a real machine that installed before the marketplace was renamed.
+    private static func legacyClaudeRegistry(version: String) -> String {
+        """
+        {"version": 2,
+         "plugins": {"\(AgentIntegration.legacyPluginID)": [
+           {"scope": "user",
+            "installPath": "/Users/alex/.claude/plugins/cache/Casper/casper/\(version)",
+            "version": "\(version)",
+            "installedAt": "2026-07-07T13:04:49.792Z",
+            "lastUpdated": "2026-07-07T13:04:49.792Z",
+            "gitCommitSha": "17fd..."}]}}
+        """
+    }
+
     private static func opencodePlugin(version: String) -> String {
         """
         export const CASPER_PLUGIN_VERSION = "\(version)"
@@ -149,6 +164,55 @@ final class AgentIntegrationProbeTests: XCTestCase {
                 executables: ["claude"],
                 files: [Self.claudeRegistryPath: Self.claudeRegistry(version: Self.oldVersion)]))
         XCTAssertEqual(probe.status(for: .claudeCode), .outdated(installed: Self.oldVersion))
+    }
+
+    func testClaudeCodeLegacyPluginIDReportsOutdated() {
+        // The state every pre-rename user is in the moment the rename ships: the
+        // integration is installed and working, just from the old marketplace. It
+        // must send them to update instructions, never to install instructions.
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["claude"],
+                files: [Self.claudeRegistryPath: Self.legacyClaudeRegistry(version: "0.1.0")]))
+        XCTAssertEqual(probe.status(for: .claudeCode), .outdated(installed: "0.1.0"))
+    }
+
+    func testClaudeCodeLegacyPluginIDIsOutdatedEvenAboveTheRequiredVersion() {
+        // The legacy id means the wrong marketplace, which no version number can
+        // fix. Pinned so that bumping `requiredPluginVersion` past 0.1.0 — or
+        // anything else that makes the version comparison incidentally true — can
+        // never be what this case is relying on.
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["claude"],
+                files: [Self.claudeRegistryPath: Self.legacyClaudeRegistry(version: "99.0.0")]))
+        XCTAssertEqual(probe.status(for: .claudeCode), .outdated(installed: "99.0.0"))
+    }
+
+    func testClaudeCodeCurrentPluginIDOutranksALeftoverLegacyRegistration() {
+        // A migrated user whose old registration is still on disk is current.
+        let registry = """
+            {"version": 2,
+             "plugins": {
+               "\(AgentIntegration.legacyPluginID)": [{"scope": "user", "version": "0.1.0"}],
+               "\(AgentIntegration.pluginID)": [{"scope": "user", "version": "\(Self.currentVersion)"}]}}
+            """
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(executables: ["claude"], files: [Self.claudeRegistryPath: registry]))
+        XCTAssertEqual(probe.status(for: .claudeCode), .installed)
+    }
+
+    func testClaudeCodeDisabledUnderTheLegacyIDReportsMissing() {
+        // A pre-rename user's enablement key is the legacy id too.
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["claude"],
+                files: [
+                    Self.claudeRegistryPath: Self.legacyClaudeRegistry(version: "0.1.0"),
+                    Self.claudeSettingsPath:
+                        #"{"enabledPlugins": {"\#(AgentIntegration.legacyPluginID)": false}}"#,
+                ]))
+        XCTAssertEqual(probe.status(for: .claudeCode), .missing)
     }
 
     func testClaudeCodeDisabledInSettingsReportsMissing() {

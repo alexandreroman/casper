@@ -118,7 +118,7 @@ public struct AgentIntegrationProbe: Sendable {
     /// registry file, and whether the user has switched it off in another.
     private func claudeCodeStatus() -> AgentIntegrationStatus {
         guard let registry = environment.fileContents(homePath(".claude/plugins/installed_plugins.json")),
-              let version = AgentIntegration.parseClaudeRegistry(registry)
+              let registration = AgentIntegration.parseClaudeRegistry(registry)
         else {
             return .missing
         }
@@ -133,7 +133,17 @@ public struct AgentIntegrationProbe: Sendable {
            !AgentIntegration.parseClaudeEnabled(settings) {
             return .missing
         }
-        return status(forInstalledVersion: version)
+
+        // A registration under the legacy id is outdated *whatever version it
+        // carries*, so this deliberately bypasses the version comparison. The
+        // version says how new the install is; the id says which marketplace it came
+        // from, and a pre-rename marketplace is the thing the user has to move off.
+        // Leaning on `0.1.0 < requiredPluginVersion` happening to be true today
+        // would make the next version bump silently stop reporting these users.
+        if registration.usesLegacyPluginID {
+            return .outdated(installed: registration.version)
+        }
+        return status(forInstalledVersion: registration.version)
     }
 
     // MARK: - opencode

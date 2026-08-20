@@ -27,6 +27,15 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertEqual(Set(ids).count, CodingAgent.allCases.count)
     }
 
+    func testLegacyPluginIDIsPinnedAndDistinct() {
+        // Deterministic, not per-user: a Claude Code plugin id is
+        // `<plugin>@<marketplace>`, and the pre-rename marketplace declared
+        // `"name": "Casper"`, so every pre-rename install carries this exact key.
+        // Changing it turns all of those users back into a false `.missing`.
+        XCTAssertEqual(AgentIntegration.legacyPluginID, "casper@Casper")
+        XCTAssertNotEqual(AgentIntegration.legacyPluginID, AgentIntegration.pluginID)
+    }
+
     func testOnlyCodexRequiresHookTrust() {
         XCTAssertTrue(CodingAgent.codex.requiresHookTrust)
         XCTAssertFalse(CodingAgent.claudeCode.requiresHookTrust)
@@ -127,20 +136,20 @@ final class AgentIntegrationTests: XCTestCase {
         """#
 
     func testParseClaudeRegistryReadsTheInstalledVersion() {
-        let version = AgentIntegration.parseClaudeRegistry(Data(claudeRegistry.utf8))
-        XCTAssertEqual(version, "0.2.0")
+        let registration = AgentIntegration.parseClaudeRegistry(Data(claudeRegistry.utf8))
+        XCTAssertEqual(registration, .init(version: "0.2.0", usesLegacyPluginID: false))
     }
 
     func testParseClaudeRegistryIgnoresOtherPlugins() {
-        let version = AgentIntegration.parseClaudeRegistry(
+        let registration = AgentIntegration.parseClaudeRegistry(
             Data(claudeRegistry.utf8), pluginID: "notes@some-marketplace")
         // Returned verbatim: `isOutdated` is the single place that judges it.
-        XCTAssertEqual(version, "unknown")
+        XCTAssertEqual(registration?.version, "unknown")
     }
 
     func testParseClaudeRegistryReturnsNilForAnUnregisteredPlugin() {
-        let version = AgentIntegration.parseClaudeRegistry(Data(claudeRegistry.utf8), pluginID: "nope@nowhere")
-        XCTAssertNil(version)
+        let registration = AgentIntegration.parseClaudeRegistry(Data(claudeRegistry.utf8), pluginID: "nope@nowhere")
+        XCTAssertNil(registration)
     }
 
     func testParseClaudeRegistryTakesTheHighestRecordedVersion() {
@@ -154,7 +163,7 @@ final class AgentIntegrationTests: XCTestCase {
               {"scope": "local", "version": "0.9.0"}
             ]}}
             """#
-        XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(json.utf8)), "0.9.0")
+        XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(json.utf8))?.version, "0.9.0")
 
         // Numerically, not lexicographically.
         let doubleDigit = #"""
@@ -162,7 +171,7 @@ final class AgentIntegrationTests: XCTestCase {
               {"version": "0.10.0"}, {"version": "0.9.0"}
             ]}}
             """#
-        XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(doubleDigit.utf8)), "0.10.0")
+        XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(doubleDigit.utf8))?.version, "0.10.0")
     }
 
     func testParseClaudeRegistrySurvivesEveryMalformedShape() {
@@ -185,7 +194,65 @@ final class AgentIntegrationTests: XCTestCase {
 
     func testParseClaudeRegistrySkipsNonObjectRecords() {
         let json = #"{"plugins": {"casper@casper-agents": ["oops", {"version": "0.2.0"}]}}"#
-        XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(json.utf8)), "0.2.0")
+        XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(json.utf8))?.version, "0.2.0")
+    }
+
+    /// A genuine pre-rename registry entry, copied verbatim off a real machine —
+    /// `installPath` and `gitCommitSha` included — so the legacy path is proved
+    /// against the shape Claude Code actually writes, not a tidied-up stand-in.
+    private let legacyClaudeRegistry = #"""
+        {
+          "version": 2,
+          "plugins": {
+            "casper@Casper": [
+              {
+                "scope": "user",
+                "installPath": "/Users/alex/.claude/plugins/cache/Casper/casper/0.1.0",
+                "version": "0.1.0",
+                "installedAt": "2026-07-07T13:04:49.792Z",
+                "lastUpdated": "2026-07-07T13:04:49.792Z",
+                "gitCommitSha": "17fd..."
+              }
+            ]
+          }
+        }
+        """#
+
+    func testParseClaudeRegistryMatchesTheLegacyPluginID() {
+        let registration = AgentIntegration.parseClaudeRegistry(Data(legacyClaudeRegistry.utf8))
+        XCTAssertEqual(registration, .init(version: "0.1.0", usesLegacyPluginID: true))
+    }
+
+    func testParseClaudeRegistryFlagsTheLegacyPluginIDWhateverTheVersion() {
+        // The flag reports the *id* that matched, never the version, so a legacy
+        // install numbered above `requiredPluginVersion` is still flagged. That is
+        // what keeps a future version bump from quietly losing these users.
+        let json = #"""
+            {"plugins": {"casper@Casper": [{"scope": "user", "version": "99.0.0"}]}}
+            """#
+        XCTAssertEqual(
+            AgentIntegration.parseClaudeRegistry(Data(json.utf8)),
+            .init(version: "99.0.0", usesLegacyPluginID: true))
+    }
+
+    func testParseClaudeRegistryPrefersTheCurrentPluginIDOverTheLegacyOne() {
+        // A user who migrated but left the old registration behind is current. The
+        // legacy record here holds the *higher* version on purpose: the choice is
+        // made on the id, not by comparing versions across the two.
+        let json = #"""
+            {"plugins": {
+              "casper@Casper": [{"scope": "user", "version": "99.0.0"}],
+              "casper@casper-agents": [{"scope": "user", "version": "0.2.0"}]
+            }}
+            """#
+        XCTAssertEqual(
+            AgentIntegration.parseClaudeRegistry(Data(json.utf8)),
+            .init(version: "0.2.0", usesLegacyPluginID: false))
+    }
+
+    func testParseClaudeRegistryReturnsNilWhenNeitherIDIsRegistered() {
+        let json = #"{"version": 2, "plugins": {"notes@some-marketplace": [{"version": "1.0.0"}]}}"#
+        XCTAssertNil(AgentIntegration.parseClaudeRegistry(Data(json.utf8)))
     }
 
     // MARK: - Claude Code enablement
@@ -198,6 +265,19 @@ final class AgentIntegrationTests: XCTestCase {
     func testParseClaudeEnabledReadsAnExplicitTrue() {
         let settings = #"{"enabledPlugins": {"casper@casper-agents": true}}"#
         XCTAssertTrue(AgentIntegration.parseClaudeEnabled(Data(settings.utf8)))
+    }
+
+    func testParseClaudeEnabledReadsAnExplicitFalseUnderEitherID() {
+        // A pre-rename user's key here is the legacy id, so reading only the current
+        // one would report an integration they switched off as live.
+        let legacyOnly = #"{"enabledPlugins": {"casper@Casper": false}}"#
+        XCTAssertFalse(AgentIntegration.parseClaudeEnabled(Data(legacyOnly.utf8)))
+
+        // Either key alone is enough to disable, so a leftover legacy `false` counts
+        // even beside a current `true`: an explicit `false` on this plugin is the
+        // user's own statement about the Casper integration, whichever id carries it.
+        let both = #"{"enabledPlugins": {"casper@casper-agents": true, "casper@Casper": false}}"#
+        XCTAssertFalse(AgentIntegration.parseClaudeEnabled(Data(both.utf8)))
     }
 
     func testParseClaudeEnabledTreatsAnAbsentKeyAsEnabled() {
