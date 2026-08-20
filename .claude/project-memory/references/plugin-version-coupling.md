@@ -16,11 +16,12 @@ hard-codes the version it expects in a single constant in `CasperCore`.
 user ahead of Casper's build reads as current, while the constant only ever
 catches users who are *behind*.
 
-**One exception, by design:** a Claude Code registration under the pre-rename
-`legacyPluginID` (`casper@Casper`) is outdated whatever version it carries. The
-id identifies the *marketplace*, not the build, and such a user must move to the
-renamed marketplace regardless of how their old install is numbered. The probe
-returns `.outdated` for it directly rather than routing through the comparison.
+**One exception, by design:** a Claude Code registration under
+`legacyPluginID` (`casper@Casper`) is outdated whatever version it carries.
+The id identifies the *marketplace*, not the build, so the probe returns
+`.outdated` directly rather than routing through the comparison. The plugin
+was never published, so this covers one pre-publication local install rather
+than any population of users.
 
 **Why:** strict equality would give a false "outdated" to anyone ahead of
 Casper's build, and would make every plugin release require a Casper release
