@@ -460,6 +460,9 @@ final class AppModel {
         self.sessionStore = sessionStore
         self.portAllocator = portAllocator
         self.sessionIdentity = sessionIdentity
+        // Seeded before anything else can `persist()`: a save that ran with the set
+        // still empty would wipe every dismissal the user has ever made.
+        self.dismissedAgentReminders = session.dismissedAgentReminders
         self.spaces = Self.sortedByName(session.spaces)
         // Restore the persisted selection when it still resolves to a live
         // workspace; otherwise fall back to the first workspace of the first
@@ -500,6 +503,7 @@ final class AppModel {
         worktreeWatcher?.stop()
         gitMetaWatcher?.stop()
         agentDetectionTask?.cancel()
+        agentIntegrationTask?.cancel()
     }
 
     /// All workspaces across every Space, in sidebar order.
@@ -1834,7 +1838,8 @@ final class AppModel {
     func persist() {
         do {
             let data = try sessionStore.encode(
-                Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID))
+                Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID,
+                        dismissedAgentReminders: dismissedAgentReminders))
             saveQueue.async { [sessionStore] in
                 do {
                     try sessionStore.write(data)
@@ -2094,6 +2099,155 @@ final class AppModel {
     /// as a harmless default; only `done` needs the quieter treatment.
     private static func interruptionLevel(for state: AgentState) -> UNNotificationInterruptionLevel {
         state == .done ? .passive : .active
+    }
+
+    // MARK: - Agent-integration reminders
+    //
+    // The machine-wide answer to "does the user have a coding agent whose Casper
+    // integration is missing or stale?". The policy and the probing live in
+    // CasperCore (`AgentIntegration`, `AgentIntegrationProbe`); this is only the
+    // wiring: run the probe off the main actor, fold the dismissals in, and publish
+    // an ordered list the sidebar can render. Casper never repairs an agent's
+    // configuration — see `.superpowers/themes/agent-state-detection.md` and the
+    // agent-integration policy: detect and remind, nothing more.
+
+    /// One sidebar reminder line: an agent whose own CLI is installed but whose
+    /// Casper integration is missing or out of date.
+    struct AgentIntegrationReminder: Identifiable, Equatable {
+        let agent: CodingAgent
+        let status: AgentIntegrationStatus
+
+        /// The dismissal id, which is also the stable list identity — an agent's
+        /// row must not lose its SwiftUI identity when its status changes.
+        var id: String { agent.reminderID }
+
+        var documentationURL: URL { agent.documentationURL }
+    }
+
+    /// Minimum delay between two throttled probes.
+    ///
+    /// The probe re-runs on every app activation so a user who installs the plugin
+    /// and tabs back sees the reminder go away on their own. But a cold probe spawns
+    /// three sequential login shells (1–2.5 s of real work), and Casper is a terminal
+    /// app people activate constantly — doing that on every Cmd-Tab would be absurd.
+    /// Five minutes is far below the patience of someone who just ran an installer
+    /// and far above the rate at which anyone switches windows.
+    nonisolated static let agentIntegrationProbeThrottle: TimeInterval = 5 * 60
+
+    /// Whether a throttled probe request should actually run. Pure and `static` so
+    /// the throttle is unit-testable without a clock seam on the model.
+    nonisolated static func shouldProbeAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
+        guard let lastProbeAt else { return true }
+        return now.timeIntervalSince(lastProbeAt) >= agentIntegrationProbeThrottle
+    }
+
+    /// Probes each agent's integration. Injectable so tests never spawn a login
+    /// shell or read the real home directory. `@Sendable` because it is called off
+    /// the main actor.
+    @ObservationIgnored var agentIntegrationProbe: @Sendable () -> [CodingAgent: AgentIntegrationStatus] = {
+        AgentIntegrationProbe().statuses()
+    }
+
+    /// The agents the sidebar should currently remind about, in `CodingAgent.allCases`
+    /// order. Observed: it is written from a background probe completing after the
+    /// view has already rendered, so the view has to re-render when it lands.
+    private(set) var agentIntegrationReminders: [AgentIntegrationReminder] = []
+
+    /// The last probe's raw result. Not observed — nothing renders it directly;
+    /// `agentIntegrationReminders` is the published projection.
+    @ObservationIgnored private var agentIntegrationStatuses: [CodingAgent: AgentIntegrationStatus] = [:]
+
+    /// `CodingAgent.reminderID` values the user has dismissed. Mirrors
+    /// `Session.dismissedAgentReminders`: seeded from the loaded session in `init`
+    /// and written back by every `persist()`.
+    @ObservationIgnored private var dismissedAgentReminders: Set<String> = []
+
+    /// When the last probe was *started*, or nil before the first one.
+    @ObservationIgnored private var lastAgentIntegrationProbeAt: Date?
+
+    /// The in-flight probe, if any. Deduplicates overlapping requests, is cancelled
+    /// on teardown, and lets tests await a probe they just triggered.
+    @ObservationIgnored private(set) var agentIntegrationTask: Task<Void, Never>?
+
+    /// Probe now, bypassing the throttle. The entry point for an explicit user
+    /// action ("check again"); a probe already in flight is left to finish.
+    func refreshAgentIntegrations() {
+        guard agentIntegrationTask == nil else { return }
+        lastAgentIntegrationProbeAt = Date()
+        let probe = agentIntegrationProbe
+        agentIntegrationTask = Task { @MainActor [weak self] in
+            // Detached, never inline: a cold `statuses()` blocks for seconds on three
+            // sequential login shells, and this actor is the one drawing the UI.
+            let statuses = await Task.detached(priority: .utility) { probe() }.value
+            guard let self else { return }
+            self.agentIntegrationTask = nil
+            self.applyAgentIntegrationStatuses(statuses)
+        }
+    }
+
+    /// Probe unless one ran within `agentIntegrationProbeThrottle`. What app
+    /// activation calls.
+    func refreshAgentIntegrationsIfStale() {
+        guard Self.shouldProbeAgentIntegrations(lastProbeAt: lastAgentIntegrationProbeAt, now: Date()) else {
+            return
+        }
+        refreshAgentIntegrations()
+    }
+
+    /// Dismiss one agent's reminder, permanently as far as this problem is concerned.
+    ///
+    /// Keyed by `reminderID`, never `rawValue`: the two differ deliberately
+    /// (`"claude-code"` vs `"claudeCode"`) and only the former is what `session.json`
+    /// stores, so the wrong key would make every dismissal a silent no-op.
+    func dismissAgentReminder(_ agent: CodingAgent) {
+        guard dismissedAgentReminders.insert(agent.reminderID).inserted else { return }
+        refreshAgentIntegrationReminders()
+        persist()
+    }
+
+    /// Publish a probe result, first retiring the dismissals it has made obsolete.
+    private func applyAgentIntegrationStatuses(_ statuses: [CodingAgent: AgentIntegrationStatus]) {
+        agentIntegrationStatuses = statuses
+
+        // A dismissal silences the *current* problem, not the agent forever. Once an
+        // agent's integration is healthy the dismissal has done its job, so drop it:
+        // if the user later breaks or uninstalls that integration, they get reminded
+        // again. Without this, one dismissal blinds them to that agent for good.
+        let healed = statuses.filter { $0.value == .installed }.map(\.key.reminderID)
+        let remaining = dismissedAgentReminders.subtracting(healed)
+        if remaining != dismissedAgentReminders {
+            dismissedAgentReminders = remaining
+            persist()
+        }
+        refreshAgentIntegrationReminders()
+    }
+
+    /// Recompute the published list from the last probe and the dismissals.
+    ///
+    /// Driven by `CodingAgent.allCases` rather than by iterating the status
+    /// dictionary: dictionary order depends on a per-process hash seed, so the
+    /// sidebar's lines would shuffle from one launch to the next.
+    private func refreshAgentIntegrationReminders() {
+        let reminders = CodingAgent.allCases.compactMap { agent -> AgentIntegrationReminder? in
+            guard let status = agentIntegrationStatuses[agent], Self.needsReminder(status) else { return nil }
+            guard !dismissedAgentReminders.contains(agent.reminderID) else { return nil }
+            return AgentIntegrationReminder(agent: agent, status: status)
+        }
+        guard reminders != agentIntegrationReminders else { return }
+        agentIntegrationReminders = reminders
+    }
+
+    /// Whether a status is worth telling the user about. Exhaustive on purpose, so a
+    /// new `AgentIntegrationStatus` case forces a decision here rather than silently
+    /// defaulting to "say nothing".
+    private static func needsReminder(_ status: AgentIntegrationStatus) -> Bool {
+        switch status {
+        case .missing, .outdated: return true
+        // The agent's CLI is absent, so the user does not use it: advertising an
+        // integration for a tool they never installed is pure noise.
+        case .notInstalled: return false
+        case .installed: return false
+        }
     }
 
     // MARK: - CLI control handlers
