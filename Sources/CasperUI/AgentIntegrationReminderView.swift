@@ -112,6 +112,7 @@ private struct AgentIntegrationReminderRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Button {
+                model.agentReminderDocumentationOpened()
                 NSWorkspace.shared.open(reminder.documentationURL)
             } label: {
                 HStack(spacing: 7) {

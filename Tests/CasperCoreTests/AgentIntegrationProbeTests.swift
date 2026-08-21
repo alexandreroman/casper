@@ -19,7 +19,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
     private static let opencodeConfigPath = "\(home)/.config/opencode/opencode.json"
     private static let opencodeConfigJSONCPath = "\(home)/.config/opencode/opencode.jsonc"
     private static let codexCachePath = "\(home)/.codex/plugins/cache"
-    private static let codexMarketplacePath = "\(codexCachePath)/casper-agents"
+    private static let codexMarketplacePath = "\(codexCachePath)/casper"
     private static let codexPluginPath = "\(codexMarketplacePath)/casper"
     private static let codexConfigPath = "\(home)/.codex/config.toml"
 
@@ -58,7 +58,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
         """
     }
 
-    private static let opencodeConfig = #"{"plugin": ["casper-agents"]}"#
+    private static let opencodeConfig = #"{"plugin": ["casper-skills"]}"#
 
     private static let codexConfigDisabled = """
         [plugins."\(AgentIntegration.pluginID)"]
@@ -112,7 +112,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
     private var fullyInstalledDirectories: [String: [String]] {
         [
             Self.opencodePluginPath: ["casper.js"],
-            Self.codexCachePath: ["casper-agents"],
+            Self.codexCachePath: ["casper"],
             Self.codexMarketplacePath: ["casper"],
             Self.codexPluginPath: [Self.currentVersion],
         ]
@@ -309,9 +309,9 @@ final class AgentIntegrationProbeTests: XCTestCase {
                 files: [
                     Self.opencodeConfigJSONCPath: """
                         {
-                          // installed by the casper-agents installer
+                          // installed by the casper-skills installer
                           "$schema": "https://opencode.ai/config.json",
-                          "plugin": ["casper-agents@0.2.0"]
+                          "plugin": ["casper-skills@0.2.0"]
                         }
                         """
                 ]))
@@ -366,7 +366,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
             environment: makeEnvironment(
                 executables: ["codex"],
                 directories: [
-                    Self.codexCachePath: ["casper-agents"],
+                    Self.codexCachePath: ["casper"],
                     Self.codexMarketplacePath: ["casper"],
                     Self.codexPluginPath: ["0.0.1", "0.0.2"],
                 ]))

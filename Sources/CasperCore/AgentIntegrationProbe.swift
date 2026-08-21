@@ -78,7 +78,7 @@ public struct AgentIntegrationProbe: Sendable {
     }
 
     /// The plugin's own directory name inside a Codex marketplace cache. Derived
-    /// from the plugin id (`casper@casper-agents` ⇒ `casper`) so the two cannot
+    /// from the plugin id (`casper@casper` ⇒ `casper`) so the two cannot
     /// drift apart.
     private static let codexPluginDirectoryName = String(AgentIntegration.pluginID.prefix { $0 != "@" })
 
@@ -116,6 +116,17 @@ public struct AgentIntegrationProbe: Sendable {
 
     /// Claude Code records every installed plugin, with its version, in one
     /// registry file, and whether the user has switched it off in another.
+    ///
+    /// The **registry key is the authority** here, and a plugin cache path must never
+    /// stand in for it. The current and legacy ids differ only in the case of their
+    /// marketplace (`casper@casper` vs `casper@Casper`), so their cache directories —
+    /// `~/.claude/plugins/cache/casper/` and `~/.claude/plugins/cache/Casper/` — are
+    /// the *same directory* on a case-insensitive volume, which is the default for
+    /// APFS. Deriving anything from `installPath` would therefore read a current
+    /// install as legacy, or the reverse, depending on which install wrote the
+    /// directory first. Only the registry key and the record's `version` field are
+    /// read, and both come straight from the JSON. (Codex is a different agent with a
+    /// different layout, and its cache path legitimately does carry the version.)
     private func claudeCodeStatus() -> AgentIntegrationStatus {
         guard let registry = environment.fileContents(homePath(".claude/plugins/installed_plugins.json")),
               let registration = AgentIntegration.parseClaudeRegistry(registry)

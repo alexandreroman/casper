@@ -36,6 +36,19 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertNotEqual(AgentIntegration.legacyPluginID, AgentIntegration.pluginID)
     }
 
+    func testPluginIDAndLegacyPluginIDDifferByCaseAlone() {
+        XCTAssertEqual(AgentIntegration.pluginID, "casper@casper")
+
+        // The two ids are one capital letter apart, which is exactly what makes them
+        // fragile: they must stay *different strings* (or a pre-rename install stops
+        // being recognised as legacy), yet they are *equal once folded* — so any move
+        // to case-insensitive matching would conflate them instead of telling them
+        // apart. Both halves are asserted so a future edit breaking either one fails
+        // here rather than in a user's registry.
+        XCTAssertNotEqual(AgentIntegration.pluginID, AgentIntegration.legacyPluginID)
+        XCTAssertEqual(AgentIntegration.pluginID.lowercased(), AgentIntegration.legacyPluginID.lowercased())
+    }
+
     func testOnlyCodexRequiresHookTrust() {
         XCTAssertTrue(CodingAgent.codex.requiresHookTrust)
         XCTAssertFalse(CodingAgent.claudeCode.requiresHookTrust)
@@ -45,13 +58,13 @@ final class AgentIntegrationTests: XCTestCase {
     func testDocumentationURLCarriesPerAgentFragment() {
         XCTAssertEqual(
             CodingAgent.claudeCode.documentationURL.absoluteString,
-            "https://github.com/alexandreroman/casper-agents#claude-code")
+            "https://github.com/alexandreroman/casper-skills#claude-code")
         XCTAssertEqual(
             CodingAgent.codex.documentationURL.absoluteString,
-            "https://github.com/alexandreroman/casper-agents#codex")
+            "https://github.com/alexandreroman/casper-skills#codex")
         XCTAssertEqual(
             CodingAgent.opencode.documentationURL.absoluteString,
-            "https://github.com/alexandreroman/casper-agents#opencode")
+            "https://github.com/alexandreroman/casper-skills#opencode")
     }
 
     func testRequiredPluginVersionIsParseable() {
@@ -113,10 +126,10 @@ final class AgentIntegrationTests: XCTestCase {
         {
           "version": 2,
           "plugins": {
-            "casper@casper-agents": [
+            "casper@casper": [
               {
                 "scope": "user",
-                "installPath": "/Users/alex/.claude/plugins/cache/casper-agents/casper",
+                "installPath": "/Users/alex/.claude/plugins/cache/casper/casper",
                 "version": "0.2.0",
                 "installedAt": "2026-08-19T09:12:00Z",
                 "lastUpdated": "2026-08-19T09:12:00Z"
@@ -157,7 +170,7 @@ final class AgentIntegrationTests: XCTestCase {
         // record ahead of a current user-scope one must not produce a false
         // "outdated". Same policy as the Codex cache.
         let json = #"""
-            {"plugins": {"casper@casper-agents": [
+            {"plugins": {"casper@casper": [
               {"scope": "project"},
               {"scope": "user", "version": "0.1.0"},
               {"scope": "local", "version": "0.9.0"}
@@ -167,7 +180,7 @@ final class AgentIntegrationTests: XCTestCase {
 
         // Numerically, not lexicographically.
         let doubleDigit = #"""
-            {"plugins": {"casper@casper-agents": [
+            {"plugins": {"casper@casper": [
               {"version": "0.10.0"}, {"version": "0.9.0"}
             ]}}
             """#
@@ -181,11 +194,11 @@ final class AgentIntegrationTests: XCTestCase {
             "[]",  // top level is not an object
             #"{"version": 2}"#,  // no `plugins` key
             #"{"plugins": []}"#,  // `plugins` is not an object
-            #"{"plugins": {"casper@casper-agents": {"version": "0.2.0"}}}"#,  // record is not an array
-            #"{"plugins": {"casper@casper-agents": []}}"#,  // empty array
-            #"{"plugins": {"casper@casper-agents": [{}]}}"#,  // record without a version
-            #"{"plugins": {"casper@casper-agents": [{"version": 2}]}}"#,  // version is not a string
-            #"{"plugins": {"casper@casper-agents": ["oops"]}}"#,  // record is not an object
+            #"{"plugins": {"casper@casper": {"version": "0.2.0"}}}"#,  // record is not an array
+            #"{"plugins": {"casper@casper": []}}"#,  // empty array
+            #"{"plugins": {"casper@casper": [{}]}}"#,  // record without a version
+            #"{"plugins": {"casper@casper": [{"version": 2}]}}"#,  // version is not a string
+            #"{"plugins": {"casper@casper": ["oops"]}}"#,  // record is not an object
         ]
         for json in malformed {
             XCTAssertNil(AgentIntegration.parseClaudeRegistry(Data(json.utf8)), "json=\(json)")
@@ -193,7 +206,7 @@ final class AgentIntegrationTests: XCTestCase {
     }
 
     func testParseClaudeRegistrySkipsNonObjectRecords() {
-        let json = #"{"plugins": {"casper@casper-agents": ["oops", {"version": "0.2.0"}]}}"#
+        let json = #"{"plugins": {"casper@casper": ["oops", {"version": "0.2.0"}]}}"#
         XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(json.utf8))?.version, "0.2.0")
     }
 
@@ -242,7 +255,7 @@ final class AgentIntegrationTests: XCTestCase {
         let json = #"""
             {"plugins": {
               "casper@Casper": [{"scope": "user", "version": "99.0.0"}],
-              "casper@casper-agents": [{"scope": "user", "version": "0.2.0"}]
+              "casper@casper": [{"scope": "user", "version": "0.2.0"}]
             }}
             """#
         XCTAssertEqual(
@@ -258,12 +271,12 @@ final class AgentIntegrationTests: XCTestCase {
     // MARK: - Claude Code enablement
 
     func testParseClaudeEnabledReadsAnExplicitFalse() {
-        let settings = #"{"enabledPlugins": {"casper@casper-agents": false}}"#
+        let settings = #"{"enabledPlugins": {"casper@casper": false}}"#
         XCTAssertFalse(AgentIntegration.parseClaudeEnabled(Data(settings.utf8)))
     }
 
     func testParseClaudeEnabledReadsAnExplicitTrue() {
-        let settings = #"{"enabledPlugins": {"casper@casper-agents": true}}"#
+        let settings = #"{"enabledPlugins": {"casper@casper": true}}"#
         XCTAssertTrue(AgentIntegration.parseClaudeEnabled(Data(settings.utf8)))
     }
 
@@ -276,7 +289,7 @@ final class AgentIntegrationTests: XCTestCase {
         // Either key alone is enough to disable, so a leftover legacy `false` counts
         // even beside a current `true`: an explicit `false` on this plugin is the
         // user's own statement about the Casper integration, whichever id carries it.
-        let both = #"{"enabledPlugins": {"casper@casper-agents": true, "casper@Casper": false}}"#
+        let both = #"{"enabledPlugins": {"casper@casper": true, "casper@Casper": false}}"#
         XCTAssertFalse(AgentIntegration.parseClaudeEnabled(Data(both.utf8)))
     }
 
@@ -295,9 +308,9 @@ final class AgentIntegrationTests: XCTestCase {
     }
 
     func testParseClaudeEnabledIsScopedToTheGivenPlugin() {
-        let settings = #"{"enabledPlugins": {"casper@casper-agents": true, "notes@market": false}}"#
+        let settings = #"{"enabledPlugins": {"casper@casper": true, "notes@market": false}}"#
         XCTAssertFalse(AgentIntegration.parseClaudeEnabled(Data(settings.utf8), pluginID: "notes@market"))
-        XCTAssertTrue(AgentIntegration.parseClaudeEnabled(Data(settings.utf8), pluginID: "casper@casper-agents"))
+        XCTAssertTrue(AgentIntegration.parseClaudeEnabled(Data(settings.utf8), pluginID: "casper@casper"))
     }
 
     func testParseClaudeEnabledNeverDisablesOnAMalformedFile() {
@@ -308,7 +321,7 @@ final class AgentIntegrationTests: XCTestCase {
             "not json at all",
             "[]",
             #"{"enabledPlugins": []}"#,
-            #"{"enabledPlugins": {"casper@casper-agents": "false"}}"#,  // string, not bool
+            #"{"enabledPlugins": {"casper@casper": "false"}}"#,  // string, not bool
         ]
         for settings in malformed {
             XCTAssertTrue(AgentIntegration.parseClaudeEnabled(Data(settings.utf8)), "settings=\(settings)")
@@ -319,8 +332,8 @@ final class AgentIntegrationTests: XCTestCase {
         // `JSONSerialization` hands a JSON number back as `NSNumber`, which casts to
         // `Bool`. Pinned rather than worked around: someone who writes `0` there
         // means false.
-        let disabled = #"{"enabledPlugins": {"casper@casper-agents": 0}}"#
-        let enabled = #"{"enabledPlugins": {"casper@casper-agents": 1}}"#
+        let disabled = #"{"enabledPlugins": {"casper@casper": 0}}"#
+        let enabled = #"{"enabledPlugins": {"casper@casper": 1}}"#
         XCTAssertFalse(AgentIntegration.parseClaudeEnabled(Data(disabled.utf8)))
         XCTAssertTrue(AgentIntegration.parseClaudeEnabled(Data(enabled.utf8)))
     }
@@ -332,10 +345,10 @@ final class AgentIntegrationTests: XCTestCase {
         // line ships in opencode's default config.
         let config = #"""
             {
-              // Casper integration, installed by the casper-agents installer.
+              // Casper integration, installed by the casper-skills installer.
               "$schema": "https://opencode.ai/config.json",
               /* the plugin list is a plain array of npm package names */
-              "plugin": ["casper-agents@0.2.0"]
+              "plugin": ["casper-skills@0.2.0"]
             }
             """#
         XCTAssertTrue(AgentIntegration.parseOpencodeConfig(config))
@@ -354,20 +367,20 @@ final class AgentIntegrationTests: XCTestCase {
     func testParseOpencodeConfigDoesNotMatchAnUnrelatedPluginNamedCasper() {
         // The entry must be the package name exactly (optionally `@version`) or a
         // path whose last component is the plugin file. A substring or a suffix is
-        // not enough: `@evil/casper-agents-fork` contains the package name and
+        // not enough: `@evil/casper-skills-fork` contains the package name and
         // `./plugin/notcasper.js` ends with the file name, and neither is Casper's.
         let config = #"""
             {"plugin": ["casper-notes", "opencode-casper-theme", "casperjs",
-                        "@evil/casper-agents-fork", "./plugin/notcasper.js",
-                        "casper-agents-fork", "my-casper-agents"]}
+                        "@evil/casper-skills-fork", "./plugin/notcasper.js",
+                        "casper-skills-fork", "my-casper-skills"]}
             """#
         XCTAssertFalse(AgentIntegration.parseOpencodeConfig(config))
     }
 
     func testParseOpencodeConfigMatchesTheExactPackageNameWithOrWithoutAVersion() {
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["casper-agents"]}"#))
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["casper-agents@0.2.0"]}"#))
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["  casper-agents  "]}"#))
+        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["casper-skills"]}"#))
+        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["casper-skills@0.2.0"]}"#))
+        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["  casper-skills  "]}"#))
     }
 
     func testParseOpencodeConfigMatchesALocalPluginPath() {
@@ -377,7 +390,7 @@ final class AgentIntegrationTests: XCTestCase {
 
     func testParseOpencodeConfigWithoutAPluginArray() {
         XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"$schema": "https://opencode.ai/config.json"}"#))
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"plugin": "casper-agents"}"#))
+        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"plugin": "casper-skills"}"#))
         XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"plugin": [42]}"#))
     }
 
@@ -385,7 +398,7 @@ final class AgentIntegrationTests: XCTestCase {
         let config = #"""
             {
               "note": "a \" quote and a // slash",
-              "plugin": ["casper-agents"]
+              "plugin": ["casper-skills"]
             }
             """#
         XCTAssertTrue(AgentIntegration.parseOpencodeConfig(config))
@@ -394,7 +407,7 @@ final class AgentIntegrationTests: XCTestCase {
     func testParseOpencodeConfigCommentedOutEntryIsNotAMatch() {
         let config = #"""
             {
-              // "plugin": ["casper-agents"]
+              // "plugin": ["casper-skills"]
               "plugin": []
             }
             """#
@@ -407,7 +420,7 @@ final class AgentIntegrationTests: XCTestCase {
         let truncated = #"""
             {
               "$schema": "https://opencode.ai/config.json",
-              "plugin": ["casper-agents@0.2.0"
+              "plugin": ["casper-skills@0.2.0"
             """#
         XCTAssertTrue(AgentIntegration.parseOpencodeConfig(truncated))
     }
@@ -417,7 +430,7 @@ final class AgentIntegrationTests: XCTestCase {
         // text, so the commented entry is not evidence of an install.
         let truncated = #"""
             {
-              // "plugin": ["casper-agents"]
+              // "plugin": ["casper-skills"]
               "plugin": [
             """#
         XCTAssertFalse(AgentIntegration.parseOpencodeConfig(truncated))
@@ -436,7 +449,7 @@ final class AgentIntegrationTests: XCTestCase {
 
     func testParseOpencodeVersionReadsTheCommittedForm() {
         let source = """
-            import { casper } from "./casper-agents"
+            import { casper } from "./casper-skills"
 
             export const CASPER_PLUGIN_VERSION = "0.2.0"
 
@@ -530,7 +543,7 @@ final class AgentIntegrationTests: XCTestCase {
         let toml = #"""
             model = "gpt-5"
 
-            [plugins."casper@casper-agents"]
+            [plugins."casper@casper"]
             enabled = false
             """#
         XCTAssertTrue(AgentIntegration.parseCodexDisabled(toml))
@@ -538,13 +551,13 @@ final class AgentIntegrationTests: XCTestCase {
 
     func testParseCodexDisabledAcceptsSpacingCommentsAndAnUnquotedHeader() {
         let spaced = #"""
-            [plugins."casper@casper-agents"]
+            [plugins."casper@casper"]
               enabled   =   false   # turned off while debugging
             """#
         XCTAssertTrue(AgentIntegration.parseCodexDisabled(spaced))
 
         let unquoted = """
-            [plugins.casper@casper-agents]
+            [plugins.casper@casper]
             enabled = false
             """
         XCTAssertTrue(AgentIntegration.parseCodexDisabled(unquoted))
@@ -552,7 +565,7 @@ final class AgentIntegrationTests: XCTestCase {
 
     func testParseCodexEnabledSectionIsNotDisabled() {
         let toml = #"""
-            [plugins."casper@casper-agents"]
+            [plugins."casper@casper"]
             enabled = true
             """#
         XCTAssertFalse(AgentIntegration.parseCodexDisabled(toml))
@@ -578,7 +591,7 @@ final class AgentIntegrationTests: XCTestCase {
             [plugins."notes@some-marketplace"]
             enabled = false
 
-            [plugins."casper@casper-agents"]
+            [plugins."casper@casper"]
             enabled = true
             """#
         XCTAssertFalse(AgentIntegration.parseCodexDisabled(toml))
@@ -587,7 +600,7 @@ final class AgentIntegrationTests: XCTestCase {
     func testParseCodexDisabledStopsAtTheNextSectionHeader() {
         // The `enabled = false` belongs to the section that follows, not to Casper's.
         let toml = #"""
-            [plugins."casper@casper-agents"]
+            [plugins."casper@casper"]
 
             [plugins."notes@some-marketplace"]
             enabled = false

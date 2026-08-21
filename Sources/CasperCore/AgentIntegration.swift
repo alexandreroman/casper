@@ -87,7 +87,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         URL(string: AgentIntegration.documentationBaseURL + documentationFragment)!
     }
 
-    /// Anchor of this agent's section in the `casper-agents` README.
+    /// Anchor of this agent's section in the `casper-skills` README.
     private var documentationFragment: String {
         switch self {
         case .claudeCode: return "#claude-code"
@@ -118,8 +118,8 @@ public enum AgentIntegration {
     // MARK: - Constants
 
     /// The identifier Claude Code and Codex register the Casper plugin under, as
-    /// declared by the plugin's manifest in the `casper-agents` repository.
-    public static let pluginID = "casper@casper-agents"
+    /// declared by the plugin's manifest in the `casper-skills` repository.
+    public static let pluginID = "casper@casper"
 
     /// The identifier the plugin was registered under before its marketplace was
     /// renamed, still present in every pre-rename user's Claude Code registry.
@@ -136,6 +136,14 @@ public enum AgentIntegration {
     /// install**, not migration support for a population of users. Nothing here implies
     /// an obligation to keep migrating old ids — the branch is kept because it is three
     /// lines and turns a confidently wrong "install this" into the right answer.
+    ///
+    /// **This value differs from `pluginID` by case alone** — `casper@Casper` versus
+    /// `casper@casper`. That is safe today because both sides of every lookup are
+    /// case-sensitive: JSON object keys are, and so is Swift's `==` on `String`. Any
+    /// future move to case-insensitive matching (`caseInsensitiveCompare`,
+    /// `lowercased()`, a case-folding dictionary) would silently collapse the two ids
+    /// into one, and with them the only signal that tells a pre-rename install apart
+    /// from a current one. A unit test pins that they stay distinct-but-case-equal.
     public static let legacyPluginID = "casper@Casper"
 
     /// The plugin version Casper requires — the single place to change it.
@@ -148,11 +156,11 @@ public enum AgentIntegration {
     public static let requiredPluginVersion = "0.2.0"
 
     /// Base of the integration documentation; `CodingAgent` appends its own anchor.
-    public static let documentationBaseURL = "https://github.com/alexandreroman/casper-agents"
+    public static let documentationBaseURL = "https://github.com/alexandreroman/casper-skills"
 
     /// npm package name of the opencode plugin, as written in an opencode config's
     /// top-level `plugin` array.
-    public static let opencodePackageName = "casper-agents"
+    public static let opencodePackageName = "casper-skills"
 
     /// File name of an opencode plugin installed locally. The plugin is plain
     /// JavaScript with no build step, so this is the file as shipped.
@@ -265,7 +273,7 @@ public enum AgentIntegration {
     ///
     /// ```json
     /// {"version": 2,
-    ///  "plugins": {"casper@casper-agents": [
+    ///  "plugins": {"casper@casper": [
     ///    {"scope": "user", "installPath": "…", "version": "0.2.0",
     ///     "installedAt": "…", "lastUpdated": "…"}]}}
     /// ```
@@ -321,7 +329,7 @@ public enum AgentIntegration {
     /// separately from installation:
     ///
     /// ```json
-    /// {"enabledPlugins": {"casper@casper-agents": false}}
+    /// {"enabledPlugins": {"casper@casper": false}}
     /// ```
     ///
     /// Only an explicit `false` means disabled. An **absent** key means enabled: the
@@ -374,7 +382,7 @@ public enum AgentIntegration {
     /// routine rather than theoretical.
     ///
     /// A match is a top-level `plugin` entry that names the npm package
-    /// (`casper-agents`, with or without an `@version` suffix) or points at a local
+    /// (`casper-skills`, with or without an `@version` suffix) or points at a local
     /// `casper.js`. Anchoring to those two forms, rather than to a bare `casper`
     /// substring, keeps an unrelated plugin that merely has `casper` in its name from
     /// being mistaken for the integration.
@@ -434,7 +442,7 @@ public enum AgentIntegration {
     ///
     /// Two forms count, and each is matched whole rather than by substring, because
     /// `casper` is a common enough word that a loose match mistakes someone else's
-    /// plugin for the integration: `@evil/casper-agents-fork` merely *contains* the
+    /// plugin for the integration: `@evil/casper-skills-fork` merely *contains* the
     /// package name, and `./plugin/notcasper.js` merely *ends with* the file name.
     private static func isOpencodePluginEntry(_ entry: String) -> Bool {
         let lowercased = entry.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -574,7 +582,7 @@ public enum AgentIntegration {
     /// Codex records a disabled plugin as a TOML section carrying `enabled = false`:
     ///
     /// ```toml
-    /// [plugins."casper@casper-agents"]
+    /// [plugins."casper@casper"]
     /// enabled = false
     /// ```
     ///
@@ -588,7 +596,7 @@ public enum AgentIntegration {
     /// enabled, never the reverse:
     ///
     /// - an inline table
-    ///   (`plugins = { "casper@casper-agents" = { enabled = false } }`);
+    ///   (`plugins = { "casper@casper" = { enabled = false } }`);
     /// - any value that is not a bare `false`;
     /// - a multi-line array inside the section, whose continuation lines start with
     ///   `[` and are taken for a section header, ending the scan early.
