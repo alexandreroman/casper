@@ -152,40 +152,32 @@ There is no `AgentAuthority` enum: the latch as built is a set of workspace ids,
 authority; absence means detection owns it.
 
 - Default (not a member) — the scraper drives `agentState`.
-- The moment `casper status set …` lands for a workspace W
-  (`AppModel.controlSetAgentState`), authority flips to `explicit` and **PTY
-  detection stops for W**: the scraper is no longer *scheduled* for W's surfaces
-  (not merely suppressed after the fact). The explicit value is authoritative.
+- `working`, `idle`, and `unknown` remain under native detection, so the
+  viewport can correct a stale hook-reported state. Only `blocked`, `done`, and
+  `error` grant explicit authority: a terminal scrape cannot safely clear those
+  attention states.
 - The latch is **not persisted** — it resets to `detection` on load, like the
   agent state it guards.
 
-Rationale: an agent that reports its own state is more precise than any scrape;
-once it opts in, detection steps aside.
+Rationale: terminal-observable states can be corrected by the scrape, while
+terminal-independent attention states must remain authoritative.
 
-**In practice, this is permanent for any `casper-skills`-driven workspace.**
-`hooks/user-prompt-submit.sh` and `hooks/pre-tool-use.sh` call
-`casper status set working` on the very first Claude Code turn, which grants
-explicit authority immediately — and since authority release isn't implemented
-(see Deferred), the scraper never runs again for that workspace for the rest of
-the session. Its `working → idle (unseen) → done` derivation (Resolver, point 4)
-therefore never fires for a hook-driven workspace; only an explicit
-`casper status set done` can produce `done` for it. See
-`plans/stop-hook-explicit-done.md` for the consequence (the `Stop` hook must
-report `done` itself) and the matching explicit-authority `done → idle` collapse
-on selection (next section).
+`working`, `idle`, and `unknown` remain under native detection: they describe
+conditions the terminal itself can continuously observe. This lets the viewport
+correct a stale hook-reported `working` state, including when Codex's `Stop`
+hook is unavailable. Only `blocked`, `done`, and `error` grant explicit
+authority, because a terminal scrape cannot safely clear those attention states.
+The `Stop` hook still reports `done` precisely; selecting that workspace then
+collapses the explicit `done` to `idle` (next section).
 
 ### Explicit-authority `done` → `idle` collapse (on selection)
 
-The resolver's own seen-gated unlatch (point 4 above) only runs inside
-`runAgentDetectionTick`, which is skipped entirely for a workspace under
-explicit authority. So for a hook-driven workspace, nothing ever collapses an
-explicit `done` back to `idle` on its own — `AppModel.selectWorkspace` does it
-explicitly instead: selecting a workspace whose `agentState == .done` sets it to
-`.idle`, mirroring the resolver's own "seen" definition (`selectedWorkspaceID`
-pointing at it — not gated on `isWindowKey()`, unlike the sibling bubble-clear
-in `clearNotificationForFocusedWorkspace()`). Only `done` collapses this way;
-`blocked`/`error` are untouched by selection in either the detected or explicit
-path. See `plans/stop-hook-explicit-done.md`.
+An explicit `done` suppresses detection, so `AppModel.selectWorkspace` collapses
+it to `.idle` when selected. This mirrors the resolver's own "seen" definition
+(`selectedWorkspaceID` pointing at it — not gated on `isWindowKey()`, unlike the
+sibling bubble-clear in `clearNotificationForFocusedWorkspace()`). Only `done`
+collapses this way; `blocked` and `error` are untouched. See
+`plans/stop-hook-explicit-done.md`.
 
 ## Process lifecycle: `done` / `error` — not implemented
 
@@ -218,10 +210,9 @@ Given the shell-hosted reality:
   `.casper.json` `setup` hook that exits non-zero (`ScriptHookRunner` →
   `AppModel.reportSetupFailure` → `setDetectedAgentState(.error, …)`).
   Acceptable until there's a real scraped signal for it.
-- **Authority release** (undoing a `casper status set` latch) is likewise
-  deferred: there is no reliable per-agent exit event, so a workspace that took
-  explicit authority stays latched until reload. Robust release will come with
-  the **timeout mechanism (option B)** wired alongside `casper notify`.
+- **Authority release** for terminal-observable states is immediate: the CLI
+  removes their latch. `blocked`, `done`, and `error` remain authoritative until
+  their state is explicitly changed or the app reloads.
 
 ## Aggregation (per-workspace)
 
@@ -251,8 +242,8 @@ state lives only at the workspace level.
   `agentDetectionIntervalHidden`) — scrapes each workspace's terminals, viewport
   **and** OSC title, aggregates the two signals, runs the resolver, and writes
   `agentState` via `setDetectedAgentState` unless the workspace is under
-  explicit authority. The authority latch is set in `controlSetAgentState`
-  (`casper status set`); its release is deferred (option B). The sidebar status
+  explicit authority. `controlSetAgentState` latches only `blocked`, `done`, and
+  `error`; it releases terminal-observable states immediately. The sidebar status
   icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the chevron
   column, animated `working`).
 
@@ -270,8 +261,7 @@ for a focused workspace, but the macOS notification is always delivered).
 
 `controlSetAgentState` (the explicit CLI path) mirrors this for `.done` only —
 an explicit `casper status set done` also raises the bubble + passive
-notification, since a hook-driven workspace can never reach `done` through
-detection (see Authority above). It deliberately does **not** do the same for
+notification. It deliberately does **not** do the same for
 `blocked`/`error`: both already get an explicit `casper notify` from their own
 callers (`hooks/notification.py`, the `casper-status` skill), so mirroring
 `setDetectedAgentState` there would double the notification. See
@@ -294,7 +284,18 @@ rules live in `app-ui.md` § Design → "Dock attention".
   agent-as-command surface; re-evaluating that path is a separate, unscoped
   project.
 - **Per-surface status** field + pane-chrome indicator (option B).
-- **Agents beyond Claude Code** — the rule set is per-agent.
+
+### Codex native viewport detection
+
+Codex now has a native viewport rule set alongside Claude Code's OSC-title
+rule. Its `esc to interrupt` / `ctrl+c to interrupt` affordance and `Running
+tools` status identify live execution; Codex has no documented OSC-title state,
+so its title is deliberately ignored. Explicit `working`, `idle`, and `unknown`
+updates remain observable by the terminal detector. This prevents a
+`UserPromptSubmit` hook from leaving a workspace stuck in `working` if its
+separate `Stop` hook is not available. Explicit `blocked`, `done`, and `error`
+remain authoritative because terminal text cannot safely clear those attention
+states.
 
 ## Open questions
 

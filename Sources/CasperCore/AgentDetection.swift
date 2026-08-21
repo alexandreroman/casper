@@ -110,6 +110,23 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         blockedAllOf: [
             ["do you want to proceed?", "esc to cancel"],
         ])
+
+    /// Codex exposes its live state in the terminal viewport rather than a
+    /// documented OSC-title convention. Its interrupt affordance is rendered
+    /// only while a turn is executing, so it is a native, terminal-owned signal
+    /// that can recover a stale hook-reported `.working` state. Keep title
+    /// matching disabled here: a Codex shell title is not an execution signal.
+    public static let codex = AgentDetectionRuleSet(
+        workingContains: [
+            "esc to interrupt",
+            "ctrl+c to interrupt",
+            "running tools",
+        ],
+        blockedAllOf: [
+            ["do you want to proceed?", "esc to cancel"],
+        ],
+        titleWorkingScalars: 0...0,
+        titleIdleScalar: nil)
 }
 
 extension String {

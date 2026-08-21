@@ -19,10 +19,9 @@ final class AgentDetectionTests: XCTestCase {
         return (AppModel(sessionStore: store, session: session), ws.id)
     }
 
-    /// The authority latch: `casper status set` (the explicit CLI path) is the one
-    /// and only place authority is granted; the terminal-scraping detector never
-    /// grants it.
-    func testExplicitSetLatchesAuthorityDetectionDoesNot() {
+    /// The authority latch protects terminal-independent attention states only;
+    /// a hook-reported working state stays under native terminal observation.
+    func testTerminalIndependentExplicitStateLatchesAuthorityWhileWorkingDoesNot() {
         let (model, id) = seededModel()
         XCTAssertFalse(model.isUnderExplicitAuthority(id), "authority starts released")
 
@@ -31,8 +30,11 @@ final class AgentDetectionTests: XCTestCase {
         model.runAgentDetectionTick()
         XCTAssertFalse(model.isUnderExplicitAuthority(id), "detection must not latch authority")
 
+        XCTAssertTrue(model.controlSetAgentState(.working, for: id))
+        XCTAssertFalse(model.isUnderExplicitAuthority(id), "working remains natively observable")
+
         XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
-        XCTAssertTrue(model.isUnderExplicitAuthority(id), "explicit set latches authority")
+        XCTAssertTrue(model.isUnderExplicitAuthority(id), "blocked state latches authority")
         XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
     }
 
@@ -51,8 +53,9 @@ final class AgentDetectionTests: XCTestCase {
             (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
         let model = AppModel(sessionStore: SessionStore(fileURL: url),
                              session: Session(spaces: [space], selectedWorkspaceID: primary.id))
+        model.deliverNotification = { _, _, _, _ in }
 
-        XCTAssertTrue(model.controlSetAgentState(.working, for: linked.id))
+        XCTAssertTrue(model.controlSetAgentState(.done, for: linked.id))
         XCTAssertTrue(model.isUnderExplicitAuthority(linked.id))
 
         model.removeWorkspace(id: linked.id)
