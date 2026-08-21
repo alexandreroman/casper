@@ -10,10 +10,11 @@ import Foundation
 /// terminal.
 ///
 /// A lookup spawns `$SHELL -lc 'which <command>'`, which sources the user's
-/// profile — routinely hundreds of milliseconds of blocked caller. Neither the
-/// `PATH` nor the answer can change during a session, so the result (including a
-/// failure) is cached after the first completed lookup and every later caller is
-/// served from the cache. The check and the store are separate steps, so two
+/// profile — routinely hundreds of milliseconds of blocked caller, and bounded by
+/// `lookupTimeout` because a profile that blocks outright would otherwise never
+/// answer. Neither the `PATH` nor the answer can change during a session, so the
+/// result (including a failure) is cached after the first completed lookup and
+/// every later caller is served from the cache. The check and the store are separate steps, so two
 /// callers racing on a cold cache do both spawn a shell; that is harmless —
 /// the lookup is idempotent and they agree on the answer — and cheaper than
 /// holding the lock across a process spawn.
@@ -32,9 +33,43 @@ public enum LoginShellPath {
     /// login-shell cost, so it is the one that most needs remembering.
     public static func resolve(_ command: String) -> String? {
         if let cached = storage.cachedPath(for: command) { return cached }
-        let resolved = lastNonEmptyLine(of: storage.runner(command))
+        let resolved = lastNonEmptyLine(of: runWithTimeout(command, timeout: lookupTimeout))
         storage.cachePath(resolved, for: command)
         return resolved
+    }
+
+    /// How long one lookup may take before Casper gives up on it.
+    ///
+    /// `which` itself is instant; the whole cost is the login shell sourcing the
+    /// user's profile. A profile that *blocks* — a hung network mount, an `nvm` or
+    /// `conda` bootstrap waiting on the network, anything reading from stdin — would
+    /// otherwise block its caller forever. Five seconds is well beyond the ~1 s a
+    /// heavily populated profile takes and well below anyone's patience.
+    static let lookupTimeout: TimeInterval = 5
+
+    /// Runs the lookup on a background thread and waits at most `timeout` for it,
+    /// answering nil when the deadline passes. `resolve` then caches that nil like
+    /// any other failed lookup, which is the point: without a bound, one wedged
+    /// profile blocks its caller — the main actor, for `EditorLauncher.launch` — and
+    /// leaves `AgentIntegrationProbe`'s task unfinished for the rest of the session.
+    ///
+    /// The abandoned thread is left to finish on its own. `runLoginShellWhich`
+    /// terminates its shell on the same deadline, so it normally unblocks moments
+    /// later; this outer bound covers the case where it cannot, since a process stuck
+    /// in an uninterruptible read ignores `SIGTERM`.
+    ///
+    /// Internal rather than private so tests can drive the deadline through the
+    /// injected runner instead of waiting on a real shell.
+    static func runWithTimeout(_ command: String, timeout: TimeInterval) -> String? {
+        let runner = storage.runner
+        let output = OutputBox()
+        let finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            output.value = runner(command)
+            finished.signal()
+        }
+        guard finished.wait(timeout: .now() + timeout) == .success else { return nil }
+        return output.value
     }
 
     #if DEBUG
@@ -81,12 +116,34 @@ public enum LoginShellPath {
         process.standardError = FileHandle.nullDevice
         do {
             try process.run()
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            return String(decoding: data, as: UTF8.self)
         } catch {
             return nil
+        }
+        // `readDataToEndOfFile()` waits for the write end of the pipe to close, which
+        // only happens once the shell and everything it spawned have exited — so a
+        // profile that blocks holds this thread indefinitely. Terminating the shell on
+        // the deadline closes the pipe and unblocks the read. Best effort by design:
+        // `runWithTimeout` bounds the caller whether or not this lands.
+        let watchdog = DispatchWorkItem {
+            if process.isRunning { process.terminate() }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + lookupTimeout, execute: watchdog)
+        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        watchdog.cancel()
+        guard process.terminationStatus == 0 else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Carries the runner's answer back from the background thread. `@unchecked
+    /// Sendable`: the single field is only ever touched under `lock`.
+    private final class OutputBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: String?
+
+        var value: String? {
+            get { lock.withLock { stored } }
+            set { lock.withLock { stored = newValue } }
         }
     }
 

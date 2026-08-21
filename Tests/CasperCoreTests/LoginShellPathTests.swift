@@ -98,6 +98,38 @@ final class LoginShellPathTests: XCTestCase {
         XCTAssertEqual(recorder.callCount, 1, "the second resolve must come from the cache")
     }
 
+    // MARK: - Timeout
+
+    /// A profile that blocks (hung mount, `nvm`/`conda` waiting on the network,
+    /// anything reading stdin) must not hold the caller forever: the lookup is
+    /// abandoned on the deadline and reported as a miss like any other failure.
+    func testALookupThatNeverAnswersIsAbandonedOnTheDeadline() {
+        let release = DispatchSemaphore(value: 0)
+        LoginShellPath.runner = { _ in
+            release.wait()  // stands in for a login shell that never returns
+            return "/opt/homebrew/bin/code"
+        }
+        // Let the stub finish before the test ends, so no thread outlives it.
+        defer { release.signal() }
+
+        XCTAssertNil(LoginShellPath.runWithTimeout("code", timeout: 0.05))
+    }
+
+    func testALookupThatAnswersWithinTheDeadlineIsReturnedVerbatim() {
+        stubRunner(returning: "/opt/homebrew/bin/code\n")
+
+        // Verbatim: trimming and banner-stripping belong to `resolve`, not here.
+        XCTAssertEqual(LoginShellPath.runWithTimeout("code", timeout: 5), "/opt/homebrew/bin/code\n")
+    }
+
+    func testTheRealLookupDeadlineLeavesRoomForAPopulatedProfile() {
+        // A cold lookup on a machine with Homebrew and nvm in `~/.zprofile` takes
+        // about a second; the deadline only ever catches a profile that is stuck.
+        XCTAssertGreaterThanOrEqual(LoginShellPath.lookupTimeout, 3)
+    }
+
+    // MARK: - Caching
+
     func testCachesAFailedLookupToo() {
         // The expensive case: a command that resolves to nothing still paid the
         // full login-shell cost, so it must not be looked up again.
