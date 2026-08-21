@@ -14,9 +14,9 @@ and rationale that are NOT obvious from the code. Implementation STATUS lives in
 
 ## Two kinds of scripts
 
-- Reserved keys `setup`/`teardown` are lifecycle hooks — run automatically, never
-  invocable by hand (`RepoScripts.reservedNames`; `resolveRunCommand` `.denied`s
-  them; `spawnScriptSurface` is private to `ScriptHookRunner`, whose
+- Reserved keys `setup`/`teardown` are lifecycle hooks — run automatically,
+  never invocable by hand (`RepoScripts.reservedNames`; `resolveRunCommand`
+  `.denied`s them; `spawnScriptSurface` is private to `ScriptHookRunner`, whose
   only internal entry points for a hook spawn are the narrow `runSetupHook` that
   `createLinkedWorkspace` calls and the `runTeardown` the destroy paths await).
 - Every other key is a named command, run on demand from the UI or `casper run`.
@@ -27,9 +27,9 @@ and rationale that are NOT obvious from the code. Implementation STATUS lives in
   script that `exit`s (or fails under `set -e`) kills only the subshell — the
   interactive pane stays open with the output.
 - Hooks wrap as `hookWrappedScriptCommand` = `"<cmd>\nexit $?"` so the shell
-  exits with the command's status, which makes libghostty emit a child-exit event
-  — the completion signal a hook needs. The newline (not `;`) keeps a trailing
-  `#` comment on the command's last line from swallowing `exit $?`.
+  exits with the command's status, which makes libghostty emit a child-exit
+  event — the completion signal a hook needs. The newline (not `;`) keeps a
+  trailing `#` comment on the command's last line from swallowing `exit $?`.
 
 ## THE child-exit / close race (load-bearing invariant)
 
@@ -54,18 +54,18 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
   through the runner's narrow query/consume methods. `closingWorkspaces` is the
   exception that stays on `AppModel`: it claims the whole close/delete operation
   (probes, merge, prune), not just the hook.
-- This assumes libghostty emits a `close_surface_cb` after the child exits — true
-  for the current pin (every shell-exit pane close relies on it). A future pin
-  that suppressed it would strand a successful setup's split.
+- This assumes libghostty emits a `close_surface_cb` after the child exits —
+  true for the current pin (every shell-exit pane close relies on it). A future
+  pin that suppressed it would strand a successful setup's split.
 
 ## setup / teardown behavior decisions
 
 - **setup** runs from `createLinkedWorkspace` ONLY — the call site is the guard
-  against re-running on restore/re-open, so there is no persisted "ran" flag. Exit
-  0 → split auto-closes; exit ≠ 0 → split kept open + workspace flagged `.error`
-  (`setDetectedAgentState`); no rollback.
-- **teardown** runs before prune, AFTER the merge on the close path (the worktree
-  still exists → valid cwd). Any outcome (success / non-zero / 30 s
+  against re-running on restore/re-open, so there is no persisted "ran" flag.
+  Exit 0 → split auto-closes; exit ≠ 0 → split kept open + workspace flagged
+  `.error` (`setDetectedAgentState`); no rollback.
+- **teardown** runs before prune, AFTER the merge on the close path (the
+  worktree still exists → valid cwd). Any outcome (success / non-zero / 30 s
   `teardownTimeout`) proceeds to prune — a broken cleanup script never traps the
   user. A manually-closed live teardown split prunes immediately rather than
   stalling the timeout.
@@ -95,20 +95,21 @@ split's own `onExit` instead of calling `finishTeardown` directly.
 
 ## Script menu ordering
 
-`workspace.scripts` is a JSON object, and Swift's `JSONDecoder` does NOT preserve
-object key order (proven: `allKeys` returns hash order). The menu is therefore
-**alphabetical** (`namedCommands()` sorts); file order would need reformatting
-`scripts` to an array — deliberately not done. Default selected script (toolbar
-primary button) = remembered `lastUsedScript` → `run` if present → first
-alphabetical.
+`workspace.scripts` is a JSON object, and Swift's `JSONDecoder` does NOT
+preserve object key order (proven: `allKeys` returns hash order). The menu is
+therefore **alphabetical** (`namedCommands()` sorts); file order would need
+reformatting `scripts` to an array — deliberately not done. Default selected
+script (toolbar primary button) = remembered `lastUsedScript` → `run` if present
+→ first alphabetical.
 
 ## Gotcha when live-testing on a dev machine
 
 A bare `casper` in a Casper terminal can resolve to an installed release build
 rather than the branch's `Casper-dev.app` — address the dev binary explicitly,
-per [[cli-availability]]. `casper debug` only enumerates terminal surfaces, not SwiftUI toolbar/menu
-chrome, so the split lifecycle (setup auto-close/keep-open, teardown wait) must be
-watched by a human — see [[agent-visual-verification-limits]].
+per [[cli-availability]]. `casper debug` only enumerates terminal surfaces, not
+SwiftUI toolbar/menu chrome, so the split lifecycle (setup auto-close/keep-open,
+teardown wait) must be watched by a human — see
+[[agent-visual-verification-limits]].
 
 **Why:** these are the decisions and the one hard invariant that a future change
 to the hooks would most easily get wrong; none is recoverable from reading the

@@ -11,7 +11,7 @@ private let casperVersion = Bundle.main.infoDictionary?["CFBundleShortVersionStr
     ?? casperAgentsVersion
 
 /// The root `casper` command. Ships the domain commands (`status`, `progress`,
-/// `notify`, `info`, `terminal`, `browser`, `diff`, `workspace`); `casper debug`
+/// `notify`, `info`, `terminal`, `browser`, `diff`, `workspace`, `run`); `casper debug`
 /// is added only in debug builds.
 public struct CasperCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(

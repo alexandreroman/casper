@@ -4,8 +4,8 @@
 > read, and repo-name derivation (Tasks 1–3, 5, 6) already landed with CasperUI
 > UI-2. The **workspace diff summary is dropped** (decision 2026-07-06), so the
 > divergence-stats and diff-helper tasks (Task 4, Task 7) are moot. The only
-> Space work still open is **Space rename**, which this plan does not cover. This
-> file is retained for historical reference. See `../status.md` and
+> Space work still open is **Space rename**, which this plan does not cover.
+> This file is retained for historical reference. See `../status.md` and
 > `../themes/space-project.md`.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
@@ -27,7 +27,8 @@ the +/− line counts come from a new libgit2 tree-to-tree divergence computatio
 in CasperGit. The diff summary is **derived on demand**
 (`WorktreeManager.diffStat`), never persisted.
 
-**Tech Stack:** Swift 6 / SwiftPM, XCTest, libgit2 via the `Clibgit2` module map behind `CasperGit`.
+**Tech Stack:** Swift 6 / SwiftPM, XCTest, libgit2 via the `Clibgit2` module map
+behind `CasperGit`.
 
 **Scope boundary — deferred to Plan 5 (CasperUI):** the collapsible Space header
 and workspace rows, rendering the green/red counts, hiding an empty summary, the
@@ -37,9 +38,12 @@ consume.
 
 ## Global Constraints
 
-- Swift 6, macOS 14+, **arm64-only**. Line length: code 120 cols, Markdown 80 cols.
-- Only sanctioned deps: GhosttyKit, swift-argument-parser, libgit2. **Add none.**
-- All generated text (code, comments, docs) in **English, present tense** ([[english-only]]).
+- Swift 6, macOS 14+, **arm64-only**. Line length: code 120 cols, Markdown 80
+  cols.
+- Only sanctioned deps: GhosttyKit, swift-argument-parser, libgit2. **Add
+  none.**
+- All generated text (code, comments, docs) in **English, present tense**
+  ([[english-only]]).
 - Tests use **XCTest** and need the full Xcode toolchain
   (`sudo xcode-select -s /Applications/Xcode.app`); run with `swift test`.
 - Every `git commit` message is **verb + action performed, in English**
@@ -47,8 +51,8 @@ consume.
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - `diffStat` is **derived, never persisted** (spec §6): realized as the
   `WorktreeManager.diffStat(...)` function, not a stored `Workspace` field.
-- A Space maps 1:1 to a Git repository; a Space always has exactly one
-  `primary` workspace and 0..n `linked` ones (spec §2).
+- A Space maps 1:1 to a Git repository; a Space always has exactly one `primary`
+  workspace and 0..n `linked` ones (spec §2).
 
 ---
 
@@ -87,13 +91,15 @@ site must compile together, so this is one task.
 **Interfaces:**
 - Produces:
   - `Session(spaces: [Space] = [])`, `Session.spaces: [Space]`
-  - `Space(id: UUID = UUID(), name: String, repoPath: String, workspaces: [Workspace] = [])`, `Identifiable`
+  - `Space(id: UUID = UUID(), name: String, repoPath: String, workspaces: [Workspace] = [])`,
+    `Identifiable`
   - `Workspace.Kind` = `.primary | .linked` (`String`-backed `Codable`)
   - `Workspace(id:name:kind:.linked default,worktreePath:branch:baseBranch:String? = nil,agentState:.idle,todos:[],pendingNotification:false,portBase:layout:)`
     — **no `repoPath`**; `baseBranch` defaults to `branch` when `nil`
   - `DiffStat(insertions: Int, deletions: Int)` with `var isEmpty: Bool`
 
-- [ ] **Step 1: Rewrite the ModelsTests sample to the nested shape (failing test)**
+- [ ] **Step 1: Rewrite the ModelsTests sample to the nested shape (failing
+  test)**
 
 Replace the body of `Tests/CasperCoreTests/ModelsTests.swift` with:
 
@@ -165,13 +171,14 @@ final class ModelsTests: XCTestCase {
 
 - [ ] **Step 2: Run it to confirm it fails to compile**
 
-Run: `swift test --filter CasperCoreTests.ModelsTests`
-Expected: build failure — `Space` unknown, `Workspace` has no
-`kind`/`baseBranch`, `Session` has no `spaces`.
+Run: `swift test --filter CasperCoreTests.ModelsTests` Expected: build failure —
+`Space` unknown, `Workspace` has no `kind`/`baseBranch`, `Session` has no
+`spaces`.
 
 - [ ] **Step 3: Rewrite the model in `Sources/CasperCore/Models.swift`**
 
-Replace the `Workspace` and `Session` structs (lines 47–89) with, and add `DiffStat`:
+Replace the `Workspace` and `Session` structs (lines 47–89) with, and add
+`DiffStat`:
 
 ```swift
 public struct DiffStat: Codable, Equatable, Sendable {
@@ -294,18 +301,17 @@ builds a `Session(workspaces: [...])`. Replace it with a Space-nested session:
 ```
 
 Run: `swift build --disable-automatic-resolution 2>&1 | grep -i error` — iterate
-until it prints nothing. (If any test file still passes `repoPath:`, the compiler
-names the file and line.)
+until it prints nothing. (If any test file still passes `repoPath:`, the
+compiler names the file and line.)
 
 - [ ] **Step 5: Run the model tests to verify they pass**
 
-Run: `swift test --filter CasperCoreTests.ModelsTests`
-Expected: PASS (4 test methods + the round-trip).
+Run: `swift test --filter CasperCoreTests.ModelsTests` Expected: PASS (4 test
+methods + the round-trip).
 
 - [ ] **Step 6: Run the full suite to confirm no regressions from the refactor**
 
-Run: `swift test`
-Expected: PASS (all prior tests, now on the nested shape).
+Run: `swift test` Expected: PASS (all prior tests, now on the nested shape).
 
 - [ ] **Step 7: Commit**
 
@@ -366,9 +372,9 @@ Append to `SessionStoreTests`:
 - [ ] **Step 2: Run it to verify it passes (behavior already present)**
 
 Run: `swift test --filter CasperCoreTests.SessionStoreTests.testLoadPreSpaceSchemaSelfHeals`
-Expected: PASS — the legacy file is undecodable under the new schema, so `load()`
-self-heals and moves it aside. If instead it FAILS because the legacy JSON
-decoded, adjust the fixture so it cannot (the missing `spaces` key already
+Expected: PASS — the legacy file is undecodable under the new schema, so
+`load()` self-heals and moves it aside. If instead it FAILS because the legacy
+JSON decoded, adjust the fixture so it cannot (the missing `spaces` key already
 guarantees a decode failure).
 
 - [ ] **Step 3: Commit**
@@ -398,8 +404,8 @@ EOF
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `Tests/CasperGitTests/RepositoryTests.swift` (use the existing `GitFixture`
-pattern; create a temp repo, set an `origin` remote via libgit2):
+Add to `Tests/CasperGitTests/RepositoryTests.swift` (use the existing
+`GitFixture` pattern; create a temp repo, set an `origin` remote via libgit2):
 
 ```swift
     func testRemoteURLReturnsNilWithoutRemote() throws {
@@ -429,8 +435,8 @@ pattern; create a temp repo, set an `origin` remote via libgit2):
     }
 ```
 
-Ensure the file has `import Clibgit2` and `@testable import CasperGit` at the top
-(add them if missing).
+Ensure the file has `import Clibgit2` and `@testable import CasperGit` at the
+top (add them if missing).
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -457,8 +463,8 @@ Add inside the `Repository` class in `Sources/CasperGit/Repository.swift`:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `swift test --filter CasperGitTests.RepositoryTests`
-Expected: PASS (both new tests + existing).
+Run: `swift test --filter CasperGitTests.RepositoryTests` Expected: PASS (both
+new tests + existing).
 
 - [ ] **Step 5: Commit**
 
@@ -486,8 +492,7 @@ branch (three-dot divergence, commits included), via tree-to-tree diff stats.
 **Interfaces:**
 - Consumes: `Repository` (from CasperGit); `git_merge_base`,
   `git_diff_tree_to_tree`, `git_diff_get_stats`.
-- Produces:
-  `Repository.divergenceLineStats(branch: String, base: String) throws -> (insertions: Int, deletions: Int)`
+- Produces: `Repository.divergenceLineStats(branch: String, base: String) throws -> (insertions: Int, deletions: Int)`
   — `(0, 0)` when the branch equals its base / has not diverged.
 
 - [ ] **Step 1: Write the failing test**
@@ -574,8 +579,8 @@ final class DiffTests: XCTestCase {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `swift test --filter CasperGitTests.DiffTests`
-Expected: build failure — `divergenceLineStats` is undefined.
+Run: `swift test --filter CasperGitTests.DiffTests` Expected: build failure —
+`divergenceLineStats` is undefined.
 
 - [ ] **Step 3: Implement the divergence computation**
 
@@ -650,8 +655,7 @@ extension Repository {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `swift test --filter CasperGitTests.DiffTests`
-Expected: PASS (both tests).
+Run: `swift test --filter CasperGitTests.DiffTests` Expected: PASS (both tests).
 
 - [ ] **Step 5: Commit**
 
@@ -674,8 +678,7 @@ EOF
 - Test: `Tests/CasperCoreTests/SpaceTests.swift`
 
 **Interfaces:**
-- Produces:
-  `enum SpaceNaming { static func defaultName(remoteURL: String?, folderName: String) -> String }`
+- Produces: `enum SpaceNaming { static func defaultName(remoteURL: String?, folderName: String) -> String }`
   — last URL segment without a trailing `.git`; falls back to `folderName` when
   there is no remote or the URL yields no name.
 
@@ -729,8 +732,8 @@ final class SpaceTests: XCTestCase {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `swift test --filter CasperCoreTests.SpaceTests`
-Expected: build failure — `SpaceNaming` is undefined.
+Run: `swift test --filter CasperCoreTests.SpaceTests` Expected: build failure —
+`SpaceNaming` is undefined.
 
 - [ ] **Step 3: Implement `SpaceNaming`**
 
@@ -770,8 +773,7 @@ public enum SpaceNaming {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `swift test --filter CasperCoreTests.SpaceTests`
-Expected: PASS (5 tests).
+Run: `swift test --filter CasperCoreTests.SpaceTests` Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -805,7 +807,8 @@ EOF
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `Tests/CasperCoreTests/SpaceTests.swift` (import CasperGit for the fixture):
+Add to `Tests/CasperCoreTests/SpaceTests.swift` (import CasperGit for the
+fixture):
 
 ```swift
     func testOpenBuildsPrimaryWorkspace() throws {
@@ -837,8 +840,8 @@ Add to `Tests/CasperCoreTests/SpaceTests.swift` (import CasperGit for the fixtur
     }
 ```
 
-This test needs a repo fixture reachable from CasperCoreTests. `GitFixture` lives
-in the CasperGitTests target and is not importable here. Add a tiny public
+This test needs a repo fixture reachable from CasperCoreTests. `GitFixture`
+lives in the CasperGitTests target and is not importable here. Add a tiny public
 fixture helper to CasperGit for reuse:
 
 In `Sources/CasperGit/Repository.swift`, add:
@@ -887,7 +890,8 @@ Add `import Clibgit2` at the top of `Repository.swift` if not already present
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `swift test --filter CasperCoreTests.SpaceTests.testOpenBuildsPrimaryWorkspace`
+Run:
+`swift test --filter CasperCoreTests.SpaceTests.testOpenBuildsPrimaryWorkspace`
 Expected: build failure — `SpaceManager` / `SpaceError` undefined.
 
 - [ ] **Step 3: Implement `SpaceError` and `SpaceManager.open`**
@@ -946,9 +950,9 @@ public enum SpaceManager {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `swift test --filter CasperCoreTests.SpaceTests`
-Expected: PASS (all 7 SpaceTests). Also run `swift test --filter CasperGitTests`
-to confirm the fixture refactor didn't regress.
+Run: `swift test --filter CasperCoreTests.SpaceTests` Expected: PASS (all 7
+SpaceTests). Also run `swift test --filter CasperGitTests` to confirm the
+fixture refactor didn't regress.
 
 - [ ] **Step 5: Commit**
 
@@ -975,8 +979,7 @@ This is the on-demand value the Plan 5 sidebar calls per workspace.
 
 **Interfaces:**
 - Consumes: `Repository.divergenceLineStats` (Task 4); `DiffStat` (Task 1).
-- Produces:
-  `extension WorktreeManager { static func diffStat(repoPath: String, branch: String, baseBranch: String) throws -> DiffStat }`
+- Produces: `extension WorktreeManager { static func diffStat(repoPath: String, branch: String, baseBranch: String) throws -> DiffStat }`
   — `.isEmpty` when the branch has not diverged (the sidebar hides it then).
 
 - [ ] **Step 1: Write the failing test**
@@ -1041,9 +1044,8 @@ extension WorktreeManager {
 
 - [ ] **Step 4: Run the full suite to verify everything passes**
 
-Run: `swift test`
-Expected: PASS — all prior tests plus the new SpaceTests. Confirms the whole
-substrate builds and is green.
+Run: `swift test` Expected: PASS — all prior tests plus the new SpaceTests.
+Confirms the whole substrate builds and is green.
 
 - [ ] **Step 5: Commit**
 

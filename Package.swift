@@ -49,7 +49,6 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedLibrary("c++"),
-                .linkedFramework("Carbon", .when(platforms: [.macOS])),
             ]
         ),
         .target(
@@ -71,7 +70,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-        .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperGhostty", "CasperUI"]),
+        .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperUI"]),
         .testTarget(
             name: "CasperGitTests",
             dependencies: ["CasperGit", "Clibgit2"]
@@ -82,11 +81,11 @@ let package = Package(
         ),
         .testTarget(
             name: "CasperAgentsTests",
-            dependencies: ["CasperAgents", "CasperCore"]
+            dependencies: ["CasperAgents"]
         ),
         .testTarget(
             name: "CasperCLITests",
-            dependencies: ["CasperCLI", "CasperAgents", "CasperCore"]
+            dependencies: ["CasperCLI", "CasperCore"]
         ),
         .testTarget(
             name: "CasperGhosttyTests",

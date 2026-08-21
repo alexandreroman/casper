@@ -20,10 +20,6 @@ enum SeparatorMetrics {
     /// ~y=12).
     static let grabWidth: CGFloat = 18
 
-    /// The transparent thickness around the line: `grabWidth` minus the line
-    /// itself, reaching half of it into each neighbour.
-    static var invisibleWidth: CGFloat { grabWidth - visibleWidth }
-
     /// Fill of the visible line, so every separator reads as the same colour.
     static let fill = Color(nsColor: .separatorColor)
 }

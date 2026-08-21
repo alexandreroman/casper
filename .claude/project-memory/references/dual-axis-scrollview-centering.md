@@ -13,9 +13,9 @@ ScrollView does NOT fix this — it does not affect the internal content
 positioning.
 
 **Why:** This is the reason short diffs in the inspector's `DiffSurfaceView`
-floated in the vertical middle. Single-axis scroll views top-align by default, so
-this only bites when both axes are enabled (needed here for horizontal scrolling
-of long, non-wrapped diff lines).
+floated in the vertical middle. Single-axis scroll views top-align by default,
+so this only bites when both axes are enabled (needed here for horizontal
+scrolling of long, non-wrapped diff lines).
 
 **How to fix:** Add `.defaultScrollAnchor(.top)` on the ScrollView (macOS 14+).
 It directly controls where undersized content rests, so a short diff anchors to

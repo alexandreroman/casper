@@ -1,54 +1,50 @@
 # Open in Editor — Design
 
-**Date:** 2026-07-09
-**Status:** Shipped
-**Scope:** Add a title-bar split-button to `WorkspaceDetailView`'s toolbar that
-launches the current workspace's worktree in an external code editor
-(VS Code, IntelliJ IDEA, or Xcode), detecting which of the three are actually
-usable on the machine.
+**Date:** 2026-07-09 **Status:** Shipped **Scope:** Add a title-bar split-button
+to `WorkspaceDetailView`'s toolbar that launches the current workspace's
+worktree in an external code editor (VS Code, IntelliJ IDEA, or Xcode),
+detecting which of the three are actually usable on the machine.
 
 ## Problem
 
 Casper has no way to jump from a workspace into a full IDE on its worktree.
-Users currently have to switch to Finder/Terminal and run `code .` / `idea .`
-/ `xed .` themselves. The toolbar already exposes workspace-scoped actions
-(diff badge, inspector toggle) in the same title bar — "open in editor" is a
-natural fourth.
+Users currently have to switch to Finder/Terminal and run `code .` / `idea .` /
+`xed .` themselves. The toolbar already exposes workspace-scoped actions (diff
+badge, inspector toggle) in the same title bar — "open in editor" is a natural
+fourth.
 
 ## Goals
 
 - A single toolbar control, right-aligned, immediately left of the inspector
-  toggle, that opens the current workspace's `worktreePath` in VS Code,
-  IntelliJ IDEA, or Xcode.
-- Only offer editors that are actually launchable: the CLI shim (`code` /
-  `idea` / `xed`) must be on `PATH` *and* the app bundle must resolve via its
-  known bundle identifier (needed to show a real icon). Both checks run once
-  at app startup; an editor failing either check is omitted from the control
-  entirely.
+  toggle, that opens the current workspace's `worktreePath` in VS Code, IntelliJ
+  IDEA, or Xcode.
+- Only offer editors that are actually launchable: the CLI shim (`code` / `idea`
+  / `xed`) must be on `PATH` *and* the app bundle must resolve via its known
+  bundle identifier (needed to show a real icon). Both checks run once at app
+  startup; an editor failing either check is omitted from the control entirely.
 - One-click quick launch: the button remembers the last editor used **per
-  workspace** and launches it directly; a chevron opens a dropdown to launch
-  a different (detected) editor, which becomes the new per-workspace default.
+  workspace** and launches it directly; a chevron opens a dropdown to launch a
+  different (detected) editor, which becomes the new per-workspace default.
 - If nothing is detected, the whole control is hidden — no dead button.
-- A launch failure (shim vanished since startup, `Process` spawn error) shows
-  a native alert; it must never fail silently.
+- A launch failure (shim vanished since startup, `Process` spawn error) shows a
+  native alert; it must never fail silently.
 
 ## Non-Goals
 
-- No preference UI for reordering/disabling editors — priority order is
-  fixed: VS Code > IntelliJ IDEA > Xcode.
-- No live re-detection while Casper is running (e.g. after installing an
-  editor mid-session) — detection is startup-only, matching how
-  `resolveGitBacking()` already runs once in `AppModel.init`
-  (`AppModel.swift:264`).
-- No bundling of third-party editor icon assets — icons come from
-  `NSWorkspace` at runtime, not from Casper's own asset catalog.
+- No preference UI for reordering/disabling editors — priority order is fixed:
+  VS Code > IntelliJ IDEA > Xcode.
+- No live re-detection while Casper is running (e.g. after installing an editor
+  mid-session) — detection is startup-only, matching how `resolveGitBacking()`
+  already runs once in `AppModel.init` (`AppModel.swift:264`).
+- No bundling of third-party editor icon assets — icons come from `NSWorkspace`
+  at runtime, not from Casper's own asset catalog.
 
 ## Design
 
 ### `EditorKind` — `Sources/CasperCore/Models.swift`
 
-A new `Codable`, `CaseIterable` enum, pure Swift (no AppKit), so it can live
-in CasperCore and be stored directly on `Workspace`:
+A new `Codable`, `CaseIterable` enum, pure Swift (no AppKit), so it can live in
+CasperCore and be stored directly on `Workspace`:
 
 ```swift
 public enum EditorKind: String, Codable, CaseIterable, Sendable {
@@ -92,8 +88,8 @@ public enum EditorKind: String, Codable, CaseIterable, Sendable {
 ### `Workspace.lastUsedEditor` — `Sources/CasperCore/Models.swift`
 
 Add one field next to `inspector` (`Models.swift:236`), following the exact
-legacy-decode pattern already used for `inspector` (`Models.swift:319-320`)
-so pre-existing `session.json` files load cleanly:
+legacy-decode pattern already used for `inspector` (`Models.swift:319-320`) so
+pre-existing `session.json` files load cleanly:
 
 ```swift
 public var inspector: InspectorState
@@ -104,17 +100,15 @@ public var lastUsedEditor: EditorKind?
 - `CodingKeys` (`Models.swift:273-277`): add `case lastUsedEditor`.
 - `encode(to:)` (`Models.swift:283-296`):
   `try c.encodeIfPresent(lastUsedEditor, forKey: .lastUsedEditor)`.
-- `init(from:)` (`Models.swift:305-321`):
-  `self.lastUsedEditor = try container.decodeIfPresent(EditorKind.self, forKey: .lastUsedEditor)`
+- `init(from:)` (`Models.swift:305-321`): `self.lastUsedEditor = try container.decodeIfPresent(EditorKind.self, forKey: .lastUsedEditor)`
   (defaults to `nil` — no legacy file has ever had a value here, unlike
   `inspector`, so no `??` fallback is needed).
 
 ### `EditorLauncher` — new file `Sources/CasperUI/EditorLauncher.swift`
 
-Detection and launching both need `NSWorkspace`, so this lives in CasperUI
-(the module that already owns AppKit bridges), as a stateless namespace —
-mirrors how `AppModel` already imports `AppKit` directly
-(`AppModel.swift:1`):
+Detection and launching both need `NSWorkspace`, so this lives in CasperUI (the
+module that already owns AppKit bridges), as a stateless namespace — mirrors how
+`AppModel` already imports `AppKit` directly (`AppModel.swift:1`):
 
 ```swift
 enum EditorLauncher {
@@ -195,8 +189,8 @@ Runs once at startup, three short-lived shell processes total (one per
 
 ### `AppModel` wiring — `Sources/CasperUI/AppModel.swift`
 
-- New `private(set) var availableEditors: [EditorKind]`, computed once in
-  `init` right after `resolveGitBacking()` (`AppModel.swift:264`):
+- New `private(set) var availableEditors: [EditorKind]`, computed once in `init`
+  right after `resolveGitBacking()` (`AppModel.swift:264`):
   `self.availableEditors = EditorLauncher.detectInstalled()`.
 - New `var editorLaunchError: String?` (`@Observable`, drives a `.alert` in
   `WorkspaceDetailView`).
@@ -275,30 +269,30 @@ private var editorButton: some View {
 }
 ```
 
-`.alert` for `editorLaunchError` attaches once at the `WorkspaceDetailView`
-body level (or hoisted to `RootView` if a shared alert host already exists —
-confirm during planning), showing the message and clearing it on dismiss.
+`.alert` for `editorLaunchError` attaches once at the `WorkspaceDetailView` body
+level (or hoisted to `RootView` if a shared alert host already exists — confirm
+during planning), showing the message and clearing it on dismiss.
 
 ## Testing
 
 - **Unit (XCTest, CasperCore):** `EditorKind` case/metadata coverage;
-  `Workspace` round-trip with `lastUsedEditor` set and `nil`; legacy decode
-  of a `session.json` missing the `lastUsedEditor` key (must decode to `nil`
-  without failing).
+  `Workspace` round-trip with `lastUsedEditor` set and `nil`; legacy decode of a
+  `session.json` missing the `lastUsedEditor` key (must decode to `nil` without
+  failing).
 - **Unit (XCTest, CasperUI):** `AppModel.resolvedEditor` — covers the three
   fallback tiers (explicit `kind`, workspace's `lastUsedEditor`, first of
   `availableEditors`) and the `nil` case (no `kind`, no remembered editor, no
   detected editors). This is the only part of the feature that is pure logic
   over in-memory state, so it is the only part covered by an `AppModel` unit
   test — `openInEditor` itself calls `EditorLauncher.launch`, which is not
-  mocked (see below), so its persistence/alert side effects are covered by
-  the manual pass instead.
-- **Manual (`debug-casper` + live click-through):** with VS Code and/or
-  Xcode actually installed, confirm the button shows the right icon/name,
-  quick-launch opens the worktree, the dropdown lists only detected editors,
-  switching editors updates the persisted default across a restart, and an
-  editor uninstalled between startup and click surfaces the alert instead of
-  failing silently. `EditorLauncher.detectInstalled()`/`launch()` themselves
-  are not unit tested — they depend on real installed apps/CLI shims on the
-  test machine, consistent with how the project already treats OS-dependent
-  glue (see `.superpowers/architecture.md` → Testing strategy).
+  mocked (see below), so its persistence/alert side effects are covered by the
+  manual pass instead.
+- **Manual (`debug-casper` + live click-through):** with VS Code and/or Xcode
+  actually installed, confirm the button shows the right icon/name, quick-launch
+  opens the worktree, the dropdown lists only detected editors, switching
+  editors updates the persisted default across a restart, and an editor
+  uninstalled between startup and click surfaces the alert instead of failing
+  silently. `EditorLauncher.detectInstalled()`/`launch()` themselves are not
+  unit tested — they depend on real installed apps/CLI shims on the test
+  machine, consistent with how the project already treats OS-dependent glue (see
+  `.superpowers/architecture.md` → Testing strategy).

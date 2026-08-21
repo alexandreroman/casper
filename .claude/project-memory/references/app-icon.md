@@ -10,13 +10,13 @@ Casper's macOS app icon is a **full-bleed "split terminal"**: the rounded-square
 icon *is* the terminal, split vertically down the middle — left pane a **cream
 prompt caret `>`**, right pane an **amber 4-point sparkle** (the AI agent), on a
 neutral dark-gray gradient body matching the Visual Studio Code app icon
-background. It is **inspired by Ghostty** (it reuses the
-exact caret path from Ghostty's official logo, and Ghostty's cream foreground)
-but is deliberately **not a ghost**.
+background. It is **inspired by Ghostty** (it reuses the exact caret path from
+Ghostty's official logo, and Ghostty's cream foreground) but is deliberately
+**not a ghost**.
 
 Palette: body gradient `#3C3C3C → #1E1E1E` (VS Code neutral dark gray), caret
-cream `#F6F1E2`, sparkle
-gradient `#FFDD86 → #FF9E3D`, split line mint `#8EF7DE` at 0.20 opacity.
+cream `#F6F1E2`, sparkle gradient `#FFDD86 → #FF9E3D`, split line mint `#8EF7DE`
+at 0.20 opacity.
 
 There are **two variants**: the production icon and a **dev** variant that adds
 a violet "DEV" corner ribbon (bottom-right), used only by `make dev` /
@@ -40,17 +40,17 @@ a violet "DEV" corner ribbon (bottom-right), used only by `make dev` /
   target copies `AppIconDev.icns` into the dev bundle Resources.
 
 **macOS 26 Liquid Glass icon (additive, release only):** alongside the legacy
-`.icns`, the release build also ships an **Icon Composer** layered icon so
-macOS 26 (Tahoe) renders Default/Dark/Clear appearances. It is **additive**, not
-a replacement — both `CFBundleIconName` (new, macOS 26) and `CFBundleIconFile`
+`.icns`, the release build also ships an **Icon Composer** layered icon so macOS
+26 (Tahoe) renders Default/Dark/Clear appearances. It is **additive**, not a
+replacement — both `CFBundleIconName` (new, macOS 26) and `CFBundleIconFile`
 (legacy, macOS 15–25) are set in `Packaging/Info.plist`, both = `AppIcon`. The
 `.icns` stays the mandatory pre-Tahoe fallback; the split-icon workaround is NOT
 used (Apple dropped support for it in Xcode 26.1).
 - Source: `Packaging/AppIcon/AppIcon.icon` (Icon Composer bundle: `icon.json` +
   `Assets/`), **GUI-authored and committed** — the `icon.json` schema is
   undocumented and shifts across Xcode 26.x, so scripting it was rejected.
-  Background = the body gradient set as a fill in the GUI; two foreground
-  layers = the terminal marks (`layers/terminal.svg`) and the sparkle
+  Background = the body gradient set as a fill in the GUI; two foreground layers
+  = the terminal marks (`layers/terminal.svg`) and the sparkle
   (`layers/sparkle.svg`).
 - The layer sources `Packaging/AppIcon/layers/{terminal,sparkle}.svg` are
   imported directly into Icon Composer — no PNG rasterization step. Icon

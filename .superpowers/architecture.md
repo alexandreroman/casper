@@ -9,10 +9,11 @@ distilled here).
 ## Vision
 
 A native macOS app that embeds **libghostty** to give each **Git worktree** a
-dedicated terminal workspace, specialized for running code agents (Claude Code
-in v1). It surfaces each agent's live state and task progress in a sidebar, and
-bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
-/ source), **no Apple notarization**.
+dedicated terminal workspace, specialized for running code agents (Claude Code,
+OpenAI Codex CLI, and opencode). It surfaces each agent's live state and task
+progress in a sidebar, and bundles a native browser and diff viewer.
+Distributable as a self-contained `Casper.app` from GitHub Releases (or from
+source), **no Apple notarization**.
 
 ## Hard constraints
 
@@ -28,17 +29,19 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 
 ## Locked decisions
 
-- **Embedding:** GhosttyKit / libghostty-spm, **version pinned**, isolated behind
-  the single `CasperGhostty` module (the embedding API is unstable — a bump
-  touches only that module). See [[ghosttykit-pin]].
+- **Embedding:** GhosttyKit / libghostty-spm, **version pinned**, isolated
+  behind the single `CasperGhostty` module (the embedding API is unstable — a
+  bump touches only that module). See [[ghosttykit-pin]].
 - **Process model: in-process.** Surfaces and their PTYs live in the Casper
   process; if Casper quits, running agents die (accepted). Relaunch restores the
   layout with fresh PTYs.
 - **UI stack:** SwiftUI for chrome/sidebar/diff/browser; targeted AppKit
   (`NSViewRepresentable`, responder chain) to host Ghostty surfaces.
-- **Single binary:** one executable is both the GUI app and the CLI (empty argv →
-  GUI; a recognized subcommand → CLI).
-- **v1 agent:** Claude Code only.
+- **Single binary:** one executable is both the GUI app and the CLI (empty argv
+  → GUI; a recognized subcommand → CLI).
+- **v1 agents:** Claude Code, OpenAI Codex CLI, and opencode, all through the
+  same agent-agnostic `casper` CLI. Only the terminal-scraping detection rules
+  stay Claude-Code-tuned.
 
 ## Module boundaries
 
@@ -53,7 +56,8 @@ bundles a native browser and diff viewer. Distributable (self-signed / Homebrew
 | **Casper** (app)  | Wiring, window, lifecycle, GUI/CLI dispatch                                                                      | all                       |
 
 Rationale: instability (libghostty), Git specifics (libgit2), and agent
-specifics (Claude Code) are each confined to one module, so churn stays local.
+specifics (per-agent integration detection) are each confined to one module, so
+churn stays local.
 
 ## Data model (canonical)
 
@@ -86,10 +90,10 @@ browser. `LayoutNode.tabGroup` survives only as a legacy-decode migration path
 
 The **Space** layer and `kind`/`baseBranch` shipped with CasperUI UI-2
 (`themes/space-project.md`); the once-planned derived `diffStat` is **dropped**
-(decision 2026-07-06). Persistence: `SessionStore`
-serializes the whole tree to `~/Library/Application Support/Casper/session.json`
-(`Codable`, debounced); terminals restart cold, browser/diff surfaces reload
-their target, `portBase` is restored as-is.
+(decision 2026-07-06). Persistence: `SessionStore` serializes the whole tree to
+`~/Library/Application Support/Casper/session.json` (`Codable`, debounced);
+terminals restart cold, browser/diff surfaces reload their target, `portBase` is
+restored as-is.
 
 ## Risks & mitigations
 
@@ -114,12 +118,12 @@ their target, `portBase` is restored as-is.
 ## v1 scope
 
 **In:** worktree=workspace, free-form splits, terminal + browser + diff
-surfaces, per-workspace 10-port reservation, Claude Code state + todo progress,
+surfaces, per-workspace 10-port reservation, agent state + todo progress,
 enriched sidebar, session persistence, single GUI+CLI binary, arm64-only, a
 workspace info panel (`casper info set`/`clear`, control-channel `infoSet`/
 `infoClear` verbs) publishing a Markdown message into a toolbar-anchored
 popover.
 
 **Out (later):** persistent daemon (agents surviving restart), multi-agent
-orchestration, more agent adapters (Codex, Gemini), editable diffs, notarized
-distribution.
+orchestration, terminal-scraping detection rules for agents beyond Claude Code,
+editable diffs, notarized distribution.

@@ -16,16 +16,16 @@ modifier renders a clearly visible pill when applied to a plain view (e.g. an
 **Why:** a native menu control mid-hierarchy appears to interfere with how
 `.glassEffect` composites/renders its material around it, likely because the
 glass effect assumes a single flattened SwiftUI rendering pass and the native
-AppKit-bridged `Menu` breaks that assumption. The same construction that renders a
-solid, visible pill for `WorkspaceDetailView.diffBadge` renders invisible once a
-`Menu` is added inside the same `HStack` (as in `editorButton`).
+AppKit-bridged `Menu` breaks that assumption. The same construction that renders
+a solid, visible pill for `WorkspaceDetailView.diffBadge` renders invisible once
+a `Menu` is added inside the same `HStack` (as in `editorButton`).
 
 **How to apply:** for any custom SwiftUI toolbar control whose view hierarchy
 contains a native `Menu`/`Picker`/other AppKit-bridged control, skip
 `.glassEffect(in:)` for the background and use an explicit, unconditional
 `.background(Color.secondary.opacity(0.15), in: Capsule())` plus
-`.overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))`
-to approximate the native Liquid Glass pill's fill + edge highlight. This is
-an approximation, not a pixel-perfect match to the system's automatic toolbar
+`.overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))` to
+approximate the native Liquid Glass pill's fill + edge highlight. This is an
+approximation, not a pixel-perfect match to the system's automatic toolbar
 background (used by plain, unflattened `ToolbarItem`s like the branch-title
 capsule) — expect one extra round of human-eyeballed opacity/width tuning.

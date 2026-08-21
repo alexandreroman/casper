@@ -15,6 +15,6 @@ struct NotifyCommand: WorkspaceRefCommand {
     func makeCommand() throws -> ControlCommand {
         ControlCommand(
             verb: .notify, workspace: try requireSelector(target),
-            message: normalizedCommand(message))
+            message: nonEmpty(message))
     }
 }

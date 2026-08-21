@@ -133,7 +133,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// string (`.fragmentsAllowed`, so scalars come back as `2`, `"hi"`, `true`);
     /// `undefined`/`null`, and non-JSON-serializable results (`NaN`/`Infinity`),
     /// become `"null"`. A JS runtime error is rethrown as a
-    /// `BrowserCoordinatorError` carrying the page's exception message.
+    /// `BrowserOpError` carrying the page's exception message.
     func evaluate(_ js: String) async throws -> String {
         // Serialize the result to a JSON String (Sendable) inside the completion
         // handler: the raw `Any?` is main-actor-isolated and not Sendable, so it
@@ -141,7 +141,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         try await withCheckedThrowingContinuation { continuation in
             webView.evaluateJavaScript(js) { result, error in
                 if let error {
-                    continuation.resume(throwing: BrowserCoordinatorError(message: Self.message(from: error)))
+                    continuation.resume(throwing: BrowserOpError(message: Self.message(from: error)))
                 } else {
                     continuation.resume(returning: Self.jsonString(from: result))
                 }
@@ -403,13 +403,6 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     ) {
         handleFailure(error)
     }
-}
-
-/// Error carrying a human-readable reason for a failed browser-automation op
-/// (a JS runtime error or a snapshot/encoding failure).
-struct BrowserCoordinatorError: Error, CustomStringConvertible {
-    let message: String
-    var description: String { message }
 }
 
 /// Forwards `WKScriptMessage` bodies to a `BrowserCoordinator` through a *weak*

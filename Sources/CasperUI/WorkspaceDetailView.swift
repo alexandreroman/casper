@@ -117,7 +117,9 @@ struct WorkspaceDetailView: View {
         } message: {
             Text(model.scriptRunError ?? "")
         }
-        .task(id: model.selectedWorkspaceID) {
+        .task {
+            // No `id:`: `RootView` gives this view a per-workspace `.id`, so one
+            // instance only ever renders one workspace.
             diff = await model.diffService.diffSummary(for: workspace)
         }
         .onChange(of: model.diffRevision) { _, _ in

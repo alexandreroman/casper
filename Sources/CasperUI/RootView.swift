@@ -20,11 +20,10 @@ struct RootView: View {
                         .navigationSplitViewColumnWidth(min: 220, ideal: 290, max: 400)
                 } detail: {
                     if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
-                        // Give the detail a per-workspace identity so SwiftUI recreates the
-                        // `.inspector` on a workspace switch. Otherwise SwiftUI retains a single
-                        // scene-level inspector width and carries it across workspaces; a fresh
-                        // identity forces the column width to re-seed from this workspace's
-                        // persisted `inspector.width`.
+                        // Give the detail a per-workspace identity so its `@State
+                        // inspectorWidth` re-seeds from this workspace's persisted
+                        // `inspector.width` on `.onAppear`; without it, one workspace's
+                        // dragged width would carry across a switch.
                         WorkspaceDetailView(model: model, workspace: workspace)
                             .id(id)
                     } else {
@@ -88,6 +87,9 @@ private struct WindowConfigurator: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
+        // Fast path only: the window is usually there by the next runloop turn, which
+        // attaches the observers before the first `updateNSView`. `updateNSView` is
+        // what guarantees attachment when this hop loses the race.
         // `Context` is only guaranteed valid during this call, so capture the
         // retained coordinator before hopping onto the escaping async block.
         let coordinator = context.coordinator
@@ -99,10 +101,15 @@ private struct WindowConfigurator: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        // The `didUpdateNotification` observer already keeps these applied, so only
-        // write when the value actually differs — `updateNSView` runs on every
-        // `RootView` re-evaluation (spaces/selection changes) and these are redundant.
         guard let window = nsView.window else { return }
+        // Attachment is event-driven rather than one-shot: if `makeNSView`'s async hop
+        // ran before the view had a window, nothing would ever install the occlusion
+        // observer and `isWindowVisible` would stay `true` for the whole session.
+        // `attach(to:)` is idempotent, so calling it on every update is free.
+        context.coordinator.attach(to: window)
+        // Past the first attach the `didUpdateNotification` observer keeps these
+        // applied, so only write when the value actually differs — `updateNSView` runs
+        // on every `RootView` re-evaluation (spaces/selection changes).
         if window.titleVisibility != .hidden { window.titleVisibility = .hidden }
         if let toolbar = window.toolbar, toolbar.allowsDisplayModeCustomization {
             toolbar.allowsDisplayModeCustomization = false
@@ -122,6 +129,13 @@ private struct WindowConfigurator: NSViewRepresentable {
         nonisolated(unsafe) private var observer: NSObjectProtocol?
         nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
 
+        /// Whether `attach(to:)` has already run. Both `makeNSView`'s async seed and
+        /// every `updateNSView` call it — whichever first sees a window wins — so it
+        /// has to be idempotent. Re-running it would also re-write
+        /// `model.isWindowVisible` on every view update, and `@Observable` notifies on
+        /// each write, so an unguarded call would invalidate the view that triggered it.
+        private var attached = false
+
         init(model: AppModel) { self.model = model }
 
         /// Push the window's current visibility to the model and reconcile
@@ -133,13 +147,14 @@ private struct WindowConfigurator: NSViewRepresentable {
         }
 
         func attach(to window: NSWindow) {
+            guard !attached else { return }
+            attached = true
             window.titleVisibility = .hidden
             // Removes the "Icon and Text / Icon Only" toolbar display-mode context
             // menu that AppKit shows on a right-/control-click of the toolbar.
             window.toolbar?.allowsDisplayModeCustomization = false
             // Seed the visibility signal from the window's current state.
             refreshVisibility(window)
-            guard observer == nil else { return }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didUpdateNotification, object: window, queue: .main
             ) { [weak window] _ in

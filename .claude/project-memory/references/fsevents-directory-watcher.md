@@ -16,9 +16,9 @@ non-obvious constraints, each verified the hard way:
   "optimization".
 - **Canonicalize every path with `realpath(3)`.** FSEvents delivers *no* events
   when the watch root traverses a symlink (`/var`→`/private/var`, `/tmp`, user
-  symlinks). Both the watch root and each exclusion path are resolved before use;
-  a non-canonical exclusion also fails to match and lets `.git` churn wake the
-  watcher.
+  symlinks). Both the watch root and each exclusion path are resolved before
+  use; a non-canonical exclusion also fails to match and lets `.git` churn wake
+  the watcher.
 - **`stop()` barriers off-queue callers and recognizes its own queue.** The C
   callback runs on a serial queue with an *unretained* context, so `stop()` ends
   with a `queue.sync {}` barrier that drains any in-flight or queued callback

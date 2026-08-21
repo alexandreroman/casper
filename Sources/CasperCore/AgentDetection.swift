@@ -50,13 +50,13 @@ extension AgentSignal {
 /// `AgentDetectionRuleSet`.
 public struct AgentDetectionRuleSet: Equatable, Sendable {
     /// Any single substring present ⇒ `working`.
-    public var workingContains: [String]
+    public let workingContains: [String]
     /// Any group whose every substring is present ⇒ `blocked`.
-    public var blockedAllOf: [[String]]
+    public let blockedAllOf: [[String]]
     /// Unicode scalar range whose prefix in the OSC title ⇒ `working`.
-    public var titleWorkingScalars: ClosedRange<UInt32>
+    public let titleWorkingScalars: ClosedRange<UInt32>
     /// Single Unicode scalar whose prefix in the OSC title ⇒ `idle`.
-    public var titleIdleScalar: UInt32?
+    public let titleIdleScalar: UInt32?
 
     public init(
         workingContains: [String],

@@ -78,9 +78,8 @@ hypothesis; only a live reproduction that stops reproducing settles it.
      amplifier alongside the other two, never on its own.
 
    Fewer than ~10 frames of a marker is background noise, not the driver.
-4. `refresh()` logs one `.notice` per refresh (`diff refresh: files=…
-   lines=… maxFileLines=… maxLineLen=… computeMs=…`) via `CasperLog.app`. Read
-   it with
+4. `refresh()` logs one `.notice` per refresh (`diff refresh: files=… lines=…
+   maxFileLines=… maxLineLen=… computeMs=…`) via `CasperLog.app`. Read it with
    `log show --predicate 'subsystem == "com.github.alexandreroman.casper"'
    --info --debug`. A flood of these with unchanged `files=`/`lines=` is the
    churn signature. Release builds often persist nothing, so treat an empty
@@ -102,9 +101,9 @@ depends on.
 
 ## Only a live session confirms a fix
 
-The hang does not reproduce headlessly: an unbundled debug binary's window counts
-as not-visible, so `applyWatcherVisibility` stops the FSEvents watchers and no
-refresh ever fires — see [[agent-visual-verification-limits]]. There is no
-automated layout-convergence guard, and the headless fragment-geometry smoke
+The hang does not reproduce headlessly: an unbundled debug binary's window
+counts as not-visible, so `applyWatcherVisibility` stops the FSEvents watchers
+and no refresh ever fires — see [[agent-visual-verification-limits]]. There is
+no automated layout-convergence guard, and the headless fragment-geometry smoke
 tests are not one. Confirming any candidate fix therefore takes a visible real
 instance left open on an actively-edited worktree with the diff panel showing.

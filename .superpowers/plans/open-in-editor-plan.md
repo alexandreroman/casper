@@ -1,15 +1,18 @@
 # Open in Editor Implementation Plan
 
+> **✅ DONE — shipped.** This plan is retained for reference; its task checkboxes
+> are left unticked as historical record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a split-button to the workspace title bar's toolbar that opens
-the current workspace's worktree in VS Code, IntelliJ IDEA, or Xcode.
+**Goal:** Add a split-button to the workspace title bar's toolbar that opens the
+current workspace's worktree in VS Code, IntelliJ IDEA, or Xcode.
 
-**Architecture:** A new `EditorKind` enum + `Workspace.lastUsedEditor` field
-in CasperCore (pure data, persisted in `session.json`); a new `EditorLauncher`
+**Architecture:** A new `EditorKind` enum + `Workspace.lastUsedEditor` field in
+CasperCore (pure data, persisted in `session.json`); a new `EditorLauncher`
 namespace in CasperUI (AppKit-backed detection/launch); `AppModel` wiring
 (`availableEditors`, `resolvedEditor`, `openInEditor`); a `WorkspaceDetailView`
 toolbar item using SwiftUI's native split-button `Menu(primaryAction:)`.
@@ -19,12 +22,12 @@ toolbar item using SwiftUI's native split-button `Menu(primaryAction:)`.
 
 ## Global Constraints
 
-- macOS 15+, arm64-only. No new external dependencies — this feature uses
-  only `Foundation`/`AppKit`/`SwiftUI`.
+- macOS 15+, arm64-only. No new external dependencies — this feature uses only
+  `Foundation`/`AppKit`/`SwiftUI`.
 - CasperCore stays pure Swift, no AppKit/UI imports — `EditorKind` must not
   import `AppKit`.
-- Editor detection is **startup-only** (no live re-detection while the app
-  runs) and must not block: three short-lived `Process` calls in `AppModel.init`.
+- Editor detection is **startup-only** (no live re-detection while the app runs)
+  and must not block: three short-lived `Process` calls in `AppModel.init`.
 - Detection requires **both** the CLI shim on `PATH` and the app bundle
   resolvable by bundle identifier; an editor failing either check is omitted
   entirely (not shown disabled).
@@ -44,14 +47,15 @@ toolbar item using SwiftUI's native split-button `Menu(primaryAction:)`.
 - Produces: `public enum EditorKind: String, Codable, CaseIterable, Sendable { case vscode, intellijIdea, xcode }`
   with `static let priorityOrder: [EditorKind]`, `var cliCommand: String`,
   `var bundleIdentifiers: [String]`, `var displayName: String`. Task 2 stores
-  this on `Workspace`; Task 3/4 read `cliCommand`/`bundleIdentifiers`/`priorityOrder`.
+  this on `Workspace`; Task 3/4 read
+  `cliCommand`/`bundleIdentifiers`/`priorityOrder`.
 
 - [ ] **Step 1: Write the failing test**
 
 Add to `Tests/CasperCoreTests/ModelsTests.swift` (anywhere in the file, e.g.
 right after the existing `// MARK: - Inspector state` block ends, before
-`testWorkspaceLegacyDecodeWithoutInspectorDefaultsIt`'s closing brace at
-line 223):
+`testWorkspaceLegacyDecodeWithoutInspectorDefaultsIt`'s closing brace at line
+223):
 
 ```swift
     // MARK: - EditorKind
@@ -83,9 +87,9 @@ line 223):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --filter ModelsTests`
-Expected: FAIL — `error: cannot find type 'EditorKind' in scope` (or similar,
-since `EditorKind` does not exist yet).
+Run: `swift test --filter ModelsTests` Expected: FAIL —
+`error: cannot find type 'EditorKind' in scope` (or similar, since `EditorKind`
+does not exist yet).
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -134,8 +138,8 @@ public enum EditorKind: String, Codable, CaseIterable, Sendable {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `swift test --filter ModelsTests`
-Expected: PASS (all `ModelsTests` tests, including the three new ones).
+Run: `swift test --filter ModelsTests` Expected: PASS (all `ModelsTests` tests,
+including the three new ones).
 
 - [ ] **Step 5: Commit**
 
@@ -155,8 +159,8 @@ git commit -m "Add EditorKind enum for VS Code / IntelliJ IDEA / Xcode"
 
 **Interfaces:**
 - Consumes: `EditorKind` (Task 1).
-- Produces: `Workspace.lastUsedEditor: EditorKind?`, defaulting to `nil` in
-  the memberwise `init` and on legacy decode. Task 4 reads/writes this field.
+- Produces: `Workspace.lastUsedEditor: EditorKind?`, defaulting to `nil` in the
+  memberwise `init` and on legacy decode. Task 4 reads/writes this field.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -193,14 +197,13 @@ Add to `Tests/CasperCoreTests/ModelsTests.swift`, next to
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --filter ModelsTests`
-Expected: FAIL — `error: incorrect argument label in call (have 'name:worktreePath:branch:portBase:layout:lastUsedEditor:', expected '...')`
+Run: `swift test --filter ModelsTests` Expected: FAIL — `error: incorrect argument label in call (have 'name:worktreePath:branch:portBase:layout:lastUsedEditor:', expected '...')`
 (the `Workspace` initializer does not yet accept `lastUsedEditor:`).
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `Sources/CasperCore/Models.swift`, modify the `Workspace` struct
-(current lines 223-322):
+In `Sources/CasperCore/Models.swift`, modify the `Workspace` struct (current
+lines 223-322):
 
 Property list (after line 236, `public var inspector: InspectorState`):
 ```swift
@@ -252,7 +255,8 @@ Property list (after line 236, `public var inspector: InspectorState`):
     }
 ```
 
-`encode(to:)` (lines 283-296) — add after `try c.encode(inspector, forKey: .inspector)`:
+`encode(to:)` (lines 283-296) — add after
+`try c.encode(inspector, forKey: .inspector)`:
 ```swift
         try c.encode(inspector, forKey: .inspector)
         try c.encodeIfPresent(lastUsedEditor, forKey: .lastUsedEditor)
@@ -268,8 +272,7 @@ Property list (after line 236, `public var inspector: InspectorState`):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `swift test --filter ModelsTests`
-Expected: PASS (all `ModelsTests` tests).
+Run: `swift test --filter ModelsTests` Expected: PASS (all `ModelsTests` tests).
 
 - [ ] **Step 5: Commit**
 
@@ -287,7 +290,8 @@ git commit -m "Persist a per-workspace last-used editor"
 - Test: `Tests/CasperUITests/EditorLauncherTests.swift`
 
 **Interfaces:**
-- Consumes: `EditorKind` (Task 1) — `.priorityOrder`, `.cliCommand`, `.bundleIdentifiers`.
+- Consumes: `EditorKind` (Task 1) — `.priorityOrder`, `.cliCommand`,
+  `.bundleIdentifiers`.
 - Produces:
   - `EditorLauncher.detectInstalled() -> [EditorKind]`
   - `EditorLauncher.icon(for: EditorKind) -> NSImage?`
@@ -335,8 +339,8 @@ final class EditorLauncherTests: XCTestCase {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --filter EditorLauncherTests`
-Expected: FAIL — `error: cannot find 'EditorLauncher' in scope`.
+Run: `swift test --filter EditorLauncherTests` Expected: FAIL —
+`error: cannot find 'EditorLauncher' in scope`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -428,11 +432,11 @@ enum EditorLaunchError: LocalizedError {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `swift test --filter EditorLauncherTests`
-Expected: PASS. (`testLaunchThrowsShimNotFoundForAnUnresolvableCommand` passes
-whether or not VS Code is installed: if the shim isn't found, `launch` throws
-`.shimNotFound` directly; if it is found, `Process.run()` throws because the
-working directory doesn't exist — either way it's a thrown error.)
+Run: `swift test --filter EditorLauncherTests` Expected: PASS.
+(`testLaunchThrowsShimNotFoundForAnUnresolvableCommand` passes whether or not VS
+Code is installed: if the shim isn't found, `launch` throws `.shimNotFound`
+directly; if it is found, `Process.run()` throws because the working directory
+doesn't exist — either way it's a thrown error.)
 
 - [ ] **Step 5: Commit**
 
@@ -468,8 +472,8 @@ git commit -m "Add EditorLauncher: detect and launch VS Code / IntelliJ IDEA / X
 - [ ] **Step 1: Write the failing test**
 
 Add to `Tests/CasperUITests/AppModelTests.swift`, in a new `// MARK: - Open in
-Editor` section (e.g. right after the `// MARK: - Right inspector panel`
-block ends, after line 951):
+Editor` section (e.g. right after the `// MARK: - Right inspector panel` block
+ends, after line 951):
 
 ```swift
     // MARK: - Open in Editor
@@ -498,15 +502,14 @@ block ends, after line 951):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --filter AppModelTests`
-Expected: FAIL — `error: value of type 'AppModel' has no member 'resolvedEditor'`
-(and no member `availableEditors`).
+Run: `swift test --filter AppModelTests` Expected: FAIL —
+`error: value of type 'AppModel' has no member 'resolvedEditor'` (and no member
+`availableEditors`).
 
 - [ ] **Step 3: Write minimal implementation**
 
 In `Sources/CasperUI/AppModel.swift`, add two stored properties near the top
-(after `private(set) var diffRevision = 0` and its doc comment, around
-line 23):
+(after `private(set) var diffRevision = 0` and its doc comment, around line 23):
 
 ```swift
     private(set) var diffRevision = 0
@@ -559,8 +562,8 @@ Next to `setInspectorCollapsed` (after line 997's closing `}`):
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `swift test --filter AppModelTests`
-Expected: PASS (all `AppModelTests` tests, including the three new ones).
+Run: `swift test --filter AppModelTests` Expected: PASS (all `AppModelTests`
+tests, including the three new ones).
 
 - [ ] **Step 5: Commit**
 
@@ -584,21 +587,19 @@ git commit -m "Wire AppModel.openInEditor and per-workspace editor resolution"
   `workspace.lastUsedEditor` (Task 2); `EditorKind.displayName` (Task 1).
 - Produces: no new public interface — this is the leaf UI consumer.
 
-This task has no automated test: it is a SwiftUI toolbar view, and the
-project's existing testing strategy covers this layer manually via the
-`debug-casper` harness and a live GUI pass, not XCTest (see
-`.superpowers/architecture.md` → Testing strategy; no existing test in this
-repo drives a `.toolbar` view). Steps 1-2 below are the manual-verification
-equivalent of "write the test, watch it fail" — confirm the button is
-genuinely absent before wiring it in.
+This task has no automated test: it is a SwiftUI toolbar view, and the project's
+existing testing strategy covers this layer manually via the `debug-casper`
+harness and a live GUI pass, not XCTest (see `.superpowers/architecture.md` →
+Testing strategy; no existing test in this repo drives a `.toolbar` view). Steps
+1-2 below are the manual-verification equivalent of "write the test, watch it
+fail" — confirm the button is genuinely absent before wiring it in.
 
 - [ ] **Step 1: Confirm the toolbar has no editor button yet**
 
-Run: `make dev`
-In the running app, open any workspace and look at the title bar's trailing
-group (next to the panel-toggle icon). Expected: no editor button is present
-— only the diff badge (if the workspace has uncommitted changes) and the
-panel toggle (`sidebar.right` icon).
+Run: `make dev` In the running app, open any workspace and look at the title
+bar's trailing group (next to the panel-toggle icon). Expected: no editor button
+is present — only the diff badge (if the workspace has uncommitted changes) and
+the panel toggle (`sidebar.right` icon).
 
 - [ ] **Step 2: Quit the app**
 
@@ -682,28 +683,26 @@ Add `editorButton` next to `inspectorToggle` (current lines 203-210):
 
 - [ ] **Step 4: Build**
 
-Run: `make build`
-Expected: builds with no errors or warnings.
+Run: `make build` Expected: builds with no errors or warnings.
 
 - [ ] **Step 5: Manual verification with `make dev`**
 
-Run: `make dev`. For each check below, note which are only possible with a
-real editor CLI shim installed (`code`/`idea`/`xed` on `PATH`) — skip
-checks for editors not installed on this machine, but run at least one:
+Run: `make dev`. For each check below, note which are only possible with a real
+editor CLI shim installed (`code`/`idea`/`xed` on `PATH`) — skip checks for
+editors not installed on this machine, but run at least one:
 
 - Open a workspace. If at least one of VS Code / IntelliJ IDEA / Xcode is
-  detected, the new button appears immediately left of the panel-toggle
-  icon, showing that editor's real name + icon (first by
-  `EditorKind.priorityOrder` on a workspace never opened before).
-- Click the main part of the button (not the chevron): the editor launches
-  on the workspace's worktree path.
+  detected, the new button appears immediately left of the panel-toggle icon,
+  showing that editor's real name + icon (first by `EditorKind.priorityOrder` on
+  a workspace never opened before).
+- Click the main part of the button (not the chevron): the editor launches on
+  the workspace's worktree path.
 - Click the chevron: a dropdown lists only the detected editors. Pick a
-  different one — it launches, and the button's label updates to that
-  editor.
-- Quit and relaunch Casper (`make dev` again), reselect the same workspace:
-  the button still shows the last editor you picked (persisted).
-- If zero editors are detected on this machine, confirm the button is
-  absent entirely (no empty/disabled control in its place).
+  different one — it launches, and the button's label updates to that editor.
+- Quit and relaunch Casper (`make dev` again), reselect the same workspace: the
+  button still shows the last editor you picked (persisted).
+- If zero editors are detected on this machine, confirm the button is absent
+  entirely (no empty/disabled control in its place).
 
 - [ ] **Step 6: Commit**
 

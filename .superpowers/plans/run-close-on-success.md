@@ -1,11 +1,10 @@
 # Auto-Close a `casper run` Terminal on Success — Design
 
-**Date:** 2026-07-15
-**Status:** Shipped
-**Scope:** A terminal opened by `casper run <script>` should disappear from the
-workspace layout when the script succeeds (exit code 0). On failure (any
-non-zero exit) the terminal stays open with a live interactive shell, its error
-output visible above the prompt, so the user can inspect or re-run.
+**Date:** 2026-07-15 **Status:** Shipped **Scope:** A terminal opened by
+`casper run <script>` should disappear from the workspace layout when the script
+succeeds (exit code 0). On failure (any non-zero exit) the terminal stays open
+with a live interactive shell, its error output visible above the prompt, so the
+user can inspect or re-run.
 
 ## Problem
 
@@ -20,8 +19,8 @@ into the interactive shell, wrapped by `subshellWrappedScriptCommand`
 ```
 
 The subshell exists so a script that calls `exit` (or fails under `set -e`)
-terminates only the subshell — the interactive shell survives and the pane
-stays open **regardless of the exit code**. That is the current behavior: a
+terminates only the subshell — the interactive shell survives and the pane stays
+open **regardless of the exit code**. That is the current behavior: a
 `casper run` terminal never auto-closes; the user must close it manually.
 
 The desired behavior is the same one the **setup** lifecycle hook already has
@@ -112,8 +111,9 @@ exactly as today; only the text changes.
 `casper run` surfaces are not registered in `scriptSurfaces`, so on the success
 exit both signals fire harmlessly:
 
-- `GHOSTTY_ACTION_SHOW_CHILD_EXITED` → `onChildExit` → `handleScriptSurfaceExit`,
-  which returns immediately (`guard scriptSurfaces[id]` fails) — a no-op.
+- `GHOSTTY_ACTION_SHOW_CHILD_EXITED` → `onChildExit` →
+  `handleScriptSurfaceExit`, which returns immediately
+  (`guard scriptSurfaces[id]` fails) — a no-op.
 - `close_surface_cb` → `applyCloseSurface`, which prunes the pane. The
   lifecycle-hook guards in `applyCloseSurface` (`keptFailedSetupSurfaces`,
   `pendingTeardownPrunes`) key off state that a plain `casper run` surface never
@@ -142,7 +142,8 @@ dev server) never exit, so they simply stay open as before.
 
 - `Tests/CasperUITests/ControlHandlerTests.swift:702-704` — update the expected
   output of `subshellWrappedScriptCommand`:
-  - `subshellWrappedScriptCommand("exit 1")` → `"(\nexit 1\n)\n[ $? -eq 0 ] && exit"`
+  - `subshellWrappedScriptCommand("exit 1")` →
+    `"(\nexit 1\n)\n[ $? -eq 0 ] && exit"`
   - `subshellWrappedScriptCommand("npm test # smoke")` →
     `"(\nnpm test # smoke\n)\n[ $? -eq 0 ] && exit"`
   - Assert `hookWrappedScriptCommand` is unchanged (regression guard that the
@@ -160,8 +161,8 @@ dev server) never exit, so they simply stay open as before.
 
 ## Affected files
 
-- `Sources/CasperUI/AppModel.swift` — `subshellWrappedScriptCommand` body +
-  its doc comment.
+- `Sources/CasperUI/AppModel.swift` — `subshellWrappedScriptCommand` body + its
+  doc comment.
 - `Tests/CasperUITests/ControlHandlerTests.swift` — updated expectations.
 - Docs describing `casper run` behavior (e.g. the `casper-config` skill or
   README) if they state that the run terminal stays open — align them with the

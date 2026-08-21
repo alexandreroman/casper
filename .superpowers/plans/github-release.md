@@ -1,11 +1,10 @@
 # GitHub Release Workflow with Downloadable `.app` — Design
 
-**Date:** 2026-07-05
-**Status:** Done — shipped (`.github/workflows/release.yml` merged)
-**Scope:** A GitHub Actions workflow that publishes a downloadable, self-contained
-`Casper.app` on each version tag — **without** code signing or notarization — and
-lays the groundwork so a Sparkle-based auto-update mechanism can plug in later
-without reworking the release pipeline.
+**Date:** 2026-07-05 **Status:** Done — shipped (`.github/workflows/release.yml`
+merged) **Scope:** A GitHub Actions workflow that publishes a downloadable,
+self-contained `Casper.app` on each version tag — **without** code signing or
+notarization — and lays the groundwork so a Sparkle-based auto-update mechanism
+can plug in later without reworking the release pipeline.
 
 ## Problem
 
@@ -20,8 +19,9 @@ $ otool -L .build/.../release/casper
 
 which in turn pulls `llhttp` and `libssh2` (and their transitive dylibs). On any
 Mac without Homebrew + that exact libgit2 at that path, the app fails to launch
-with a `dyld: Library not loaded` error. GhosttyKit, by contrast, is a **static**
-library (`libghostty.a`) and links straight into the binary — nothing to ship.
+with a `dyld: Library not loaded` error. GhosttyKit, by contrast, is a
+**static** library (`libghostty.a`) and links straight into the binary — nothing
+to ship.
 
 So there is nothing missing to *compile*; what is missing is a **portable,
 downloadable artifact** and the release automation to publish it.
@@ -51,8 +51,8 @@ downloadable artifact** and the release automation to publish it.
 - **It fixes a real defect:** `UNUserNotificationCenter` requires a valid bundle
   identifier. The current bare executable cannot register for notifications; a
   `.app` with an `Info.plist` `CFBundleIdentifier` unblocks that.
-- Sparkle updates a `.app` delivered as a top-level `.zip` — the same artifact we
-  produce.
+- Sparkle updates a `.app` delivered as a top-level `.zip` — the same artifact
+  we produce.
 
 ## Components
 
@@ -72,12 +72,12 @@ downloadable artifact** and the release automation to publish it.
 | `LSMinimumSystemVersion`           | `15.0`                                                                          |
 | `NSHighResolutionCapable`          | `true`                                                                          |
 | `LSApplicationCategoryType`        | `public.app-category.developer-tools`                                           |
-| `SUFeedURL` *(reserved)*           | `https://github.com/alexandreroman/casper/releases/latest/download/appcast.xml` |
-| `SUPublicEDKey` *(reserved, TODO)* | empty — filled when the EdDSA keypair exists                                    |
+| `SUFeedURL`                        | `https://github.com/alexandreroman/casper/releases/latest/download/appcast.xml` |
+| `SUPublicEDKey`                    | the release EdDSA public key (set — see `Packaging/Info.plist`)                 |
 
 No `LSUIElement` — the app uses `setActivationPolicy(.regular)` and is a normal
-foreground app. The `SU*` keys are inert until Sparkle is integrated but document
-the wiring.
+foreground app. The `SU*` keys are live: Sparkle 2 is integrated (see "Future
+step" below).
 
 **`Scripts/bundle-app.sh <short-version> <bundle-version>`** — assembles the
 bundle:
@@ -95,9 +95,9 @@ bundle:
    order is load-bearing: `dsymutil` needs the symbol table `strip` removes, and
    `strip` rewrites the Mach-O, so it must precede `codesign`.
 5. **Self-check (hard fail):** `otool -L` on the bundled binary **and** each
-   bundled dylib; if any `LC_LOAD_DYLIB` still points at `/opt/homebrew` or other
-   non-system, non-`@rpath` path, exit non-zero. This is the guarantee that the
-   artifact runs on a clean Mac — the closest proxy to testing on one.
+   bundled dylib; if any `LC_LOAD_DYLIB` still points at `/opt/homebrew` or
+   other non-system, non-`@rpath` path, exit non-zero. This is the guarantee
+   that the artifact runs on a clean Mac — the closest proxy to testing on one.
 
 **`Makefile`** — two new targets:
 
@@ -119,8 +119,8 @@ Both are usable locally so the release is reproducible off-CI.
 - **Steps:**
   1. `actions/checkout@v4` with `fetch-depth: 0` (needed for the monotonic
      `git rev-list --count HEAD`).
-  2. `maxim-lobanov/setup-xcode@v1` **pinned** to an explicit version (`26.3`)
-     — removes the `latest-stable` non-determinism flagged as a risk.
+  2. `maxim-lobanov/setup-xcode@v1` **pinned** to an explicit version (`26.3`) —
+     removes the `latest-stable` non-determinism flagged as a risk.
   3. `brew install libgit2 pkgconf dylibbundler`.
   4. Derive `SHORT_VERSION` (tag without the `v`) and `BUNDLE_VERSION`
      (`git rev-list --count HEAD`); **validate** `SHORT_VERSION` against
@@ -133,27 +133,27 @@ Both are usable locally so the release is reproducible off-CI.
   6. Regenerate `appcast.xml` (see §3) and stage it alongside the zip.
   7. **Publish** (only on `push`): idempotent — `gh release view "$TAG"` then
      either `gh release upload "$TAG" … --clobber` (release exists) or
-     `gh release create "$TAG" dist/Casper-*.zip dist/*.sha256
-     dist/*.dSYM.zip appcast.xml --title …
-     --notes-file Packaging/release-notes.md`. Uses the preinstalled
-     `gh` CLI (no third-party action); `GH_TOKEN` from `github.token`.
-     `--generate-notes` is deliberately **omitted** (its interaction with
-     `--notes-file` varies across `gh` versions and could break the publish
-     step); the release body is the static Gatekeeper note.
+     `gh release create "$TAG" dist/Casper-*.zip dist/*.sha256 dist/*.dSYM.zip
+     appcast.xml --title … --notes-file
+     Packaging/release-notes.md`. Uses the preinstalled `gh` CLI (no third-party
+     action); `GH_TOKEN` from `github.token`. `--generate-notes` is deliberately
+     **omitted** (its interaction with `--notes-file` varies across `gh`
+     versions and could break the publish step); the release body is the static
+     Gatekeeper note.
 - **Release notes** (`Packaging/release-notes.md`) include the unsigned/
   un-notarized caveat: first launch via **right-click ▸ Open**, or
   `xattr -dr com.apple.quarantine Casper.app`.
 
-### 3. Auto-update scaffolding (Sparkle-ready, not implemented)
+### 3. Auto-update scaffolding (Sparkle-ready — since implemented, see "Future step")
 
 The pipeline emits a **Sparkle-compatible `appcast.xml`** so a future Sparkle
 integration reads it as-is. What is already correct by construction:
 
 - **Artifact format:** `.zip` containing `Casper.app` at the top level — exactly
   Sparkle's expected enclosure.
-- **Bundle layout:** `Contents/Frameworks/` + an `@executable_path/../Frameworks`
-  rpath (set by dylibbundler) is precisely where `Sparkle.framework` will later
-  be embedded — no bundle rework.
+- **Bundle layout:** `Contents/Frameworks/` + an
+  `@executable_path/../Frameworks` rpath (set by dylibbundler) is precisely
+  where `Sparkle.framework` will later be embedded — no bundle rework.
 - **Stable feed URL:** `releases/latest/download/appcast.xml` always resolves to
   the newest release's asset — ideal as `SUFeedURL`.
 
@@ -166,15 +166,15 @@ Added now:
   `appcast.xml` from the latest release and prepends the new `<item>`**
   (newest-first, starting from an empty feed on the first release), then uploads
   the updated feed. Seeding is fail-safe: only a genuine **404** falls back to
-  the empty template; any other HTTP status or transport error is **fatal**, so a
-  transient network blip can never silently truncate the release history (with
+  the empty template; any other HTTP status or transport error is **fatal**, so
+  a transient network blip can never silently truncate the release history (with
   `curl --retry` for flaky connectivity). This avoids re-enumerating every
-  release and keeps history intact. Each `<item>`
-  carries `sparkle:version` (= `CFBundleVersion`),
-  `sparkle:shortVersionString`, `pubDate`, and an `<enclosure>` with `url`,
-  `length`, and a reserved `sparkle:edSignature="__TODO__"` slot (empty until an
-  EdDSA key exists). `sha256` is published in the `.sha256` sidecar for manual
-  verification in the meantime.
+  release and keeps history intact. Each `<item>` carries `sparkle:version` (=
+  `CFBundleVersion`), `sparkle:shortVersionString`, `pubDate`, and an
+  `<enclosure>` with `url`, `length`, and a reserved
+  `sparkle:edSignature="__TODO__"` slot (empty until an EdDSA key exists).
+  `sha256` is published in the `.sha256` sidecar for manual verification in the
+  meantime.
 
 ### Future step — since shipped
 
@@ -208,10 +208,10 @@ git push tag v0.1.0
 - **Residual Homebrew path:** the `otool` self-check fails the job before a
   broken artifact is ever published.
 - **Xcode drift:** pinned Xcode version; a bump is an explicit, reviewed change.
-- **Missing tag on manual run:** `workflow_dispatch` requires the `version` input;
-  the job derives the same variables from it.
-- **Gatekeeper:** unavoidable while unsigned — surfaced in the release notes, not
-  silently ignored.
+- **Missing tag on manual run:** `workflow_dispatch` requires the `version`
+  input; the job derives the same variables from it.
+- **Gatekeeper:** unavoidable while unsigned — surfaced in the release notes,
+  not silently ignored.
 
 ## Testing
 
@@ -219,13 +219,15 @@ git push tag v0.1.0
   only `@rpath` / system paths; unzip and launch.
 - **CI:** the `bundle-app.sh` `otool` self-check runs in the job and is the
   publish gate. Optionally, a step copies `Casper.app` to a scratch dir and
-  re-runs `otool -L` to confirm no `/opt/homebrew` reference survives relocation.
+  re-runs `otool -L` to confirm no `/opt/homebrew` reference survives
+  relocation.
 - The existing `ci.yml` continues to cover build + unit tests on PRs.
 
 ## Open Question Resolved
 
-- **Bundle identifier:** `com.github.alexandreroman.casper` (adjustable during review).
-- **otool self-check:** hard failure (not a warning) — it is the correctness gate
-  for "runs on a clean Mac".
+- **Bundle identifier:** `com.github.alexandreroman.casper` (adjustable during
+  review).
+- **otool self-check:** hard failure (not a warning) — it is the correctness
+  gate for "runs on a clean Mac".
 - **Auto-update target:** Sparkle-compatible `appcast.xml` (free, least app code
   to write later).

@@ -21,9 +21,9 @@ the numbers and the trade-offs behind it.
 
 - `-dead_strip` belongs to no target: it was measured at **exactly zero bytes**
   on this binary. Adding it buys link time and nothing else.
-- The bundle embeds the universal (x86_64 + arm64) Sparkle framework as
-  shipped. Thinning it to arm64 is worth **−1.2 MB**, but Apple's signature on
-  the framework seals the nested `Autoupdate`, `Updater.app` and the two XPC
+- The bundle embeds the universal (x86_64 + arm64) Sparkle framework as shipped.
+  Thinning it to arm64 is worth **−1.2 MB**, but Apple's signature on the
+  framework seals the nested `Autoupdate`, `Updater.app` and the two XPC
   services that Sparkle launches during an install, so thinning forces an ad-hoc
   re-signature of all of them — a failure mode that only surfaces months later,
   at the last step of a real update.

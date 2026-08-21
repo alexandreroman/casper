@@ -80,6 +80,23 @@ final class GhosttySurface {
         ghostty_surface_key(surface, event)
     }
 
+    /// Send `event` with `text` attached as its committed text (nil for a key that
+    /// commits none, such as every release).
+    ///
+    /// `ghostty_input_key_s.text` is a borrowed C pointer that must stay valid for
+    /// the whole `ghostty_surface_key` call, so the text is attached here, inside the
+    /// `withCString` frame that owns the buffer, rather than by a caller building an
+    /// event whose pointer is already dangling by the time it sends it.
+    @discardableResult
+    func sendKey(_ event: ghostty_input_key_s, text: String?) -> Bool {
+        guard let text else { return sendKey(event) }
+        return text.withCString { pointer in
+            var event = event
+            event.text = pointer
+            return sendKey(event)
+        }
+    }
+
     func sendMouseButton(
         state: ghostty_input_mouse_state_e,
         button: ghostty_input_mouse_button_e,

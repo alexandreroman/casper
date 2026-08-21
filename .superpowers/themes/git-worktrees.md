@@ -21,19 +21,25 @@ binary. We own this surface; it exposes only what Casper needs.
   states are surfaced as clear UI errors, never a crash (`git_status`,
   `git_worktree_validate`).
 - **Diff — ✅ built for working-tree-vs-HEAD.** `Repository.diffWorkdirToHead()`
-  returns a structured `GitDiff` (files → hunks → lines, statuses, binary flag) —
-  no text parsing — feeding the diff viewer (`app-ui.md`). (Branch-vs-merge-base
-  line counts were designed for the workspace diff summary, now **dropped** —
-  see `space-project.md`.)
+  returns a structured `GitDiff` (files → hunks → lines, statuses, binary flag)
+  — no text parsing — feeding the diff viewer (`app-ui.md`).
+  (Branch-vs-merge-base line counts were designed for the workspace diff
+  summary, now **dropped** — see `space-project.md`.)
+
+- **Merge — ✅ built.** `Repository.mergeBranchHeadless(…)` performs the
+  worktree-free merge behind "Merge and Close Workspace…", returning a
+  `MergeOutcome` and surfacing `MergeConflictError` /
+  `MergeUnrelatedHistoriesError`; `forceCheckoutHead()` is its recovery path.
+  See `Sources/CasperGit/Merge.swift`.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.
 
 ## Remaining
 
-- **`git_diff` — ✅ built** (`diffWorkdirToHead()`, working tree + index vs HEAD).
-  (Branch-vs-merge-base line counts for the workspace diff summary are **dropped**
-  — see `space-project.md`.)
-- Standing limitations: `remove` prunes the worktree but not its branch (an opaque
-  `.gitFailure` on same-name recreation); libgit2 unpinned in brew/CI;
+- **`git_diff` — ✅ built** (`diffWorkdirToHead()`, working tree + index vs
+  HEAD). (Branch-vs-merge-base line counts for the workspace diff summary are
+  **dropped** — see `space-project.md`.)
+- Standing limitations: `remove` prunes the worktree but not its branch (an
+  opaque `.gitFailure` on same-name recreation); libgit2 unpinned in brew/CI;
   `WorktreeManager` uses `Repository.open` (exact root) not `discover`.

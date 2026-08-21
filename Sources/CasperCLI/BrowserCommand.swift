@@ -2,8 +2,16 @@ import ArgumentParser
 import CasperCore
 import Foundation
 
-/// `casper browser open <url>` / `casper browser close` — open a URL in, or
-/// collapse, the workspace's browser panel.
+/// A browser automation subcommand: a `WorkspaceRefCommand` that waits on
+/// `BrowserCommand.automationTimeout` rather than the default 5 s.
+protocol BrowserAutomationRefCommand: WorkspaceRefCommand {}
+
+extension BrowserAutomationRefCommand {
+    var commandTimeout: TimeInterval { BrowserCommand.automationTimeout }
+}
+
+/// `casper browser` — open, close, and automate the workspace's browser panel
+/// (see `subcommands` below).
 struct BrowserCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "browser",
@@ -23,7 +31,7 @@ struct BrowserCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            guard !url.isEmpty else { throw exitWithError("missing url") }
+            let url = try requireNonEmpty(self.url, "url")
             try requireAbsoluteURL(url)
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserOpen, workspace: selector, url: url)
@@ -39,7 +47,7 @@ struct BrowserCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            guard !url.isEmpty else { throw exitWithError("missing url") }
+            let url = try requireNonEmpty(self.url, "url")
             try requireAbsoluteURL(url)
             let selector = try requireSelector(target)
             return ControlCommand(verb: .browserLoad, workspace: selector, url: url)
@@ -59,7 +67,7 @@ struct BrowserCommand: ParsableCommand {
 
     // A page snapshot or a heavy script can take longer than the default 5 s, so
     // every automation subcommand uses a roomier timeout.
-    private static let automationTimeout: TimeInterval = 15
+    static let automationTimeout: TimeInterval = 15
 
     struct Screenshot: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -90,7 +98,9 @@ struct BrowserCommand: ParsableCommand {
 
         func run() throws {
             let command = try makeCommand()
-            let response = try sendControl(command, retriable: false, timeout: automationTimeout)
+            // Idempotent: re-capturing overwrites the same PNG, so allow a
+            // bounded retry.
+            let response = try sendControl(command, retriable: true, timeout: automationTimeout)
             emit(ScreenshotOut(screenshot: response.text ?? command.path ?? "", workspace: response.workspaceRef))
         }
 
@@ -110,7 +120,7 @@ struct BrowserCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            guard !script.isEmpty else { throw exitWithError("missing script") }
+            let script = try requireNonEmpty(self.script, "script")
             return ControlCommand(verb: .browserEval, workspace: try requireSelector(target), script: script)
         }
 
@@ -170,7 +180,7 @@ struct BrowserCommand: ParsableCommand {
         }
     }
 
-    struct Click: WorkspaceRefCommand {
+    struct Click: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Click the first element matching a CSS selector.")
 
@@ -178,15 +188,13 @@ struct BrowserCommand: ParsableCommand {
         var selector: String
         @OptionGroup var target: WorkspaceTargetOption
 
-        var commandTimeout: TimeInterval { automationTimeout }
-
         func makeCommand() throws -> ControlCommand {
-            guard !selector.isEmpty else { throw exitWithError("missing selector") }
+            let selector = try requireNonEmpty(self.selector, "selector")
             return ControlCommand(verb: .browserClick, workspace: try requireSelector(target), selector: selector)
         }
     }
 
-    struct TypeText: WorkspaceRefCommand {
+    struct TypeText: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "type",
             abstract: "Type text into the first element matching a CSS selector.")
@@ -197,17 +205,15 @@ struct BrowserCommand: ParsableCommand {
         var text: String
         @OptionGroup var target: WorkspaceTargetOption
 
-        var commandTimeout: TimeInterval { automationTimeout }
-
         func makeCommand() throws -> ControlCommand {
-            guard !selector.isEmpty else { throw exitWithError("missing selector") }
-            guard !text.isEmpty else { throw exitWithError("missing text") }
+            let selector = try requireNonEmpty(self.selector, "selector")
+            let text = try requireNonEmpty(self.text, "text")
             return ControlCommand(
                 verb: .browserType, workspace: try requireSelector(target), selector: selector, value: text)
         }
     }
 
-    struct Key: WorkspaceRefCommand {
+    struct Key: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Dispatch a keydown/keyup KeyboardEvent to the page.")
 
@@ -217,10 +223,8 @@ struct BrowserCommand: ParsableCommand {
         var selector: String?
         @OptionGroup var target: WorkspaceTargetOption
 
-        var commandTimeout: TimeInterval { automationTimeout }
-
         func makeCommand() throws -> ControlCommand {
-            guard !key.isEmpty else { throw exitWithError("missing key") }
+            let key = try requireNonEmpty(self.key, "key")
             if let selector, selector.isEmpty { throw exitWithError("empty selector") }
             return ControlCommand(
                 verb: .browserKey, workspace: try requireSelector(target), selector: selector, key: key)
@@ -299,19 +303,17 @@ struct BrowserCommand: ParsableCommand {
         }
     }
 
-    struct Reload: WorkspaceRefCommand {
+    // Deliberate simplification: unlike `wait` (whose socket timeout is derived
+    // from a user-supplied `--timeout`), reload's app-side wait deadline is a
+    // fixed 5 s, comfortably within the 15 s automation socket timeout — so no
+    // dynamic derivation is needed, regardless of `--wait`.
+    struct Reload: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             abstract: "Reload the browser page, optionally waiting for it to finish loading.")
 
         @Flag(name: .long, help: "Also wait until the page finishes loading (readyState complete).")
         var wait = false
         @OptionGroup var target: WorkspaceTargetOption
-
-        // Deliberate simplification: unlike `wait` (whose socket timeout is derived
-        // from a user-supplied `--timeout`), reload's app-side wait deadline is a
-        // fixed 5 s, comfortably within the 15 s automation socket timeout — so no
-        // dynamic derivation is needed, regardless of `--wait`.
-        var commandTimeout: TimeInterval { automationTimeout }
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
@@ -324,56 +326,48 @@ struct BrowserCommand: ParsableCommand {
     // `scroll <direction>`) because the `casper-browser` skill and the
     // `.superpowers/` docs are written against these exact command names.
 
-    struct ScrollUp: WorkspaceRefCommand {
+    struct ScrollUp: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-up",
             abstract: "Scroll the browser page up by one viewport.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
-        var commandTimeout: TimeInterval { automationTimeout }
-
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollUp, workspace: try requireSelector(target))
         }
     }
 
-    struct ScrollDown: WorkspaceRefCommand {
+    struct ScrollDown: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-down",
             abstract: "Scroll the browser page down by one viewport.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
-        var commandTimeout: TimeInterval { automationTimeout }
-
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollDown, workspace: try requireSelector(target))
         }
     }
 
-    struct ScrollTop: WorkspaceRefCommand {
+    struct ScrollTop: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-top",
             abstract: "Scroll the browser page to the top.")
 
         @OptionGroup var target: WorkspaceTargetOption
 
-        var commandTimeout: TimeInterval { automationTimeout }
-
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollTop, workspace: try requireSelector(target))
         }
     }
 
-    struct ScrollBottom: WorkspaceRefCommand {
+    struct ScrollBottom: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(
             commandName: "scroll-bottom",
             abstract: "Scroll the browser page to the bottom.")
 
         @OptionGroup var target: WorkspaceTargetOption
-
-        var commandTimeout: TimeInterval { automationTimeout }
 
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .browserScrollBottom, workspace: try requireSelector(target))

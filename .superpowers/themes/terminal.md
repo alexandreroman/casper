@@ -10,9 +10,10 @@ surfaces and PTYs (same model as the Ghostty app).
 
 - **`GhosttyRuntime`** — app lifecycle + C runtime callbacks + the wakeup→tick
   pump that drives libghostty's event loop.
-- **`GhosttyAction`** — a pure decoder for libghostty action tags (fully tested).
-- **`GhosttySurface`** (+ `GhosttySurfaceConfiguration`) — the surface handle and
-  config marshaling.
+- **`GhosttyAction`** — a pure decoder for libghostty action tags (fully
+  tested).
+- **`GhosttySurface`** (+ `GhosttySurfaceConfiguration`) — the surface handle
+  and config marshaling.
 - **`GhosttySurfaceView`** — the AppKit `NSView` host; **`GhosttyInput`** maps
   keyboard/scroll input.
 - **`PersistentNSViewHost`** — the SwiftUI bridge. It re-parents an *existing*
@@ -22,9 +23,10 @@ surfaces and PTYs (same model as the Ghostty app).
 - **`GhosttyDefaultConfig`** — the baked-in default terminal theme, loaded
   before the user's own Ghostty config so user settings still win (see
   [[ghostty-config-dir-bundle-id]]).
-- **`GhosttyActionDispatcher`** — the extensible seam (`GhosttyActionHandler`) for
-  libghostty app-level actions (`newTab`/`newSplit`/`newWindow`/`closeTab`/
-  `closeWindow`); the default `LoggingActionHandler` logs unbuilt actions as no-ops.
+- **`GhosttyActionDispatcher`** — the extensible seam (`GhosttyActionHandler`)
+  for libghostty app-level actions (`newTab`/`newSplit`/`newWindow`/`closeTab`/
+  `closeWindow`); the default `LoggingActionHandler` logs unbuilt actions as
+  no-ops.
 - Rendering is **display-link driven**, so `GHOSTTY_ACTION_RENDER` needs no
   explicit `draw()` wiring.
 
@@ -35,10 +37,11 @@ surfaces and PTYs (same model as the Ghostty app).
   libghostty's keybinding engine. Control-char encoding relies on
   `unshifted_codepoint` being set on the bare key event — see
   [[ghostty-key-encoding]].
-- **Clipboard** — the libghostty `read`/`write`/`confirm` callbacks are backed by
-  `NSPasteboard`, resolved to the surface via the per-surface `userdata` (the view
-  pointer); paste completes through `ghostty_surface_complete_clipboard_request` —
-  see [[ghostty-clipboard-callbacks]].
+- **Clipboard** — the libghostty `read`/`write`/`confirm` callbacks are backed
+  by `NSPasteboard`, resolved to the surface via the per-surface `userdata` (the
+  view pointer); paste completes through
+  `ghostty_surface_complete_clipboard_request` — see
+  [[ghostty-clipboard-callbacks]].
 - **Main menu** — the App/Edit/View/Window menu bar is SwiftUI `.commands` in
   CasperUI (`MenuCommands.swift`), not an AppKit menu built here; its Edit/View
   items invoke libghostty binding actions (`copy_to_clipboard`,
@@ -47,23 +50,23 @@ surfaces and PTYs (same model as the Ghostty app).
   surface through the responder chain. See
   [[swiftui-mainmenu-miniaturize-resync]].
 - **`macos-option-as-alt`** is wired via `ghostty_surface_key_translation_mods`;
-  the observable effect is inert in the current pinned binary (revisit on pin bump)
-  — see [[ghostty-option-as-alt]].
+  the observable effect is inert in the current pinned binary (revisit on pin
+  bump) — see [[ghostty-option-as-alt]].
 
-Embedding is pinned — every `ghostty_*` call is written against the exact vendored
-header. See [[ghosttykit-pin]]. Correct glyph size requires syncing the Metal
-layer's `contentsScale` to the window backing scale — see
+Embedding is pinned — every `ghostty_*` call is written against the exact
+vendored header. See [[ghosttykit-pin]]. Correct glyph size requires syncing the
+Metal layer's `contentsScale` to the window backing scale — see
 [[ghostty-layer-contents-scale]].
 
 ## Remaining (for CasperUI)
 
 - **Splits/tabs layout composition — ✅ done (CasperUI UI-3), now tmux-style.**
-  The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a recursive
-  `LayoutNode` tree by CasperUI's `LayoutActionHandler` (installed on
+  The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a
+  recursive `LayoutNode` tree by CasperUI's `LayoutActionHandler` (installed on
   `GhosttyRuntime.actionHandler`). **Tabs are gone**: `LayoutNode` is now
-  `split | leaf`, rendered as native split views only (no tab bar); `newTab` maps
-  to a right split. `close_surface_cb` is wired (Ctrl-D / `exit` closes the pane
-  via `GhosttySurfaceView.onClose`). See `../status.md` → "Surface layout —
+  `split | leaf`, rendered as native split views only (no tab bar); `newTab`
+  maps to a right split. `close_surface_cb` is wired (Ctrl-D / `exit` closes the
+  pane via `GhosttySurfaceView.onClose`). See `../status.md` → "Surface layout —
   tmux-style panes".
 - **`flagsChanged` press/release semantics — ✅ done.** A modifier transition is
   reported as a press while the modifier is still held and a release once it is
@@ -71,9 +74,12 @@ layer's `contentsScale` to the window backing scale — see
 - **Scroll precision/momentum — ✅ done.** `scrollWheel` packs the precision bit
   and the momentum phase into `ghostty_input_scroll_mods_t` — see
   [[ghostty-scroll-mods-layout]].
-- **Clipboard paste confirmation** — `write_clipboard_cb`'s `confirm` flag is not
-  gated (v1 auto-confirm); honor it once a confirmation UI exists so untrusted
-  OSC-52 output can't silently overwrite the clipboard.
+- **Clipboard write confirmation — ✅ done.** `write_clipboard_cb`'s `confirm`
+  flag is honored: `GhosttyClipboardWrite.apply(_:confirm:to:)` routes an
+  untrusted write through `approveUntrusted`, an `NSAlert` previewing the
+  content whose "Allow" button deliberately carries **no** Return key
+  equivalent, so a stray Return can never grant clipboard access. Nothing
+  remains for CasperUI here.
 - **Real-keypress verification** — `performKeyEquivalent`, the menu ⌘-shortcuts,
   and ⌘W/close depend on real OS key events; the debug channel bypasses them, so
   they are confirmed by structure + a live keypress, not by automated e2e.

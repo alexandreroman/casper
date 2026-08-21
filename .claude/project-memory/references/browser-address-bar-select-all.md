@@ -9,7 +9,8 @@ type: reference
 The browser address bar (`AddressField` / `SelectAllTextField` in
 `Sources/CasperUI/BrowserSurfaceView.swift`) selects its whole text on a plain
 click by overriding `NSTextField.mouseDown` and calling `selectAll` **after**
-`super.mouseDown` returns, gated on `currentEditor()?.selectedRange.length == 0`.
+`super.mouseDown` returns, gated on
+`currentEditor()?.selectedRange.length == 0`.
 
 **Why:** two non-obvious facts make the intuitive approaches fail, both
 confirmed by instrumenting the running app:
@@ -35,5 +36,4 @@ selection is preserved. To verify select-all visually the `debug-casper` channel
 is not enough (it can't target the address `NSTextField`); drive a **crisp**
 synthetic click (mouse-down and mouse-up back-to-back — a gap lets the mouse-up
 arrive after `super.mouseDown` returns and collapse the selection, a test-only
-artifact) per [[gui-synthetic-input]], then screenshot and check the
-highlight.
+artifact) per [[gui-synthetic-input]], then screenshot and check the highlight.

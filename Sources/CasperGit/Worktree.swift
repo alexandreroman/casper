@@ -38,8 +38,8 @@ extension Repository {
 
         var worktree: OpaquePointer?
         do {
+            defer { git_worktree_free(worktree) }  // before the call: free on the throw path too
             try gitCheck(git_worktree_add(&worktree, pointer, name, path, &options))
-            defer { git_worktree_free(worktree) }
             let handle = try requireNonNull(worktree, "worktree")
             return try worktreeInfo(fromPointer: handle, name: name)
         } catch {
@@ -62,7 +62,7 @@ extension Repository {
     }
 
     /// Build a `WorktreeInfo` from an open `git_worktree*`.
-    func worktreeInfo(fromPointer worktree: OpaquePointer, name: String) throws -> WorktreeInfo {
+    private func worktreeInfo(fromPointer worktree: OpaquePointer, name: String) throws -> WorktreeInfo {
         let cPath = try requireNonNull(git_worktree_path(worktree), "worktree path")
         let path = String(cString: cPath)
         return WorktreeInfo(name: name, path: path)

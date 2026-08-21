@@ -15,11 +15,11 @@ files as deltas but emits **zero content hunks** for them — for text *and*
 binary alike. The binary-fallback heuristic in `buildFile(...)`
 (`hunkCount == 0 && isAdded && new_file.size > 0`) then misclassifies every
 non-empty untracked *text* file as binary (rendered as "Binary file"), and the
-`GitDiff.insertions`/`deletions` counts — which sum lines across hunks — silently
-undercount by ignoring all untracked additions (so the workspace title diff
-badge is wrong too). With the flag set, untracked text diffs into real addition
-hunks while untracked *binary* still yields zero hunks, so the fallback heuristic
-keeps flagging binary correctly and must stay in place.
+`GitDiff.insertions`/`deletions` counts — which sum lines across hunks —
+silently undercount by ignoring all untracked additions (so the workspace title
+diff badge is wrong too). With the flag set, untracked text diffs into real
+addition hunks while untracked *binary* still yields zero hunks, so the fallback
+heuristic keeps flagging binary correctly and must stay in place.
 
 **How to access:** the flag lives in `options.flags` in `diffWorkdirToHead()`.
 Regression coverage is in `Tests/CasperGitTests/DiffTests.swift`:

@@ -11,7 +11,7 @@ enum Libgit2 {
     }()
 
     /// Ensure libgit2 is initialized. Safe to call repeatedly.
-    public static func ensureInit() {
+    static func ensureInit() {
         // Accepted exception to the never-crash policy: libgit2 init failure is unrecoverable here.
         precondition(initialized, "git_libgit2_init failed")
     }

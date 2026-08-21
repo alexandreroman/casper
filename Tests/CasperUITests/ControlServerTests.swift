@@ -275,7 +275,7 @@ final class ControlServerTests: XCTestCase {
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.text, path)
         let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
-        XCTAssertGreaterThan(size ?? 0, 0)
+        XCTAssertGreaterThan(size, 0)
     }
 
     func testBrowserScreenshotWithURLUsesOffScreenCapture() async throws {
@@ -293,7 +293,7 @@ final class ControlServerTests: XCTestCase {
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.text, path)
         let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
-        XCTAssertGreaterThan(size ?? 0, 0)
+        XCTAssertGreaterThan(size, 0)
     }
 
     func testBrowserScreenshotSizedWithoutResolvableURLFails() async throws {

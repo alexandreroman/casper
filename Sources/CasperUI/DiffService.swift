@@ -82,16 +82,50 @@ final class DiffService {
         await computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
     }
 
-    /// The full UTF-8 text of `path` in the workspace's HEAD commit, or nil when
-    /// the path is empty/absent, the blob is binary, exceeds
-    /// `DiffHighlighter.maxHighlightBytes`, or the read fails. This is the
-    /// "before" side of the diff, feeding syntax highlighting.
-    func headFileText(for workspace: Workspace, path: String) -> String? {
-        guard !path.isEmpty else { return nil }
+    /// The "before" (HEAD) and "after" (worktree) texts of many paths at once,
+    /// feeding the diff surface's syntax highlighting.
+    ///
+    /// Every read runs in **one** detached task that opens a **single**
+    /// `Repository` and uses it entirely inside itself (never crossing an actor
+    /// boundary), the same shape `computeDiff` uses; only the `Sendable` strings
+    /// cross back. Reading file by file from the main actor instead would put one
+    /// `Repository.open` plus one up-to-`DiffHighlighter.maxHighlightBytes` read
+    /// and UTF-8 decode per file on the render loop — 50 libgit2 opens for a
+    /// 50-file first load, which is the diff view's documented hang path.
+    ///
+    /// A path that is empty, absent, binary, oversized, unreadable or not valid
+    /// UTF-8 simply has no entry, so one unreadable file costs nothing but its own
+    /// colors. A repository that won't open leaves `head` empty and still reads
+    /// the worktree side.
+    func fileTexts(
+        for workspace: Workspace, headPaths: [String], worktreePaths: [String]
+    ) async -> DiffFileTexts {
+        let worktreeRoot = workspace.worktreePath
+        return await Task.detached(priority: .userInitiated) { () -> DiffFileTexts in
+            var head: [String: String] = [:]
+            do {
+                let repo = try Repository.open(atPath: worktreeRoot)
+                for path in headPaths where !path.isEmpty {
+                    head[path] = Self.headText(of: path, in: repo)
+                }
+            } catch {
+                CasperLog.app.failure("open repository for HEAD file texts failed", error)
+            }
+            var worktree: [String: String] = [:]
+            for path in worktreePaths where !path.isEmpty {
+                worktree[path] = Self.worktreeText(of: path, underWorktreeAt: worktreeRoot)
+            }
+            return DiffFileTexts(head: head, worktree: worktree)
+        }.value
+    }
+
+    /// The full UTF-8 text of `path` in `repo`'s HEAD commit, or nil when the blob
+    /// is absent, binary, exceeds `DiffHighlighter.maxHighlightBytes`, or the read
+    /// fails.
+    private nonisolated static func headText(of path: String, in repo: Repository) -> String? {
         do {
-            let repo = try Repository.open(atPath: workspace.worktreePath)
             guard let text = try repo.fileTextAtHead(path: path) else { return nil }
-            // Mirror worktreeFileText's cap: keep oversized blobs out of the highlighter.
+            // Mirror worktreeText's cap: keep oversized blobs out of the highlighter.
             guard text.utf8.count <= DiffHighlighter.maxHighlightBytes else { return nil }
             return text
         } catch {
@@ -100,13 +134,13 @@ final class DiffService {
         }
     }
 
-    /// The full UTF-8 text of `path` on disk in the workspace's worktree, or nil
-    /// when the path is empty, the file is missing/unreadable, exceeds
-    /// `DiffHighlighter.maxHighlightBytes`, or is not valid UTF-8. This is the
-    /// "after" side of the diff, feeding syntax highlighting. Never throws.
-    func worktreeFileText(for workspace: Workspace, path: String) -> String? {
-        guard !path.isEmpty else { return nil }
-        let url = URL(fileURLWithPath: workspace.worktreePath).appendingPathComponent(path)
+    /// The full UTF-8 text of `path` on disk under `worktreeRoot`, or nil when the
+    /// file is missing/unreadable, exceeds `DiffHighlighter.maxHighlightBytes`, or
+    /// is not valid UTF-8. Never throws.
+    private nonisolated static func worktreeText(
+        of path: String, underWorktreeAt worktreeRoot: String
+    ) -> String? {
+        let url = URL(fileURLWithPath: worktreeRoot).appendingPathComponent(path)
         do {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
             if let size, size > DiffHighlighter.maxHighlightBytes { return nil }
@@ -117,4 +151,12 @@ final class DiffService {
             return nil
         }
     }
+}
+
+/// One batch of file texts read by `DiffService.fileTexts(for:headPaths:worktreePaths:)`,
+/// each side keyed by the path it was requested under. A path with no entry has no
+/// readable text.
+struct DiffFileTexts: Sendable {
+    let head: [String: String]
+    let worktree: [String: String]
 }

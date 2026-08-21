@@ -6,11 +6,10 @@ type: project
 
 # session.json byte-stable encoding
 
-`SessionStore` builds its `JSONEncoder` with
-`outputFormatting = [.sortedKeys]`, so `session.json` is byte-stable: the same
-logical session serializes to the same bytes on every save. That keeps the file
-readable, diffable, and comparable when inspecting a `session.json.corrupt`
-backup.
+`SessionStore` builds its `JSONEncoder` with `outputFormatting = [.sortedKeys]`,
+so `session.json` is byte-stable: the same logical session serializes to the
+same bytes on every save. That keeps the file readable, diffable, and comparable
+when inspecting a `session.json.corrupt` backup.
 
 A `Set` breaks that guarantee. Its iteration order depends on a per-process hash
 seed, so a `Set` property encodes as a JSON array in a different order after

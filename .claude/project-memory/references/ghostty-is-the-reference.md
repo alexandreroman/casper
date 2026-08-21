@@ -11,16 +11,16 @@ cursor handling, keyboard, window/toolbar behaviour — **match Ghostty's macOS
 Swift source** (`github.com/ghostty-org/ghostty`, `macos/Sources/…`) as the
 reference implementation instead of inventing a mechanism.
 
-**Why:** improvised approaches in this project caused repeated regressions
-(the pane-grip cursor alone went through cursor rects, `push`/`pop`, `set`, and
-back before landing on Ghostty's `cursorUpdate` pattern). Ghostty's proven choices
-resolved each one: `cursorUpdate` for terminal-overlay cursors (the pane grip and
-the split divider alike), and an AppKit `NSView` drag source with edge-based
+**Why:** improvised approaches in this project caused repeated regressions (the
+pane-grip cursor alone went through cursor rects, `push`/`pop`, `set`, and back
+before landing on Ghostty's `cursorUpdate` pattern). Ghostty's proven choices
+resolved each one: `cursorUpdate` for terminal-overlay cursors (the pane grip
+and the split divider alike), and an AppKit `NSView` drag source with edge-based
 `DropZone`s. It is the authoritative model because it solves the same problems
 against the same embedded-libghostty constraints.
 
-**How to apply:** before implementing such a feature, read the matching file under
-Ghostty's `macos/Sources/` and adopt its mechanism. Deviate only for a genuine
-Casper-specific constraint (e.g. drag-and-drop transport, see
+**How to apply:** before implementing such a feature, read the matching file
+under Ghostty's `macos/Sources/` and adopt its mechanism. Deviate only for a
+genuine Casper-specific constraint (e.g. drag-and-drop transport, see
 [[intra-app-drag-pasteboard-type]]), and say so. Related:
 [[terminal-overlay-cursor]].

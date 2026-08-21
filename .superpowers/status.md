@@ -1,22 +1,23 @@
 # Casper — Implementation Status
 
-The single, authoritative record of implementation progress. The design source of
-truth is [`architecture.md`](architecture.md) plus the per-theme docs in
-`themes/`; the documentation map is [`INDEX.md`](INDEX.md); active plans are in `plans/`.
+The single, authoritative record of implementation progress. The design source
+of truth is [`architecture.md`](architecture.md) plus the per-theme docs in
+`themes/`; the documentation map is [`INDEX.md`](INDEX.md); active plans are in
+`plans/`.
 
 Status legend: ✅ built · ◐ partial · ❌ not started.
 
 ## Roadmap at a glance
 
 The build proceeds in five module plans. **All five are implemented.** CasperUI
-(Plan 5, the real SwiftUI app) is complete across its five sub-projects: **UI-1**
-(app shell + startup wiring), **UI-2** (Space model + Space-grouped sidebar +
-linked Git worktrees), **UI-3** (recursive splits/tabs layout), **UI-4** (WKWebView
-browser surface), and **UI-5** (read-only diff viewer). The live GUI verification
-pass on a real desktop is complete. Three coding agents are supported — Claude
-Code, OpenAI Codex CLI and opencode — through the agent-agnostic `casper` CLI;
-only the terminal-scraping detection rules remain Claude-Code-tuned (see
-[Agent-state detection](#agent-state-detection--) below).
+(Plan 5, the real SwiftUI app) is complete across its five sub-projects:
+**UI-1** (app shell + startup wiring), **UI-2** (Space model + Space-grouped
+sidebar + linked Git worktrees), **UI-3** (recursive splits/tabs layout),
+**UI-4** (WKWebView browser surface), and **UI-5** (read-only diff viewer). The
+live GUI verification pass on a real desktop is complete. Three coding agents
+are supported — Claude Code, OpenAI Codex CLI and opencode — through the
+agent-agnostic `casper` CLI; only the terminal-scraping detection rules remain
+Claude-Code-tuned (see [Agent-state detection](#agent-state-detection--) below).
 
 | Plan | Module                   | Status                                                                                       |
 | ---- | ------------------------ | -------------------------------------------------------------------------------------------- |
@@ -32,10 +33,11 @@ model shipped with UI-2; only **Space rename** remains open for it (the
 per-workspace `+/−` diff summary is **dropped** — decision 2026-07-06).
 
 > **Latest work — the tabbed surface model (UI-3) is replaced by a tmux-style
-> pane layout** (no tabs, one surface per pane), with close-on-process-exit and a
-> shared-NSView collapse fix. See
-> [Surface layout — tmux-style panes](#surface-layout--tmux-style-panes-supersedes-ui-3-tabs--) below. UI-3 sections in this file and in `themes/app-ui.md`
-> describe the superseded tab model.
+> pane layout** (no tabs, one surface per pane), with close-on-process-exit and
+> a shared-NSView collapse fix. See [Surface layout — tmux-style
+> panes](#surface-layout--tmux-style-panes-supersedes-ui-3-tabs--) below. UI-3
+> sections in this file and in `themes/app-ui.md` describe the superseded tab
+> model.
 
 ## Modules
 
@@ -47,11 +49,11 @@ Models (`AgentState`, `Todo`, `LayoutTree`, session), `WorktreeManager`
 
 ### CasperGit + Clibgit2 — ✅ (core)
 `Repository` (open/discover/init, branch queries, worktree
-add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`),
-`Worktree`, `GitError`.
-- **`git_diff` is built** — `diffWorkdirToHead()` returns a structured
-  `GitDiff` (files → hunks → lines, statuses, binary flag; working tree + index
-  vs HEAD, unborn HEAD as additions), unblocking the diff viewer (design §11).
+add/list/lookup/validate/prune, status/isClean, `remoteURL`,
+`diffWorkdirToHead`), `Worktree`, `GitError`.
+- **`git_diff` is built** — `diffWorkdirToHead()` returns a structured `GitDiff`
+  (files → hunks → lines, statuses, binary flag; working tree + index vs HEAD,
+  unborn HEAD as additions), unblocking the diff viewer (design §11).
   (Branch-divergence diffs were designed for the Space `+/−` summary, now
   dropped — not built.)
 - Standing limitations: `remove` prunes the worktree but not its branch, so
@@ -63,10 +65,12 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`
 ### CasperAgents + CasperCLI — ✅
 `AgentEnvironment.surfaceEnvironment` (per-surface env injection); the `casper`
 executable with the GUI/CLI fork and the domain CLI
-(`status`/`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`) that emits
-JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero). There is **no hook
-mechanism** — a workspace's agent state is set only by the explicit CLI verbs. See
-the `domain-cli-control-channel` memory note for the current surface.
+(`status`/`progress`/`notify`/`info`/`terminal`/`browser`/`diff`/`workspace`/
+`run`) that emits JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero).
+Casper installs **no agent-hook mechanism** into any agent: a workspace's agent
+state comes either from the explicit CLI verbs (which then hold authority for
+that workspace) or from Casper's own terminal scraping. See the
+`domain-cli-control-channel` memory note for the current surface.
 - The bundle executable directory is injected onto each surface's `PATH` (via
   `surfaceEnvironment(casperDirectory:basePath:)`) so `casper` resolves inside
   Casper terminals.
@@ -104,9 +108,9 @@ explicit `draw()` wiring.
   binary). ⌘-key/menu paths confirmed by structure + live keypress (the debug
   channel bypasses `performKeyEquivalent`).
 - **Mouse — cmd+click opens URLs — ✅.** libghostty forwards the ⌘ modifier and
-  emits `GHOSTTY_ACTION_OPEN_URL` when a terminal link is cmd+clicked; the action
-  decodes into `GhosttyAction.openURL` and opens via `NSWorkspace`, matching
-  upstream Ghostty (any parsable URL, no scheme restriction).
+  emits `GHOSTTY_ACTION_OPEN_URL` when a terminal link is cmd+clicked; the
+  action decodes into `GhosttyAction.openURL` and opens via `NSWorkspace`,
+  matching upstream Ghostty (any parsable URL, no scheme restriction).
 - **Layout composition — ✅.** Decoded actions are routed through
   `GhosttyActionDispatcher` into CasperUI's `LayoutActionHandler` (installed on
   `GhosttyRuntime.actionHandler` by `AppDelegate`), which composes them into the
@@ -115,17 +119,21 @@ explicit `draw()` wiring.
   transitions report press-while-held / release-when-let-go from the physical
   key code, and `scrollWheel` packs the precision bit and momentum phase into
   `ghostty_input_scroll_mods_t`.
-- Remaining for CasperUI: clipboard paste-confirmation UI (v1 auto-confirms).
+- **Clipboard write confirmation — ✅.** libghostty's `confirm` flag on
+  `write_clipboard_cb` is honored: `GhosttyClipboardWrite.apply(_:confirm:to:)`
+  gates an untrusted write behind `approveUntrusted`, an `NSAlert` whose "Allow"
+  button deliberately has **no** Return key equivalent (a stray Return must not
+  grant clipboard access). Nothing remains for CasperUI here.
 
 ### CasperUI — ✅ UI-1..UI-5 built (live GUI check done)
 The module exists. **UI-1** is done: a SwiftUI `App` scene
 (`CasperApp`/`AppDelegate`/`CasperUI.runApp`) replaces the Ghostty demo as the
-GUI entry point; a `@MainActor @Observable AppModel` owns the session and bridges
-the core types to SwiftUI; a `NavigationSplitView` shows an empty state, an
-"Add folder…" flow and one live terminal per workspace; and all startup wiring is
-landed (per-surface env, the release control channel, session persistence,
-`#if DEBUG` debug bridge). Release gating verified (no
-debug symbols in `make release`). UI-1 is verified live on a real desktop session.
+GUI entry point; a `@MainActor @Observable AppModel` owns the session and
+bridges the core types to SwiftUI; a `NavigationSplitView` shows an empty state,
+an "Add folder…" flow and one live terminal per workspace; and all startup
+wiring is landed (per-surface env, the release control channel, session
+persistence, `#if DEBUG` debug bridge). Release gating verified (no debug
+symbols in `make release`). UI-1 is verified live on a real desktop session.
 
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
 moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
@@ -143,41 +151,40 @@ Repository identity is libgit2's common `.git` directory, shared by every
 working tree of a repository. Re-adding a folder Casper already tracks just
 selects it. A Space is promoted to Git when a `.git` appears — detected live by
 the workspace filesystem watcher (and once per Space at launch), and demoted
-back if the `.git` is removed. A per-Space "+"
-creates a **linked** workspace as a new branch + `git worktree` at a visible
-sibling of the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so
-naturally untracked — the old in-repo `.casper/worktrees/` layout and its
-`.git/info/exclude` entry are gone; a `-2`/`-3`… suffix is used if the sibling
-name is taken). The sidebar is grouped by Space in
-collapsible sections; removal is non-destructive (drop a linked workspace or a
-whole Space, leaving worktrees/branches on disk). Persistence is a clean break
-(the `SessionStore` self-heal discards incompatible legacy `session.json`). The
-`+/−` diff summary is deferred to UI-5.
+back if the `.git` is removed. A per-Space "+" creates a **linked** workspace as
+a new branch + `git worktree` at a visible sibling of the repo folder,
+`<parent>/<repo>-<branch>` (outside the repo, so naturally untracked — the old
+in-repo `.casper/worktrees/` layout and its `.git/info/exclude` entry are gone;
+a `-2`/`-3`… suffix is used if the sibling name is taken). The sidebar is
+grouped by Space in collapsible sections; removal is non-destructive (drop a
+linked workspace or a whole Space, leaving worktrees/branches on disk).
+Persistence is a clean break (the `SessionStore` self-heal discards incompatible
+legacy `session.json`). The `+/−` diff summary is deferred to UI-5.
 
 **UI-3** is done: a workspace renders its `LayoutNode` tree recursively — splits
 as native `HSplitView`/`VSplitView`; a tab group renders only its active surface
 (Ghostty-style tab bar: rounded "pill" tabs sharing the width equally, centered
 titles, the active tab a filled bordered pill and inactive tabs blended into a
 fixed dark neutral chrome — no accent color; the whole pill is clickable; a
-trailing circular `+` menu; each tab has a leading hover-revealed `×` that closes
-that surface by `Surface.id`, preserving the active tab when a background tab is
-closed; tying the shades to the live terminal background and `⌘N` switch
-shortcuts are deferred), with
-inactive surfaces kept alive in a persistent cache (PTYs running) and re-attached
-on re-selection (rendering only the active surface avoids overlapping
-`CAMetalLayer` terminals that ignore SwiftUI opacity). Pure `LayoutTree` operations
-(`insertTab`/`split`/`closeSurface`) live in CasperCore; libghostty
-`newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` (installed on
-`GhosttyRuntime.actionHandler`) to the focused workspace, focus tracked via the
-surface first-responder callback added in CasperGhostty. Closing the last surface
-closes the workspace non-destructively. Surface views live in a persistent cache
-keyed by `Surface.id` so PTYs/web state survive restructuring.
+trailing circular `+` menu; each tab has a leading hover-revealed `×` that
+closes that surface by `Surface.id`, preserving the active tab when a background
+tab is closed; tying the shades to the live terminal background and `⌘N` switch
+shortcuts are deferred), with inactive surfaces kept alive in a persistent cache
+(PTYs running) and re-attached on re-selection (rendering only the active
+surface avoids overlapping `CAMetalLayer` terminals that ignore SwiftUI
+opacity). Pure `LayoutTree` operations (`insertTab`/`split`/`closeSurface`) live
+in CasperCore; libghostty `newTab`/`newSplit`/`closeTab` route through a
+`LayoutActionHandler` (installed on `GhosttyRuntime.actionHandler`) to the
+focused workspace, focus tracked via the surface first-responder callback added
+in CasperGhostty. Closing the last surface closes the workspace
+non-destructively. Surface views live in a persistent cache keyed by
+`Surface.id` so PTYs/web state survive restructuring.
 
-**UI-4** is done: `.browser` leaves render a `WKWebView` surface (address bar with
-bare-host normalization, back/forward/reload), created via the tab-bar "+" menu
-(New terminal / New browser). The web view is cached by `Surface.id` (the cache
-generalized to any `NSView`) and its URL persists via the address bar. Only
-`.diff` leaves remain a placeholder (UI-5).
+**UI-4** is done: `.browser` leaves render a `WKWebView` surface (address bar
+with bare-host normalization, back/forward/reload), created via the tab-bar "+"
+menu (New terminal / New browser). The web view is cached by `Surface.id` (the
+cache generalized to any `NSView`) and its URL persists via the address bar.
+Only `.diff` leaves remain a placeholder (UI-5).
 
 **UI-5** is done: `.diff` leaves render a read-only diff surface over
 `diffWorkdirToHead()` — per-file sections (path + status, binary noted), hunk
@@ -202,23 +209,24 @@ driving both the diff surface and the title-bar `+/−` badge.
 
 All five CasperUI sub-projects are built. **Live GUI check: done.** Terminals
 render on a restored session and tab switching preserves content — verified via
-the `casper debug` channel on a real desktop (this fixed a restore-path bug where
-a non-observed `runtime` left terminals black; see the ledger).
+the `casper debug` channel on a real desktop (this fixed a restore-path bug
+where a non-observed `runtime` left terminals black; see the ledger).
 
-Post-milestone tab-bar polish landed (all on `main`, not pushed; see the ledger's
-"Tab-bar polish" section for commit hashes): a per-tab hover-revealed `×` close
-button (closing any surface by `Surface.id`, preserving the active tab when a
-background tab closes — with a regression test), Ghostty-style rounded "pill"
-tabs sharing the width with centered titles and a circular `+` menu, full-tab
-click (not just the title), and a fix so a clicked tab's terminal takes AppKit
-keyboard focus (`focusActiveSurfaceView()` → deferred `makeFirstResponder`).
+Post-milestone tab-bar polish landed (all on `main`, not pushed; see the
+ledger's "Tab-bar polish" section for commit hashes): a per-tab hover-revealed
+`×` close button (closing any surface by `Surface.id`, preserving the active tab
+when a background tab closes — with a regression test), Ghostty-style rounded
+"pill" tabs sharing the width with centered titles and a circular `+` menu,
+full-tab click (not just the title), and a fix so a clicked tab's terminal takes
+AppKit keyboard focus (`focusActiveSurfaceView()` → deferred
+`makeFirstResponder`).
 
-Still to verify live: the terminal-focus-on-tab-switch fix (click a
-tab, then type — the keystroke must reach the terminal), the Ghostty tab
-appearance vs the reference screenshot, full-tab click, and — open from before —
-splits, browser navigation, and the diff surface. Deferred follow-ups: deriving
-tab shades from the live terminal background color (Casper does not yet read
-libghostty's `background-color`), and per-tab `⌘N` switch shortcuts.
+Still to verify live: the terminal-focus-on-tab-switch fix (click a tab, then
+type — the keystroke must reach the terminal), the Ghostty tab appearance vs the
+reference screenshot, full-tab click, and — open from before — splits, browser
+navigation, and the diff surface. Deferred follow-ups: deriving tab shades from
+the live terminal background color (Casper does not yet read libghostty's
+`background-color`), and per-tab `⌘N` switch shortcuts.
 
 ## Surface layout — tmux-style panes (supersedes UI-3 tabs) — ✅
 
@@ -229,22 +237,27 @@ one surface per pane. Landed on `main` (not pushed) in three commits:
 - `ad9847c` Close a terminal surface when its process exits
 - `6b0dbab` Fix blank pane on split collapse from shared NSView host
 
-**Model.** `LayoutNode` is now `split | leaf(Surface)` (no `tabGroup`); each leaf
-holds one surface. A hand-written `LayoutNode` `Codable` migrates persisted
+**Model.** `LayoutNode` is now `split | leaf(Surface)` (no `tabGroup`); each
+leaf holds one surface. A hand-written `LayoutNode` `Codable` migrates persisted
 `tabGroup` sessions (N surfaces → even horizontal split of N leaves).
-`LayoutTree` keeps `split`/`closeSurface`/`mapSurface`/`surfaceIDs`;
-`insertTab`/`activate` are removed. `GitDiff` gained `insertions`/`deletions`.
+`LayoutTree`'s surface is `forEachSurface`/`surfaceIDs`/`surfaces`/
+`updateSurface`/`updateRatios`/`orientationAndSide`/`split`/`closeSurface`/
+`move`/`dropZone`; `insertTab`/`activate` are removed. `GitDiff` gained
+`insertions`/`deletions`.
 
 **Rendering.** Leaves render via `SurfaceHostView` (no tab bar; `TabBarView`
 deleted). Right-click on a pane opens the pane menu: Split up/down/left/right
 (each creates a terminal), Copy/Paste, Close pane. Splits render via a custom
 `SplitContainerView` (replacing native `HSplitView`/`VSplitView`) that separates
 panes with system `Divider()`s — so every separator in the app (sidebar/content
-edge, inspector panel, inter-pane) shares one color; the native split divider was
-darker (near-black) and stood out. Panes are laid out by fraction along the axis
-with draggable `Divider()` handles (left-right / up-down resize cursor); fractions
-live in local `@State` (resize is not persisted, matching v1). Leaves keep
-explicit non-overlapping frames so the Metal-backed terminals never occlude.
+edge, inspector panel, inter-pane) shares one color; the native split divider
+was darker (near-black) and stood out. Panes are laid out by fraction along the
+axis with draggable `Divider()` handles (left-right / up-down resize cursor).
+Fractions are seeded from the layout's persisted `ratios` and written back
+through `AppModel.setSplitRatios` → `LayoutTree.updateRatios` (debounced save)
+on drag-end and on double-click-to-equalize, so a resize survives relaunch.
+Leaves keep explicit non-overlapping frames so the Metal-backed terminals never
+occlude.
 
 **Chrome.** The native window toolbar (with the native sidebar toggle) shows the
 branch-icon title + worktree path, the `+ins −del` diff summary
@@ -255,15 +268,15 @@ progress bar with the current task, and a notification bubble; Spaces stay
 collapsible; the per-Space "+" adds a linked workspace.
 
 **Close-on-exit.** libghostty `close_surface_cb` (Ctrl-D / `exit`) is wired via
-`GhosttySurfaceView.onClose` → `AppModel.applyCloseSurface`; closing the last pane
-closes the workspace non-destructively. The callback defers to the next runloop
-turn (like `wakeup_cb`) to avoid re-entering the runtime mid-tick.
+`GhosttySurfaceView.onClose` → `AppModel.applyCloseSurface`; closing the last
+pane closes the workspace non-destructively. The callback defers to the next
+runloop turn (like `wakeup_cb`) to avoid re-entering the runtime mid-tick.
 
-**Bug fixed.** On a split→leaf collapse a stale SwiftUI host stole the survivor's
-shared `NSView` into a container about to leave the window, blanking the pane.
-`PersistentNSViewHost` now runs a next-runloop, window-guarded reconcile so only
-the host whose container stays in the window keeps the view. See the
-`persistent-nsview-host-sharing` project-memory note.
+**Bug fixed.** On a split→leaf collapse a stale SwiftUI host stole the
+survivor's shared `NSView` into a container about to leave the window, blanking
+the pane. `PersistentNSViewHost` now runs a next-runloop, window-guarded
+reconcile so only the host whose container stays in the window keeps the view.
+See the `persistent-nsview-host-sharing` project-memory note.
 
 **Verified** via the `casper debug` channel + screenshots on a real desktop:
 `tabGroup`→`leaf` session migration, continuous split panes with no tab bar,
@@ -271,19 +284,20 @@ terminal + browser panes side by side, sidebar progress/notification, the live
 diff summary, and close-on-exit collapsing two panes to one (the survivor stays
 rendered). `swift test` → 259 passing.
 
-**Follow-ups.** (1) Browser panes: WebKit consumes the right-click, so the Casper
-split menu does not yet surface over live web content (the native menu is
+**Follow-ups.** (1) Browser panes: WebKit consumes the right-click, so the
+Casper split menu does not yet surface over live web content (the native menu is
 suppressed). (2) The toolbar diff summary uses working-tree-vs-HEAD; the Space
-branch-vs-merge-base `+/−` summary was **dropped** (decision 2026-07-06), so this
-is now the intended behaviour, not a stopgap.
+branch-vs-merge-base `+/−` summary was **dropped** (decision 2026-07-06), so
+this is now the intended behaviour, not a stopgap.
 
 ## Right inspector panel — ✅ (live check done)
 
-A collapsible right-side panel on the workspace detail view exposes a **browser**
-and the **Git diff** as two tabs, per workspace. The `.diff` layout-leaf surface
-kind was **removed** — the diff view now lives **only** in this inspector panel.
-The `.browser` layout-leaf path still exists (a browser can still be a tmux
-pane); `.diff` does not. The title-bar globe "New browser" button is removed.
+A collapsible right-side panel on the workspace detail view exposes a
+**browser** and the **Git diff** as two tabs, per workspace. The `.diff`
+layout-leaf surface kind was **removed** — the diff view now lives **only** in
+this inspector panel. The `.browser` layout-leaf path still exists (a browser
+can still be a tmux pane); `.diff` does not. The title-bar globe "New browser"
+button is removed.
 
 **Model.** `Workspace` gained `inspector: InspectorState` (`collapsed`, `tab:
 InspectorTab{browser,diff}`, and a dedicated `browser: Surface`). A hand-written
@@ -293,11 +307,11 @@ pre-existing `session.json` files load with a default (collapsed, Diff tab,
 persisted.
 
 **UI.** `WorkspaceDetailView` lays the detail out as an `HStack`: the tmux
-`LayoutNodeView` (`maxWidth: .infinity`), a `Divider()` (system separator, matching
-the sidebar/content edge), then `InspectorPanel` at a state-driven `width`
-(`InspectorState.defaultWidth` = 780, clamped 240–1400). The panel is **always
-mounted**; collapsing animates an outer clip container's width to zero rather
-than unmounting it, so the icon rail pinned to the trailing edge never
+`LayoutNodeView` (`maxWidth: .infinity`), a `Divider()` (system separator,
+matching the sidebar/content edge), then `InspectorPanel` at a state-driven
+`width` (`InspectorState.defaultWidth` = 780, clamped 240–1400). The panel is
+**always mounted**; collapsing animates an outer clip container's width to zero
+rather than unmounting it, so the icon rail pinned to the trailing edge never
 translates — see [[swiftui-inspector-width]]. The `Divider()` doubles as a drag
 handle (transparent 10 pt hit area, left-right resize cursor) that resizes the
 panel, and lives inside the same clipped container so it reveals with the panel.
@@ -306,23 +320,25 @@ by adding terminals**. It is a side region, not an `HSplitView` pane (which
 would reset the width on re-add). The width is **persisted**:
 `InspectorState.width` is `Codable` with its own coding key, and a legacy
 `session.json` without it decodes to the default. `InspectorPanel` pins a
-vertical, icon-only Diff/Browser tab rail to
-its right edge, alongside **full-bleed** content (no insets — a native
-`TabView`'s mandatory content inset was rejected), reusing `BrowserSurfaceView`
-(on `inspector.browser`) and `DiffSurfaceView` unchanged. The panel is collapsed only
-via the title-bar toggle (no in-panel collapse button). The panel browser's
-`WKWebView` survives collapse/expand and workspace switches via the existing
-surface-view cache (stable `Surface.id`); its address-bar URL write-back reaches
+vertical, icon-only Diff/Browser tab rail to its right edge, alongside
+**full-bleed** content (no insets — a native `TabView`'s mandatory content inset
+was rejected), reusing `BrowserSurfaceView` (on `inspector.browser`) and
+`DiffSurfaceView` unchanged. The panel is collapsed only via the title-bar
+toggle (no in-panel collapse button). The panel browser's `WKWebView` survives
+collapse/expand and workspace switches via the existing surface-view cache
+(stable `Surface.id`); its address-bar URL write-back reaches
 `inspector.browser` through an extended `setBrowserURL` (fall-through on a
 `locateSurface` miss). Diff is on-demand (open + refresh).
 
 **Chrome.** The title bar drops the globe "New browser" button and gains a panel
-toggle (`sidebar.right`, tinted when expanded); the `+ins −del` diff summary is now
-a button that expands the panel on the Diff tab. "New terminal" is unchanged.
+toggle (`sidebar.right`, tinted when expanded); the `+ins −del` diff summary is
+now a button that expands the panel on the Diff tab. "New terminal" is
+unchanged.
 
-**Tests.** `swift test` → 266 passing, incl. `InspectorState` defaults, `Workspace`
-round-trip with a non-default inspector, legacy-decode without the `inspector` key,
-the three `AppModel` inspector mutators, and the inspector-browser URL write-back.
+**Tests.** `swift test` → 266 passing, incl. `InspectorState` defaults,
+`Workspace` round-trip with a non-default inspector, legacy-decode without the
+`inspector` key, the three `AppModel` inspector mutators, and the
+inspector-browser URL write-back.
 
 **Verified.** Live GUI pass (`debug-casper`): panel toggle, tab switch, browser
 survival across collapse/expand and workspace switch, and a terminal pane not
@@ -417,22 +433,22 @@ the controller made the first paint depend on SwiftUI realizing the coordinator
 before `.onAppear`. The controller carries only events (scroll target, a file's
 highlight finishing). Nothing writes SwiftUI state during layout.
 
-**The `+`/`-` cue lives in the gutter, not in the text.** `DiffGutterRuler` draws
-it in a column of its own between the number and the code, in the code face and
-the row's accent, once per line rather than once per wrapped display row.
-`DiffDocument` emits the source text alone, so `contentRange == range` for every
-line but a truncated one. Three things fall away together: a wrapped line's
-display rows share one leading edge (prefixed to the text, the cue indented only
-the first of them — which is what surfaced this), a selection can no longer
-highlight a rendering artefact, and a copy needs no stripping, so `NSTextView`'s
-own selection and copy behaviour is left completely alone (shift-click and
-shift-arrow extension included). The cue column's width is the code font's `+`
-advance **rounded up**: every other term of `ruleThickness` is a whole number of
-points, and a fractional total leaves the trailing pixel of the column
-half-covered by the row tint — a seam down the gutter's edge, which a pixel probe
-caught as stray ink. A truncated line's `… (line truncated)` marker is the one
-piece of commentary kept inside the text: it is the only sign that a copy of that
-line is a prefix of the real one.
+**The `+`/`-` cue lives in the gutter, not in the text.** `DiffGutterRuler`
+draws it in a column of its own between the number and the code, in the code
+face and the row's accent, once per line rather than once per wrapped display
+row. `DiffDocument` emits the source text alone, so `contentRange == range` for
+every line but a truncated one. Three things fall away together: a wrapped
+line's display rows share one leading edge (prefixed to the text, the cue
+indented only the first of them — which is what surfaced this), a selection can
+no longer highlight a rendering artefact, and a copy needs no stripping, so
+`NSTextView`'s own selection and copy behaviour is left completely alone
+(shift-click and shift-arrow extension included). The cue column's width is the
+code font's `+` advance **rounded up**: every other term of `ruleThickness` is a
+whole number of points, and a fractional total leaves the trailing pixel of the
+column half-covered by the row tint — a seam down the gutter's edge, which a
+pixel probe caught as stray ink. A truncated line's `… (line truncated)` marker
+is the one piece of commentary kept inside the text: it is the only sign that a
+copy of that line is a prefix of the real one.
 
 **Highlight repaint order** (`be1445f`). The freeze the **Still to verify** note
 below was waiting on did happen, on an actively-edited worktree with the panel
@@ -481,29 +497,28 @@ coordinator re-resolves the bars from them — through `updateStickyHeader()`, n
 running inside a layout pass. The re-resolutions are **coalesced**: a refresh
 invalidates the layout once per storage swap and once per highlight painted into
 it, only the last pass of the burst carries settled geometry, and resolving
-costs an O(scroll offset) `fileIndex(atY:)` probe — 1.17 ms deep into a
-20 000-line diff. A burst queues exactly one re-resolution via
+costs an O(scroll offset) `fileIndex(atY:)` probe — 1.17 ms deep into a 20
+000-line diff. A burst queues exactly one re-resolution via
 `CFRunLoopPerformBlock`, whose modes include the nested loops a
-`DispatchQueue.main.async` block would sit out
-(see `main-queue-starved-by-modal-loops`). The bounds-change path stays
-synchronous, so the bar still cannot lag a frame behind the text it labels while
-scrolling. Recorded in
-`.claude/project-memory/references/textkit2-layout-geometry.md`.
+`DispatchQueue.main.async` block would sit out (see
+`main-queue-starved-by-modal-loops`). The bounds-change path stays synchronous,
+so the bar still cannot lag a frame behind the text it labels while scrolling.
+Recorded in `.claude/project-memory/references/textkit2-layout-geometry.md`.
 
 That guard's first CI run failed, on the runner rather than in the app.
 TextKit's cold-layout estimates are **macOS-version-specific** — the same
-document measures 87 910 pt estimated on macOS 15 against 77 243 pt on
-macOS 26 — so a container `y` maps to content thousands of points apart
-depending on the OS, and a fixture that placed one file boundary inside a
-600 pt window by arithmetic held only on the machine it was measured on. The
-runner drew lines 541–548 where development draws 598–605, leaving that
-boundary 4 800 pt below the viewport; the bars there were *right* (one pinned
-bar, no bands in view), and only the fixture's own preconditions failed. So the
-fixture is 300 short files rather than three tall ones: with every file shorter
-than the viewport, a boundary is in view wherever the viewport lands — by
-construction instead of by arithmetic. The band the overlay counts and the band
-the text draws are bounded the same way too, which the closer boundary spacing
-turned from a corner case into a routine one.
+document measures 87 910 pt estimated on macOS 15 against 77 243 pt on macOS 26
+— so a container `y` maps to content thousands of points apart depending on the
+OS, and a fixture that placed one file boundary inside a 600 pt window by
+arithmetic held only on the machine it was measured on. The runner drew lines
+541–548 where development draws 598–605, leaving that boundary 4 800 pt below
+the viewport; the bars there were *right* (one pinned bar, no bands in view),
+and only the fixture's own preconditions failed. So the fixture is 300 short
+files rather than three tall ones: with every file shorter than the viewport, a
+boundary is in view wherever the viewport lands — by construction instead of by
+arithmetic. The band the overlay counts and the band the text draws are bounded
+the same way too, which the closer boundary spacing turned from a corner case
+into a routine one.
 
 Two things that fixture has to keep out of its own way, both proven by deleting
 the trigger and watching the test fail: the refresh **appends** a file instead
@@ -519,11 +534,11 @@ suite order. Recorded in
 `.claude/project-memory/references/sticky-bar-resolution-paths.md` and
 `headless-swiftui-layout-tests.md`.
 
-**Tests.** `swift test` → 858 passing (2 skipped). `DiffDocumentTests`,
-`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
-`DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
-color-only highlight rule, the fragment→line mapping, what a selection and a
-copy carry, and the drawn chrome — the last via headless
+**Tests.** `swift test` → 1139 passing (2–13 skipped, environment-gated).
+`DiffDocumentTests`, `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`,
+`DiffChromeTests`, `DiffCopyTests` and `DiffTextSurfaceTests` cover the
+flattening semantics, the color-only highlight rule, the fragment→line mapping,
+what a selection and a copy carry, and the drawn chrome — the last via headless
 `cacheDisplay` pixel probes (tint, stripe and number colors read back against
 `DiffLineStyle`'s own values, never literals). None of this was testable in the
 row-based renderer.
@@ -564,17 +579,17 @@ primary button's label) — it does not launch anything itself.
 
 **Detection.** `EditorLauncher.detectInstalled()` runs once at `AppModel`
 startup (not live) and populates `availableEditors`: an editor counts as
-detected as soon as its app bundle resolves via `NSWorkspace`
-bundle-identifier lookup — the CLI shim is no longer required, since not
-every editor installs one automatically. **Launch fallback.** `launch(_:at:)`
-still tries the CLI shim first when it resolves on the user's **login
-shell** `PATH` (`$SHELL -lc 'which <command>'`, since Casper is launched
-from Finder/Dock and lacks shell-profile `PATH` additions) — it's faster and
-reuses an already-open window better. When the shim is missing, it falls
-back to `NSWorkspace.shared.open(_:withApplicationAt:configuration:)` on the
-resolved app bundle, so an editor installed without its optional
-command-line launcher (e.g. IntelliJ IDEA, which doesn't auto-install `idea`
-on `PATH` the way VS Code does `code`) still launches.
+detected as soon as its app bundle resolves via `NSWorkspace` bundle-identifier
+lookup — the CLI shim is no longer required, since not every editor installs one
+automatically. **Launch fallback.** `launch(_:at:)` still tries the CLI shim
+first when it resolves on the user's **login shell** `PATH`
+(`$SHELL -lc 'which <command>'`, since Casper is launched from Finder/Dock and
+lacks shell-profile `PATH` additions) — it's faster and reuses an already-open
+window better. When the shim is missing, it falls back to
+`NSWorkspace.shared.open(_:withApplicationAt:configuration:)` on the resolved
+app bundle, so an editor installed without its optional command-line launcher
+(e.g. IntelliJ IDEA, which doesn't auto-install `idea` on `PATH` the way VS Code
+does `code`) still launches.
 
 **Resolution & persistence.** `Workspace.lastUsedEditor` is a per-workspace
 preference. Picking a row in the dropdown (`AppModel.selectEditor`) updates it
@@ -582,41 +597,42 @@ immediately without launching anything; the primary button's launch
 (`AppModel.openInEditor`) also updates it, to the editor it just launched.
 `AppModel.resolvedEditor` picks, in order: an explicit kind → the workspace's
 remembered `lastUsedEditor`, **but only if it is still present in
-`availableEditors`** → the first detected editor. A remembered editor that is
-no longer installed is never returned (it is not cleared either — if
-reinstalled later, the original preference is honored again); the primary
-button falls back to a working editor instead of guaranteeing a launch error.
+`availableEditors`** → the first detected editor. A remembered editor that is no
+longer installed is never returned (it is not cleared either — if reinstalled
+later, the original preference is honored again); the primary button falls back
+to a working editor instead of guaranteeing a launch error.
 
 ## Per-repository config (`.casper.json`) — ✅
 
 A repo can drop a `.casper.json` at its root (config under a `workspace` key) to
-customize its workspaces. Implemented on branch `casper-json`; the setup/teardown
-split lifecycle still wants one human visual pass (agents can't screenshot the
-SwiftUI/terminal chrome).
+customize its workspaces. Implemented on branch `casper-json`; the
+setup/teardown split lifecycle still wants one human visual pass (agents can't
+screenshot the SwiftUI/terminal chrome).
 
 **copyFiles.** `workspace.copyFiles` replaces the built-in `.env`/`.env.local`
-default for seeding untracked files into a new worktree (`[]` copies nothing). An
-invalid entry fails workspace creation before any Git mutation. `RepoConfig`
+default for seeding untracked files into a new worktree (`[]` copies nothing).
+An invalid entry fails workspace creation before any Git mutation. `RepoConfig`
 (CasperCore) loads/validates; malformed files surface `Invalid .casper.json: …`.
 
 **Named commands.** `workspace.scripts` keys other than the reserved
 `setup`/`teardown` are on-demand commands, run in a visible split. Triggers: a
 `casper run [name]` CLI subcommand (defaults to `run`), a "Run Script"
 split-button in the workspace toolbar (mirrors the editor button — primary runs
-the resolved script, menu selects), and a "Run Script ▸" sidebar context submenu.
-`ControlCommand.Verb.run` + `RepoConfig.resolveRunCommand` (refuses reserved
-names). Listed alphabetically (JSON object key order isn't preserved by decoding);
-default selection = `lastUsedScript` → `run` → first.
+the resolved script, menu selects), and a "Run Script ▸" sidebar context
+submenu. `ControlCommand.Verb.run` + `RepoConfig.resolveRunCommand` (refuses
+reserved names). Listed alphabetically (JSON object key order isn't preserved by
+decoding); default selection = `lastUsedScript` → `run` → first.
 
 **Lifecycle hooks.** Reserved `setup`/`teardown` run automatically, never
-invocable by hand. A surface-scoped `GhosttySurfaceView.onChildExit(UUID, Int32)`
-(from `GHOSTTY_ACTION_SHOW_CHILD_EXITED`) feeds an AppModel script-surface
-controller; hooks are wrapped `"<cmd>\nexit $?"` so the shell exits with the
-command's status. **setup** runs from `createLinkedWorkspace` only (never on
-restore) — exit 0 auto-closes its split, exit ≠ 0 keeps it open and flags the
-workspace `.error`. **teardown** runs before prune (after the merge on the close
-path) and ends on child-exit or a 30 s timeout, whichever first, whatever the
-outcome. `AppModel.runTeardown(id:command:)` is the wait — `async`, returning a
+invocable by hand. A surface-scoped
+`GhosttySurfaceView.onChildExit(UUID, Int32)` (from
+`GHOSTTY_ACTION_SHOW_CHILD_EXITED`) feeds an AppModel script-surface controller;
+hooks are wrapped `"<cmd>\nexit $?"` so the shell exits with the command's
+status. **setup** runs from `createLinkedWorkspace` only (never on restore) —
+exit 0 auto-closes its split, exit ≠ 0 keeps it open and flags the workspace
+`.error`. **teardown** runs before prune (after the merge on the close path) and
+ends on child-exit or a 30 s timeout, whichever first, whatever the outcome.
+`AppModel.runTeardown(id:command:)` is the wait — `async`, returning a
 `TeardownHookStatus` (`none`/`succeeded`/`failed(exitCode:)`/`timedOut`/
 `couldNotSpawn`) — and the prune is the caller's next statement rather than a
 continuation closure. Its once-latch entry carries a per-run generation, so a
@@ -632,8 +648,8 @@ note.
 ## Workspace close/delete progress — ✅
 
 A window-modal sheet reports what a "Merge and Close Workspace…" or a "Delete
-Workspace…" is doing, so a slow `teardown` hook, a large worktree or a slow
-base resync no longer looks like a frozen app.
+Workspace…" is doing, so a slow `teardown` hook, a large worktree or a slow base
+resync no longer looks like a frozen app.
 
 **Off the main actor.** `closeWorkspace(id:)` and `deleteWorkspace(id:)` are
 `async` and return their outcome directly; every `WorktreeManager` call on those
@@ -681,10 +697,10 @@ message that shows up as a toolbar button next to the branch/space title;
 
 **Control channel.** `ControlCommand.Verb.infoSet`/`.infoClear`, routed by
 `ControlServer` into `AppModel.controlSetInfo(markdown:for:)`/
-`controlClearInfo(for:)`. `Workspace.infoMarkdown`/`infoUnread` are transient
-— excluded from `Codable` persistence like `pendingNotification` — so a
-relaunch never resurrects a stale message. Setting a new message always marks
-it unread; there is no coupling to the sidebar's attention flag.
+`controlClearInfo(for:)`. `Workspace.infoMarkdown`/`infoUnread` are transient —
+excluded from `Codable` persistence like `pendingNotification` — so a relaunch
+never resurrects a stale message. Setting a new message always marks it unread;
+there is no coupling to the sidebar's attention flag.
 
 **The button.** `WorkspaceInfoButton` is a bare `info.circle` glyph with no
 capsule chrome — unlike its toolbar neighbours, the branch/space title
@@ -729,19 +745,19 @@ via `MarkdownTextView.height(for:width:)` and hugs it up to `maxHeight`, then
 scrolls; an `http(s)` link opens in the workspace's own browser panel instead of
 leaving the app, unless `systemBrowserModifier` (⌘) is held, which sends it to
 the system's default browser. That routing is a pure decision
-(`WorkspaceInfoPanel.destination(for:modifiers:)`) so tests can pin the
-⌘ branch without a browser really launching; `MarkdownTextView` stays generic
-and only reports the flags, read off `NSApp.currentEvent` because AppKit's
+(`WorkspaceInfoPanel.destination(for:modifiers:)`) so tests can pin the ⌘ branch
+without a browser really launching; `MarkdownTextView` stays generic and only
+reports the flags, read off `NSApp.currentEvent` because AppKit's
 `clickedOnLink` callback carries no event of its own.
 
 **Tests.** Headless `NSHostingView` layout tests cover the empty/non-empty
 button states and that `AppModel.markInfoSeen` clears `infoUnread`
 (`WorkspaceInfoButtonTests`; no headless click or hover-dwell drives the
 button's own `reveal()`, so this pins the model primitive it calls, not the
-button), alongside the earlier control-channel/model
-tests (Tasks 1–3), `MarkdownTextViewTests` and `MarkdownAttributedStringTests`
-(the TextKit renderer and its hosting view), and `WorkspaceInfoPanelTests`
-(layout smoke tests for the panel's Markdown rendering). The visual
+button), alongside the earlier control-channel/model tests (Tasks 1–3),
+`MarkdownTextViewTests` and `MarkdownAttributedStringTests` (the TextKit
+renderer and its hosting view), and `WorkspaceInfoPanelTests` (layout smoke
+tests for the panel's Markdown rendering). The visual
 hover/pulse/link-cursor/link-routing pass needs a human — see the
 `agent-visual-verification-limits` memory note.
 
@@ -758,40 +774,42 @@ Gated entirely at compile time; physically absent from `make release`.
 
 ## Space (project) — ◐
 The **Space** model shipped with CasperUI UI-2 (`Session → Space → Workspace`;
-`repoPath` up to `Space.folderPath`; `Workspace.kind`/`baseBranch`; Space-grouped
-sidebar; `Repository.remoteURL` + `origin` name derivation). What remains for this
-feature is **Space rename** only.
+`repoPath` up to `Space.folderPath`; `Workspace.kind`/`baseBranch`;
+Space-grouped sidebar; `Repository.remoteURL` + `origin` name derivation). What
+remains for this feature is **Space rename** only.
 
 The per-workspace **`+/−` diff summary** (branch-vs-merge-base divergence badge)
-is **dropped** (decision 2026-07-06) — the title-bar working-tree-vs-HEAD summary
-covers the need. The old task-by-task plan (`plans/space-project.md`) is
+is **dropped** (decision 2026-07-06) — the title-bar working-tree-vs-HEAD
+summary covers the need. The old task-by-task plan (`plans/space-project.md`) is
 superseded: its model/remote/naming tasks landed with UI-2, and its divergence
 tasks are moot.
 
 ## Agent-state detection — ◐
-Infers `Workspace.agentState` (`working | blocked | idle | done | unknown |
-error`) by scraping the terminal, no hooks. Design: `themes/agent-state-detection.md`.
+Infers `Workspace.agentState`
+(`working | blocked | idle | done | unknown | error`) by scraping the terminal,
+no hooks. Design: `themes/agent-state-detection.md`.
 
 **Built & live-verified:** the pure engine (`CasperCore/AgentDetection.swift` —
 data-driven matchers for both the viewport (`blocked`) and the OSC title
 (`working`/`idle`), most-urgent aggregation, debounce/`done`-latch resolver, 29
-tests); non-DEBUG `readViewportText()` and `readOSCTitle()` accessors (the latter
-fed by `GHOSTTY_ACTION_SET_TITLE` captured per-surface); the `AppModel` timer
-(~250 ms) that scrapes each workspace's terminals — viewport **and** title —
-resolves, and writes `agentState` unless the workspace is under explicit
-authority; the `casper status set` authority latch (transient) that stops
-detection for that workspace; and the sidebar status icon (`WorkspaceRow`,
-monochrome outline SF Symbols in the chevron column, animated `working`). Live
-GUI check confirmed idle→working→idle, driven by the real OSC-title spinner
-(current Claude Code's `working` marker), plus `blocked` from the viewport.
+tests); non-DEBUG `readViewportText()` and `readOSCTitle()` accessors (the
+latter fed by `GHOSTTY_ACTION_SET_TITLE` captured per-surface); the `AppModel`
+timer (~250 ms while the window is visible, throttled to ~1 s while it is
+hidden, and never stopped — `agentDetectionIntervalVisible`/`Hidden`) that
+scrapes each workspace's terminals — viewport **and** title — resolves, and
+writes `agentState` unless the workspace is under explicit authority; the
+`casper status set` authority latch (transient) that stops detection for that
+workspace; and the sidebar status icon (`WorkspaceRow`, monochrome outline SF
+Symbols in the chevron column, animated `working`). Live GUI check confirmed
+idle→working→idle, driven by the real OSC-title spinner (current Claude Code's
+`working` marker), plus `blocked` from the viewport.
 
 `done` is produced by the resolver's own `working → idle` derivation. `blocked`/
 `done` (and `error`, for the explicit-only path) are wired to `casper notify` +
 `pendingNotification` (`AppModel.controlRaiseNotification`), with an
 interruption level (`.passive` for `done`, `.active` for `blocked`/`error`) and
 a per-workspace 3s de-dup cooldown against near-simultaneous explicit/detected
-notifies for the same event. See
-`plans/notification-idle-best-practices.md`.
+notifies for the same event. See `plans/notification-idle-best-practices.md`.
 
 **Not implemented (by decision):** a process-exit (`childExited`) `done`/`error`
 producer + authority release. It was believed to only fit an *agent-as-command*
@@ -801,12 +819,15 @@ embedded libghostty (a sandbox/host-managed fork) execs it via a hardcoded
 does replace the shell process. This reopens the *agent-as-command* option; it
 hasn't been re-evaluated since. The `--command` reliability fix itself has
 shipped; the queued text is typed into the already-spawned login shell via
-`ghostty_surface_text` (libghostty's own `initial_input` field is left null —
-it mojibakes non-ASCII; see [[ghostty-initial-input-utf8]]), with no `exec`, so
-it does not itself enable an agent-as-command surface.
-Agents currently still run inside a shell; `error` has no detected producer and
-authority release is deferred to the timeout mechanism (option B). The initial
-implementation was removed. See the theme's "Process lifecycle" section.
+`ghostty_surface_text` (libghostty's own `initial_input` field is left null — it
+mojibakes non-ASCII; see [[ghostty-initial-input-utf8]]), with no `exec`, so it
+does not itself enable an agent-as-command surface. Agents currently still run
+inside a shell; `error` has no *terminal-scraping* producer (it is still
+produced outside detection, by a `.casper.json` `setup` hook that exits non-zero
+— `ScriptHookRunner` → `AppModel.reportSetupFailure` →
+`setDetectedAgentState(.error, …)`), and authority release is deferred to the
+timeout mechanism (option B). The initial implementation was removed. See the
+theme's "Process lifecycle" section.
 
 **Deferred:** `.render`-driven trigger (timer poll for now); option-B timeout
 authority release; per-surface status (option B); agents beyond Claude Code
@@ -818,21 +839,21 @@ Carries the sidebar's attention dot out of the app and onto the Dock icon, so a
 `blocked`/`done`/`error` workspace is noticed while Casper is in the background.
 Design: `themes/app-ui.md` § Design → "Dock attention".
 
-**Built.** `CasperUI/DockAttention.swift` — a `DockAttentionPresenting`
-protocol (`bounce()`, `cancelBounce()`, `updateBadge(count:)`) over a
+**Built.** `CasperUI/DockAttention.swift` — a `DockAttentionPresenting` protocol
+(`bounce()`, `cancelBounce()`, `updateBadge(count:)`) over a
 `DockAttentionBackend` protocol (is-active, request/cancel attention, badge
-label) whose production implementation drives `NSApp`. The presenter is
-injected into `AppModel` as `dockAttention`, alongside the existing
-`deliverNotification` / `isWindowKey` seams, so the wiring is testable
-headlessly; the backend seam does the same one layer down, for the request-id
-latch itself. `AppModel.refreshDockAttention()` counts `pendingNotification`
-across every Space, pushes it to the badge, and cancels the bounce at zero; it
-is derived state and writes nothing, so it adds no `persist()` and no
-`@Observable` write. Called from the arming branch of
-`controlRaiseNotification`, from `clearNotificationForFocusedWorkspace` and
-`clearNotificationOnResume`, and from the three paths that drop a workspace
-(`removeWorkspace`, `removeSpace`, `addSpace`'s `reunify` — the shared `retire`
-runs before `spaces` settles, so it can't own the refresh itself).
+label) whose production implementation drives `NSApp`. The presenter is injected
+into `AppModel` as `dockAttention`, alongside the existing `deliverNotification`
+/ `isWindowKey` seams, so the wiring is testable headlessly; the backend seam
+does the same one layer down, for the request-id latch itself.
+`AppModel.refreshDockAttention()` counts `pendingNotification` across every
+Space, pushes it to the badge, and cancels the bounce at zero; it is derived
+state and writes nothing, so it adds no `persist()` and no `@Observable` write.
+Called from the arming branch of `controlRaiseNotification`, from
+`clearNotificationForFocusedWorkspace` and `clearNotificationOnResume`, and from
+the three paths that drop a workspace (`removeWorkspace`, `removeSpace`,
+`addSpace`'s `reunify` — the shared `retire` runs before `spaces` settles, so it
+can't own the refresh itself).
 
 The bounce is `.criticalRequest` (bounces until activation, not once) and starts
 **only** on the edge that arms a bubble — a later focus loss must not re-bounce.
@@ -893,14 +914,14 @@ key means enabled — the map holds only what the user has touched, and enableme
 can also be project-scoped). And nothing may **produce a false nag**: an
 unreadable version reports `installed`, and both registries take the *highest*
 recorded version rather than the first, so a stale record cannot manufacture an
-`outdated` row. A Claude Code registration under the legacy id
-(`casper@Casper`) reports `outdated` whatever version it carries: the id
-identifies the marketplace rather than the build, and it is a compatibility
-branch for the pre-publication local dev install, not migration support. It
-differs from the current `casper@casper` **by case alone**, so the two share one
-cache directory on case-insensitive APFS; Claude Code detection therefore reads
-the registry key and the record's `version` field and never `installPath`, and
-every lookup on that path has to stay case-sensitive.
+`outdated` row. A Claude Code registration under the legacy id (`casper@Casper`)
+reports `outdated` whatever version it carries: the id identifies the
+marketplace rather than the build, and it is a compatibility branch for the
+pre-publication local dev install, not migration support. It differs from the
+current `casper@casper` **by case alone**, so the two share one cache directory
+on case-insensitive APFS; Claude Code detection therefore reads the registry key
+and the record's `version` field and never `installPath`, and every lookup on
+that path has to stay case-sensitive.
 
 The **Codex cache layout is documentation-derived and has never been verified
 against a real install**, on either side; the source, the theme doc and the
@@ -937,10 +958,9 @@ The three row wordings are `<agent> integration not installed`,
 `<agent> integration is outdated (<version>)` and, for Codex,
 `Codex integration needs approval in /hooks`. The outdated row names the
 installed version because it is what makes a nag someone believes is wrong
-diagnosable from a screenshot; the string comes from another tool, so
-whitespace runs collapse and the value is capped at
-`maxDisplayedVersionLength`, dropping the parenthesis outright when nothing
-printable survives.
+diagnosable from a screenshot; the string comes from another tool, so whitespace
+runs collapse and the value is capped at `maxDisplayedVersionLength`, dropping
+the parenthesis outright when nothing printable survives.
 
 The Codex **trust notice** exists because Codex hashes non-managed command hooks
 and does not run them until they are approved via `/hooks` in its TUI, so an
@@ -968,14 +988,45 @@ the published projection, dismissal and retirement), 8 in
 mapping, including the version cap), and 4 in `ModelsTests` for the
 `session.json` round trip and its sorted encoding.
 
+## Shipped outside the milestone sections
+
+Features that landed after their milestone closed, recorded here so this file
+stays the complete picture.
+
+- **Sparkle auto-update — ✅.** `SoftwareUpdater.swift` drives an
+  `SPUStandardUpdaterController` wired up in `AppDelegate.swift`, with the
+  "Check for Updates…" item in `MenuCommands.swift`; the feed is the
+  EdDSA-signed appcast declared by the `SU*` keys in `Packaging/Info.plist`. See
+  `plans/sparkle-auto-update.md`.
+- **Pane drag-and-drop — ✅.** `PaneDragAndDrop.swift` (grip, drag session, and
+  drop overlay, surfaced by `SurfaceHostView`/`SplitContainerView`) relocates a
+  pane through `LayoutTree.dropZone` + `LayoutTree.move`. The pasteboard type is
+  intra-app only — see [[intra-app-drag-pasteboard-type]].
+- **Per-surface font-size persistence — ✅.** A runtime Cmd+/Cmd-/Cmd0 change is
+  captured into `Surface.fontSize` (`CasperCore/Models.swift`) and reapplied on
+  restore via `GhosttySurfaceConfiguration.swift`. See
+  `plans/terminal-font-size-persistence.md`.
+- **Merge and close — ✅.** `CasperGit/Merge.swift`
+  (`Repository.mergeBranchHeadless`, `forceCheckoutHead`) backs the "Merge and
+  Close Workspace…" action in `SidebarView.swift`/`MenuCommands.swift`, with the
+  confirmation and outcome reporting in `AppModel+Presentation.swift`. Selection
+  after the close follows `plans/workspace-close-selection.md`.
+- **App-icon `actool` pipeline — ✅.** `Scripts/bundle-app.sh` compiles
+  `Packaging/AppIcon/AppIcon.icon` to `Assets.car` with Xcode 26's `actool`
+  during `make bundle`, alongside the legacy `.icns` fallback. See
+  `plans/app-icon-composer.md`.
+- **GitHub release workflow — ✅.** `.github/workflows/release.yml` runs
+  `make dist` on every `v*` tag and publishes the `.app` zip, its `.sha256`, and
+  a separate `.dSYM.zip` as a GitHub Release. See `plans/github-release.md`.
+
 ## Remaining work — dependency-ordered
 
-1. **CasperGit `git_diff` — ✅ built** (`diffWorkdirToHead()`); the diff viewer is
-   unblocked.
-2. **CasperUI (Plan 5) — ✅ built.** All of UI-1..UI-5 (app shell + startup wiring;
-   Space model + Space-grouped sidebar + linked Git worktrees; recursive
-   splits/tabs layout; WKWebView browser surface; read-only diff viewer). The live
-   GUI verification pass on a real desktop is complete.
+1. **CasperGit `git_diff` — ✅ built** (`diffWorkdirToHead()`); the diff viewer
+   is unblocked.
+2. **CasperUI (Plan 5) — ✅ built.** All of UI-1..UI-5 (app shell + startup
+   wiring; Space model + Space-grouped sidebar + linked Git worktrees; recursive
+   splits/tabs layout; WKWebView browser surface; read-only diff viewer). The
+   live GUI verification pass on a real desktop is complete.
 3. **Space rename** — the Space data-model change and sidebar grouping landed in
    UI-2; what remains is renaming a Space from the sidebar. (The `+/−` diff
    summary that used to live here is **dropped** — decision 2026-07-06.)

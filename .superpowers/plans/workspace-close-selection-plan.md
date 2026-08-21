@@ -1,19 +1,23 @@
 # Auto-Reselect on Workspace Close Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps
-> use checkbox (`- [ ]`) syntax for tracking.
+> **✅ DONE — shipped.** This plan is retained for reference; its task checkboxes
+> are left unticked as historical record.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** When a workspace is removed (deleted, closed/merged, or dropped along
 with its whole Space), `AppModel.selectedWorkspaceID` moves to the first
-remaining workspace in the same Space (display order), falling back to the
-first workspace of the first remaining Space, instead of the current
-"always jump to the global first workspace" behavior.
+remaining workspace in the same Space (display order), falling back to the first
+workspace of the first remaining Space, instead of the current "always jump to
+the global first workspace" behavior.
 
 **Architecture:** Add one private helper, `fallbackSelection(preferring:)`, to
 `AppModel`, and change the two existing selection-repair call sites
-(`removeWorkspace`, `removeSpace`) to use it. Every removal path (CLI delete,
-UI delete, UI close/merge, closing a workspace's last terminal pane) already
+(`removeWorkspace`, `removeSpace`) to use it. Every removal path (CLI delete, UI
+delete, UI close/merge, closing a workspace's last terminal pane) already
 funnels through these two functions, so no other call site changes.
 
 **Tech Stack:** Swift 6, XCTest (needs the full Xcode toolchain — see the
@@ -42,7 +46,8 @@ funnels through these two functions, so no other call site changes.
 - Produces: `private func fallbackSelection(preferring space: Space?) -> UUID?`
   on `AppModel` — internal to this task; no later task calls it directly.
 - Consumes (all pre-existing, unchanged):
-  - `Space.orderedWorkspaces: [Workspace]` (`Sources/CasperCore/Models.swift:375`)
+  - `Space.orderedWorkspaces: [Workspace]`
+    (`Sources/CasperCore/Models.swift:375`)
   - `AppModel.spaces: [Space]`, `AppModel.selectedWorkspaceID: UUID?`
   - `AppModel.selectWorkspace(_ id: UUID?)` (`AppModel.swift:489`)
   - `AppModel.locate(_ id: UUID) -> (space: Int, workspace: Int)?`
@@ -155,9 +160,9 @@ funnels through these two functions, so no other call site changes.
   Expected: PASS, including the three pre-existing selection tests
   (`testRemoveDeletesEntryAndFixesSelection`,
   `testRemovingSelectedSpaceLeavingNoneClearsSelection`,
-  `testRemovingSelectedLinkedWorkspaceReselectsValidWorkspace`) unchanged —
-  they only exercise degenerate cases (one remaining workspace, or zero Spaces
-  left) where the old and new fallback logic agree.
+  `testRemovingSelectedLinkedWorkspaceReselectsValidWorkspace`) unchanged — they
+  only exercise degenerate cases (one remaining workspace, or zero Spaces left)
+  where the old and new fallback logic agree.
 
 - [ ] **Step 6: Commit**
 
@@ -179,17 +184,18 @@ funnels through these two functions, so no other call site changes.
   `AppModel.deleteWorkspace(id:) -> Result<Void, WorkspaceDeleteError>`
   (`AppModel.swift:1629`), `AppModel.selectWorkspace(_:)`,
   `AppModel.selectedWorkspaceID`, and the file's existing private helper
-  `seededGitModel() -> (AppModel, UUID, String)` (`CloseDeleteWorkspaceTests.swift:82`).
+  `seededGitModel() -> (AppModel, UUID, String)`
+  (`CloseDeleteWorkspaceTests.swift:82`).
 - Produces: nothing consumed by a later task — this task only adds test
   coverage; `closeWorkspace`/`deleteWorkspace` already inherit Task 1's fix
   automatically (both funnel through `pruneWorkspaceFromDisk` →
   `removeWorkspace`).
 
-Note on TDD framing: `seededGitModel()` creates only **one** Space, so in
-these two tests the "same-Space sibling" and the "global fallback" resolve to
-the same workspace (the sole Space's primary) — this scenario would already
-have passed before Task 1's fix. These tests exist to close a real coverage
-gap (`CloseDeleteWorkspaceTests.swift` currently has zero assertions on
+Note on TDD framing: `seededGitModel()` creates only **one** Space, so in these
+two tests the "same-Space sibling" and the "global fallback" resolve to the same
+workspace (the sole Space's primary) — this scenario would already have passed
+before Task 1's fix. These tests exist to close a real coverage gap
+(`CloseDeleteWorkspaceTests.swift` currently has zero assertions on
 `selectedWorkspaceID`), not to re-prove Task 1's fix. Expect both to pass on
 first run.
 
@@ -218,7 +224,8 @@ first run.
 - [ ] **Step 2: Write the test for `deleteWorkspace`**
 
   Insert immediately after `testDeleteWorkspaceSkipsMergeAndDeletesFromDisk`
-  (ends at line 154, right before `testCloseWorkspaceResyncsCleanPrimaryWorktree`):
+  (ends at line 154, right before
+  `testCloseWorkspaceResyncsCleanPrimaryWorktree`):
 
   ```swift
   func testDeleteWorkspaceReselectsPrimaryWhenDeletingSelectedLinkedWorkspace() throws {
@@ -258,9 +265,9 @@ first run.
 
 - [ ] **Step 6: Manual verification**
 
-  Run `make dev` to launch the app. Add a Git-backed folder as a Space, then
-  add two linked workspaces to it (sidebar per-Space "+"). Select one of the
-  two linked workspaces, then delete it ("Delete Workspace…" from its sidebar
+  Run `make dev` to launch the app. Add a Git-backed folder as a Space, then add
+  two linked workspaces to it (sidebar per-Space "+"). Select one of the two
+  linked workspaces, then delete it ("Delete Workspace…" from its sidebar
   context menu). Confirm the sidebar's selection highlight moves to the other
   workspace remaining in that *same* Space (not to an unrelated Space, if more
   than one Space is open). Repeat with "Merge and Close Workspace…" on a
@@ -272,19 +279,19 @@ first run.
 
 - "First choice: first remaining workspace in the same Space" → Task 1,
   `removeWorkspace`'s `fallbackSelection(preferring: spaces[at.space])`.
-- "Fallback: first workspace of the first Space, if the closed workspace's
-  Space has no other workspaces left" → Task 1, `fallbackSelection`'s `??
+- "Fallback: first workspace of the first Space, if the closed workspace's Space
+  has no other workspaces left" → Task 1, `fallbackSelection`'s `??
   spaces.first?.orderedWorkspaces.first?.id` branch, and `removeSpace`'s
   `fallbackSelection(preferring: nil)` (the Space is gone, so it always takes
   this branch).
-- "Ordering = display order, consistently" → Task 1 uses
-  `orderedWorkspaces` in both branches of `fallbackSelection`.
-- "Closing a non-selected workspace never changes selection" → unchanged
-  guard conditions (`if selectedWorkspaceID == id` /
-  `if let sel = selectedWorkspaceID, removed.workspaces.contains(...)`) in
-  both functions — no task touches this, verified by the untouched existing
-  tests continuing to pass in Task 1 Step 5.
+- "Ordering = display order, consistently" → Task 1 uses `orderedWorkspaces` in
+  both branches of `fallbackSelection`.
+- "Closing a non-selected workspace never changes selection" → unchanged guard
+  conditions (`if selectedWorkspaceID == id` /
+  `if let sel = selectedWorkspaceID, removed.workspaces.contains(...)`) in both
+  functions — no task touches this, verified by the untouched existing tests
+  continuing to pass in Task 1 Step 5.
 - "CLI delete / UI delete / UI close-merge, all covered" → all funnel through
-  `removeWorkspace`/`removeSpace` (see design doc's summary table); Task 1
-  fixes the shared root, Task 2 adds direct-path regression coverage for the
+  `removeWorkspace`/`removeSpace` (see design doc's summary table); Task 1 fixes
+  the shared root, Task 2 adds direct-path regression coverage for the
   close/merge and delete-outright entry points specifically.

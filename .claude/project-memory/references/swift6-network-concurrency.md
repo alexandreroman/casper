@@ -1,28 +1,27 @@
 ---
-name: swift6-network-concurrency
-description: NWListener/NWConnection-based classes use @unchecked Sendable + queue discipline in CasperAgents
+name: "Swift 6 Network concurrency"
+description: "NWListener/NWConnection-based classes use @unchecked Sendable + queue discipline in CasperAgents"
 type: reference
 ---
 
-# swift6-network-concurrency
+# Swift 6 Network concurrency
 
-Under Swift 6 strict concurrency, classes that own `NWListener` /
-`NWConnection` from Network.framework do not compile with plain `[weak self]`
-handler closures: the framework's handlers are `@Sendable` and capture
-non-Sendable `self`. Converting such a class to an `actor` is rejected because
-it would force the public API to become `async`.
+Under Swift 6 strict concurrency, classes that own `NWListener` / `NWConnection`
+from Network.framework do not compile with plain `[weak self]` handler closures:
+the framework's handlers are `@Sendable` and capture non-Sendable `self`.
+Converting such a class to an `actor` is rejected because it would force the
+public API to become `async`.
 
 Established convention for the shared socket engine in
 `Sources/CasperCore/SocketTransport.swift`, which both the release control
-channel (`ControlSocketServer`) and the DEBUG `DebugSocketServer` are typealiases
-of:
+channel (`ControlSocketServer`) and the DEBUG `DebugSocketServer` are
+typealiases of:
 
 - Mark the class `final class X: @unchecked Sendable` when it must keep a
   synchronous public interface (`start()` / `stop()` etc.).
-- Justify the `@unchecked` inline: correctness relies on discipline the
-  compiler cannot verify — set closure properties (e.g. `onMessage`,
-  `onFailure`) before `start()`, and perform all I/O on the owned serial
-  `DispatchQueue`.
+- Justify the `@unchecked` inline: correctness relies on discipline the compiler
+  cannot verify — set closure properties (e.g. `onMessage`, `onFailure`) before
+  `start()`, and perform all I/O on the owned serial `DispatchQueue`.
 - Do not capture a mutable local `var buffer` across nested receive callbacks.
   Accumulate into a small queue-confined reference box instead (`ReadBuffer`,
   passed into `readExactly(_:on:into:completion:)`): `Network.framework`

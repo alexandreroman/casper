@@ -64,9 +64,14 @@ final class DiffHighlighterTests: XCTestCase {
     /// and shift the text under a reader mid-scroll.
     func testColorsSurviveAndFontsDoNot() throws {
         let lines = DiffHighlighter.splitLines(try attributed([("keyword", .systemPink)]))
+        let highlighted = try XCTUnwrap(lines.first)
 
-        let run = try XCTUnwrap(lines.first?.runs.first)
+        let run = try XCTUnwrap(highlighted.runs.first)
         XCTAssertEqual(run.attributes.appKit.foregroundColor, .systemPink)
-        XCTAssertNil(run.attributes.appKit.font)
+        // The font is read through the untyped AppKit key on a bridged
+        // `NSAttributedString`: the typed `run.attributes.appKit.font` warns, because
+        // the `Sendable` requirement sits on the attribute key and `NSFont` is not
+        // `Sendable`. `DiffHighlighter.droppingFonts(_:)` strips it the same way.
+        XCTAssertNil(NSAttributedString(highlighted).attribute(.font, at: 0, effectiveRange: nil))
     }
 }

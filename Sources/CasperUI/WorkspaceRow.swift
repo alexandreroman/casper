@@ -20,10 +20,10 @@ struct WorkspaceRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // Derived once per body pass: `Workspace.progress`, `.progressFraction`,
-        // `.isComplete` and `.currentTask` each rescan `todos`, and the layout, the
-        // progress bar, the caption and the `.animation(value:)` below all need them.
-        // The sidebar re-renders every row on any agent-state or progress tick.
+        // Derived once per body pass: a single walk over `todos` yields the counts,
+        // the caption and the completion flag that the layout, the progress bar and
+        // the `.animation(value:)` below all need. The sidebar re-renders every row
+        // on any agent-state or progress tick, so the walk stays a single pass.
         let state = RowDisplayState(workspace: workspace)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
@@ -189,12 +189,14 @@ private struct NotificationBubble: View {
 
     var body: some View {
         if on {
+            let breathing: Animation? =
+                reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
             Circle()
                 .fill(isSelected ? Color.white : Color.blue)
                 .frame(width: 9, height: 9)
                 .opacity(pulse ? 0.5 : 1.0)
                 .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                .animation(breathing, value: pulse)
                 .onAppear { pulse = true }
         } else {
             EmptyView()

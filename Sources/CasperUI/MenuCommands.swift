@@ -53,28 +53,10 @@ struct CasperCommands: Commands {
                 }
                 .disabled(!model.menuCanCreateWorkspace)
                 Divider()
-                Button {
-                    guard let id = model.selectedWorkspaceID else { return }
-                    model.openInFinder(id: id)
-                } label: {
-                    Label("Open in Finder", systemImage: "folder")
-                }
-                .disabled(!model.menuHasSelectedWorkspace)
+                workspaceButton(.openInFinder, isEnabled: model.menuHasSelectedWorkspace)
                 Divider()
-                Button {
-                    guard let id = model.selectedWorkspaceID else { return }
-                    model.presentCloseWorkspaceConfirmation(id: id)
-                } label: {
-                    Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")
-                }
-                .disabled(!model.menuCanCloseSelectedWorkspace)
-                Button {
-                    guard let id = model.selectedWorkspaceID else { return }
-                    model.presentDeleteWorkspaceConfirmation(id: id)
-                } label: {
-                    Label("Delete Workspace…", systemImage: "trash")
-                }
-                .disabled(!model.menuCanDeleteSelectedWorkspace)
+                workspaceButton(.mergeAndClose, isEnabled: model.menuCanCloseSelectedWorkspace)
+                workspaceButton(.delete, isEnabled: model.menuCanDeleteSelectedWorkspace)
             }
             CommandGroup(replacing: .saveItem) {}
             CommandGroup(replacing: .importExport) {}
@@ -87,20 +69,8 @@ struct CasperCommands: Commands {
         Group {
             CommandGroup(replacing: .undoRedo) {}
             CommandGroup(replacing: .pasteboard) {
-                Button {
-                    guard let id = model.selectedWorkspaceID else { return }
-                    model.copyWorkspacePath(id: id)
-                } label: {
-                    Label("Copy Workspace Path", systemImage: "doc.on.doc")
-                }
-                .disabled(!model.menuHasSelectedWorkspace)
-                Button {
-                    guard let id = model.selectedWorkspaceID else { return }
-                    model.copyBranchName(id: id)
-                } label: {
-                    Label("Copy Branch Name", systemImage: "doc.on.doc")
-                }
-                .disabled(!model.menuHasSelectedWorkspace)
+                workspaceButton(.copyWorkspacePath, isEnabled: model.menuHasSelectedWorkspace)
+                workspaceButton(.copyBranchName, isEnabled: model.menuHasSelectedWorkspace)
                 Divider()
                 Button { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) } label: {
                     Label("Copy", systemImage: "doc.on.doc")
@@ -149,6 +119,19 @@ struct CasperCommands: Commands {
         // Help menu removed: emptying `.help` drops its items; the resulting empty
         // stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
         CommandGroup(replacing: .help) {}
+    }
+
+    /// A menu-bar item acting on the selected workspace, built from the same
+    /// `WorkspaceMenuItem` description the sidebar row's context menu renders.
+    /// `isEnabled` comes from the edge-triggered `menuCan*` flags, and the item's
+    /// destructive styling is deliberately left unapplied — the native main menu
+    /// has none.
+    private func workspaceButton(_ command: WorkspaceMenuItem.Command, isEnabled: Bool) -> some View {
+        let item = WorkspaceMenuItem.selectedWorkspaceItem(command, model: model, isEnabled: isEnabled)
+        return Button(action: item.action) {
+            Label(item.title, systemImage: item.systemImage)
+        }
+        .disabled(!item.isEnabled)
     }
 }
 

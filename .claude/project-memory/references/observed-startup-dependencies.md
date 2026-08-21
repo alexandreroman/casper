@@ -9,23 +9,24 @@ type: feedback
 An `@Observable` model property that is **assigned once at startup** (e.g.
 `AppModel.runtime`, set in `applicationDidFinishLaunching`) and **read by a view
 to gate what it renders** must NOT be marked `@ObservationIgnored`. If it is, a
-view that reads it while still `nil` renders a fallback (e.g. `Color.black`), and
-the later assignment triggers **no re-render** — so the fallback is permanent.
+view that reads it while still `nil` renders a fallback (e.g. `Color.black`),
+and the later assignment triggers **no re-render** — so the fallback is
+permanent.
 
 **Why:** on a **restored session**, SwiftUI can render the detail hierarchy
 before the delegate finishes assigning the dependency, so the view samples the
 `nil`. Only an observed property re-renders the view when the value arrives.
-`AppModel.runtime` is the concrete case: if it is `@ObservationIgnored`, restored
-terminals stay pure black until it is made observed.
+`AppModel.runtime` is the concrete case: if it is `@ObservationIgnored`,
+restored terminals stay pure black until it is made observed.
 
 **How to apply:**
 - Do not `@ObservationIgnored` a startup-provided dependency that a view body
   reads to decide rendering; leave it observed so its assignment re-renders.
 - **Live-verify the restore-at-launch path separately** from the
   create-after-launch path — they exercise different timing. A check that only
-  covers *Add folder* after launch (runtime already set) misses this class of bug;
-  it surfaces only when a persisted multi-terminal session is reopened.
-- Use the `debug-casper` skill's channel to confirm: `dump-state` shows whether a
-  surface exists and its size; `read-text`/`screenshot` show whether it paints.
-  This works in a normal local session even when the agent itself launches the
-  app.
+  covers *Add folder* after launch (runtime already set) misses this class of
+  bug; it surfaces only when a persisted multi-terminal session is reopened.
+- Use the `debug-casper` skill's channel to confirm: `dump-state` shows whether
+  a surface exists and its size; `read-text`/`screenshot` show whether it
+  paints. This works in a normal local session even when the agent itself
+  launches the app.

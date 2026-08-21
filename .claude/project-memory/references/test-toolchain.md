@@ -1,15 +1,15 @@
 ---
-name: test-toolchain
+name: "Test toolchain"
 description: "How to build/test Casper locally — XCTest needs the Xcode toolchain, not Command Line Tools"
 type: reference
 ---
 
-# test-toolchain
+# Test toolchain
 
 Casper's tests use **XCTest** and require the **full Xcode toolchain** — the
 Command Line Tools' `swift` cannot link XCTest (symptom: `XCTestCase` resolves
-but `XCTAssert*` are "cannot find in scope"; Swift Testing's `import Testing`
-is also absent under CLT).
+but `XCTAssert*` are "cannot find in scope"; Swift Testing's `import Testing` is
+also absent under CLT).
 
 **How to run tests locally:** with the full Xcode toolchain selected
 (`sudo xcode-select -s /Applications/Xcode.app`), plain `swift test` and
@@ -22,5 +22,5 @@ every XCTest file using `URL`/`Data`/`FileManager`/`UUID`/`JSONEncoder` must
 `import Foundation` explicitly.
 
 Tests also run in **GitHub Actions CI** on a `macos-15` / `macos-26` matrix —
-`.github/workflows/ci.yml`. See [[swift-toolchain-floor]] for the required
-Xcode version pin.
+`.github/workflows/ci.yml`. See [[swift-toolchain-floor]] for the required Xcode
+version pin.

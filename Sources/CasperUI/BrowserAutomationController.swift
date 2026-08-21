@@ -1,7 +1,10 @@
 import CasperCore
 import Foundation
 
-/// Error carrying a human-readable reason for a failed `browser` automation op.
+/// Error carrying a human-readable reason for a failed `browser` automation op —
+/// a JS runtime error, a snapshot/encode failure, an unwritable path, a timeout.
+/// Thrown by `BrowserCoordinator` and `BrowserCapture` as well, so the reason a
+/// verb failed reaches the CLI without being stringified through a second type.
 struct BrowserOpError: Error, CustomStringConvertible {
     let message: String
     var description: String { message }
@@ -57,7 +60,7 @@ final class BrowserAutomationController {
         do {
             return .success(try await body(coordinator))
         } catch {
-            return .failure(BrowserOpError(message: "\(error)"))
+            return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
         }
     }
 
@@ -90,7 +93,7 @@ final class BrowserAutomationController {
             try Self.writeScreenshot(png, to: path)
             return .success(path)
         } catch {
-            return .failure(BrowserOpError(message: "\(error)"))
+            return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
         }
     }
 
@@ -121,7 +124,7 @@ final class BrowserAutomationController {
         do {
             try png.write(to: URL(fileURLWithPath: path))
         } catch {
-            throw BrowserCoordinatorError(
+            throw BrowserOpError(
                 message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
         }
     }

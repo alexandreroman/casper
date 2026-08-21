@@ -19,13 +19,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
 Same treatment as `GhosttySurfaceView: NSView, @MainActor NSTextInputClient`.
 
-**Not every delegate needs this.** Protocols Apple already annotates `@MainActor`
-(e.g. `WKNavigationDelegate`, used by `BrowserCoordinator`) conform with no extra
-ceremony, because the isolation already matches. Only pre-concurrency /
-un-annotated protocols (`UNUserNotificationCenterDelegate`, `NSTextInputClient`)
-require the explicit `@MainActor` on the conformance. Do not assume a new
-delegate behaves like `WKNavigationDelegate` — check whether its protocol is
-`@MainActor`-annotated; if not, add the isolated conformance.
+**Not every delegate needs this.** Protocols Apple already annotates
+`@MainActor` (e.g. `WKNavigationDelegate`, used by `BrowserCoordinator`) conform
+with no extra ceremony, because the isolation already matches. Only
+pre-concurrency / un-annotated protocols (`UNUserNotificationCenterDelegate`,
+`NSTextInputClient`) require the explicit `@MainActor` on the conformance. Do
+not assume a new delegate behaves like `WKNavigationDelegate` — check whether
+its protocol is `@MainActor`-annotated; if not, add the isolated conformance.
 
-General mechanism is the Swift-6.2 isolated-conformances feature already noted in
-the toolchain-floor memory; this note records the concrete delegate-protocol case.
+General mechanism is the Swift-6.2 isolated-conformances feature already noted
+in the toolchain-floor memory; this note records the concrete delegate-protocol
+case.

@@ -14,17 +14,28 @@ struct WorkspaceTargetOption: ParsableArguments {
         // Treat an empty or whitespace-only selector as absent so `requireSelector`
         // raises its clear "no target workspace" error instead of round-tripping a
         // useless empty selector to the app.
-        (workspace ?? environment["CASPER_WORKSPACE_ID"]).flatMap { value in
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
+        nonBlank(workspace ?? environment["CASPER_WORKSPACE_ID"])
     }
 }
 
-/// Normalize a `--command` option so an empty string means "no command",
-/// keeping `terminal new` and `workspace new` consistent.
-func normalizedCommand(_ command: String?) -> String? {
-    command.flatMap { $0.isEmpty ? nil : $0 }
+/// A trimmed value, or nil when it is absent, empty, or whitespace-only.
+func nonBlank(_ value: String?) -> String? {
+    value.flatMap {
+        let trimmed = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// An option or argument value, with the empty string normalized to nil.
+func nonEmpty(_ value: String?) -> String? {
+    value.flatMap { $0.isEmpty ? nil : $0 }
+}
+
+/// Reject an empty required argument with a uniform message, returning the value
+/// so callers bind the validated string.
+func requireNonEmpty(_ value: String, _ what: String) throws -> String {
+    guard !value.isEmpty else { throw exitWithError("missing \(what)") }
+    return value
 }
 
 /// Resolve a required target selector or exit with a clear message.

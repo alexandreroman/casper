@@ -311,8 +311,8 @@ final class DiffDocumentTests: XCTestCase {
         let fitting = DiffDocument.maxLinesPerFile - 10
         let hunks = [
             hunk(header: "@@ fitting @@", (1...fitting).map { line(.addition, "l\($0)", new: $0) }),
-            hunk(header: "@@ partial @@", (1...50).map { line(.addition, "p\($0)", new: $0) }),
-            hunk(header: "@@ dropped @@", (1...50).map { line(.addition, "d\($0)", new: $0) }),
+            hunk(header: "@@ partial @@", (1...50).map { (n: Int) in line(.addition, "p\(n)", new: n) }),
+            hunk(header: "@@ dropped @@", (1...50).map { (n: Int) in line(.addition, "d\(n)", new: n) }),
         ]
         let document = DiffDocument(diff: GitDiff(files: [file(hunks)]))
 

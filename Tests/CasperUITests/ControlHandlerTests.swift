@@ -570,9 +570,9 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         XCTAssertTrue(model.controlSetProgress(total: 4, current: 2, label: "step", for: id))
         let ws = try XCTUnwrap(model.workspace(id: id))
-        XCTAssertEqual(ws.progress.completed, 1)
-        XCTAssertEqual(ws.progress.total, 4)
-        XCTAssertEqual(ws.currentTask, "step")
+        XCTAssertEqual(ws.todos.count, 4)
+        XCTAssertEqual(ws.todos.filter { $0.status == .completed }.count, 1)
+        XCTAssertEqual(ws.todos.first { $0.status == .inProgress }?.content, "step")
     }
 
     func testSetProgressRejectsOutOfRange() {
@@ -584,7 +584,7 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         _ = model.controlSetProgress(total: 3, current: 1, label: "x", for: id)
         XCTAssertTrue(model.controlClearProgress(for: id))
-        XCTAssertEqual(model.workspace(id: id)?.progress.total, 0)
+        XCTAssertEqual(model.workspace(id: id)?.todos.count, 0)
     }
 
     func testRaiseNotificationOnSelectedButBackgroundedSetsBubble() {

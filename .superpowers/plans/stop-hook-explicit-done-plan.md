@@ -6,18 +6,18 @@
 > checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Claude Code's `Stop` hook report `done` (not `idle`) so a
-finished, unseen turn shows in Casper's sidebar and raises its attention
-bubble; make selecting a `done` workspace collapse it back to `idle`.
+finished, unseen turn shows in Casper's sidebar and raises its attention bubble;
+make selecting a `done` workspace collapse it back to `idle`.
 
 **Architecture:** `hooks/stop.sh` (in `casper-claude-plugin`) switches its one
 `casper status set` call from `idle` to `done`. In Casper,
-`AppModel.controlSetAgentState` gains a `.done`-only branch that raises the
-same attention bubble + passive notification `setDetectedAgentState` already
-raises for a detected `done` — scoped to `.done` alone, since `blocked`/`error`
-already notify via their own callers and mirroring them here would double it.
+`AppModel.controlSetAgentState` gains a `.done`-only branch that raises the same
+attention bubble + passive notification `setDetectedAgentState` already raises
+for a detected `done` — scoped to `.done` alone, since `blocked`/`error` already
+notify via their own callers and mirroring them here would double it.
 `AppModel.selectWorkspace` gains a `.done → .idle` collapse on selection,
-mirroring the resolver's own seen-gated unlatch for the explicit-authority
-path the resolver itself never runs for.
+mirroring the resolver's own seen-gated unlatch for the explicit-authority path
+the resolver itself never runs for.
 
 **Tech Stack:** Bash (plugin hooks), Swift 6 + XCTest (Casper app).
 
@@ -38,17 +38,18 @@ path the resolver itself never runs for.
 
 ### Task 1: `casper-claude-plugin` — `Stop` hook reports `done`
 
-**Files** (repo: `casper-claude-plugin`, e.g. `/Users/alex/Projects/personal/casper-claude-plugin`):
+**Files** (repo: `casper-claude-plugin`, e.g.
+`/Users/alex/Projects/personal/casper-claude-plugin`):
 - Modify: `hooks/stop.sh`
 - Modify: `tests/test_stop.sh`
 - Modify: `README.md` (hook table, `Stop` row)
 
 **Interfaces:**
-- Consumes: nothing new — same `casper status set <state>` CLI already used
-  by every other hook in this plugin.
+- Consumes: nothing new — same `casper status set <state>` CLI already used by
+  every other hook in this plugin.
 - Produces: nothing consumed by Tasks 2–4 (independent repo) — this task is
-  purely `casper-claude-plugin`-local and can run before, after, or in
-  parallel with Tasks 2–4.
+  purely `casper-claude-plugin`-local and can run before, after, or in parallel
+  with Tasks 2–4.
 
 - [ ] **Step 1: Update the failing test's expectation**
 
@@ -66,8 +67,8 @@ expected=$'status\nset\ndone\n---'
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bash tests/test_stop.sh`
-Expected: `FAIL: expected [status\nset\ndone\n---], got [status\nset\nidle\n---]`
+Run: `bash tests/test_stop.sh` Expected:
+`FAIL: expected [status\nset\ndone\n---], got [status\nset\nidle\n---]`
 
 - [ ] **Step 3: Update `hooks/stop.sh`**
 
@@ -86,8 +87,7 @@ casper status set done >/dev/null 2>&1 || true
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bash tests/test_stop.sh`
-Expected: `PASS`
+Run: `bash tests/test_stop.sh` Expected: `PASS`
 
 - [ ] **Step 5: Update the README hook table**
 
@@ -122,11 +122,11 @@ git commit -m "Report done explicitly from the Stop hook instead of idle"
 - Consumes: `AppModel.controlRaiseNotification(message:for:) -> Bool`
   (`AppModel.swift:1292`), `AppModel.notificationMessage(for:) -> String?`
   (private static, same file, `AppModel.swift:1219`), `AgentState`
-  (`CasperCore/Models.swift:3-4`, cases `working, blocked, idle, done,
-  unknown, error`).
-- Produces: no signature change to `controlSetAgentState(_:for:) -> Bool` —
-  same call sites in `ControlServer.swift` are unaffected. Test-visible
-  behavior change: `controlSetAgentState(.done, for:)` now also sets
+  (`CasperCore/Models.swift:3-4`, cases `working, blocked, idle, done, unknown,
+  error`).
+- Produces: no signature change to `controlSetAgentState(_:for:) -> Bool` — same
+  call sites in `ControlServer.swift` are unaffected. Test-visible behavior
+  change: `controlSetAgentState(.done, for:)` now also sets
   `Workspace.pendingNotification`/`pendingNotificationMessage` (when the
   workspace isn't already focused), exactly like `controlRaiseNotification`
   already does for any other caller.
@@ -166,16 +166,15 @@ Add to `Tests/CasperUITests/ControlHandlerTests.swift`, right after
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40`
-Expected: `testSetAgentStateDoneRaisesNotificationBubble` FAILS
-(`pendingNotification` is `false`, not `true`); the other two PASS already
-(no regression to guard yet, but they document the boundary this task must
-not cross).
+Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40` Expected:
+`testSetAgentStateDoneRaisesNotificationBubble` FAILS (`pendingNotification` is
+`false`, not `true`); the other two PASS already (no regression to guard yet,
+but they document the boundary this task must not cross).
 
 - [ ] **Step 3: Implement the `.done`-only notify branch**
 
-In `Sources/CasperUI/AppModel.swift`, change `controlSetAgentState`
-(currently lines 1245-1256) from:
+In `Sources/CasperUI/AppModel.swift`, change `controlSetAgentState` (currently
+lines 1245-1256) from:
 
 ```swift
     @discardableResult
@@ -223,8 +222,8 @@ to:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40`
-Expected: PASS, including all three new tests.
+Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40` Expected: PASS,
+including all three new tests.
 
 - [ ] **Step 5: Commit**
 
@@ -245,8 +244,8 @@ git commit -m "controlSetAgentState raises the attention bubble for explicit don
 - Consumes: `AppModel.locate(_:) -> (space: Int, workspace: Int)?` (private,
   same file, `AppModel.swift:325`), `AgentState.done` / `.idle` (Task 2's
   import, `CasperCore/Models.swift:3-4`).
-- Produces: no signature change to `selectWorkspace(_:)` — behavior-only
-  change, test-visible via `AppModel.workspace(id:)?.agentState`.
+- Produces: no signature change to `selectWorkspace(_:)` — behavior-only change,
+  test-visible via `AppModel.workspace(id:)?.agentState`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -289,15 +288,15 @@ Add to `Tests/CasperUITests/ControlHandlerTests.swift`, right after
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40`
-Expected: `testSelectingDoneWorkspaceCollapsesToIdle` FAILS (`agentState` is
-still `.done` after selection); the other two PASS already (regression
-guards for the boundary this task must not cross).
+Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40` Expected:
+`testSelectingDoneWorkspaceCollapsesToIdle` FAILS (`agentState` is still `.done`
+after selection); the other two PASS already (regression guards for the boundary
+this task must not cross).
 
 - [ ] **Step 3: Implement the collapse in `selectWorkspace`**
 
-In `Sources/CasperUI/AppModel.swift`, change `selectWorkspace(_:)`
-(currently lines 477-493) from:
+In `Sources/CasperUI/AppModel.swift`, change `selectWorkspace(_:)` (currently
+lines 477-493) from:
 
 ```swift
     func selectWorkspace(_ id: UUID?) {
@@ -355,8 +354,8 @@ to:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40`
-Expected: PASS, including all three new tests.
+Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40` Expected: PASS,
+including all three new tests.
 
 - [ ] **Step 5: Commit**
 
@@ -373,8 +372,8 @@ git commit -m "selectWorkspace collapses an explicit done back to idle"
 
 - [ ] **Step 1: Run the full Casper test suite**
 
-Run: `make test 2>&1 | tail -60` (in the `casper` repo)
-Expected: PASS, no regressions.
+Run: `make test 2>&1 | tail -60` (in the `casper` repo) Expected: PASS, no
+regressions.
 
 - [ ] **Step 2: Run the full `casper-claude-plugin` test suite**
 
@@ -387,7 +386,8 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 Expected: PASS, no regressions.
 
-- [ ] **Step 3: Manual verification via `debug-casper` + a real Claude Code session**
+- [ ] **Step 3: Manual verification via `debug-casper` + a real Claude Code
+  session**
 
 In a Casper terminal workspace, with this plugin installed:
 
@@ -395,12 +395,12 @@ In a Casper terminal workspace, with this plugin installed:
 claude --plugin-dir /path/to/casper-claude-plugin
 ```
 
-Run one turn, then switch focus away from the workspace (select a different
-one, or background the app) before the turn ends. Expected: once the turn's
-`Stop` fires, the workspace's sidebar icon shows `done` (`checkmark.circle`),
-its attention bubble is armed, and a single passive notification ("Task
-finished") arrives silently in Notification Center — no banner, no sound.
-Select the workspace again: the bubble clears and the icon reverts to the
-ordinary `idle` look.
+Run one turn, then switch focus away from the workspace (select a different one,
+or background the app) before the turn ends. Expected: once the turn's `Stop`
+fires, the workspace's sidebar icon shows `done` (`checkmark.circle`), its
+attention bubble is armed, and a single passive notification ("Task finished")
+arrives silently in Notification Center — no banner, no sound. Select the
+workspace again: the bubble clears and the icon reverts to the ordinary `idle`
+look.
 
 - [ ] **Step 4: Commit** (only if step 3 uncovered fixes; otherwise skip)

@@ -15,8 +15,8 @@ high byte).
 
 Casper therefore does NOT set `c.initial_input`. A surface's queued initial
 command (`GhosttySurfaceConfiguration.initialInput` — a `.casper.json` script,
-`casper run`, `terminal new --command`, `workspace new --command`) is injected in
-`GhosttySurface.init`, immediately after `ghostty_surface_new`, via
+`casper run`, `terminal new --command`, `workspace new --command`) is injected
+in `GhosttySurface.init`, immediately after `ghostty_surface_new`, via
 `sendText` → `ghostty_surface_text` (the same UTF-8-correct path normal typing
 uses). Verified live: the command still runs (no lost input from the post-spawn
 timing) and `… café 🚀` render correctly.

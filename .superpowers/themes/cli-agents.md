@@ -12,9 +12,9 @@ environment that lets an agent in a terminal report its state through the CLI.
 ### Single binary (GUI + CLI)
 
 The bundle executable inspects its argv: empty → **GUI mode**; a recognized
-subcommand (e.g. `casper status …`, `casper terminal new`) → **CLI mode**,
-which runs and exits. Parsing uses swift-argument-parser; the fork happens
-before the `ParsableCommand` tree.
+subcommand (e.g. `casper status …`, `casper terminal new`) → **CLI mode**, which
+runs and exits. Parsing uses swift-argument-parser; the fork happens before the
+`ParsableCommand` tree.
 
 ### Domain CLI (`casper <domain> <verb>`)
 
@@ -24,14 +24,14 @@ handful of verbs:
 - `status set <state>` — set the agent state of a workspace.
 - `progress set --total --current --label` / `progress clear` — set or clear
   todo progress.
-- `notify [--message <str>]` — raise the attention flag; `--message` also
-  posts a macOS notification (suppressed when the target is already focused).
+- `notify [--message <str>]` — raise the attention flag; `--message` also posts
+  a macOS notification (suppressed when the target is already focused).
 - `info set [--message <str> | --file <path> | -]` — replace the workspace's
-  info-panel Markdown message, read from the flag, a file, or stdin. `-`
-  reads stdin explicitly; a bare invocation reads stdin too, but only when it
-  is not a TTY (piped or redirected) — at an interactive terminal it errors
-  instead of hanging. `info clear` — empty the panel and hide its button. The
-  panel keeps only the latest message and never persists it across restarts.
+  info-panel Markdown message, read from the flag, a file, or stdin. `-` reads
+  stdin explicitly; a bare invocation reads stdin too, but only when it is not a
+  TTY (piped or redirected) — at an interactive terminal it errors instead of
+  hanging. `info clear` — empty the panel and hide its button. The panel keeps
+  only the latest message and never persists it across restarts.
 - `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
   split below (cwd defaults to the worktree); `terminal list` — list the
   workspace's terminals; `terminal close <id>` — close a terminal by id.
@@ -57,11 +57,11 @@ handful of verbs:
   drivable surface, so an agent can verify the frontend change it just made.
   Every verb targets a workspace by id independently of selection and works
   off-screen:
-  - `browser screenshot [--out <path>] [--width <n>] [--height <n>]
-    [--url <url>]` — write a PNG (a temp file when `--out` is omitted); a sized
-    or `--url` capture renders in a dedicated off-screen `WKWebView`.
-  - `browser content [--selector <css>] [--raw]` / `browser url [--raw]` —
-    print the page's HTML, or its current URL.
+  - `browser screenshot [--out <path>] [--width <n>] [--height <n>] [--url
+    <url>]` — write a PNG (a temp file when `--out` is omitted); a sized or
+    `--url` capture renders in a dedicated off-screen `WKWebView`.
+  - `browser content [--selector <css>] [--raw]` / `browser url [--raw]` — print
+    the page's HTML, or its current URL.
   - `browser eval <js> [--raw]` — evaluate JavaScript and print the result.
   - `browser click <selector>` / `browser type <selector> <text>` /
     `browser key <key> [--selector <css>]` — JS-synthesized input against the
@@ -81,24 +81,23 @@ handful of verbs:
   exist on disk and be inside the worktree, else an error). `diff close` —
   collapse the inspector if the diff tab is the one showing.
 - `workspace list` / `workspace current` /
-  `workspace new <branch> [--base <ref>] [--command <cmd>]` /
-  `workspace delete` — enumerate, identify, create, and destroy workspaces. The
-  branch name is a **positional argument**, not a flag; `--base` forks from a
-  ref other than the space's base branch, and `--command` seeds the workspace's
-  first terminal. `workspace delete` is **destructive** (prunes the worktree
-  folder,
-  deletes the branch, drops it from the UI) and **refuses a primary workspace**.
-- `run [<name>]` — run a named command from the workspace's `.casper.json` in
-  a new visible terminal (defaults to the command named `run`). Not scoped
-  under its own noun like the others, but still a workspace-targeted verb.
+  `workspace new <branch> [--base <ref>] [--command <cmd>]` / `workspace delete`
+  — enumerate, identify, create, and destroy workspaces. The branch name is a
+  **positional argument**, not a flag; `--base` forks from a ref other than the
+  space's base branch, and `--command` seeds the workspace's first terminal.
+  `workspace delete` is **destructive** (prunes the worktree folder, deletes the
+  branch, drops it from the UI) and **refuses a primary workspace**.
+- `run [<name>]` — run a named command from the workspace's `.casper.json` in a
+  new visible terminal (defaults to the command named `run`). Not scoped under
+  its own noun like the others, but still a workspace-targeted verb.
 
 Every workspace-scoped command shares a `--workspace <id-or-name>` option,
-defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is
-why plain `casper status set working` works with no flags inside a Casper
-terminal but needs `--workspace` from anywhere else. The one deliberate
-exception is `workspace current`: it answers "which workspace is *this*
-terminal", so it reads `$CASPER_WORKSPACE_ID` only and takes no target option —
-outside a Casper terminal it errors rather than defaulting to something.
+defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is why
+plain `casper status set working` works with no flags inside a Casper terminal
+but needs `--workspace` from anywhere else. The one deliberate exception is
+`workspace current`: it answers "which workspace is *this* terminal", so it
+reads `$CASPER_WORKSPACE_ID` only and takes no target option — outside a Casper
+terminal it errors rather than defaulting to something.
 
 Each command sends a `ControlCommand` to the running app over a Unix domain
 socket named by `$CASPER_CONTROL_SOCKET` (also per-surface env, alongside
@@ -114,11 +113,11 @@ Every command is machine-readable. On **success** it prints a JSON object (or
 array) to stdout and exits 0, describing the resulting resource state and always
 including the affected `workspace` id — e.g. `status set blocked` →
 `{"status":"blocked","workspace":"<id>"}`; verbs with no meaningful state
-(`progress clear`, `notify`, `browser open`, `diff open`) → `{"workspace":"<id>"}`.
-`terminal new` carries `working-dir` (always) and `command` (when given);
-`terminal list` carries only `working-dir` (it no longer carries `command` — a
-terminal's launch command is a one-shot instruction, not durable state);
-`workspace new`/`list`/`current` carry the worktree `path`
+(`progress clear`, `notify`, `browser open`, `diff open`) →
+`{"workspace":"<id>"}`. `terminal new` carries `working-dir` (always) and
+`command` (when given); `terminal list` carries only `working-dir` (it no longer
+carries `command` — a terminal's launch command is a one-shot instruction, not
+durable state); `workspace new`/`list`/`current` carry the worktree `path`
 (`branch` omitted for a degenerate, non-Git space). On **error** it prints
 `{"error":"<msg>"}` to stderr and exits **non-zero** — a command in error never
 returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's
@@ -126,12 +125,14 @@ own output (`--help`, missing option, unknown flag) stays native.
 
 ### Agent state & progress
 
-Casper has **no agent-hook mechanism** — no hook installation, no hook socket,
-no `hooks` CLI. A workspace's agent state (`agentState`, todo progress, the
-attention flag) is set **only** by the explicit domain verbs above: an agent (or
-any tool) running in a Casper terminal calls `casper status set …`,
-`casper progress set …`, and `casper notify …` itself. Casper **never launches an
-agent**; the user runs their agent manually.
+Casper installs **no agent-hook mechanism** into any agent — no hook
+installation, no hook socket, no `hooks` CLI. A workspace's agent state
+(`agentState`, todo progress, the attention flag) comes from one of two places:
+the explicit domain verbs above, which an agent (or any tool) running in a
+Casper terminal calls itself (`casper status set …`, `casper progress set …`,
+`casper notify …`) and which then hold authority for that workspace; or Casper's
+own terminal scraping (see `agent-state-detection.md`). Casper **never launches
+an agent**; the user runs their agent manually.
 
 The only agent-facing runtime coupling is the per-surface environment
 `AgentEnvironment.surfaceEnvironment` injects into every Casper terminal:
@@ -161,8 +162,8 @@ into the agent itself. **Casper never writes another tool's configuration**:
 every agent ships its own installer, so all Casper does is *detect* what an
 installer left behind and remind the user when something is missing or stale.
 There is deliberately no install, repair or enable action anywhere in the app —
-writing a file Casper does not own makes it responsible for migrating one.
-See [[agent-integration-policy]].
+writing a file Casper does not own makes it responsible for migrating one. See
+[[agent-integration-policy]].
 
 The probe is **global**: one answer per agent for the whole app, never per
 workspace. "The user has Codex but not the integration" is a property of the
@@ -253,9 +254,9 @@ layout, and its cache path legitimately does carry the version.)
 loader globs both spellings), or a top-level `plugin[]` entry in
 `~/.config/opencode/opencode.json` / `.jsonc` naming the npm package
 `casper-skills` or a local `casper.js`. Both forms are matched *whole* rather
-than by substring, so `@evil/casper-skills-fork` and `./plugin/notcasper.js`
-are not mistaken for the integration. Despite the `.json` name the config format
-is **JSONC**, and real files carry comments, so comments are stripped before
+than by substring, so `@evil/casper-skills-fork` and `./plugin/notcasper.js` are
+not mistaken for the integration. Despite the `.json` name the config format is
+**JSONC**, and real files carry comments, so comments are stripped before
 parsing — never inside a string literal, since opencode's own default config
 holds `"$schema": "https://opencode.ai/config.json"`. The version exists only
 inside a local plugin file, as `export const CASPER_PLUGIN_VERSION = "…"`; a
@@ -269,11 +270,11 @@ defined order, so stopping at the first would make the answer depend on
 enumeration order. Dot-prefixed names are dropped first, so a directory left
 behind holding nothing but a `.DS_Store` reads as an absent install rather than
 as version `.DS_Store`. Disabled plugins are recorded in `~/.codex/config.toml`
-as a `[plugins."casper@casper"]` section carrying `enabled = false`,
-matched by a targeted five-line scan — a TOML dependency to read one boolean
-does not earn its place under the dependency policy, and every limitation of the
-scan misses in the safe direction (an unseen `enabled = false` reads as
-enabled, never the reverse).
+as a `[plugins."casper@casper"]` section carrying `enabled = false`, matched by
+a targeted five-line scan — a TOML dependency to read one boolean does not earn
+its place under the dependency policy, and every limitation of the scan misses
+in the safe direction (an unseen `enabled = false` reads as enabled, never the
+reverse).
 
 Two Codex traps, both able to produce a confidently wrong answer:
 
@@ -295,8 +296,8 @@ matters, and the UI states the caveat rather than implying certainty. See
 An integration the user has **explicitly disabled** reports `missing`, not
 `installed`: none of its hooks fire, so an install that is switched off is
 functionally absent, and reporting it healthy would tell the user everything is
-fine while nothing happens. Each tool records this in its own polarity —
-Claude Code an enablement flag in `settings.json`, Codex a disabled flag in
+fine while nothing happens. Each tool records this in its own polarity — Claude
+Code an enablement flag in `settings.json`, Codex a disabled flag in
 `config.toml` — and both ids are consulted on the Claude side, so an explicit
 `false` under either spelling switches the same integration off.
 
@@ -359,10 +360,10 @@ re-probes once the last result is older than
 `AppModel.agentIntegrationProbeInterval` — **five seconds**. It is a freshness
 horizon, not a rate limiter: nothing is being protected from load, the answer is
 simply not trusted past that age. The cadence is affordable precisely because of
-the `LoginShellPath` cache above:
-every probe after the first is a handful of `stat` and `read` calls, far too
-cheap to ration by the minute. `applicationDidBecomeActive` applies the same
-check, so a Cmd-Tab storm still probes at most once per interval.
+the `LoginShellPath` cache above: every probe after the first is a handful of
+`stat` and `read` calls, far too cheap to ration by the minute.
+`applicationDidBecomeActive` applies the same check, so a Cmd-Tab storm still
+probes at most once per interval.
 
 Three rules hold the cadence together:
 

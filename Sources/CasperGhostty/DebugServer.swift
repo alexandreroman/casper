@@ -5,8 +5,10 @@ import CoreGraphics
 import ScreenCaptureKit
 
 /// Full geometry snapshot of one surface: libghostty's pixel readback plus the
-/// hosting view's AppKit metrics. Carries the numbers `dumpState` reports without
-/// coupling this module's handle to `DebugState`.
+/// hosting view's AppKit metrics. Separate from `DebugState.Surface` (which
+/// `DebugServer.resolve` builds from it) because that type also carries identity
+/// fields — `id`, `title`, `workingDirectory`, `focused` — that the view cannot
+/// supply on its own.
 public struct DebugSurfaceGeometry: Sendable {
     public let columns: Int
     public let rows: Int
@@ -127,6 +129,7 @@ public final class DebugServer {
                 reply(response)
             }
         }
+        self.server.onFailure = { CasperLog.debug.failure("debug socket listener failed", $0) }
     }
 
     public func start() throws {

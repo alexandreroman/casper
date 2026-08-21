@@ -498,11 +498,12 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(current.makeCommand().verb, .workspaceList)
     }
 
-    func testNormalizedCommand() {
-        // Shared by `terminal new` and `workspace new`: empty string means "no command".
-        XCTAssertNil(normalizedCommand(nil))
-        XCTAssertNil(normalizedCommand(""))
-        XCTAssertEqual(normalizedCommand("npm test"), "npm test")
+    func testNonEmpty() {
+        // Shared by every optional value whose empty string means "absent":
+        // `--command`, `notify --message`, and `diff open <file>`.
+        XCTAssertNil(nonEmpty(nil))
+        XCTAssertNil(nonEmpty(""))
+        XCTAssertEqual(nonEmpty("npm test"), "npm test")
     }
 
     func testRunDefaultsToRunCommand() throws {

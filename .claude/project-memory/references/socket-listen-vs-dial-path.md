@@ -14,14 +14,13 @@ two channels express the split differently:
   bind-side and reads no environment variable at all. The
   `CASPER_CONTROL_SOCKET` override lives purely on the dial side, in
   `CasperCLI/ControlClient.swift`, which reads it directly when sending a
-  command. `AppDelegate` binds its `ControlServer` to
-  `controlSocketPath()`.
+  command. `AppDelegate` binds its `ControlServer` to `controlSocketPath()`.
 - **Debug channel** (`DebugSocketPath`, DEBUG-only) — `resolve(for:)` and
   `.default` are dial-side: the `CASPER_DEBUG_SOCKET` override wins, else the
-  session-derived path (the external `casper debug` CLI's `SocketOption.path`
-  is the live caller). `listenPath(for:)` is bind-side: always
-  `session.debugSocketPath`, unconditionally ignoring the env var.
-  `AppDelegate` binds its `DebugServer` via `listenPath(for:)`.
+  session-derived path (the external `casper debug` CLI's `SocketOption.path` is
+  the live caller). `listenPath(for:)` is bind-side: always
+  `session.debugSocketPath`, unconditionally ignoring the env var. `AppDelegate`
+  binds its `DebugServer` via `listenPath(for:)`.
 
 **Why:** every terminal a running Casper.app opens unconditionally carries that
 instance's own `CASPER_CONTROL_SOCKET` (`AgentEnvironment.swift`, regardless of

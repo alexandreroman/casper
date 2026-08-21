@@ -1,5 +1,4 @@
 import XCTest
-import CasperCore
 @testable import CasperAgents
 
 final class SurfaceEnvironmentControlTests: XCTestCase {

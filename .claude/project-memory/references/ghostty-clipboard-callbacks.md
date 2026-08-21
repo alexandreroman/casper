@@ -11,8 +11,8 @@ type: reference
   `userdata` set in `ghostty_surface_config_s` (via
   `GhosttySurfaceConfiguration.withCValue`), not the app-level
   `ghostty_runtime_config_s.userdata`. Casper sets it to the hosting
-  `GhosttySurfaceView` pointer (same value as `nsview`), so the callbacks recover
-  the view with
+  `GhosttySurfaceView` pointer (same value as `nsview`), so the callbacks
+  recover the view with
   `Unmanaged<GhosttySurfaceView>.fromOpaque(userdata).takeUnretainedValue()`.
 - These three clipboard callbacks fire on the **main thread** — safe to touch
   `NSPasteboard` and call `ghostty_surface_complete_clipboard_request` inside
@@ -27,12 +27,13 @@ font-size action by watching `cellWidthPixels`/`cellHeightPixels` in
 `casper debug dump-state` change around each `send-action`.
 
 **Swift 6 strict-concurrency gotcha:** passing a raw `UnsafeMutableRawPointer?`
-function parameter directly into a `MainActor.assumeIsolated { ... }` closure from
-a nonisolated function fails with `sending 'state' risks causing data races
-[#SendingRisksDataRace]`, even though the closure runs synchronously. Fix (the same
-pattern `casperGhosttyWakeup` uses to cross into `DispatchQueue.main.async`):
-convert the pointer to a trivial `UInt` bit-pattern *before* entering the closure,
-then reconstruct `UnsafeMutableRawPointer(bitPattern:)` inside it. See
+function parameter directly into a `MainActor.assumeIsolated { ... }` closure
+from a nonisolated function fails with
+`sending 'state' risks causing data races [#SendingRisksDataRace]`, even though
+the closure runs synchronously. Fix (the same pattern `casperGhosttyWakeup` uses
+to cross into `DispatchQueue.main.async`): convert the pointer to a trivial
+`UInt` bit-pattern *before* entering the closure, then reconstruct
+`UnsafeMutableRawPointer(bitPattern:)` inside it. See
 `casperGhosttyReadClipboard`/`casperGhosttyConfirmReadClipboard` in
 `Sources/CasperGhostty/GhosttyRuntime.swift`.
 
@@ -42,6 +43,5 @@ must carry `@MainActor` in its own **type**
 main-actor-isolated function as its default is rejected with *converting
 function value ... loses global actor 'MainActor'* — the type's isolation does
 not flow into the closure type. Call sites that substitute another closure
-annotate their parameter the same way
-(`@escaping @MainActor (String) -> Bool`). See
-[[osc52-clipboard-write-confirmation]].
+annotate their parameter the same way (`@escaping @MainActor (String) -> Bool`).
+See [[osc52-clipboard-write-confirmation]].

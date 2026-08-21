@@ -11,8 +11,7 @@ type: reference
 it, so the cost of a batch of attribute writes depends on the order they are
 issued in:
 
-- **Ascending offsets only ever append** — linear in the number of runs
-  written.
+- **Ascending offsets only ever append** — linear in the number of runs written.
 - **Arbitrary offsets are quadratic** in the storage's total run count.
 
 The diff renderer writes one `.foregroundColor` run per syntax run, tens of

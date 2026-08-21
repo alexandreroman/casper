@@ -1,7 +1,7 @@
 /// Builds a `[Todo]` that realizes an explicit `current`/`total`/`label` progress
-/// report. The app has no stored progress field — `Workspace.progress` and
-/// `.currentTask` are derived from `todos` (see `Progress.swift`) — so an explicit
-/// `casper progress set` must synthesize the todo list the sidebar reads back.
+/// report. The app has no stored progress field — the sidebar derives everything it
+/// shows from `Workspace.todos` — so an explicit `casper progress set` must
+/// synthesize the todo list that read-back walks.
 public enum ProgressSynthesis {
     /// Largest `total` a caller may request. `total` comes straight from
     /// untrusted CLI input and sizes the allocated array one-for-one, so it needs

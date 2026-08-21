@@ -33,9 +33,9 @@ enum SigbusGuard {
     /// documented above, so we take an escaping closure and let it leak silently
     /// on the rare fault instead of turning the fault into a hard trap.
     static func run<T>(_ body: @escaping () throws -> T) throws -> T {
-        // Captures `body`'s outcome. Lives in `run`'s frame, which the longjmp
-        // does not abandon, so it is still readable after a caught fault (though
-        // it stays `nil` in that case since `body` never completed).
+        // Holds `body`'s outcome. Captured by `thunk`, so it is heap-boxed and
+        // readable after a caught fault (it stays `nil` in that case, since `body`
+        // never completed).
         var outcome: Result<T, Error>?
 
         // Standard C-callback trampoline: stash a thunk in a local and hand its

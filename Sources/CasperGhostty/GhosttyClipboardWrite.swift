@@ -31,23 +31,12 @@ enum GhosttyClipboardWrite {
     }
 
     /// The production confirmation: Ghostty's own OSC 52 write prompt
-    /// (`ClipboardConfirmationView` with `Ghostty.ClipboardRequest.osc_52_write`) rendered as
-    /// an `NSAlert` — same wording, same caution framing, same preview of the content.
-    ///
-    /// One deliberate deviation: Ghostty binds Return to "Allow". Casper leaves the
-    /// consequential button off the Return key, as its other destructive alerts do, because
-    /// this prompt is raised by output the user never asked for and can appear under their
-    /// hands mid-typing — a stray Return must not grant clipboard access.
+    /// (`ClipboardConfirmationView` with `Ghostty.ClipboardRequest.osc_52_write`), with this
+    /// gate's wording in the shared alert.
     private static func presentConfirmation(_ text: String) -> Bool {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "An application is attempting to write to the clipboard."
-        alert.informativeText = "The content to write is shown below."
-        alert.accessoryView = GhosttyClipboardPrompt.contentPreview(text)
-        alert.addButton(withTitle: "Deny")
-        let allowButton = alert.addButton(withTitle: "Allow")
-        allowButton.hasDestructiveAction = true
-        allowButton.keyEquivalent = ""
-        return alert.runModal() == .alertSecondButtonReturn
+        GhosttyClipboardPrompt.confirm(
+            message: "An application is attempting to write to the clipboard.",
+            informative: "The content to write is shown below.",
+            content: text)
     }
 }

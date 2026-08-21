@@ -8,11 +8,11 @@ type: reference
 
 `-[NSEvent characters]` and `-[NSEvent charactersIgnoringModifiers]` are valid
 on key events only. On any other event type they raise
-`NSInternalInconsistencyException` ("Invalid message sent to event
-\"NSEvent: type=FlagsChanged ... keyCode=59\""), an ObjC exception Swift cannot
-catch. AppKit's event loop swallows it, so in the running app it surfaces as a
-logged exception with no crash — while the throw still unwinds out of the whole
-call, skipping everything after the read.
+`NSInternalInconsistencyException` ("Invalid message sent to event \"NSEvent:
+type=FlagsChanged ... keyCode=59\""), an ObjC exception Swift cannot catch.
+AppKit's event loop swallows it, so in the running app it surfaces as a logged
+exception with no crash — while the throw still unwinds out of the whole call,
+skipping everything after the read.
 
 A modifier transition (Control, Shift, Option, Command, Caps Lock going down or
 up) arrives as a `.flagsChanged` event through

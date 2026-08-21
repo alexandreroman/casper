@@ -1,8 +1,12 @@
 # Per-Terminal Font Size Persistence Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan
-> task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **✅ DONE — shipped.** This plan is retained for reference; its task checkboxes
+> are left unticked as historical record.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Each terminal surface remembers its own live font size (as adjusted
 via Cmd+/Cmd-/Cmd0) and restores it on the next launch, independent of every
@@ -10,18 +14,17 @@ other terminal.
 
 **Architecture:** `Surface` (`CasperCore/Models.swift`) gains a flat
 `fontSize: Float?` field. `GhosttySurface` (`CasperGhostty`) gains
-`currentFontSize()`, reading libghostty's `ghostty_surface_inherited_config`
-— the same mechanism libghostty uses to propagate a runtime-adjusted font
-size to a new child split. `GhosttySurfaceView`'s three font-size actions
-read this back immediately after forwarding to libghostty and report changes
-through a new `onFontSizeChange` closure. `AppModel` wires that closure, at
-the single `surfaceView(for:in:)` chokepoint, to a new `updateSurfaceFontSize`
-method that finds the `Surface` in its workspace's `LayoutNode` tree (via a
-new `LayoutTree.updateSurface` pure mutator), sets `.fontSize`, and calls the
-existing debounced `scheduleSave()`. Restore falls out of one change: the
-same `surfaceConfiguration(for:terminal:)` that creates fresh terminals also
-recreates restored ones, so passing `terminal.fontSize ?? 0` there covers
-both.
+`currentFontSize()`, reading libghostty's `ghostty_surface_inherited_config` —
+the same mechanism libghostty uses to propagate a runtime-adjusted font size to
+a new child split. `GhosttySurfaceView`'s three font-size actions read this back
+immediately after forwarding to libghostty and report changes through a new
+`onFontSizeChange` closure. `AppModel` wires that closure, at the single
+`surfaceView(for:in:)` chokepoint, to a new `updateSurfaceFontSize` method that
+finds the `Surface` in its workspace's `LayoutNode` tree (via a new
+`LayoutTree.updateSurface` pure mutator), sets `.fontSize`, and calls the
+existing debounced `scheduleSave()`. Restore falls out of one change: the same
+`surfaceConfiguration(for:terminal:)` that creates fresh terminals also
+recreates restored ones, so passing `terminal.fontSize ?? 0` there covers both.
 
 **Tech Stack:** Swift 6, GhosttyKit (libghostty), XCTest.
 
@@ -30,27 +33,27 @@ both.
 - Design source of truth: `.superpowers/plans/terminal-font-size-persistence.md`
   (approved).
 - `Surface.fontSize: Float?` is a flat field on `Surface` (not inside `Kind`'s
-  associated values), matching the hand-rolled-`Codable`-for-migration
-  pattern already used for `InspectorState.width`, `Workspace.inspector`, and
+  associated values), matching the hand-rolled-`Codable`-for-migration pattern
+  already used for `InspectorState.width`, `Workspace.inspector`, and
   `Space.isCollapsed` in `Models.swift`.
-- `nil` means "not customized — use libghostty's own default." Only
-  meaningful for `.terminal` surfaces; ignored for `.browser`.
+- `nil` means "not customized — use libghostty's own default." Only meaningful
+  for `.terminal` surfaces; ignored for `.browser`.
 - No new save-trigger mechanism: reuse the existing debounced `scheduleSave()`
   (same mechanism already used for inspector-width drag persistence). No
   periodic/idle autosave.
 - No new global/default font-size preference (no `AppStorage`/`UserDefaults`).
-- `persist()` itself needs no change: it already serializes `spaces`
-  wholesale, so the mutated `fontSize` rides along automatically.
-- The design's Risk/Spike section calls for a *manual* spike (adjust font
-  size via Cmd+ in the running app, log the value, eyeball it). Task 1 below
+- `persist()` itself needs no change: it already serializes `spaces` wholesale,
+  so the mutated `fontSize` rides along automatically.
+- The design's Risk/Spike section calls for a *manual* spike (adjust font size
+  via Cmd+ in the running app, log the value, eyeball it). Task 1 below
   implements the equivalent as an automated XCTest instead: it exercises the
-  exact same libghostty call through a real (offscreen) window and a real
-  live surface — the established pattern in
+  exact same libghostty call through a real (offscreen) window and a real live
+  surface — the established pattern in
   `Tests/CasperGhosttyTests/GhosttyEditingCommandReplayTests.swift` — and
-  asserts on the result rather than requiring a human to read a log line.
-  This is strictly more repeatable and becomes permanent regression coverage.
-  **If Task 1's assertion fails, stop and revisit the design's Alternatives
-  section before doing any further task in this plan.**
+  asserts on the result rather than requiring a human to read a log line. This
+  is strictly more repeatable and becomes permanent regression coverage. **If
+  Task 1's assertion fails, stop and revisit the design's Alternatives section
+  before doing any further task in this plan.**
 
 ---
 
@@ -129,8 +132,8 @@ final class GhosttyFontSizeTests: XCTestCase {
 
 - [ ] **Step 2: Run the test to verify it fails to compile**
 
-Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30`
-Expected: FAIL — `value of type 'GhosttySurface' has no member 'currentFontSize'`
+Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30` Expected: FAIL —
+`value of type 'GhosttySurface' has no member 'currentFontSize'`
 
 - [ ] **Step 3: Implement `currentFontSize()`**
 
@@ -148,12 +151,12 @@ In `Sources/CasperGhostty/GhosttySurface.swift`, add after `geometry()`
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30`
-Expected: PASS (or a reported `XCTSkip` if the sandbox cannot create a live
-libghostty surface — in that case, re-run in an environment that can, e.g.
-via `make test`, before proceeding). A PASS confirms the design's core
-assumption; a FAIL means **stop here** and revisit the design's Alternatives
-section instead of continuing to Task 2.
+Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30` Expected: PASS
+(or a reported `XCTSkip` if the sandbox cannot create a live libghostty surface
+— in that case, re-run in an environment that can, e.g. via `make test`, before
+proceeding). A PASS confirms the design's core assumption; a FAIL means **stop
+here** and revisit the design's Alternatives section instead of continuing to
+Task 2.
 
 - [ ] **Step 5: Commit**
 
@@ -172,8 +175,9 @@ git commit -m "Spike: confirm ghostty_surface_inherited_config reflects live fon
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces: `Surface.fontSize: Float?` (default `nil`), `Surface.init(id:kind:fontSize:)`
-  — used by Task 5's `updateSurfaceFontSize` and Task 4/6 tests.
+- Produces: `Surface.fontSize: Float?` (default `nil`),
+  `Surface.init(id:kind:fontSize:)` — used by Task 5's `updateSurfaceFontSize`
+  and Task 4/6 tests.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -210,9 +214,8 @@ Add to `Tests/CasperCoreTests/ModelsTests.swift`, right after
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter ModelsTests 2>&1 | tail -30`
-Expected: FAIL — `extra argument 'fontSize' in call` (the `Surface.init`
-doesn't accept it yet).
+Run: `swift test --filter ModelsTests 2>&1 | tail -30` Expected: FAIL —
+`extra argument 'fontSize' in call` (the `Surface.init` doesn't accept it yet).
 
 - [ ] **Step 3: Add `fontSize` to `Surface`**
 
@@ -279,9 +282,9 @@ and the initializer + `Codable` conformance (currently lines 31-34) to:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --filter ModelsTests 2>&1 | tail -30`
-Expected: PASS, including all pre-existing `ModelsTests` (no regression in
-the full-session round-trip tests).
+Run: `swift test --filter ModelsTests 2>&1 | tail -30` Expected: PASS, including
+all pre-existing `ModelsTests` (no regression in the full-session round-trip
+tests).
 
 - [ ] **Step 5: Commit**
 
@@ -302,8 +305,8 @@ git commit -m "Add fontSize field to Surface for per-terminal font persistence"
 **Interfaces:**
 - Consumes: `LayoutNode` (`.leaf`/`.split`, `Models.swift:54-61`), `Surface`
   (`Models.swift:22-47`, now carrying `fontSize: Float?` from Task 2).
-- Produces: `LayoutTree.updateSurface(_:id:_:) -> LayoutNode` — used by
-  Task 5's `AppModel.updateSurfaceFontSize`.
+- Produces: `LayoutTree.updateSurface(_:id:_:) -> LayoutNode` — used by Task 5's
+  `AppModel.updateSurfaceFontSize`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -349,8 +352,8 @@ Add to `Tests/CasperCoreTests/LayoutTreeTests.swift`, right after
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter LayoutTreeTests 2>&1 | tail -30`
-Expected: FAIL — `type 'LayoutTree' has no member 'updateSurface'`
+Run: `swift test --filter LayoutTreeTests 2>&1 | tail -30` Expected: FAIL —
+`type 'LayoutTree' has no member 'updateSurface'`
 
 - [ ] **Step 3: Implement `updateSurface`**
 
@@ -380,8 +383,8 @@ In `Sources/CasperCore/LayoutTree.swift`, add right after `surfaces(_:)`
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --filter LayoutTreeTests 2>&1 | tail -30`
-Expected: PASS, including all pre-existing `LayoutTreeTests`.
+Run: `swift test --filter LayoutTreeTests 2>&1 | tail -30` Expected: PASS,
+including all pre-existing `LayoutTreeTests`.
 
 - [ ] **Step 5: Commit**
 
@@ -395,8 +398,8 @@ git commit -m "Add LayoutTree.updateSurface pure mutator"
 ### Task 4: `GhosttySurfaceView.onFontSizeChange`
 
 **Files:**
-- Modify: `Sources/CasperGhostty/GhosttySurfaceView.swift:11-71` (init +
-  stored properties) and `:398-408` (the three font-size actions)
+- Modify: `Sources/CasperGhostty/GhosttySurfaceView.swift:11-71` (init + stored
+  properties) and `:398-408` (the three font-size actions)
 - Test: `Tests/CasperGhosttyTests/GhosttyFontSizeTests.swift` (from Task 1)
 
 **Interfaces:**
@@ -461,15 +464,14 @@ Add to `Tests/CasperGhosttyTests/GhosttyFontSizeTests.swift`, inside
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30`
-Expected: FAIL — `incorrect argument label in call` /
-`extra argument 'onFontSizeChange' in call` (the initializer doesn't accept
-it yet).
+Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30` Expected: FAIL —
+`incorrect argument label in call` / `extra argument 'onFontSizeChange' in call`
+(the initializer doesn't accept it yet).
 
 - [ ] **Step 3: Add `onFontSizeChange` to `GhosttySurfaceView`**
 
-In `Sources/CasperGhostty/GhosttySurfaceView.swift`, add a stored property
-after `var onContextMenu` (currently line 26):
+In `Sources/CasperGhostty/GhosttySurfaceView.swift`, add a stored property after
+`var onContextMenu` (currently line 26):
 
 ```swift
     // Fired after a font-size action (increase/decrease/reset) changes this
@@ -559,15 +561,15 @@ with:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30`
-Expected: PASS (or `XCTSkip`, see Task 1 Step 4's note).
+Run: `swift test --filter GhosttyFontSizeTests 2>&1 | tail -30` Expected: PASS
+(or `XCTSkip`, see Task 1 Step 4's note).
 
 - [ ] **Step 6: Run the full `CasperGhostty` test target for regressions**
 
-Run: `swift test --filter CasperGhosttyTests 2>&1 | tail -60`
-Expected: PASS, no regressions (in particular `GhosttyFocusCallbackTests`,
-which constructs `GhosttySurfaceView` without `onFontSizeChange` — verifying
-the new parameter's default keeps existing call sites compiling).
+Run: `swift test --filter CasperGhosttyTests 2>&1 | tail -60` Expected: PASS, no
+regressions (in particular `GhosttyFocusCallbackTests`, which constructs
+`GhosttySurfaceView` without `onFontSizeChange` — verifying the new parameter's
+default keeps existing call sites compiling).
 
 - [ ] **Step 7: Commit**
 
@@ -593,16 +595,16 @@ git commit -m "Report live font-size changes from GhosttySurfaceView"
   (`AppModel.swift:651-653`, private, same file), `AppModel.scheduleSave()`
   (`AppModel.swift:980-985`, private, same file).
 - Produces: `AppModel.updateSurfaceFontSize(_ surfaceID: UUID, size: Float)` —
-  used by Task 6's integration test and wired into `surfaceView(for:in:)`
-  below. `GhosttySurfaceConfiguration.fontSize` now carries
-  `terminal.fontSize ?? 0` instead of the implicit default `0`.
+  used by Task 6's integration test and wired into `surfaceView(for:in:)` below.
+  `GhosttySurfaceConfiguration.fontSize` now carries `terminal.fontSize ?? 0`
+  instead of the implicit default `0`.
 
 - [ ] **Step 1: Write the failing tests**
 
 Add to `Tests/CasperUITests/AppModelTests.swift`, right after
-`testSetBrowserURLWritesBackToInspectorBrowserWhenNotInLayout` and its
-closing brace (find it after line ~865; add these as new top-level methods
-in the class, anywhere after `modelWithOnePlainWorkspace()` is defined):
+`testSetBrowserURLWritesBackToInspectorBrowserWhenNotInLayout` and its closing
+brace (find it after line ~865; add these as new top-level methods in the class,
+anywhere after `modelWithOnePlainWorkspace()` is defined):
 
 ```swift
     // MARK: - Terminal font-size persistence
@@ -642,18 +644,17 @@ in the class, anywhere after `modelWithOnePlainWorkspace()` is defined):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter AppModelTests 2>&1 | tail -40`
-Expected: FAIL — `value of type 'GhosttySurfaceConfiguration' has no member
+Run: `swift test --filter AppModelTests 2>&1 | tail -40` Expected: FAIL —
+`value of type 'GhosttySurfaceConfiguration' has no member
 'fontSize'` is not the error (that member already exists); instead:
-`value of type 'AppModel' has no member 'updateSurfaceFontSize'`, and the
-first test's `.fontSize` assertion fails (currently always `0` regardless of
+`value of type 'AppModel' has no member 'updateSurfaceFontSize'`, and the first
+test's `.fontSize` assertion fails (currently always `0` regardless of
 `terminal.fontSize`).
 
 - [ ] **Step 3: Add `updateSurfaceFontSize` and wire the two chokepoints**
 
 In `Sources/CasperUI/AppModel.swift`, add this method right after
-`setInspectorWidth` (currently ends at line 959), before
-`discardSurfaceViews`:
+`setInspectorWidth` (currently ends at line 959), before `discardSurfaceViews`:
 
 ```swift
     /// Record a terminal surface's live font size (reported after a
@@ -720,8 +721,8 @@ Replace `surfaceConfiguration(for:terminal:)` (currently lines 995-1011):
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --filter AppModelTests 2>&1 | tail -60`
-Expected: PASS, including all pre-existing `AppModelTests` (in particular
+Run: `swift test --filter AppModelTests 2>&1 | tail -60` Expected: PASS,
+including all pre-existing `AppModelTests` (in particular
 `testApplyNewTerminalBlursPreviouslyFocusedSurface` and
 `testApplySplitFromNonFocusedSurfaceBlursTheFocusedSurface`, which also call
 `surfaceView(for:in:)`).
@@ -741,8 +742,8 @@ git commit -m "Wire terminal font-size capture and restore into AppModel"
 - Test: `Tests/CasperUITests/AppModelTests.swift`
 
 **Interfaces:**
-- Consumes: everything produced by Tasks 2-5 — no new production code in
-  this task, verification only.
+- Consumes: everything produced by Tasks 2-5 — no new production code in this
+  task, verification only.
 
 - [ ] **Step 1: Write the integration test**
 
@@ -800,8 +801,8 @@ Expected: PASS (or `XCTSkip` per the environment caveat noted in Task 1).
 
 - [ ] **Step 3: Run the full test suite for regressions**
 
-Run: `make test 2>&1 | tail -80`
-Expected: PASS, no regressions anywhere in the suite.
+Run: `make test 2>&1 | tail -80` Expected: PASS, no regressions anywhere in the
+suite.
 
 - [ ] **Step 4: Commit**
 
@@ -818,15 +819,14 @@ git commit -m "Add end-to-end test for terminal font-size persistence wiring"
 
 - [ ] **Step 1: Run the full test suite**
 
-Run: `make test 2>&1 | tail -80`
-Expected: PASS, no regressions.
+Run: `make test 2>&1 | tail -80` Expected: PASS, no regressions.
 
 - [ ] **Step 2: Manual verification via `make dev`**
 
 Run: `make dev`, then in the app:
 
-1. Open a terminal in one workspace; press Cmd+ (increase font size) three
-   or four times.
+1. Open a terminal in one workspace; press Cmd+ (increase font size) three or
+   four times.
 2. Open a second terminal in a different workspace; leave its font size
    untouched.
 3. Quit Casper.
@@ -835,9 +835,9 @@ Run: `make dev`, then in the app:
 Expected: the first terminal reopens visibly larger than before; the second,
 untouched terminal reopens at the default size. This is the design's
 originally-specified manual acceptance check
-(`.superpowers/plans/terminal-font-size-persistence.md`,
-Testing section) — Task 1's automated spike test and Task 6's integration
-test already give strong confidence in the underlying mechanism, so this
-step is a final visual sanity pass, not a substitute for them.
+(`.superpowers/plans/terminal-font-size-persistence.md`, Testing section) — Task
+1's automated spike test and Task 6's integration test already give strong
+confidence in the underlying mechanism, so this step is a final visual sanity
+pass, not a substitute for them.
 
 - [ ] **Step 3: Commit** (only if step 2 uncovered fixes; otherwise skip)

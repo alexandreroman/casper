@@ -19,6 +19,7 @@ final class ControlServer {
                 self.handle(command, reply: reply)
             }
         }
+        server.onFailure = { CasperLog.app.failure("control socket listener failed", $0) }
     }
 
     func start() throws { try server.start() }
@@ -57,19 +58,18 @@ final class ControlServer {
             guard let raw = command.state, let state = AgentState(rawValue: raw) else {
                 reply(.failure("invalid state: \(command.state ?? "nil")")); return
             }
-            reply(model.controlSetAgentState(state, for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+            reply(Self.ack(model.controlSetAgentState(state, for: id), workspace: id)); return
         case .progressSet:
             guard let total = command.total, let current = command.current,
                   let label = command.label else { reply(.failure("missing progress fields")); return }
-            reply(model.controlSetProgress(total: total, current: current, label: label, for: id)
-                ? .success(workspace: id.uuidString) : .failure("invalid progress \(current)/\(total)")); return
+            reply(Self.ack(
+                model.controlSetProgress(total: total, current: current, label: label, for: id),
+                workspace: id, failure: "invalid progress \(current)/\(total)")); return
         case .progressClear:
-            reply(model.controlClearProgress(for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+            reply(Self.ack(model.controlClearProgress(for: id), workspace: id)); return
         case .notify:
-            reply(model.controlRaiseNotification(message: command.message, for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+            reply(Self.ack(model.controlRaiseNotification(message: command.message, for: id),
+                           workspace: id)); return
         case .infoSet:
             guard let markdown = command.message,
                   !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -81,11 +81,9 @@ final class ControlServer {
                         + "\(ControlCommand.infoMessageMaxBytes))"))
                 return
             }
-            reply(model.controlSetInfo(markdown: markdown, for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+            reply(Self.ack(model.controlSetInfo(markdown: markdown, for: id), workspace: id)); return
         case .infoClear:
-            reply(model.controlClearInfo(for: id)
-                ? .success(workspace: id.uuidString) : .failure("workspace not found")); return
+            reply(Self.ack(model.controlClearInfo(for: id), workspace: id)); return
         case .terminalNew:
             guard let info = model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd) else {
                 reply(.failure("cannot open terminal")); return
@@ -94,32 +92,31 @@ final class ControlServer {
         case .terminalList:
             reply(.success(workspace: id.uuidString, terminals: model.controlListTerminals(in: id))); return
         case .terminalClose:
-            reply(model.controlCloseTerminal(in: id, terminalID: command.target)
-                ? .success(workspace: id.uuidString)
-                : .failure("no terminal '\(command.target ?? "")' in this workspace")); return
+            reply(Self.ack(model.controlCloseTerminal(in: id, terminalID: command.target), workspace: id,
+                           failure: "no terminal '\(command.target ?? "")' in this workspace")); return
         case .browserOpen:
-            guard let raw = command.url, let url = URL(string: raw), url.scheme != nil, url.host != nil else {
+            guard let url = Self.parsedURL(command.url) else {
                 reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
-            reply(model.controlOpenBrowser(url: url, in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot open browser")); return
+            reply(Self.ack(model.controlOpenBrowser(url: url, in: id), workspace: id,
+                           failure: "cannot open browser")); return
         case .browserLoad:
-            guard let raw = command.url, let url = URL(string: raw), url.scheme != nil, url.host != nil else {
+            guard let url = Self.parsedURL(command.url) else {
                 reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
-            reply(model.controlLoadBrowser(url: url, in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot load browser")); return
+            reply(Self.ack(model.controlLoadBrowser(url: url, in: id), workspace: id,
+                           failure: "cannot load browser")); return
         case .browserClose:
-            reply(model.controlCloseBrowser(in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot close browser")); return
+            reply(Self.ack(model.controlCloseBrowser(in: id), workspace: id,
+                           failure: "cannot close browser")); return
         case .diffOpen:
             switch model.controlOpenDiff(in: id, file: command.target) {
             case .success: reply(.success(workspace: id.uuidString)); return
             case .failure(let error): reply(.failure(error.message)); return
             }
         case .diffClose:
-            reply(model.controlCloseDiff(in: id)
-                ? .success(workspace: id.uuidString) : .failure("cannot close diff")); return
+            reply(Self.ack(model.controlCloseDiff(in: id), workspace: id,
+                           failure: "cannot close diff")); return
         case .workspaceDelete:
             model.controlDeleteWorkspace(id: id) { result in
                 switch result {
@@ -213,24 +210,16 @@ final class ControlServer {
                     waitReady: waitReady, timeoutMs: timeout, in: id).map { _ in "" }
             }
             return
-        case .browserScrollUp:
+        // The four scroll verbs differ only in which call they make — a step or a
+        // jump to the edge — and in the direction.
+        case .browserScrollUp, .browserScrollDown, .browserScrollTop, .browserScrollBottom:
+            let toEdge = command.verb == .browserScrollTop || command.verb == .browserScrollBottom
+            let towardEnd = command.verb == .browserScrollDown || command.verb == .browserScrollBottom
             replyWhenReady(workspace: id, reply: reply) {
-                await model.browserAutomation.controlBrowserScroll(down: false, in: id)
-            }
-            return
-        case .browserScrollDown:
-            replyWhenReady(workspace: id, reply: reply) {
-                await model.browserAutomation.controlBrowserScroll(down: true, in: id)
-            }
-            return
-        case .browserScrollTop:
-            replyWhenReady(workspace: id, reply: reply) {
-                await model.browserAutomation.controlBrowserScrollToEdge(bottom: false, in: id)
-            }
-            return
-        case .browserScrollBottom:
-            replyWhenReady(workspace: id, reply: reply) {
-                await model.browserAutomation.controlBrowserScrollToEdge(bottom: true, in: id)
+                let automation = model.browserAutomation
+                return toEdge
+                    ? await automation.controlBrowserScrollToEdge(bottom: towardEnd, in: id)
+                    : await automation.controlBrowserScroll(down: towardEnd, in: id)
             }
             return
         case .workspaceList, .workspaceNew:
@@ -249,6 +238,21 @@ final class ControlServer {
         Task { @MainActor in
             reply(Self.browserReply(await op(), workspace: id))
         }
+    }
+
+    /// The `--url` argument, accepted only as an absolute URL: a bare path or any
+    /// string without both a scheme and a host is rejected rather than loaded.
+    private static func parsedURL(_ raw: String?) -> URL? {
+        guard let raw, let url = URL(string: raw), url.scheme != nil, url.host != nil else { return nil }
+        return url
+    }
+
+    /// The acknowledgement a workspace-scoped command replies with: the workspace id
+    /// on success, `failure` otherwise.
+    private static func ack(
+        _ succeeded: Bool, workspace id: UUID, failure: String = "workspace not found"
+    ) -> ControlResponse {
+        succeeded ? .success(workspace: id.uuidString) : .failure(failure)
     }
 
     /// Build the wait predicate JS and a human description from a `browserWait`

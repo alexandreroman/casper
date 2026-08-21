@@ -3,9 +3,10 @@
 > **✅ DONE — shipped.** The `casper browser close` / `casper diff close` CLI
 > verbs are implemented and merged. This plan is retained for reference.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan
-> task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `casper browser close` and `casper diff close` CLI subcommands
 that collapse the shared inspector panel when their view is the active tab.
@@ -13,8 +14,8 @@ that collapse the shared inspector panel when their view is the active tab.
 **Architecture:** Two new `ControlCommand.Verb` cases (`browserClose`,
 `diffClose`) carry no new payload — just the existing `workspace` selector.
 `ControlServer.handle(_:)` routes them to two new `AppModel` methods
-(`controlCloseBrowser`, `controlCloseDiff`) that collapse `InspectorState`
-only when its `tab` matches, and no-op (success) otherwise. Two new `Close`
+(`controlCloseBrowser`, `controlCloseDiff`) that collapse `InspectorState` only
+when its `tab` matches, and no-op (success) otherwise. Two new `Close`
 subcommands on `BrowserCommand`/`DiffCommand`, shaped exactly like
 `TerminalCommand.Close`, send the command and print `WorkspaceRefOut`.
 
@@ -42,16 +43,16 @@ subcommands on `BrowserCommand`/`DiffCommand`, shaped exactly like
 - Test: `Tests/CasperUITests/ControlHandlerTests.swift`
 
 **Interfaces:**
-- Consumes: `InspectorState` (`Sources/CasperCore/Models.swift:154-176`,
-  fields `collapsed: Bool`, `tab: InspectorTab`), `InspectorTab` (`.browser`/`.diff`,
+- Consumes: `InspectorState` (`Sources/CasperCore/Models.swift:154-176`, fields
+  `collapsed: Bool`, `tab: InspectorTab`), `InspectorTab` (`.browser`/`.diff`,
   `Models.swift:145-147`), `AppModel.workspace(id:) -> Workspace?`
   (`AppModel.swift:272`), `AppModel.setInspectorCollapsed(_:for:)`
   (`AppModel.swift:928-932`).
 - Produces: `ControlCommand.Verb.browserClose`, `ControlCommand.Verb.diffClose`;
   `AppModel.controlCloseBrowser(in workspaceID: UUID) -> Bool`,
   `AppModel.controlCloseDiff(in workspaceID: UUID) -> Bool` — both return
-  `false` only when the workspace can't be located, `true` otherwise (whether
-  or not the tab matched).
+  `false` only when the workspace can't be located, `true` otherwise (whether or
+  not the tab matched).
 
 - [ ] **Step 1: Write the failing AppModel tests**
 
@@ -118,8 +119,8 @@ func testCloseDiffFailsForUnknownWorkspace() {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40`
-Expected: build FAILS — `controlCloseBrowser`/`controlCloseDiff` do not exist yet.
+Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40` Expected: build
+FAILS — `controlCloseBrowser`/`controlCloseDiff` do not exist yet.
 
 - [ ] **Step 3: Add the `Verb` cases**
 
@@ -172,8 +173,8 @@ In `Sources/CasperUI/AppModel.swift`, insert immediately after
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40`
-Expected: PASS, including the 6 new tests.
+Run: `swift test --filter ControlHandlerTests 2>&1 | tail -40` Expected: PASS,
+including the 6 new tests.
 
 - [ ] **Step 6: Commit**
 
@@ -194,7 +195,8 @@ git commit -m "Add browserClose/diffClose control verbs and AppModel handlers"
 **Interfaces:**
 - Consumes: `ControlCommand.Verb.browserClose`/`.diffClose` (Task 1),
   `AppModel.controlCloseBrowser(in:)`/`controlCloseDiff(in:)` (Task 1),
-  `ControlResponse.success(workspace:)`/`.failure(_:)` (`ControlProtocol.swift:112-123`).
+  `ControlResponse.success(workspace:)`/`.failure(_:)`
+  (`ControlProtocol.swift:112-123`).
 - Produces: `ControlServer.handle(_:)` now routes `.browserClose`/`.diffClose`.
 
 - [ ] **Step 1: Write the failing dispatch tests**
@@ -222,10 +224,10 @@ Add to `Tests/CasperUITests/ControlServerTests.swift`, right after
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter ControlServerTests 2>&1 | tail -40`
-Expected: build FAILS — the `switch` in `handle(_:)` is not yet exhaustive for
-the new `Verb` cases (Swift's `Verb` switches have no `default`, so this is a
-compile error, not a runtime failure).
+Run: `swift test --filter ControlServerTests 2>&1 | tail -40` Expected: build
+FAILS — the `switch` in `handle(_:)` is not yet exhaustive for the new `Verb`
+cases (Swift's `Verb` switches have no `default`, so this is a compile error,
+not a runtime failure).
 
 - [ ] **Step 3: Add the dispatch cases**
 
@@ -261,8 +263,8 @@ to:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `swift test --filter ControlServerTests 2>&1 | tail -40`
-Expected: PASS, including the 2 new tests.
+Run: `swift test --filter ControlServerTests 2>&1 | tail -40` Expected: PASS,
+including the 2 new tests.
 
 - [ ] **Step 5: Commit**
 
@@ -293,7 +295,8 @@ git commit -m "Dispatch browserClose/diffClose control commands in ControlServer
 - [ ] **Step 1: Write the failing CLI parsing tests**
 
 Add to `Tests/CasperCLITests/ControlCommandTests.swift`, right after
-`testBrowserOpenRejectsInvalidURL` (after line 102, before `testDiffOpenBuildsCommand`):
+`testBrowserOpenRejectsInvalidURL` (after line 102, before
+`testDiffOpenBuildsCommand`):
 
 ```swift
     func testBrowserCloseBuildsCommand() throws {
@@ -305,8 +308,8 @@ Add to `Tests/CasperCLITests/ControlCommandTests.swift`, right after
 
 ```
 
-Add to the same file, right after `testDiffOpenCarriesFileArgument` (after
-line 116, before `testWorkspaceNewBuildsCommand`):
+Add to the same file, right after `testDiffOpenCarriesFileArgument` (after line
+116, before `testWorkspaceNewBuildsCommand`):
 
 ```swift
     func testDiffCloseBuildsCommand() throws {
@@ -320,9 +323,8 @@ line 116, before `testWorkspaceNewBuildsCommand`):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `swift test --filter ControlCommandTests 2>&1 | tail -40`
-Expected: build FAILS — `BrowserCommand.Close`/`DiffCommand.Close` do not
-exist yet.
+Run: `swift test --filter ControlCommandTests 2>&1 | tail -40` Expected: build
+FAILS — `BrowserCommand.Close`/`DiffCommand.Close` do not exist yet.
 
 - [ ] **Step 3: Add `BrowserCommand.Close`**
 
@@ -435,8 +437,8 @@ struct DiffCommand: ParsableCommand {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `swift test --filter ControlCommandTests 2>&1 | tail -40`
-Expected: PASS, including the 2 new tests.
+Run: `swift test --filter ControlCommandTests 2>&1 | tail -40` Expected: PASS,
+including the 2 new tests.
 
 - [ ] **Step 6: Commit**
 
@@ -454,8 +456,7 @@ git commit -m "Add casper browser close / diff close CLI subcommands"
 
 - [ ] **Step 1: Run the full test suite**
 
-Run: `make test 2>&1 | tail -60`
-Expected: PASS, no regressions.
+Run: `make test 2>&1 | tail -60` Expected: PASS, no regressions.
 
 - [ ] **Step 2: Manual verification via `make dev`**
 
