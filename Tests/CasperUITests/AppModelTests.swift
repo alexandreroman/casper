@@ -1311,17 +1311,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].inspector.tab, .diff)
     }
 
-    func testToggleInspectorCollapsedFlipsAndPersists() {
-        let (model, _) = modelWithOnePlainWorkspace()
-        let wsID = model.spaces[0].workspaces[0].id
-        let before = model.spaces[0].workspaces[0].inspector.collapsed
-        var saves = 0
-        model.onPersistForTest = { saves += 1 }
-        model.toggleInspectorCollapsed(for: wsID)
-        XCTAssertEqual(model.spaces[0].workspaces[0].inspector.collapsed, !before)
-        XCTAssertEqual(saves, 1)
-    }
-
     func testSetInspectorCollapsedSetsAndPersists() {
         let (model, _) = modelWithOnePlainWorkspace()
         let wsID = model.spaces[0].workspaces[0].id

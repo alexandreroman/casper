@@ -311,7 +311,7 @@ persisted.
 matching the sidebar/content edge), then `InspectorPanel` at a state-driven
 `width` (`InspectorState.defaultWidth` = 780, clamped 240–1400). The panel is
 **always mounted**; collapsing animates an outer clip container's width to zero
-rather than unmounting it, so the icon rail pinned to the trailing edge never
+rather than unmounting it, so the panel stays at fixed coordinates and nothing
 translates — see [[swiftui-inspector-width]]. The `Divider()` doubles as a drag
 handle (transparent 10 pt hit area, left-right resize cursor) that resizes the
 panel, and lives inside the same clipped container so it reveals with the panel.
@@ -319,26 +319,41 @@ Because the left region stays `maxWidth: .infinity`, the width is **unaffected
 by adding terminals**. It is a side region, not an `HSplitView` pane (which
 would reset the width on re-add). The width is **persisted**:
 `InspectorState.width` is `Codable` with its own coding key, and a legacy
-`session.json` without it decodes to the default. `InspectorPanel` pins a
-vertical, icon-only Diff/Browser tab rail to its right edge, alongside
-**full-bleed** content (no insets — a native `TabView`'s mandatory content inset
-was rejected), reusing `BrowserSurfaceView` (on `inspector.browser`) and
-`DiffSurfaceView` unchanged. The panel is collapsed only via the title-bar
-toggle (no in-panel collapse button). The panel browser's `WKWebView` survives
+`session.json` without it decodes to the default. `InspectorPanel` carries no
+chrome of its own beyond the top separator: it is **full-bleed** content (no
+insets — a native `TabView`'s mandatory content inset was rejected), reusing
+`BrowserSurfaceView` (on `inspector.browser`) and `DiffSurfaceView` unchanged.
+Which tab it shows, and whether it is open at all, is driven **only** by the two
+title-bar chips (no in-panel tab rail, no in-panel collapse button — the
+original vertical icon rail was dropped when the chips took over both roles).
+The panel browser's `WKWebView` survives
 collapse/expand and workspace switches via the existing surface-view cache
 (stable `Surface.id`); its address-bar URL write-back reaches
 `inspector.browser` through an extended `setBrowserURL` (fall-through on a
 `locateSurface` miss). Diff is on-demand (open + refresh).
 
-**Chrome.** The title bar drops the globe "New browser" button and gains a panel
-toggle (`sidebar.right`, tinted when expanded); the `+ins −del` diff summary is
-now a button that expands the panel on the Diff tab. "New terminal" is
-unchanged.
+**Chrome.** The title bar drops the globe "New browser" button and gains a
+**segmented** Diff/Browser control: ONE capsule — the same shell
+`TitleSplitButton` gives the Run Script and Editor chips — enclosing two
+**icon-only** segments, `plusminus` and `globe` (names carried by the tooltip
+and the accessibility label, not visible text). It is one control rather than
+two chips on purpose: the two tabs are **mutually exclusive**, and two
+identically-styled standalone pills read as two independent toggles. A single
+`controlColor` indicator `matchedGeometryEffect`-slides between the segments,
+and the selected segment's glyph goes `.primary` while the other stays
+`.secondary`. Three states are therefore legible: open on Diff, open on Browser,
+and **collapsed — no indicator at all**. Each segment routes to
+`AppModel.toggleInspectorTab`: expand onto that tab when collapsed, collapse
+when already open on it, switch tab otherwise. No accent colour is involved
+anywhere (see [[title-bar-chip-chrome]]). There is no separate panel toggle
+— the single `sidebar.right` button it replaced is gone, along with
+`AppModel.toggleInspectorCollapsed`. The `+ins −del` diff summary is still a
+button that expands the panel on the Diff tab. "New terminal" is unchanged.
 
 **Tests.** `swift test` → 266 passing, incl. `InspectorState` defaults,
 `Workspace` round-trip with a non-default inspector, legacy-decode without the
-`inspector` key, the three `AppModel` inspector mutators, and the
-inspector-browser URL write-back.
+`inspector` key, the `AppModel` inspector mutators, and the inspector-browser
+URL write-back.
 
 **Verified.** Live GUI pass (`debug-casper`): panel toggle, tab switch, browser
 survival across collapse/expand and workspace switch, and a terminal pane not
