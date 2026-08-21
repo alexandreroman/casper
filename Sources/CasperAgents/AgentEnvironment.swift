@@ -1,3 +1,4 @@
+import CasperCore
 import Foundation
 
 /// Builds the environment injected into every Casper terminal surface.
@@ -36,7 +37,7 @@ public enum AgentEnvironment {
         controlSocketPath: String? = nil,
         sessionName: String? = nil
     ) -> [String: String] {
-        var env: [String: String] = ["CASPER_WORKSPACE_ID": workspaceId.uuidString]
+        var env: [String: String] = ["CASPER_WORKSPACE_ID": workspaceId.casperID]
         if let portBase {
             env["CASPER_PORT"] = String(portBase)
         }

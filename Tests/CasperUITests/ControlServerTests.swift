@@ -5,6 +5,12 @@ import CasperCore
 /// `handle(_:)` dispatch coverage only — no real socket. `ControlSocketServer`'s
 /// own transport is exercised in `CasperCoreTests`; this suite checks that
 /// `ControlServer` routes each verb to the right `AppModel.control*` handler.
+///
+/// The commands target their workspace with `id.uuidString` — the **uppercase**
+/// form an older build would have exported — while every assertion expects the
+/// canonical `id.casperID` back. That asymmetry is deliberate: it pins both halves
+/// of the contract, that a selector matches case-insensitively and that a reply
+/// always carries the lowercase id.
 @MainActor
 final class ControlServerTests: XCTestCase {
     /// `ControlServer` only weak-refs its model (matching `DebugServer`'s weak
@@ -82,7 +88,7 @@ final class ControlServerTests: XCTestCase {
         let (server, id) = try seededServer()
         let response = handleSync(server, ControlCommand(verb: .browserClose, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserLoadDispatch() throws {
@@ -90,7 +96,7 @@ final class ControlServerTests: XCTestCase {
         let response = handleSync(
             server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "https://example.com"))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserLoadRejectsInvalidURL() throws {
@@ -130,7 +136,7 @@ final class ControlServerTests: XCTestCase {
         let (server, id) = try seededServer()
         let response = handleSync(server, ControlCommand(verb: .diffClose, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testInfoSetRoutesToTheModel() throws {
@@ -201,7 +207,7 @@ final class ControlServerTests: XCTestCase {
             server, ControlCommand(verb: .browserEval, workspace: id.uuidString, script: "1 + 1"))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.text, "2")
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserEvalWithoutScriptFails() async throws {
@@ -260,7 +266,7 @@ final class ControlServerTests: XCTestCase {
         let response = await handleAsync(
             server, ControlCommand(verb: .browserKey, workspace: id.uuidString, key: "Enter"))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserScreenshotWritesPNG() async throws {
@@ -351,7 +357,7 @@ final class ControlServerTests: XCTestCase {
         let response = await handleAsync(server, ControlCommand(verb: .browserConsole, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.text, "[]")
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserWaitImmediateTrueSucceeds() async throws {
@@ -360,7 +366,7 @@ final class ControlServerTests: XCTestCase {
             server,
             ControlCommand(verb: .browserWait, workspace: id.uuidString, predicate: "true", waitTimeout: 2000))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserWaitNeverTrueTimesOut() async throws {
@@ -390,35 +396,35 @@ final class ControlServerTests: XCTestCase {
         let (server, id) = try seededServer()
         let response = await handleAsync(server, ControlCommand(verb: .browserReload, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserScrollUpReturns() async throws {
         let (server, id) = try seededServer()
         let response = await handleAsync(server, ControlCommand(verb: .browserScrollUp, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserScrollDownReturns() async throws {
         let (server, id) = try seededServer()
         let response = await handleAsync(server, ControlCommand(verb: .browserScrollDown, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserScrollTopReturns() async throws {
         let (server, id) = try seededServer()
         let response = await handleAsync(server, ControlCommand(verb: .browserScrollTop, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserScrollBottomReturns() async throws {
         let (server, id) = try seededServer()
         let response = await handleAsync(server, ControlCommand(verb: .browserScrollBottom, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.uuidString)
+        XCTAssertEqual(response.workspace, id.casperID)
     }
 
     /// End-to-end against a real `WKWebView`: a `data:` page logs to the console and

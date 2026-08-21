@@ -429,7 +429,7 @@ final class ControlHandlerTests: XCTestCase {
         switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-x", base: nil) {
         case .success(let info):
             XCTAssertEqual(info.branch, "feature-x")
-            XCTAssertTrue(model.allWorkspaces.contains { $0.id.uuidString == info.id })
+            XCTAssertTrue(model.allWorkspaces.contains { $0.id.casperID == info.id })
         case .failure(let error):
             XCTFail("expected success, got \(error.message)")
         }
@@ -505,7 +505,7 @@ final class ControlHandlerTests: XCTestCase {
             return XCTFail("expected failure for a primary workspace")
         }
         XCTAssertTrue(error.message.contains("primary"), "got: \(error.message)")
-        XCTAssertTrue(model.controlListWorkspaces().contains { $0.id == primaryID.uuidString })
+        XCTAssertTrue(model.controlListWorkspaces().contains { $0.id == primaryID.casperID })
     }
 
     func testSetAgentState() {
@@ -910,7 +910,7 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         let list = model.controlListWorkspaces()
         XCTAssertEqual(list.count, 1)
-        XCTAssertEqual(list.first?.id, id.uuidString)
+        XCTAssertEqual(list.first?.id, id.casperID)
         XCTAssertEqual(list.first?.name, "main")
     }
 

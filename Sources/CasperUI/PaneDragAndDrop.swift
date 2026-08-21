@@ -156,7 +156,7 @@ final class PaneDragHandleView: NSView, NSDraggingSource {
         let item = NSPasteboardItem()
         // `.string` is `public.utf8-plain-text`, a system-registered type SwiftUI's
         // `.onDrop` reliably matches — unlike a code-declared UTType with no Info.plist.
-        item.setString(surfaceID.uuidString, forType: .string)
+        item.setString(surfaceID.casperID, forType: .string)
 
         let image = Self.makeDragImage(label: label)
         let draggingItem = NSDraggingItem(pasteboardWriter: item)

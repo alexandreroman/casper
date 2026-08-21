@@ -340,7 +340,8 @@ no target. Commands talk to the running app over a Unix domain socket named by
 
 Every command is machine-readable: on success it prints a JSON object (or array)
 to stdout describing the affected `workspace` and any resulting state; on error
-it prints `{"error":"…"}` to stderr and exits non-zero. `workspace delete` is
+it prints `{"error":"…"}` to stderr and exits non-zero. Ids are printed in
+lowercase, and `--workspace` matches an id in either case. `workspace delete` is
 destructive (it removes the worktree folder and its branch) and refuses the
 primary workspace.
 

@@ -111,3 +111,4 @@
 - [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
 - [AppModel encapsulation across extension files](references/appmodel-extension-encapsulation.md) — `private(set)` survives the split via mutators
+- [UUID fixtures must carry hex letters](references/uuid-fixture-case-vacuity.md) — a digit-only id makes a case assertion vacuous

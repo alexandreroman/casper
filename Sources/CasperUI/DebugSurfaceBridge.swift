@@ -17,7 +17,7 @@ extension AppModel: DebugSurfaceProvider {
         let focused = (window.firstResponder === view)
         return [
             DebugSurfaceHandle(
-                id: id.uuidString,
+                id: id.casperID,
                 title: workspace.name,
                 workingDirectory: workspace.worktreePath,
                 focused: focused,
