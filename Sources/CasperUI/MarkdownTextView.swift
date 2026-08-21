@@ -203,12 +203,21 @@ struct MarkdownTextView: NSViewRepresentable {
         // none of its own — neither an inset nor AppKit's default line-fragment
         // padding, which would otherwise make the rendered width `width` + 10.
         textView.textContainerInset = .zero
-        // Fixed width, unbounded height: the text container must follow the view's
-        // width so wrapping happens at `width`, but must *not* follow its height —
-        // a height-tracking container stops laying out past the frame, which would
-        // silently clip the message if `height(for:width:)` ever under-reports.
+        // Neither axis resizes itself. The caller (`WorkspaceInfoPanel`) measures
+        // the message with `height(for:width:)` and gives this view exactly that
+        // frame, so the view must not compute a frame of its own:
+        // `isVerticallyResizable = true` let AppKit shrink the assigned frame back
+        // to the extent of the text it had lazily laid out (TextKit 2 lays out
+        // viewport-first), which silently clipped the tail of a long, scrolling
+        // message — measured at a 1000 pt frame against 1263 pt of laid-out text,
+        // so its last 263 pt were never drawn.
+        //
+        // The container stays unbounded in height either way, so nothing is
+        // clipped at layout time: it is built above with a 0 height, which
+        // TextKit 2 reads as unlimited, and `heightTracksTextView` stays false.
+        // Only the width tracks the view, so wrapping happens at `width`.
         textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
+        textView.isVerticallyResizable = false
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.lineFragmentPadding = 0
         textView.linkTextAttributes = [

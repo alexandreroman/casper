@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import XCTest
 import CasperCore
@@ -131,6 +132,59 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         let size = layoutSize(for: longLine)
 
         XCTAssertEqual(size.height, expectedPanelHeight, accuracy: 1)
+    }
+
+    /// The hosted text view must keep the *whole* frame the panel measured for
+    /// it, so a message too tall for the popover stays readable to its last line
+    /// once scrolled. A vertically resizable `NSTextView` sizes itself to the
+    /// text it has lazily laid out instead — TextKit 2 lays out viewport-first —
+    /// which left the frame hundreds of points shorter than the message and cut
+    /// its tail off with no way to scroll to it.
+    ///
+    /// The window is load-bearing, not decoration: without one, the
+    /// `ScrollView`'s document view never lays out, and the text view's frame
+    /// says nothing about what a reader would see.
+    func testTallMessageKeepsTheFullMeasuredHeightInTheTextView() throws {
+        let block = """
+            ## Dev server ready
+
+            - API: <http://localhost:8080>
+            - Docs: <http://localhost:8081>
+
+            Run `casper info clear` once the run is over.
+            """
+        let markdown = Array(repeating: block, count: 40).joined(separator: "\n\n")
+        let contentHeight = MarkdownTextView.height(for: markdown, width: WorkspaceInfoPanel.width - 24)
+        XCTAssertGreaterThan(
+            contentHeight, 2 * WorkspaceInfoPanel.maxHeight,
+            "the fixture must be far taller than the panel, or it would never scroll")
+
+        let (model, workspace) = Self.seeded()
+        let view = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown)
+        let host = NSHostingView(rootView: view)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: WorkspaceInfoPanel.width, height: WorkspaceInfoPanel.maxHeight + 24),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        host.layoutSubtreeIfNeeded()
+
+        // Only `textLayoutManager` is safe to touch on a hosted view; reading
+        // `layoutManager` would migrate it to the TextKit 1 stack (see the
+        // `textkit2-layout-geometry` project memory note). The frame alone answers
+        // this test anyway.
+        let textView = try XCTUnwrap(Self.firstTextView(in: host))
+        XCTAssertEqual(textView.frame.height, contentHeight, accuracy: 1)
+    }
+
+    /// Depth-first, so the panel's own text view is found rather than any
+    /// scrollbar or chrome `NSTextView` a future `ScrollView` might add above it.
+    private static func firstTextView(in view: NSView) -> NSTextView? {
+        if let textView = view as? NSTextView { return textView }
+        for subview in view.subviews {
+            if let found = firstTextView(in: subview) { return found }
+        }
+        return nil
     }
 
     // MARK: - Link routing
