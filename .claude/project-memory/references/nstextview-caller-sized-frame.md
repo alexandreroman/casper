@@ -6,9 +6,12 @@ type: reference
 
 # A caller-sized NSTextView must not be vertically resizable
 
-`MarkdownTextView` is sized by its caller: `WorkspaceInfoPanel` measures the
-message with `MarkdownTextView.height(for:width:)` and hands the view exactly
-that frame via `.frame(width:height:)`.
+`MarkdownTextView` is sized by its caller: `WorkspaceInfoPanel` hands the view a
+height through `.frame(width:height:)`. Where that height comes from is a
+separate question, settled in [[textkit1-fallback-on-nstexttable]] — the view
+reports what it has really laid out and the panel takes the larger of that and
+`MarkdownTextView.height(for:width:)`, because the two disagree whenever the
+live view has fallen back to TextKit 1.
 
 An `NSTextView` with `isVerticallyResizable = true` computes its own frame
 height from the text it has laid out, and that self-sizing **wins over the frame
@@ -30,7 +33,9 @@ wrapping.
 
 Pinned by `WorkspaceInfoPanelTests.testTallMessageKeepsTheFullMeasuredHeightInTheTextView`,
 which compares the hosted text view's `frame.height` against
-`height(for:width:)`. Such a test needs a real `NSWindow` around the
+`height(for:width:)` for a **table-free** message — the case where the
+measurement and the live view's own layout are the same number. Such a test
+needs a real `NSWindow` around the
 `NSHostingView`: without one, a SwiftUI `ScrollView`'s document view never lays
 out and the frame says nothing (see [[headless-swiftui-layout-tests]]).
 
