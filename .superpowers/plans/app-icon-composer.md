@@ -1,5 +1,7 @@
 # Icon Composer migration — design
 
+**Date:** 2026-07-17 **Status:** Shipped
+
 Give Casper a macOS 26 (Tahoe) Liquid Glass app icon with all three appearances
 (Default / Dark / Clear), while keeping the existing high-resolution `.icns` as
 the fallback for macOS 15–25. The change is **purely additive**: the SVG→`.icns`
@@ -15,13 +17,13 @@ in-app asset system. Two mechanisms exist:
   `Scripts/make-icon.sh`). Every macOS version understands it. `.icns` carries a
   single appearance — it cannot express Light/Dark/Tinted variants.
 - **Liquid Glass (macOS 26+)** — `CFBundleIconName` names an icon baked into a
-  compiled `Assets.car`. The source is an Icon Composer `.icon` bundle
-  (layered art + material properties), from which the system derives the
-  Default, Dark, and Clear (system-tinted, monochrome) appearances at runtime.
+  compiled `Assets.car`. The source is an Icon Composer `.icon` bundle (layered
+  art + material properties), from which the system derives the Default, Dark,
+  and Clear (system-tinted, monochrome) appearances at runtime.
 
 macOS 15–25 ignore `CFBundleIconName`/`Assets.car` entirely; macOS 26 prefers
-`CFBundleIconName` when present. Shipping **both** keys and **both** files is the
-supported way to serve old and new systems. The previously-circulated
+`CFBundleIconName` when present. Shipping **both** keys and **both** files is
+the supported way to serve old and new systems. The previously-circulated
 "split-icon" workaround (separate icons for Tahoe vs. earlier via
 `--enable-icon-stack-fallback-generation=disabled`) is **not used** — Apple
 dropped support for it for Mac apps as of Xcode 26.1.
@@ -77,23 +79,23 @@ The bundle is named `AppIcon.icon` so `actool --app-icon AppIcon` sets
 `CFBundleIconFile = AppIcon`. One name, two mechanisms — no conflict, since they
 resolve against different stores (a `.car` entry vs. a Resources file).
 
-`icon.svg` composites four elements: the dark rounded body
-(`#3C3C3C→#1E1E1E`), a teal vertical split line, a cream Ghostty prompt caret,
-and an orange sparkle (`#FFDD86→#FF9E3D`) under a Gaussian-blur glow filter.
-These map to Icon Composer as:
+`icon.svg` composites four elements: the dark rounded body (`#3C3C3C→#1E1E1E`),
+a teal vertical split line, a cream Ghostty prompt caret, and an orange sparkle
+(`#FFDD86→#FF9E3D`) under a Gaussian-blur glow filter. These map to Icon
+Composer as:
 
-- **Background** — the dark body, expressed as a **gradient fill set in the GUI**
-  (resolution-independent, no `background.png`; Icon Composer applies its own
-  rounded-rect mask, so the body's own `rx`/drop-shadow are dropped).
+- **Background** — the dark body, expressed as a **gradient fill set in the
+  GUI** (resolution-independent, no `background.png`; Icon Composer applies its
+  own rounded-rect mask, so the body's own `rx`/drop-shadow are dropped).
 - **Foreground layer 1 — terminal marks**: the split line + caret
   (`terminal.svg`), imported directly into Icon Composer.
-- **Foreground layer 2 — sparkle**: the orange sparkle (`sparkle.svg`),
-  imported directly and rendered *without* the SVG glow filter so the glow is
-  reproduced as an Icon Composer material/specular effect on the layer.
+- **Foreground layer 2 — sparkle**: the orange sparkle (`sparkle.svg`), imported
+  directly and rendered *without* the SVG glow filter so the glow is reproduced
+  as an Icon Composer material/specular effect on the layer.
 
 Two foreground layers in one group, well within the four-group limit. Icon
-Composer embeds the imported SVGs, byte-identical, in `AppIcon.icon/Assets/`
-— there is no PNG rasterization step.
+Composer embeds the imported SVGs, byte-identical, in `AppIcon.icon/Assets/` —
+there is no PNG rasterization step.
 
 ## Build pipeline changes
 
@@ -156,8 +158,8 @@ Documented procedure (README / CLAUDE.md icon section):
 1. Open Icon Composer (Xcode 26 / standalone app). Create a new icon.
 2. Set the **background** to the dark gradient (`#3C3C3C` top → `#1E1E1E`
    bottom).
-3. Import `Packaging/AppIcon/layers/terminal.svg` and `sparkle.svg` directly
-   as two **foreground layers**; tune material properties (specular / glass),
+3. Import `Packaging/AppIcon/layers/terminal.svg` and `sparkle.svg` directly as
+   two **foreground layers**; tune material properties (specular / glass),
    applying glow to the sparkle layer.
 4. Tune the **Dark** appearance (darker body, brighter sparkle) and verify the
    **Clear** appearance — confirm the sparkle silhouette reads as monochrome.
@@ -167,8 +169,8 @@ Documented procedure (README / CLAUDE.md icon section):
 ## Verification
 
 - **Structure**: after `make bundle`,
-  `assetutil --info Casper.app/Contents/Resources/Assets.car` lists the `AppIcon`
-  entry, and `plutil -p Casper.app/Contents/Info.plist` shows both
+  `assetutil --info Casper.app/Contents/Resources/Assets.car` lists the
+  `AppIcon` entry, and `plutil -p Casper.app/Contents/Info.plist` shows both
   `CFBundleIconName` and `CFBundleIconFile`.
 - **Visual (macOS 26)**: install/run and inspect the Finder + Dock icon in
   Light, Dark, and Tinted system appearances (via the `debug-casper` screenshot

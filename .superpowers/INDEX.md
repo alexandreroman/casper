@@ -28,17 +28,17 @@ Layout:
 | Debug & observability                              | [`themes/debug.md`](themes/debug.md)                                 |
 | Space (project)                                    | [`themes/space-project.md`](themes/space-project.md)                 |
 
-Per-theme status markers appear in each doc's header; the authoritative aggregate
-is [`status.md`](status.md).
+Per-theme status markers appear in each doc's header; the authoritative
+aggregate is [`status.md`](status.md).
 
 ## Plans
 
 - [`plans/stop-hook-explicit-done.md`](plans/stop-hook-explicit-done.md) —
   `Stop` hook reports `done` explicitly instead of `idle`, since every
-  hook-driven workspace is permanently under `explicitAuthority` and never
-  gets a detected `done`; selecting a `done` workspace collapses it back to
-  `idle` (**partly shipped** — the Casper-side collapse is built, the
-  `casper-skills` hook is not).
+  hook-driven workspace is permanently under `explicitAuthority` and never gets
+  a detected `done`; selecting a `done` workspace collapses it back to `idle`
+  (**partly shipped** — the Casper-side collapse is built, the `casper-skills`
+  hook is not).
 - [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
   `done` should raise a notification (**shipped** — spans this repo and
@@ -49,10 +49,10 @@ is [`status.md`](status.md).
 - [`plans/close-inspector.md`](plans/close-inspector.md) +
   [`plans/close-inspector-plan.md`](plans/close-inspector-plan.md) — `casper
   browser close` / `diff close` CLI verbs (**shipped**).
-- [`plans/diff-view-claude-code-colors.md`](plans/diff-view-claude-code-colors.md) +
-  [`plans/diff-view-claude-code-colors-plan.md`](plans/diff-view-claude-code-colors-plan.md)
-  — diff view restyled to match Claude Code's colors, via HighlightSwift +
-  `DiffHighlighter.swift` (**shipped**).
+- [`plans/diff-view-claude-code-colors.md`](plans/diff-view-claude-code-colors.md)
+  + [`plans/diff-view-claude-code-colors-plan.md`](plans/diff-view-claude-code-colors-plan.md)
+    — diff view restyled to match Claude Code's colors, via HighlightSwift +
+    `DiffHighlighter.swift` (**shipped**).
 - [`plans/github-release.md`](plans/github-release.md) — GitHub release workflow
   publishing a downloadable `Casper.app` (`.github/workflows/release.yml`)
   (**shipped**).
@@ -62,14 +62,13 @@ is [`status.md`](status.md).
 - [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
   — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
   skill's Screen Recording grant survives rebuilds (**shipped**).
-- [`plans/workspace-close-selection.md`](plans/workspace-close-selection.md) +
-  [`plans/workspace-close-selection-plan.md`](plans/workspace-close-selection-plan.md)
+- [`plans/workspace-close-selection.md`](plans/workspace-close-selection.md) + [`plans/workspace-close-selection-plan.md`](plans/workspace-close-selection-plan.md)
   — closing/deleting/merging a workspace reselects a sibling in the same Space
   first, falling back to the first workspace of the first remaining Space
   (**shipped**).
 - [`plans/app-icon-composer.md`](plans/app-icon-composer.md) +
-  [`plans/app-icon-composer-plan.md`](plans/app-icon-composer-plan.md) — macOS 26
-  Liquid Glass `AppIcon.icon` compiled to `Assets.car` by `actool` during
+  [`plans/app-icon-composer-plan.md`](plans/app-icon-composer-plan.md) — macOS
+  26 Liquid Glass `AppIcon.icon` compiled to `Assets.car` by `actool` during
   `make bundle`, alongside the legacy `.icns` (**shipped**).
 - [`plans/open-in-editor.md`](plans/open-in-editor.md) +
   [`plans/open-in-editor-plan.md`](plans/open-in-editor-plan.md) — title-bar
@@ -78,10 +77,10 @@ is [`status.md`](status.md).
 - [`plans/run-close-on-success.md`](plans/run-close-on-success.md) — a named
   `.casper.json` command's split closes on exit 0 and stays open with a live
   shell on failure (**shipped**).
-- [`plans/terminal-font-size-persistence.md`](plans/terminal-font-size-persistence.md) +
-  [`plans/terminal-font-size-persistence-plan.md`](plans/terminal-font-size-persistence-plan.md)
-  — per-surface terminal font size persisted as `Surface.fontSize` and reapplied
-  on restore (**shipped**).
+- [`plans/terminal-font-size-persistence.md`](plans/terminal-font-size-persistence.md)
+  + [`plans/terminal-font-size-persistence-plan.md`](plans/terminal-font-size-persistence-plan.md)
+    — per-surface terminal font size persisted as `Surface.fontSize` and
+    reapplied on restore (**shipped**).
 - [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
   — task-by-task companion to `stop-hook-explicit-done.md`; the Casper-side half
   (selecting a `done` workspace collapses it to `idle`) has **shipped**, the

@@ -36,10 +36,10 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   is AppKit's own contract for `requestUserAttention`, and following it is what
   keeps the latch honest: a request made in front bounces nothing, yet the
   request id it stores would be released by no one (`applicationDidBecomeActive`
-  does not fire for an app that never left the front) and would swallow the
-  next real bounce. The arming edge itself is not focus-gated (a notification
-  for a workspace that is merely *not selected* arms while the window is key),
-  so this rule lives in `DockAttention`, not in its caller.
+  does not fire for an app that never left the front) and would swallow the next
+  real bounce. The arming edge itself is not focus-gated (a notification for a
+  workspace that is merely *not selected* arms while the window is key), so this
+  rule lives in `DockAttention`, not in its caller.
 
   The two clear on different events, deliberately. The **bounce** starts only on
   the edge that arms a bubble, never on a later focus loss: the badge already
@@ -52,9 +52,11 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   counts down as each workspace is individually cleared — by focusing it
   (`clearNotificationForFocusedWorkspace`), by the agent resuming work
   (`done → working`), or by the workspace being deleted or closed.
-- **Layout composition** — arbitrary nested splits and tab groups; leaves are
-  terminal, browser, or diff surfaces. Consumes the decoded Ghostty split/tab
-  actions.
+- **Layout composition** — arbitrary nested splits, tmux-style, with **no tab
+  groups**; leaves are terminal or browser surfaces (`Surface.Kind` has exactly
+  those two cases — the diff view lives in the inspector panel, not the layout
+  tree). Consumes the decoded Ghostty split/tab actions, with `newTab` mapped to
+  a right split.
 - **Diff viewer** — a read-only surface backed by libgit2's `git_diff`
   (structured hunks/lines, working tree vs base/HEAD), rendered as **one TextKit
   2 text document**. The diff is flattened into flat text plus per-file and
@@ -68,10 +70,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   one leading edge (a cue in the text indented only the first of them). A
   truncated line's `… (line truncated)` marker is the one piece of commentary
   kept inside the text, deliberately: it is the only sign that a copy of that
-  line is a prefix of the real one. Syntax colors are applied
-  progressively per file
-  (HighlightSwift), **color attributes only**, so a highlight landing mid-scroll
-  cannot change a line height and shift the text under the reader.
+  line is a prefix of the real one. Syntax colors are applied progressively per
+  file (HighlightSwift), **color attributes only**, so a highlight landing
+  mid-scroll cannot change a line height and shift the text under the reader.
 
   > **Superseded:** the original design — a SwiftUI surface with per-file
   > navigation, `+`/`-` line coloring via `AttributedString`, and no external
@@ -96,98 +97,101 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 
 ## Sub-projects
 
-- **UI-1 — ✅ built.** App shell (SwiftUI `App` scene + `NSApplicationDelegateAdaptor`,
-  the existing AppKit `NSMenu` preserved), `@MainActor @Observable AppModel` as the
-  single state owner/bridge, `NavigationSplitView` with empty state, "Add folder…"
-  (adopt any folder — Git or not, multiple allowed), one live terminal per
-  workspace, and all startup wiring (the release control server, per-surface env,
-  session persistence, `#if DEBUG` debug bridge). No Git worktree creation.
-  Renders only the single-terminal layout.
+- **UI-1 — ✅ built.** App shell (SwiftUI `App` scene +
+  `NSApplicationDelegateAdaptor`, the existing AppKit `NSMenu` preserved),
+  `@MainActor @Observable AppModel` as the single state owner/bridge,
+  `NavigationSplitView` with empty state, "Add folder…" (adopt any folder — Git
+  or not, multiple allowed), one live terminal per workspace, and all startup
+  wiring (the release control server, per-surface env, session persistence,
+  `#if DEBUG` debug bridge). No Git worktree creation. Renders only the
+  single-terminal layout.
 - **UI-2 — ✅ built.** The `Space` level (`Session → Space → Workspace`;
   `repoPath` moved up to `Space.folderPath`; `Workspace` gained
   `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
   or not — non-Git folders are degenerate Spaces with one primary workspace and
   no worktree creation), with **one Space per Git repository** — identity being
-  the common `.git` directory every working tree of a repository shares. A folder
-  that is a **linked worktree of a repository already open as a Space** is adopted
-  into that Space as a linked workspace instead of becoming a Space of its own
-  (nothing is created on disk, so no `setup` hook runs); conversely, opening a
-  **repository whose worktrees are already open as Spaces** reunifies them into
-  the Space it creates, moving those workspaces whole (ids, ports, layouts and
-  live terminals unchanged) with each ex-primary becoming a linked workspace named
-  after its branch. Re-adding a folder Casper already tracks only selects it; a
-  per-Space "+" creates a **linked** workspace as a new
+  the common `.git` directory every working tree of a repository shares. A
+  folder that is a **linked worktree of a repository already open as a Space**
+  is adopted into that Space as a linked workspace instead of becoming a Space
+  of its own (nothing is created on disk, so no `setup` hook runs); conversely,
+  opening a **repository whose worktrees are already open as Spaces** reunifies
+  them into the Space it creates, moving those workspaces whole (ids, ports,
+  layouts and live terminals unchanged) with each ex-primary becoming a linked
+  workspace named after its branch. Re-adding a folder Casper already tracks
+  only selects it; a per-Space "+" creates a **linked** workspace as a new
   branch + `git worktree` at a visible sibling of the repo folder,
   `<parent>/<repo>-<branch>` (outside the repo, so naturally untracked — no
   in-repo `.casper/worktrees/` and no `.git/info/exclude` entry; a `-2`/`-3`…
-  suffix is used if the sibling name is taken). The sidebar is grouped by Space in
-  collapsible sections; removal is non-destructive (drop a linked workspace, or a
-  whole Space, leaving worktrees/branches on disk); a degenerate Space is promoted
-  to Git when its folder gains a `.git` (detected live by the filesystem watcher,
-  and once per Space at launch), and demoted back if the `.git` is removed. The
-  per-workspace `+/−` diff summary is **dropped** (decision 2026-07-06) — see
-  the "Next action" note below.
-- **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as native
-  `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar (rounded
-  "pill" tabs sharing the width equally, centered titles; the active tab a filled
-  bordered pill and inactive tabs blended into a fixed dark neutral chrome — no
-  accent color; each tab has a leading hover-revealed `×` close button and the
-  whole pill is clickable; a trailing circular `+` menu) and renders **only its
-  active surface**. One deferred follow-up: deriving the tab shades from the
-  live terminal background (as Ghostty does — Casper does not yet read the
-  libghostty background color). The `⌘N` switch shortcuts moved scope from tabs
-  to **workspaces** and are wired: `AppModel.workspaceShortcutNumbers` assigns
-  1–9 down the sidebar, `WorkspaceShortcutKeyMonitor` maps ⌘1–⌘9 by physical
-  key code (so AZERTY works) into `selectWorkspace(atShortcutNumber:)`, and
-  holding ⌘ for ≥250 ms reveals the number hints in the sidebar rows. Inactive
-  surfaces stay alive in a persistent view cache keyed by `Surface.id` (their
-  PTYs keep running; libghostty reads the PTY independently of rendering) and
-  re-attach on re-selection. Rendering only the active surface
-  avoids overlapping libghostty `CAMetalLayer`-backed terminals, which ignore
-  SwiftUI `.opacity` and would occlude one another. The cache also makes a
-  terminal's PTY survive split/collapse/reorder restructuring (surface identity is
-  anchored solely on `Surface.id`). Persisted
-  split `ratios` are **not** applied by the native split views in v1 (they open
-  evenly; ratios are retained in the model for a future custom-split renderer). Pure `LayoutTree` tree operations
+  suffix is used if the sibling name is taken). The sidebar is grouped by Space
+  in collapsible sections; removal is non-destructive (drop a linked workspace,
+  or a whole Space, leaving worktrees/branches on disk); a degenerate Space is
+  promoted to Git when its folder gains a `.git` (detected live by the
+  filesystem watcher, and once per Space at launch), and demoted back if the
+  `.git` is removed. The per-workspace `+/−` diff summary is **dropped**
+  (decision 2026-07-06) — see the "Next action" note below.
+- **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as
+  native `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar
+  (rounded "pill" tabs sharing the width equally, centered titles; the active
+  tab a filled bordered pill and inactive tabs blended into a fixed dark neutral
+  chrome — no accent color; each tab has a leading hover-revealed `×` close
+  button and the whole pill is clickable; a trailing circular `+` menu) and
+  renders **only its active surface**. One deferred follow-up: deriving the tab
+  shades from the live terminal background (as Ghostty does — Casper does not
+  yet read the libghostty background color). The `⌘N` switch shortcuts moved
+  scope from tabs to **workspaces** and are wired:
+  `AppModel.workspaceShortcutNumbers` assigns 1–9 down the sidebar,
+  `WorkspaceShortcutKeyMonitor` maps ⌘1–⌘9 by physical key code (so AZERTY
+  works) into `selectWorkspace(atShortcutNumber:)`, and holding ⌘ for ≥250 ms
+  reveals the number hints in the sidebar rows. Inactive surfaces stay alive in
+  a persistent view cache keyed by `Surface.id` (their PTYs keep running;
+  libghostty reads the PTY independently of rendering) and re-attach on
+  re-selection. Rendering only the active surface avoids overlapping libghostty
+  `CAMetalLayer`-backed terminals, which ignore SwiftUI `.opacity` and would
+  occlude one another. The cache also makes a terminal's PTY survive
+  split/collapse/reorder restructuring (surface identity is anchored solely on
+  `Surface.id`). Pane fractions are seeded from the layout's persisted `ratios`
+  and written back through `AppModel.setSplitRatios` → `LayoutTree.updateRatios`
+  (debounced save) on drag-end and on double-click-to-equalize, so a resize
+  survives relaunch. Pure `LayoutTree` tree operations
   (`insertTab`/`split`/`closeSurface`, flat sibling insertion when the parent
   orientation matches) live in CasperCore and are heavily tested. libghostty
-  `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed on
-  the runtime to the **focused** workspace (focus tracked via the surface's
+  `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed
+  on the runtime to the **focused** workspace (focus tracked via the surface's
   first-responder callback). Closing the last surface closes the workspace
-  non-destructively (linked → `removeWorkspace`, primary → `removeSpace`). `.diff`
-  leaves render a placeholder until UI-5 (terminals and browsers are live — see
-  the UI-4 bullet).
+  non-destructively (linked → `removeWorkspace`, primary → `removeSpace`).
+  `.diff` leaves render a placeholder until UI-5 (terminals and browsers are
+  live — see the UI-4 bullet).
 - **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
   normalization, back/forward/reload) renders `.browser` layout leaves, created
-  via the tab-bar "+" menu (New terminal / New browser). The web view lives in the
-  persistent surface-view cache keyed by `Surface.id` (generalized from UI-3 to
-  hold any `NSView`), so it survives layout restructuring like terminals; its URL
-  is persisted via the address bar (link-follow write-back through
+  via the tab-bar "+" menu (New terminal / New browser). The web view lives in
+  the persistent surface-view cache keyed by `Surface.id` (generalized from UI-3
+  to hold any `NSView`), so it survives layout restructuring like terminals; its
+  URL is persisted via the address bar (link-follow write-back through
   `WKNavigationDelegate` is a deferred follow-up).
 - **UI-5 — ✅ built.** A read-only diff surface over CasperGit's
-  `diffWorkdirToHead()`: per-file sections (path + status, binary
-  files noted), hunk headers, and monospaced line rows colored by kind
-  (green addition / red deletion / neutral context) with old/new line-number
-  gutters and a `+`/`-`/space prefix cue. Computed on open and **live-refreshed**:
-  a native FSEvents watcher on the selected workspace's folder (debounced ~200 ms,
-  `.git` + Git-ignored top-level dirs excluded) bumps an observable revision that
-  both the diff surface and the title-bar `+/−` badge react to. Originally
-  rendered as a `.diff` layout leaf (created via the tab-bar "+" menu); that
-  surface kind was later **removed** — the diff view now lives **only** in the
-  right inspector panel (`Workspace.inspector`). The rendering above is
-  unchanged, just hosted by the inspector instead of a layout leaf.
+  `diffWorkdirToHead()`: per-file sections (path + status, binary files noted),
+  hunk headers, and monospaced line rows colored by kind (green addition / red
+  deletion / neutral context) with old/new line-number gutters and a
+  `+`/`-`/space prefix cue. Computed on open and **live-refreshed**: a native
+  FSEvents watcher on the selected workspace's folder (debounced ~200 ms, `.git`
+  + Git-ignored top-level dirs excluded) bumps an observable revision that both
+  the diff surface and the title-bar `+/−` badge react to. Originally rendered
+  as a `.diff` layout leaf (created via the tab-bar "+" menu); that surface kind
+  was later **removed** — the diff view now lives **only** in the right
+  inspector panel (`Workspace.inspector`). The rendering above is unchanged,
+  just hosted by the inspector instead of a layout leaf.
 
   > **Superseded:** the per-line rendering described above (a `LazyVStack` of
   > per-file sections, one SwiftUI row per diff line, pinned `Section` headers)
   > is replaced by a single TextKit 2 text document, which also adds text
   > selection and copy. The diff computation, the FSEvents live refresh and the
-  > reading experience are unchanged. See `../status.md` → "Diff renderer —
-  > one TextKit 2 text document" for the as-built pipeline.
+  > reading experience are unchanged. See `../status.md` → "Diff renderer — one
+  > TextKit 2 text document" for the as-built pipeline.
 
 ## Next action
 
-**All five CasperUI sub-projects (UI-1..UI-5) are built** and have passed the live
-GUI verification pass on a real desktop (splits/tabs, browser navigation, diff
-surface). Remaining cross-cutting work outside this milestone: **Space rename**.
-(The Space `+/−` per-workspace diff summary was **dropped** — decision
+**All five CasperUI sub-projects (UI-1..UI-5) are built** and have passed the
+live GUI verification pass on a real desktop (splits/tabs, browser navigation,
+diff surface). Remaining cross-cutting work outside this milestone: **Space
+rename**. (The Space `+/−` per-workspace diff summary was **dropped** — decision
 2026-07-06; the title-bar working-tree-vs-HEAD summary covers the need.)

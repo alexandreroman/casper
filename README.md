@@ -1,14 +1,15 @@
 # Casper
 
 [![CI](https://github.com/alexandreroman/casper/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandreroman/casper/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: Apache
+2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Casper is a native macOS app that embeds [libghostty][ghostty] to give every
 **Git worktree** its own terminal workspace — built for developers running code
 agents. It tracks each agent's state and task progress, reserves network ports
 per workspace, and bundles a native browser and diff viewer.
 
-> **Status:** under active development and not yet ready for general use. All the
+> **Status:** under active development and not yet ready for general use. All
 > core layers — the terminal engine, the Git worktree layer, and the `casper`
 > control CLI — and the SwiftUI app (Space-grouped sidebar, linked worktrees,
 > tmux-style split panes, browser, and diff viewer) are built and have passed a
@@ -20,12 +21,11 @@ per workspace, and bundles a native browser and diff viewer.
 - **Worktree = workspace** — each workspace maps to a Git worktree; creating one
   opens a plain Ghostty terminal in that worktree (no agent is auto-launched).
   ⌘-click a link in the terminal to open it in your browser.
-- **Agent state & progress** — each workspace carries an agent state
-  (`working` / `blocked` / `idle` / `done` / `unknown` / `error`) and a
-  `completed / total` todo progress bar, surfaced in the sidebar with
-  pending-notification dots. State is inferred from terminal output by built-in
-  detection (no hooks) and can also be set explicitly via the `casper` CLI
-  (see below).
+- **Agent state & progress** — each workspace carries an agent state (`working`
+  / `blocked` / `idle` / `done` / `unknown` / `error`) and a `completed / total`
+  todo progress bar, surfaced in the sidebar with pending-notification dots.
+  State is inferred from terminal output by built-in detection (no hooks) and
+  can also be set explicitly via the `casper` CLI (see below).
 - **Agent integrations** — works with Claude Code, OpenAI Codex CLI, and
   opencode, and launches none of them. Casper detects whether each agent's
   Casper integration is installed and current, and shows a quiet, dismissible
@@ -148,7 +148,8 @@ The rest of this document is for contributors who want to build Casper locally.
 
 ### Prerequisites
 
-- **Xcode** (full) — required to build and run the tests; the Command Line Tools
+- **Xcode 26 or later** (full) — required to build at all (the project uses
+  Swift 6.2 isolated conformances) and to run the tests; the Command Line Tools
   alone cannot link XCTest. Select it with
   `sudo xcode-select -s /Applications/Xcode.app`.
 - **libgit2** and **pkgconf** — `brew install libgit2 pkgconf`. CasperGit links
@@ -182,6 +183,7 @@ make release  # size-optimized release build (arm64)
 make bundle   # assemble a self-contained Casper.app (release binary + dylibs)
 make dist     # package Casper.app into a downloadable .zip + .sha256 + dSYM
 make vendor   # re-sync the pinned libghostty header via Carvel vendir
+make icon     # regenerate Packaging/AppIcon/AppIcon.icns from icon.svg (needs resvg)
 make clean    # remove build artifacts
 ```
 
@@ -196,8 +198,8 @@ still be symbolicated without shipping the symbols to every user.
 
 ### Debug build code signing (optional)
 
-`make build` assembles a minimal `Casper-dev.app` bundle around the debug
-binary and signs it with a local **Apple Development** identity whenever one is
+`make build` assembles a minimal `Casper-dev.app` bundle around the debug binary
+and signs it with a local **Apple Development** identity whenever one is
 available in your keychain. This keeps the Screen Recording permission that the
 `debug-casper` skill relies on (for screenshot capture) across rebuilds, instead
 of macOS re-prompting after every recompile. The `.app` wrapper is required: a
@@ -209,8 +211,8 @@ re-prompt-on-rebuild behavior.
 To create a free identity once (no paid Developer Program membership needed):
 
 1. Xcode → Settings → Accounts → **+** → Apple ID → sign in with any Apple ID.
-2. Select the resulting team → **Manage Certificates…** → **+** →
-   **Apple Development**.
+2. Select the resulting team → **Manage Certificates…** → **+** → **Apple
+   Development**.
 3. `make build` picks it up automatically from then on — no configuration
    required.
 
@@ -219,7 +221,8 @@ creating the certificate, the Apple WWDR intermediate certificate is likely
 missing (`codesign` fails with "unable to build chain to self-signed root").
 Download the current intermediate from
 <https://www.apple.com/certificateauthority/> (e.g. `AppleWWDRCAG3.cer`) and
-install it with `security add-certificates -k login.keychain-db AppleWWDRCAG3.cer`.
+install it with
+`security add-certificates -k login.keychain-db AppleWWDRCAG3.cer`.
 
 See [`.superpowers/plans/screenshot-capture-permissions.md`](./.superpowers/plans/screenshot-capture-permissions.md)
 for the full rationale.
@@ -230,13 +233,12 @@ Tests run on every push to `main` and every pull request via GitHub Actions, on
 both `macos-15` (the deployment target's floor) and `macos-26`
 ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — some AppKit layout
 behaviour differs between the two, so a single runner would only ever show it as
-a failure on the other machine. Tagging a
-`v*` release builds and publishes `Casper.app` as a GitHub Release
+a failure on the other machine. Tagging a `v*` release builds and publishes
+`Casper.app` as a GitHub Release
 ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), along with
 the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
 the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
-missing — an unsigned feed would be rejected by every installed copy. See
-[`.superpowers/plans/sparkle-auto-update.md`](./.superpowers/plans/sparkle-auto-update.md).
+missing — an unsigned feed would be rejected by every installed copy. See [`.superpowers/plans/sparkle-auto-update.md`](./.superpowers/plans/sparkle-auto-update.md).
 
 ## Architecture
 
@@ -245,13 +247,18 @@ libghostty API, the libgit2 layer, and agent specifics each stay isolated.
 
 ```mermaid
 flowchart TD
-    App[Casper app + CLI] --> UI[CasperUI]
-    App --> Agents[CasperAgents]
+    App[casper binary — app + CLI] --> UI[CasperUI]
+    App --> CLI[CasperCLI]
     UI --> Core[CasperCore]
+    UI --> Git[CasperGit]
     UI --> Ghostty[CasperGhostty]
+    UI --> Agents[CasperAgents]
+    CLI --> Core
+    CLI --> Agents
     Agents --> Core
-    Core --> Git[CasperGit]
+    Ghostty --> Core
     Ghostty --> GK[GhosttyKit / libghostty]
+    Core --> Git
     Git --> LG[libgit2]
 ```
 
@@ -302,6 +309,9 @@ casper run [name]                            # run a named .casper.json command 
 `casper workspace new <branch>` takes the branch name as a positional argument;
 `--base <ref>` forks from a ref other than the space's base branch, and
 `--command <cmd>` seeds the workspace's first terminal with a command to run.
+`casper terminal new` takes the same `--command <cmd>` to seed the new split,
+plus `--working-dir <path>` to start it somewhere other than the workspace's
+worktree.
 
 The browser panel doubles as an automation surface, so a coding agent can drive
 and inspect the page it just changed:
@@ -325,8 +335,8 @@ Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
 workspace other than the current one. The one exception is `workspace current`,
 which reports the terminal's own workspace from `$CASPER_WORKSPACE_ID` and takes
 no target. Commands talk to the running app over a Unix domain socket named by
-`$CASPER_CONTROL_SOCKET`, injected per terminal alongside
-`$CASPER_WORKSPACE_ID` — and, in worktree workspaces only, `$CASPER_PORT`.
+`$CASPER_CONTROL_SOCKET`, injected per terminal alongside `$CASPER_WORKSPACE_ID`
+— and, in worktree workspaces only, `$CASPER_PORT`.
 
 Every command is machine-readable: on success it prints a JSON object (or array)
 to stdout describing the affected `workspace` and any resulting state; on error
@@ -340,15 +350,15 @@ surface is explicit and agent-agnostic. A per-agent integration plugin is only a
 convenience on top — it wires the agent's lifecycle to exactly these commands.
 
 The info panel keeps only the latest `casper info set` message and never
-persists it across app restarts; it's reached by hovering or clicking the
-info button next to the workspace's branch/space title. A message is capped
-at 256 KB; `--message` and `--file` together are an error; and a bare
-`casper info set` at an interactive terminal errors instead of waiting on
-stdin (pipe, redirect, or the explicit `-` marker all still work).
+persists it across app restarts; it's reached by hovering or clicking the info
+button next to the workspace's branch/space title. A message is capped at 256
+KB; `--message` and `--file` together are an error; and a bare `casper info set`
+at an interactive terminal errors instead of waiting on stdin (pipe, redirect,
+or the explicit `-` marker all still work).
 
 Clicking a link in the message opens it in the workspace's own browser panel,
-since a published endpoint is almost always local; **Command-clicking** it
-opens the same link in the system's default browser instead.
+since a published endpoint is almost always local; **Command-clicking** it opens
+the same link in the system's default browser instead.
 
 ### Per-repository configuration (`.casper.json`)
 

@@ -29,8 +29,8 @@ minimum viable identity. Two consequences the packaging must respect:
   the signing secret is missing rather than publishing an unsigned feed.
 
 Gatekeeper is not a problem for the update path: Sparkle clears the quarantine
-attribute from the extracted bundle before swapping it in. The quarantine
-caveat in `Packaging/release-notes.md` still applies to the *first*, manually
+attribute from the extracted bundle before swapping it in. The quarantine caveat
+in `Packaging/release-notes.md` still applies to the *first*, manually
 downloaded copy.
 
 ## Key management
@@ -65,9 +65,10 @@ Then copy the printed public key into `SUPublicEDKey`.
   sanctioned external dependency.
 - `SoftwareUpdater.swift` wraps `SPUStandardUpdaterController` behind a single
   gate: the updater is constructed **only** when the running bundle carries both
-  `SUFeedURL` and `SUPublicEDKey`. `Packaging/Info-dev.plist` carries neither, so
-  development builds — and `swift run casper`, which has no bundle at all — never
-  talk to the network, never schedule a check, and never show the menu item.
+  `SUFeedURL` and `SUPublicEDKey`. `Packaging/Info-dev.plist` carries neither,
+  so development builds — and `swift run casper`, which has no bundle at all —
+  never talk to the network, never schedule a check, and never show the menu
+  item.
 - `MenuCommands.swift` adds **Check for Updates…** to the App menu via
   `CommandGroup(after: .appInfo)`, included only when the gate is open. The
   value is constant for the process lifetime, so this cannot reintroduce the
@@ -104,8 +105,8 @@ that signs can never drift from the framework that verifies.
 ### Release (`release.yml` + `Scripts/update-appcast.sh`)
 
 1. `make dist` → `Casper-<v>-arm64.zip`.
-2. `sign_update --ed-key-file` produces the EdDSA signature, then
-   `--verify` re-checks it before it is used.
+2. `sign_update --ed-key-file` produces the EdDSA signature, then `--verify`
+   re-checks it before it is used.
 3. `update-appcast.sh` prepends the `<item>` — now carrying the real
    `sparkle:edSignature`, a `<link>` to the release page and a short
    `<description>` so the update dialog is not blank.

@@ -4,33 +4,33 @@
 > `DiffHighlighter.swift`) is implemented and merged. This plan is retained for
 > reference.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
-> (recommended) or superpowers:executing-plans to implement this plan
-> task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restyle Casper's diff view so its row backgrounds, `+`/`-` prefix,
-and line-number gutter match Claude Code's own diff rendering, while keeping
+**Goal:** Restyle Casper's diff view so its row backgrounds, `+`/`-` prefix, and
+line-number gutter match Claude Code's own diff rendering, while keeping
 Casper's existing syntax-highlighted code text untouched.
 
-**Architecture:** Two focused changes in `CasperUI`. `DiffLineStyle.swift`
-(the pure, unit-testable color/logic layer) gets new tint and solid
-background colors plus a new pure `lineNumber(for:)` helper that picks the
-single gutter number for a diff line. `DiffSurfaceView.swift`'s private
-`DiffLineRow` consumes those to collapse its two-column old/new gutter into
-one column and to tint both the gutter number and the `+`/`-` prefix
-character.
+**Architecture:** Two focused changes in `CasperUI`. `DiffLineStyle.swift` (the
+pure, unit-testable color/logic layer) gets new tint and solid background colors
+plus a new pure `lineNumber(for:)` helper that picks the single gutter number
+for a diff line. `DiffSurfaceView.swift`'s private `DiffLineRow` consumes those
+to collapse its two-column old/new gutter into one column and to tint both the
+gutter number and the `+`/`-` prefix character.
 
 **Tech Stack:** Swift 6 / SwiftUI, XCTest.
 
 ## Global Constraints
 
-- Design source of truth: `.superpowers/plans/diff-view-claude-code-colors.md` (approved).
+- Design source of truth: `.superpowers/plans/diff-view-claude-code-colors.md`
+  (approved).
 - Reference colors, sampled from the user-supplied screenshot: deletion
-  background `#300B03`, addition background `#152606`, deletion tint
-  `#B96A5E`, addition tint `#87C163`.
-- Syntax highlighting on the code text (`DiffHighlighter`/HighlightSwift
-  output) is untouched — only background, prefix, and line-number colors
-  change.
+  background `#300B03`, addition background `#152606`, deletion tint `#B96A5E`,
+  addition tint `#87C163`.
+- Syntax highlighting on the code text (`DiffHighlighter`/HighlightSwift output)
+  is untouched — only background, prefix, and line-number colors change.
 - Dark-only: the app already forces `NSAppearance(named: .darkAqua)`
   (`Sources/CasperUI/AppDelegate.swift:23`); no light-mode variant is needed.
 - All source edits go through the `skillbox:code-writer` agent, all reviews
@@ -71,8 +71,8 @@ import XCTest
 @testable import CasperUI
 ```
 
-Add `import SwiftUI` to that import block (needed for the `Color` values in
-the new tests), so it reads:
+Add `import SwiftUI` to that import block (needed for the `Color` values in the
+new tests), so it reads:
 
 ```swift
 import CasperGit
@@ -107,15 +107,15 @@ existing `testPrefix()`:
     }
 ```
 
-Note: this also requires `import SwiftUI` in the test file for the `Color`
-type — check the top of `Tests/CasperUITests/DiffLineStyleTests.swift` and add
-it if missing (it currently imports only `CasperGit` and `XCTest`).
+Note: this also requires `import SwiftUI` in the test file for the `Color` type
+— check the top of `Tests/CasperUITests/DiffLineStyleTests.swift` and add it if
+missing (it currently imports only `CasperGit` and `XCTest`).
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `swift test --filter CasperUITests.DiffLineStyleTests`
-Expected: FAIL — `testTintsMatchClaudeCodeReference` and
-`testBackgroundIsASolidSaturatedColor` fail on value mismatch (old colors),
+Run: `swift test --filter CasperUITests.DiffLineStyleTests` Expected: FAIL —
+`testTintsMatchClaudeCodeReference` and `testBackgroundIsASolidSaturatedColor`
+fail on value mismatch (old colors),
 `testLineNumberPicksOldForDeletionAndNewForAdditionOrContext` fails with
 "lineNumber not found in scope" (compile error until Step 3).
 
@@ -181,8 +181,8 @@ enum DiffLineStyle {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `swift test --filter CasperUITests.DiffLineStyleTests`
-Expected: PASS (4 tests: the 3 new ones + the existing `testPrefix`)
+Run: `swift test --filter CasperUITests.DiffLineStyleTests` Expected: PASS (4
+tests: the 3 new ones + the existing `testPrefix`)
 
 - [ ] **Step 5: Commit**
 
@@ -201,14 +201,14 @@ git commit -m "Match diff row colors and gutter numbering to Claude Code"
 
 **Interfaces:**
 - Consumes: `DiffLineStyle.lineNumber(for:)`, `DiffLineStyle.accent(for:)`,
-  `DiffLineStyle.prefix(for:)`, `DiffLineStyle.background(for:)` (all from
-  Task 1).
+  `DiffLineStyle.prefix(for:)`, `DiffLineStyle.background(for:)` (all from Task
+  1).
 - Produces: no new public interface — this is the leaf view.
 
 This task has no new pure logic to drive with a unit test (it's SwiftUI
-layout/rendering), so it's verified by build + manual check in the running
-app rather than XCTest, per the existing pattern in this file (`DiffLineRow`
-has no tests today either).
+layout/rendering), so it's verified by build + manual check in the running app
+rather than XCTest, per the existing pattern in this file (`DiffLineRow` has no
+tests today either).
 
 - [ ] **Step 1: Update `DiffFileView.gutterWidth`**
 
@@ -230,7 +230,8 @@ Replace with:
     }
 ```
 
-- [ ] **Step 2: Drop the now-unused `maxDigits` argument from the `DiffLineRow` call site**
+- [ ] **Step 2: Drop the now-unused `maxDigits` argument from the `DiffLineRow`
+  call site**
 
 Find (inside `DiffFileView.body`, in the `ForEach` over hunk lines):
 
@@ -323,34 +324,31 @@ private struct DiffLineRow: View {
 
 - [ ] **Step 4: Build**
 
-Run: `swift build`
-Expected: builds cleanly, no warnings about unused `maxDigits` in
-`DiffLineRow` (it was removed) and no type errors on the `Text(...) +
-Text(...)` concatenation (SwiftUI supports `+` on `Text`) or on
+Run: `swift build` Expected: builds cleanly, no warnings about unused
+`maxDigits` in `DiffLineRow` (it was removed) and no type errors on the
+`Text(...) + Text(...)` concatenation (SwiftUI supports `+` on `Text`) or on
 `AttributedString.foregroundColor` (available via the `SwiftUI` import already
 at the top of the file).
 
 - [ ] **Step 5: Run the full test suite**
 
-Run: `make test`
-Expected: PASS — no test exercises `DiffLineRow` directly, so this is a
-regression check for `DiffLineStyleTests` and everything else.
+Run: `make test` Expected: PASS — no test exercises `DiffLineRow` directly, so
+this is a regression check for `DiffLineStyleTests` and everything else.
 
 - [ ] **Step 6: Manual verification**
 
-Run: `make dev`
-In the launched app, open a workspace with a working-tree diff that has
-additions, deletions, and context lines (e.g. edit a tracked file and open its
-diff in the inspector). Confirm:
+Run: `make dev` In the launched app, open a workspace with a working-tree diff
+that has additions, deletions, and context lines (e.g. edit a tracked file and
+open its diff in the inspector). Confirm:
 - Each row shows exactly one line-number column (not two).
-- Deletion rows: solid dark maroon background, red-tinted line number, red
-  `-` prefix, syntax-highlighted code text.
+- Deletion rows: solid dark maroon background, red-tinted line number, red `-`
+  prefix, syntax-highlighted code text.
 - Addition rows: solid dark olive-green background, green-tinted line number,
   green `+` prefix, syntax-highlighted code text.
 - Context rows: unchanged — no background wash, gray line number, no accent
   stripe.
-- The `+N`/`−N` badges in each file's header still render in the (now
-  slightly different) insertion/deletion tint colors.
+- The `+N`/`−N` badges in each file's header still render in the (now slightly
+  different) insertion/deletion tint colors.
 
 - [ ] **Step 7: Commit**
 
