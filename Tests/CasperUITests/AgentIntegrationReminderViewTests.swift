@@ -69,8 +69,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         XCTAssertEqual(AgentIntegrationReminderView.message(for: missing), "Claude Code integration not installed")
         XCTAssertEqual(
             AgentIntegrationReminderView.message(for: outdated), "Claude Code integration is outdated (0.1.0)")
-        XCTAssertEqual(
-            AgentIntegrationReminderView.message(for: trust), "Codex integration needs approval in /hooks")
+        XCTAssertEqual(AgentIntegrationReminderView.message(for: trust), "Codex integration needs approval")
     }
 
     func testAnAbsurdVersionIsCappedInTheMessage() {

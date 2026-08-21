@@ -53,7 +53,7 @@ struct AgentIntegrationReminderView: View {
         let name = reminder.agent.displayName
         switch reminder.kind {
         case .trustNotice:
-            return "\(name) integration needs approval in /hooks"
+            return "\(name) integration needs approval"
         case .actionNeeded:
             switch reminder.status {
             case .outdated(let installed):
