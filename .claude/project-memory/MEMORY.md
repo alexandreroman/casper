@@ -54,7 +54,7 @@
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
 - [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
-- [The working signal lives in the OSC title](references/agent-state-osc-title.md) — an OSC-title Braille spinner; version-coupled detection
+- [The working signal is the OSC 9;4 progress report](references/agent-state-working-signal.md) — title spinner secondary; version-coupled detection
 - [libghostty config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — a bundle misses the user's config
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, never after
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips the CASPER_* vars so no live env leaks in
