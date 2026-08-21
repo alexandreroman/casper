@@ -106,3 +106,4 @@
 - [Codex detection caveats](references/codex-detection-caveats.md) — unverified cache path, no manifest read, hooks.json false positive
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
 - [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind
+- [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state
