@@ -1993,9 +1993,16 @@ final class AppModel {
     /// forced to `unknown`, so switching a workspace off-screen doesn't wipe its
     /// last known state. The selected workspace is scraped at full cadence;
     /// non-selected workspaces are scraped only every `backgroundDetectionStride`
-    /// ticks to keep this main-actor pass cheap.
+    /// ticks to keep this main-actor pass cheap. The pass also re-probes the agent
+    /// integrations once their last result has gone stale — see
+    /// `refreshAgentIntegrationsIfStale`.
     func runAgentDetectionTick() {
         detectionTickCount &+= 1
+        // Piggybacked on this loop rather than given a timer of its own. The reminder has
+        // to retire itself while the user watches — the integration is installed by a
+        // command typed in a Casper terminal, which never resigns the app active — and
+        // this costs one `Date` comparison until the result actually goes stale.
+        refreshAgentIntegrationsIfStale()
         let scrapeBackground = detectionTickCount % Self.backgroundDetectionStride == 0
         // Indexed so a detected change can be written straight at its workspace instead
         // of re-scanning every Space to find it again. Safe to hold across the body: a
@@ -2151,21 +2158,29 @@ final class AppModel {
         }
     }
 
-    /// Minimum delay between two throttled probes.
+    /// How long a probe result stays fresh before a stale check re-runs one.
     ///
-    /// The probe re-runs on every app activation so a user who installs the plugin
-    /// and tabs back sees the reminder go away on their own. But a cold probe spawns
-    /// three sequential login shells (1–2.5 s of real work), and Casper is a terminal
-    /// app people activate constantly — doing that on every Cmd-Tab would be absurd.
-    /// Five minutes is far below the patience of someone who just ran an installer
-    /// and far above the rate at which anyone switches windows.
-    nonisolated static let agentIntegrationProbeThrottle: TimeInterval = 5 * 60
+    /// Only the *first* probe is expensive: it resolves the three agent CLIs through
+    /// `LoginShellPath`, one login shell each (1–2.5 s of real work in total). Those
+    /// lookups are cached — misses included — for the lifetime of the process, so every
+    /// probe after the first is a handful of `stat` and `read` calls, far too cheap to
+    /// be worth rationing by the minute.
+    ///
+    /// Seconds are what let the reminder close its own loop. The expected way to install
+    /// an integration is a `plugin install` command typed *in a Casper terminal*, which
+    /// never resigns the app active, so nothing but this cadence can retire the line
+    /// while the user is still looking at it.
+    nonisolated static let agentIntegrationProbeInterval: TimeInterval = 5
 
-    /// Whether a throttled probe request should actually run. Pure and `static` so
-    /// the throttle is unit-testable without a clock seam on the model.
-    nonisolated static func shouldProbeAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
-        guard let lastProbeAt else { return true }
-        return now.timeIntervalSince(lastProbeAt) >= agentIntegrationProbeThrottle
+    /// Whether a stale check should re-probe. Pure and `static` so the interval is
+    /// unit-testable without a clock seam on the model.
+    ///
+    /// No earlier probe means there is nothing to *re*fresh — deliberately not "probe
+    /// immediately": the first probe is the expensive one, and starting it belongs to
+    /// the launch path, which runs it once and off the main actor.
+    nonisolated static func shouldRefreshAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
+        guard let lastProbeAt else { return false }
+        return now.timeIntervalSince(lastProbeAt) >= agentIntegrationProbeInterval
     }
 
     /// Probes each agent's integration. Injectable so tests never spawn a login
@@ -2196,8 +2211,9 @@ final class AppModel {
     /// on teardown, and lets tests await a probe they just triggered.
     @ObservationIgnored private(set) var agentIntegrationTask: Task<Void, Never>?
 
-    /// Probe now, bypassing the throttle. The entry point for an explicit user
-    /// action ("check again"); a probe already in flight is left to finish.
+    /// Probe now, whatever the last result's age: the launch probe, and the one the
+    /// user earns by opening a reminder's documentation. A probe already in flight is
+    /// left to finish.
     func refreshAgentIntegrations() {
         guard agentIntegrationTask == nil else { return }
         lastAgentIntegrationProbeAt = Date()
@@ -2206,19 +2222,34 @@ final class AppModel {
             // Detached, never inline: a cold `statuses()` blocks for seconds on three
             // sequential login shells, and this actor is the one drawing the UI.
             let statuses = await Task.detached(priority: .utility) { probe() }.value
-            guard let self else { return }
+            // `Task.detached` neither inherits nor forwards cancellation, and awaiting a
+            // non-throwing task is not a cancellation point — so a cancelled probe runs to
+            // completion and still lands here. This check is what keeps it from publishing.
+            guard !Task.isCancelled, let self else { return }
             self.agentIntegrationTask = nil
             self.applyAgentIntegrationStatuses(statuses)
         }
     }
 
-    /// Probe unless one ran within `agentIntegrationProbeThrottle`. What app
-    /// activation calls.
+    /// Re-probe if the last result is older than `agentIntegrationProbeInterval`.
+    /// Called from every detection tick and on app activation, so an integration
+    /// installed anywhere — a Casper terminal, another app — retires its own reminder
+    /// within one interval, with no user action to ask for.
     func refreshAgentIntegrationsIfStale() {
-        guard Self.shouldProbeAgentIntegrations(lastProbeAt: lastAgentIntegrationProbeAt, now: Date()) else {
+        guard Self.shouldRefreshAgentIntegrations(lastProbeAt: lastAgentIntegrationProbeAt, now: Date()) else {
             return
         }
         refreshAgentIntegrations()
+    }
+
+    /// The user opened a reminder's documentation, so an install is imminent: age the
+    /// current result out so the next stale check re-probes instead of leaving the line
+    /// up for the rest of the interval.
+    ///
+    /// Opening the URL stays with the view. Keeping `NSWorkspace` out of the model is
+    /// what lets a test drive this without launching a browser.
+    func agentReminderDocumentationOpened() {
+        lastAgentIntegrationProbeAt = .distantPast
     }
 
     /// Dismiss one reminder line, permanently as far as this problem is concerned.
@@ -2226,7 +2257,16 @@ final class AppModel {
     /// Keyed by `AgentIntegrationReminder.id`, never an agent's `rawValue`: those ids
     /// outlive the process in `session.json` (`"claude-code"`, not `"claudeCode"`), so
     /// the wrong key would make every dismissal a silent no-op.
+    ///
+    /// A line the current result no longer publishes is ignored. The click carries a
+    /// reminder captured when the view's body last ran, and a probe landing in between
+    /// can have retired it — dismissing it then would persist a key for a line nobody
+    /// was looking at, and `"<agent>-trust"` is the one key nothing ever retires, so a
+    /// mistimed click would silence the trust notice for good. Matched on `id` rather
+    /// than on the whole value, so a status changing under an unchanged line
+    /// (`.missing` → `.outdated`) still lets a genuine click through.
     func dismissAgentReminder(_ reminder: AgentIntegrationReminder) {
+        guard agentIntegrationReminders.contains(where: { $0.id == reminder.id }) else { return }
         guard dismissedAgentReminders.insert(reminder.id).inserted else { return }
         refreshAgentIntegrationReminders()
         persist()

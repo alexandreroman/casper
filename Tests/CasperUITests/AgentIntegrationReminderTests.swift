@@ -172,6 +172,19 @@ final class AgentIntegrationReminderTests: XCTestCase {
         XCTAssertEqual(reloaded.dismissedAgentReminders, ["\(CodingAgent.codex.reminderID)-trust"])
     }
 
+    func testNoAgentIDCanCollideWithAnotherAgentsTrustKey() {
+        // The auto-clear retires action-needed dismissals by subtracting plain reminder
+        // ids from the dismissed set, and a trust notice is keyed as an id plus "-trust".
+        // An id spelled "<another-id>-trust" would therefore clear, silently and from a
+        // completely unrelated agent, a notice the user dismissed on purpose.
+        let ids = Set(CodingAgent.allCases.map(\.reminderID))
+        for agent in CodingAgent.allCases {
+            XCTAssertFalse(
+                ids.contains("\(agent.reminderID)-trust"),
+                "no reminderID may be spelled \"<another-id>-trust\"")
+        }
+    }
+
     func testReminderCarriesTheDocumentationURL() async throws {
         let (store, _) = makeStore()
         let model = AppModel(sessionStore: store)
@@ -274,24 +287,105 @@ final class AgentIntegrationReminderTests: XCTestCase {
         XCTAssertEqual(remindedAgents(model), [.claudeCode])
     }
 
-    // MARK: - Probe throttle
+    func testDismissingALineThatIsNoLongerPublishedIsIgnored() async throws {
+        let (store, url) = makeStore()
+        let model = AppModel(sessionStore: store)
+        await probe(model, [.codex: .installed])
+        let trustNotice = try reminder(model, .codex)
 
-    func testThrottleAllowsTheFirstProbe() {
-        XCTAssertTrue(AppModel.shouldProbeAgentIntegrations(lastProbeAt: nil, now: Date()))
+        // A probe lands between the view's last body pass and the click it delivers, so
+        // the click carries a line that no longer exists. Honouring it would persist
+        // "codex-trust" — the one key nothing ever retires — and permanently silence a
+        // notice the user has not even seen yet.
+        await probe(model, [.codex: .missing])
+        model.dismissAgentReminder(trustNotice)
+
+        XCTAssertEqual(model.agentIntegrationReminders.map(\.kind), [.actionNeeded])
+        model.flushPendingSave()
+        XCTAssertTrue(try SessionStore(fileURL: url).load().dismissedAgentReminders.isEmpty)
+
+        // So the notice is still there to be dismissed once the integration comes back.
+        await probe(model, [.codex: .installed])
+        XCTAssertEqual(model.agentIntegrationReminders.map(\.kind), [.trustNotice])
     }
 
-    func testThrottleRejectsARepeatWithinTheInterval() {
-        let now = Date()
-        let justInside = now.addingTimeInterval(-AppModel.agentIntegrationProbeThrottle + 1)
-        XCTAssertFalse(AppModel.shouldProbeAgentIntegrations(lastProbeAt: justInside, now: now))
+    // MARK: - Staying fresh
+    //
+    // The reminder has to be able to retire itself: the integration is installed by a
+    // command typed in a Casper terminal, and Casper never resigns active while that
+    // happens. App activation alone would leave the line on screen indefinitely, so the
+    // detection tick applies the same stale check on its own cadence.
+
+    func testDetectionTickDoesNotStartTheFirstProbe() {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+
+        model.runAgentDetectionTick()
+
+        // Nothing has been probed, so there is nothing to *re*fresh: the first probe pays
+        // the cold login-shell cost and belongs to the launch path. That is also what
+        // keeps every test driving this tick off the real machine.
+        XCTAssertNil(model.agentIntegrationTask)
+        XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
     }
 
-    func testThrottleAllowsAProbeOnceTheIntervalHasElapsed() {
-        let now = Date()
-        let atBoundary = now.addingTimeInterval(-AppModel.agentIntegrationProbeThrottle)
-        XCTAssertTrue(AppModel.shouldProbeAgentIntegrations(lastProbeAt: atBoundary, now: now))
+    func testDetectionTickLeavesAFreshResultAlone() async throws {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        await probe(model, [.claudeCode: .missing])
 
-        let wellPast = now.addingTimeInterval(-AppModel.agentIntegrationProbeThrottle - 1)
-        XCTAssertTrue(AppModel.shouldProbeAgentIntegrations(lastProbeAt: wellPast, now: now))
+        // The tick runs four times a second; a result this young must not trigger a probe.
+        let healthy: [CodingAgent: AgentIntegrationStatus] = [.claudeCode: .installed]
+        model.agentIntegrationProbe = { healthy }
+        model.runAgentDetectionTick()
+
+        XCTAssertNil(model.agentIntegrationTask)
+        XCTAssertEqual(remindedAgents(model), [.claudeCode])
+    }
+
+    func testDetectionTickRetiresTheLineAfterTheUserOpensTheDocumentation() async throws {
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store)
+        await probe(model, [.claudeCode: .missing])
+
+        // The user follows the line to the install instructions and runs the installer in
+        // a Casper terminal. The app never resigns active, so the tick is the only thing
+        // that can notice — and opening the documentation makes its next pass re-probe
+        // rather than wait out the rest of the interval.
+        model.agentReminderDocumentationOpened()
+        let healthy: [CodingAgent: AgentIntegrationStatus] = [.claudeCode: .installed]
+        model.agentIntegrationProbe = { healthy }
+        model.runAgentDetectionTick()
+        await model.agentIntegrationTask?.value
+
+        XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
+    }
+
+    // MARK: - The staleness interval
+
+    func testAModelThatHasNeverProbedHasNothingToRefresh() {
+        XCTAssertFalse(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: nil, now: Date()))
+    }
+
+    func testAResultYoungerThanTheIntervalIsStillFresh() {
+        let now = Date()
+        let justInside = now.addingTimeInterval(-AppModel.agentIntegrationProbeInterval + 1)
+        XCTAssertFalse(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: justInside, now: now))
+    }
+
+    func testAResultAtOrPastTheIntervalIsStale() {
+        let now = Date()
+        let atBoundary = now.addingTimeInterval(-AppModel.agentIntegrationProbeInterval)
+        XCTAssertTrue(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: atBoundary, now: now))
+
+        let wellPast = now.addingTimeInterval(-AppModel.agentIntegrationProbeInterval - 1)
+        XCTAssertTrue(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: wellPast, now: now))
+    }
+
+    func testTheIntervalIsMeasuredInSecondsNotMinutes() {
+        // The loop the user watches is "install it, watch the line go". Minutes of
+        // staleness break it, and every probe after the first is a handful of `stat`
+        // calls — there is nothing to buy by rationing them.
+        XCTAssertLessThanOrEqual(AppModel.agentIntegrationProbeInterval, 30)
     }
 }

@@ -1,0 +1,39 @@
+---
+name: "Agent-integration probe cadence"
+description: "The launch probe pays the cold login-shell cost; the detection tick refreshes it every few seconds"
+type: project
+---
+
+# Agent-integration probe cadence
+
+The integration probe runs in two distinct roles.
+
+**The launch probe is the expensive one.** `AppDelegate` calls
+`AppModel.refreshAgentIntegrations()` once at startup; that call resolves the
+three agent CLIs through `LoginShellPath`, one login shell each (1–2.5 s in
+total). `LoginShellPath` caches every lookup — misses included — for the
+lifetime of the process, so each later probe is a handful of `stat`/`read`
+calls.
+
+**Every later probe is a refresh, and it is cheap.** `runAgentDetectionTick()`
+calls `refreshAgentIntegrationsIfStale()` on each pass, so the check rides the
+existing detection loop rather than a timer of its own.
+`agentIntegrationProbeInterval` is measured in **seconds**: the integration is
+installed by a `plugin install` command typed in a Casper terminal, so Casper
+never resigns active and `applicationDidBecomeActive` alone cannot retire the
+sidebar line while the user watches for it. Opening a reminder's documentation
+calls `agentReminderDocumentationOpened()`, which ages the result out so the
+next tick re-probes.
+
+`shouldRefreshAgentIntegrations(lastProbeAt: nil, …)` is **false**: with no
+earlier result there is nothing to refresh, and starting the cold probe belongs
+to the launch path. That also keeps every unit test that drives the detection
+tick off the real filesystem.
+
+**Why:** a minutes-long throttle silences the feedback loop exactly when the
+user is watching for confirmation, and its stated cost is paid once, not per
+probe.
+
+**How to apply:** keep `refreshAgentIntegrations()` as the un-throttled entry
+point, and never let the stale check start the first probe. See
+[[agent-integration-policy]].

@@ -32,6 +32,12 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     /// enum case can never silently invalidate a dismissal the user already
     /// made. Changing a value in this switch does exactly that, and is the only
     /// way to.
+    ///
+    /// One standing constraint on the values: **no id may be spelled
+    /// `"<another-id>-trust"`**. Casper keys an agent's hook-trust notice as its id
+    /// plus a `-trust` suffix, and retires action-needed dismissals by subtracting
+    /// plain ids from the dismissed set — so such an id would silently clear a trust
+    /// notice the user dismissed on a different agent. A unit test pins this.
     public var reminderID: String {
         switch self {
         case .claudeCode: return "claude-code"
@@ -124,6 +130,12 @@ public enum AgentIntegration {
     /// what turns "you already have the integration, from the old marketplace" into
     /// `.outdated`, which points at update instructions, instead of `.missing`,
     /// which would tell the user to install something they demonstrably have.
+    ///
+    /// To be clear about the scale of what this covers: the plugin was never published
+    /// under the old marketplace name, so this is **one pre-publication local dev
+    /// install**, not migration support for a population of users. Nothing here implies
+    /// an obligation to keep migrating old ids — the branch is kept because it is three
+    /// lines and turns a confidently wrong "install this" into the right answer.
     public static let legacyPluginID = "casper@Casper"
 
     /// The plugin version Casper requires — the single place to change it.
