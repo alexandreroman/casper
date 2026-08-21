@@ -13,7 +13,10 @@ The build proceeds in five module plans. **All five are implemented.** CasperUI
 (app shell + startup wiring), **UI-2** (Space model + Space-grouped sidebar +
 linked Git worktrees), **UI-3** (recursive splits/tabs layout), **UI-4** (WKWebView
 browser surface), and **UI-5** (read-only diff viewer). The live GUI verification
-pass on a real desktop is complete. The v1 agent target is Claude Code only.
+pass on a real desktop is complete. Three coding agents are supported — Claude
+Code, OpenAI Codex CLI and opencode — through the agent-agnostic `casper` CLI;
+only the terminal-scraping detection rules remain Claude-Code-tuned (see
+[Agent-state detection](#agent-state-detection--) below).
 
 | Plan | Module                   | Status                                                                                       |
 | ---- | ------------------------ | -------------------------------------------------------------------------------------------- |
@@ -58,7 +61,7 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`
   (`Repository.open`) rather than `discover`.
 
 ### CasperAgents + CasperCLI — ✅
-`ClaudeCodeAdapter.surfaceEnvironment` (per-surface env injection); the `casper`
+`AgentEnvironment.surfaceEnvironment` (per-surface env injection); the `casper`
 executable with the GUI/CLI fork and the domain CLI
 (`status`/`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`) that emits
 JSON over `$CASPER_CONTROL_SOCKET` (errors exit non-zero). There is **no hook
@@ -847,6 +850,123 @@ through a recording spy — including the `addSpace`/`reunify` drop path and the
 cancel-without-touching-the-badge release — and five drive `DockAttention`
 itself against a fake backend, pinning the latch, the id handed to the cancel,
 the badge's zero → no-label mapping, and the never-bounce-while-active rule.
+
+## Agent integration detection — ✅
+
+Answers, per supported agent (Claude Code, OpenAI Codex CLI, opencode), whether
+the user has that agent's CLI and whether the Casper integration for it is
+installed and current, and reminds them in the sidebar when it is not. Casper
+**never writes another tool's configuration** — each agent's own installer does
+that, and Casper only detects and links to documentation. Design:
+`themes/cli-agents.md` § Design → "Agent integration detection"; policy:
+[[agent-integration-policy]].
+
+**Built — policy (`CasperCore/AgentIntegration.swift`).** The agent catalogue
+(`CodingAgent`: reminder id, display name, executable name, `requiresHookTrust`,
+documentation URL), the status vocabulary (`AgentIntegrationStatus`:
+`notInstalled` / `missing` / `outdated(installed:)` / `installed`), the numeric
+`installed < required` comparison against `requiredPluginVersion`, and one pure
+parser per agent — Claude Code's `installed_plugins.json` registry and
+`settings.json` `enabledPlugins`, opencode's JSONC config and `casper.js`
+`CASPER_PLUGIN_VERSION`, Codex's cache directory names and `config.toml`
+`enabled = false`. Zero I/O in the whole file, so every hostile input is a plain
+unit test.
+
+**Built — probing (`CasperCore/AgentIntegrationProbe.swift`).** The I/O half
+behind an injectable `Environment` (executable lookup, file contents, directory
+entries, home directory). The probe is **global**, one answer per agent for the
+whole app rather than per workspace, and the CLI gate short-circuits everything
+else: an agent whose executable is absent is `notInstalled` and Casper reads not
+one file for it. CLI presence resolves through the user's **login shell**
+(`LoginShellPath`), because Casper launches from Finder/Dock and its own `PATH`
+is the bare launchd default. That lookup is bounded by
+`LoginShellPath.lookupTimeout`, so a blocking shell profile no longer wedges the
+probe (nor freezes startup through the main-actor `EditorLauncher` path), and
+its answers — misses included — are cached for the process lifetime. The cache
+is what makes re-probing cheap, and it bounds what re-probing can recover: an
+agent CLI installed while Casper runs stays `notInstalled` until relaunch, while
+plugin state is re-read every time.
+
+Two rules run through all of it. A **disabled** integration reports `missing`,
+because an install whose hooks never fire is functionally absent (an *absent*
+key means enabled — the map holds only what the user has touched, and enablement
+can also be project-scoped). And nothing may **produce a false nag**: an
+unreadable version reports `installed`, and both registries take the *highest*
+recorded version rather than the first, so a stale record cannot manufacture an
+`outdated` row. A Claude Code registration under the legacy id
+(`casper@Casper`) reports `outdated` whatever version it carries: the id
+identifies the marketplace rather than the build, and it is a compatibility
+branch for the pre-publication local dev install, not migration support. It
+differs from the current `casper@casper` **by case alone**, so the two share one
+cache directory on case-insensitive APFS; Claude Code detection therefore reads
+the registry key and the record's `version` field and never `installPath`, and
+every lookup on that path has to stay case-sensitive.
+
+The **Codex cache layout is documentation-derived and has never been verified
+against a real install**, on either side; the source, the theme doc and the
+README all say so. No plugin manifest is read (the plugin ships only
+`.claude-plugin/plugin.json` and relies on Codex's discovery order), and
+`~/.codex/hooks.json` is deliberately never consulted. See
+[[codex-detection-caveats]].
+
+**Built — sidebar (`CasperUI`).** `AppModel` § *Agent-integration reminders*
+runs the probe **off the main actor**, once at launch — the one probe that pays
+the cold cost of three sequential login shells (1–2.5 s) — and thereafter on a
+staleness check that rides the existing agent detection tick, re-probing once
+the last result is older than `agentIntegrationProbeInterval` (**5 s**). A tick
+never starts the *first* probe: `shouldRefreshAgentIntegrations` is `false` for
+a nil `lastProbeAt`, so the cold cost stays the launch path's. Seconds rather
+than minutes because the integration is installed by a command typed in a Casper
+terminal, where the app never resigns active and activation fires no event at
+all; the cadence is affordable because `LoginShellPath` caches every lookup for
+the process lifetime, leaving each later probe a handful of `stat`/`read` calls.
+Opening a reminder's documentation back-dates the result so the next check
+re-probes immediately. `applicationDidBecomeActive` applies the same stale
+check. See [[agent-integration-probe-cadence]].
+
+Each result publishes one ordered `AgentIntegrationReminder` per agent with
+something to say: `missing`/`outdated` → an *action-needed* line, `installed` →
+a *trust notice* for Codex only, `notInstalled` → nothing at all. Order comes
+from `CodingAgent.allCases`, never from the status dictionary (hash-seeded).
+`AgentIntegrationReminderView` renders the rows between the workspace list and
+the "Add Folder…" footer, drawing **nothing** — not even a divider — when the
+list is empty; the row button (opens the guide) and the dismiss button are
+siblings, never nested, so a dismiss can never also open a URL.
+
+The three row wordings are `<agent> integration not installed`,
+`<agent> integration is outdated (<version>)` and, for Codex,
+`Codex integration needs approval in /hooks`. The outdated row names the
+installed version because it is what makes a nag someone believes is wrong
+diagnosable from a screenshot; the string comes from another tool, so
+whitespace runs collapse and the value is capped at
+`maxDisplayedVersionLength`, dropping the parenthesis outright when nothing
+printable survives.
+
+The Codex **trust notice** exists because Codex hashes non-managed command hooks
+and does not run them until they are approved via `/hooks` in its TUI, so an
+installed Codex integration can be completely inert and no disk state records
+whether it was approved. It dismisses under its own `<id>-trust` key: it only
+ever appears *while* Codex reports `installed`, and an action-needed dismissal
+is retired exactly then, so a shared key would un-dismiss it the instant it
+became relevant.
+
+Dismissals persist in `Session.dismissedAgentReminders` (encoded as a sorted
+array so an unchanged session serialises byte-identically — see
+[[session-json-stable-encoding]]), keyed by stable `reminderID` strings spelled
+out independently of the enum's `rawValue`. A dismissal silences the current
+problem, not the agent: it is retired once that agent reports `installed`, so a
+later regression reminds again.
+
+**Tests.** 125 in total: 57 in `AgentIntegrationTests` (the parsers and the
+version comparison, including CRLF, JSONC comments inside string literals,
+lookalike plugin names, `"unknown"` versions, and the two plugin ids staying
+distinct-but-case-equal), 30 in `AgentIntegrationProbeTests` (the full
+resolution against in-memory fixtures, per agent and per status), 26 in
+`AgentIntegrationReminderTests` (probe scheduling and the staleness interval,
+the published projection, dismissal and retirement), 8 in
+`AgentIntegrationReminderViewTests` (headless row layout and message/glyph
+mapping, including the version cap), and 4 in `ModelsTests` for the
+`session.json` round trip and its sorted encoding.
 
 ## Remaining work — dependency-ordered
 

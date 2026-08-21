@@ -18,7 +18,7 @@ Casper opens. PATH injection (rather than an absolute path anywhere) keeps
 `casper` literally available only in Casper terminals, so nothing pollutes the
 rest of the system.
 
-**How to apply:** `ClaudeCodeAdapter.surfaceEnvironment(...)` takes optional
+**How to apply:** `AgentEnvironment.surfaceEnvironment(...)` takes optional
 `casperDirectory` + `basePath` and, when given, sets
 `PATH = "<casperDirectory>:<basePath>"` (or just `<casperDirectory>` when
 basePath is empty). The app supplies the app bundle's executable directory

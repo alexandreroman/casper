@@ -29,6 +29,7 @@ struct SidebarView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 10)
             }
+            AgentIntegrationReminderView(model: model)
             Divider()
             AddFolderFooter(onAdd: { model.presentAddFolderPanel() })
         }
@@ -111,23 +112,29 @@ private struct AddFolderFooter: View {
                 Spacer(minLength: 0)
             }
         }
-        .buttonStyle(AddFolderButtonStyle(isHovered: isHovered))
+        .buttonStyle(SidebarActionButtonStyle(isHovered: isHovered))
         .onHover { isHovered = $0 }
     }
 }
 
 /// Borderless-looking style that layers a hover highlight over a deeper neutral
-/// pressed state (a stronger grey fill in the same hue family as hover) so the
-/// "Add Folder…" click reads unmistakably through color — `.borderless` alone
+/// pressed state (a stronger grey fill in the same hue family as hover) so a
+/// sidebar-footer click reads unmistakably through color — `.borderless` alone
 /// never surfaces `configuration.isPressed`.
-private struct AddFolderButtonStyle: ButtonStyle {
+///
+/// Shared by the "Add Folder…" footer and the agent-integration reminder rows
+/// above it, which is what keeps the two reading as one family of affordances;
+/// the paddings default to the footer's and the denser reminder rows override them.
+struct SidebarActionButtonStyle: ButtonStyle {
     let isHovered: Bool
+    var verticalPadding: CGFloat = 8
+    var horizontalPadding: CGFloat = 14
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(foregroundColor(isPressed: configuration.isPressed))
-            .padding(.vertical, 8)
-            .padding(.horizontal, 14)
+            .padding(.vertical, verticalPadding)
+            .padding(.horizontal, horizontalPadding)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(fillColor(isPressed: configuration.isPressed))

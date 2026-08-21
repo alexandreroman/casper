@@ -42,6 +42,13 @@ When a view's fixed dimension is a bare literal, exposing it as a `static let` o
 the view and asserting against that is preferred over duplicating the number in
 the test.
 
+**Host the view inside the container it ships in.** A body that is a `TupleView`
+of several elements — a `Divider` plus a `VStack`, say — is flattened by whatever
+stack the production parent provides. Hosted bare, `NSHostingView` supplies
+container semantics of its own, so the measured number is not the one the real
+parent gets and a broken flattening cannot fail the test. Wrap the subject in the
+same `VStack(spacing: 0) { … }` (or equivalent) the shipping call site uses.
+
 **A hosted view measures differently on the CI runner than on the development
 machine**, so a fixture must never depend on an absolute position or on which
 content a given offset lands on. Two divergences are measured, both from the same

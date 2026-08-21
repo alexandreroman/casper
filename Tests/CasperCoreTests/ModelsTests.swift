@@ -494,4 +494,87 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.name, "app")          // persisted fields still decode
         XCTAssertEqual(decoded.folderPath, "/r")
     }
+
+    // MARK: - Dismissed agent reminders
+
+    func testSessionRoundTripPreservesDismissedAgentReminders() throws {
+        let session = Session(
+            spaces: [Space(name: "app", folderPath: "/r", isGitRepo: false, workspaces: [])],
+            dismissedAgentReminders: [CodingAgent.claudeCode.reminderID, CodingAgent.opencode.reminderID])
+        let data = try JSONEncoder().encode(session)
+        let decoded = try JSONDecoder().decode(Session.self, from: data)
+        XCTAssertEqual(decoded, session)
+        XCTAssertEqual(
+            decoded.dismissedAgentReminders,
+            [CodingAgent.claudeCode.reminderID, CodingAgent.opencode.reminderID])
+    }
+
+    func testSessionDefaultsToNoDismissedAgentReminders() {
+        XCTAssertTrue(Session().dismissedAgentReminders.isEmpty)
+    }
+
+    func testSessionLegacyDecodeWithoutDismissedAgentRemindersDefaultsToEmpty() throws {
+        // A `session.json` written before the reminders existed has no
+        // `dismissedAgentReminders` key; decoding must yield an empty set rather
+        // than throw on the missing key.
+        let json = """
+        { "spaces": [ { "id": "\(UUID().uuidString)", "name": "app",
+            "folderPath": "/r", "isCollapsed": false, "workspaces": [] } ] }
+        """
+        let decoded = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
+        XCTAssertTrue(decoded.dismissedAgentReminders.isEmpty)
+        XCTAssertEqual(decoded.spaces.first?.name, "app")  // other fields decode normally
+    }
+
+    func testSelectedWorkspaceIDIsOmittedWhenNil() throws {
+        // `encodeIfPresent`, not `encode`: a nil selection must leave the key out
+        // rather than write `null`. Pinned because both coders are hand-rolled and
+        // "simplifying" this to `encode` would change the on-disk shape.
+        let data = try JSONEncoder().encode(Session())
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["selectedWorkspaceID"])
+        XCTAssertNotNil(object["spaces"])
+    }
+
+    func testExplicitNullSelectedWorkspaceIDDecodesToNil() throws {
+        let json = #"{"spaces": [], "selectedWorkspaceID": null}"#
+        let decoded = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.selectedWorkspaceID)
+    }
+
+    func testLegacySelectedWorkspaceIDRoundTrips() throws {
+        // A `session.json` written before the reminders existed still carries a
+        // real selection, which must survive the hand-rolled decode untouched.
+        let workspaceID = UUID()
+        let json = """
+            { "spaces": [], "selectedWorkspaceID": "\(workspaceID.uuidString)" }
+            """
+        let decoded = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.selectedWorkspaceID, workspaceID)
+
+        let reencoded = try JSONEncoder().encode(decoded)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        XCTAssertEqual(object["selectedWorkspaceID"] as? String, workspaceID.uuidString)
+        XCTAssertEqual(try JSONDecoder().decode(Session.self, from: reencoded), decoded)
+    }
+
+    func testDismissedAgentRemindersEncodeAsASortedArray() throws {
+        // A `Set` encodes as an unordered JSON array whose order varies with the
+        // per-process hash seed, so the persisted bytes would otherwise shift
+        // between saves for an unchanged session. More ids than the three real
+        // agents, so an unsorted implementation cannot pass by landing in sorted
+        // order by chance.
+        let ids = CodingAgent.allCases.map(\.reminderID) + ["zeta", "aider", "mango"]
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]  // matches SessionStore's encoder
+
+        let encoded = try encoder.encode(Session(dismissedAgentReminders: Set(ids)))
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["dismissedAgentReminders"] as? [String], ids.sorted())
+
+        // Two equal sets built from different insertion orders must encode identically.
+        let reversed = try encoder.encode(Session(dismissedAgentReminders: Set(ids.reversed())))
+        XCTAssertEqual(encoded, reversed)
+    }
 }

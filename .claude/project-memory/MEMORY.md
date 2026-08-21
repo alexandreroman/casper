@@ -100,3 +100,10 @@
 - [Casper.app bundle codesign seal](references/app-bundle-codesign-seal.md) — dylibs, executable, bundle — never `--deep` (it breaks Sparkle)
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
 - [Line width is measured in characters](references/line-width-in-characters.md) — em dashes are 3 bytes; count characters, not bytes
+- [Agent integration policy](references/agent-integration-policy.md) — detect and remind only; never write another tool's config
+- [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
+- [Agent-integration probe cadence](references/agent-integration-probe-cadence.md) — launch pays the cold cost; the tick refreshes
+- [Codex detection caveats](references/codex-detection-caveats.md) — unverified cache path, no manifest read, hooks.json false positive
+- [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
+- [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind
+- [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state

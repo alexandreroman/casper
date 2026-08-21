@@ -1,8 +1,11 @@
 import Foundation
 
-/// Generates the Claude Code integration's per-surface environment. Confines all
-/// Claude Code-specific knowledge to one place (v1 supports Claude Code only).
-public enum ClaudeCodeAdapter {
+/// Builds the environment injected into every Casper terminal surface.
+///
+/// Agent-neutral by design: Casper never launches a coding agent, it only exports
+/// the variables and the `PATH` entry that let whatever agent the user runs reach
+/// the control channel.
+public enum AgentEnvironment {
     /// Environment injected into every terminal surface of a workspace so that the
     /// `casper` CLI can reach the app's control channel and the agent can bind its
     /// reserved ports.

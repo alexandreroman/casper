@@ -58,6 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             // Terminal-scraping agent-state detection is GUI-only, so start its
             // timer here (never from `AppModel.init`, which also runs in tests).
             model.startAgentDetection()
+            // Probe the agent integrations once at launch — the one probe that pays the
+            // cold login-shell cost, which is why the stale check refuses to start it.
+            // Off the main actor, so the seconds it may take never delay the first frame.
+            model.refreshAgentIntegrations()
         } catch {
             CasperLog.ghostty.failure("ghostty init failed", error)
             NSApp.terminate(nil)
@@ -258,11 +262,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         CasperLog.app.debug("installed App-menu delegate proxy over \(originalName, privacy: .public)")
     }
 
-    /// Tell libghostty the app regained focus (cursor blink, focus animation), and
-    /// release the Dock bounce the user just answered.
+    /// Tell libghostty the app regained focus (cursor blink, focus animation),
+    /// release the Dock bounce the user just answered, and re-probe the agent
+    /// integrations — the user may have installed or updated a plugin in the app
+    /// they just came back from. Stale-checked, so a Cmd-Tab storm probes at most
+    /// once per `AppModel.agentIntegrationProbeInterval`; the detection tick applies
+    /// the same check on its own cadence, which covers an install done *inside*
+    /// Casper, where the app never resigns active at all.
     func applicationDidBecomeActive(_ notification: Notification) {
         AppModel.shared.runtime?.setAppFocus(true)
         AppModel.shared.releaseDockBounce()
+        AppModel.shared.refreshAgentIntegrationsIfStale()
     }
 
     /// Tell libghostty the app lost focus. Complementary to occlusion — this does
