@@ -332,7 +332,7 @@ final class AppModel {
             content.sound = UNNotificationSound(named: UNNotificationSoundName("NotificationAlert.aiff"))
         }
         let request = UNNotificationRequest(
-            identifier: workspaceID.uuidString, content: content, trigger: nil)
+            identifier: workspaceID.casperID, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
 
@@ -2187,6 +2187,6 @@ final class AppModel {
             return .failure(WorkspaceCreationError(message: "no target workspace"))
         }
         return createLinkedWorkspace(spaceID: space.id, name: branch, base: base, command: command, select: false)
-            .map { ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
+            .map { ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 }

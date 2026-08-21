@@ -123,6 +123,12 @@ durable state); `workspace new`/`list`/`current` carry the worktree `path`
 returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's
 own output (`--help`, missing option, unknown flag) stays native.
 
+Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_ID`
+— is **lowercase**, its canonical external form (`UUID.casperID`); `--workspace`
+matches an id **case-insensitively**, so an uppercase id from an older build
+still resolves (a workspace *name* still matches exactly). Persisted state is
+unaffected: `session.json` keeps Swift's native `Codable` UUID encoding.
+
 ### Agent state & progress
 
 Casper installs **no agent-hook mechanism** into any agent — no hook

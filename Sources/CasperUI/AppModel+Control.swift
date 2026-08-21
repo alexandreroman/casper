@@ -230,7 +230,7 @@ extension AppModel {
 
     func controlListWorkspaces() -> [ControlWorkspaceInfo] {
         allWorkspaces.map {
-            ControlWorkspaceInfo(id: $0.id.uuidString, name: $0.name, branch: $0.branch, path: $0.worktreePath)
+            ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath)
         }
     }
 
@@ -253,7 +253,7 @@ extension AppModel {
         let surface = Surface.terminal(cwd: resolvedCwd)
         guard insertTerminal(surface, in: workspaceID, command: command, orientation: orientation)
         else { return nil }
-        return ControlTerminalInfo(id: surface.id.uuidString, cwd: resolvedCwd)
+        return ControlTerminalInfo(id: surface.id.casperID, cwd: resolvedCwd)
     }
 
     // Reached from AppModel.swift.
@@ -356,7 +356,7 @@ extension AppModel {
         guard let ws = workspace(id: workspaceID) else { return [] }
         return LayoutTree.surfaces(ws.layout).compactMap { surface in
             guard case .terminal(let cwd) = surface.kind else { return nil }
-            return ControlTerminalInfo(id: surface.id.uuidString, cwd: cwd)
+            return ControlTerminalInfo(id: surface.id.casperID, cwd: cwd)
         }
     }
 

@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import CasperAgents
 
@@ -21,7 +22,8 @@ final class SurfaceEnvironmentControlTests: XCTestCase {
             workspaceId: workspaceId, portBase: 40000,
             controlSocketPath: "/control.sock")
         XCTAssertEqual(env["CASPER_CONTROL_SOCKET"], "/control.sock")
-        XCTAssertEqual(env["CASPER_WORKSPACE_ID"], workspaceId.uuidString)
+        XCTAssertEqual(env["CASPER_WORKSPACE_ID"], workspaceId.casperID)
         XCTAssertEqual(env["CASPER_PORT"], "40000")
+        assertLowercased(env["CASPER_WORKSPACE_ID"])
     }
 }

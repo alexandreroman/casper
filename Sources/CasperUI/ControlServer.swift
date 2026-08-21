@@ -88,9 +88,9 @@ final class ControlServer {
             guard let info = model.controlOpenTerminal(in: id, command: command.command, cwd: command.cwd) else {
                 reply(.failure("cannot open terminal")); return
             }
-            reply(.success(workspace: id.uuidString, terminals: [info])); return
+            reply(.success(workspace: id.casperID, terminals: [info])); return
         case .terminalList:
-            reply(.success(workspace: id.uuidString, terminals: model.controlListTerminals(in: id))); return
+            reply(.success(workspace: id.casperID, terminals: model.controlListTerminals(in: id))); return
         case .terminalClose:
             reply(Self.ack(model.controlCloseTerminal(in: id, terminalID: command.target), workspace: id,
                            failure: "no terminal '\(command.target ?? "")' in this workspace")); return
@@ -111,7 +111,7 @@ final class ControlServer {
                            failure: "cannot close browser")); return
         case .diffOpen:
             switch model.controlOpenDiff(in: id, file: command.target) {
-            case .success: reply(.success(workspace: id.uuidString)); return
+            case .success: reply(.success(workspace: id.casperID)); return
             case .failure(let error): reply(.failure(error.message)); return
             }
         case .diffClose:
@@ -120,7 +120,7 @@ final class ControlServer {
         case .workspaceDelete:
             model.controlDeleteWorkspace(id: id) { result in
                 switch result {
-                case .success: reply(.success(workspace: id.uuidString))
+                case .success: reply(.success(workspace: id.casperID))
                 case .failure(let error): reply(.failure(error.message))
                 }
             }
@@ -128,7 +128,7 @@ final class ControlServer {
         case .run:
             switch model.controlRun(name: command.name, in: id) {
             case .success(let info):
-                reply(.success(workspace: id.uuidString, terminals: [info])); return
+                reply(.success(workspace: id.casperID, terminals: [info])); return
             case .failure(let error):
                 reply(.failure(error.message)); return
             }
@@ -252,7 +252,7 @@ final class ControlServer {
     private static func ack(
         _ succeeded: Bool, workspace id: UUID, failure: String = "workspace not found"
     ) -> ControlResponse {
-        succeeded ? .success(workspace: id.uuidString) : .failure(failure)
+        succeeded ? .success(workspace: id.casperID) : .failure(failure)
     }
 
     /// Build the wait predicate JS and a human description from a `browserWait`
@@ -280,7 +280,7 @@ final class ControlServer {
         _ result: Result<String, BrowserOpError>, workspace id: UUID
     ) -> ControlResponse {
         switch result {
-        case .success(let text): return .success(text: text, workspace: id.uuidString)
+        case .success(let text): return .success(text: text, workspace: id.casperID)
         case .failure(let error): return .failure(error.message)
         }
     }
