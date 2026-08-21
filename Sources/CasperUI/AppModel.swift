@@ -1377,6 +1377,12 @@ final class AppModel {
         (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readOSCTitle()
     }
 
+    /// Latest OSC 9;4 progress state of a live terminal surface, or nil if it has
+    /// no live Ghostty view. Read-only; used by agent-state detection.
+    private func surfaceProgressReport(_ surfaceID: UUID) -> AgentProgressState? {
+        (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readProgressReport()
+    }
+
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
     /// created on first use and loaded with the surface's URL. Cached by
     /// `Surface.id` so navigation state and the web view survive layout churn.
@@ -1834,10 +1840,15 @@ final class AppModel {
                     let rules = AgentDetectionRuleSet.claudeCode
                     let viewport = rules.signal(fromViewport: text)
                     let title = surfaceOSCTitle(id).map { rules.signal(fromTitle: $0) } ?? .absent
-                    // Roll the viewport and title signals together (blocked > working > idle >
-                    // absent): the title carries the primary "working" spinner, the viewport
-                    // carries "blocked" prompts, and blocked wins if both are present.
-                    return AgentSignal.aggregate([viewport, title])
+                    let progress = surfaceProgressReport(id).map(AgentSignal.init(progress:)) ?? .absent
+                    // Roll the three sources together. The OSC 9;4 progress report is the
+                    // primary "working" signal — Claude Code brackets a turn with `ESC]9;4;3`
+                    // … `ESC]9;4;0`. The title spinner is a secondary one: still emitted, but
+                    // its glyph set moved between releases. The viewport carries "blocked",
+                    // and is the only "working" source for an agent that reports no progress
+                    // at all. The existing blocked > working > idle > absent precedence
+                    // handles all three correctly, so the resolver needs no change.
+                    return AgentSignal.aggregate([viewport, title, progress])
                 }
                 if signals.isEmpty { continue }  // nothing readable ⇒ leave W's state untouched
 

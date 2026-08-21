@@ -29,7 +29,14 @@ extension AppModel: DebugSurfaceProvider {
                 mouseMove: { [weak view] x, y in view?.debugMouseMove(x: x, y: y) },
                 geometry: { [weak view] in view?.debugGeometry() ?? .zero },
                 focus: { [weak window, weak view] in window?.makeFirstResponder(view) },
-                window: window),
+                window: window,
+                // Detection's conclusion, plus two of the three inputs it drew it from (the
+                // third, the viewport text, is what `readText` above returns). Reported as
+                // their own fields rather than by redefining `title`, which stays the workspace
+                // name so nothing already reading it changes meaning.
+                agentState: workspace.agentState.rawValue,
+                oscTitle: { [weak view] in view?.readOSCTitle() },
+                progressReport: { [weak view] in view?.readProgressReport()?.rawValue }),
         ]
     }
 

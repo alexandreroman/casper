@@ -212,6 +212,20 @@ func casperGhosttyAction(
             }
         }
         return true
+    case GHOSTTY_ACTION_PROGRESS_REPORT:
+        // OSC 9;4 progress is the primary agent-state "working" signal: Claude Code
+        // brackets a turn with `ESC]9;4;3` … `ESC]9;4;0`. Like SET_TITLE above it is
+        // per-surface state whose only consumer is the target view (read back via
+        // `readProgressReport()`), so the action terminates here, and is reported as
+        // consumed even when no view is recoverable.
+        if let view = surfaceView(from: target) {
+            // Only the state is kept. The report also carries `progress` (a percentage,
+            // -1 when absent), but detection needs liveness, not completion: storing a
+            // percentage nothing reads would be dead state.
+            let state = progressState(from: action.action.progress_report.state)
+            MainActor.assumeIsolated { view.updateProgressReport(state) }
+        }
+        return true
     case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
         // Surface-scoped: deliver the child's exit status to the target view so a
         // lifecycle-hook surface can react — the consumer decides based on the code.
@@ -241,6 +255,24 @@ private func surfaceView(from target: ghostty_target_s) -> GhosttySurfaceView? {
           let surface = target.target.surface,
           let userdata = ghostty_surface_userdata(surface) else { return nil }
     return Unmanaged<GhosttySurfaceView>.fromOpaque(userdata).takeUnretainedValue()
+}
+
+/// Translate libghostty's OSC 9;4 progress state to CasperCore's
+/// `AgentProgressState`. The C enum stops here, at the GhosttyKit boundary:
+/// CasperCore owns the detection policy but must not depend on GhosttyKit.
+private func progressState(from state: ghostty_action_progress_report_state_e) -> AgentProgressState {
+    switch state {
+    case GHOSTTY_PROGRESS_STATE_REMOVE: return .removed
+    case GHOSTTY_PROGRESS_STATE_SET: return .set
+    case GHOSTTY_PROGRESS_STATE_ERROR: return .error
+    case GHOSTTY_PROGRESS_STATE_INDETERMINATE: return .indeterminate
+    case GHOSTTY_PROGRESS_STATE_PAUSE: return .paused
+    // A C enum imported into Swift is not exhaustive, so a `default` is required. An
+    // unrecognised state reads as `.removed` — "this source says nothing" — which is
+    // the conservative choice: a state Casper cannot interpret must never be able to
+    // pin a workspace to `working`.
+    default: return .removed
+    }
 }
 
 // Clipboard callbacks: libghostty hands back the per-surface `userdata` we set

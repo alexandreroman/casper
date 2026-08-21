@@ -65,6 +65,20 @@ public struct DebugState: Codable, Equatable, Sendable {
         public var contentScaleX: Double      // points→pixels scale vector
         public var contentScaleY: Double
         public var backingScaleFactor: Double // window.backingScaleFactor
+        // Agent-state detection, reported so a detection change can be verified against the
+        // running app rather than by reading the sidebar by eye. `agentState` is detection's
+        // output; `oscTitle` and `progressReport` are two of its three inputs — the third, the
+        // viewport text, is already reachable through the `readText` verb.
+
+        /// The workspace's current `AgentState.rawValue` — exactly what the sidebar status icon
+        /// renders, i.e. what detection concluded.
+        public var agentState: String?
+        /// The surface's latest OSC window title, one of detection's inputs. Nil until a title
+        /// has arrived.
+        public var oscTitle: String?
+        /// The surface's latest OSC 9;4 progress state as `AgentProgressState.rawValue`, another
+        /// of detection's inputs. Nil until a progress report has arrived.
+        public var progressReport: String?
 
         public init(
             id: String, title: String, workingDirectory: String?,
@@ -74,7 +88,10 @@ public struct DebugState: Codable, Equatable, Sendable {
             boundsWidth: Double, boundsHeight: Double,
             backingWidth: Double, backingHeight: Double,
             contentScaleX: Double, contentScaleY: Double,
-            backingScaleFactor: Double
+            backingScaleFactor: Double,
+            // Defaulted so existing call sites — and decoding of payloads written before these
+            // fields existed — stay valid.
+            agentState: String? = nil, oscTitle: String? = nil, progressReport: String? = nil
         ) {
             self.id = id
             self.title = title
@@ -93,6 +110,9 @@ public struct DebugState: Codable, Equatable, Sendable {
             self.contentScaleX = contentScaleX
             self.contentScaleY = contentScaleY
             self.backingScaleFactor = backingScaleFactor
+            self.agentState = agentState
+            self.oscTitle = oscTitle
+            self.progressReport = progressReport
         }
     }
 

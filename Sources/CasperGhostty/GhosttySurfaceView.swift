@@ -67,6 +67,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // this title (a Braille spinner glyph prefix), no longer via the viewport text.
     private var latestOSCTitle: String?
 
+    // Latest OSC 9;4 progress state libghostty decoded for this surface (the
+    // GHOSTTY_ACTION_PROGRESS_REPORT payload), captured per-surface next to the title
+    // for the same reason: agent-state detection reads it back per surface. Claude Code
+    // brackets every turn with `ESC]9;4;3` (indeterminate) … `ESC]9;4;0` (remove), which
+    // makes this the *primary* "working" signal — the title spinner is only a secondary
+    // one, its glyph set having already moved between releases.
+    private var latestProgressReport: AgentProgressState?
+
     // The occlusion observer for the current window, and the last value pushed to
     // libghostty (so a repeat state is not re-pushed). `lastOcclusion` starts nil:
     // libghostty defaults a new surface to visible, so the first push always lands.
@@ -286,6 +294,19 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// `readOSCTitle()` can surface it to detection. Called from the action
     /// trampoline on the main thread.
     func updateOSCTitle(_ title: String) { latestOSCTitle = title }
+
+    /// The latest OSC 9;4 progress state libghostty decoded for this surface, or nil
+    /// if none has arrived yet. Used by agent-state detection alongside
+    /// `readOSCTitle()` — see `.superpowers/themes/agent-state-detection.md`.
+    ///
+    /// Deliberately *not* one of the `#if DEBUG` accessors below: detection runs in
+    /// release builds, so this one has to be compiled into them.
+    public func readProgressReport() -> AgentProgressState? { latestProgressReport }
+
+    /// Store the progress state libghostty just decoded
+    /// (GHOSTTY_ACTION_PROGRESS_REPORT), so `readProgressReport()` can surface it to
+    /// detection. Called from the action trampoline on the main thread.
+    func updateProgressReport(_ state: AgentProgressState) { latestProgressReport = state }
 
     // MARK: Debug accessors (compiled only into debug builds)
 

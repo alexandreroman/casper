@@ -44,7 +44,7 @@ not persisted, reset on load — like the rest of the agent-facing runtime state
 
 | State     | Meaning                        | Producer                                  |
 | --------- | ------------------------------ | ----------------------------------------- |
-| `working` | executing                      | detection (OSC title spinner)             |
+| `working` | executing                      | detection (OSC 9;4 progress report)       |
 | `blocked` | waiting on the user            | detection (viewport)                      |
 | `idle`    | at rest, seen                  | detection (OSC title / viewport)          |
 | `done`    | at rest, unseen                | derived (see resolver)                    |
@@ -55,28 +55,42 @@ not persisted, reset on load — like the rest of the agent-facing runtime state
 
 ### Reading the terminal
 
-Detection reads **two** signals per surface, both cheap and synchronous on the
+Detection reads **three** signals per surface, all cheap and synchronous on the
 main thread:
 
-1. **The OSC title** — `GhosttySurfaceView.readOSCTitle()`. libghostty delivers
+1. **The OSC 9;4 progress report** — `GhosttySurfaceView.readProgressReport()`.
+   This is the **primary `working` signal**. Claude Code emits ConEmu/iTerm2
+   progress reports around every turn, libghostty decodes them into
+   `GHOSTTY_ACTION_PROGRESS_REPORT`, and the runtime latches the state
+   per-surface (see Wiring). Verified against a real Claude Code 2.1.239 PTY
+   capture: `ESC]9;4;0` when the REPL starts, `ESC]9;4;3` (indeterminate) for
+   the whole duration of a turn, `ESC]9;4;0` again when the turn ends. Claude
+   Code gates the emission on the terminal advertising support — inside a Casper
+   terminal `TERM_PROGRAM=ghostty` and `TERM_PROGRAM_VERSION=1.3.1`, clearing
+   its `>= 1.2.0` bar — and on the `terminalProgressBarEnabled` setting, which
+   defaults on.
+2. **The OSC title** — `GhosttySurfaceView.readOSCTitle()`. libghostty delivers
    the terminal title via `GHOSTTY_ACTION_SET_TITLE`; the runtime captures it
-   per-surface (see Wiring) and the detector reads the latest value. This is the
-   **primary `working` signal**: current Claude Code no longer prints an
-   interrupt hint in the grid — it encodes its live state in the title (an
-   animated Braille spinner while working, a `✳` at rest). The embedded
-   libghostty fork forwards these title sequences intact (verified).
-2. **The viewport grid** — `GhosttySurface.readText(scrollback: false)`
+   per-surface and the detector reads the latest value. A **secondary** signal:
+   Claude Code still encodes its state in the title (an animated spinner while
+   working, a `✳` at rest), but the spinner glyph is not stable across
+   releases — 2.1.239 prints the quadrant circles `◐◑◒◓` (U+25D0–U+25D3) where
+   earlier builds printed Braille (U+2800–U+28FF), so both ranges are matched
+   and neither is trusted as the sole liveness signal.
+3. **The viewport grid** — `GhosttySurface.readText(scrollback: false)`
    fabricates a full-**viewport** selection and calls
    `ghostty_surface_read_text`. Read the **viewport only**, never the full
    scrollback, on every tick: the `blocked` affordances we match are always on
    the visible screen, and scraping scrollback each time is needlessly
-   expensive.
+   expensive. This is the only source for `blocked`, and the only `working`
+   source for agents that report no progress (Codex).
 
-Both `readText` (viewport) and `readOSCTitle` are exposed through **non-DEBUG
-accessors** on `GhosttySurfaceView` / `AppModel` (`readViewportText()` /
-`surfaceViewportText`, `readOSCTitle()` / `surfaceOSCTitle`) so the detector can
-reach them in a release build (distinct from the `#if DEBUG` debug channel,
-`themes/debug.md`).
+`readText` (viewport), `readOSCTitle` and `readProgressReport` are all exposed
+through **non-DEBUG accessors** on `GhosttySurfaceView` / `AppModel`
+(`readViewportText()` / `surfaceViewportText`, `readOSCTitle()` /
+`surfaceOSCTitle`, `readProgressReport()` / `surfaceProgressReport`) so the
+detector can reach them in a release build (distinct from the `#if DEBUG` debug
+channel, `themes/debug.md`).
 
 ### Trigger
 
@@ -93,29 +107,69 @@ surface for the mouse actions today; extend that resolution (as done for
 ### Rules
 
 A small, **data-driven** matcher (`AgentDetectionRuleSet`) yields a raw signal
-from each source. The patterns describe Claude Code's affordances and are held
-as values on the rule set (not hard-coded control flow) so a new agent is just a
-new rule set; the aspiration is to move them to an external, updatable resource
-so they can track the agent's UI without a recompile. Viewport matching is
-case-insensitive.
+from the two text sources; the progress report needs no patterns and maps
+straight through `AgentSignal(progress:)`. The patterns describe Claude Code's
+affordances and are held as values on the rule set (not hard-coded control flow)
+so a new agent is just a new rule set; the aspiration is to move them to an
+external, updatable resource so they can track the agent's UI without a
+recompile. Viewport matching is case-insensitive.
 
-- **`working`** — from the **OSC title**: a leading **Braille spinner glyph**
-  (any scalar in `U+2800…U+28FF`), the animated marker Claude Code shows while a
-  turn is running. This is the authoritative "is it working" signal; its
-  disappearance (the title reverting to a `✳` or to the shell's own cwd/command
-  title) is the "no longer working" signal. The legacy viewport interrupt hints
-  (`esc to interrupt`, `press esc to interrupt`, `ctrl+c to interrupt`) are
-  **retained as a secondary matcher** for resilience and other agents, but
-  current Claude Code no longer prints them.
+- **`working`** — primarily from the **OSC 9;4 progress report**: `SET`
+  (`9;4;1`, a determinate bar) and `INDETERMINATE` (`9;4;3`, what Claude Code
+  emits for a whole turn) both mean an operation is running. `REMOVE` (`9;4;0`)
+  maps to `absent`, not `idle` — "this source says nothing" — so a shell that
+  never reports progress stays indistinguishable from an agent that just
+  finished, and the other two sources still decide. `ERROR` (`9;4;2`) and
+  `PAUSE` (`9;4;4`) also map to `absent`: an error bar records the outcome of
+  finished work rather than liveness and lingers until the next report, and no
+  agent Casper targets emits `PAUSE` at all — pinning the workspace to a state
+  on either would be a guess. Secondarily from the **OSC title**: a leading
+  spinner glyph, matched over **two** disjoint ranges — the quadrant circles
+  `◐◑◒◓` (U+25D0–U+25D3) that Claude Code 2.1.239 prints, and Braille
+  (U+2800–U+28FF) as printed by earlier builds and kept for other agents. The
+  legacy viewport interrupt hints (`esc to interrupt`, `ctrl+c to interrupt`)
+  are **retained as a third matcher** for Codex and for resilience; current
+  Claude Code no longer prints them anywhere a running turn can be seen.
 - **`idle`** — from the **OSC title**: a leading `✳` (`U+2733`), the marker
-  Claude Code shows at rest. A title with neither prefix (the shell's own
-  cwd/command title) yields no title signal (`absent`), and the viewport's
-  at-rest prompt then resolves to `idle`.
+  Claude Code shows at rest (still emitted by 2.1.239, verified). A title with
+  no recognised prefix (the shell's own cwd/command title) yields no title
+  signal (`absent`), and the viewport's at-rest prompt then resolves to `idle`.
 - **`blocked`** — from the **viewport**: a pending confirmation the agent shows
   only while it waits for the user — `do you want to proceed?` together with an
   `esc to cancel` affordance (and sibling confirmation prompts). `blocked`
-  outranks a lingering `working` title in aggregation, so a pending prompt is
-  never masked by a stale spinner.
+  outranks a `working` progress report in aggregation, so a pending prompt is
+  never masked by a progress bar the agent left up.
+
+#### Why the progress report and not the title or the viewport
+
+Both of the older signals were the primary once and both decayed, which is the
+reason liveness now rests on a protocol Claude Code emits deliberately rather
+than on its UI chrome:
+
+- **The viewport interrupt hint is gone.** `esc to interrupt` still exists in
+  the 2.1.239 bundle, but at exactly one call site: the `low_priority_waiting`
+  API-retry banner (`· next try in … · attempt … · esc to interrupt`). It is
+  never rendered during normal work — a full PTY capture of a turn contains no
+  occurrence of it — so `signal(fromViewport:)` falls through to `idle` for the
+  entire run.
+- **The title spinner is unstable.** It is still emitted, but the glyph changed
+  under us (Braille → quadrant circles), and the title is otherwise plain
+  stripped text. Matching a moving glyph set is a maintenance treadmill; it
+  stays as a fallback, not as the thing the sidebar spinner depends on.
+- **OSC 21337 (`TAB_STATUS`) is a dead end.** Claude Code carries a structured
+  status protocol with exactly the right payload
+  (`{idle:{status:"Idle"}, busy:{status:"Working…"},
+  waiting:{status:"Waiting"}}`), but it is feature-flagged off — the gate
+  function returns `false` unconditionally and the emitter early-returns, so
+  nothing is ever written.
+  The vendored libghostty header does not decode OSC 21337 either.
+
+By contrast OSC 9;4 is a user-visible product feature
+(`terminalProgressBarEnabled`, "Emit OSC 9;4 progress sequences during long
+operations"), it is already modelled by the pinned libghostty header
+(`ghostty_action_progress_report_s`) — so this theme needed no `make vendor`
+bump — and it is emitted by iTerm2/ConEmu-aware tools generally, so it degrades
+into a signal other long-running commands share rather than into nothing.
 
 ### Resolver
 
@@ -226,21 +280,29 @@ state lives only at the workspace level.
 
 ## Wiring (as built)
 
-- **CasperGhostty** — non-DEBUG `readViewportText()` accessor **and**
-  `readOSCTitle()`: `casperGhosttyAction` captures `GHOSTTY_ACTION_SET_TITLE`
-  per-surface (resolving the target the same way it does for `MOUSE_SHAPE`) into
-  `GhosttySurfaceView.latestOSCTitle`, then falls through so the app-level
-  window-title behavior is preserved. (A `.render`-driven trigger is deferred;
-  see Deferred.)
+- **CasperGhostty** — non-DEBUG `readViewportText()`, `readOSCTitle()` **and**
+  `readProgressReport()` accessors: `casperGhosttyAction` captures
+  `GHOSTTY_ACTION_SET_TITLE` and `GHOSTTY_ACTION_PROGRESS_REPORT` per-surface
+  (resolving the target the same way it does for `MOUSE_SHAPE`) into
+  `GhosttySurfaceView.latestOSCTitle` / `latestProgressReport`. Both cases
+  terminate there — the target view is their only consumer — and both report the
+  action as consumed even when no view is recoverable, matching the app-level
+  `handleAction`. The pinned libghostty header already models the progress
+  report (`ghostty_action_progress_report_s`), so this needed no `make vendor`
+  bump and no fork change. (A `.render`-driven trigger is deferred; see
+  Deferred.)
 - **CasperCore** — the revised `AgentState` and the pure engine
-  (`AgentDetection.swift`): both `signal(fromViewport:)` and
-  `signal(fromTitle:)`, the latter classifying the Braille-spinner / `✳` title
-  prefixes.
+  (`AgentDetection.swift`): `signal(fromViewport:)`, `signal(fromTitle:)`
+  (classifying the spinner / `✳` title prefixes), and `AgentSignal(progress:)`
+  over the CasperCore-level `AgentProgressState` — a one-for-one restatement of
+  `ghostty_action_progress_report_state_e` so the C enum never reaches
+  CasperCore, which must not depend on GhosttyKit.
 - **CasperUI** — a detector owned by `AppModel` (main actor): a timer that ticks
   every ~250 ms while the window is visible and is throttled to ~1 s while it is
   hidden — it is never stopped (`agentDetectionIntervalVisible` /
-  `agentDetectionIntervalHidden`) — scrapes each workspace's terminals, viewport
-  **and** OSC title, aggregates the two signals, runs the resolver, and writes
+  `agentDetectionIntervalHidden`) — scrapes each workspace's terminals,
+  viewport, OSC title **and** OSC 9;4 progress state, aggregates the three
+  signals, runs the resolver, and writes
   `agentState` via `setDetectedAgentState` unless the workspace is under
   explicit authority. `controlSetAgentState` latches only `blocked`, `done`, and
   `error`; it releases terminal-observable states immediately. The sidebar status
@@ -287,10 +349,20 @@ rules live in `app-ui.md` § Design → "Dock attention".
 
 ### Codex native viewport detection
 
-Codex now has a native viewport rule set alongside Claude Code's OSC-title
-rule. Its `esc to interrupt` / `ctrl+c to interrupt` affordance and `Running
-tools` status identify live execution; Codex has no documented OSC-title state,
-so its title is deliberately ignored. Explicit `working`, `idle`, and `unknown`
+Codex has a native viewport rule set (`AgentDetectionRuleSet.codex`) alongside
+Claude Code's. Its `esc to interrupt` / `ctrl+c to interrupt` affordance and
+`Running tools` status identify live execution; Codex has no documented
+OSC-title state, so its title is deliberately ignored (its
+`titleWorkingScalars` is empty) and it publishes no OSC 9;4 progress, so the
+viewport is its only source.
+
+**It is not selected at runtime yet.** `runAgentDetectionTick` hard-codes
+`AgentDetectionRuleSet.claudeCode`, so the Codex rule set is exercised only by
+its unit tests. In practice a Codex workspace is still matched on the two
+interrupt hints, which `claudeCode` shares; only the `Running tools` needle is
+unreachable. Picking a rule set per surface needs a way to know which agent is
+running there, which detection does not have — that is the open work, not a
+missing line of wiring. Explicit `working`, `idle`, and `unknown`
 updates remain observable by the terminal detector. This prevents a
 `UserPromptSubmit` hook from leaving a workspace stuck in `working` if its
 separate `Stop` hook is not available. Explicit `blocked`, `done`, and `error`

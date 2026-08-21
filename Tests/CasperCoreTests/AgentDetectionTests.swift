@@ -72,6 +72,21 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromTitle: "\u{28FF} x"), .working)
     }
 
+    func testTitleQuadrantCircleSpinnerIsWorking() {
+        // Current Claude Code prints this spinner — captured from a real PTY session
+        // (ESC]0;◐ Claude Code). The Braille range stays for older builds and other agents.
+        XCTAssertEqual(rules.signal(fromTitle: "\u{25D0} Claude Code"), .working)
+        XCTAssertEqual(rules.signal(fromTitle: "\u{25D1} Claude Code"), .working)
+        XCTAssertEqual(rules.signal(fromTitle: "\u{25D2} Claude Code"), .working)
+        XCTAssertEqual(rules.signal(fromTitle: "\u{25D3} Claude Code"), .working)
+    }
+
+    func testTitleScalarBetweenWorkingRangesIsAbsent() {
+        // The two ranges must stay disjoint rather than collapse into one wide
+        // catch-all: a scalar in the gap is not a spinner and must not read working.
+        XCTAssertEqual(rules.signal(fromTitle: "\u{2700} x"), .absent)
+    }
+
     func testTitleAsteriskPrefixIsIdle() {
         XCTAssertEqual(rules.signal(fromTitle: "\u{2733} Ready"), .idle)
     }
@@ -92,6 +107,38 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromTitle: "  \u{2802} x"), .working)
     }
 
+    // MARK: - Progress report (OSC 9;4)
+
+    func testProgressSetIsWorking() {
+        // A determinate progress bar means an operation is running.
+        XCTAssertEqual(AgentSignal(progress: .set), .working)
+    }
+
+    func testProgressIndeterminateIsWorking() {
+        // What Claude Code emits for the whole duration of a turn (ESC]9;4;3),
+        // verified against a real 2.1.239 PTY capture.
+        XCTAssertEqual(AgentSignal(progress: .indeterminate), .working)
+    }
+
+    func testProgressRemovedIsAbsent() {
+        // Absent, not idle: "this source says nothing", so a shell that never reports
+        // progress stays indistinguishable from one that does, and the title/viewport
+        // signals still decide.
+        XCTAssertEqual(AgentSignal(progress: .removed), .absent)
+    }
+
+    func testProgressErrorIsAbsent() {
+        // A red bar records the outcome of finished work, not liveness, and it lingers
+        // until the next report — it must not pin the workspace to any state.
+        XCTAssertEqual(AgentSignal(progress: .error), .absent)
+    }
+
+    func testProgressPausedIsAbsent() {
+        // No agent Casper targets emits it, and a suspended bar asserts neither
+        // liveness nor rest.
+        XCTAssertEqual(AgentSignal(progress: .paused), .absent)
+    }
+
     // MARK: - Aggregation
 
     func testAggregateEmptyIsAbsent() {
@@ -108,6 +155,28 @@ final class AgentDetectionTests: XCTestCase {
 
     func testAggregateBlockedBeatsWorking() {
         XCTAssertEqual(AgentSignal.aggregate([.blocked, .working]), .blocked)
+    }
+
+    func testAggregateWorkingProgressRescuesIdleViewport() {
+        // [viewport, title, progress]: the progress report is the only source that
+        // still sees the run, so it must carry the workspace.
+        XCTAssertEqual(AgentSignal.aggregate([.idle, .absent, .working]), .working)
+    }
+
+    func testAggregateRemovedProgressDoesNotVetoWorkingTitle() {
+        // A silent progress source is absent, the weakest rank, so it cannot cancel
+        // a working title.
+        XCTAssertEqual(AgentSignal.aggregate([.idle, .working, .absent]), .working)
+    }
+
+    func testAggregateBlockedBeatsWorkingProgress() {
+        // A pending question needs the user even while a progress bar is still up.
+        XCTAssertEqual(AgentSignal.aggregate([.blocked, .absent, .working]), .blocked)
+    }
+
+    func testAggregateAllQuietIsIdle() {
+        // Nothing reports work: idle outranks the two absent sources.
+        XCTAssertEqual(AgentSignal.aggregate([.idle, .absent, .absent]), .idle)
     }
 
     // MARK: - Resolver
