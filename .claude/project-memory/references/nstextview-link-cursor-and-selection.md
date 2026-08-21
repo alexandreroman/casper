@@ -21,8 +21,8 @@ link-aware cursor possible at all.
 **The pointing-hand cursor is not free.** Hosted this way, `NSTextView` does
 **not** show it on its own — verified in the running app, where links keep the
 I-beam. The view therefore drives the cursor itself, following
-[[terminal-overlay-cursor]] — a tracking area rebuilt over the visible rect
-(the panel scrolls inside a SwiftUI `ScrollView`), the cursor set from
+[[terminal-overlay-cursor]] — a tracking area rebuilt over the visible rect (the
+panel scrolls inside a SwiftUI `ScrollView`), the cursor set from
 `cursorUpdate(with:)`, `mouseEntered(with:)`, and `mouseMoved(with:)`, and the
 character index under the pointer tested for a `.link` attribute to choose
 between `NSCursor.pointingHand` and the I-beam.

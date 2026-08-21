@@ -14,9 +14,9 @@ grapheme cluster, and CRLF forms one. `text.split(separator: "\n")` therefore
 does **not** split a CRLF file at all — it returns the whole file as one line,
 and every downstream check (section headers, `hasPrefix("//")` comment skips)
 silently sees nothing. Splitting with `split(whereSeparator: \.isNewline)`
-handles LF, CRLF and a lone CR alike. Trim with `.whitespacesAndNewlines`
-rather than `.whitespaces` for the same family of reasons: `.whitespaces`
-excludes `\r`.
+handles LF, CRLF and a lone CR alike. Trim with `.whitespacesAndNewlines` rather
+than `.whitespaces` for the same family of reasons: `.whitespaces` excludes
+`\r`.
 
 **Swift Regex literals reject lookbehind.** `(?<=…)` and `(?<!…)` fail to
 compile with "cannot parse regular expression: lookbehind is not currently

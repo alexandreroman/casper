@@ -21,4 +21,5 @@ echoed JSON report the path the file actually landed at.
 
 Any new verb carrying a filesystem path routes it through `absolutePath` in its
 `makeCommand()`. Tests pin this through `.parse([...])` + `makeCommand()` — see
-[[argumentparser-optional-default]] for why direct construction is not an option.
+[[argumentparser-optional-default]] for why direct construction is not an
+option.

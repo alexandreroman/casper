@@ -1,10 +1,10 @@
 ---
-name: git-workflow
+name: "Git workflow"
 description: "On Casper, get explicit authorization before git init/commit/push"
 type: feedback
 ---
 
-# git-workflow
+# Git workflow
 
 The Casper project requires **explicit, per-step control over git**: repo
 creation, commits, remotes, and pushes are deliberate outward or hard-to-reverse

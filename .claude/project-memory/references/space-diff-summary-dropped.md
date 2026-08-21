@@ -6,8 +6,8 @@ type: project
 
 # Per-workspace diff summary is dropped
 
-The per-workspace `+/−` **branch-vs-merge-base** diff summary (a divergence badge
-on each sidebar workspace row) is **not built** and will not be:
+The per-workspace `+/−` **branch-vs-merge-base** diff summary (a divergence
+badge on each sidebar workspace row) is **not built** and will not be:
 `Repository.divergenceLineStats` and `WorktreeManager.diffStat` are not to be
 implemented, and `plans/space-project.md` is superseded (its model / remote /
 naming tasks are already delivered under CasperUI UI-2).

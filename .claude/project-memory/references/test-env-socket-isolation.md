@@ -11,22 +11,22 @@ type: project
 `DebugSocketPath.resolve(for:)`/`.default` (CasperCore) and the control-channel
 dial path in `CasperCLI/ControlClient.swift` read these env vars and let them
 override the session-derived socket path — intentional for the `casper`
-CLI/`casper debug`, but every
-terminal Casper opens (dev or a bundled `Casper.app`, including an unnamed
-default-session instance) injects `CASPER_CONTROL_SOCKET` (and
-`CASPER_SESSION` for named sessions) via `AgentEnvironment.surfaceEnvironment`.
-Running `swift test` directly inside such a terminal (a normal dogfooding
-workflow for this repo) therefore leaks the live instance's real socket path
-into the test process.
+CLI/`casper debug`, but every terminal Casper opens (dev or a bundled
+`Casper.app`, including an unnamed default-session instance) injects
+`CASPER_CONTROL_SOCKET` (and `CASPER_SESSION` for named sessions) via
+`AgentEnvironment.surfaceEnvironment`. Running `swift test` directly inside such
+a terminal (a normal dogfooding workflow for this repo) therefore leaks the live
+instance's real socket path into the test process.
 
 **Why:** without the strip, `swift test --filter SocketPathResolutionTests` run
 inside a terminal opened by a real bundled `Casper.app` fails
 `testDebugResolveNamedSession`, because the ambient `CASPER_DEBUG_SOCKET`
-silently overrides the `SessionIdentity` argument passed to `resolve(for:)`. This
-only affects *assertions on the resolved path string* — no test binds a real
-listener at that default/session path (every test that opens a real socket uses
-its own UUID-suffixed temp path), so the live socket **file** is never at risk of
-being unlinked/rebound; the hazard is test-hermeticity, not socket corruption.
+silently overrides the `SessionIdentity` argument passed to `resolve(for:)`.
+This only affects *assertions on the resolved path string* — no test binds a
+real listener at that default/session path (every test that opens a real socket
+uses its own UUID-suffixed temp path), so the live socket **file** is never at
+risk of being unlinked/rebound; the hazard is test-hermeticity, not socket
+corruption.
 
 **How to apply:**
 
@@ -38,10 +38,10 @@ being unlinked/rebound; the hazard is test-hermeticity, not socket corruption.
   assertions with `guard ProcessInfo.processInfo.environment["CASPER_..."] ==
   nil else { return }`. These guards are defense in depth for a bare
   `swift test` run, and stay even though `make test` covers the common case.
-- If Casper starts injecting a new per-surface env var in the future, add it
-  to both the `make test` strip list and, ideally, avoid a bespoke per-test
-  guard as the *only* line of defense — the Makefile-level fix is the
-  precedent to prefer over relying on every test author remembering a guard.
-- See [[app-sessions]] (the analogous collision for live GUI verification,
-  not test runs) and [[domain-cli-control-channel]] (why
-  `CASPER_CONTROL_SOCKET` is injected at all).
+- If Casper starts injecting a new per-surface env var in the future, add it to
+  both the `make test` strip list and, ideally, avoid a bespoke per-test guard
+  as the *only* line of defense — the Makefile-level fix is the precedent to
+  prefer over relying on every test author remembering a guard.
+- See [[app-sessions]] (the analogous collision for live GUI verification, not
+  test runs) and [[domain-cli-control-channel]] (why `CASPER_CONTROL_SOCKET` is
+  injected at all).

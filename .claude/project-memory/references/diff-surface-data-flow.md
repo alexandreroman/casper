@@ -32,17 +32,17 @@ feedback path the whole TextKit rewrite exists to remove.
   fresh storage from base attributes only.
 - **Events stay on `DiffSurfaceController`.** A scroll target and a file's
   syntax colors finishing are events, not state; they tolerate a nil coordinator
-  and are retried. `Coordinator.scroll(toFileID:)` returns whether it landed, and
-  `DiffSurfaceView` consumes the target's nonce only then, so a target naming a
-  file that only the freshly computed diff holds survives until the document
-  reaches the surface.
+  and are retried. `Coordinator.scroll(toFileID:)` returns whether it landed,
+  and `DiffSurfaceView` consumes the target's nonce only then, so a target
+  naming a file that only the freshly computed diff holds survives until the
+  document reaches the surface.
 - **SwiftUI sizes the hosted view *after* `updateNSView`.** A document can
   therefore arrive while the container is still zero-sized, which silently
   resolves anything viewport-derived against an empty viewport — for the pinned
   file header that means no bars until the reader's first scroll.
-  `DiffSurfaceContainerView.viewportDidChange` fires from `layout()` and
-  re-runs `Coordinator.resolveBarsOverTheViewport()` for exactly this reason.
-  Any future viewport-derived state needs the same hook.
+  `DiffSurfaceContainerView.viewportDidChange` fires from `layout()` and re-runs
+  `Coordinator.resolveBarsOverTheViewport()` for exactly this reason. Any future
+  viewport-derived state needs the same hook.
 
 `Tests/CasperUITests/DiffTextSurfaceTests.swift` pins the scenario: a document
 that exists *before* the surface is realized must render on

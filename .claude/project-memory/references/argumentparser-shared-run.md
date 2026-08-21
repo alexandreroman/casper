@@ -6,18 +6,18 @@ type: reference
 
 # ArgumentParser shared run() via a refining protocol
 
-Subcommands whose `run()` bodies are identical share one implementation through a
-protocol that refines `ParsableCommand` and provides `run()` in its extension —
-`WorkspaceRefCommand` in `Sources/CasperCLI/ControlClient.swift`, adopted by the
-19 subcommands whose whole job is "send one control command, emit
+Subcommands whose `run()` bodies are identical share one implementation through
+a protocol that refines `ParsableCommand` and provides `run()` in its extension
+— `WorkspaceRefCommand` in `Sources/CasperCLI/ControlClient.swift`, adopted by
+the 19 subcommands whose whole job is "send one control command, emit
 `{"workspace":"<id>"}`".
 
 `ParsableCommand` already ships a default `run()` (it throws a help request), so
 two extension witnesses are visible on every conformer. Swift resolves the
-conformance to the member from the more refined protocol, so the shared body wins
-and the ArgumentParser fallback is never reached. Verify empirically after
-touching this — a wrong witness compiles fine and only shows up at runtime as the
-command printing its help text instead of acting:
+conformance to the member from the more refined protocol, so the shared body
+wins and the ArgumentParser fallback is never reached. Verify empirically after
+touching this — a wrong witness compiles fine and only shows up at runtime as
+the command printing its help text instead of acting:
 
 ```bash
 env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET ./.build/debug/casper notify --message hi
@@ -25,6 +25,12 @@ env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET ./.build/debug/casper notify
 ```
 
 Per-command variation rides on a protocol requirement with a default (e.g.
-`var commandTimeout: TimeInterval { get }`, defaulting to `sendControl`'s 5 s),
-which conformers override — browser automation verbs to 15 s, `workspace delete`
-to 35 s, `browser wait` to a value computed from its own `--timeout`.
+`var commandTimeout: TimeInterval { get }`, defaulting to `sendControl`'s 5 s).
+It varies two ways. A single conformer overrides it directly — `workspace
+delete` to 35 s, `browser wait` to a value computed from its own `--timeout`. A
+whole family instead conforms to a **further** refining protocol carrying the
+shared value: `BrowserAutomationRefCommand: WorkspaceRefCommand` in
+`Sources/CasperCLI/BrowserCommand.swift` gives the eight automation verbs their
+15 s in one place. The same most-refined-wins resolution applies, so the chain
+`ParsableCommand` -> `WorkspaceRefCommand` -> `BrowserAutomationRefCommand`
+resolves to the last link.

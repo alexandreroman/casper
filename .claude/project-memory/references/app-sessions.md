@@ -16,17 +16,17 @@ hijacks their sockets.
 
 **Why:** `make dev`/`.build/debug/casper` and a dogfooded real instance both
 otherwise bind the same fixed paths (`casper-control.sock`,
-`/tmp/casper-debug.sock`, `session.json`); a second unnamed instance rewrites the
-real `session.json` on quit and unlinks the live socket. A named session removes
-that collision. Confirmed by live test: a `--session dev` run left the real
-7 KB `session.json` untouched.
+`/tmp/casper-debug.sock`, `session.json`); a second unnamed instance rewrites
+the real `session.json` on quit and unlinks the live socket. A named session
+removes that collision. Confirmed by live test: a `--session dev` run left the
+real 7 KB `session.json` untouched.
 
 **How to apply:**
 
 - `SessionIdentity` (CasperCore) is the single source of the `-<name>` suffix.
   Parsing `--session` is gated by `#if DEBUG`: a release build ignores the
-  argument entirely and always runs the default session. No `--session` (or
-  any `--session` in a release build) → default session = byte-for-byte the
+  argument entirely and always runs the default session. No `--session` (or any
+  `--session` in a release build) → default session = byte-for-byte the
   historical paths (no `CASPER_SESSION` injected). Name rule: 1–32 chars from
   `[A-Za-z0-9._-]`; an invalid name exits non-zero at launch in a debug build
   (never a silent fallback).

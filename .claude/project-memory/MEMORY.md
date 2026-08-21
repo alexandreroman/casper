@@ -38,6 +38,7 @@
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring; the pinned binary's effect is unconfirmed
 - [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side; shape actions are surface-scoped
 - [libghostty scroll mods packed layout](references/ghostty-scroll-mods-layout.md) — opaque `int` = packed i32: precision bit, then momentum
+- [Surface view invalidation](references/surface-view-invalidate-before-release.md) — invalidate() before the last reference drops
 - [Surface identity](references/surface-identity.md) — a unique, stable `Surface.id` anchors every UI identity
 - [Observed startup dependencies](references/observed-startup-dependencies.md) — a startup-set @Observable prop must not be @ObservationIgnored
 - [PersistentNSViewHost view ownership](references/persistent-nsview-host-sharing.md) — window membership picks the container holding a shared view
@@ -105,6 +106,8 @@
 - [Agent-integration probe cadence](references/agent-integration-probe-cadence.md) — launch pays the cold cost; the tick refreshes
 - [Codex detection caveats](references/codex-detection-caveats.md) — unverified cache path, no manifest read, hooks.json false positive
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
+- [Unused-import false positives](references/unused-import-grep-false-positives.md) — a green build proves nothing
 - [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind
 - [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
+- [AppModel encapsulation across extension files](references/appmodel-extension-encapsulation.md) — `private(set)` survives the split via mutators

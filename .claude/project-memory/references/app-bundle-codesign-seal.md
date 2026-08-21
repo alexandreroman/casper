@@ -6,11 +6,11 @@ type: reference
 
 # Casper.app is sealed with a non-deep ad-hoc codesign
 
-`Scripts/bundle-app.sh` signs in a fixed order: the bundled dylibs, then the main
-executable, then the bundle itself (`codesign --force --sign - "$APP"`). The last
-step is what seals `Contents/Resources` (Assets.car, the icns, the notification
-sound) and `Info.plist`; without it `codesign --verify Casper.app` fails even
-though every Mach-O inside is signed.
+`Scripts/bundle-app.sh` signs in a fixed order: the bundled dylibs, then the
+main executable, then the bundle itself (`codesign --force --sign - "$APP"`).
+The last step is what seals `Contents/Resources` (Assets.car, the icns, the
+notification sound) and `Info.plist`; without it `codesign --verify Casper.app`
+fails even though every Mach-O inside is signed.
 
 The bundle signature is deliberately **not** `--deep`. `Contents/Frameworks/
 Sparkle.framework` keeps the Apple signature it shipped with, which seals

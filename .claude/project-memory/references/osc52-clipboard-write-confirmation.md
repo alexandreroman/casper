@@ -31,9 +31,8 @@ which the callback is always trusted and every line of the gate is dead code.
 Casper ships `clipboard-write = ask` in `GhosttyDefaultConfig.text`, which loads
 before the user's own Ghostty config so a user can still opt back into upstream
 behaviour. Unit tests cannot catch that line going missing — they drive the
-`approveUntrusted` seam directly and never observe how libghostty is
-configured — so
-`GhosttyClipboardTests.testDefaultConfigMakesLibghosttyAskBeforeAnUntrustedWrite`
+`approveUntrusted` seam directly and never observe how libghostty is configured
+— so `GhosttyClipboardTests.testDefaultConfigMakesLibghosttyAskBeforeAnUntrustedWrite`
 pins the config text itself.
 
 **Scope:** reads have a gate of their own, of the same shape —
@@ -44,12 +43,11 @@ with `DispatchQueue.main.async`, deliberately not the `CFRunLoopPerformBlock`
 route that [[main-queue-starved-by-modal-loops]] prescribes. The general rule
 for a libghostty callback: when the hazard is re-entering libghostty mid-tick,
 use the main queue, because it *guarantees* the block cannot run inside the
-current tick — the same guarantee `casperGhosttyCloseSurface` rests on —
-whereas a run-loop block only promises some later pass of the loop, which a
-nested loop entered from within that tick already satisfies. Reserve
-`CFRunLoopPerformBlock` for work that must run *while* a modal loop is up.
-Modal starvation is a benign cost here specifically because nothing in
-libghostty blocks on
+current tick — the same guarantee `casperGhosttyCloseSurface` rests on — whereas
+a run-loop block only promises some later pass of the loop, which a nested loop
+entered from within that tick already satisfies. Reserve `CFRunLoopPerformBlock`
+for work that must run *while* a modal loop is up. Modal starvation is a benign
+cost here specifically because nothing in libghostty blocks on
 `write_clipboard_cb` — it returns `void` with no completion — so a prompt
 waiting behind an alert already on screen is merely delayed, which is also where
 it belongs.

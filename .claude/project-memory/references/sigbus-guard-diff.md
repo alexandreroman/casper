@@ -12,8 +12,9 @@ truncating a worktree file after libgit2 maps it but before xdiff
 (`KERN_MEMORY_ERROR`) that no Swift `do`/`catch` can catch, killing the process.
 libgit2 installs no SIGBUS handler of its own.
 
-The fix is an in-process SIGBUS guard — the established `sigsetjmp`/signal-handler
-technique for recovering from a `SIGBUS` on a truncated `mmap`:
+The fix is an in-process SIGBUS guard — the established
+`sigsetjmp`/signal-handler technique for recovering from a `SIGBUS` on a
+truncated `mmap`:
 
 - C target `CSigbusGuard` (`Sources/CSigbusGuard/`) installs a process-wide
   `sigaction` for **SIGBUS only** (never SIGSEGV — that would mask real

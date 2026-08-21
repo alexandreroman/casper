@@ -25,13 +25,13 @@ diagnostic floor: `.error`/`.fault` stay compiled in for field crash diagnosis;
 [[domain-cli-control-channel]]. Do not conflate the two when reasoning about
 what is release-safe.
 
-**Why:** the debug channel is an injectable local control socket; leaving it in a
-shipped build is an attack surface, and it must never reach a distributed
-release. `#if DEBUG` guarantees absence by construction because
-`make release` builds `-c release`, where `DEBUG` is undefined — a dedicated
-`-D` flag would leave room for accidental release activation. Logging errors are
-kept because `os.Logger` is privacy-preserving and near-zero cost, and is the
-only way to diagnose a crash reported from the field.
+**Why:** the debug channel is an injectable local control socket; leaving it in
+a shipped build is an attack surface, and it must never reach a distributed
+release. `#if DEBUG` guarantees absence by construction because `make release`
+builds `-c release`, where `DEBUG` is undefined — a dedicated `-D` flag would
+leave room for accidental release activation. Logging errors are kept because
+`os.Logger` is privacy-preserving and near-zero cost, and is the only way to
+diagnose a crash reported from the field.
 
 **How to apply:** wrap the whole control-channel code path and its `casper
 debug` subcommand registration in `#if DEBUG`. For logs, keep `.error`/`.fault`
@@ -44,10 +44,10 @@ See the [dependency policy](dependency-policy.md) note and the spec at
 (`debugHasSurface`, `debugReadText`, `debugSendText`, `debugSendKeys`,
 `debugSendKey`, `debugSendAction`, `debugMouseMove`, `debugGeometry`) live in
 `CasperGhostty`. They must be `public`: an `internal` accessor compiles inside
-`CasperGhostty` itself but not from a `DebugSurfaceProvider` conformance
-written in a different target — which is where the conformance lives
-(`CasperUI`'s `DebugSurfaceBridge.swift`). `DebugSurfaceHandle`,
-`DebugSurfaceGeometry`, `DebugSurfaceProvider`, and `DebugServer` are already
-`public` in `Sources/CasperGhostty/DebugServer.swift`; `DebugSocketPath` is
-`public` in `Sources/CasperCore/DebugSocket.swift`. `#if DEBUG` still fully
-compiles these out of a release build regardless of access level.
+`CasperGhostty` itself but not from a `DebugSurfaceProvider` conformance written
+in a different target — which is where the conformance lives (`CasperUI`'s
+`DebugSurfaceBridge.swift`). `DebugSurfaceHandle`, `DebugSurfaceGeometry`,
+`DebugSurfaceProvider`, and `DebugServer` are already `public` in
+`Sources/CasperGhostty/DebugServer.swift`; `DebugSocketPath` is `public` in
+`Sources/CasperCore/DebugSocket.swift`. `#if DEBUG` still fully compiles these
+out of a release build regardless of access level.

@@ -13,15 +13,15 @@ therefore breaks `CasperUI`'s (and anything downstream, including `casper`'s
 executable target and `CasperUITests`) compilation immediately, even though
 `CasperCore` itself still builds and its own tests still pass in isolation.
 
-A plan that splits "add the verb" and "route the verb to an `AppModel`
-handler" into separate tasks cannot land as separate commits: the first
-task's commit alone leaves the whole app (and its test target) unbuildable.
-Those two tasks must be implemented and committed together as one commit —
-an exception to the [implementation workflow](implementation-workflow.md)'s
-default of one commit per plan task.
+A plan that splits "add the verb" and "route the verb to an `AppModel` handler"
+into separate tasks cannot land as separate commits: the first task's commit
+alone leaves the whole app (and its test target) unbuildable. Those two tasks
+must be implemented and committed together as one commit — an exception to the
+[implementation workflow](implementation-workflow.md)'s default of one commit
+per plan task.
 
 The first `switch command.verb { ... }` in the same function (the
-not-workspace-scoped commands like `workspaceList`/`workspaceNew`) does have
-a `default: break`, so adding a verb that is dispatched only from there is
-not subject to this constraint — only the workspace-scoped switch is fully
+not-workspace-scoped commands like `workspaceList`/`workspaceNew`) does have a
+`default: break`, so adding a verb that is dispatched only from there is not
+subject to this constraint — only the workspace-scoped switch is fully
 exhaustive.

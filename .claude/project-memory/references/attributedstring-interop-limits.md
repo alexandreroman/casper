@@ -28,16 +28,16 @@ carried into AppKit text. The working recipe for both lives in
 range check still agrees, so the text renders fully neutral with no error and no
 log, indistinguishable from "language unknown". And measuring a run with
 `String(slice.characters).utf16.count` rounds to grapheme boundaries, so offsets
-drift whenever a run boundary falls inside a cluster, misaligning every later run
-in the line.
+drift whenever a run boundary falls inside a cluster, misaligning every later
+run in the line.
 
-**How to apply:** read the AppKit scope when consuming HighlightSwift output (see
-[[highlightswift-shared-instance]]). Pin the contract with a test whose input
-comes from `AttributedString(nsAttributedString, including: \.appKit)` — a test
-that builds its own SwiftUI-scope `AttributedString` asserts against the wrong
-scope and passes while production applies nothing. The real producer is not
-available as a test input: under `swift test`, `Bundle.main` is the toolchain's
-`usr/bin`, so HighlightSwift's resource bundle cannot be found and
+**How to apply:** read the AppKit scope when consuming HighlightSwift output
+(see [[highlightswift-shared-instance]]). Pin the contract with a test whose
+input comes from `AttributedString(nsAttributedString, including: \.appKit)` — a
+test that builds its own SwiftUI-scope `AttributedString` asserts against the
+wrong scope and passes while production applies nothing. The real producer is
+not available as a test input: under `swift test`, `Bundle.main` is the
+toolchain's `usr/bin`, so HighlightSwift's resource bundle cannot be found and
 `DiffHighlighter.highlightedLines` returns `nil` (see
 [[highlightswift-resource-bundle]]). Note that a test comparing colors needs
 `import SwiftUI` for `Color`-typed literals to resolve, and that

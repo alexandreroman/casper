@@ -27,8 +27,8 @@ distributed build the same capture is a one-line manual command, which is why
 the shipped binary carries no permanent 500 ms timer. Sibling instrumentation to
 the diff SIGBUS guard (see [[sigbus-guard-diff]], which *does* ship in release);
 the earlier fixed UI freeze is [[diff-view-refresh-hang]]. If captured samples
-repeatedly point at the diff/libgit2 path (`computeDiff` /
-`diffWorkdirToHead`), start there.
+repeatedly point at the diff/libgit2 path (`computeDiff` / `diffWorkdirToHead`),
+start there.
 
 The liveness probe rides the **main run loop** (`CFRunLoopPerformBlock`), not
 the main dispatch queue, or every modal alert reads as a hang — see
@@ -54,7 +54,6 @@ trade-off.
   "Casper UI freeze captured" fires on success.
 - **Log marker (dev builds, written even if `sample` fails):** `.fault` under
   subsystem `com.github.alexandreroman.casper`, category `app`, text
-  "main-thread hang detected …".
-  `log show --predicate 'subsystem == "com.github.alexandreroman.casper"' --last 30m --info --debug`
+  "main-thread hang detected …". `log show --predicate 'subsystem == "com.github.alexandreroman.casper"' --last 30m --info --debug`
 - **Tuning (dev builds, no rebuild):** `CASPER_HANG_THRESHOLD=<seconds>`
   overrides the 2 s threshold; `CASPER_HANG_WATCHDOG=0` disables it entirely.

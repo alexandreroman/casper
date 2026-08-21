@@ -24,25 +24,25 @@ cached view out of the nursery into the visible container. See
 `materializePendingSurfacesOffscreen(in:)`; `discardSurfaceViews` detaches
 nursery-hosted views so a never-selected workspace's PTY is freed.
 
-Three call sites drive it, each owning exactly the surfaces whose input it
-queued — never overlapping, so none can be dropped as redundant:
+Two call sites drive it, each owning exactly the surfaces whose input it queued
+— never overlapping, so none can be dropped as redundant:
 
 - `createLinkedWorkspace`, guarded on `!select, command != nil` — the initial
   terminal's `--command`.
-- `controlOpenTerminal`, guarded on `command != nil` and non-selected — a
-  `--command` opened into a background workspace.
-- `insertHookSurface`, guarded on non-selected — every `.casper.json`
-  `setup`/`teardown` split. Without it, deleting a **non-selected** workspace
-  whose repo defines a `teardown` hook always burned the full 30 s
-  `ScriptHookRunner.teardownTimeout`: the split was inserted into the layout but
-  never mounted, so no PTY spawned, no child-exit arrived, and only the timeout
-  could resume `runTeardown`. `ScriptHookRunner` stays ignorant of views — the
-  materialization lives on the `AppModel` side of its injected-closure seam.
+- `insertTerminal`, guarded on `command != nil` and non-selected — it backs both
+  `controlOpenTerminal` (a `--command` opened into a background workspace) and
+  every `.casper.json` `setup`/`teardown` split. Without it, deleting a
+  **non-selected** workspace whose repo defines a `teardown` hook always burned
+  the full 30 s `ScriptHookRunner.teardownTimeout`: the split was inserted into
+  the layout but never mounted, so no PTY spawned, no child-exit arrived, and
+  only the timeout could resume `runTeardown`. `ScriptHookRunner` stays ignorant
+  of views — the materialization lives on the `AppModel` side of its
+  injected-closure seam.
 
 **Why:** the lazy, window-gated surface lifecycle is the reason background
 commands (and CLI-created workspaces' `setup` hooks, same `pendingInitialInput`
-path) don't run on their own — an easy invariant to miss when touching
-workspace creation or surface lifecycle.
+path) don't run on their own — an easy invariant to miss when touching workspace
+creation or surface lifecycle.
 
 **How to apply:** anything that must run in an unselected workspace's terminal
 needs its surface materialized (via the nursery) — merely queueing input or

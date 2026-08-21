@@ -11,11 +11,11 @@ HighlightSwift's SwiftPM-generated `Bundle.module` accessor resolves
 `mainPath` = `Bundle.main.bundleURL.appendingPathComponent(
 "HighlightSwift_HighlightSwift.bundle")` (for a macOS `.app`,
 `Bundle.main.bundleURL` is the **`.app` root**, a sibling of `Contents/`), and a
-hardcoded compile-time absolute `buildPath` pointing into the compiling machine's
-`.build/…`. If neither exists it hits `Swift.fatalError` and the app crashes
-(SIGTRAP) the first time diff-view syntax highlighting runs (`HLJS.load()`).
-**`Bundle.main.resourceURL` / `Contents/Resources/` is never a candidate** — the
-accessor does not use the standard multi-candidate template.
+hardcoded compile-time absolute `buildPath` pointing into the compiling
+machine's `.build/…`. If neither exists it hits `Swift.fatalError` and the app
+crashes (SIGTRAP) the first time diff-view syntax highlighting runs
+(`HLJS.load()`). **`Bundle.main.resourceURL` / `Contents/Resources/` is never a
+candidate** — the accessor does not use the standard multi-candidate template.
 
 **Why:** on the compiling machine `buildPath` exists, so a local dev or release
 build resolves the bundle even when the `.app` root copy is missing. This
