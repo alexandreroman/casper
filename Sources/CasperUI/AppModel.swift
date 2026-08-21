@@ -405,9 +405,10 @@ final class AppModel {
     @ObservationIgnored var agentResolvers: [UUID: AgentStateResolver] = [:]
 
     // Reached from AppModel+Spaces.swift and AppModel+Control.swift.
-    /// Workspaces where `casper status set` took over: detection is suppressed
-    /// for them and the explicit value is authoritative. Transient — an in-memory
-    /// set, never persisted, so it naturally resets to "detection" on relaunch.
+    /// Workspaces whose terminal-independent, explicit state took over: native
+    /// terminal detection is suppressed only for `blocked`, `done`, and `error`.
+    /// Transient — an in-memory set, never persisted, so it naturally resets to
+    /// "detection" on relaunch.
     @ObservationIgnored var explicitAuthority: Set<UUID> = []
 
     /// When each workspace last delivered a macOS notification. Drives a short

@@ -18,6 +18,18 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromViewport: viewport), .working)
     }
 
+    func testCodexWorkingMatchesItsInterruptAffordance() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.codex.signal(fromViewport: "Running tools…\n(esc to interrupt)"),
+            .working)
+    }
+
+    func testCodexDoesNotTreatShellTitleAsAnExecutionSignal() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.codex.signal(fromTitle: "\u{2802} unrelated title"),
+            .absent)
+    }
+
     func testBlockedAllOfGroupRequiresEverySubstring() {
         let viewport = "Do you want to proceed?\n❯ Yes  (esc to cancel)"
         XCTAssertEqual(rules.signal(fromViewport: viewport), .blocked)

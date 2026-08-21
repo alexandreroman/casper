@@ -19,11 +19,15 @@ extension AppModel {
         let previous = workspace(at: at).agentState
         updateWorkspace(at: at) { $0.agentState = state }
         clearNotificationOnResume(from: previous, to: state, at: at)
-        // The explicit CLI path is the ONLY place authority is granted: once an
-        // agent reports its own state, terminal-scraping detection steps aside for
-        // this workspace. Robust authority release is deferred to a later timeout
-        // mechanism.
-        explicitAuthority.insert(workspaceID)
+        // Terminal-observable states remain under native detection, allowing the
+        // viewport to correct a stale hook-reported state. Attention states stay
+        // authoritative because terminal scraping cannot safely clear them.
+        switch state {
+        case .blocked, .done, .error:
+            explicitAuthority.insert(workspaceID)
+        case .working, .idle, .unknown:
+            explicitAuthority.remove(workspaceID)
+        }
         // `done` is the one explicit state detection can never produce for a
         // hook-driven workspace (it's already under explicit authority by the
         // time a Stop hook fires — see
