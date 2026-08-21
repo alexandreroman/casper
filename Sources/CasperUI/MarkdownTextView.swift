@@ -24,6 +24,15 @@ private enum Style {
 /// type and calls `linkURL(at:)` directly, so deleting this class fails the
 /// build instead of silently leaving the suite green.
 final class LinkCursorTextView: NSTextView {
+    /// Handed the height this view has *actually* laid out, whenever that height
+    /// moves. See `reportLaidOutHeight()` for why the caller cannot work this
+    /// out for itself.
+    var onLaidOutHeight: ((CGFloat) -> Void)?
+
+    /// The last height handed to `onLaidOutHeight`, so an unchanged layout stays
+    /// silent — see `reportLaidOutHeight()`.
+    private var lastReportedHeight: CGFloat?
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         // The panel scrolls inside a SwiftUI `ScrollView`, which reshapes what
@@ -39,6 +48,79 @@ final class LinkCursorTextView: NSTextView {
             // is over it.
             options: [.cursorUpdate, .mouseMoved, .mouseEnteredAndExited, .activeAlways],
             owner: self))
+    }
+
+    /// The one place a real frame and a real layout both exist, which is what
+    /// makes it the place to report the laid-out height from.
+    ///
+    /// `updateNSView` cannot do it: it runs with `frame == .zero` and no window,
+    /// and any layout forced from there is thrown away as soon as SwiftUI
+    /// assigns the real frame — the container has `widthTracksTextView = true`,
+    /// so the 0 → `width` change invalidates every fragment that was laid out at
+    /// zero.
+    override func layout() {
+        super.layout()
+        reportLaidOutHeight()
+    }
+
+    /// Hands `onLaidOutHeight` the height of the text as the engine currently
+    /// driving this view has laid it out.
+    ///
+    /// **Which engine that is cannot be assumed.** This view is built on the
+    /// TextKit 2 stack, but AppKit migrates it to TextKit 1 behind our back on a
+    /// display pass once its storage holds an `NSTextTable` — which is exactly
+    /// how `MarkdownAttributedString` renders a GFM table — and the two engines
+    /// lay the same string out to different heights (see the
+    /// `textkit1-fallback-on-nstexttable` project memory note). So the *live*
+    /// stack is asked, and `textLayoutManager` is tested FIRST: merely reading
+    /// `layoutManager` is itself what performs that migration, so a fallback
+    /// chain starting at TextKit 1 would cause the very migration it means to
+    /// detect.
+    ///
+    /// **The report cannot loop.** A new height changes the frame, and the frame
+    /// change brings AppKit back through `layout()`; that second pass computes
+    /// the same height, because layout depends on the container's width and
+    /// never on the view's height (`heightTracksTextView` stays false), so the
+    /// comparison below drops it and the view settles after one round trip.
+    /// `MarkdownTextView.updateNSView` clears `lastReportedHeight` whenever it
+    /// swaps the storage, so a new message is still reported even if it lays out
+    /// to the height the previous one did.
+    ///
+    /// Forcing layout over the whole document on every pass is affordable here
+    /// and nowhere near the diff surface's scale: an info-panel message is one
+    /// bounded string, and the panel already lays the same string out once per
+    /// body evaluation to measure it.
+    private func reportLaidOutHeight() {
+        guard let textContainer, let onLaidOutHeight else { return }
+
+        let height: CGFloat
+        if let textLayoutManager {
+            guard let documentRange = textLayoutManager.textContentManager?.documentRange else { return }
+            // TextKit 2 lays out viewport-first, so the usage bounds cover the
+            // whole document only once layout has been forced over all of it.
+            textLayoutManager.ensureLayout(for: documentRange)
+            height = ceil(textLayoutManager.usageBoundsForTextContainer.height)
+        } else {
+            guard let layoutManager else { return }
+            layoutManager.ensureLayout(for: textContainer)
+            height = ceil(layoutManager.usedRect(for: textContainer).height)
+        }
+
+        guard abs(height - (lastReportedHeight ?? -1)) > 0.5 else { return }
+        lastReportedHeight = height
+        // Off this layout pass rather than inline: SwiftUI drives AppKit layout
+        // from inside its own update, and writing view state there is the
+        // classic "modifying state during view update" hazard. The height is
+        // already final by the time the hop runs, and the guard above is what
+        // keeps the hop from repeating.
+        DispatchQueue.main.async { onLaidOutHeight(height) }
+    }
+
+    /// Forgets what was last reported, so the next layout pass reports whatever
+    /// the current content lays out to even if that matches the previous
+    /// content's height.
+    func forgetReportedHeight() {
+        lastReportedHeight = nil
     }
 
     override func cursorUpdate(with event: NSEvent) { applyCursor(for: event) }
@@ -106,29 +188,43 @@ struct MarkdownTextView: NSViewRepresentable {
     /// suppresses `NSTextView`'s own system open; `false` lets the system handle
     /// the URL.
     private let onOpenURL: (URL, NSEvent.ModifierFlags) -> Bool
+    /// Called with the height the hosted view has really laid out, so the caller
+    /// can size it from that instead of from `height(for:width:)` alone — see
+    /// `LinkCursorTextView.reportLaidOutHeight()` for why the two can disagree.
+    /// Defaulted to a no-op for a caller that pins the view's height itself and
+    /// has nothing to do with the answer.
+    private let onLaidOutHeight: (CGFloat) -> Void
 
-    init(markdown: String, width: CGFloat, onOpenURL: @escaping (URL, NSEvent.ModifierFlags) -> Bool) {
+    init(
+        markdown: String, width: CGFloat,
+        onOpenURL: @escaping (URL, NSEvent.ModifierFlags) -> Bool,
+        onLaidOutHeight: @escaping (CGFloat) -> Void = { _ in }
+    ) {
         self.markdown = markdown
         self.width = width
         self.onOpenURL = onOpenURL
+        self.onLaidOutHeight = onLaidOutHeight
     }
 
-    /// The full laid-out height of `markdown` at `width`, so the caller can give
-    /// this view a frame tall enough to show all of it.
+    /// The height `markdown` lays out to at `width` on a **TextKit 2** stack, as
+    /// an opening height for the caller's frame.
+    ///
+    /// An opening height, not the final word. This measurement is available
+    /// before any view exists, so it keeps the first layout pass from being a
+    /// zero-height one and lets a short message hug its text the moment it
+    /// appears — but the height that decides whether a line is drawn is the one
+    /// the *live* view lays out, which is why `onLaidOutHeight` exists and why
+    /// the caller must take the larger of the two. The two disagree whenever the
+    /// live view is no longer on TextKit 2, and it stops being on TextKit 2 on
+    /// its own (see `LinkCursorTextView.reportLaidOutHeight()`).
     ///
     /// Measured through a throwaway TextKit stack rather than off a live view: a
     /// view's own frame height is whatever was proposed to it, which would make
-    /// the answer echo the question.
-    ///
-    /// That throwaway stack is assembled by hand as `NSTextContentStorage` →
-    /// `NSTextLayoutManager` → `NSTextContainer` so it is the **TextKit 2** engine
-    /// — the one a plain `NSTextView(frame:)` is backed by, and therefore the one
-    /// `makeNSView` really renders with. The TextKit 1 compatibility stack answers
-    /// a measurably different height for the same string, most of all around
-    /// `NSTextTable`, which is exactly how `MarkdownAttributedString` lays out a
-    /// GFM table; measuring on that engine would clip or pad a table in the panel.
-    /// The container matches the real view's `lineFragmentPadding = 0` so both
-    /// wrap at exactly the same width.
+    /// the answer echo the question. That throwaway stack is assembled by hand as
+    /// `NSTextContentStorage` → `NSTextLayoutManager` → `NSTextContainer` so it
+    /// is the TextKit 2 engine — the one `makeNSView` builds and starts out
+    /// rendering with — and its container matches the real view's
+    /// `lineFragmentPadding = 0` so both wrap at exactly the same width.
     static func height(for markdown: String, width: CGFloat) -> CGFloat {
         let content = renderedContent(for: markdown, width: width)
         guard content.length > 0 else { return 0 }
@@ -176,18 +272,22 @@ struct MarkdownTextView: NSViewRepresentable {
         Coordinator(onOpenURL: onOpenURL)
     }
 
-    func makeNSView(context: Context) -> NSTextView {
+    func makeNSView(context: Context) -> LinkCursorTextView {
         // The TextKit 2 chain, built by hand — the same way `DiffTextSurface`'s
         // `Coordinator.init` assembles its own (see that initializer's comment for
         // why). `NSTextView(frame:)` happens to be TextKit 2-backed today, but
         // that is a default this file would otherwise have to trust rather than
-        // guarantee: merely *reading* `NSTextView.layoutManager` anywhere still
+        // ask for, and merely *reading* `NSTextView.layoutManager` anywhere
         // migrates the view to TextKit 1 and nils out `textLayoutManager` (see the
-        // `textkit2-layout-geometry` project memory note), which would desync the
-        // render engine from what `height(for:width:)` measures. Constructing the
-        // stack explicitly via `NSTextView(frame:textContainer:)` makes TextKit 2
-        // an invariant of this view's own container, rather than incidental to
-        // which initializer happened to be called.
+        // `textkit2-layout-geometry` project memory note).
+        //
+        // What this does NOT buy is TextKit 2 as an invariant: AppKit migrates the
+        // view to TextKit 1 by itself, on a display pass, whenever the storage
+        // holds an `NSTextTable` (see the `textkit1-fallback-on-nstexttable`
+        // project memory note), and nothing here can hold it back. That is why the
+        // height this view is given comes from `reportLaidOutHeight()` — which
+        // asks whichever engine is live — rather than from `height(for:width:)`
+        // alone.
         let contentStorage = NSTextContentStorage()
         let layoutManager = NSTextLayoutManager()
         let textContainer = NSTextContainer(size: CGSize(width: width, height: 0))
@@ -197,6 +297,7 @@ struct MarkdownTextView: NSViewRepresentable {
         let textView = LinkCursorTextView(
             frame: CGRect(x: 0, y: 0, width: width, height: 0), textContainer: textContainer)
         textView.delegate = context.coordinator
+        textView.onLaidOutHeight = onLaidOutHeight
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
@@ -231,11 +332,12 @@ struct MarkdownTextView: NSViewRepresentable {
         return textView
     }
 
-    func updateNSView(_ textView: NSTextView, context: Context) {
+    func updateNSView(_ textView: LinkCursorTextView, context: Context) {
         // SwiftUI reuses the text view but hands over a freshly built struct on
-        // every update, so the coordinator's closure is refreshed too — otherwise
-        // clicks would keep calling the one captured at realization time.
+        // every update, so both closures are refreshed too — otherwise clicks and
+        // height reports would keep calling the ones captured at realization time.
         context.coordinator.onOpenURL = onOpenURL
+        textView.onLaidOutHeight = onLaidOutHeight
 
         // Replacing the storage drops whatever the reader had selected, so it only
         // happens when the message itself changed, OR when the width it was
@@ -250,6 +352,9 @@ struct MarkdownTextView: NSViewRepresentable {
         guard context.coordinator.renderedMarkdown != markdown
             || context.coordinator.renderedWidth != width else { return }
         textView.textStorage?.setAttributedString(Self.renderedContent(for: markdown, width: width))
+        // New content, so the previous content's reported height is no longer a
+        // reason to stay quiet at the next layout pass.
+        textView.forgetReportedHeight()
         context.coordinator.renderedMarkdown = markdown
         context.coordinator.renderedWidth = width
     }

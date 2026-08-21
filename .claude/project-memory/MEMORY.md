@@ -111,3 +111,5 @@
 - [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
 - [AppModel encapsulation across extension files](references/appmodel-extension-encapsulation.md) — `private(set)` survives the split via mutators
+- [ScrollView padding and height](references/scrollview-viewport-vs-document.md) — outer padding pads the viewport; a pinned height overflows the host
+- [An NSTextTable drops a view back to TextKit 1](references/textkit1-fallback-on-nstexttable.md) — the two engines size the same string differently
