@@ -207,7 +207,13 @@ public final class SocketServerEngine<
         listener.newConnectionHandler = { [weak self] connection in
             self?.receive(on: connection)
         }
-        state.withLockUnchecked { $0.listener = listener }
+        // Clear the flags a previous `stop()`/`abandonListener()` left behind, so a
+        // restarted server accepts connections again instead of cancelling them.
+        state.withLockUnchecked {
+            $0.stopped = false
+            $0.abandoned = false
+            $0.listener = listener
+        }
         listener.start(queue: queue)
 
         // Bound the wait so a listener that never reaches `.ready`/`.failed`
@@ -325,7 +331,17 @@ public final class SocketServerEngine<
     }
 
     private func reply(_ response: Response, on connection: NWConnection) {
-        let payload = (try? JSONEncoder().encode(response)) ?? Data()
+        // A per-call encoder, unlike the queue-confined `commandDecoder`: `reply` may
+        // be called from any thread once the handler has hopped off the server queue.
+        var payload = (try? JSONEncoder().encode(response)) ?? Data()
+        if payload.count > maxSocketFrameBytes {
+            // The reader on the other side rejects an oversized length header as a
+            // protocol error, which reads like corruption. Say what actually happened
+            // instead — some responses (a heavy page's `browser content`, a long
+            // `debug read-text --scrollback`) legitimately overflow the bound.
+            let tooLarge = Response.failure("response too large: \(payload.count) bytes")
+            payload = (try? JSONEncoder().encode(tooLarge)) ?? Data()
+        }
         // Frame the response symmetrically with the request: a 4-byte big-endian
         // length prefix followed by the JSON bytes. `.finalMessage` half-closes
         // the send side once the bytes are queued.

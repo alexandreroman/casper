@@ -390,6 +390,12 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public extension Workspace {
+    /// The Git branch to show for this workspace, falling back to the workspace
+    /// name when there is no branch (e.g. a non-Git space).
+    var branchLabel: String { branch.isEmpty ? name : branch }
+}
+
 public struct Space: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String

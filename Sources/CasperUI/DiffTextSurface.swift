@@ -390,14 +390,13 @@ struct DiffTextSurface: NSViewRepresentable {
         /// that file — a stale target, or one matched against a diff whose
         /// document is still one SwiftUI update away from the surface.
         ///
-        /// The target is usually far below what TextKit has laid out, which
-        /// `ensureLayout(throughFileAt:)` settles outright — where the row-based
+        /// The target is usually far below what TextKit has laid out, which the
+        /// forcing `top(ofFileAt:)` settles outright — where the row-based
         /// renderer deferred a run-loop turn and hoped the row existed by then.
         @discardableResult
         func scroll(toFileID fileID: String) -> Bool {
             guard let document, let geometry, let fileIndex = document.fileIndex(withID: fileID)
             else { return false }
-            geometry.ensureLayout(throughFileAt: fileIndex)
             guard let top = geometry.top(ofFileAt: fileIndex) else { return false }
             scroll(toContainerY: top)
             return true
@@ -416,18 +415,15 @@ struct DiffTextSurface: NSViewRepresentable {
                 fileID: document.files[fileIndex].id, offsetInFile: visibleTop - top)
         }
 
+        /// Puts the reader back where `currentAnchor()` left them in the freshly
+        /// swapped document. Anything the new document no longer holds — the
+        /// anchor's file, or a top the forcing `top(ofFileAt:)` still can't
+        /// produce — falls back to the document's start.
         private func restore(_ anchor: DiffScrollAnchor?) {
             guard let anchor, let document, let geometry,
-                  let fileIndex = document.fileIndex(withID: anchor.fileID)
-            else {
-                scroll(toViewY: 0)
-                return
-            }
-            geometry.ensureLayout(throughFileAt: fileIndex)
-            guard let top = geometry.top(ofFileAt: fileIndex) else {
-                scroll(toViewY: 0)
-                return
-            }
+                  let fileIndex = document.fileIndex(withID: anchor.fileID),
+                  let top = geometry.top(ofFileAt: fileIndex)
+            else { return scroll(toViewY: 0) }
             scroll(toContainerY: top + anchor.offsetInFile)
         }
 

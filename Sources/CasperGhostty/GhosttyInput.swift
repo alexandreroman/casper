@@ -15,8 +15,13 @@ func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
 /// keystrokes that commit no text (arrows, Return, Backspace, Ctrl-combos), where
 /// the keycode drives libghostty's own encoding. It populates `unshifted_codepoint`
 /// (required so libghostty can encode control characters such as Ctrl-C → U+0003
-/// from the base key) and only leaves `text` nil. Committed typed text instead
-/// rides on the key event via the `text`-carrying overload below.
+/// from the base key) and only leaves `text` nil.
+///
+/// Committed typed text is attached by `GhosttySurface.sendKey(_:text:)` instead,
+/// which owns the C buffer's lifetime. libghostty expects that text on the key
+/// event (`key.text`) rather than through the separate `ghostty_surface_text` path:
+/// that path is for pasted/IME bulk text and leaves the block cursor rendering on
+/// the last character instead of the empty cell after it.
 ///
 /// `consumedMods` tells libghostty which modifiers Cocoa's text system already
 /// spent while composing the event (e.g. Option composing an accented character),
@@ -46,27 +51,6 @@ func ghosttyKeyEvent(
     key.composing = false
     key.text = nil
     key.unshifted_codepoint = ghosttyUnshiftedCodepoint(from: baseCharacters)
-    return key
-}
-
-/// Build a libghostty key event from an NSEvent carrying committed text on the
-/// press. libghostty expects typed text attached to the key event (`key.text`),
-/// not delivered through the separate `ghostty_surface_text` path — that path is
-/// for pasted/IME bulk text and leaves the block cursor rendering on the last
-/// character instead of the empty cell after it.
-///
-/// `text` must stay valid for the duration of the `ghostty_surface_key` call, so
-/// callers pass a pointer obtained from `String.withCString` and invoke `sendKey`
-/// inside that closure, never returning an event whose `text` has been freed.
-///
-/// The bare overload this delegates to already sets `unshifted_codepoint`; this
-/// overload only attaches the committed `text`.
-func ghosttyKeyEvent(
-    _ event: NSEvent, action: ghostty_input_action_e, text: UnsafePointer<CChar>?,
-    consumedMods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
-) -> ghostty_input_key_s {
-    var key = ghosttyKeyEvent(event, action: action, consumedMods: consumedMods)
-    key.text = text
     return key
 }
 
@@ -249,24 +233,18 @@ func ghosttyKeyEvent(
     return key
 }
 
-/// Build a libghostty key event carrying a character payload, for debug-channel
-/// injection that must look like genuine keyboard typing (`send-keys`). Unlike the
-/// text/paste path, this populates `text` (the committed character, press only)
-/// and `unshifted_codepoint` (the base key's codepoint) so libghostty emits the
-/// character through its key path.
-///
-/// `text` must stay valid for the duration of the `ghostty_surface_key` call, so
-/// callers pass a pointer obtained from `String.withCString` and invoke `sendKey`
-/// inside that closure. Release events pass `text = nil`, mirroring real key-up.
+/// Build a libghostty key event for a known physical key, for debug-channel
+/// injection that must look like genuine keyboard typing (`send-keys`). It carries
+/// `unshifted_codepoint` (the base key's codepoint) so libghostty emits the
+/// character through its key path; the text a press commits is attached separately
+/// by `GhosttySurface.sendKey(_:text:)`, which owns the C buffer's lifetime.
 func ghosttyKeyEvent(
     keycode: UInt32,
     action: ghostty_input_action_e,
     mods: ghostty_input_mods_e,
-    text: UnsafePointer<CChar>?,
     unshiftedCodepoint: UInt32
 ) -> ghostty_input_key_s {
     var key = ghosttyKeyEvent(keycode: keycode, action: action, mods: mods)
-    key.text = text
     key.unshifted_codepoint = unshiftedCodepoint
     return key
 }

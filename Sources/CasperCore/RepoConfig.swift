@@ -139,10 +139,8 @@ extension RepoConfig {
     /// All user-invocable named commands (non-reserved, non-empty), sorted by name.
     public func namedCommands() -> [RepoNamedCommand] {
         (workspace?.scripts ?? [:])
-            .compactMap { key, value in
-                RepoScripts.reservedNames.contains(key) || value.isEmpty
-                    ? nil : RepoNamedCommand(name: key, command: value)
-            }
+            .filter { !RepoScripts.reservedNames.contains($0.key) && !$0.value.isEmpty }
+            .map { RepoNamedCommand(name: $0.key, command: $0.value) }
             .sorted { $0.name < $1.name }
     }
 

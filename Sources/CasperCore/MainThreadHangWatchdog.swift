@@ -170,7 +170,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     public func start() {
         let environment = ProcessInfo.processInfo.environment
         if let flag = environment[Self.enabledEnvKey]?.lowercased(), flag == "0" || flag == "false" {
-            CasperLog.app.fault("main-thread hang watchdog disabled via \(Self.enabledEnvKey, privacy: .public)")
+            CasperLog.app.info("main-thread hang watchdog disabled via \(Self.enabledEnvKey, privacy: .public)")
             return
         }
         let resolvedThreshold: TimeInterval? = {

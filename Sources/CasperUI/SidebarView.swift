@@ -48,51 +48,53 @@ struct SidebarView: View {
             showShortcutHints: model.showWorkspaceShortcutHints
         )
         .onTapGesture { model.selectWorkspace(workspace.id) }
-        .contextMenu {
-            let isLinked = workspace.kind == .linked
-            let canMerge = isLinked && !(workspace.baseBranch?.isEmpty ?? true)
-            Button {
-                model.openInFinder(id: workspace.id)
-            } label: {
-                Label("Open in Finder", systemImage: "folder")
+        // Load this row's `.casper.json` commands here rather than from the menu
+        // below, so building the menu stays a pure cache read.
+        .onAppear { model.prewarmNamedCommands(for: workspace.id) }
+        .contextMenu { contextMenu(for: workspace) }
+    }
+
+    /// The row's action menu: the shared `WorkspaceMenuItem` groups — the same
+    /// description the File and Edit menus render — plus the sidebar-only "Run
+    /// Script" submenu, which sits beside "Open in Finder" above the first separator.
+    @ViewBuilder
+    private func contextMenu(for workspace: Workspace) -> some View {
+        let isLinked = workspace.kind == .linked
+        let canMerge = isLinked && !(workspace.baseBranch?.isEmpty ?? true)
+        let groups = WorkspaceMenuItem.groups(model: model, workspaceID: workspace.id) { command in
+            switch command {
+            case .openInFinder, .copyWorkspacePath, .copyBranchName: return true
+            case .mergeAndClose: return canMerge
+            case .delete: return isLinked
             }
-            let namedCommands = model.namedCommands(for: workspace.id)
-            if !namedCommands.isEmpty {
-                Menu {
-                    ForEach(namedCommands, id: \.name) { command in
-                        Button(command.displayName) {
-                            model.runScript(command.name, for: workspace.id)
-                        }
-                    }
-                } label: {
-                    Label("Run Script", systemImage: "play")
+        }
+        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+            if index > 0 { Divider() }
+            ForEach(group, id: \.title) { item in
+                Button(role: item.isDestructive ? .destructive : nil, action: item.action) {
+                    Label(item.title, systemImage: item.systemImage)
                 }
+                .disabled(!item.isEnabled)
             }
-            Divider()
-            Button {
-                model.copyWorkspacePath(id: workspace.id)
+            if index == 0 { runScriptMenu(for: workspace) }
+        }
+    }
+
+    /// The "Run Script" submenu, present only while the workspace's `.casper.json`
+    /// defines at least one named command.
+    @ViewBuilder
+    private func runScriptMenu(for workspace: Workspace) -> some View {
+        let commands = model.namedCommands(for: workspace.id)
+        if !commands.isEmpty {
+            Menu {
+                ForEach(commands, id: \.name) { command in
+                    Button(command.displayName) {
+                        model.runScript(command.name, for: workspace.id)
+                    }
+                }
             } label: {
-                Label("Copy Workspace Path", systemImage: "doc.on.doc")
+                Label("Run Script", systemImage: "play")
             }
-            Button {
-                model.copyBranchName(id: workspace.id)
-            } label: {
-                Label("Copy Branch Name", systemImage: "doc.on.doc")
-            }
-            Divider()
-            Button {
-                model.presentCloseWorkspaceConfirmation(id: workspace.id)
-            } label: {
-                Label("Merge and Close Workspace…", systemImage: "arrow.triangle.merge")
-            }
-            .disabled(!canMerge)
-            Divider()
-            Button(role: .destructive) {
-                model.presentDeleteWorkspaceConfirmation(id: workspace.id)
-            } label: {
-                Label("Delete Workspace…", systemImage: "trash")
-            }
-            .disabled(!isLinked)
         }
     }
 }

@@ -10,7 +10,6 @@ public protocol GhosttyActionHandler {
 /// Default handler: logs app-level actions that have no Casper feature yet, as
 /// explicit greppable no-ops, and claims none of them.
 struct LoggingActionHandler: GhosttyActionHandler {
-    init() {}
     func handle(_ action: GhosttyAction) -> Bool {
         switch action {
         case .newTab, .newWindow, .newSplit, .closeTab, .closeWindow:

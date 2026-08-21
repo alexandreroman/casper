@@ -63,6 +63,15 @@ struct DiffSurfaceView: View {
     /// Branches on `rendering` rather than on `diff`: the two are assigned
     /// together and a document exists for exactly the diffs that exist, so keying
     /// on the value the surface actually needs leaves no unreachable branch.
+    ///
+    /// `loaded` gates the two failure states, because `rendering` is nil both
+    /// before and after a failed refresh. SwiftUI evaluates `body` before
+    /// `.onAppear` runs `refresh()`, and `refresh()` suspends immediately on the
+    /// detached libgit2 walk — so without this branch the first frame of a
+    /// Git-backed workspace reads "Couldn't compute the diff", and does so again
+    /// on every expand of the Diff tab (collapsing unmounts the view and discards
+    /// the state). Blank rather than a spinner: the wait is usually a few frames,
+    /// and anything animated would flicker.
     @ViewBuilder private var content: some View {
         if let rendering {
             if rendering.document.files.isEmpty {
@@ -79,6 +88,8 @@ struct DiffSurfaceView: View {
                     // arrived before the surface catches up.
                     .onAppear { applyPendingScroll() }
             }
+        } else if !loaded {
+            Color.clear
         } else if model.isWorkspaceGitBacked(workspace) {
             DiffEmptyState(
                 systemImage: "exclamationmark.triangle", title: "Couldn't compute the diff",
@@ -219,9 +230,10 @@ struct DiffSurfaceView: View {
 
     /// Kicks off a background pass that highlights each file's working-tree and
     /// HEAD text, publishing results per file so colors appear as they finish.
-    /// File reads stay on the main actor — they are quick, and `DiffService` caps
-    /// them at `DiffHighlighter.maxHighlightBytes`; only the actual highlighting
-    /// suspends off-actor, keeping the UI responsive.
+    /// Neither the reads nor the highlighting touch the main actor: both sides of
+    /// every file are read in one detached pass over a single `Repository`
+    /// (`DiffService.fileTexts`), which also caps them at
+    /// `DiffHighlighter.maxHighlightBytes`.
     ///
     /// Files already in `highlightCache` were carried over from the previous diff
     /// and are skipped.
@@ -235,15 +247,23 @@ struct DiffSurfaceView: View {
             return
         }
         let carried = highlightCache
+        // Resolved once, and used for both what to read and what to loop over, so
+        // the two can't disagree. The index rides along because
+        // `prunedToRenderedLines(ofFileAt:in:)` needs the file's place in the
+        // document.
+        let pending = files.enumerated()
+            .filter { !$0.element.isBinary && carried[$0.element.id] == nil }
 
         highlightTask = Task {
-            for (fileIndex, file) in files.enumerated() {
-                if Task.isCancelled { return }
-                guard !file.isBinary else { continue }
-                if carried[file.id] != nil { continue }  // already have a valid highlight — skip
+            let texts = await model.diffService.fileTexts(
+                for: workspace, headPaths: pending.map(\.element.oldPath),
+                worktreePaths: pending.map(\.element.newPath))
+            if Task.isCancelled { return }
 
-                let newText = model.diffService.worktreeFileText(for: workspace, path: file.newPath)
-                let oldText = model.diffService.headFileText(for: workspace, path: file.oldPath)
+            for (fileIndex, file) in pending {
+                if Task.isCancelled { return }
+                let newText = texts.worktree[file.newPath]
+                let oldText = texts.head[file.oldPath]
 
                 let newLines = await highlight(newText, path: file.newPath)
                 let oldLines = await highlight(oldText, path: file.oldPath)
@@ -258,8 +278,8 @@ struct DiffSurfaceView: View {
                 // the whole file, and holding those thousands of unrendered
                 // lines is this renderer's largest avoidable allocation (see
                 // `DiffFileHighlight.prunedToRenderedLines(ofFileAt:in:)`).
-                // `files` is the document's own file list, so the indices line
-                // up.
+                // `pending`'s indices are positions in the document's own file
+                // list, so they line up.
                 let fileHighlight = DiffFileHighlight(new: newLines, old: oldLines)
                     .prunedToRenderedLines(ofFileAt: fileIndex, in: document)
                 highlightCache[file.id] = fileHighlight

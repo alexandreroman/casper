@@ -201,7 +201,7 @@ public final class Repository {
         // Guarded: diffing mmaps live working-directory files (SIGBUS risk). See SigbusGuard.
         try SigbusGuard.run { [self] in
         let tree = try headTree()  // nil when HEAD is unborn
-        defer { if let tree { git_tree_free(tree) } }
+        defer { git_tree_free(tree) }
 
         var options = git_diff_options()
         try gitCheck(git_diff_options_init(&options, UInt32(GIT_DIFF_OPTIONS_VERSION)))

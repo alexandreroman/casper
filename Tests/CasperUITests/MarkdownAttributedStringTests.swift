@@ -490,6 +490,9 @@ final class MarkdownAttributedStringTests: XCTestCase {
     /// is never read at all. A style-value assertion sees the values it wanted
     /// in both cases and passes while the reader sees no gap — which is how
     /// this defect shipped under an earlier version of this test.
+    ///
+    /// The thematic break's *own* height rides along here, since it is the one
+    /// block whose fragment a separator newline could inflate unnoticed.
     func testEveryBlockToBlockGapIsTheSameRealizedValue() throws {
         let markdown = """
             Paragraph one.
@@ -519,6 +522,19 @@ final class MarkdownAttributedStringTests: XCTestCase {
         let blockQuote = try inkBand(around: "Quoted text", in: result, laidOutBy: layout)
         let listItem = try inkBand(around: "Item", in: result, laidOutBy: layout)
         let paragraphThree = try inkBand(around: "Paragraph three.", in: result, laidOutBy: layout)
+
+        // The rule's own line fragment must stay at the attachment's 1 pt
+        // thickness (`Layout.thematicBreakThickness`, private to the renderer, so
+        // pinned by value here). `Builder.separator` emits its `"\n"` with no
+        // `.font`, so it falls back to Helvetica 12, and that newline terminates
+        // *this* paragraph — were TextKit to size the fragment from it, a hairline
+        // would reserve a whole body line and the reader would see a tall blank
+        // band with a thread through it instead of a separator.
+        let ruleHeight = thematicBreak.bottom - thematicBreak.top
+        let bodyLineHeight = paragraphOne.bottom - paragraphOne.top
+        XCTAssertEqual(
+            ruleHeight, 1, accuracy: 0.5,
+            "the rule reserves \(ruleHeight) pt against a \(bodyLineHeight) pt body line")
 
         let gaps = [
             "paragraph → thematic break": thematicBreak.top - paragraphOne.bottom,

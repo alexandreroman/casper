@@ -84,7 +84,7 @@ extension Repository {
             git_commit_create(
                 &newCommitOid, pointer, refName,
                 signature, signature, "UTF-8", message,
-                mergeTree, 2, buf.baseAddress)
+                mergeTree, buf.count, buf.baseAddress)
         })
 
         return .merged

@@ -132,21 +132,21 @@ final class AgentDetectionTests: XCTestCase {
 
     func testDebounceOfOneReportsDoneOnFirstIdleTick() {
         var resolver = AgentStateResolver()
-        resolver.resolve(signal: .working, seen: false)
+        _ = resolver.resolve(signal: .working, seen: false)
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: false, debounce: 1), .done)
     }
 
     func testWorkingThenIdleSeenReportsIdleNeverDone() {
         var resolver = AgentStateResolver()
-        resolver.resolve(signal: .working, seen: false)
+        _ = resolver.resolve(signal: .working, seen: false)
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: true, debounce: 2), .working)
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: true, debounce: 2), .idle)
     }
 
     func testDonePersistsWhileUnseenAndFlipsToIdleWhenSeen() {
         var resolver = AgentStateResolver()
-        resolver.resolve(signal: .working, seen: false)
-        resolver.resolve(signal: .idle, seen: false, debounce: 2) // working (debounce)
+        _ = resolver.resolve(signal: .working, seen: false)
+        _ = resolver.resolve(signal: .idle, seen: false, debounce: 2) // working (debounce)
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: false, debounce: 2), .done)
         // Still unseen ⇒ the done latch holds.
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: false, debounce: 2), .done)
@@ -158,8 +158,8 @@ final class AgentDetectionTests: XCTestCase {
 
     func testWorkingAgainAfterDoneResetsTheLatch() {
         var resolver = AgentStateResolver()
-        resolver.resolve(signal: .working, seen: false)
-        resolver.resolve(signal: .idle, seen: false, debounce: 2)
+        _ = resolver.resolve(signal: .working, seen: false)
+        _ = resolver.resolve(signal: .idle, seen: false, debounce: 2)
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: false, debounce: 2), .done)
         // A fresh working run must clear the latch and report working.
         XCTAssertEqual(resolver.resolve(signal: .working, seen: false), .working)
@@ -170,7 +170,7 @@ final class AgentDetectionTests: XCTestCase {
 
     func testWorkingClearsAnInProgressIdleDebounce() {
         var resolver = AgentStateResolver()
-        resolver.resolve(signal: .working, seen: false)
+        _ = resolver.resolve(signal: .working, seen: false)
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: false, debounce: 3), .working)
         // Work resumes mid-debounce; the idle streak must reset.
         XCTAssertEqual(resolver.resolve(signal: .working, seen: false), .working)

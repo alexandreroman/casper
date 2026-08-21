@@ -19,7 +19,7 @@ struct DiffCommand: ParsableCommand {
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .diffOpen, workspace: try requireSelector(target),
-                target: normalizedCommand(file))
+                target: nonEmpty(file))
         }
     }
 

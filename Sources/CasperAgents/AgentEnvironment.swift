@@ -23,9 +23,11 @@ public enum AgentEnvironment {
     /// When `casperDirectory` is given, it is prepended to `PATH` so the `casper`
     /// binary resolves only inside terminals Casper opens — it is deliberately not
     /// installed globally. The app passes the bundle's executable directory as
-    /// `casperDirectory` and the terminal's inherited `PATH` as `basePath`. This
-    /// function stays pure: it never reads `ProcessInfo` itself, only the values
-    /// passed in.
+    /// `casperDirectory` and the terminal's inherited `PATH` as `basePath`. An empty
+    /// or absent `basePath` deliberately yields a single-entry `PATH` holding only
+    /// `casperDirectory`, rather than a `PATH` with a trailing empty component (which
+    /// a shell reads as the current directory). This function stays pure: it never
+    /// reads `ProcessInfo` itself, only the values passed in.
     public static func surfaceEnvironment(
         workspaceId: UUID,
         portBase: Int?,

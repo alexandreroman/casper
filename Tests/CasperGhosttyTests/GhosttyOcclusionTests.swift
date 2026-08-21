@@ -17,11 +17,13 @@ final class GhosttyOcclusionTests: XCTestCase {
 
     @MainActor
     func testOcclusionPushIsDeduplicated() {
-        // Two refreshes in the same (detached) state must not re-push; the recorded
-        // value stays stable and reflects the single transition.
+        // Two refreshes in the same (detached) state must reach libghostty once. The
+        // recorded value cannot show that — it reads `true` either way — so the push
+        // count is what pins the dedup guard.
         let view = GhosttySurfaceView(runtime: .forTesting(), configuration: GhosttySurfaceConfiguration())
         view.debugRefreshOcclusion()
         view.debugRefreshOcclusion()
         XCTAssertEqual(view.debugLastOcclusionValue, true)
+        XCTAssertEqual(view.debugOcclusionPushCount, 1)
     }
 }

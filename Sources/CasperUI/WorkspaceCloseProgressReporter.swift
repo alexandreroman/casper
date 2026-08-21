@@ -22,7 +22,7 @@ import Foundation
 /// interleave. Either `finish` cancels first and the promotion returns early, or the
 /// promotion has already run and `finish` takes the sheet back down.
 ///
-/// It lives here rather than inside `AppModel` — which is already ~149 KB — because the
+/// It lives here rather than inside `AppModel` — which is already large — because the
 /// delay, the write-through and the step numbering are one self-contained concern.
 @MainActor
 final class WorkspaceCloseProgressReporter {

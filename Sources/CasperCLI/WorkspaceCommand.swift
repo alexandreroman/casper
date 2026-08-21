@@ -2,7 +2,7 @@ import ArgumentParser
 import CasperCore
 import Foundation
 
-/// `casper workspace list|current|new` — enumerate, identify, and create workspaces.
+/// `casper workspace list|current|new|delete` — enumerate, identify, create, and delete workspaces.
 struct WorkspaceCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "workspace",
@@ -32,10 +32,7 @@ struct WorkspaceCommand: ParsableCommand {
         /// counts as absent — matching `WorkspaceTargetOption.resolvedSelector` — so
         /// `run()` reports the error instead of succeeding with an empty id.
         func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
-            environment["CASPER_WORKSPACE_ID"].flatMap { value in
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.isEmpty ? nil : trimmed
-            }
+            nonBlank(environment["CASPER_WORKSPACE_ID"])
         }
 
         func makeCommand() -> ControlCommand { ControlCommand(verb: .workspaceList) }
@@ -68,7 +65,7 @@ struct WorkspaceCommand: ParsableCommand {
             let selector = try requireSelector(target)
             return ControlCommand(
                 verb: .workspaceNew, workspace: selector, branch: branch, base: base,
-                command: normalizedCommand(command))
+                command: nonEmpty(command))
         }
 
         func run() throws {
@@ -84,7 +81,7 @@ struct WorkspaceCommand: ParsableCommand {
             emit(WorkspaceNewOut(
                 workspace: info.id, name: info.name,
                 branch: info.branch.isEmpty ? nil : info.branch, path: info.path,
-                command: normalizedCommand(command)))
+                command: nonEmpty(command)))
         }
     }
 

@@ -21,15 +21,17 @@ let ghosttyInitialized: Bool = {
 public final class GhosttyRuntime {
     /// The raw libghostty app handle, consumed by `GhosttySurface` (Task 4). Nil
     /// only for the test-only `forTesting()` runtime, which creates no app.
-    private(set) var app: ghostty_app_t!
+    private(set) var app: ghostty_app_t?
 
     /// Invoked on the main thread with each decoded runtime action.
     public var onAction: ((GhosttyAction) -> Void)?
 
     /// Routes app-level actions (new tab/window/split, close) before `onAction`
     /// sees them; a handler that claims an action (returns `true`) suppresses the
-    /// existing `onAction` fallback for it. Settable so future features (tabs,
-    /// splits, windows) can inject a real handler in place of the default no-op.
+    /// existing `onAction` fallback for it. The app injects `LayoutActionHandler`
+    /// here (`CasperUI.AppDelegate`), which claims `.newTab`, `.newSplit` and
+    /// `.closeTab`. The default `LoggingActionHandler` claims nothing, which is what
+    /// tests and the window between runtime creation and that injection see.
     public var actionHandler: GhosttyActionHandler = LoggingActionHandler()
 
     /// Build a runtime and create the libghostty app with the runtime callbacks.
@@ -119,7 +121,6 @@ public final class GhosttyRuntime {
     /// Decode a raw libghostty action and route it to `onAction`. Called by the
     /// `action_cb` trampoline on the main thread; returns `true` to tell
     /// libghostty the action was consumed.
-    @discardableResult
     func handleAction(_ action: ghostty_action_s) -> Bool {
         let decoded = GhosttyAction.decode(action)
         switch decoded {
@@ -135,12 +136,14 @@ public final class GhosttyRuntime {
         return true
     }
 
-    // Teardown contract (residual): `casperGhosttyWakeup` retains the runtime for
-    // the duration of its hop to main, so a wakeup already in flight is safe. It
+    // Teardown contract (known limitation): `casperGhosttyWakeup` retains the runtime
+    // for the duration of its hop to main, so a wakeup already in flight is safe. It
     // does NOT cover a wakeup that *begins* after the runtime is deallocated: the
-    // runtime must not be released while libghostty can still deliver wakeups.
-    // A full fix — an explicit invalidate/shutdown that frees the app before this
-    // object is released — is deferred to the Plan 5 multi-surface lifecycle work.
+    // runtime must not be released while libghostty can still deliver wakeups. The app
+    // holds one runtime for its whole lifetime, so the window never opens in practice;
+    // closing it for good would take an explicit invalidate/shutdown that frees the app
+    // before this object is released. `GhosttySurfaceView.invalidate()` narrows the same
+    // class of hazard one level down, freeing a surface while its view is still alive.
     deinit {
         if let app { ghostty_app_free(app) }
     }

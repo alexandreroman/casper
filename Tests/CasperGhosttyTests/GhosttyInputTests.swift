@@ -87,6 +87,27 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 9).rawValue, GHOSTTY_MOUSE_UNKNOWN.rawValue)
     }
 
+    /// The `NSEvent.Phase`→libghostty-momentum mapping `scrollWheel` packs into the opaque
+    /// `ghostty_input_scroll_mods_t`, whose real layout is a packed i32: bit 0 is the precision
+    /// flag, bits 1–3 the momentum. An unknown phase (including the empty set) reports NONE.
+    @MainActor
+    func testMomentumPhaseMapsAndPacksIntoScrollMods() {
+        XCTAssertEqual(
+            GhosttySurfaceView.ghosttyMomentum(for: .began).rawValue, GHOSTTY_MOUSE_MOMENTUM_BEGAN.rawValue)
+        XCTAssertEqual(
+            GhosttySurfaceView.ghosttyMomentum(for: .changed).rawValue, GHOSTTY_MOUSE_MOMENTUM_CHANGED.rawValue)
+        XCTAssertEqual(
+            GhosttySurfaceView.ghosttyMomentum(for: .ended).rawValue, GHOSTTY_MOUSE_MOMENTUM_ENDED.rawValue)
+        XCTAssertEqual(
+            GhosttySurfaceView.ghosttyMomentum(for: []).rawValue, GHOSTTY_MOUSE_MOMENTUM_NONE.rawValue)
+
+        // A trackpad scroll sets the precision bit and shifts the momentum clear of it, so
+        // both survive in the same int.
+        let mods = 1 | Int32(GhosttySurfaceView.ghosttyMomentum(for: .ended).rawValue) << 1
+        XCTAssertEqual(mods & 1, 1, "the precision bit must stay in bit 0")
+        XCTAssertEqual((mods >> 1) & 0b111, Int32(GHOSTTY_MOUSE_MOMENTUM_ENDED.rawValue))
+    }
+
     /// Guards the fix where the bare key event left `unshifted_codepoint` at 0, which silently
     /// disabled libghostty's control encoding so Ctrl-C/Ctrl-D produced no output.
     func testBareKeyEventCarriesUnshiftedCodepointForControlEncoding() {
@@ -94,6 +115,17 @@ final class GhosttyInputTests: XCTestCase {
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("c").value))
         XCTAssertNil(key.text)
+    }
+
+    /// A bare Control-letter combo is encoded by libghostty from the *physical* keycode, so the
+    /// keycode is normalized to the letter's QWERTY position: on AZERTY, 'a' is struck at the
+    /// QWERTY 'Q' position (keycode 12) and the raw keycode makes Ctrl-A wipe the line instead of
+    /// moving to its start. The produced letter still drives `unshifted_codepoint`.
+    func testControlLetterComboNormalizesKeycodeToItsQwertyPosition() {
+        let event = makeControlAKeyEvent(keyCode: 12)  // 'a' on an AZERTY keyboard
+        let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
+        XCTAssertEqual(key.keycode, 0, "Ctrl-A must encode from the QWERTY 'A' position (kVK_ANSI_A)")
+        XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("a").value))
     }
 
     /// Guards the fix where building a key event for a modifier press raised
@@ -138,6 +170,24 @@ private func makeControlCKeyEvent() -> NSEvent {
         charactersIgnoringModifiers: "c",
         isARepeat: false,
         keyCode: 8  // kVK_ANSI_C
+    )!
+}
+
+/// Build a synthetic Ctrl-A keyDown struck at `keyCode`, the way a real keyboard reports it:
+/// `characters` is the control scalar, `charactersIgnoringModifiers` the produced letter. The
+/// keycode is the physical position, which differs between layouts for the same letter.
+private func makeControlAKeyEvent(keyCode: UInt16) -> NSEvent {
+    NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [.control],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "\u{01}",
+        charactersIgnoringModifiers: "a",
+        isARepeat: false,
+        keyCode: keyCode
     )!
 }
 

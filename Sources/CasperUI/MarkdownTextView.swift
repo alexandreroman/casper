@@ -194,7 +194,8 @@ struct MarkdownTextView: NSViewRepresentable {
         contentStorage.addTextLayoutManager(layoutManager)
         layoutManager.textContainer = textContainer
 
-        let textView = LinkCursorTextView(frame: CGRect(x: 0, y: 0, width: width, height: 0), textContainer: textContainer)
+        let textView = LinkCursorTextView(
+            frame: CGRect(x: 0, y: 0, width: width, height: 0), textContainer: textContainer)
         textView.delegate = context.coordinator
         textView.isEditable = false
         textView.isSelectable = true

@@ -44,8 +44,9 @@ public enum GhosttyAction: Equatable {
         case GHOSTTY_ACTION_RENDER:
             return .render
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-            // Decoded but not handled in v1 (like marked-text). Truncating (not
-            // trapping) conversion: exit_code is external
+            // The exit is acted on by the `action_cb` trampoline, which delivers it
+            // straight to the target view (`reportChildExit`); this decoded copy is
+            // routed nowhere. Truncating (not trapping) conversion: exit_code is external
             // C data, and `Int32(UInt32)` would crash for any value above Int32.max.
             return .childExited(exitCode: Int32(truncatingIfNeeded: c.action.child_exited.exit_code))
         case GHOSTTY_ACTION_OPEN_URL:

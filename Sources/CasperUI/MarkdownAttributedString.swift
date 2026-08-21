@@ -514,16 +514,6 @@ private struct Builder {
         isFirstBlock ? 0 : standard
     }
 
-    /// Applies `style` to `text`'s first `\n`-delimited paragraph only, and a
-    /// zero-`paragraphSpacingBefore` copy of it to whatever paragraphs follow
-    /// — see `Layout.blockSpacingBefore`'s doc comment for why a single style
-    /// cannot simply cover the whole range. Every other property of `style`
-    /// (indent, tab stops, text blocks) is preserved on both paragraphs, so
-    /// only the leading gap itself is confined to the block's first line.
-    ///
-    /// A range with no interior `\n` (the common case: most blocks are one
-    /// paragraph) takes the fast path of covering the whole range with
-    /// `style` unchanged.
     /// The tail every unbordered block shares: indent both head indents by
     /// `indent`, open `spacingBefore` above the block, and hand the result to
     /// `applyLeadingSpacing` so the gap lands on the block's first paragraph
@@ -542,6 +532,16 @@ private struct Builder {
         return text
     }
 
+    /// Applies `style` to `text`'s first `\n`-delimited paragraph only, and a
+    /// zero-`paragraphSpacingBefore` copy of it to whatever paragraphs follow
+    /// — see `Layout.blockSpacingBefore`'s doc comment for why a single style
+    /// cannot simply cover the whole range. Every other property of `style`
+    /// (indent, tab stops, text blocks) is preserved on both paragraphs, so
+    /// only the leading gap itself is confined to the block's first line.
+    ///
+    /// A range with no interior `\n` (the common case: most blocks are one
+    /// paragraph) takes the fast path of covering the whole range with
+    /// `style` unchanged.
     private func applyLeadingSpacing(_ style: NSMutableParagraphStyle, to text: NSMutableAttributedString) {
         let firstNewline = (text.string as NSString).range(of: "\n").location
         let firstParagraphLength = firstNewline == NSNotFound ? text.length : firstNewline + 1
@@ -554,6 +554,15 @@ private struct Builder {
         text.addAttribute(
             .paragraphStyle, value: rest,
             range: NSRange(location: firstParagraphLength, length: text.length - firstParagraphLength))
+    }
+
+    /// Applies `style` to the whole of `text`, for a block that is **one**
+    /// paragraph by construction — a heading, a block quote, a table cell. There
+    /// is no following paragraph to keep the leading gap off, which is the only
+    /// thing `applyLeadingSpacing` exists to arrange, so the split it performs
+    /// would be dead work here.
+    private func applyThroughout(_ style: NSParagraphStyle, to text: NSMutableAttributedString) {
+        text.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: text.length))
     }
 
     // MARK: - Inline runs
@@ -600,11 +609,9 @@ private struct Builder {
         let scale = Layout.headingScale[level] ?? 1.0
         let headingFont = fonts.bold(Fonts.resized(font, to: font.pointSize * scale))
 
-        let text = inlineAttributedText(block, baseFont: headingFont)
-        let style = NSMutableParagraphStyle()
-        style.paragraphSpacingBefore = spacingBefore(Layout.headingSpacingBefore, isFirstBlock: isFirstBlock)
-        text.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: text.length))
-        return text
+        return styled(
+            inlineAttributedText(block, baseFont: headingFont), indent: 0,
+            spacingBefore: spacingBefore(Layout.headingSpacingBefore, isFirstBlock: isFirstBlock))
     }
 
     private func renderListItem(_ block: Block, ordinal: Int, isFirstBlock: Bool) -> NSAttributedString {
@@ -660,7 +667,11 @@ private struct Builder {
             ("[x] ", Layout.checkedGlyph),
             ("[X] ", Layout.checkedGlyph),
         ]
-        for (prefix, glyph) in markers where text.string.hasPrefix(prefix) {
+        // Hoisted: `text.string` materializes the whole backing store, and the
+        // loop would otherwise pay for that once per marker to test four ASCII
+        // characters.
+        let string = text.string
+        for (prefix, glyph) in markers where string.hasPrefix(prefix) {
             text.deleteCharacters(in: NSRange(location: 0, length: prefix.utf16.count))
             return glyph
         }
@@ -669,8 +680,7 @@ private struct Builder {
 
     private func renderBlockQuote(_ block: Block) -> NSAttributedString {
         let text = inlineAttributedText(block, baseFont: font)
-        // Reached only when `block.isBlockQuote`, so `quoteDepth` is always >= 1.
-        let indent = CGFloat(block.quoteDepth) * Layout.blockQuoteIndent
+        let indent = block.ambientIndent
 
         let style = NSMutableParagraphStyle()
         style.headIndent = indent
@@ -684,7 +694,7 @@ private struct Builder {
         // leading gap rides the separator ahead of it instead; see
         // `Builder.separator` and `Block.hasBlockQuoteRule`.
         style.textBlocks = [blockQuoteRule()]
-        text.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: text.length))
+        applyThroughout(style, to: text)
         return text
     }
 
@@ -850,7 +860,7 @@ private struct Builder {
         // comes from whatever block follows it asking for its own standard
         // "before", exactly like a table following any other block kind.
         style.textBlocks = [cellBlock]
-        text.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: text.length))
+        applyThroughout(style, to: text)
         return text
     }
 }

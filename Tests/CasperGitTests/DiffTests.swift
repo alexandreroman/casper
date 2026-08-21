@@ -1,5 +1,4 @@
 import XCTest
-import Clibgit2
 @testable import CasperGit
 
 final class DiffTests: XCTestCase {
