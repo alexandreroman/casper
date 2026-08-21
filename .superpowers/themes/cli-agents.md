@@ -205,24 +205,55 @@ launched from Finder or the Dock, so its own `PATH` is the bare launchd default
 — no Homebrew, no nvm, no `~/.local/bin`. Probing that would report every agent
 `notInstalled` for exactly the people who have the agents installed.
 
+Two properties of that lookup shape everything downstream:
+
+- **It is bounded.** One lookup spawns `$SHELL -lc 'which <command>'`, which
+  sources the user's profile, and the wait is capped by
+  `LoginShellPath.lookupTimeout`. A profile that blocks outright — a hung
+  network mount, an `nvm` or `conda` bootstrap waiting on the network, anything
+  reading stdin — would otherwise hold its caller forever; the cap turns that
+  into a cached "not found". It matters beyond this feature: the same lookup
+  runs on the main actor for `EditorLauncher`, where an unbounded wait is a
+  frozen app. The abandoned worker thread is left to finish on its own, and the
+  shell is terminated on the same deadline.
+- **Every answer is cached for the process lifetime, misses included.** That is
+  what makes re-probing cheap, and it is a deliberate trade-off with a visible
+  cost: an agent CLI installed *while Casper is running* stays `notInstalled`
+  until the next launch, and no amount of re-probing recovers it. Re-probing
+  recovers plugin state — the files under `~/.claude`, `~/.codex`,
+  `~/.config/opencode` are read fresh every time — never CLI presence.
+
 #### Per-agent markers
 
 **Claude Code.** `~/.claude/plugins/installed_plugins.json` maps a plugin id to
 an **array** of install records, one per scope, each carrying a `version`. The
-id is `casper@casper-agents`; `AgentIntegration.legacyPluginID`
-(`casper@Casper`) is matched as well and reports `outdated` whatever version it
-carries — a compatibility branch for the pre-publication local dev install, not
-migration support for a published plugin. The current id is consulted first, and
-versions are never mixed across the two, since the registrations are separate
-installs. Enablement lives separately, in `~/.claude/settings.json` under
+id is `casper@casper`; `AgentIntegration.legacyPluginID` (`casper@Casper`) is
+matched as well and reports `outdated` whatever version it carries — a
+compatibility branch for the pre-publication local dev install, not migration
+support for a published plugin. The current id is consulted first, and versions
+are never mixed across the two, since the registrations are separate installs.
+Enablement lives separately, in `~/.claude/settings.json` under
 `enabledPlugins`.
+
+The two ids differ **by case alone**, which makes the registry key the only
+usable evidence. `~/.claude/plugins/cache/casper/` and `…/cache/Casper/` are the
+*same folder* on a case-insensitive volume — the APFS default — so anything
+derived from a record's `installPath` would read a current install as legacy, or
+the reverse, depending only on which install created the directory first. The
+probe therefore reads the registry key and the record's `version` field and
+nothing else. It also means both sides of every lookup must stay
+case-**sensitive**: a `lowercased()` or `caseInsensitiveCompare` anywhere in
+that path would collapse the two ids into one and lose the only signal that
+tells a pre-rename install apart from a current one. A unit test pins that they
+stay distinct-but-case-equal. (Codex is a different agent with a different
+layout, and its cache path legitimately does carry the version.)
 
 **opencode.** Two independent install shapes, either of which counts: a
 `casper.js` file in `~/.config/opencode/plugin` or `…/plugins` (opencode's
 loader globs both spellings), or a top-level `plugin[]` entry in
 `~/.config/opencode/opencode.json` / `.jsonc` naming the npm package
-`casper-agents` or a local `casper.js`. Both forms are matched *whole* rather
-than by substring, so `@evil/casper-agents-fork` and `./plugin/notcasper.js`
+`casper-skills` or a local `casper.js`. Both forms are matched *whole* rather
+than by substring, so `@evil/casper-skills-fork` and `./plugin/notcasper.js`
 are not mistaken for the integration. Despite the `.json` name the config format
 is **JSONC**, and real files carry comments, so comments are stripped before
 parsing — never inside a string literal, since opencode's own default config
@@ -238,7 +269,7 @@ defined order, so stopping at the first would make the answer depend on
 enumeration order. Dot-prefixed names are dropped first, so a directory left
 behind holding nothing but a `.DS_Store` reads as an absent install rather than
 as version `.DS_Store`. Disabled plugins are recorded in `~/.codex/config.toml`
-as a `[plugins."casper@casper-agents"]` section carrying `enabled = false`,
+as a `[plugins."casper@casper"]` section carrying `enabled = false`,
 matched by a targeted five-line scan — a TOML dependency to read one boolean
 does not earn its place under the dependency policy, and every limitation of the
 scan misses in the safe direction (an unseen `enabled = false` reads as
@@ -317,12 +348,47 @@ so a new status case forces a decision rather than defaulting to silence, and
 the list is driven by `CodingAgent.allCases` — dictionary order depends on a
 per-process hash seed and would shuffle the rows between launches.
 
-The probe runs **off the main actor** at launch and again on app activation,
-throttled to five minutes: a cold `statuses()` spawns three sequential login
-shells (1–2.5 s of real work on a machine with a populated `~/.zprofile`), and
-Casper is a terminal app people activate constantly. Re-probing on activation is
-what lets a user install the plugin, tab back, and watch the reminder disappear
-without relaunching.
+The probe runs **off the main actor**, always. A cold `statuses()` spawns three
+sequential login shells (1–2.5 s of real work on a machine with a populated
+`~/.zprofile`), so running it inline would freeze the UI for that whole time.
+
+`AppDelegate` starts exactly one probe at launch, and that is the only one that
+pays the cold cost. Afterwards a **staleness check** rides the existing agent
+detection tick: each pass calls `refreshAgentIntegrationsIfStale()`, which
+re-probes once the last result is older than
+`AppModel.agentIntegrationProbeInterval` — **five seconds**. It is a freshness
+horizon, not a rate limiter: nothing is being protected from load, the answer is
+simply not trusted past that age. The cadence is affordable precisely because of
+the `LoginShellPath` cache above:
+every probe after the first is a handful of `stat` and `read` calls, far too
+cheap to ration by the minute. `applicationDidBecomeActive` applies the same
+check, so a Cmd-Tab storm still probes at most once per interval.
+
+Three rules hold the cadence together:
+
+- **A tick never starts the *first* probe.** `shouldRefreshAgentIntegrations`
+  answers `false` for a nil `lastProbeAt`: with no earlier result there is
+  nothing to *re*fresh, and paying the cold login-shell cost stays the launch
+  path's job. It also keeps every unit test that drives the detection tick off
+  the real filesystem.
+- **Seconds are what close the loop.** The expected way to install an
+  integration is a `plugin install` command typed *in a Casper terminal*, which
+  never resigns the app active — so activation alone fires no event at all, and
+  nothing but this cadence can retire the line while the user is still watching
+  for it.
+- **Opening the documentation ages the result out.** Clicking a reminder row
+  calls `agentReminderDocumentationOpened()`, which back-dates `lastProbeAt` to
+  `.distantPast` so the very next check re-probes instead of leaving the line up
+  for the rest of the interval. An install is imminent at that moment; the user
+  has earned the fresh answer.
+
+`refreshAgentIntegrations()` is the un-throttled entry point behind both paths.
+A probe already in flight is left to finish rather than joined by a second one,
+and the task is cancelled on teardown — `Task.detached` neither inherits nor
+forwards cancellation, so a cancelled probe still runs to completion and the
+`Task.isCancelled` check on the way back is what stops it publishing.
+
+See [[agent-integration-probe-cadence]].
 
 The rows sit between the scrolling workspace list and the "Add Folder…" footer,
 and render **nothing at all** — no divider, no padding, no container — when
@@ -330,6 +396,19 @@ there is nothing to say, which is most of the time. They stay advisory in tone
 (no destructive red) because Casper nudges and never repairs. The row button and
 the dismiss button are **siblings**, never nested, so a dismiss click cannot
 also open the documentation URL.
+
+An outdated row **names the installed version**: `Claude Code integration is
+outdated (0.1.0)`. It is the one detail that makes a nag someone believes is
+wrong diagnosable from a screenshot, and it matters most on the Codex path,
+whose layout has never been checked against a real install. The version is
+whatever another tool wrote down — a Codex cache *directory name*, or a Claude
+registry field that is legitimately the literal `"unknown"` — so nothing
+guarantees it is short or sane: whitespace runs collapse to single spaces (a
+newline mid-message would burn a whole row line on a hard break) and the result
+is capped at `maxDisplayedVersionLength`, after which the row drops the
+parenthesis entirely rather than showing an empty one. The other two lines carry
+no version: `<agent> integration not installed` and, for Codex,
+`Codex integration needs approval in /hooks`.
 
 A dismissal is persisted in `Session.dismissedAgentReminders` (encoded as a
 sorted array, so an unchanged session serialises identically across launches)

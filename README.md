@@ -63,11 +63,16 @@ what an installer left behind.
 
 ### Integration reminders
 
-At launch — and again when you switch back to Casper, at most once every five
-minutes — Casper asks one question per agent, for the whole app rather than per
-workspace: do you have that agent's CLI, and is its Casper integration installed
-and current? An agent whose CLI you don't have is ignored entirely. No reminder
-for it ever appears, and Casper reads nothing on your disk to work that out.
+Casper asks one question per agent, for the whole app rather than per workspace:
+do you have that agent's CLI, and is its Casper integration installed and
+current? An agent whose CLI you don't have is ignored entirely. No reminder for
+it ever appears, and Casper reads nothing on your disk to work that out.
+
+It asks once at launch and rechecks every few seconds from then on, so you can
+install or update a plugin in a Casper terminal and watch the line retire itself
+a moment later — no relaunch, nothing to click. Installing the *agent's own CLI*
+while Casper is running is the one change it won't notice: restart Casper and
+the agent appears.
 
 When there is something to say, one quiet line per agent appears in the sidebar
 just above **Add Folder…**; when there isn't, nothing is drawn at all:
@@ -75,8 +80,9 @@ just above **Add Folder…**; when there isn't, nothing is drawn at all:
 - **"… integration not installed"** — you have the agent, but not its Casper
   integration. A plugin you have explicitly switched off says the same thing:
   none of its hooks run, so an install that is disabled is functionally absent.
-- **"… integration is outdated"** — installed, but older than the plugin version
-  this build of Casper expects.
+- **"… integration is outdated (0.1.0)"** — installed, but older than the plugin
+  version this build of Casper expects. The version in brackets is the one you
+  currently have.
 - **"Codex integration needs approval in /hooks"** — informational rather than a
   fault; see below.
 

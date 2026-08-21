@@ -879,7 +879,13 @@ whole app rather than per workspace, and the CLI gate short-circuits everything
 else: an agent whose executable is absent is `notInstalled` and Casper reads not
 one file for it. CLI presence resolves through the user's **login shell**
 (`LoginShellPath`), because Casper launches from Finder/Dock and its own `PATH`
-is the bare launchd default.
+is the bare launchd default. That lookup is bounded by
+`LoginShellPath.lookupTimeout`, so a blocking shell profile no longer wedges the
+probe (nor freezes startup through the main-actor `EditorLauncher` path), and
+its answers — misses included — are cached for the process lifetime. The cache
+is what makes re-probing cheap, and it bounds what re-probing can recover: an
+agent CLI installed while Casper runs stays `notInstalled` until relaunch, while
+plugin state is re-read every time.
 
 Two rules run through all of it. A **disabled** integration reports `missing`,
 because an install whose hooks never fire is functionally absent (an *absent*
@@ -890,7 +896,11 @@ recorded version rather than the first, so a stale record cannot manufacture an
 `outdated` row. A Claude Code registration under the legacy id
 (`casper@Casper`) reports `outdated` whatever version it carries: the id
 identifies the marketplace rather than the build, and it is a compatibility
-branch for the pre-publication local dev install, not migration support.
+branch for the pre-publication local dev install, not migration support. It
+differs from the current `casper@casper` **by case alone**, so the two share one
+cache directory on case-insensitive APFS; Claude Code detection therefore reads
+the registry key and the record's `version` field and never `installPath`, and
+every lookup on that path has to stay case-sensitive.
 
 The **Codex cache layout is documentation-derived and has never been verified
 against a real install**, on either side; the source, the theme doc and the
@@ -900,17 +910,37 @@ README all say so. No plugin manifest is read (the plugin ships only
 [[codex-detection-caveats]].
 
 **Built — sidebar (`CasperUI`).** `AppModel` § *Agent-integration reminders*
-runs the probe **off the main actor** at launch and on app activation, throttled
-to five minutes (a cold probe spawns three sequential login shells, 1–2.5 s), so
-installing a plugin and tabbing back clears the line without a relaunch. It
-publishes one ordered `AgentIntegrationReminder` per agent with something to
-say: `missing`/`outdated` → an *action-needed* line, `installed` → a *trust
-notice* for Codex only, `notInstalled` → nothing at all. Order comes from
-`CodingAgent.allCases`, never from the status dictionary (hash-seeded).
+runs the probe **off the main actor**, once at launch — the one probe that pays
+the cold cost of three sequential login shells (1–2.5 s) — and thereafter on a
+staleness check that rides the existing agent detection tick, re-probing once
+the last result is older than `agentIntegrationProbeInterval` (**5 s**). A tick
+never starts the *first* probe: `shouldRefreshAgentIntegrations` is `false` for
+a nil `lastProbeAt`, so the cold cost stays the launch path's. Seconds rather
+than minutes because the integration is installed by a command typed in a Casper
+terminal, where the app never resigns active and activation fires no event at
+all; the cadence is affordable because `LoginShellPath` caches every lookup for
+the process lifetime, leaving each later probe a handful of `stat`/`read` calls.
+Opening a reminder's documentation back-dates the result so the next check
+re-probes immediately. `applicationDidBecomeActive` applies the same stale
+check. See [[agent-integration-probe-cadence]].
+
+Each result publishes one ordered `AgentIntegrationReminder` per agent with
+something to say: `missing`/`outdated` → an *action-needed* line, `installed` →
+a *trust notice* for Codex only, `notInstalled` → nothing at all. Order comes
+from `CodingAgent.allCases`, never from the status dictionary (hash-seeded).
 `AgentIntegrationReminderView` renders the rows between the workspace list and
 the "Add Folder…" footer, drawing **nothing** — not even a divider — when the
 list is empty; the row button (opens the guide) and the dismiss button are
 siblings, never nested, so a dismiss can never also open a URL.
+
+The three row wordings are `<agent> integration not installed`,
+`<agent> integration is outdated (<version>)` and, for Codex,
+`Codex integration needs approval in /hooks`. The outdated row names the
+installed version because it is what makes a nag someone believes is wrong
+diagnosable from a screenshot; the string comes from another tool, so
+whitespace runs collapse and the value is capped at
+`maxDisplayedVersionLength`, dropping the parenthesis outright when nothing
+printable survives.
 
 The Codex **trust notice** exists because Codex hashes non-managed command hooks
 and does not run them until they are approved via `/hooks` in its TUI, so an
@@ -927,15 +957,16 @@ out independently of the enum's `rawValue`. A dismissal silences the current
 problem, not the agent: it is retired once that agent reports `installed`, so a
 later regression reminds again.
 
-**Tests.** 115 in total: 56 in `AgentIntegrationTests` (the parsers and the
+**Tests.** 125 in total: 57 in `AgentIntegrationTests` (the parsers and the
 version comparison, including CRLF, JSONC comments inside string literals,
-lookalike plugin names and `"unknown"` versions), 30 in
-`AgentIntegrationProbeTests` (the full resolution against in-memory fixtures,
-per agent and per status), 20 in `AgentIntegrationReminderTests` (probe
-scheduling and throttle, the published projection, dismissal and retirement),
-5 in `AgentIntegrationReminderViewTests` (headless row layout and message/glyph
-mapping), and 4 in `ModelsTests` for the `session.json` round trip and its
-sorted encoding.
+lookalike plugin names, `"unknown"` versions, and the two plugin ids staying
+distinct-but-case-equal), 30 in `AgentIntegrationProbeTests` (the full
+resolution against in-memory fixtures, per agent and per status), 26 in
+`AgentIntegrationReminderTests` (probe scheduling and the staleness interval,
+the published projection, dismissal and retirement), 8 in
+`AgentIntegrationReminderViewTests` (headless row layout and message/glyph
+mapping, including the version cap), and 4 in `ModelsTests` for the
+`session.json` round trip and its sorted encoding.
 
 ## Remaining work — dependency-ordered
 

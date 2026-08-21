@@ -15,7 +15,7 @@ are documented to land in
 from the path segment. No Codex install has ever been available to confirm this
 against, on either the app or the plugin side.
 
-**The probe must read no plugin manifest.** The `casper-agents` repository ships
+**The probe must read no plugin manifest.** The `casper-skills` repository ships
 only `.claude-plugin/plugin.json` and relies on Codex's manifest discovery order
 (`plugin.json` → `.codex-plugin/plugin.json` → `.claude-plugin/plugin.json`)
 falling through to it. Probing by manifest filename matches nothing.
@@ -24,7 +24,7 @@ falling through to it. Probing by manifest filename matches nothing.
 The file appears on machines with **no Codex installed at all** — unrelated
 tools write to it (on this machine, a tool called superset, with
 `SessionStart`/`UserPromptSubmit`/`Stop` entries pointing at its own script).
-Nor does it hold a Casper marker to look for: the `casper-agents` plugin never
+Nor does it hold a Casper marker to look for: the `casper-skills` plugin never
 writes to it. Anyone reaching for this file as a Codex-presence or integration
 signal gets a confident false positive.
 

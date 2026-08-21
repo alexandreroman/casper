@@ -1,12 +1,12 @@
 ---
 name: "Plugin version coupling"
-description: "Casper's requiredPluginVersion and the casper-agents repo version drift independently, benignly upward"
+description: "Casper's requiredPluginVersion and the casper-skills repo version drift independently, benignly upward"
 type: project
 ---
 
 # Plugin version coupling
 
-The plugin's version is declared in the separate `casper-agents` repository
+The plugin's version is declared in the separate `casper-skills` repository
 (manifest, marketplace entry, `package.json`, and the opencode plugin file's
 `CASPER_PLUGIN_VERSION` constant, which a test keeps in agreement). Casper
 hard-codes the version it expects in a single constant in `CasperCore`.

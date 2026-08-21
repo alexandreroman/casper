@@ -38,11 +38,11 @@ is [`status.md`](status.md).
   hook-driven workspace is permanently under `explicitAuthority` and never
   gets a detected `done`; selecting a `done` workspace collapses it back to
   `idle` (**partly shipped** — the Casper-side collapse is built, the
-  `casper-agents` hook is not).
+  `casper-skills` hook is not).
 - [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
   `done` should raise a notification (**shipped** — spans this repo and
-  `casper-agents`).
+  `casper-skills`).
 - [`plans/space-project.md`](plans/space-project.md) — Space + workspace diff
   summary (**superseded 2026-07-06**: model landed in UI-2; the diff summary is
   dropped). Kept for reference only.
@@ -85,11 +85,13 @@ is [`status.md`](status.md).
 - [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
   — task-by-task companion to `stop-hook-explicit-done.md`; the Casper-side half
   (selecting a `done` workspace collapses it to `idle`) has **shipped**, the
-  `casper-agents` `hooks/stop.sh` half has not.
+  `casper-skills` `hooks/stop.sh` half has not.
 
-The agent-plugin repository these plans refer to is `casper-agents`; older plan
+The agent-plugin repository these plans refer to is `casper-skills`; older plan
 text under `plans/` still calls it `casper-claude-plugin`. It ships the `casper`
-plugin for all three supported agents, installed as `casper@casper-agents`.
+plugin for all three supported agents: Claude Code and Codex register it as
+`casper@casper` (plugin `casper`, marketplace `casper`), and opencode pulls it
+as the npm package `casper-skills`.
 
 Completed plans are marked done in place here until they are cleaned up; the
 original design specs are recoverable from Git history (tracked under the
