@@ -31,10 +31,24 @@ struct AgentIntegrationReminderView: View {
         }
     }
 
+    /// Longest installed-version string a row shows, ellipsis included.
+    ///
+    /// A version is whatever another tool wrote down — a Codex cache *directory
+    /// name*, or a Claude registry field that is legitimately the literal
+    /// `"unknown"` — so nothing guarantees it is short or even sane. Real ones are a
+    /// handful of characters; past this the string stops identifying the install and
+    /// starts eating the row's two lines.
+    static let maxDisplayedVersionLength = 12
+
     /// What one line says, in the sidebar's own voice.
     ///
     /// Kept short on purpose: the sidebar is 220–400 pt wide and the row caps at two
-    /// lines, so a longer sentence would be truncated rather than read.
+    /// lines, so a longer sentence would be truncated rather than read. The outdated
+    /// line still names the installed version, bounded by
+    /// `maxDisplayedVersionLength`: it is the one detail that makes a nag someone
+    /// believes is wrong diagnosable from a screenshot, and it matters most on the
+    /// Codex path, whose install layout has never been checked against a real
+    /// install.
     static func message(for reminder: AppModel.AgentIntegrationReminder) -> String {
         let name = reminder.agent.displayName
         switch reminder.kind {
@@ -42,14 +56,31 @@ struct AgentIntegrationReminderView: View {
             return "\(name) integration needs approval in /hooks"
         case .actionNeeded:
             switch reminder.status {
-            case .outdated:
-                return "\(name) integration is outdated"
+            case .outdated(let installed):
+                guard let version = displayVersion(installed) else {
+                    return "\(name) integration is outdated"
+                }
+                return "\(name) integration is outdated (\(version))"
             // Only `.missing` reaches here; `.notInstalled` and `.installed` never
             // produce an action-needed line, and are listed to keep this exhaustive.
             case .missing, .notInstalled, .installed:
                 return "\(name) integration not installed"
             }
         }
+    }
+
+    /// The installed version as a row may show it, or nil when nothing printable is
+    /// left — in which case the line drops the parenthesis rather than showing an
+    /// empty one.
+    ///
+    /// Whitespace runs collapse to single spaces before the length cap applies: a
+    /// version taken from a directory name can carry newlines, and one of those in
+    /// the middle of the message would burn a whole row line on a hard break.
+    static func displayVersion(_ installed: String) -> String? {
+        let collapsed = installed.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        guard collapsed.count > maxDisplayedVersionLength else { return collapsed }
+        return String(collapsed.prefix(maxDisplayedVersionLength - 1)) + "…"
     }
 
     /// The leading glyph. The two kinds must not look alike — one says "there is
