@@ -72,6 +72,7 @@
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI
 - [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
 - [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply it inside the Button's label, or only the glyph is live
+- [Title-bar chips carry no accent colour](references/title-bar-chip-chrome.md) — one neutral palette; inspector tabs are a segmented control
 - [Browser automation CLI](references/browser-automation-cli.md) — the automation/scroll/debug verbs, and their off-screen behavior
 - [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a UIDelegate
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — ATS blocks plain-HTTP to public-qualified hostnames

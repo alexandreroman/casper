@@ -49,16 +49,13 @@ struct WorkspaceDetailView: View {
                 // The inspector region (divider + panel) is ALWAYS mounted and
                 // pinned at its full width; collapsing animates the OUTER clip
                 // width to zero instead of unmounting the panel with a `.move`
-                // transition. A freshly inserted view — the hand-rolled,
-                // icon-only vertical tab rail — does not follow SwiftUI's
-                // per-frame transition offset: it snaps to its final frame and
-                // visibly lags the sliding chrome. Revealing by clipping keeps
-                // that rail at fixed coordinates (content pinned to the
-                // trailing edge, which is the window's fixed right edge) so
-                // nothing translates, mirroring `SplitContainerView`'s
-                // always-mounted, frame-animated approach. The divider lives
-                // inside the same clipped container so it reveals with the panel
-                // rather than popping in as a separate mount.
+                // transition. Revealing by clipping keeps the panel at fixed
+                // coordinates (content pinned to the trailing edge, which is the
+                // window's fixed right edge) so nothing translates, mirroring
+                // `SplitContainerView`'s always-mounted, frame-animated
+                // approach. The divider lives inside the same clipped container
+                // so it reveals with the panel rather than popping in as a
+                // separate mount.
                 HStack(spacing: 0) {
                     inspectorDivider(total: proxy.size.width, range: range)
                     InspectorPanel(model: model, workspace: workspace)
@@ -97,9 +94,14 @@ struct WorkspaceDetailView: View {
             if !model.availableEditors.isEmpty {
                 ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
             }
-            // Always flattened: the toggle draws its own capsule, so the system shared
-            // glass is stripped in both states to keep it visually identical.
-            ToolbarItem(placement: .primaryAction) { inspectorToggle }.flatToolbarItem()
+            // The two inspector tabs are mutually exclusive, so they share ONE item
+            // and render as a single segmented control rather than as two independent
+            // pills. Flattened like the Script and Editor chips: it draws its own
+            // capsule, so the system shared glass is stripped in every state.
+            ToolbarItem(placement: .primaryAction) {
+                InspectorTabSelector(model: model, workspace: workspace)
+            }
+            .flatToolbarItem()
         }
         .alert("Couldn't Open Editor", isPresented: Binding(
             get: { model.editorLaunchError != nil },
@@ -228,17 +230,6 @@ struct WorkspaceDetailView: View {
         }
     }
 
-    private var inspectorToggle: some View {
-        Button {
-            model.toggleInspectorCollapsed(for: workspace.id)
-        } label: {
-            Image(systemName: "sidebar.right")
-                .titleCapsule(filled: workspace.inspector.collapsed, interactive: true)
-        }
-        .buttonStyle(.plain)
-        .help("Toggle panel")
-    }
-
     private var editorButton: some View {
         let current = model.resolvedEditor(nil, for: workspace)
         return TitleSplitButton {
@@ -270,6 +261,91 @@ struct WorkspaceDetailView: View {
         }
     }
 
+}
+
+/// The title-bar Diff / Browser control: one capsule enclosing both glyph-only
+/// segments, with a single indicator that slides from one to the other. Rendering
+/// them as one segmented control — rather than as two identical pills — is what
+/// makes it legible that at most one tab can be on.
+///
+/// Three states are visible: the panel open on Diff, open on Browser, and
+/// collapsed. Collapsed draws NO indicator at all, so "neither is on" reads as
+/// distinct from either selection.
+///
+/// Each segment routes through `toggleInspectorTab`, which expands onto its tab
+/// when the panel is collapsed, collapses the panel when it is already open on
+/// that tab, and otherwise just switches tab.
+///
+/// Geometry follows the `title-capsule-hit-area` memory note: the shell wraps the
+/// whole `HStack`, and the interior padding lives inside each `Button`'s label so
+/// both halves of the pill are clickable rather than just the glyphs.
+///
+/// Internal rather than private so `InspectorTabSelectorTests` can host it.
+struct InspectorTabSelector: View {
+    /// Width of the slot each segment reserves for its glyph.
+    ///
+    /// Fixed on purpose: SF Symbols have different intrinsic widths (`plusminus`
+    /// measures 12pt against `globe`'s 15pt), so content-sized segments would come
+    /// out lopsided and the sliding selection indicator would change size as it
+    /// moves between them. Reserving one slot makes both segments identical by
+    /// construction. Deliberately roomier than the widest glyph — a slightly
+    /// generous segment looks fine, an overflowing one does not.
+    static let glyphSlotWidth: CGFloat = 18
+
+    let model: AppModel
+    let workspace: Workspace
+
+    /// Anchors the one selection indicator so it slides horizontally between the
+    /// segments instead of cross-fading.
+    @Namespace private var selectionNamespace
+
+    var body: some View {
+        // `nil` while the panel is collapsed — the "neither is on" state.
+        let selection: InspectorTab? = workspace.inspector.collapsed ? nil : workspace.inspector.tab
+        return HStack(spacing: 0) {
+            segment(.diff, systemImage: "plusminus", help: "Toggle diff", selection: selection)
+            segment(.browser, systemImage: "globe", help: "Toggle browser", selection: selection)
+        }
+        .titleCapsuleShell(interactive: true)
+        // One value covering both which tab is selected and whether the panel is
+        // collapsed, so the indicator animates on either change.
+        .animation(.smooth(duration: 0.22), value: selection)
+    }
+
+    /// One glyph-only segment. `help` names it for both the tooltip and VoiceOver.
+    private func segment(_ tab: InspectorTab, systemImage: String, help: String,
+                         selection: InspectorTab?) -> some View {
+        let isSelected = selection == tab
+        return Button {
+            model.toggleInspectorTab(tab, for: workspace.id)
+        } label: {
+            Image(systemName: systemImage)
+                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                // The fixed slot goes INSIDE the padding so the 10pt insets still
+                // widen the segment (see the `fixed-frame-swallows-inner-padding`
+                // memory note) and the whole pill half stays clickable.
+                .frame(width: Self.glyphSlotWidth)
+                .padding(.horizontal, 10)
+                .frame(maxHeight: .infinity)
+                // The indicator exists only behind the selected segment and is
+                // matched across the two, so it slides rather than cross-fades.
+                // Per-segment hover is deliberately absent: the shell already
+                // lights up as a whole, as the Run / Editor pills do.
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(Color(nsColor: .controlColor))
+                            .padding(3)
+                            .shadow(color: .black.opacity(0.12), radius: 1, y: 0.5)
+                            .matchedGeometryEffect(id: "selectedTab", in: selectionNamespace, isSource: true)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
 }
 
 /// A title-bar split button: a primary `Button` and a borderless `Menu` sharing
@@ -369,20 +445,20 @@ private struct TitleCapsuleChrome: ViewModifier {
 
     private var highlighted: Bool { interactive && hovering }
 
-    /// The native toolbar controls next to these chips (the sidebar toggle) dim
-    /// when the window stops being key/main, so the interactive chips dim with
-    /// them. Fading the whole shell keeps the glyphs, the +N/−N tints and the
-    /// capsule in step, and opacity alone can never shift the layout.
+    /// Native toolbar controls dim when the window stops being key/main, so the
+    /// interactive chips dim with them. Fading the whole shell keeps the glyphs,
+    /// the +N/−N tints and the capsule in step, and opacity alone can never shift
+    /// the layout.
     private var shellOpacity: Double { controlActiveState == .inactive ? 0.5 : 1 }
 
-    /// An unfilled chip (the inspector toggle while the panel is open) grows the
-    /// standard fill + border on hover, so the capsule "appears" under the pointer
-    /// like a native toolbar button. Padding, height and hit area are already
-    /// identical in both states, so this can never shift the layout.
+    /// An unfilled chip grows the standard fill + border on hover, so the capsule
+    /// "appears" like a native toolbar button. Padding, height and hit area are
+    /// already identical in both states, so this can never shift the layout.
     private var showsChrome: Bool { filled || highlighted }
 
     private var fill: Color {
         guard showsChrome else { return .clear }
+        // Same step in both palettes.
         return Color.secondary.opacity(highlighted ? 0.28 : 0.15)
     }
 
@@ -414,10 +490,9 @@ private extension View {
     /// works for every chip.
     ///
     /// Pass `filled: false` to drop the fill and border while keeping the exact
-    /// same padding, height, and hit area. Used by the inspector toggle, so its
-    /// background vanishes when the panel is open but the button never shifts,
-    /// and by the branch/space `title`, which reads as a label rather than a
-    /// chip yet still lines up with the chips next to it.
+    /// same padding, height, and hit area. Used by the branch/space `title`, which
+    /// reads as a label rather than a chip yet still lines up with the chips next
+    /// to it.
     ///
     /// Pass `interactive: true` for chips that are buttons, so they light up on
     /// hover like a native toolbar button; see `TitleCapsuleChrome`.

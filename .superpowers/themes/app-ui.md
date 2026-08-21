@@ -88,9 +88,12 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
   replacing them. The `.diff` layout-leaf surface kind was **removed** — the
   diff view now lives **only** in the inspector; the `.browser` tmux-pane path
-  still exists, `.diff` does not. See `../status.md` →
-  "Right inspector panel" for the as-built model, chrome, and title-bar changes
-  (globe button removed, panel toggle added, `+/−` summary opens the Diff tab).
+  still exists, `.diff` does not. The panel has no tab control of its own: a
+  segmented Diff/Browser control in the title bar picks the tab **and** toggles
+  the panel open/closed, with a third state — neither segment selected — meaning
+  closed. See `../status.md` → "Right inspector panel" for the as-built model,
+  chrome, and title-bar changes (globe button removed, segmented control added,
+  `+/−` summary opens the Diff tab).
 - **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
   injects the bundle exec dir + per-surface env into each terminal, and runs the
   `#if DEBUG` debug bridge (all detailed in `cli-agents.md`).

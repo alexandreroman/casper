@@ -1423,12 +1423,6 @@ final class AppModel {
         }
     }
 
-    /// Flip the inspector panel's collapsed state for a workspace (toolbar toggle).
-    func toggleInspectorCollapsed(for workspaceID: UUID) {
-        guard mutate(workspaceID, { $0.inspector.collapsed.toggle() }) else { return }
-        persist()
-    }
-
     /// Select the inspector's active tab, expanding the panel if it was collapsed.
     func setInspectorTab(_ tab: InspectorTab, for workspaceID: UUID) {
         let mutated = mutate(workspaceID) {
