@@ -415,7 +415,7 @@ newline mid-message would burn a whole row line on a hard break) and the result
 is capped at `maxDisplayedVersionLength`, after which the row drops the
 parenthesis entirely rather than showing an empty one. The other two lines carry
 no version: `<agent> integration not installed` and, for Codex,
-`Codex integration needs approval in /hooks`.
+`Codex integration needs approval`.
 
 A dismissal is persisted in `Session.dismissedAgentReminders` (encoded as a
 sorted array, so an unchanged session serialises identically across launches)

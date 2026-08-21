@@ -83,7 +83,7 @@ just above **Add Folder…**; when there isn't, nothing is drawn at all:
 - **"… integration is outdated (0.1.0)"** — installed, but older than the plugin
   version this build of Casper expects. The version in brackets is the one you
   currently have.
-- **"Codex integration needs approval in /hooks"** — informational rather than a
+- **"Codex integration needs approval"** — informational rather than a
   fault; see below.
 
 Click a line to open that agent's integration guide, or the **×** beside it to

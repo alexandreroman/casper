@@ -956,7 +956,7 @@ siblings, never nested, so a dismiss can never also open a URL.
 
 The three row wordings are `<agent> integration not installed`,
 `<agent> integration is outdated (<version>)` and, for Codex,
-`Codex integration needs approval in /hooks`. The outdated row names the
+`Codex integration needs approval`. The outdated row names the
 installed version because it is what makes a nag someone believes is wrong
 diagnosable from a screenshot; the string comes from another tool, so whitespace
 runs collapse and the value is capped at `maxDisplayedVersionLength`, dropping
