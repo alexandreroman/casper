@@ -118,6 +118,14 @@ App state as JSON:
 .build/debug/casper debug dump-state
 ```
 
+Besides geometry, each surface reports `agentState` — what agent-state detection
+concluded, the same value the sidebar status icon renders — plus `oscTitle` and
+`progressReport`, two of the three inputs detection drew it from (the third is
+the viewport text, which `read-text` below returns). Together they make it
+possible to verify a detection change against the live app instead of reading
+the sidebar by eye or adding temporary logging. Both OSC fields are absent until
+the surface has actually received such a sequence.
+
 The terminal's live text (viewport, or `--scrollback` for the full screen):
 
 ```bash

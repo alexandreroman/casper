@@ -76,6 +76,13 @@ public struct DebugSurfaceHandle {
     public let geometry: () -> DebugSurfaceGeometry
     public let focus: () -> Void
     public let window: NSWindow?
+    // Agent-state detection, so `dumpState` can report what detection concluded and what it
+    // concluded it from. `agentState` is a plain value read once when the handle is built (like
+    // `title`); the other two are closures because they read live per-surface state off the view,
+    // the same way `readText` does.
+    public let agentState: String?
+    public let oscTitle: () -> String?
+    public let progressReport: () -> String?
 
     public init(
         id: String, title: String, workingDirectory: String?, focused: Bool,
@@ -87,7 +94,11 @@ public struct DebugSurfaceHandle {
         mouseMove: @escaping (_ x: Double, _ y: Double) -> Void,
         geometry: @escaping () -> DebugSurfaceGeometry,
         focus: @escaping () -> Void,
-        window: NSWindow?
+        window: NSWindow?,
+        // Defaulted so construction sites that don't care about detection keep compiling.
+        agentState: String? = nil,
+        oscTitle: @escaping () -> String? = { nil },
+        progressReport: @escaping () -> String? = { nil }
     ) {
         self.id = id
         self.title = title
@@ -102,6 +113,9 @@ public struct DebugSurfaceHandle {
         self.geometry = geometry
         self.focus = focus
         self.window = window
+        self.agentState = agentState
+        self.oscTitle = oscTitle
+        self.progressReport = progressReport
     }
 }
 
@@ -171,7 +185,9 @@ public final class DebugServer {
                     boundsWidth: g.boundsWidth, boundsHeight: g.boundsHeight,
                     backingWidth: g.backingWidth, backingHeight: g.backingHeight,
                     contentScaleX: g.contentScaleX, contentScaleY: g.contentScaleY,
-                    backingScaleFactor: g.backingScaleFactor)
+                    backingScaleFactor: g.backingScaleFactor,
+                    agentState: handle.agentState, oscTitle: handle.oscTitle(),
+                    progressReport: handle.progressReport())
             }
             return .success(state: DebugState(surfaces: entries))
 

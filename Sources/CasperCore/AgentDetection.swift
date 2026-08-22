@@ -2,12 +2,13 @@ import Foundation
 
 // Pure, testable agent-state detection engine.
 //
-// This file owns only the *policy*: turning terminal viewport text into a raw
-// signal, rolling several surfaces' signals up to one workspace signal, and
-// debouncing that signal into a reported `AgentState`. It performs no I/O and
-// reads no real terminals — the caller supplies the viewport text and the
-// "seen" flag. Keeping it side-effect-free makes the whole thing unit-testable
-// and keeps every Ghostty/UI concern out of CasperCore (see
+// This file owns only the *policy*: turning what a terminal reports — viewport
+// text, the OSC title, and the OSC 9;4 progress state — into a raw signal,
+// rolling several surfaces' signals up to one workspace signal, and debouncing
+// that signal into a reported `AgentState`. It performs no I/O and reads no
+// real terminals — the caller supplies the viewport text and the "seen" flag.
+// Keeping it side-effect-free makes the whole thing unit-testable and keeps
+// every Ghostty/UI concern out of CasperCore (see
 // `.superpowers/themes/agent-state-detection.md`).
 
 /// A raw, per-tick observation about what an agent surface is doing.
@@ -36,12 +37,47 @@ extension AgentSignal: Comparable {
     }
 }
 
+/// The terminal's OSC 9;4 (ConEmu/iTerm2) progress-report state.
+///
+/// Mirrors libghostty's `ghostty_action_progress_report_state_e` one-for-one
+/// (`GHOSTTY_PROGRESS_STATE_REMOVE`, `_SET`, `_ERROR`, `_INDETERMINATE`,
+/// `_PAUSE`), restated here so that C enum never leaks into CasperCore, which
+/// must not depend on GhosttyKit. The translation lives in CasperGhostty.
+public enum AgentProgressState: String, Equatable, Sendable {
+    case removed, set, error, indeterminate, paused
+}
+
 extension AgentSignal {
     /// Rolls several surfaces' signals up to the single most urgent one. An empty
     /// input (no surfaces observed) is `absent`. Callers combining a fixed pair of
     /// signals can use `max(_:_:)` directly instead.
     public static func aggregate(_ signals: [AgentSignal]) -> AgentSignal {
         signals.max() ?? .absent
+    }
+
+    /// Reads a terminal progress report as a raw signal.
+    ///
+    /// `set`/`indeterminate` are what make this the *primary* `working` signal:
+    /// Claude Code emits `ESC]9;4;3` (indeterminate) for the whole duration of a
+    /// turn and `ESC]9;4;0` when it ends — verified against a real Claude Code
+    /// 2.1.239 PTY capture.
+    ///
+    /// The other three are `absent`, each for its own reason:
+    ///
+    /// - `removed` means "this source has nothing to say", deliberately not
+    ///   `idle`: reading it as `idle` would make a plain shell that never reports
+    ///   progress indistinguishable from an agent that just finished, and would
+    ///   let a silent source outvote nothing.
+    /// - `error` records the *outcome* of finished work, not liveness, and the bar
+    ///   lingers on screen until the next report — pinning the workspace to a
+    ///   state on it would be a guess.
+    /// - `paused` is emitted by no agent Casper targets, and a suspended bar
+    ///   asserts neither liveness nor rest.
+    public init(progress: AgentProgressState) {
+        switch progress {
+        case .set, .indeterminate: self = .working
+        case .removed, .error, .paused: self = .absent
+        }
     }
 }
 
@@ -53,15 +89,20 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     public let workingContains: [String]
     /// Any group whose every substring is present ⇒ `blocked`.
     public let blockedAllOf: [[String]]
-    /// Unicode scalar range whose prefix in the OSC title ⇒ `working`.
-    public let titleWorkingScalars: ClosedRange<UInt32>
+    /// Unicode scalar ranges whose prefix in the OSC title ⇒ `working`. Several
+    /// disjoint ranges rather than one widened range: Claude Code 2.1.239 spins
+    /// the quadrant circles ◐◑◒◓ (U+25D0–U+25D3) while earlier builds spun Braille
+    /// (U+2800–U+28FF), and bridging the gap between the two would swallow every
+    /// unrelated symbol in between. An empty list disables title-`working`
+    /// matching outright.
+    public let titleWorkingScalars: [ClosedRange<UInt32>]
     /// Single Unicode scalar whose prefix in the OSC title ⇒ `idle`.
     public let titleIdleScalar: UInt32?
 
     public init(
         workingContains: [String],
         blockedAllOf: [[String]],
-        titleWorkingScalars: ClosedRange<UInt32> = 0x2800...0x28FF,
+        titleWorkingScalars: [ClosedRange<UInt32>] = [0x2800...0x28FF, 0x25D0...0x25D3],
         titleIdleScalar: UInt32? = 0x2733
     ) {
         self.workingContains = workingContains
@@ -86,22 +127,28 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         return isWorking ? .working : .idle
     }
 
-    /// Classifies the terminal's OSC title. Current Claude Code encodes its live
-    /// state there: an animated Braille spinner (U+2800–U+28FF) prefix while
-    /// working, a ✳ (U+2733) prefix at rest. The shell also sets the title (to
-    /// the running command or cwd) between agent runs; such titles have neither
-    /// prefix and yield `.absent`, so they never produce a false `working`.
+    /// Classifies the terminal's OSC title. Claude Code still encodes its live
+    /// state there, but the spinner glyph moved: 2.1.239 prints the quadrant
+    /// circles ◐◑◒◓ (U+25D0–U+25D3) while working — verified from a real PTY
+    /// capture (`ESC]0;◐ Claude Code`) — where earlier builds printed Braille
+    /// (U+2800–U+28FF); both prefixes match, and the ✳ (U+2733) at-rest prefix is
+    /// unchanged. Because the glyph set is not stable across releases, the title
+    /// is a *secondary* signal behind the OSC 9;4 progress report. The shell also
+    /// sets the title (to the running command or cwd) between agent runs; such
+    /// titles have neither prefix and yield `.absent`, so they never produce a
+    /// false `working`.
     public func signal(fromTitle title: String) -> AgentSignal {
         guard let first = title.unicodeScalars.first(where: { $0 != " " }) else { return .absent }
-        if titleWorkingScalars.contains(first.value) { return .working }
+        if titleWorkingScalars.contains(where: { $0.contains(first.value) }) { return .working }
         if first.value == titleIdleScalar { return .idle }
         return .absent
     }
 
     /// Claude Code's on-screen affordances. Substrings are lowercase ASCII and are
     /// matched case-insensitively against the raw viewport text (no lowercased copy
-    /// is allocated). The OSC-title convention (Braille spinner U+2800–U+28FF =
-    /// working, ✳ U+2733 = idle) comes from the initializer's defaults.
+    /// is allocated). The OSC-title convention (a spinner prefix — quadrant circles
+    /// U+25D0–U+25D3 or Braille U+2800–U+28FF — = working, ✳ U+2733 = idle) comes
+    /// from the initializer's defaults.
     public static let claudeCode = AgentDetectionRuleSet(
         workingContains: [
             "esc to interrupt",
@@ -125,7 +172,7 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         blockedAllOf: [
             ["do you want to proceed?", "esc to cancel"],
         ],
-        titleWorkingScalars: 0...0,
+        titleWorkingScalars: [],
         titleIdleScalar: nil)
 }
 
