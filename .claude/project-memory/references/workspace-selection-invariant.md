@@ -12,8 +12,8 @@ primary workspace; `fallbackSelection` re-selects the first remaining workspace
 after any removal; session restore falls back to
 `spaces.first?.workspaces.first`; and a Space always holds at least one
 workspace (a primary can't be dropped via `removeWorkspace`, and closing a
-primary's last surface removes the whole Space). Locked by `AppModelTests`
-(add/remove/restore selection cases).
+workspace's last surface re-seeds it with a fresh terminal rather than removing
+anything). Locked by `AppModelTests` (add/remove/restore selection cases).
 
 Consequences:
 

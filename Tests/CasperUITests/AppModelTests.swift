@@ -1213,10 +1213,50 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(focusedView.debugLastFocusValue, false)
     }
 
-    func testCloseLastSurfaceOfPrimaryRemovesSpace() throws {
-        let (model, _) = try modelWithOneGitWorkspace()
-        model.applyCloseFocusedSurface()  // only surface -> closes the workspace
-        XCTAssertTrue(model.spaces.isEmpty)  // primary -> whole Space removed
+    /// Closing the last pane of a standalone primary must keep the workspace (and
+    /// its Space) alive, re-seeded with a fresh terminal.
+    func testCloseLastSurfaceOfPrimaryReseedsTheWorkspace() throws {
+        let (model, only) = try modelWithOneGitWorkspace()
+
+        model.applyCloseFocusedSurface()  // the only surface of the only workspace
+
+        XCTAssertEqual(model.spaces.count, 1)  // the Space survives
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+        let layout = model.spaces[0].workspaces[0].layout
+        let ids = LayoutTree.surfaceIDs(layout)
+        XCTAssertEqual(ids.count, 1)
+        XCTAssertNotEqual(ids[0], only)  // a fresh surface, not the closed one
+        XCTAssertTrue(surfaceKindIsTerminal(layout, ids[0]))
+    }
+
+    /// Same for a linked workspace: closing its last pane re-seeds it instead of
+    /// dropping it from the Space.
+    func testCloseLastSurfaceOfLinkedWorkspaceReseedsTheWorkspace() {
+        let primary = Workspace(
+            name: "main", worktreePath: "/repo", branch: "main", portBase: 40000,
+            layout: .leaf(Surface.terminal(cwd: "/repo")), kind: .primary)
+        let linkedSurface = Surface.terminal(cwd: "/repo-feat")
+        let linked = Workspace(
+            name: "feat", worktreePath: "/repo-feat", branch: "feat", portBase: 40010,
+            layout: .leaf(linkedSurface), kind: .linked)
+        let session = Session(spaces: [
+            Space(name: "repo", folderPath: "/repo", isGitRepo: true,
+                  workspaces: [primary, linked]),
+        ])
+        let (store, _) = makeStore()
+        let model = AppModel(sessionStore: store, session: session)
+        model.selectWorkspace(linked.id)
+        model.focusSurface(linkedSurface.id)
+
+        model.applyCloseSurface(linkedSurface.id)
+
+        XCTAssertEqual(model.spaces.count, 1)
+        XCTAssertEqual(model.spaces[0].workspaces.map(\.id), [primary.id, linked.id])
+        let layout = model.spaces[0].workspaces[1].layout
+        let ids = LayoutTree.surfaceIDs(layout)
+        XCTAssertEqual(ids.count, 1)
+        XCTAssertNotEqual(ids[0], linkedSurface.id)  // a fresh surface, not the closed one
+        XCTAssertTrue(surfaceKindIsTerminal(layout, ids[0]))
     }
 
     func testCloseOneOfTwoSurvives() throws {

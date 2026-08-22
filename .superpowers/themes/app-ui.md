@@ -160,8 +160,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   orientation matches) live in CasperCore and are heavily tested. libghostty
   `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed
   on the runtime to the **focused** workspace (focus tracked via the surface's
-  first-responder callback). Closing the last surface closes the workspace
-  non-destructively (linked → `removeWorkspace`, primary → `removeSpace`).
+  first-responder callback). Closing the last surface re-seeds the workspace
+  with a fresh terminal instead of closing it, so panes alone never remove a
+  workspace or a Space.
   `.diff` leaves render a placeholder until UI-5 (terminals and browsers are
   live — see the UI-4 bullet).
 - **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
