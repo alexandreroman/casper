@@ -16,8 +16,9 @@ sidebar + linked Git worktrees), **UI-3** (recursive splits/tabs layout),
 **UI-4** (WKWebView browser surface), and **UI-5** (read-only diff viewer). The
 live GUI verification pass on a real desktop is complete. Three coding agents
 are supported — Claude Code, OpenAI Codex CLI and opencode — through the
-agent-agnostic `casper` CLI; only the terminal-scraping detection rules remain
-Claude-Code-tuned (see [Agent-state detection](#agent-state-detection--) below).
+agent-agnostic `casper` CLI, and each has its own terminal-scraping rule set,
+all of them applied together (see
+[Agent-state detection](#agent-state-detection--) below).
 
 | Plan | Module                   | Status                                                                                       |
 | ---- | ------------------------ | -------------------------------------------------------------------------------------------- |
@@ -786,9 +787,11 @@ captured per surface by `GHOSTTY_ACTION_PROGRESS_REPORT` and read back through
 `GhosttySurfaceView.readProgressReport()`. The **OSC title** spinner is
 secondary (still emitted, but its glyph set moves between Claude Code releases),
 and the **viewport** carries `blocked` and is the only `working` source for an
-agent that reports no progress at all. The three aggregate under the existing
-blocked > working > idle > absent precedence. See
-[[agent-state-working-signal]].
+agent that reports no progress at all (Codex, opencode). The three aggregate
+under the existing blocked > working > idle > absent precedence. Both text
+sources are matched against every rule set in `AgentDetectionRuleSet.all` —
+detection cannot tell which agent occupies a surface, so it applies all of them
+and aggregates. See [[agent-state-working-signal]].
 
 `done` is produced by the resolver's own `working → idle` derivation. `blocked`/
 `done` (and `error`, on the explicit-only path) raise `casper notify` +
@@ -815,9 +818,9 @@ authority release is deferred to the timeout mechanism (option B). The initial
 implementation was removed.
 
 **Deferred:** `.render`-driven trigger (timer poll for now); option-B timeout
-authority release; per-surface status (option B); selecting a rule set per agent
-at runtime — `AgentDetectionRuleSet.codex` exists but nothing wires it, since
-detection has no way to know which agent runs in a surface.
+authority release; per-surface status (option B); selecting a *single* rule
+set per surface (detection cannot tell which agent runs there, so every rule
+set is applied and the signals aggregated).
 
 ## Dock bounce + unread badge — ✅
 

@@ -1990,18 +1990,28 @@ final class AppModel {
                 }
                 let signals = terminalIDs.compactMap { id -> AgentSignal? in
                     guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
-                    let rules = AgentDetectionRuleSet.claudeCode
-                    let viewport = rules.signal(fromViewport: text)
-                    let title = surfaceOSCTitle(id).map { rules.signal(fromTitle: $0) } ?? .absent
+                    let oscTitle = surfaceOSCTitle(id)
+                    // Every rule set is applied, because nothing here knows which agent runs
+                    // in this surface. The two text sources are read once above and replayed
+                    // across the rule sets — re-fetching them per rule set would triple the
+                    // cost of the pass for no gain.
+                    var textual = AgentSignal.absent
+                    for rules in AgentDetectionRuleSet.all {
+                        textual = max(textual, rules.signal(fromViewport: text))
+                        if let oscTitle {
+                            textual = max(textual, rules.signal(fromTitle: oscTitle))
+                        }
+                    }
                     let progress = surfaceProgressReport(id).map(AgentSignal.init(progress:)) ?? .absent
-                    // Roll the three sources together. The OSC 9;4 progress report is the
-                    // primary "working" signal — Claude Code brackets a turn with `ESC]9;4;3`
-                    // … `ESC]9;4;0`. The title spinner is a secondary one: still emitted, but
-                    // its glyph set moved between releases. The viewport carries "blocked",
-                    // and is the only "working" source for an agent that reports no progress
-                    // at all. The existing blocked > working > idle > absent precedence
-                    // handles all three correctly, so the resolver needs no change.
-                    return AgentSignal.aggregate([viewport, title, progress])
+                    // Roll the sources together. The OSC 9;4 progress report is the primary
+                    // "working" signal — Claude Code brackets a turn with `ESC]9;4;3` …
+                    // `ESC]9;4;0`. The title spinner is a secondary one: still emitted, but its
+                    // glyph set moved between releases, and only Claude Code has a title
+                    // convention at all. The viewport carries "blocked", and is the only
+                    // "working" source for an agent that reports no progress (Codex, opencode).
+                    // The existing blocked > working > idle > absent precedence handles them
+                    // all correctly, so the resolver needs no change.
+                    return max(textual, progress)
                 }
                 if signals.isEmpty { continue }  // nothing readable ⇒ leave W's state untouched
 

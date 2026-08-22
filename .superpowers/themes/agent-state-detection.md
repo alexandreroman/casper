@@ -83,7 +83,7 @@ main thread:
    scrollback, on every tick: the `blocked` affordances we match are always on
    the visible screen, and scraping scrollback each time is needlessly
    expensive. This is the only source for `blocked`, and the only `working`
-   source for agents that report no progress (Codex).
+   source for agents that report no progress (Codex, opencode).
 
 `readText` (viewport), `readOSCTitle` and `readProgressReport` are all exposed
 through **non-DEBUG accessors** on `GhosttySurfaceView` / `AppModel`
@@ -111,11 +111,18 @@ resolution to `render` is what would tell us **which** surface changed.
 
 A small, **data-driven** matcher (`AgentDetectionRuleSet`) yields a raw signal
 from the two text sources; the progress report needs no patterns and maps
-straight through `AgentSignal(progress:)`. The patterns describe Claude Code's
-affordances and are held as values on the rule set (not hard-coded control flow)
-so a new agent is just a new rule set; the aspiration is to move them to an
-external, updatable resource so they can track the agent's UI without a
-recompile. Viewport matching is case-insensitive.
+straight through `AgentSignal(progress:)`. The patterns are held as values on
+the rule set (not hard-coded control flow) so a new agent is just a new rule
+set; the aspiration is to move them to an external, updatable resource so they
+can track the agent's UI without a recompile. Viewport matching is
+case-insensitive.
+
+Three rule sets exist — `claudeCode`, `codex` and `opencode` — and
+`AgentDetectionRuleSet.all` collects them. Detection has no way to know *which*
+agent occupies a surface, so it applies **all** of them to the same snapshot and
+aggregates the signals rather than selecting one; each rule set's needles are
+specific enough to stay quiet on another agent's screen. The rules below name
+the agent each pattern was measured against.
 
 - **`working`** — primarily from the **OSC 9;4 progress report**: `SET`
   (`9;4;1`, a determinate bar) and `INDETERMINATE` (`9;4;3`, what Claude Code
@@ -133,15 +140,21 @@ recompile. Viewport matching is case-insensitive.
   legacy viewport interrupt hints (`esc to interrupt`, `ctrl+c to interrupt`)
   are **retained as a third matcher** for Codex and for resilience; current
   Claude Code no longer prints them anywhere a running turn can be seen.
+  opencode needs a needle of its own, `esc interrupt` (no "to"), which is the
+  only source that sees an opencode turn at all.
 - **`idle`** — from the **OSC title**: a leading `✳` (`U+2733`), the marker
   Claude Code shows at rest (still emitted by 2.1.239, verified). A title with
   no recognised prefix (the shell's own cwd/command title) yields no title
   signal (`absent`), and the viewport's at-rest prompt then resolves to `idle`.
 - **`blocked`** — from the **viewport**: a pending confirmation the agent shows
   only while it waits for the user — `do you want to proceed?` together with an
-  `esc to cancel` affordance (and sibling confirmation prompts). `blocked`
-  outranks a `working` progress report in aggregation, so a pending prompt is
-  never masked by a progress bar the agent left up.
+  `esc to cancel` affordance (and sibling confirmation prompts), or opencode's
+  `Permission required` together with an `Allow once` choice. Two substrings
+  are required in each group so a chat message quoting either phrase alone
+  cannot trip it. `blocked` outranks a `working` progress report in
+  aggregation, so a pending prompt is never masked by a progress bar the agent
+  left up — nor by opencode's interrupt footer, which stays on screen
+  underneath its permission prompt.
 
 #### Why the progress report and not the title or the viewport
 
@@ -186,16 +199,26 @@ any row after an agent upgrade.
 | Agent | OSC 9;4 progress | OSC title | Viewport affordance |
 | ----- | ---------------- | --------- | ------------------- |
 | Claude Code 2.1.239 | `9;4;3` for the whole turn, `9;4;0` at its end | `◐◑` while working, `✳` at rest | none |
-| opencode 1.18.20 | none | plain ASCII (`OpenCode`, or `OC` then the turn title) — never a glyph prefix | none |
+| opencode 1.18.20 | none | plain ASCII (`OpenCode`, `OC \| <turn title>`) — never a glyph prefix | `esc interrupt` footer while a turn runs; `Permission required` + `Allow once`/`Reject` when blocked |
 | codex-cli 0.149.0 | none (static: the binary contains no `9;4` and no `ConEmu`) | not measured | not measured |
 
 Two consequences worth stating outright:
 
-- **opencode publishes nothing detection can read.** Viewport `idle`, title
-  `absent`, progress `absent` — so a workspace running opencode reports `idle`
-  throughout, and its Casper integration rests entirely on the explicit CLI
-  path (`casper status set …`, driven by the plugin's own hooks). This is not a
-  consequence of the progress-report work; it is what the measurement shows.
+- **opencode's viewport is readable; its title and progress are not.** It emits
+  no OSC 9;4 sequence at all and its title asserts nothing, so those two sources
+  stay `absent`. The viewport does carry state: while a turn runs, the footer
+  row reads
+  `■⬝⬝⬝⬝⬝⬝⬝  esc interrupt … tab agents  ctrl+p commands`. Note the missing
+  "to" — Claude Code's `esc to interrupt` needle does not match it, which is why
+  opencode needs a rule set of its own. That row is written only while the turn
+  runs and is overwritten by the at-rest footer (path + token count +
+  `ctrl+p commands`) when it ends, verified against the raw byte stream, so the
+  affordance does not latch. A pending permission prompt renders
+  `Permission required` above `Allow once` / `Allow always` / `Reject` **while
+  the interrupt footer is still on screen**, so `blocked` has to outrank
+  `working` — it already does, both inside `signal(fromViewport:)` and in
+  `AgentSignal.aggregate`. What the viewport cannot show still rests on the
+  explicit CLI path (`casper status set …`, driven by the plugin's own hooks).
 - **Adding a source that no agent owns changes every terminal, not just an
   agent's.** Any command that reports OSC 9;4 progress — a package manager, a
   download — now reads as `working` for its workspace. That is defensible
@@ -336,13 +359,16 @@ state lives only at the workspace level.
   every ~250 ms while the window is visible and is throttled to ~1 s while it is
   hidden — it is never stopped (`agentDetectionIntervalVisible` /
   `agentDetectionIntervalHidden`) — scrapes each workspace's terminals,
-  viewport, OSC title **and** OSC 9;4 progress state, aggregates the three
-  signals, runs the resolver, and writes `agentState` via
-  `setDetectedAgentState` unless the workspace is under explicit authority.
-  `controlSetAgentState` latches only `blocked`, `done`, and `error`; it
-  releases terminal-observable states immediately. The sidebar status icon lives
-  on `WorkspaceRow` (monochrome outline SF Symbols in the chevron column,
-  animated `working`).
+  viewport, OSC title **and** OSC 9;4 progress state, evaluates the two text
+  sources against **every** rule set in `AgentDetectionRuleSet.all`
+  (`claudeCode`, `codex`, `opencode` — read once per surface and replayed
+  across the rule sets, since nothing there knows which agent runs in the
+  surface), aggregates all the signals, runs the resolver, and writes
+  `agentState` via `setDetectedAgentState` unless the workspace is under
+  explicit authority. `controlSetAgentState` latches only `blocked`, `done`, and
+  `error`; it releases terminal-observable states immediately. The sidebar status
+  icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the chevron
+  column, animated `working`).
 
 ### Notifications
 
@@ -407,13 +433,19 @@ viewport is its only source.
 below. They are what the rule set was written against; nothing has confirmed
 them against a current Codex build.
 
-**It is not selected at runtime yet.** `runAgentDetectionTick` hard-codes
-`AgentDetectionRuleSet.claudeCode`, so the Codex rule set is exercised only by
-its unit tests. In practice a Codex workspace is still matched on the two
-interrupt hints, which `claudeCode` shares; only the `Running tools` needle is
-unreachable. Picking a rule set per surface needs a way to know which agent is
-running there, which detection does not have — that is the open work, not a
-missing line of wiring.
+**It is reachable at runtime.** `runAgentDetectionTick` applies every rule set
+in `AgentDetectionRuleSet.all` to the same snapshot and aggregates the
+signals, so the `Running tools` needle now contributes. Selecting *one* rule
+set per surface would need a way to know which agent runs there, which
+detection does not have; the union sidesteps that, at the price of every
+agent's needles being live on every terminal. The same union is what makes
+opencode's `esc interrupt` footer and `Permission required` prompt reachable.
+Explicit `working`, `idle`, and `unknown` updates remain observable by the
+terminal detector. This prevents a
+`UserPromptSubmit` hook from leaving a workspace stuck in `working` if its
+separate `Stop` hook is not available. Explicit `blocked`, `done`, and `error`
+remain authoritative because terminal text cannot safely clear those attention
+states.
 
 ## Open questions
 
