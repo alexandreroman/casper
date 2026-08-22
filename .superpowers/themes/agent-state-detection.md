@@ -171,6 +171,44 @@ operations"), it is already modelled by the pinned libghostty header
 bump — and it is emitted by iTerm2/ConEmu-aware tools generally, so it degrades
 into a signal other long-running commands share rather than into nothing.
 
+### What each agent actually emits
+
+Detection is version-coupled to each agent's terminal UI, so the table below
+records what was **measured**, not what was assumed — captured by running the
+agent under `script -q` with `TERM_PROGRAM=ghostty` and
+`TERM_PROGRAM_VERSION=1.3.1` (the values a Casper terminal sets) and grepping
+the raw file for `ESC]9;4;` and `ESC]0;`. Re-run that capture before trusting
+any row after an agent upgrade.
+
+| Agent | OSC 9;4 progress | OSC title | Viewport affordance |
+| ----- | ---------------- | --------- | ------------------- |
+| Claude Code 2.1.239 | `9;4;3` for the whole turn, `9;4;0` at its end | `◐◑` while working, `✳` at rest | none |
+| opencode 1.18.20 | none | plain ASCII (`OpenCode`, `OC \| <turn title>`) — never a glyph prefix | none |
+| codex-cli 0.149.0 | none (static: the binary contains no `9;4` and no `ConEmu`) | not measured | not measured |
+
+Two consequences worth stating outright:
+
+- **opencode publishes nothing detection can read.** Viewport `idle`, title
+  `absent`, progress `absent` — so a workspace running opencode reports `idle`
+  throughout, and its Casper integration rests entirely on the explicit CLI
+  path (`casper status set …`, driven by the plugin's own hooks). This is not a
+  consequence of the progress-report work; it is what the measurement shows.
+- **Adding a source that no agent owns changes every terminal, not just an
+  agent's.** Any command that reports OSC 9;4 progress — a package manager, a
+  download — now reads as `working` for its workspace. That is defensible
+  ("something is running") and is the same generality that makes the signal
+  worth depending on, but it is a behaviour change for plain shell panes too.
+
+The codex row is static-only, and deliberately marked as such: the agent exits
+immediately under `script` with a piped stdin, so no live capture was obtained.
+The static claim is nonetheless sound for a **compiled Rust** binary, where a
+string literal is stored as raw bytes with no `\uXXXX` indirection — emitting
+`ESC]9;4;…` without `9;4` appearing anywhere would require building the
+sequence character by character. (The same reasoning does **not** transfer to a
+JavaScript bundle, where glyphs and escapes are stored as `\uXXXX` text and a
+raw-byte grep proves nothing — the trap that produced the initial, incorrect
+"the title spinner is gone" reading of Claude Code.)
+
 ### Resolver
 
 The raw signal becomes the reported state through a small resolver — the only
@@ -356,6 +394,10 @@ OSC-title state, so its title is deliberately ignored (its
 `titleWorkingScalars` is empty) and it publishes no OSC 9;4 progress, so the
 viewport is its only source.
 
+**Whether those affordances still exist is unverified** — see the open question
+below. They are what the rule set was written against; nothing has confirmed
+them against a current Codex build.
+
 **It is not selected at runtime yet.** `runAgentDetectionTick` hard-codes
 `AgentDetectionRuleSet.claudeCode`, so the Codex rule set is exercised only by
 its unit tests. In practice a Codex workspace is still matched on the two
@@ -371,6 +413,15 @@ states.
 
 ## Open questions
 
+- **Does current Codex still print an interrupt affordance at all?** The
+  viewport is Codex's only source, and the two hints the rule set matches
+  (`esc to interrupt`, `ctrl+c to interrupt`) are exactly the ones Claude Code
+  removed. If Codex dropped them too, Codex detection is dead in the same
+  silent way — a workspace that reports `idle` for a whole turn, with nothing
+  in the code to indicate a fault. Answering it needs a live capture, which the
+  `script`-with-piped-stdin harness cannot produce for Codex (it exits at
+  once); drive it from a real interactive terminal, or from a Casper terminal
+  with `casper debug read-text`, and check the viewport mid-turn.
 - Which surfaces feed the workspace rollup when more than one agent runs in a
   workspace.
 - Exact debounce count N and throttle interval — tuned live.
