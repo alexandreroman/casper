@@ -7,9 +7,9 @@ complete (see `../status.md`).
 
 > **Superseded:** the tabbed surface model below (UI-3) is replaced by a
 > **tmux-style pane layout** — no tabs, one surface per pane, a right-click pane
-> menu for splits, and a redesigned window toolbar/sidebar. See `../status.md` →
-> "Surface layout — tmux-style panes". The UI-3 tab-bar description here is kept
-> for history.
+> menu for splits, and a redesigned window toolbar/sidebar. The as-built model
+> is § Design → "Layout composition" below; the UI-3 tab-bar description kept
+> under § Sub-projects is history.
 
 The SwiftUI app that turns the built modules into the real product. Delivered as
 five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
@@ -20,10 +20,24 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 ## Design
 
 - **Sidebar** — one row per workspace, grouped by repository (the Space, see
-  `space-project.md`). Each row: state badge (working ● / blocked ◐ / done ✓ /
-  error ✕ / idle ○), name, Git branch/worktree label, todo progress
-  (`completed/total` + current `in_progress` label), and a pending-notification
-  dot.
+  `space-project.md`). A row (`WorkspaceRow.swift`) leads with a fixed-width
+  agent-state slot holding a **monochrome SF Symbol**: `working` a continuously
+  spinning `arrow.triangle.2.circlepath`, `blocked` an `exclamationmark.circle`,
+  `done` a `checkmark.circle`, `error` an `xmark.octagon`, and `idle`/`unknown`
+  **nothing at all** — the slot still reserves its width so the following
+  columns stay aligned as the state changes. Then a branch/folder Octicon, and
+  `Workspace.branchLabel` as the row's primary text. Trailing: a
+  pending-notification bubble, swapped for the ⌘1–⌘9 shortcut hint while ⌘ is
+  held.
+
+  Below that, and only when there are todos or something to say, a `ProgressBar`
+  (completed ÷ total) and **one** caption line. `RowDisplayState` composes that
+  caption, preferring the pending-notification message over the current
+  `in_progress` todo label — the more urgent signal wins, and stays up until the
+  notification clears — and falling back to `"Done"` once every todo is
+  complete. There is no numeric `completed/total` text. Nothing in the row
+  carries a hue: selection tints every glyph and label white on the accent pill,
+  and that is the only colour involved.
 - **Dock attention** — the sidebar dot's out-of-app counterpart, owned by
   `DockAttention` (a `DockAttentionPresenting` seam on `AppModel`, over a
   `DockAttentionBackend` seam on `NSApp`, so both the wiring and the latch are
@@ -53,10 +67,20 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   (`clearNotificationForFocusedWorkspace`), by the agent resuming work
   (`done → working`), or by the workspace being deleted or closed.
 - **Layout composition** — arbitrary nested splits, tmux-style, with **no tab
-  groups**; leaves are terminal or browser surfaces (`Surface.Kind` has exactly
-  those two cases — the diff view lives in the inspector panel, not the layout
-  tree). Consumes the decoded Ghostty split/tab actions, with `newTab` mapped to
-  a right split.
+  groups**. Every leaf the app can create is a **terminal**: `Surface.Kind` also
+  has a `.browser` case, but only the inspector builds one (see "Inspector
+  panel"), and the diff view is not a surface kind at all. Consumes the decoded
+  Ghostty split/tab actions, with `newTab` mapped to a right split.
+
+  The pure tree operations live in `CasperCore/LayoutTree.swift` and are heavily
+  tested: `split` (which inserts a flat sibling when the parent's orientation
+  already matches, rather than nesting a second split), `closeSurface`, `move`
+  (relocate a leaf elsewhere in the tree), and `dropZone` (map a point inside a
+  pane to the edge-or-centre zone a drag would land in). The last two back pane
+  **drag-and-drop** — `PaneDragAndDrop.swift` owns the grip, the drag session
+  and the drop overlay, surfaced by `SurfaceHostView`/`SplitContainerView`; see
+  [[intra-app-drag-pasteboard-type]]. There is no `insertTab` operation: tabs
+  are gone.
 - **Diff viewer** — a read-only surface backed by libgit2's `git_diff`
   (structured hunks/lines, working tree vs base/HEAD), rendered as **one TextKit
   2 text document**. The diff is flattened into flat text plus per-file and
@@ -77,23 +101,38 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   > **Superseded:** the original design — a SwiftUI surface with per-file
   > navigation, `+`/`-` line coloring via `AttributedString`, and no external
   > highlighter — no longer holds on either count. The external highlighter
-  > arrived with the Claude Code color restyle
-  > (`plans/diff-view-claude-code-colors.md`); the per-line SwiftUI view tree
-  > was removed because it put the SwiftUI layout graph on the per-diff-line
-  > path, which is exactly what the text document exists to avoid.
-- **Browser** — a `WKWebView` surface (address bar, reload), aimed at previewing a
-  `localhost:PORT` app started by the agent. No Chromium.
+  > arrived with the Claude Code color restyle (`DiffHighlighter.swift` +
+  > `DiffLineStyle.swift`, whose tints are sampled from Claude Code's own diff
+  > rendering); the per-line SwiftUI view tree was removed because it put the
+  > SwiftUI layout graph on the per-diff-line path, which is exactly what the
+  > text document exists to avoid.
+- **Browser** — a `WKWebView` surface (address bar, reload), aimed at previewing
+  a `localhost:PORT` app started by the agent. No Chromium.
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
   view with two tabs (Browser | Diff), per workspace and persisted
   (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
-  replacing them. The `.diff` layout-leaf surface kind was **removed** — the
-  diff view now lives **only** in the inspector; the `.browser` tmux-pane path
-  still exists, `.diff` does not. The panel has no tab control of its own: a
-  segmented Diff/Browser control in the title bar picks the tab **and** toggles
-  the panel open/closed, with a third state — neither segment selected — meaning
-  closed. See `../status.md` → "Right inspector panel" for the as-built model,
-  chrome, and title-bar changes (globe button removed, segmented control added,
-  `+/−` summary opens the Diff tab).
+  replacing them.
+
+  **The inspector is the only home for both.** The `.diff` layout-leaf surface
+  kind was removed outright, and `Surface.Kind.browser` is now reached only
+  through `Workspace.inspector.browser`: splits always create a terminal
+  (`PaneContextMenu`), there is no "New browser" menu item anywhere, and
+  `AppModel.surfaceView(for:in:)` returns a view only for `case .terminal` — so
+  a `.browser` leaf that did reach the layout tree would render as the black
+  fallback rectangle `SurfaceHostView` paints when no view resolves. Such a leaf
+  survives only as a legacy `session.json` decode; nothing in the app creates
+  one.
+
+  The panel has no tab control of its own: a segmented Diff/Browser control in
+  the title bar picks the tab **and** toggles the panel open/closed, with a
+  third state — neither segment selected — meaning closed.
+  `InspectorTabSelector` (`WorkspaceDetailView.swift`) routes each segment
+  through `AppModel.toggleInspectorTab`: expand onto that tab when collapsed,
+  collapse when already open on it, switch tab otherwise. There is **no separate
+  panel toggle** — no `sidebar.right` button in the title bar and no
+  `toggleInspectorCollapsed` on `AppModel`. The title bar's `+ins −del` diff
+  summary is a button that expands the panel on the Diff tab. No accent colour
+  is involved anywhere — see [[title-bar-chip-chrome]].
 - **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
   injects the bundle exec dir + per-surface env into each terminal, and runs the
   `#if DEBUG` debug bridge (all detailed in `cli-agents.md`).
@@ -101,7 +140,9 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
 ## Sub-projects
 
 - **UI-1 — ✅ built.** App shell (SwiftUI `App` scene +
-  `NSApplicationDelegateAdaptor`, the existing AppKit `NSMenu` preserved),
+  `NSApplicationDelegateAdaptor`; Casper owns its **entire** menu bar through
+  SwiftUI `.commands` — the only `NSMenu` built in AppKit is the pane context
+  menu, see `terminal.md` § Design → "Main menu"),
   `@MainActor @Observable AppModel` as the single state owner/bridge,
   `NavigationSplitView` with empty state, "Add folder…" (adopt any folder — Git
   or not, multiple allowed), one live terminal per workspace, and all startup
@@ -155,9 +196,8 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   `Surface.id`). Pane fractions are seeded from the layout's persisted `ratios`
   and written back through `AppModel.setSplitRatios` → `LayoutTree.updateRatios`
   (debounced save) on drag-end and on double-click-to-equalize, so a resize
-  survives relaunch. Pure `LayoutTree` tree operations
-  (`insertTab`/`split`/`closeSurface`, flat sibling insertion when the parent
-  orientation matches) live in CasperCore and are heavily tested. libghostty
+  survives relaunch. The pure `LayoutTree` tree operations live in CasperCore
+  and are heavily tested (see § Design → "Layout composition"). libghostty
   `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed
   on the runtime to the **focused** workspace (focus tracked via the surface's
   first-responder callback). Closing the last surface re-seeds the workspace
@@ -166,12 +206,21 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   `.diff` leaves render a placeholder until UI-5 (terminals and browsers are
   live — see the UI-4 bullet).
 - **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
-  normalization, back/forward/reload) renders `.browser` layout leaves, created
-  via the tab-bar "+" menu (New terminal / New browser). The web view lives in
-  the persistent surface-view cache keyed by `Surface.id` (generalized from UI-3
-  to hold any `NSView`), so it survives layout restructuring like terminals; its
-  URL is persisted via the address bar (link-follow write-back through
-  `WKNavigationDelegate` is a deferred follow-up).
+  normalization, back/forward/reload). It originally rendered `.browser` layout
+  leaves created from the tab-bar "+" menu; the tmux-pane redesign removed that
+  entry point, and the browser now lives in the inspector panel only. The web
+  view lives in the persistent surface-view cache keyed by `Surface.id`
+  (generalized from UI-3 to hold any `NSView`), so it survives layout
+  restructuring like terminals.
+
+  Its URL is persisted from **both** ends. The address bar writes it, and so
+  does the page: `BrowserCoordinator` reports every committed navigation through
+  `onCommitURL`, wired by `AppModel.browserCoordinator(for:)` to
+  `AppModel.setBrowserURL`, which no-ops when the stored URL already matches so
+  a page load cannot thrash `session.json`. Covered by
+  `Tests/CasperUITests/BrowserURLSyncTests.swift`. Same-document navigations
+  need KVO rather than the navigation delegate — see
+  [[webkit-page-driven-navigation]].
 - **UI-5 — ✅ built.** A read-only diff surface over CasperGit's
   `diffWorkdirToHead()`: per-file sections (path + status, binary files noted),
   hunk headers, and monospaced line rows colored by kind (green addition / red
@@ -189,8 +238,8 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   > per-file sections, one SwiftUI row per diff line, pinned `Section` headers)
   > is replaced by a single TextKit 2 text document, which also adds text
   > selection and copy. The diff computation, the FSEvents live refresh and the
-  > reading experience are unchanged. See `../status.md` → "Diff renderer — one
-  > TextKit 2 text document" for the as-built pipeline.
+  > reading experience are unchanged. The as-built pipeline is § Design → "Diff
+  > viewer" above.
 
 ## Next action
 

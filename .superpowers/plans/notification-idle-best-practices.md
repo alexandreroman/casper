@@ -1,17 +1,17 @@
 # Notification Idle Best Practices — Design
 
 **Date:** 2026-07-08 **Status:** Done — shipped (both repos; see commits in
-each) **Scope:** Stop Casper (and the `casper-claude-plugin` hooks that drive
+each) **Scope:** Stop Casper (and the `casper-skills` hooks that drive
 it) from raising a macOS notification for ordinary idle/turn-end events. Only
 `blocked` (waiting on the user mid-task) and unseen `done` (task finished)
 should notify; an ordinary `Stop` event on its own never should. Spans two
 repos: this one (`Sources/CasperUI/AppModel.swift`,
-`Sources/CasperUI/AppDelegate.swift`) and `casper-claude-plugin`
+`Sources/CasperUI/AppDelegate.swift`) and `casper-skills`
 (`hooks/stop.sh`, `hooks/notification.py`).
 
 ## Problem
 
-`casper-claude-plugin`'s `hooks/stop.sh` fires a macOS notification ("Claude is
+`casper-skills`'s `hooks/stop.sh` fires a macOS notification ("Claude is
 done and waiting for you") on **every** Claude Code `Stop` event,
 unconditionally — the same anti-pattern as Claude Code's own stock
 `notification` hook, which announces "Claude is done and waiting for you" at
@@ -75,7 +75,7 @@ the detection engine, never a direct notification trigger.
 
 ## Design
 
-### `casper-claude-plugin`
+### `casper-skills`
 
 #### `hooks/stop.sh`
 
@@ -115,7 +115,7 @@ def main():
 
 #### Message + interruption level (`Sources/CasperUI/AppModel.swift`)
 
-`notificationMessage(for:)` (currently ~1198-1207) gains an `error` case and an
+`notificationMessage(for:)` gains an `error` case and an
 interruption level lookup:
 
 ```swift
@@ -133,7 +133,7 @@ private static func interruptionLevel(for state: AgentState) -> UNNotificationIn
 }
 ```
 
-`deliverNotification` (currently ~117-138) takes the level as a parameter and
+`deliverNotification` takes the level as a parameter and
 sets `content.interruptionLevel`. For `.passive`, don't set `content.sound` —
 the system ignores it for that level (no banner, no sound, silent addition to
 Notification Center), so setting it would be dead code.
@@ -147,7 +147,7 @@ blocker is ever lifted) has a message ready.
 No change to `AppDelegate.setupNotifications()`'s authorization options
 (`[.alert, .sound]` stays as-is).
 
-#### Per-workspace de-dup cooldown (`controlRaiseNotification`, ~1262-1286)
+#### Per-workspace de-dup cooldown (`controlRaiseNotification`)
 
 Track the last-delivered timestamp per workspace; ignore a new call within a
 short window (~3s). This isn't required by the current design — explicit
@@ -172,7 +172,7 @@ hit it.
 
 ## Testing
 
-- `casper-claude-plugin`: update `tests/test_notification.py` per the allowlist
+- `casper-skills`: update `tests/test_notification.py` per the allowlist
   above; manual/harness check that `stop.sh` no longer calls `casper notify`.
 - Casper: extend `ControlHandlerTests.swift` — one case per state verifying
   message + interruption level, plus a case for the de-dup cooldown (two rapid

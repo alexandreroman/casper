@@ -7,11 +7,11 @@ next time Casper launches, per terminal.
 ## Problem
 
 `GhosttySurfaceConfiguration.fontSize`
-(`GhosttySurfaceConfiguration.swift:12,19`) is only ever used at *surface
+(`GhosttySurfaceConfiguration.swift`) is only ever used at *surface
 creation* time, defaulting to `0` (libghostty's own default). Runtime font-size
 changes go through
 `GhosttySurfaceView.increaseFontSize`/`decreaseFontSize`/`resetFontSize`
-(`GhosttySurfaceView.swift:398-408`), which forward to
+(`GhosttySurfaceView.swift`), which forward to
 `surface?.bindingAction("increase_font_size:1")` etc. — entirely internal to
 libghostty. Swift never learns the resulting size, so it's lost on quit and
 every terminal reopens at the default size.
@@ -26,9 +26,9 @@ path for the current size.
 
 `Session`/`SessionStore` already round-trips the full layout tree (`Space` →
 `Workspace` → `LayoutNode` → `Surface`) to `session.json` on every discrete
-model mutation via `AppModel.persist()` (`AppModel.swift:970-977`, called
+model mutation via `AppModel.persist()` (called
 directly or via the debounced `scheduleSave()`/`flushPendingSave()`,
-`AppModel.swift:980-991`), so the storage mechanism already exists — only the
+`AppModel.scheduleSave()`), so the storage mechanism already exists — only the
 font size value itself is missing from the model.
 
 ## Goals
@@ -94,13 +94,13 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
 ```
 
 `.terminal(cwd:, command:)` static helper (`Surface.terminal(cwd:command:)`,
-`Models.swift:39-41`) is unaffected — `fontSize` defaults to `nil` there.
+`CasperCore/Models.swift`) is unaffected — `fontSize` defaults to `nil` there.
 
 ### Capture (write path) — `GhosttyKit` layer + `AppModel`
 
 `GhosttySurface` (`GhosttySurface.swift`) gains a method mirroring its existing
 thin wrappers (`geometry()`, `readText(scrollback:)`,
-`GhosttySurface.swift:114-151`):
+`GhosttySurface.swift`):
 
 ```swift
 /// The surface's current live font size, read via libghostty's
@@ -114,7 +114,7 @@ func currentFontSize() -> Float {
 `GhosttySurfaceView` gains an `onFontSizeChange: (UUID, Float) -> Void` closure,
 stored alongside the existing `onClose` (constructor-injected the same way).
 `increaseFontSize`/`decreaseFontSize`/`resetFontSize`
-(`GhosttySurfaceView.swift:398-408`) each read back the size immediately after
+(`GhosttySurfaceView.swift`) each read back the size immediately after
 forwarding the binding action and invoke the closure if it changed:
 
 ```swift
@@ -136,14 +136,14 @@ private func reportFontSizeIfChanged() {
 
 `AppModel` wires this closure at the single surface-creation chokepoint
 (`surfaceView(for:in:)` / `surfaceConfiguration(for:terminal:)`,
-`AppModel.swift:786-801`, `995-1011`) to a new method that locates the `Surface`
+`AppModel`) to a new method that locates the `Surface`
 by id in its owning workspace's `LayoutNode` tree, sets `.fontSize`, and calls
-`scheduleSave()` (the existing 0.5s-debounced save, `AppModel.swift:980-985` —
+`AppModel.scheduleSave()` (the existing 0.5s-debounced save —
 same mechanism already used for inspector-width drag). No change to `persist()`
 itself: it already serializes `spaces` wholesale, so the mutated `fontSize`
 rides along automatically.
 
-### Restore (read path) — `AppModel.swift:995-1011`
+### Restore (read path) — `AppModel.surfaceView(for:in:)`
 
 `surfaceConfiguration(for workspace:terminal:)` passes `terminal.fontSize ?? 0`
 into `GhosttySurfaceConfiguration.fontSize` instead of the current hardcoded
@@ -155,7 +155,7 @@ fresh-terminal creation both fall out of this one change with no separate
 
 ### Ordering note (already safe, no change needed)
 
-`discardSurfaceViews(_:)` (`AppModel.swift:963-968`, which frees the live
+`AppModel.discardSurfaceViews(_:)` (which frees the live
 `ghostty_surface_t` via `GhosttySurfaceView` deallocation) runs *before*
 `persist()` on every close path (`applyCloseSurface`, `removeWorkspace`,
 `removeSpace`). That's fine here: the surface being closed is also removed from

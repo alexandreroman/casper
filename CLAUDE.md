@@ -18,7 +18,8 @@ out of Git.
   `UserNotifications`. IPC: `Network.framework`.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),
   **swift-argument-parser**, **libgit2**, **HighlightSwift** (syntax
-  highlighting for the diff view), and **Sparkle** (auto-update — see [`.superpowers/plans/sparkle-auto-update.md`](.superpowers/plans/sparkle-auto-update.md)).
+  highlighting for the diff view), and **Sparkle** (auto-update — see the plan
+  [`sparkle-auto-update.md`](.superpowers/plans/sparkle-auto-update.md)).
   Everything else uses built-in macOS frameworks. (`swiftui-introspect` was
   tried for the diff view's frozen file header but dropped — its
   `.introspect(.scrollView, on: .macOS(.v26))` closure fires unreliably on macOS
@@ -27,23 +28,28 @@ out of Git.
 
 ## Build & run
 
-Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via pkg-config)
-and `brew install vendir` (Carvel vendir syncs the pinned libghostty reference
-header — run `make vendor` once, or whenever the pin changes). The first build
-downloads the ~53 MB `GhosttyKit.xcframework` from the pinned `libghostty-spm`
-release; afterwards `swift build --disable-automatic-resolution` reuses the
-extracted artifact instead of re-resolving.
+Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via
+pkg-config). The first build downloads the ~53 MB `GhosttyKit.xcframework` from
+the pinned `libghostty-spm` release; afterwards
+`swift build --disable-automatic-resolution` reuses the extracted artifact
+instead of re-resolving.
 
 ```bash
-make vendor  # sync the pinned libghostty header (Vendor/ghostty/ghostty.h)
 make build   # compile
 make dev     # rebuild + launch Casper-dev.app under a per-branch dev session
 make test    # run the test suite
 make release # size-optimized release build (arm64)
 make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)
 make dist    # package Casper.app into a .zip + .sha256 + dSYM.zip (release artifacts)
+make vendor  # re-sync Vendor/ghostty/ghostty.h (contributor-only; run AFTER a build)
 casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
+
+`make vendor` is not part of building. It needs `brew install vendir` and
+re-syncs the reference-only `Vendor/ghostty/ghostty.h` **out of the
+already-extracted** `GhosttyKit.xcframework`, so it only works once a build has
+downloaded that artifact, and is only worth running when the GhosttyKit pin
+moves. No target compiles against the vendored header.
 
 `make bundle`/`make dist` need `brew install dylibbundler` (embeds the libgit2
 dylib chain into the bundle so the app runs on a clean Mac). The
@@ -68,13 +74,16 @@ Icon Composer, and commit the updated `AppIcon.icon`.
 
 ## Modules
 
-- **CasperCore** — models, session store, port allocator, control-channel
-  protocol + socket (pure Swift).
+- **CasperCore** — models, session store, worktree manager, port allocator,
+  control-channel protocol + socket (pure Swift).
 - **CasperGit** — in-house libgit2 wrapper (worktrees, diff, status).
 - **CasperGhostty** — embeds GhosttyKit; owns terminal surfaces and layout.
 - **CasperAgents** — per-surface environment injection for Casper terminals.
 - **CasperUI** — SwiftUI sidebar, chrome, diff, browser views.
 - **CasperCLI** — `casper` subcommands. The app and CLI ship as one binary.
+
+Two C shim targets sit under CasperGit: **Clibgit2** (the system-library module
+map for libgit2) and **CSigbusGuard** (the SIGBUS guard around libgit2 diff).
 
 ## Agents
 

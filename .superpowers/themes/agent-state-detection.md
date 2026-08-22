@@ -100,9 +100,12 @@ display-link driven, already fires — see `terminal.md`), but the runtime
 currently discards it. Observe it, **throttled** (~150–300 ms), to schedule a
 re-read. A plain timer poll is an acceptable fallback for a first cut.
 
-Caveat: the action dispatch (`casperGhosttyAction`) only resolves the target
-surface for the mouse actions today; extend that resolution (as done for
-`MOUSE_SHAPE`) so a `render` tells us **which** surface changed.
+Caveat: `GHOSTTY_ACTION_RENDER` is still handled app-wide. The action dispatch
+(`casperGhosttyAction`) already resolves the target surface from the per-surface
+`userdata` for five actions — `MOUSE_SHAPE`, `MOUSE_VISIBILITY`, `SET_TITLE`,
+`PROGRESS_REPORT` and `SHOW_CHILD_EXITED` — each of which terminates there
+rather than flowing on to the app-level `onAction`. Extending the same
+resolution to `render` is what would tell us **which** surface changed.
 
 ### Rules
 
@@ -183,7 +186,7 @@ any row after an agent upgrade.
 | Agent | OSC 9;4 progress | OSC title | Viewport affordance |
 | ----- | ---------------- | --------- | ------------------- |
 | Claude Code 2.1.239 | `9;4;3` for the whole turn, `9;4;0` at its end | `◐◑` while working, `✳` at rest | none |
-| opencode 1.18.20 | none | plain ASCII (`OpenCode`, `OC \| <turn title>`) — never a glyph prefix | none |
+| opencode 1.18.20 | none | plain ASCII (`OpenCode`, or `OC` then the turn title) — never a glyph prefix | none |
 | codex-cli 0.149.0 | none (static: the binary contains no `9;4` and no `ConEmu`) | not measured | not measured |
 
 Two consequences worth stating outright:
@@ -244,23 +247,17 @@ There is no `AgentAuthority` enum: the latch as built is a set of workspace ids,
 authority; absence means detection owns it.
 
 - Default (not a member) — the scraper drives `agentState`.
-- `working`, `idle`, and `unknown` remain under native detection, so the
-  viewport can correct a stale hook-reported state. Only `blocked`, `done`, and
-  `error` grant explicit authority: a terminal scrape cannot safely clear those
-  attention states.
+- `working`, `idle`, and `unknown` **never** grant authority: they describe
+  conditions the terminal itself can continuously observe, so an explicit report
+  of one leaves detection in charge. That is what lets the viewport correct a
+  stale hook-reported `working` — a `UserPromptSubmit` hook whose matching
+  `Stop` hook never fires (Codex today) cannot strand a workspace.
+- Only `blocked`, `done`, and `error` grant explicit authority, because a
+  terminal scrape cannot safely *clear* an attention state. The `Stop` hook
+  still reports `done` precisely; selecting that workspace then collapses the
+  explicit `done` back to `idle` (next section).
 - The latch is **not persisted** — it resets to `detection` on load, like the
   agent state it guards.
-
-Rationale: terminal-observable states can be corrected by the scrape, while
-terminal-independent attention states must remain authoritative.
-
-`working`, `idle`, and `unknown` remain under native detection: they describe
-conditions the terminal itself can continuously observe. This lets the viewport
-correct a stale hook-reported `working` state, including when Codex's `Stop`
-hook is unavailable. Only `blocked`, `done`, and `error` grant explicit
-authority, because a terminal scrape cannot safely clear those attention states.
-The `Stop` hook still reports `done` precisely; selecting that workspace then
-collapses the explicit `done` to `idle` (next section).
 
 ### Explicit-authority `done` → `idle` collapse (on selection)
 
@@ -340,12 +337,12 @@ state lives only at the workspace level.
   hidden — it is never stopped (`agentDetectionIntervalVisible` /
   `agentDetectionIntervalHidden`) — scrapes each workspace's terminals,
   viewport, OSC title **and** OSC 9;4 progress state, aggregates the three
-  signals, runs the resolver, and writes
-  `agentState` via `setDetectedAgentState` unless the workspace is under
-  explicit authority. `controlSetAgentState` latches only `blocked`, `done`, and
-  `error`; it releases terminal-observable states immediately. The sidebar status
-  icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the chevron
-  column, animated `working`).
+  signals, runs the resolver, and writes `agentState` via
+  `setDetectedAgentState` unless the workspace is under explicit authority.
+  `controlSetAgentState` latches only `blocked`, `done`, and `error`; it
+  releases terminal-observable states immediately. The sidebar status icon lives
+  on `WorkspaceRow` (monochrome outline SF Symbols in the chevron column,
+  animated `working`).
 
 ### Notifications
 
@@ -356,8 +353,20 @@ notify` uses. This is what makes notification + sidebar-dot support work **with
 no Claude Code hook**: it is driven purely by Casper's own OSC/viewport scraping
 rather than an explicit CLI call. The write is edge-triggered (the "only on
 change" guard), so a steady detection stream notifies once per transition, and
-`controlRaiseNotification`'s focus semantics still apply (the dot is suppressed
-for a focused workspace, but the macOS notification is always delivered).
+`controlRaiseNotification`'s focus semantics still apply: **a focused workspace
+gets neither** — the same `!focused` guard covers the sidebar dot and the macOS
+notification, so nothing is raised for the workspace the user is already looking
+at.
+
+That guard carries a second condition: a **per-workspace de-dup cooldown**.
+`controlRaiseNotification` records `lastNotifiedAt[workspaceID]` on every
+delivery and skips a repeat that falls within `notificationCooldown`
+(`isWithinNotificationCooldown`). It exists because the explicit path and the
+detection path can fire for the same event within milliseconds of each other —
+an agent's `casper notify` landing just as the scraper resolves the same
+transition — and the user should hear about that once. The cooldown gates the
+notification only; the attention flag, the Dock badge and the Space auto-expand
+are unaffected by it.
 
 `controlSetAgentState` (the explicit CLI path) mirrors this for `.done` only —
 an explicit `casper status set done` also raises the bubble + passive
@@ -404,12 +413,7 @@ its unit tests. In practice a Codex workspace is still matched on the two
 interrupt hints, which `claudeCode` shares; only the `Running tools` needle is
 unreachable. Picking a rule set per surface needs a way to know which agent is
 running there, which detection does not have — that is the open work, not a
-missing line of wiring. Explicit `working`, `idle`, and `unknown`
-updates remain observable by the terminal detector. This prevents a
-`UserPromptSubmit` hook from leaving a workspace stuck in `working` if its
-separate `Stop` hook is not available. Explicit `blocked`, `done`, and `error`
-remain authoritative because terminal text cannot safely clear those attention
-states.
+missing line of wiring.
 
 ## Open questions
 

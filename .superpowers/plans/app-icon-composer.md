@@ -97,6 +97,11 @@ Two foreground layers in one group, well within the four-group limit. Icon
 Composer embeds the imported SVGs, byte-identical, in `AppIcon.icon/Assets/` —
 there is no PNG rasterization step.
 
+**No layer-rasterizing target.** A `make icon-layers` target driving a
+`Scripts/make-icon-layers.sh` rasterizer is deliberately not built. Icon
+Composer imports `layers/*.svg` directly, so no generated PNGs exist — nothing
+to build and nothing to gitignore.
+
 ## Build pipeline changes
 
 ### `Scripts/bundle-app.sh`

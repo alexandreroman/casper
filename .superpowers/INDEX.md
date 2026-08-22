@@ -7,8 +7,9 @@ Theme-oriented design docs under `.superpowers/`. Durable project facts live in
 Layout:
 
 - [`architecture.md`](architecture.md) — cross-cutting foundation
-- `themes/` — one merged doc per area (design + as-built status)
-- `plans/` — implementation plans (active and shipped, marked in place)
+- `themes/` — one doc per area: the **authoritative** design *and* as-built
+  behaviour
+- `plans/` — implementation plans still worth keeping (see § Plans)
 
 ## Foundation
 
@@ -28,13 +29,23 @@ Layout:
 | Debug & observability                              | [`themes/debug.md`](themes/debug.md)                                 |
 | Space (project)                                    | [`themes/space-project.md`](themes/space-project.md)                 |
 
-Per-theme status markers appear in each doc's header; the authoritative
-aggregate is [`status.md`](status.md).
+**Ownership.** The themes own design *and* as-built behaviour — how a thing
+works is described there, once. [`status.md`](status.md) is the progress
+ledger: what is built, what is not, what was decided against, and links into the
+themes for the detail. When the two disagree, the theme wins.
+
+Per-theme status markers appear in each doc's header.
 
 ## Plans
 
-- [`plans/stop-hook-explicit-done.md`](plans/stop-hook-explicit-done.md) —
-  `Stop` hook reports `done` explicitly instead of `idle`, since every
+`plans/` holds design docs for work whose rationale is not recoverable from the
+themes, the code or Git history. A plan whose content has been absorbed into
+`architecture.md` + `themes/` is deleted rather than kept marked "shipped" — the
+themes are the design source of truth, and a stale plan is worse than no plan.
+
+- [`plans/stop-hook-explicit-done.md`](plans/stop-hook-explicit-done.md) +
+  [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
+  — the `Stop` hook reports `done` explicitly instead of `idle`, since every
   hook-driven workspace is permanently under `explicitAuthority` and never gets
   a detected `done`; selecting a `done` workspace collapses it back to `idle`
   (**partly shipped** — the Casper-side collapse is built, the `casper-skills`
@@ -43,56 +54,37 @@ aggregate is [`status.md`](status.md).
   — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
   `done` should raise a notification (**shipped** — spans this repo and
   `casper-skills`).
-- [`plans/space-project.md`](plans/space-project.md) — Space + workspace diff
-  summary (**superseded 2026-07-06**: model landed in UI-2; the diff summary is
-  dropped). Kept for reference only.
-- [`plans/close-inspector.md`](plans/close-inspector.md) +
-  [`plans/close-inspector-plan.md`](plans/close-inspector-plan.md) — `casper
-  browser close` / `diff close` CLI verbs (**shipped**).
-- [`plans/diff-view-claude-code-colors.md`](plans/diff-view-claude-code-colors.md)
-  + [`plans/diff-view-claude-code-colors-plan.md`](plans/diff-view-claude-code-colors-plan.md)
-    — diff view restyled to match Claude Code's colors, via HighlightSwift +
-    `DiffHighlighter.swift` (**shipped**).
+- [`plans/run-close-on-success.md`](plans/run-close-on-success.md) — a named
+  `.casper.json` command's split closes on exit 0 and stays open with a live
+  shell on failure (**shipped**).
 - [`plans/github-release.md`](plans/github-release.md) — GitHub release workflow
   publishing a downloadable `Casper.app` (`.github/workflows/release.yml`)
   (**shipped**).
 - [`plans/sparkle-auto-update.md`](plans/sparkle-auto-update.md) — in-app
   auto-update via Sparkle, anchored on an EdDSA-signed appcast because Casper
-  ships ad-hoc signed (**shipped**).
+  ships ad-hoc signed. Carries the **EdDSA key rotation procedure**, which is
+  recorded nowhere else, and is cited by `.github/workflows/release.yml`
+  (**shipped**).
 - [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
   — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
-  skill's Screen Recording grant survives rebuilds (**shipped**).
-- [`plans/workspace-close-selection.md`](plans/workspace-close-selection.md) + [`plans/workspace-close-selection-plan.md`](plans/workspace-close-selection-plan.md)
-  — closing/deleting/merging a workspace reselects a sibling in the same Space
+  skill's Screen Recording grant survives rebuilds. Cited by the `Makefile` for
+  the Apple Development certificate setup (**shipped**).
+- [`plans/workspace-close-selection.md`](plans/workspace-close-selection.md) —
+  closing, deleting or merging a workspace reselects a sibling in the same Space
   first, falling back to the first workspace of the first remaining Space
   (**shipped**).
-- [`plans/app-icon-composer.md`](plans/app-icon-composer.md) +
-  [`plans/app-icon-composer-plan.md`](plans/app-icon-composer-plan.md) — macOS
-  26 Liquid Glass `AppIcon.icon` compiled to `Assets.car` by `actool` during
-  `make bundle`, alongside the legacy `.icns` (**shipped**).
-- [`plans/open-in-editor.md`](plans/open-in-editor.md) +
-  [`plans/open-in-editor-plan.md`](plans/open-in-editor-plan.md) — title-bar
-  split-button launching the worktree in VS Code / IntelliJ IDEA / Xcode, with a
-  per-workspace `lastUsedEditor` (**shipped**).
-- [`plans/run-close-on-success.md`](plans/run-close-on-success.md) — a named
-  `.casper.json` command's split closes on exit 0 and stays open with a live
-  shell on failure (**shipped**).
+- [`plans/app-icon-composer.md`](plans/app-icon-composer.md) — the macOS 26
+  Liquid Glass `AppIcon.icon`, compiled to `Assets.car` by `actool` during
+  `make bundle` alongside the legacy `.icns` (**shipped**).
 - [`plans/terminal-font-size-persistence.md`](plans/terminal-font-size-persistence.md)
-  + [`plans/terminal-font-size-persistence-plan.md`](plans/terminal-font-size-persistence-plan.md)
-    — per-surface terminal font size persisted as `Surface.fontSize` and
-    reapplied on restore (**shipped**).
-- [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
-  — task-by-task companion to `stop-hook-explicit-done.md`; the Casper-side half
-  (selecting a `done` workspace collapses it to `idle`) has **shipped**, the
-  `casper-skills` `hooks/stop.sh` half has not.
+  — per-surface terminal font size persisted as `Surface.fontSize` and reapplied
+  on restore (**shipped**).
 
-The agent-plugin repository these plans refer to is `casper-skills`; older plan
-text under `plans/` still calls it `casper-claude-plugin`. It ships the `casper`
-plugin for all three supported agents: Claude Code and Codex register it as
-`casper@casper` (plugin `casper`, marketplace `casper`), and opencode pulls it
-as the npm package `casper-skills`.
+The agent-plugin repository these plans refer to is **`casper-skills`**. It
+ships the `casper` plugin for all three supported agents: Claude Code and Codex
+register it as `casper@casper` (plugin `casper`, marketplace `casper`), and
+opencode pulls it as the npm package `casper-skills`.
 
-Completed plans are marked done in place here until they are cleaned up; the
-original design specs are recoverable from Git history (tracked under the
-now-removed `docs/superpowers/` tree before being distilled into
-`architecture.md` + `themes/`).
+Design specs for work that has fully landed are recoverable from Git history
+(tracked under the now-removed `docs/superpowers/` tree before being distilled
+into `architecture.md` + `themes/`, and under `plans/` before being deleted).

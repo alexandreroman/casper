@@ -10,7 +10,7 @@ after every recompile.
 ## Problem
 
 `DebugServer.screenshot(window:to:)`
-(`Sources/CasperGhostty/DebugServer.swift:256-283`) captures window pixels via
+(`Sources/CasperGhostty/DebugServer.swift`) captures window pixels via
 ScreenCaptureKit's `SCScreenshotManager.captureImage` — required because
 libghostty renders through Metal, so a plain AppKit view snapshot would miss the
 real composited frame. Screen Recording permission is therefore unavoidable;

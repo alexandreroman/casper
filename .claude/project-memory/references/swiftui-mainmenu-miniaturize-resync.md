@@ -1,6 +1,6 @@
 ---
 name: "SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe"
-description: "Casper's menu bar is SwiftUI .commands; empty Format/Help stubs stripped on will+didUpdate; the .commands body must NOT observe volatile state (focus/spaces) or SwiftUI re-asserts the whole menu and flickers the stubs — so enable-states are edge-triggered flags and Split is always-enabled"
+description: "Casper's menu bar is SwiftUI .commands; the .commands body must not observe volatile state, or SwiftUI re-asserts the whole menu"
 type: reference
 ---
 

@@ -48,10 +48,16 @@ per workspace, and bundles a native browser and diff viewer.
 
 ## Coding agents
 
-Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI**, and
-**opencode** — and treats them alike: agent state, progress, notifications and
-the info panel all work the same whichever one you use. Casper never launches an
-agent for you; you start yours in a Casper terminal yourself.
+Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI**,
+and **opencode**. Everything an agent drives *explicitly* is agent-agnostic: the
+`casper` CLI verbs behind agent state, progress, notifications and the info
+panel behave identically whichever agent calls them, and the working badge
+lights up for any agent that emits the standard OSC 9;4 progress sequence. What
+is not agent-neutral is the *passive* fallback — the terminal-viewport and
+window-title heuristics Casper uses to guess a state nobody reported are tuned
+to Claude Code's output, so an uninstrumented Codex CLI or opencode session gets
+a less precise badge. Casper never launches an agent for you; you start yours
+in a Casper terminal yourself.
 
 Agents talk to Casper through the `casper` CLI (see [CLI](#cli)). You can call
 those commands by hand, but the usual route is a small **integration plugin**
@@ -154,8 +160,6 @@ The rest of this document is for contributors who want to build Casper locally.
   `sudo xcode-select -s /Applications/Xcode.app`.
 - **libgit2** and **pkgconf** — `brew install libgit2 pkgconf`. CasperGit links
   libgit2 via pkg-config.
-- **vendir** — `brew install vendir`. Carvel's file-vendoring tool, used to sync
-  the pinned libghostty reference header (`make vendor`).
 
 The first build downloads the pinned `GhosttyKit.xcframework` (~53 MB) from the
 `libghostty-spm` release; subsequent builds reuse the extracted artifact.
@@ -165,8 +169,7 @@ The first build downloads the pinned `GhosttyKit.xcframework` (~53 MB) from the
 ```bash
 git clone <repo-url> casper
 cd casper
-make vendor  # sync the pinned libghostty header (once)
-make build   # compile
+make build   # compile (the first run downloads GhosttyKit.xcframework)
 make test    # run the test suite
 ```
 
@@ -183,12 +186,20 @@ make release  # size-optimized release build (arm64)
 make bundle   # assemble a self-contained Casper.app (release binary + dylibs)
 make dist     # package Casper.app into a downloadable .zip + .sha256 + dSYM
 make vendor   # re-sync the pinned libghostty header via Carvel vendir
-make icon     # regenerate Packaging/AppIcon/AppIcon.icns from icon.svg (needs resvg)
+make icon     # rebuild AppIcon.icns + AppIconDev.icns from the SVGs (needs resvg)
 make clean    # remove build artifacts
 ```
 
 `make bundle`/`make dist` also need `brew install dylibbundler` to embed the
 libgit2 dylib chain so the bundled `Casper.app` runs on a clean Mac.
+
+`make vendor` is a **contributor-only** step, not part of building. It needs
+`brew install vendir` and re-syncs `Vendor/ghostty/ghostty.h`, a reference-only
+copy of the libghostty header, **out of the already-extracted**
+`GhosttyKit.xcframework` — so it can only run *after* a successful build, and it
+is only worth running when the GhosttyKit pin moves. Nothing in `Sources/`
+compiles against the vendored copy; it exists so the exact C API the code
+targets stays readable in-tree.
 
 `make bundle` compiles with `-Osize`, extracts the debug symbols to a
 `Casper.dSYM` bundle **next to** `Casper.app`, and strips the shipped
@@ -224,7 +235,8 @@ Download the current intermediate from
 install it with
 `security add-certificates -k login.keychain-db AppleWWDRCAG3.cer`.
 
-See [`.superpowers/plans/screenshot-capture-permissions.md`](./.superpowers/plans/screenshot-capture-permissions.md)
+See the plan
+[`screenshot-capture-permissions.md`](./.superpowers/plans/screenshot-capture-permissions.md)
 for the full rationale.
 
 ### Continuous integration
@@ -238,7 +250,8 @@ a failure on the other machine. Tagging a `v*` release builds and publishes
 ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), along with
 the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
 the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
-missing — an unsigned feed would be rejected by every installed copy. See [`.superpowers/plans/sparkle-auto-update.md`](./.superpowers/plans/sparkle-auto-update.md).
+missing — an unsigned feed would be rejected by every installed copy. See the
+plan [`sparkle-auto-update.md`](./.superpowers/plans/sparkle-auto-update.md).
 
 ## Architecture
 
@@ -262,17 +275,21 @@ flowchart TD
     Git --> LG[libgit2]
 ```
 
-| Module          | Description                                                                           |
-| --------------- | ------------------------------------------------------------------------------------- |
-| `CasperCore`    | Models, session store, port allocator, control-channel protocol + socket (pure Swift) |
-| `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                               |
-| `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                  |
-| `CasperAgents`  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …) |
-| `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                      |
-| `CasperCLI`     | Domain subcommands, sharing the single app binary (swift-argument-parser)             |
+| Module          | Description                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------- |
+| `CasperCore`    | Models, session store, worktree manager, port allocator, control-channel protocol + socket (pure Swift) |
+| `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                                                 |
+| `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                                    |
+| `CasperAgents`  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …)                   |
+| `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                                        |
+| `CasperCLI`     | Domain subcommands, sharing the single app binary (swift-argument-parser)                               |
 
-The app and CLI ship as one binary: an empty argv launches the GUI, while a
-recognized subcommand runs the CLI and exits.
+The app and CLI ship as one binary, and the routing keys on the *shape* of the
+first argument, not on a list of known verbs: empty argv — or a leading `-…`
+flag, which is what macOS injects on launch — starts the GUI, while any leading
+non-dash word (plus `-h`, `--help` and `--version`) runs the CLI and exits. An
+unrecognized word such as `casper bogus` therefore still enters the CLI, which
+then reports it as an unknown subcommand.
 
 ### CLI
 

@@ -9,8 +9,9 @@ type: project
 The per-workspace `+/−` **branch-vs-merge-base** diff summary (a divergence
 badge on each sidebar workspace row) is **not built** and will not be:
 `Repository.divergenceLineStats` and `WorktreeManager.diffStat` are not to be
-implemented, and `plans/space-project.md` is superseded (its model / remote /
-naming tasks are already delivered under CasperUI UI-2).
+implemented; the Space theme's model / remote / naming tasks
+(`.superpowers/themes/space-project.md`) are already delivered under CasperUI
+UI-2.
 
 **Why:** the title-bar working-tree-vs-HEAD diff summary (`DiffService` via
 `computeDiff`/`diffWorkdirToHead`) already covers the practical need, so the

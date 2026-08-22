@@ -37,7 +37,7 @@ tests that use direct construction pass and hide it, because they never call
    ```swift
    let cmd = try StatusCommand.Set.parse(["waiting", "--workspace", "feature"])
    XCTAssertEqual(try cmd.makeCommand().state, "waiting")
-   // validation cases: parse valid argv with a bad semantic value, assert build throws
+   // validation: parse valid argv with a bad semantic value, assert it throws
    let bad = try ProgressCommand.Set.parse(
        ["--total","2","--current","5","--label","x","--workspace","f"])
    XCTAssertThrowsError(try bad.makeCommand())

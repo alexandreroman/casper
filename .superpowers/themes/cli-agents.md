@@ -11,10 +11,16 @@ environment that lets an agent in a terminal report its state through the CLI.
 
 ### Single binary (GUI + CLI)
 
-The bundle executable inspects its argv: empty → **GUI mode**; a recognized
-subcommand (e.g. `casper status …`, `casper terminal new`) → **CLI mode**, which
-runs and exits. Parsing uses swift-argument-parser; the fork happens before the
-`ParsableCommand` tree.
+The bundle executable inspects its argv **by shape, not by vocabulary**
+(`LaunchMode.detect`). Empty argv → **GUI mode**. A first argument that does not
+start with `-` → **CLI mode**, whatever the word is: `casper bogus` enters the
+CLI and fails there with ArgumentParser's own "unknown subcommand" error, which
+is the intent — a typo should be reported, not silently launch a window. A first
+argument that *does* start with `-` is treated as an AppKit/system launch flag
+(`-NSDocumentRevisionsDebugMode`, `-psn_0_12345`, `-AppleLanguages`) and means
+GUI, with `-h`/`--help`/`--version` carved out as the exceptions that mean CLI.
+Parsing uses swift-argument-parser; the fork happens before the
+`ParsableCommand` tree is ever built.
 
 ### Domain CLI (`casper <domain> <verb>`)
 
@@ -48,11 +54,12 @@ handful of verbs:
   instruction, not persisted — restoring a saved session never re-runs it.
 - `browser open <url>` — load an **absolute** URL (scheme + host) into the
   workspace's single **inspector** browser surface and select the browser tab.
-  Browser surfaces can also be layout panes (`Surface.Kind.browser`, the "New
-  browser" split), but this verb specifically targets the inspector browser, not
-  a layout pane. `browser load <url>` is the same navigation **without** opening
-  or selecting the inspector (a background load). `browser close` — collapse the
-  inspector if the browser tab is the one showing.
+  There is no other browser to target: `Surface.Kind.browser` is reached only
+  through `Workspace.inspector.browser`, splits always create a terminal, and a
+  `.browser` layout leaf cannot be created at all (see `app-ui.md` § Design →
+  "Inspector panel"). `browser load <url>` is the same navigation **without**
+  opening or selecting the inspector (a background load). `browser close` —
+  collapse the inspector if the browser tab is the one showing.
 - **Browser automation and debugging** — the same inspector browser doubles as a
   drivable surface, so an agent can verify the frontend change it just made.
   Every verb targets a workspace by id independently of selection and works
@@ -128,6 +135,59 @@ Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_I
 matches an id **case-insensitively**, so an uppercase id from an older build
 still resolves (a workspace *name* still matches exactly). Persisted state is
 unaffected: `session.json` keeps Swift's native `Codable` UUID encoding.
+
+### Per-repository config (`.casper.json`)
+
+A repository customizes its workspaces with a `.casper.json` at its root, read
+by `RepoConfig` (CasperCore). The user-facing schema is documented in
+`README.md`; what follows is the design behind it.
+
+**Namespaced and forward-compatible.** Everything sits under a `workspace` key
+so later sections have a home, and unknown keys decode silently — a file already
+carrying another tool's section still loads. A file that exists but cannot be
+read or decoded is a hard error (`RepoConfigError` → `Invalid .casper.json: …`),
+never a silent fallback to defaults: a typo in the config must be visible.
+
+**`copyFiles` distinguishes absent from empty.** `nil` means "unspecified" and
+the caller's built-in defaults apply (`.env`, `.env.local`); an explicit `[]`
+means "copy nothing". Patterns are matched with `fnmatch(3)`
+(`WorkspaceFileCopier`). An invalid entry fails workspace creation **before any
+Git mutation**, so a bad config never leaves a half-made worktree behind.
+
+**`scripts` holds two different kinds of thing.** The reserved names `setup` and
+`teardown` (`RepoScripts.reservedNames`) are *lifecycle hooks*: run
+automatically by `ScriptHookRunner`, never invocable by hand —
+`resolveRunCommand` denies them and the spawn entry points are private to the
+runner. Every other key is a *named command*, run on demand from the toolbar or
+`casper run <name>`.
+
+The two kinds are wrapped in **deliberately opposite** ways, because they want
+opposite outcomes from the same shell:
+
+- A named command wraps as `(\n<cmd>\n)\n[ $? -eq 0 ] && exit`. The subshell
+  contains an `exit` (or a `set -e` failure) so it kills only the subshell; the
+  trailing test then exits the interactive shell — closing the pane — **only**
+  on success. A failure leaves a live prompt with the output still on screen.
+- A hook wraps as `<cmd>\nexit $?`, so the shell exits carrying the command's
+  status and libghostty emits the child-exit event that *is* the hook's
+  completion signal. In both wraps the trailing part sits on its own line, so a
+  `#` comment ending the user's command cannot swallow it.
+
+**`setup` runs from `createLinkedWorkspace` only.** The call site is the guard
+against re-running on restore or re-open, so there is no persisted "already ran"
+flag. Exit 0 auto-closes its split; a non-zero exit keeps the split open and
+flags the workspace `.error`. There is no rollback. **`teardown`** runs before
+the worktree is pruned and, on the close path, *after* the merge — so its cwd is
+still valid — and every outcome (success, non-zero, or the 30 s timeout)
+proceeds to prune, because a broken cleanup script must never trap the user.
+
+**The script menu is alphabetical.** `scripts` is a JSON object and
+`JSONDecoder` does not preserve object key order, so file order is not
+recoverable; `namedCommands()` sorts instead. Reformatting `scripts` to an array
+to regain order is deliberately not done.
+
+The child-exit-before-close ordering that all of the hook code rests on, and the
+re-entrancy claim guarding the destroy paths, are recorded in [[repo-config]].
 
 ### Agent state & progress
 

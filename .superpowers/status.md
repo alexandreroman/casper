@@ -48,9 +48,9 @@ Models (`AgentState`, `Todo`, `LayoutTree`, session), `WorktreeManager`
 (`ControlProtocol`/`ControlSocket`) plus CLI-targeting/progress helpers.
 
 ### CasperGit + Clibgit2 — ✅ (core)
-`Repository` (open/discover/init, branch queries, worktree
-add/list/lookup/validate/prune, status/isClean, `remoteURL`,
-`diffWorkdirToHead`), `Worktree`, `GitError`.
+`Repository` (`initialize`/`open`, branch queries, worktree
+add/list/lookup/prune, status/isClean, `remoteURL`, `diffWorkdirToHead`),
+`Worktree`, `GitError`. Design: `themes/git-worktrees.md`.
 - **`git_diff` is built** — `diffWorkdirToHead()` returns a structured `GitDiff`
   (files → hunks → lines, statuses, binary flag; working tree + index vs HEAD,
   unborn HEAD as additions), unblocking the diff viewer (design §11).
@@ -59,8 +59,7 @@ add/list/lookup/validate/prune, status/isClean, `remoteURL`,
 - Standing limitations: `remove` prunes the worktree but not its branch, so
   recreating a same-named workspace surfaces an opaque `.gitFailure` (fix by
   mapping it to a clear reason or deleting the branch on remove); libgit2 is
-  unpinned in brew/CI; `WorktreeManager` opens the exact repo root
-  (`Repository.open`) rather than `discover`.
+  unpinned in brew/CI.
 
 ### CasperAgents + CasperCLI — ✅
 `AgentEnvironment.surfaceEnvironment` (per-surface env injection); the `casper`
@@ -135,31 +134,14 @@ wiring is landed (per-surface env, the release control channel, session
 persistence, `#if DEBUG` debug bridge). Release gating verified (no debug
 symbols in `make release`). UI-1 is verified live on a real desktop session.
 
-**UI-2** is done: the `Space` level (`Session → Space → Workspace`; `repoPath`
-moved up to `Space.folderPath`; `Workspace` gained `kind: primary|linked` and
-`baseBranch`). Opening a folder builds a Space — Git or not (non-Git folders are
-degenerate Spaces: one primary, no worktree creation), with **one Space per Git
-repository** enforced both ways: a folder that is a linked worktree of a
-repository already open as a Space is adopted into that Space as a linked
-workspace (same branch, the Space's primary branch as its base, nothing created
-on disk and no `setup` hook, since the worktree already exists); and opening a
-repository whose worktrees are already open as Spaces of their own **reunifies**
-them into the Space it creates — those workspaces move whole (same ids, ports,
-layouts and live terminals), each ex-primary becoming a linked workspace named
-after its branch, and a workspace that already recorded a base branch keeps it.
-Repository identity is libgit2's common `.git` directory, shared by every
-working tree of a repository. Re-adding a folder Casper already tracks just
-selects it. A Space is promoted to Git when a `.git` appears — detected live by
-the workspace filesystem watcher (and once per Space at launch), and demoted
-back if the `.git` is removed. A per-Space "+" creates a **linked** workspace as
-a new branch + `git worktree` at a visible sibling of the repo folder,
-`<parent>/<repo>-<branch>` (outside the repo, so naturally untracked — the old
-in-repo `.casper/worktrees/` layout and its `.git/info/exclude` entry are gone;
-a `-2`/`-3`… suffix is used if the sibling name is taken). The sidebar is
-grouped by Space in collapsible sections; removal is non-destructive (drop a
-linked workspace or a whole Space, leaving worktrees/branches on disk).
-Persistence is a clean break (the `SessionStore` self-heal discards incompatible
-legacy `session.json`). The `+/−` diff summary is deferred to UI-5.
+**UI-2** is done: the `Space` level (`Session → Space → Workspace`), Space
+assembly from a folder (Git or not), one-Space-per-repository enforced in both
+directions (adoption and reunification), the collapsible Space-grouped sidebar,
+non-destructive removal, and live Git promotion/demotion of a Space. The
+as-built behaviour is `themes/app-ui.md` § Sub-projects → UI-2 and
+`themes/space-project.md`; persistence was a clean break (the `SessionStore`
+self-heal discards an incompatible legacy `session.json`). The `+/−` diff
+summary was deferred to UI-5, and later dropped.
 
 **UI-3** is done: a workspace renders its `LayoutNode` tree recursively — splits
 as native `HSplitView`/`VSplitView`; a tab group renders only its active surface
@@ -180,32 +162,21 @@ in CasperGhostty. Closing the last surface re-seeds the workspace with a fresh
 terminal instead of closing it. Surface views live in a persistent cache keyed
 by `Surface.id` so PTYs/web state survive restructuring.
 
-**UI-4** is done: `.browser` leaves render a `WKWebView` surface (address bar
-with bare-host normalization, back/forward/reload), created via the tab-bar "+"
-menu (New terminal / New browser). The web view is cached by `Surface.id` (the
-cache generalized to any `NSView`) and its URL persists via the address bar.
-Only `.diff` leaves remain a placeholder (UI-5).
+**UI-4** is done: a `WKWebView` browser surface (address bar with bare-host
+normalization, back/forward/reload), cached by `Surface.id` and persisting its
+URL from both the address bar and the page itself. **UI-5** is done: a read-only
+diff surface over `diffWorkdirToHead()`, computed on open and live-refreshed by
+a native FSEvents watcher that drives both the diff view and the title-bar `+/−`
+badge. Both are described as built in `themes/app-ui.md` (§ Design → "Browser",
+"Diff viewer", "Inspector panel"; § Sub-projects → UI-4, UI-5).
 
-**UI-5** is done: `.diff` leaves render a read-only diff surface over
-`diffWorkdirToHead()` — per-file sections (path + status, binary noted), hunk
-headers, and monospaced line rows colored by kind (addition/deletion/context)
-with old/new line-number gutters; computed on open and **live-refreshed** by a
-native FSEvents watcher on the selected workspace's folder (debounced ~200 ms;
-`.git` + Git-ignored top-level dirs excluded) that bumps an observable revision
-driving both the diff surface and the title-bar `+/−` badge.
-
-> **Superseded:** the `.diff` layout-leaf surface kind (and its "New diff"
-> tab-bar menu item) was later **removed** — the diff view now lives **only** in
-> the right inspector panel (`Workspace.inspector`, see below). The `.browser`
-> layout-leaf path still exists; `.diff` does not. The diff rendering described
-> above is unchanged, just hosted by the inspector instead of a layout leaf.
->
-> **Superseded:** the per-line SwiftUI rendering described above (a `LazyVStack`
-> of `DiffFileView` sections, one `DiffLineRow` per diff line, pinned
-> `Section` headers) was replaced by a **single TextKit 2 text document**. See
+> **Two supersessions since.** The `.diff` layout-leaf surface kind was removed
+> and the `.browser` leaf became unreachable — both live in the inspector panel
+> now, and splits only ever create a terminal. And the per-line SwiftUI diff
+> rendering was replaced by a **single TextKit 2 text document** — see the
 > [Diff renderer](#diff-renderer--one-textkit-2-text-document-supersedes-ui-5-rows--)
-> below. The reading experience and the diff computation are unchanged; what
-> the reader sees drawn is now AppKit, not SwiftUI.
+> section below for the milestone that did it. The diff computation and the
+> reading experience are unchanged.
 
 All five CasperUI sub-projects are built. **Live GUI check: done.** Terminals
 render on a restored session and tab switching preserves content — verified via
@@ -283,7 +254,7 @@ See the `persistent-nsview-host-sharing` project-memory note.
 `tabGroup`→`leaf` session migration, continuous split panes with no tab bar,
 terminal + browser panes side by side, sidebar progress/notification, the live
 diff summary, and close-on-exit collapsing two panes to one (the survivor stays
-rendered). `swift test` → 259 passing.
+rendered). The suite is green.
 
 **Follow-ups.** (1) Browser panes: WebKit consumes the right-click, so the
 Casper split menu does not yet surface over live web content (the native menu is
@@ -294,11 +265,11 @@ this is now the intended behaviour, not a stopgap.
 ## Right inspector panel — ✅ (live check done)
 
 A collapsible right-side panel on the workspace detail view exposes a
-**browser** and the **Git diff** as two tabs, per workspace. The `.diff`
-layout-leaf surface kind was **removed** — the diff view now lives **only** in
-this inspector panel. The `.browser` layout-leaf path still exists (a browser
-can still be a tmux pane); `.diff` does not. The title-bar globe "New browser"
-button is removed.
+**browser** and the **Git diff** as two tabs, per workspace. Design and as-built
+chrome: `themes/app-ui.md` § Design → "Inspector panel". The `.diff` layout-leaf
+surface kind was **removed** here, and the title-bar globe "New browser" button
+with it — which left `Surface.Kind.browser` reachable only through
+`Workspace.inspector.browser`, since splits only ever create a terminal.
 
 **Model.** `Workspace` gained `inspector: InspectorState` (`collapsed`, `tab:
 InspectorTab{browser,diff}`, and a dedicated `browser: Surface`). A hand-written
@@ -351,7 +322,7 @@ anywhere (see [[title-bar-chip-chrome]]). There is no separate panel toggle
 `AppModel.toggleInspectorCollapsed`. The `+ins −del` diff summary is still a
 button that expands the panel on the Diff tab. "New terminal" is unchanged.
 
-**Tests.** `swift test` → 266 passing, incl. `InspectorState` defaults,
+**Tests.** Green, incl. `InspectorState` defaults,
 `Workspace` round-trip with a non-default inspector, legacy-decode without the
 `inspector` key, the `AppModel` inspector mutators, and the inspector-browser
 URL write-back.
@@ -550,14 +521,13 @@ suite order. Recorded in
 `.claude/project-memory/references/sticky-bar-resolution-paths.md` and
 `headless-swiftui-layout-tests.md`.
 
-**Tests.** `swift test` → 1139 passing (2–13 skipped, environment-gated).
-`DiffDocumentTests`, `DiffTextAssemblyTests`, `DiffFragmentGeometryTests`,
-`DiffChromeTests`, `DiffCopyTests` and `DiffTextSurfaceTests` cover the
-flattening semantics, the color-only highlight rule, the fragment→line mapping,
-what a selection and a copy carry, and the drawn chrome — the last via headless
-`cacheDisplay` pixel probes (tint, stripe and number colors read back against
-`DiffLineStyle`'s own values, never literals). None of this was testable in the
-row-based renderer.
+**Tests.** Green (a handful skipped, environment-gated). `DiffDocumentTests`,
+`DiffTextAssemblyTests`, `DiffFragmentGeometryTests`, `DiffChromeTests`,
+`DiffCopyTests` and `DiffTextSurfaceTests` cover the flattening semantics, the
+color-only highlight rule, the fragment→line mapping, what a selection and a
+copy carry, and the drawn chrome — the last via headless `cacheDisplay` pixel
+probes (tint, stripe and number colors read back against `DiffLineStyle`'s own
+values, never literals). None of this was testable in the row-based renderer.
 
 Two of those probes capture the **composed** surface rather than one view: a
 capture taken from a single view's bounds shows only what that view painted
@@ -586,12 +556,12 @@ only setup that produced the freeze. `MainThreadHangWatchdog` stays wired
 
 ## Open in Editor — ✅
 
-A split-button in the title bar, immediately left of the inspector-panel toggle,
-launches the workspace's worktree in VS Code, IntelliJ IDEA, or Xcode via each
-editor's CLI shim (`code`/`idea`/`xed`). The button's primary action launches
-whichever editor is currently selected; its attached menu lists every detected
-editor, and picking one only changes which editor is current (reflected on the
-primary button's label) — it does not launch anything itself.
+A split-button in the title bar, left of the `InspectorTabSelector`, launches
+the workspace's worktree in VS Code, IntelliJ IDEA, or Xcode. The button's
+primary action launches whichever editor is currently selected; its attached
+menu lists every detected editor, and picking one only changes which editor is
+current (reflected on the primary button's label) — it does not launch anything
+itself.
 
 **Detection.** `EditorLauncher.detectInstalled()` runs once at `AppModel`
 startup (not live) and populates `availableEditors`: an editor counts as
@@ -621,9 +591,10 @@ to a working editor instead of guaranteeing a launch error.
 ## Per-repository config (`.casper.json`) — ✅
 
 A repo can drop a `.casper.json` at its root (config under a `workspace` key) to
-customize its workspaces. Implemented on branch `casper-json`; the
-setup/teardown split lifecycle still wants one human visual pass (agents can't
-screenshot the SwiftUI/terminal chrome).
+customize its workspaces. Design and invariants: `themes/cli-agents.md` § Design
+→ "Per-repository config" and [[repo-config]]. The setup/teardown split
+lifecycle still wants one human visual pass (agents can't screenshot the
+SwiftUI/terminal chrome).
 
 **copyFiles.** `workspace.copyFiles` replaces the built-in `.env`/`.env.local`
 default for seeding untracked files into a new worktree (`[]` copies nothing).
@@ -700,7 +671,7 @@ deletes the workspace — a broken teardown never blocks deletion — but the tw
 GUI presenters now post an `.active` local notification for it. `.couldNotSpawn`
 and the control-channel path stay log-only.
 
-**Tests.** Full suite green (745 tests, 2 skipped). Step sequences, hook-failure
+**Tests.** Full suite green. Step sequences, hook-failure
 notifications, the reporter's delay and ownership rules, and two overlapping
 destroys for the same workspace id are covered headlessly; the 30 s timeout path
 is not (no test can reach it without waiting it out).
@@ -789,65 +760,64 @@ hover/pulse/link-cursor/link-routing pass needs a human — see the
 Gated entirely at compile time; physically absent from `make release`.
 
 ## Space (project) — ◐
-The **Space** model shipped with CasperUI UI-2 (`Session → Space → Workspace`;
-`repoPath` up to `Space.folderPath`; `Workspace.kind`/`baseBranch`;
-Space-grouped sidebar; `Repository.remoteURL` + `origin` name derivation). What
-remains for this feature is **Space rename** only.
+The **Space** model shipped with CasperUI UI-2. Design and as-built detail:
+`themes/space-project.md`. What remains for this feature is **Space rename**
+only.
 
 The per-workspace **`+/−` diff summary** (branch-vs-merge-base divergence badge)
 is **dropped** (decision 2026-07-06) — the title-bar working-tree-vs-HEAD
-summary covers the need. The old task-by-task plan (`plans/space-project.md`) is
-superseded: its model/remote/naming tasks landed with UI-2, and its divergence
-tasks are moot.
+summary covers the need. See [[space-diff-summary-dropped]].
 
 ## Agent-state detection — ◐
-Infers `Workspace.agentState`
-(`working | blocked | idle | done | unknown | error`) by scraping the terminal,
-no hooks. Design: `themes/agent-state-detection.md`.
+Infers `Workspace.agentState` (`working | blocked | idle | done | unknown |
+error`) by scraping the terminal, no hooks. **Design and as-built behaviour:
+`themes/agent-state-detection.md`** — that doc owns the signal sources, the
+matchers, the resolver, the authority latch and the notification rules. This
+entry records only what is built and what is not.
 
-**Built & live-verified:** the pure engine (`CasperCore/AgentDetection.swift` —
-data-driven matchers for both the viewport (`blocked`) and the OSC title
-(`working`/`idle`), most-urgent aggregation, debounce/`done`-latch resolver, 29
-tests); non-DEBUG `readViewportText()` and `readOSCTitle()` accessors (the
-latter fed by `GHOSTTY_ACTION_SET_TITLE` captured per-surface); the `AppModel`
-timer (~250 ms while the window is visible, throttled to ~1 s while it is
-hidden, and never stopped — `agentDetectionIntervalVisible`/`Hidden`) that
-scrapes each workspace's terminals — viewport **and** title — resolves, and
-writes `agentState` unless the workspace is under explicit authority; the
-`casper status set` authority latch (transient) that stops detection for that
-workspace; and the sidebar status icon (`WorkspaceRow`, monochrome outline SF
-Symbols in the chevron column, animated `working`). Live GUI check confirmed
-idle→working→idle, driven by the real OSC-title spinner (current Claude Code's
-`working` marker), plus `blocked` from the viewport.
+**Built & live-verified.** The pure engine (`CasperCore/AgentDetection.swift`),
+the three signal sources and the `AppModel` detection timer, the `casper status
+set` authority latch, and the sidebar status icon on `WorkspaceRow`. A live GUI
+check confirmed `idle → working → idle` and `blocked` from the viewport.
+
+**Three sources, not two.** The **OSC 9;4 progress report** is the primary
+`working` signal — Claude Code brackets a turn with `ESC]9;4;3` … `ESC]9;4;0`,
+captured per surface by `GHOSTTY_ACTION_PROGRESS_REPORT` and read back through
+`GhosttySurfaceView.readProgressReport()`. The **OSC title** spinner is
+secondary (still emitted, but its glyph set moves between Claude Code releases),
+and the **viewport** carries `blocked` and is the only `working` source for an
+agent that reports no progress at all. The three aggregate under the existing
+blocked > working > idle > absent precedence. See
+[[agent-state-working-signal]].
 
 `done` is produced by the resolver's own `working → idle` derivation. `blocked`/
-`done` (and `error`, for the explicit-only path) are wired to `casper notify` +
-`pendingNotification` (`AppModel.controlRaiseNotification`), with an
-interruption level (`.passive` for `done`, `.active` for `blocked`/`error`) and
-a per-workspace 3s de-dup cooldown against near-simultaneous explicit/detected
-notifies for the same event. See `plans/notification-idle-best-practices.md`.
+`done` (and `error`, on the explicit-only path) raise `casper notify` +
+`pendingNotification` via `AppModel.controlRaiseNotification`, with a per-state
+interruption level and a per-workspace de-dup cooldown. See
+`plans/notification-idle-best-practices.md`.
 
 **Not implemented (by decision):** a process-exit (`childExited`) `done`/`error`
-producer + authority release. It was believed to only fit an *agent-as-command*
-surface that Casper couldn't create — but `command` is not actually inert: the
-embedded libghostty (a sandbox/host-managed fork) execs it via a hardcoded
-`bash -l -c "exec <command>"`, regardless of the user's real login shell, which
-does replace the shell process. This reopens the *agent-as-command* option; it
-hasn't been re-evaluated since. The `--command` reliability fix itself has
-shipped; the queued text is typed into the already-spawned login shell via
-`ghostty_surface_text` (libghostty's own `initial_input` field is left null — it
-mojibakes non-ASCII; see [[ghostty-initial-input-utf8]]), with no `exec`, so it
-does not itself enable an agent-as-command surface. Agents currently still run
-inside a shell; `error` has no *terminal-scraping* producer (it is still
-produced outside detection, by a `.casper.json` `setup` hook that exits non-zero
-— `ScriptHookRunner` → `AppModel.reportSetupFailure` →
-`setDetectedAgentState(.error, …)`), and authority release is deferred to the
-timeout mechanism (option B). The initial implementation was removed. See the
-theme's "Process lifecycle" section.
+producer plus authority release. It was believed to only fit an
+*agent-as-command* surface that Casper couldn't create — but `command` is not
+actually inert: the embedded libghostty (a sandbox/host-managed fork) execs it
+via a hardcoded `bash -l -c "exec <command>"`, regardless of the user's real
+login shell, which does replace the shell process. This reopens the
+*agent-as-command* option; it hasn't been re-evaluated since. The `--command`
+reliability fix itself has shipped, typing the queued text into the
+already-spawned login shell via `ghostty_surface_text` (libghostty's own
+`initial_input` field is left null — it mojibakes non-ASCII; see
+[[ghostty-initial-input-utf8]]), with no `exec`, so it does not itself enable an
+agent-as-command surface. Agents therefore still run inside a shell; `error` has
+no *terminal-scraping* producer (it is produced outside detection, by a
+`.casper.json` `setup` hook exiting non-zero — `ScriptHookRunner` →
+`AppModel.reportSetupFailure` → `setDetectedAgentState(.error, …)`), and
+authority release is deferred to the timeout mechanism (option B). The initial
+implementation was removed.
 
 **Deferred:** `.render`-driven trigger (timer poll for now); option-B timeout
-authority release; per-surface status (option B); agents beyond Claude Code
-(per-agent rule sets).
+authority release; per-surface status (option B); selecting a rule set per agent
+at runtime — `AgentDetectionRuleSet.codex` exists but nothing wires it, since
+detection has no way to know which agent runs in a surface.
 
 ## Dock bounce + unread badge — ✅
 
