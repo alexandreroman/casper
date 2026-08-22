@@ -265,8 +265,10 @@ struct DiffTextSurface: NSViewRepresentable {
             // In document order, which is the difference between a paint that is
             // linear in the diff's run count and one that is quadratic — see
             // `DiffRendering.highlightsInDocumentOrder`.
-            for (fileIndex, highlight) in rendering.highlightsInDocumentOrder {
-                applyHighlight(highlight, forFileAt: fileIndex)
+            if let storage = textView.textContentStorage?.textStorage {
+                DiffTextAssembly.applyHighlights(
+                    rendering.highlightsInDocumentOrder, in: storage,
+                    document: rendering.document)
             }
         }
 
@@ -323,11 +325,10 @@ struct DiffTextSurface: NSViewRepresentable {
         /// only the last pass of a burst has the settled geometry — so paying it per
         /// pass would burn the time for answers that are thrown away.
         ///
-        /// `CFRunLoopPerformBlock` rather than `DispatchQueue.main.async`: a main
-        /// queue block does not run while a modal session or a menu is tracking (see
-        /// the `main-queue-starved-by-modal-loops` memory note), which would leave
-        /// the bars stale for as long as one of those is up. The two nested modes
-        /// are named for the same reason.
+        /// `MainRunLoop.perform` rather than `DispatchQueue.main.async`: a main queue
+        /// block does not run while a modal session or a menu is tracking (see the
+        /// `main-queue-starved-by-modal-loops` memory note), which would leave the
+        /// bars stale for as long as one of those is up.
         ///
         /// The cost of coalescing is that the bars can be one run-loop turn behind
         /// the layout that moved them — the same tolerance `DiffStickyHeader`'s own
@@ -336,8 +337,7 @@ struct DiffTextSurface: NSViewRepresentable {
         private func scheduleStickyHeaderUpdate() {
             guard !stickyHeaderUpdateIsPending else { return }
             stickyHeaderUpdateIsPending = true
-            let mainRunLoop = CFRunLoopGetMain()
-            CFRunLoopPerformBlock(mainRunLoop, Self.stickyHeaderRunLoopModes) { [weak self] in
+            MainRunLoop.perform { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     // Cleared before the work, not after: a layout pass provoked
@@ -347,23 +347,11 @@ struct DiffTextSurface: NSViewRepresentable {
                     self.updateStickyHeader()
                 }
             }
-            // A run loop asleep in `mach_msg` sits on the block until its next
-            // event, which on an idle app is however long the reader stays idle.
-            CFRunLoopWakeUp(mainRunLoop)
         }
 
         /// Whether a re-resolution is already queued. One block in flight at a
         /// time, so a burst of layout passes queues exactly one.
         private var stickyHeaderUpdateIsPending = false
-
-        /// The modes the queued re-resolution is enqueued for: the common modes for
-        /// ordinary event processing, plus the two nested loops AppKit spins on its
-        /// own. Built once, since a burst asks for it repeatedly.
-        private static let stickyHeaderRunLoopModes: CFArray = [
-            CFRunLoopMode.commonModes.rawValue,
-            RunLoop.Mode.modalPanel.rawValue as CFString,
-            RunLoop.Mode.eventTracking.rawValue as CFString,
-        ] as CFArray
 
         /// Paints one file's syntax colors into the live text storage.
         ///

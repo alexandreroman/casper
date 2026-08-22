@@ -323,8 +323,8 @@ struct BrowserCommand: ParsableCommand {
     }
 
     // The four scroll verbs stay separate subcommands (rather than one
-    // `scroll <direction>`) because the `casper-browser` skill and the
-    // `.superpowers/` docs are written against these exact command names.
+    // `scroll <direction>`) because `.superpowers/themes/cli-agents.md` and the
+    // external `casper` plugin skill are written against these exact command names.
 
     struct ScrollUp: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(

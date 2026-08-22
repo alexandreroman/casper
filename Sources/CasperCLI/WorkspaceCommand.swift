@@ -19,7 +19,7 @@ struct WorkspaceCommand: ParsableCommand {
             emit(response.workspaces?.map {
                 WorkspaceOut(
                     workspace: $0.id, name: $0.name,
-                    branch: $0.branch.isEmpty ? nil : $0.branch, path: $0.path)
+                    branch: nonEmpty($0.branch), path: $0.path)
             } ?? [])
         }
     }
@@ -48,7 +48,7 @@ struct WorkspaceCommand: ParsableCommand {
             let match = response.workspaces?.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
             emit(CurrentOut(
                 workspace: match?.id ?? id, name: match?.name,
-                branch: (match?.branch).flatMap { $0.isEmpty ? nil : $0 }, path: match?.path))
+                branch: nonEmpty(match?.branch), path: match?.path))
         }
     }
 
@@ -62,6 +62,7 @@ struct WorkspaceCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
+            let branch = try requireNonEmpty(self.branch, "branch name")
             let selector = try requireSelector(target)
             return ControlCommand(
                 verb: .workspaceNew, workspace: selector, branch: branch, base: base,
@@ -75,12 +76,10 @@ struct WorkspaceCommand: ParsableCommand {
             // Allow well beyond it — mirroring `workspace delete` — so a slow but
             // successful creation is not misreported as a client-side timeout.
             let response = try sendControl(makeCommand(), retriable: false, timeout: 35)
-            guard let info = response.workspaces?.first else {
-                throw exitWithError("no workspace returned")
-            }
+            let info = try requireFirst(response.workspaces, "workspace")
             emit(WorkspaceNewOut(
                 workspace: info.id, name: info.name,
-                branch: info.branch.isEmpty ? nil : info.branch, path: info.path,
+                branch: nonEmpty(info.branch), path: info.path,
                 command: nonEmpty(command)))
         }
     }

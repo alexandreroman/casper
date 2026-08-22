@@ -221,6 +221,8 @@ extension AppModel {
         explicitAuthority.remove(ws.id)
         agentResolvers[ws.id] = nil
         namedCommandsCache[ws.id] = nil
+        namedCommandsStamps[ws.id] = nil
+        watcherPathsCache[ws.id] = nil
         lastNotifiedAt[ws.id] = nil
         // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
         // is cleared — the workspace is being dropped outright here, so there is nothing

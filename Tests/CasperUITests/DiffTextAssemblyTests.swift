@@ -8,13 +8,13 @@ import XCTest
 /// gate that keeps a syntax highlight from reflowing the document.
 @MainActor
 final class DiffTextAssemblyTests: XCTestCase {
-    private func document(_ lines: [GitDiffLine], path: String = "a.swift") -> DiffDocument {
+    private func document(_ lines: [GitDiffLine], paths: [String] = ["a.swift"]) -> DiffDocument {
         let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: lines.count,
                                newStart: 1, newLines: lines.count, lines: lines)
-        return DiffDocument(diff: GitDiff(files: [
+        return DiffDocument(diff: GitDiff(files: paths.map { path in
             GitDiffFile(oldPath: path, newPath: path, status: .modified,
-                        isBinary: false, hunks: [hunk]),
-        ]))
+                        isBinary: false, hunks: [hunk])
+        }))
     }
 
     private func attribute(
@@ -135,16 +135,9 @@ final class DiffTextAssemblyTests: XCTestCase {
     /// instance in the storage would let one downcast reflow every paragraph of
     /// every document at once.
     func testParagraphStylesAreImmutableInstances() {
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: 1,
-                               newStart: 1, newLines: 1,
-                               lines: [GitDiffLine(kind: .context, content: "x",
-                                                   oldLineNumber: 1, newLineNumber: 1)])
-        let doc = DiffDocument(diff: GitDiff(files: [
-            GitDiffFile(oldPath: "a.swift", newPath: "a.swift", status: .modified,
-                        isBinary: false, hunks: [hunk]),
-            GitDiffFile(oldPath: "b.swift", newPath: "b.swift", status: .modified,
-                        isBinary: false, hunks: [hunk]),
-        ]))
+        let doc = document(
+            [GitDiffLine(kind: .context, content: "x", oldLineNumber: 1, newLineNumber: 1)],
+            paths: ["a.swift", "b.swift"])
         let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         for span in doc.lines {
@@ -156,16 +149,9 @@ final class DiffTextAssemblyTests: XCTestCase {
     /// The blank band the sticky header draws into is reserved by paragraph
     /// spacing rather than by characters, so selection and copy stay clean.
     func testFilesAfterTheFirstReserveTheStickyHeaderBand() {
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: 1,
-                               newStart: 1, newLines: 1,
-                               lines: [GitDiffLine(kind: .context, content: "x",
-                                                   oldLineNumber: 1, newLineNumber: 1)])
-        let doc = DiffDocument(diff: GitDiff(files: [
-            GitDiffFile(oldPath: "a.swift", newPath: "a.swift", status: .modified,
-                        isBinary: false, hunks: [hunk]),
-            GitDiffFile(oldPath: "b.swift", newPath: "b.swift", status: .modified,
-                        isBinary: false, hunks: [hunk]),
-        ]))
+        let doc = document(
+            [GitDiffLine(kind: .context, content: "x", oldLineNumber: 1, newLineNumber: 1)],
+            paths: ["a.swift", "b.swift"])
         let storage = DiffTextAssembly.makeAttributedText(for: doc)
 
         let firstStyle = attribute(.paragraphStyle, at: doc.files[0].range.location, in: storage)
@@ -406,7 +392,7 @@ final class DiffTextAssemblyTests: XCTestCase {
         let doc = document([GitDiffLine(kind: .addition, content: "abc",
                                         oldLineNumber: nil, newLineNumber: 1)])
         let other = document([GitDiffLine(kind: .addition, content: "a considerably longer line",
-                                          oldLineNumber: nil, newLineNumber: 1)], path: "b.swift")
+                                          oldLineNumber: nil, newLineNumber: 1)], paths: ["b.swift"])
         let storage = DiffTextAssembly.makeAttributedText(for: other)
         let highlighted = try highlight([("abc", .systemPink)])
 

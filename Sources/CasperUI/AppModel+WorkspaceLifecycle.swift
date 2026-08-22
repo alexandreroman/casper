@@ -5,6 +5,7 @@ import Foundation
 /// reporter, and the merge-then-prune and prune-only flows behind the sidebar
 /// actions and the control channel's delete verb. Part of `AppModel`.
 extension AppModel {
+    // Reached from AppModel.swift.
     /// Run one `WorktreeManager` call off the main actor and await its result.
     ///
     /// Every git call on the close/delete path goes through here, so the main actor stays
@@ -18,7 +19,7 @@ extension AppModel {
     /// What is deliberately NOT offloaded is every touch of the model — `removeWorkspace`,
     /// selection, port release, view disposal all stay on the main actor. This runs the
     /// libgit2/filesystem work and nothing else.
-    private static func offloadGit<T: Sendable>(
+    static func offloadGit<T: Sendable>(
         _ body: @escaping @Sendable () throws -> T
     ) async throws -> T {
         try await Task.detached(priority: .userInitiated, operation: body).value

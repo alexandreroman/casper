@@ -46,16 +46,20 @@ final class BrowserAutomationController {
         return coordinator(ws.inspector.browser)
     }
 
+    /// The single failure for a workspace id that no longer resolves; its text is
+    /// part of the CLI's contract.
+    private static let workspaceNotFound = BrowserOpError(message: "workspace not found")
+
     /// Resolve the workspace's browser coordinator, run `body` against it, and map
     /// the outcome to a `Result`. Shared by every `controlBrowser*` op so each one
     /// stays a single expressive line. `body` returns the op's payload: the eval
-    /// result, the page HTML, the screenshot path, or an empty string for the
-    /// action verbs.
-    private func withBrowserCoordinator(
-        _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> String
-    ) async -> Result<String, BrowserOpError> {
+    /// result, the page HTML, the screenshot path, or `Void` for the verbs that
+    /// reply with no payload.
+    private func withBrowserCoordinator<T>(
+        _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> T
+    ) async -> Result<T, BrowserOpError> {
         guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
+            return .failure(Self.workspaceNotFound)
         }
         do {
             return .success(try await body(coordinator))
@@ -78,19 +82,19 @@ final class BrowserAutomationController {
         if width == nil, height == nil, url == nil {
             return await withBrowserCoordinator(workspaceID) { coordinator in
                 let png = try await coordinator.snapshot()
-                try Self.writeScreenshot(png, to: path)
+                try await Self.writeScreenshot(png, to: path)
                 return path
             }
         }
         guard let ws = resolveWorkspace(workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
+            return .failure(Self.workspaceNotFound)
         }
         guard let target = resolveScreenshotURL(for: ws, override: url) else {
             return .failure(BrowserOpError(message: "no page to capture; open a page or pass --url"))
         }
         do {
             let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
-            try Self.writeScreenshot(png, to: path)
+            try await Self.writeScreenshot(png, to: path)
             return .success(path)
         } catch {
             return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
@@ -119,14 +123,17 @@ final class BrowserAutomationController {
 
     /// Write a screenshot PNG to `path`, mapping a filesystem error to a concise
     /// message — the raw NSError renders a verbose "Error Domain=NSCocoaErrorDomain…"
-    /// string in the JSON error.
-    private static func writeScreenshot(_ png: Data, to path: String) throws {
-        do {
-            try png.write(to: URL(fileURLWithPath: path))
-        } catch {
-            throw BrowserOpError(
-                message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
-        }
+    /// string in the JSON error. Runs on a background executor: a multi-megabyte
+    /// write to a slow (or network) volume must not block the main actor.
+    private static func writeScreenshot(_ png: Data, to path: String) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            do {
+                try png.write(to: URL(fileURLWithPath: path))
+            } catch {
+                throw BrowserOpError(
+                    message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
+            }
+        }.value
     }
 
     /// Evaluate `script` in the browser page. Returns the JSON-serialized result.
@@ -209,13 +216,11 @@ final class BrowserAutomationController {
     func controlBrowserWait(
         js: String, timeoutMs: Int, description: String, in workspaceID: UUID
     ) async -> Result<Void, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
+        await withBrowserCoordinator(workspaceID) { coordinator in
+            guard await coordinator.waitFor(js: js, timeoutMs: timeoutMs) else {
+                throw BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for \(description)")
+            }
         }
-        if await coordinator.waitFor(js: js, timeoutMs: timeoutMs) {
-            return .success(())
-        }
-        return .failure(BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for \(description)"))
     }
 
     /// Reload the browser page. When `waitReady`, also block until the document's
@@ -223,15 +228,13 @@ final class BrowserAutomationController {
     func controlBrowserReload(
         waitReady: Bool, timeoutMs: Int, in workspaceID: UUID
     ) async -> Result<Void, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(BrowserOpError(message: "workspace not found"))
+        await withBrowserCoordinator(workspaceID) { coordinator in
+            coordinator.reload()
+            guard waitReady else { return }
+            guard await coordinator.waitFor(js: BrowserAutomation.readyStateCompleteJS(), timeoutMs: timeoutMs) else {
+                throw BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for the page to reload")
+            }
         }
-        coordinator.reload()
-        guard waitReady else { return .success(()) }
-        if await coordinator.waitFor(js: BrowserAutomation.readyStateCompleteJS(), timeoutMs: timeoutMs) {
-            return .success(())
-        }
-        return .failure(BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for the page to reload"))
     }
 
     /// Encoder for the console entry array: sorted keys for deterministic output,

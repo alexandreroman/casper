@@ -26,6 +26,14 @@ struct SocketOption: ParsableArguments {
     var path: String { socket ?? DebugSocketPath.default }
 }
 
+/// Send one debug command and unwrap the reply, turning a transport failure or an
+/// `ok: false` answer into a thrown `ExitCode`.
+///
+/// `retriable` says whether a transport-level resend is safe. It is `true` only
+/// for the observing verbs — re-reading state or text, or re-capturing a
+/// screenshot over the same file, leaves the app exactly as it was. Every verb
+/// that drives the GUI passes `false`: a resend would inject the text, key or
+/// action a second time.
 private func run(_ command: DebugCommand, socket: String, retriable: Bool) throws -> DebugResponse {
     let response: DebugResponse
     do {
@@ -45,8 +53,6 @@ extension DebugCLICommand {
         @OptionGroup var socket: SocketOption
 
         func run() throws {
-            // Idempotent: re-reading state is safe, so recover from transient
-            // transport failures with a bounded retry.
             let response = try CasperCLI.run(
                 DebugCommand(verb: .dumpState), socket: socket.path, retriable: true)
             let encoder = JSONEncoder()
@@ -65,7 +71,6 @@ extension DebugCLICommand {
         var target: String?
 
         func run() throws {
-            // Idempotent: re-reading text is safe, so allow a bounded retry.
             let response = try CasperCLI.run(
                 DebugCommand(verb: .readText, scrollback: scrollback, target: target),
                 socket: socket.path, retriable: true)
@@ -83,8 +88,6 @@ extension DebugCLICommand {
         var target: String?
 
         func run() throws {
-            // Mutating: retrying could inject the text more than once, so never
-            // retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendText, text: text, enter: enter, target: target),
                 socket: socket.path, retriable: false)
@@ -100,8 +103,6 @@ extension DebugCLICommand {
         var target: String?
 
         func run() throws {
-            // Mutating: retrying could type the text more than once, so never
-            // retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendKeys, text: text, target: target),
                 socket: socket.path, retriable: false)
@@ -118,8 +119,6 @@ extension DebugCLICommand {
         @Option(name: .long, help: "Surface id (defaults to focused).") var target: String?
 
         func run() throws {
-            // Mutating: retrying could inject the key combo more than once, so
-            // never retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendKey, text: text, mods: mods, target: target),
                 socket: socket.path, retriable: false)
@@ -135,8 +134,6 @@ extension DebugCLICommand {
         var target: String?
 
         func run() throws {
-            // Mutating: retrying could trigger the action more than once, so
-            // never retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .sendAction, text: text, target: target),
                 socket: socket.path, retriable: false)
@@ -153,8 +150,6 @@ extension DebugCLICommand {
         var target: String?
 
         func run() throws {
-            // Mutating: retrying could move the mouse more than once, so never
-            // retry this verb.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .mouseMove, target: target, x: x, y: y),
                 socket: socket.path, retriable: false)
@@ -168,13 +163,14 @@ extension DebugCLICommand {
         @Option(name: .long, help: "Surface id to capture (see dump-state; defaults to the focused surface).")
         var target: String?
 
+        func makeCommand() -> DebugCommand {
+            DebugCommand(verb: .screenshot, path: absolutePath(path), target: target)
+        }
+
         func run() throws {
-            // Idempotent: re-capturing overwrites the same PNG, so allow a
-            // bounded retry.
-            let response = try CasperCLI.run(
-                DebugCommand(verb: .screenshot, path: path, target: target),
-                socket: socket.path, retriable: true)
-            print(response.text ?? path)
+            let command = makeCommand()
+            let response = try CasperCLI.run(command, socket: socket.path, retriable: true)
+            print(response.text ?? command.path ?? "")
         }
     }
 
@@ -185,7 +181,6 @@ extension DebugCLICommand {
         @Argument(help: "Surface id to focus (see dump-state).") var id: String
 
         func run() throws {
-            // Mutating (changes UI focus): never retry.
             _ = try CasperCLI.run(
                 DebugCommand(verb: .focus, target: id), socket: socket.path, retriable: false)
         }

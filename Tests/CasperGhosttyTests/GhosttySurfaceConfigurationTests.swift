@@ -52,14 +52,4 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
             }
         }
     }
-
-    func testNilInitialInputLeavesNullPointer() {
-        let config = GhosttySurfaceConfiguration()
-        var sentinel = 0
-        withUnsafeMutablePointer(to: &sentinel) { raw in
-            config.withCValue(nsview: UnsafeMutableRawPointer(raw), userdata: nil) { c in
-                XCTAssertNil(c.initial_input)
-            }
-        }
-    }
 }

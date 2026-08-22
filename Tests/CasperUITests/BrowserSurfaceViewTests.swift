@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import XCTest
 @testable import CasperUI
 
@@ -40,5 +42,43 @@ final class BrowserSurfaceViewTests: XCTestCase {
         // button stays disabled against this actual composite state, not just the
         // empty-address case above.
         XCTAssertNil(BrowserSurfaceView.externalURL(webViewURL: .aboutBlank, address: "about:blank"))
+    }
+
+    /// Return must end editing, and must do so *before* the submitted load starts:
+    /// while the field stays first responder the coordinator's `isEditingAddress`
+    /// never clears, and `syncNav` then skips writing the canonical URL back into
+    /// the address bar for good.
+    func testReturnEndsEditingBeforeSubmitting() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 60),
+            styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+
+        let field = NSTextField()
+        window.contentView?.addSubview(field)
+
+        var events: [String] = []
+        let addressField = AddressField(
+            text: .constant("localhost:3000"),
+            onSubmit: { events.append("submit") },
+            onFocusChange: { events.append($0 ? "beginEditing" : "endEditing") })
+        let coordinator = addressField.makeCoordinator()
+        field.delegate = coordinator
+
+        XCTAssertTrue(window.makeFirstResponder(field), "the field must take focus for a field editor to exist")
+        let editor = try XCTUnwrap(field.currentEditor() as? NSTextView, "no field editor")
+        // `controlTextDidBeginEditing` only posts for a key window, which a headless
+        // test has none of; seed the state the app is in when the user types.
+        coordinator.isEditing = true
+
+        let handled = coordinator.control(
+            field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        XCTAssertTrue(handled, "Return must be consumed instead of inserting a newline")
+        XCTAssertEqual(
+            Array(events.suffix(2)), ["endEditing", "submit"],
+            "editing must end before the submitted load starts")
+        XCTAssertFalse(coordinator.isEditing)
+        XCTAssertFalse(window.firstResponder === editor, "the field editor must have resigned first responder")
     }
 }

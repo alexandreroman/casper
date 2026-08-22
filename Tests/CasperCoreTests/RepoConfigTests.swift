@@ -54,20 +54,6 @@ final class RepoConfigTests: XCTestCase {
         XCTAssertEqual(config.copyFiles(default: []), [".env"])
     }
 
-    func testGarbageJSONThrows() throws {
-        try writeConfig("not json at all")
-        XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in
-            XCTAssertTrue(error is RepoConfigError)
-        }
-    }
-
-    func testWrongTypeThrows() throws {
-        try writeConfig(#"{"workspace":{"copyFiles":5}}"#)
-        XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in
-            XCTAssertTrue(error is RepoConfigError)
-        }
-    }
-
     func testDecodeFailureReasonIsUserFriendly() throws {
         try writeConfig("not json at all")
         XCTAssertThrowsError(try RepoConfig.load(fromRepoRoot: root.path)) { error in

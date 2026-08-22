@@ -141,7 +141,7 @@ struct DiffSurfaceView: View {
                 DiffRendering(revision: revision, document: $0, highlights: highlightCache)
             }
             let computeMs = Int(Date().timeIntervalSince(started) * 1000)
-            logDiffShape(computeMs: computeMs)
+            logDiffShape(of: newDocument, computeMs: computeMs)
             loaded = true
             startHighlighting()
         }
@@ -158,30 +158,20 @@ struct DiffSurfaceView: View {
     /// Logs the freshly computed diff's shape so a diff-view freeze is
     /// diagnosable from the last line before the hang: the culprit is usually a
     /// file with a huge single line (`maxLineLen`, e.g. a minified bundle).
-    /// Computed with plain loops to avoid materializing every line of a large
-    /// diff into intermediate arrays.
-    private func logDiffShape(computeMs: Int) {
-        guard let diff, !diff.files.isEmpty else { return }
-        var totalLines = 0
-        var maxFileLines = 0
-        var maxLineLen = 0
-        for file in diff.files {
-            var fileLines = 0
-            for hunk in file.hunks {
-                fileLines += hunk.lines.count
-                for line in hunk.lines {
-                    maxLineLen = max(maxLineLen, line.content.count)
-                }
-            }
-            totalLines += fileLines
-            maxFileLines = max(maxFileLines, fileLines)
-        }
+    ///
+    /// The numbers come from `DiffDocument.shape`, accumulated while the document
+    /// was built off the main actor: measuring them here would walk the whole
+    /// diff a third time, on the main actor, on a path an FSEvents watcher drives
+    /// — counting the characters of the very lines it exists to report on.
+    private func logDiffShape(of document: DiffDocument?, computeMs: Int) {
+        guard let document, !document.files.isEmpty else { return }
+        let shape = document.shape
         CasperLog.app.notice(
             """
-            diff refresh: files=\(diff.files.count, privacy: .public) \
-            lines=\(totalLines, privacy: .public) \
-            maxFileLines=\(maxFileLines, privacy: .public) \
-            maxLineLen=\(maxLineLen, privacy: .public) \
+            diff refresh: files=\(document.files.count, privacy: .public) \
+            lines=\(shape.totalLines, privacy: .public) \
+            maxFileLines=\(shape.maxFileLines, privacy: .public) \
+            maxLineLen=\(shape.maxLineLen, privacy: .public) \
             computeMs=\(computeMs, privacy: .public)
             """)
     }
@@ -229,7 +219,8 @@ struct DiffSurfaceView: View {
     }
 
     /// Kicks off a background pass that highlights each file's working-tree and
-    /// HEAD text, publishing results per file so colors appear as they finish.
+    /// HEAD text — as far as the document renders lines of either — publishing
+    /// results per file so colors appear as they finish.
     /// Neither the reads nor the highlighting touch the main actor: both sides of
     /// every file are read in one detached pass over a single `Repository`
     /// (`DiffService.fileTexts`), which also caps them at
@@ -253,17 +244,32 @@ struct DiffSurfaceView: View {
         // document.
         let pending = files.enumerated()
             .filter { !$0.element.isBinary && carried[$0.element.id] == nil }
+            .map { (fileIndex: $0.offset, file: $0.element) }
+
+        // Only the sides the document renders lines of are read. Pruning discards
+        // the whole of a side that renders none — the HEAD side of an append-only
+        // change, either side of a file the line budgets cut entirely — so reading
+        // its blob and highlighting it produces nothing that survives.
+        var headPaths: [String] = []
+        var worktreePaths: [String] = []
+        for (fileIndex, file) in pending {
+            let rendered = document.renderedLineNumbers(ofFileAt: fileIndex)
+            if !rendered.old.isEmpty { headPaths.append(file.oldPath) }
+            if !rendered.new.isEmpty { worktreePaths.append(file.newPath) }
+        }
 
         highlightTask = Task {
-            let texts = await model.diffService.fileTexts(
-                for: workspace, headPaths: pending.map(\.element.oldPath),
-                worktreePaths: pending.map(\.element.newPath))
+            var texts = await model.diffService.fileTexts(
+                for: workspace, headPaths: headPaths, worktreePaths: worktreePaths)
             if Task.isCancelled { return }
 
             for (fileIndex, file) in pending {
                 if Task.isCancelled { return }
-                let newText = texts.worktree[file.newPath]
-                let oldText = texts.head[file.oldPath]
+                // Taken out of the batch rather than read from it: the loop is
+                // serialized over every file, and a text left behind stays alive
+                // until the last of them is done.
+                let newText = texts.worktree.removeValue(forKey: file.newPath)
+                let oldText = texts.head.removeValue(forKey: file.oldPath)
 
                 let newLines = await highlight(newText, path: file.newPath)
                 let oldLines = await highlight(oldText, path: file.oldPath)

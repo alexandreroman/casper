@@ -10,9 +10,9 @@ import XCTest
 /// view must discard that Cocoa command and forward the raw keystroke so the shell's
 /// own line editor (zle/readline) moves the cursor.
 ///
-/// Uses a real `GhosttyRuntime` + real (offscreen) `NSWindow` so `interpretKeyEvents`
-/// runs against a live input context and a real PTY-backed shell — the `.forTesting()`
-/// runtime never creates a surface.
+/// Runs on the shared `withRealSurface` harness so `interpretKeyEvents` sees a live
+/// input context and a real PTY-backed shell — the `.forTesting()` runtime never
+/// creates a surface.
 final class GhosttyEditingCommandReplayTests: XCTestCase {
     /// Ctrl-A struck on a QWERTY keyboard: 'a' is at physical keycode 0. Baseline
     /// non-regression check that the fix leaves the common layout working.
@@ -35,47 +35,29 @@ final class GhosttyEditingCommandReplayTests: XCTestCase {
     /// the shell cursor rather than being mis-encoded (which wipes the line to "Z").
     @MainActor
     private func assertControlAMovesToLineStart(keyCode: UInt16) throws {
-        let runtime = try GhosttyRuntime()
-        let view = GhosttySurfaceView(runtime: runtime, configuration: GhosttySurfaceConfiguration())
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
+        try withRealSurface { view, surface in
+            // Let the shell reach an interactive prompt before typing.
+            settle(0.6)
 
-        // Surface creation can transiently return null and retry; poll until it lands.
-        // When libghostty simply cannot produce a surface (a documented environmental
-        // flakiness — see the `e2e-surface-creation-flakiness` memory note), the test's
-        // precondition is unmet, so skip rather than report a false failure.
-        let deadline = Date().addingTimeInterval(10)
-        while view.surface == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            // Seed a known line (goes to the shell's stdin); the cursor ends at the end of "abc".
+            surface.sendText("abc")
+            settle(0.4)
+
+            // Ctrl-A resolves to moveToBeginningOfParagraph:. Forwarded raw with a correctly
+            // encoded keycode, the shell moves the cursor to the start of the line.
+            view.keyDown(with: controlKeyEvent(character: "\u{01}", base: "a", keyCode: keyCode))
+            settle(0.4)
+
+            // Insert a marker at the cursor: "Zabc" proves Ctrl-A reached the shell and moved
+            // to line start; "Z" alone (the line wiped) is the mis-encoded-keycode bug.
+            surface.sendText("Z")
+            settle(0.4)
+
+            let grid = surface.readText(scrollback: false) ?? ""
+            XCTAssertTrue(
+                grid.contains("Zabc"),
+                "Ctrl-A (keyCode \(keyCode)) did not move to line start; grid was:\n\(grid)")
         }
-        guard let surface = view.surface else {
-            throw XCTSkip("libghostty could not create a surface in this environment")
-        }
-        XCTAssertTrue(window.makeFirstResponder(view))
-
-        // Let the shell reach an interactive prompt before typing.
-        settle(0.6)
-
-        // Seed a known line (goes to the shell's stdin); the cursor ends at the end of "abc".
-        surface.sendText("abc")
-        settle(0.4)
-
-        // Ctrl-A resolves to moveToBeginningOfParagraph:. Forwarded raw with a correctly
-        // encoded keycode, the shell moves the cursor to the start of the line.
-        view.keyDown(with: controlKeyEvent(character: "\u{01}", base: "a", keyCode: keyCode))
-        settle(0.4)
-
-        // Insert a marker at the cursor: "Zabc" proves Ctrl-A reached the shell and moved
-        // to line start; "Z" alone (the line wiped) is the mis-encoded-keycode bug.
-        surface.sendText("Z")
-        settle(0.4)
-
-        let grid = surface.readText(scrollback: false) ?? ""
-        XCTAssertTrue(
-            grid.contains("Zabc"),
-            "Ctrl-A (keyCode \(keyCode)) did not move to line start; grid was:\n\(grid)")
     }
 
     /// A bare control character that reaches `insertText` outside a `keyDown` span (a
@@ -96,14 +78,6 @@ final class GhosttyEditingCommandReplayTests: XCTestCase {
         // Genuine printable text (an IME/dictation commit) must still be forwarded.
         view.insertText("héllo", replacementRange: NSRange(location: NSNotFound, length: 0))
         XCTAssertEqual(view.debugLastBulkText, "héllo")
-    }
-
-    /// Pump the main run loop for a fixed duration so libghostty can drain PTY output
-    /// and the shell can settle. A stability-polling loop was flaky here; a fixed pump
-    /// is enough.
-    @MainActor
-    private func settle(_ seconds: TimeInterval) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 
     /// Build a synthetic Control-<letter> keyDown the way a real keyboard reports it:

@@ -6,24 +6,20 @@ public enum GhosttySplitDirection: Equatable, Sendable {
 }
 
 /// A libghostty runtime action, decoded from the C `action_cb` callback into a
-/// Swift-native value. Decoding is total (see `decode`), but consumption is
-/// partial. The surface-scoped payloads — the OSC title (driving agent-state
-/// detection) and the child exit status — are delivered straight to the target
-/// view by the `action_cb` trampoline (`updateOSCTitle` / `reportChildExit`) and
-/// never travel through the app-level `onAction`, so `.setTitle` and
-/// `.childExited` are produced by `decode` without being routed anywhere: a
-/// future consumer must hook the view, not `onAction`. Mouse shape/visibility are
-/// likewise surface-scoped, and delivered outside this enum. Layout actions
-/// (splits, tabs, close) are dispatched by the runtime's layout handler, and the
-/// AppDelegate's `onAction` handles `.openURL`, `.quit`, and `.closeWindow`;
-/// `.render` and `.newWindow` are decoded but not acted on yet. `.render` and
-/// `.childExited` are reserved by the agent-state design (a `.render`-driven
-/// re-read replacing the timer poll, and `error` on a non-zero exit code): see
-/// `.superpowers/themes/agent-state-detection.md`.
+/// Swift-native value. This enum carries the app- and window-scoped actions only:
+/// layout actions (splits, tabs, close) dispatched by the runtime's layout
+/// handler, plus `.openURL`, `.quit` and `.closeWindow` handled by the
+/// AppDelegate's `onAction`. `.render` and `.newWindow` are decoded but not acted
+/// on.
+///
+/// Surface-scoped actions never reach here: the OSC title, the child exit status,
+/// and mouse shape/visibility are intercepted by `casperGhosttyAction` and
+/// delivered straight to the target view, which is their only consumer.
+///
+/// Decoding is total — `decode` maps every remaining tag, unmodeled ones to
+/// `.other`.
 public enum GhosttyAction: Equatable {
-    case setTitle(String)
     case render
-    case childExited(exitCode: Int32)
     /// Emitted on cmd+click of a terminal URL; carries the URL to open.
     case openURL(String)
     case newSplit(GhosttySplitDirection)
@@ -39,16 +35,8 @@ public enum GhosttyAction: Equatable {
     /// Total decode: every tag maps to a case (`.other` for the unmodeled).
     public static func decode(_ c: ghostty_action_s) -> GhosttyAction {
         switch c.tag {
-        case GHOSTTY_ACTION_SET_TITLE:
-            return .setTitle(Self.string(c.action.set_title.title))
         case GHOSTTY_ACTION_RENDER:
             return .render
-        case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-            // The exit is acted on by the `action_cb` trampoline, which delivers it
-            // straight to the target view (`reportChildExit`); this decoded copy is
-            // routed nowhere. Truncating (not trapping) conversion: exit_code is external
-            // C data, and `Int32(UInt32)` would crash for any value above Int32.max.
-            return .childExited(exitCode: Int32(truncatingIfNeeded: c.action.child_exited.exit_code))
         case GHOSTTY_ACTION_OPEN_URL:
             return .openURL(Self.string(c.action.open_url.url, len: c.action.open_url.len))
         case GHOSTTY_ACTION_NEW_SPLIT:
@@ -68,13 +56,8 @@ public enum GhosttyAction: Equatable {
         }
     }
 
-    private static func string(_ ptr: UnsafePointer<CChar>?) -> String {
-        guard let ptr else { return "" }
-        return String(cString: ptr)
-    }
-
-    /// Length-delimited variant for fields (like `open_url.url`) that are NOT
-    /// null-terminated: reads exactly `len` bytes and decodes them as UTF-8.
+    /// Decodes a field (like `open_url.url`) that is NOT null-terminated: reads
+    /// exactly `len` bytes and decodes them as UTF-8.
     private static func string(_ ptr: UnsafePointer<CChar>?, len: UInt) -> String {
         guard let ptr else { return "" }
         let bytes = UnsafeBufferPointer(start: ptr, count: Int(len))

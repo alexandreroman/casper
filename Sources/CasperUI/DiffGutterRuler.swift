@@ -247,24 +247,34 @@ final class DiffGutterRuler: NSRulerView {
             x: band.minX + Self.stripeWidth, y: band.minY,
             width: max(band.width - Self.stripeWidth - Self.cueColumnWidth - codeLeadingGap, 0),
             height: band.height)
-        label(for: number).draw(in: column, withAttributes: Self.numberAttributes(for: kind))
+        label(for: number, kind: kind).draw(in: column)
     }
 
-    /// The numbers already formatted and bridged, keyed by the number itself.
-    private var numberLabels: [Int: NSString] = [:]
+    /// What a cached label is: one number in one row kind's accent.
+    private struct NumberLabelKey: Hashable {
+        let number: Int
+        let kind: GitDiffLine.Kind
+    }
+
+    /// The numbers already formatted and attributed, ready to draw.
+    private var numberLabels: [NumberLabelKey: NSAttributedString] = [:]
 
     /// Comfortably more than the numbered rows any viewport shows, so ordinary
-    /// scrolling reads the cache rather than refilling it.
-    private static let maxCachedNumberLabels = 512
+    /// scrolling reads the cache rather than refilling it: 512 numbers, in each of
+    /// the three kinds a number can be drawn in.
+    private static let maxCachedNumberLabels = 3 * 512
 
-    /// One line number as the `NSString` `draw(in:withAttributes:)` wants,
-    /// formatted and bridged at most once.
+    /// One line number as the attributed string it is drawn from, formatted and
+    /// laid out at most once.
     ///
-    /// This runs for every numbered row on screen on every scroll frame, and the
-    /// rows on screen barely change between two of them — the same reasoning
-    /// that keeps the attribute dictionaries beside it prebuilt.
-    private func label(for number: Int) -> NSString {
-        if let cached = numberLabels[number] { return cached }
+    /// The string carries its attributes rather than taking them at draw time:
+    /// `NSString.draw(in:withAttributes:)` builds a throwaway attributed string
+    /// on every call, and this runs for every numbered row on screen on every
+    /// scroll frame — the same reasoning that keeps the attribute dictionaries
+    /// beside it prebuilt.
+    private func label(for number: Int, kind: GitDiffLine.Kind) -> NSAttributedString {
+        let key = NumberLabelKey(number: number, kind: kind)
+        if let cached = numberLabels[key] { return cached }
         // Scrolling walks the whole document, so the map would otherwise grow
         // with every row ever shown. Dropped whole rather than evicted one by
         // one: the entries are trivially rebuilt, and the reader is by then far
@@ -272,8 +282,9 @@ final class DiffGutterRuler: NSRulerView {
         if numberLabels.count >= Self.maxCachedNumberLabels {
             numberLabels.removeAll(keepingCapacity: true)
         }
-        let label = String(number) as NSString
-        numberLabels[number] = label
+        let label = NSAttributedString(
+            string: String(number), attributes: Self.numberAttributes(for: kind))
+        numberLabels[key] = label
         return label
     }
 

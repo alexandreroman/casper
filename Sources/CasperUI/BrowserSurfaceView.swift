@@ -160,7 +160,7 @@ private final class SelectAllTextField: NSTextField {
 /// `mouseDown` (see its note), giving the standard browser address-bar behavior
 /// (focus selects the whole URL so the user can type a replacement) with no
 /// competing SwiftUI selection logic.
-private struct AddressField: NSViewRepresentable {
+struct AddressField: NSViewRepresentable {
     @Binding var text: String
     var onSubmit: () -> Void
     var onFocusChange: (Bool) -> Void
@@ -221,6 +221,13 @@ private struct AddressField: NSViewRepresentable {
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             // Return submits the address instead of inserting a newline.
             if selector == #selector(NSResponder.insertNewline(_:)) {
+                // End editing first: the load `onSubmit` starts changes `webView.url`
+                // synchronously, and the coordinator's `syncNav` writes the canonical
+                // URL back into `address` only while editing is finished. Resigning
+                // afterwards would let that sync run mid-edit — and `syncNav`
+                // deduplicates on the navigation state, so the skipped write is never
+                // retried and the bar keeps the raw typed text.
+                control.window?.makeFirstResponder(nil)
                 parent.onSubmit()
                 return true
             }

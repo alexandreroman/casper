@@ -10,7 +10,10 @@ import GhosttyKit
 /// `nsview` in the surface configuration and lets libghostty attach its own layer.
 public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private let runtime: GhosttyRuntime
-    private let configuration: GhosttySurfaceConfiguration
+    // `var` so `initialInput` can be cleared once it has been injected: the queued
+    // command must run exactly once, and the caller bakes it into the configuration
+    // it hands over rather than consuming it per creation attempt.
+    private var configuration: GhosttySurfaceConfiguration
     private let surfaceID: UUID
     let onFocus: (UUID) -> Void
     // Fired once this view is live in a window (see `viewDidMoveToWindow`). Lets
@@ -61,6 +64,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // user gets an explanation instead of a silently blank pane.
     private var errorOverlay: NSView?
 
+    // Set by `invalidate()`, which frees the surface for good. Without it, `surface ==
+    // nil` alone reads as "not created yet", so a later window attachment would spawn a
+    // second surface — a new child process — on a view its owner has already torn down.
+    private var invalidated = false
+
     // Latest OSC window title libghostty decoded for this surface (the
     // GHOSTTY_ACTION_SET_TITLE payload), captured per-surface so agent-state
     // detection can read it. Current Claude Code signals "working" only through
@@ -93,6 +101,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // and libghostty would keep driving its display link at the old screen's
     // refresh rate.
     nonisolated(unsafe) private var screenChangeObserver: NSObjectProtocol?
+    // AppKit never routes the `keyUp` of a ⌘ combo through the responder chain, so the
+    // press `performKeyEquivalent` sends libghostty would never get its matching
+    // release. Upstream Ghostty answers this with a process-local `.keyUp` monitor that
+    // hands ⌘ key-ups to the focused surface, and this mirrors it (Ghostty is the
+    // reference). Held for the view's whole lifetime and `nonisolated(unsafe)` for the
+    // same reason as the observers above, so `deinit` can drop it without a hop.
+    nonisolated(unsafe) private var commandKeyUpMonitor: Any?
     private var lastOcclusion: Bool?
 
     public init(
@@ -116,6 +131,27 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         super.init(frame: .zero)
         // libghostty attaches its own CAMetalLayer to this view.
         wantsLayer = true
+        installCommandKeyUpMonitor()
+    }
+
+    /// Catch the ⌘-combo key-ups AppKit withholds from the responder chain and feed
+    /// them to this surface's `keyUp`, so every press `performKeyEquivalent` sent has
+    /// a matching release. Mirrors upstream Ghostty's local event monitor.
+    private func installCommandKeyUpMonitor() {
+        commandKeyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            // Non-⌘ key-ups reach `keyUp` through the responder chain on their own;
+            // forwarding those here too would double the release.
+            guard event.modifierFlags.contains(.command) else { return event }
+            // The monitor is process-wide, so let anything not aimed at this focused
+            // surface continue to its real target. `NSEvent` is not `Sendable`, hence
+            // the Bool out of the isolated block rather than the event itself.
+            let forwarded = MainActor.assumeIsolated { () -> Bool in
+                guard let self, self.window?.firstResponder === self else { return false }
+                self.keyUp(with: event)
+                return true
+            }
+            return forwarded ? nil : event
+        }
     }
 
     @available(*, unavailable)
@@ -127,6 +163,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
         if let screenChangeObserver {
             NotificationCenter.default.removeObserver(screenChangeObserver)
+        }
+        if let commandKeyUpMonitor {
+            NSEvent.removeMonitor(commandKeyUpMonitor)
         }
     }
 
@@ -188,7 +227,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // retry a few times and only then surface a visible error. A later re-parent keeps
     // the existing surface (the `surface == nil` guard makes this a no-op then).
     private func createSurfaceIfNeeded() {
-        guard surface == nil, window != nil else { return }
+        guard surface == nil, !invalidated, window != nil else { return }
         let nsview = Unmanaged.passUnretained(self).toOpaque()
         // The configuration's `scaleFactor` overwrites libghostty's own, so seed it
         // from the hosting window: left at the `1.0` default, every surface is born at
@@ -201,6 +240,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             // clipboard callbacks, letting them recover this view.
             surface = try GhosttySurface(
                 runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+            // The surface init typed the queued command into the new child (see the
+            // ghostty-initial-input-utf8 note). Drop it now that it has run, so no later
+            // creation on this view can replay it. The local copy above is what was just
+            // used, so this cannot cancel the injection that already happened.
+            self.configuration.initialInput = nil
             cancelPendingSurfaceRetry()
             surfaceCreationAttempts = 0
             removeErrorOverlay()
@@ -275,8 +319,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// surface reaches the action and clipboard trampolines, which recover this view
     /// from the per-surface userdata with `takeUnretainedValue()` — on an object that
     /// is already deallocating. Freeing the surface here closes that window.
-    /// Idempotent: a later call has no surface left to free.
+    /// Idempotent: a later call has no surface left to free. It is also final — a
+    /// subsequent window attachment will not build a replacement surface, so a view
+    /// that outlives its owner's teardown can never spawn a second child process.
     public func invalidate() {
+        invalidated = true
+        cancelPendingSurfaceRetry()
         surface = nil
     }
 

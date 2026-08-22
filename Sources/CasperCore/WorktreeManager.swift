@@ -106,9 +106,18 @@ public enum WorktreeManager {
             try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
         }
 
+        // Same Git-ignore source `DirectoryWatcher` prunes with: walking `.build` or
+        // `node_modules` costs a syscall per entry and can never yield a match worth
+        // seeding. A failure here only loses the pruning, so the copy still runs.
+        let ignoredTrees = Set(
+            ((try? repo.ignoredTopLevelDirectories()) ?? []).map {
+                URL(fileURLWithPath: $0).lastPathComponent
+            })
+
         do {
             _ = try WorkspaceFileCopier.copy(
-                patterns: patterns, from: repoPath, to: worktreePath)
+                patterns: patterns, from: repoPath, to: worktreePath,
+                skippingTopLevelDirectories: ignoredTrees)
         } catch {
             try? remove(repoPath: repoPath, name: name, worktreePath: worktreePath)
             try? deleteBranch(repoPath: repoPath, name: name)

@@ -108,8 +108,13 @@ final class DiffStickyHeader: NSView {
         let updated = resolveBars(
             geometry: geometry, visibleTop: visibleTop, visibleHeight: visibleHeight)
         guard updated != bars else { return }
+        // Only the file boundaries decide what the bars say, and building one bar's
+        // text lays four attributed strings out. A bar that merely moved keeps the
+        // labels it already has, which is every bar of every scroll frame.
+        if updated.map(\.fileIndex) != bars.map(\.fileIndex) {
+            labels = updated.map { bar in file(at: bar.fileIndex).map(Labels.init) }
+        }
         bars = updated
-        labels = updated.map { bar in file(at: bar.fileIndex).map(Labels.init) }
         needsDisplay = true
     }
 
@@ -137,9 +142,18 @@ final class DiffStickyHeader: NSView {
     /// `bars` — declares where it is built instead.
     @MainActor
     private struct Labels {
-        let title: NSAttributedString
+        /// One drawn string together with the size it lays out at. Measured here,
+        /// where the string is built and final, rather than in `draw(_:)`: laying
+        /// an attributed string out to measure it costs the same as drawing it,
+        /// and the overlay is redrawn on every frame the bars move.
+        struct Piece {
+            let string: NSAttributedString
+            let size: NSSize
+        }
+
+        let title: Piece
         /// The pieces pushed to the right, rightmost first.
-        let trailing: [NSAttributedString]
+        let trailing: [Piece]
 
         init(_ file: DiffDocument.FileSpan) {
             title = Self.piece(file.title, DiffStickyHeader.titleAttributes)
@@ -154,8 +168,9 @@ final class DiffStickyHeader: NSView {
 
         private static func piece(
             _ string: String, _ attributes: [NSAttributedString.Key: Any]
-        ) -> NSAttributedString {
-            NSAttributedString(string: string, attributes: attributes)
+        ) -> Piece {
+            let attributed = NSAttributedString(string: string, attributes: attributes)
+            return Piece(string: attributed, size: attributed.size())
         }
     }
 
@@ -245,15 +260,15 @@ final class DiffStickyHeader: NSView {
         // row-based renderer gave it.
         var trailing = content.maxX
         for piece in labels.trailing {
-            let size = piece.size()
-            piece.draw(in: NSRect(x: trailing - size.width, y: centeredY(of: size, in: content),
-                                  width: size.width, height: size.height))
+            let size = piece.size
+            piece.string.draw(in: NSRect(x: trailing - size.width, y: centeredY(of: size, in: content),
+                                         width: size.width, height: size.height))
             trailing -= size.width + Self.itemSpacing
         }
 
-        let size = labels.title.size()
-        labels.title.draw(in: NSRect(x: content.minX, y: centeredY(of: size, in: content),
-                                     width: max(trailing - content.minX, 0), height: size.height))
+        let size = labels.title.size
+        labels.title.string.draw(in: NSRect(x: content.minX, y: centeredY(of: size, in: content),
+                                            width: max(trailing - content.minX, 0), height: size.height))
     }
 
     /// Centers a piece vertically in the bar, matching the row-based renderer's

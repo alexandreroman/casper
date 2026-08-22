@@ -188,14 +188,19 @@ func casperGhosttyAction(
     // other action to the runtime unchanged.
     switch action.tag {
     case GHOSTTY_ACTION_MOUSE_SHAPE:
-        guard let view = surfaceView(from: target) else { return false }
-        let shape = action.action.mouse_shape
-        MainActor.assumeIsolated { view.setCursorShape(shape) }
+        // Reported as consumed even when no view is recoverable, like every other
+        // surface-scoped action below: the target view is the only consumer, so a
+        // vanished view leaves nothing for anyone else to do with the action.
+        if let view = surfaceView(from: target) {
+            let shape = action.action.mouse_shape
+            MainActor.assumeIsolated { view.setCursorShape(shape) }
+        }
         return true
     case GHOSTTY_ACTION_MOUSE_VISIBILITY:
-        guard let view = surfaceView(from: target) else { return false }
-        let visible = action.action.mouse_visibility == GHOSTTY_MOUSE_VISIBLE
-        MainActor.assumeIsolated { view.setCursorVisibility(visible) }
+        if let view = surfaceView(from: target) {
+            let visible = action.action.mouse_visibility == GHOSTTY_MOUSE_VISIBLE
+            MainActor.assumeIsolated { view.setCursorVisibility(visible) }
+        }
         return true
     case GHOSTTY_ACTION_SET_TITLE:
         // The OSC window title is per-surface state that agent-state detection reads
@@ -402,8 +407,8 @@ func casperGhosttyConfirmReadClipboard(
 /// lives for the duration of this call.
 ///
 /// The deferral is `DispatchQueue.main.async` rather than the modal-proof
-/// `CFRunLoopPerformBlock` route (`ScriptHookRunner.onMainRunLoop`): a work item that
-/// waits behind an alert already on screen is the right outcome here — nothing in
+/// `CFRunLoopPerformBlock` route (`MainRunLoop.perform`, over in CasperUI): a work item
+/// that waits behind an alert already on screen is the right outcome here — nothing in
 /// libghostty is blocked on this write, and the prompt belongs after that dialog, not
 /// stacked on it. What the main queue does guarantee is the part that matters, that
 /// the block cannot run inside the current tick.

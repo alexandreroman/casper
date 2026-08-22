@@ -10,10 +10,9 @@ import XCTest
 /// the mechanism `AppModel.surfaceView(for:in:)` relies on to run a terminal's
 /// launch command reliably.
 ///
-/// Follows the real-surface e2e harness pattern (real `GhosttyRuntime()`,
-/// offscreen `NSWindow`, poll for `view.surface != nil` with `XCTSkip`
-/// fallback, fixed `settle(0.6)` then `settle(0.4)` — see the
-/// `ghostty-real-surface-e2e-harness` note).
+/// Runs on the shared `withRealSurface` harness (real `GhosttyRuntime()`, offscreen
+/// `NSWindow`, `XCTSkip` when no surface appears) with a fixed settle rather than
+/// adaptive polling — see the `ghostty-real-surface-e2e-harness` note.
 final class GhosttyInitialInputVerificationTests: XCTestCase {
     /// With only `initialInput` carrying a probe (no explicit command), the grid must
     /// show the real login shell ran (`$0` starts with `-`, the login-shell marker,
@@ -28,11 +27,23 @@ final class GhosttyInitialInputVerificationTests: XCTestCase {
         XCTAssertTrue(
             grid.contains("INVOKER="),
             "initial_input probe did not run; grid was:\n\(grid)")
+
+        // Which shell and which Homebrew prefix the surface inherits are facts about the
+        // host, not about Casper, so the two assertions below only apply where they can
+        // mean something.
+        let loginShell = ProcessInfo.processInfo.environment["SHELL"] ?? ""
+        try XCTSkipUnless(
+            loginShell.hasSuffix("/zsh"), "the host's login shell is \(loginShell), not zsh")
         XCTAssertTrue(
             grid.contains("zsh"),
             "expected the real login shell (zsh), not bash; grid was:\n\(grid)")
+
+        let homebrewBin = "/opt/homebrew/bin"
+        try XCTSkipUnless(
+            FileManager.default.fileExists(atPath: homebrewBin),
+            "the host has no Homebrew at \(homebrewBin)")
         XCTAssertTrue(
-            grid.contains("/opt/homebrew/bin"),
+            grid.contains(homebrewBin),
             "expected Homebrew's zsh-dotfile PATH entry; grid was:\n\(grid)")
     }
 
@@ -71,34 +82,15 @@ final class GhosttyInitialInputVerificationTests: XCTestCase {
     /// visible grid. Skips (rather than fails) when libghostty can't produce a surface.
     @MainActor
     private func captureGrid(configuration: GhosttySurfaceConfiguration) throws -> String {
-        let runtime = try GhosttyRuntime()
-        let view = GhosttySurfaceView(runtime: runtime, configuration: configuration)
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
+        var grid = ""
+        try withRealSurface(makeView: { GhosttySurfaceView(runtime: $0, configuration: configuration) }) {
+            _, surface in
+            // Let the shell reach an interactive prompt, consume the queued initial_input,
+            // and print its output before we read the grid.
+            settle(1.0)
 
-        let deadline = Date().addingTimeInterval(10)
-        while view.surface == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            grid = surface.readText(scrollback: false) ?? ""
         }
-        guard let surface = view.surface else {
-            throw XCTSkip("libghostty could not create a surface in this environment")
-        }
-        XCTAssertTrue(window.makeFirstResponder(view))
-
-        // Let the shell reach an interactive prompt, consume the queued initial_input,
-        // and print its output before we read the grid.
-        settle(0.6)
-        settle(0.4)
-
-        return surface.readText(scrollback: false) ?? ""
-    }
-
-    /// Pump the main run loop for a fixed duration so libghostty can drain PTY output and
-    /// the shell can settle. Fixed pump, not adaptive polling — see the harness note.
-    @MainActor
-    private func settle(_ seconds: TimeInterval) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+        return grid
     }
 }

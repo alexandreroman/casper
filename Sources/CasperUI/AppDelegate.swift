@@ -41,6 +41,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         shortcutMonitor.start()
         workspaceShortcutMonitor = shortcutMonitor
 
+        // The two `CASPER_*` env inputs are assigned BEFORE `model.runtime` below, and
+        // the order is load-bearing rather than cosmetic. `runtime` is the observed
+        // property that unblocks `surfaceView(for:)`, and therefore the PTY spawn that
+        // reads both of these through `surfaceConfiguration`. Since they are
+        // `@ObservationIgnored`, a surface created between the two assignments would
+        // spawn a shell with no `casper` CLI wiring and never be corrected — the view is
+        // cached for the workspace's lifetime. See `observed-startup-dependencies`.
+
+        // Per-surface env inputs.
+        model.casperDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
+            ?? (CommandLine.arguments.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
+
+        // Release control socket: the `casper` CLI's command channel, distinct
+        // from the DEBUG-only debug channel below — this one ships in release.
+        let controlPath = model.sessionIdentity.controlSocketPath()
+        let control = ControlServer(socketPath: controlPath, model: model)
+        do {
+            try control.start()
+            self.controlServer = control
+            model.controlSocketPath = controlPath
+        } catch {
+            CasperLog.app.failure("control server failed to start", error)
+        }
+
         // The Ghostty runtime is created once and shared by every surface.
         do {
             let runtime = try GhosttyRuntime()
@@ -68,21 +92,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             return
         }
 
-        // Per-surface env inputs.
-        model.casperDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
-            ?? (CommandLine.arguments.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
-
-        // Release control socket: the `casper` CLI's command channel, distinct
-        // from the DEBUG-only debug channel below — this one ships in release.
-        let controlPath = model.sessionIdentity.controlSocketPath()
-        let control = ControlServer(socketPath: controlPath, model: model)
-        do {
-            try control.start()
-            self.controlServer = control
-            model.controlSocketPath = controlPath
-        } catch {
-            CasperLog.app.failure("control server failed to start", error)
-        }
+        // The restored session's Git probes, the editor sweep and the worktree watchers,
+        // on a later main-actor turn: all three scale with the size of the session and
+        // none of them has to happen before the window can draw. Both properties they
+        // publish are observed, so a view that rendered first re-renders when they land.
+        Task { @MainActor in model.completeLaunchSetup() }
 
         setupNotifications()
 

@@ -21,6 +21,11 @@ struct ProgressCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
+            guard total <= ProgressSynthesis.maxSynthesizedTotal else {
+                throw exitWithError(
+                    "invalid progress: --total \(total) exceeds the maximum of "
+                        + "\(ProgressSynthesis.maxSynthesizedTotal)")
+            }
             guard ProgressSynthesis.todos(total: total, current: current, label: label) != nil else {
                 throw exitWithError("invalid progress \(current)/\(total) (need 1 <= current <= total)")
             }

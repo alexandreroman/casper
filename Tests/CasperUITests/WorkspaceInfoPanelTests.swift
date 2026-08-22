@@ -9,20 +9,6 @@ import CasperCore
 /// whatever the message throws at it. Pixels still need human eyes.
 @MainActor
 final class WorkspaceInfoPanelTests: XCTestCase {
-    /// A model seeded with one Git-less space + workspace, mirroring
-    /// `ControlHandlerTests.seededModel()`.
-    private static func seeded() -> (AppModel, Workspace) {
-        let ws = Workspace(
-            name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
-        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: store, session: session), ws)
-    }
-
     /// `NSHostingView.fittingSize` reflects the SwiftUI layout tree as of the
     /// last layout pass, so `layoutSubtreeIfNeeded()` before reading it is
     /// required — not optional the way it looked in the sibling
@@ -31,7 +17,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// assertions below would pass whether or not the panel's sizing actually
     /// works.
     private func layoutSize(for markdown: String) -> CGSize {
-        let (model, workspace) = Self.seeded()
+        let (model, workspace) = makeSeededModel()
         let view = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown)
         let host = NSHostingView(rootView: view)
         host.layoutSubtreeIfNeeded()
@@ -221,7 +207,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     }
 
     private func hostPanel(_ markdown: String, hostHeight: CGFloat) throws -> HostedPanel {
-        let (model, workspace) = Self.seeded()
+        let (model, workspace) = makeSeededModel()
         let view = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown)
         let host = NSHostingView(rootView: view)
         let window = NSWindow(
@@ -434,7 +420,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// pins for `controlOpenBrowser` itself, exercised here through `openURL`'s
     /// own scheme guard rather than called directly.
     func testOpenURLRoutesHTTPSIntoTheWorkspaceBrowser() throws {
-        let (model, workspace) = Self.seeded()
+        let (model, workspace) = makeSeededModel()
         let panel = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: "")
         let url = URL(string: "https://example.com")!
 
@@ -464,7 +450,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// panel owns; a scheme it does not own is the system's either way, so
     /// holding the modifier must not claim the click.
     func testSystemBrowserModifierLeavesNonHTTPSchemesToTheSystem() throws {
-        let (model, workspace) = Self.seeded()
+        let (model, workspace) = makeSeededModel()
         let panel = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: "")
         let url = URL(string: "mailto:someone@example.com")!
 
@@ -482,7 +468,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// workspace browser) cannot pass silently: the inspector would stay off
     /// the `.browser` tab it starts on.
     func testOpenURLLeavesNonHTTPSchemesToTheSystem() throws {
-        let (model, workspace) = Self.seeded()
+        let (model, workspace) = makeSeededModel()
         let panel = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: "")
         let url = URL(string: "file:///etc/hosts")!
 

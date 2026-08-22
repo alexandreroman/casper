@@ -17,7 +17,7 @@ struct RunCommand: ParsableCommand {
 
     func run() throws {
         let response = try sendControl(makeCommand(), retriable: false)
-        guard let info = response.terminals?.first else { throw exitWithError("no terminal returned") }
+        let info = try requireFirst(response.terminals, "terminal")
         emit(RunOut(command: name, terminal: info.id, workspace: response.workspaceRef))
     }
 }

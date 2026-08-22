@@ -34,6 +34,23 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try set.makeCommand())
     }
 
+    func testProgressSetRejectsTotalAboveTheCeiling() throws {
+        // `total` sizes a synthesized todo array one-for-one, so it is capped —
+        // and the cap is a separate rejection from the range one: 1/1001 does
+        // satisfy `1 <= current <= total`.
+        let set = try ProgressCommand.Set.parse(
+            ["--total", "\(ProgressSynthesis.maxSynthesizedTotal + 1)", "--current", "1",
+             "--label", "x", "--workspace", "feature"])
+        XCTAssertThrowsError(try set.makeCommand())
+    }
+
+    func testProgressSetAcceptsTheCeiling() throws {
+        let set = try ProgressCommand.Set.parse(
+            ["--total", "\(ProgressSynthesis.maxSynthesizedTotal)", "--current", "1",
+             "--label", "x", "--workspace", "feature"])
+        XCTAssertEqual(try set.makeCommand().total, ProgressSynthesis.maxSynthesizedTotal)
+    }
+
     func testProgressClearBuildsCommand() throws {
         let clear = try ProgressCommand.Clear.parse(["--workspace", "feature"])
         let command = try clear.makeCommand()
@@ -99,6 +116,11 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.verb, .terminalClose)
         XCTAssertEqual(command.target, uuid)
         XCTAssertEqual(command.workspace, "f")
+    }
+
+    func testTerminalCloseRejectsEmptyId() throws {
+        let close = try TerminalCommand.Close.parse(["", "--workspace", "f"])
+        XCTAssertThrowsError(try close.makeCommand())
     }
 
     func testBrowserOpenBuildsCommand() throws {
@@ -466,6 +488,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertThrowsError(try WorkspaceCommand.New.parse(["--workspace", "primary"]))
     }
 
+    func testWorkspaceNewRejectsEmptyBranch() throws {
+        // An empty branch would reach the app and fail deep inside branch-name
+        // sanitizing; the CLI names the missing argument instead.
+        let new = try WorkspaceCommand.New.parse(["", "--workspace", "primary"])
+        XCTAssertThrowsError(try new.makeCommand())
+    }
+
     func testWorkspaceDeleteBuildsCommand() throws {
         let delete = try WorkspaceCommand.Delete.parse(["--workspace", "f"])
         let command = try delete.makeCommand()
@@ -505,6 +534,22 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertNil(nonEmpty(""))
         XCTAssertEqual(nonEmpty("npm test"), "npm test")
     }
+
+    #if DEBUG
+    func testDebugScreenshotAbsolutizesRelativePath() throws {
+        // Same reason as `terminal new --working-dir` and `browser screenshot
+        // --out`: the GUI writes the PNG relative to its own working directory
+        // (`/` when launched from Finder), not the caller's.
+        let shot = try DebugCLICommand.Screenshot.parse(["shot.png"])
+        let expected = FileManager.default.currentDirectoryPath + "/shot.png"
+        XCTAssertEqual(shot.makeCommand().path, expected)
+    }
+
+    func testDebugScreenshotKeepsAbsolutePathUnchanged() throws {
+        let shot = try DebugCLICommand.Screenshot.parse(["/tmp/shot.png"])
+        XCTAssertEqual(shot.makeCommand().path, "/tmp/shot.png")
+    }
+    #endif
 
     func testRunDefaultsToRunCommand() throws {
         let run = try RunCommand.parse(["--workspace", "feature"])

@@ -37,19 +37,13 @@ DEV_APP := Casper-dev.app
 ## build: compile the debug build and assemble the signed dev app bundle
 build:
 	swift build
-	@rm -rf $(DEV_APP)
-	@mkdir -p $(DEV_APP)/Contents/MacOS $(DEV_APP)/Contents/Resources $(DEV_APP)/Contents/Frameworks
-	@cp .build/debug/casper $(DEV_APP)/Contents/MacOS/casper
-	@cp Packaging/Sounds/NotificationAlert.aiff $(DEV_APP)/Contents/Resources/NotificationAlert.aiff
-	@cp Packaging/AppIcon/AppIconDev.icns $(DEV_APP)/Contents/Resources/AppIconDev.icns
-	@cp -R .build/debug/HighlightSwift_HighlightSwift.bundle $(DEV_APP)/Contents/Resources/HighlightSwift_HighlightSwift.bundle
-# Sparkle is linked, so dyld must find it even though the updater stays inert in
-# dev builds (Info-dev.plist carries no SUFeedURL/SUPublicEDKey). SwiftPM puts the
-# framework next to the binary in .build/debug, where the binary finds it via
-# @loader_path — copying the binary out of there breaks that, hence the framework
-# copy plus an @executable_path rpath, mirroring the release bundle.
-# install_name_tool warns that it invalidates the signature; codesign below re-signs.
-	@ditto .build/debug/Sparkle.framework $(DEV_APP)/Contents/Frameworks/Sparkle.framework
+# Stage the layout, binary, Resources and Sparkle.framework that the release
+# bundle stages the same way; only the dev-specific Info.plist and signing follow
+# here. The script's stdout is the bin path it resolved, unused by this target.
+	@Scripts/assemble-bundle.sh debug >/dev/null
+# The staged Sparkle.framework is reachable only once @rpath points inside the
+# bundle. install_name_tool warns that it invalidates the signature; codesign
+# below re-signs.
 	@install_name_tool -add_rpath @executable_path/../Frameworks $(DEV_APP)/Contents/MacOS/casper
 	@sed -e "s/__DEV_BUNDLE_ID__/$(DEV_BUNDLE_ID)/g" \
 		Packaging/Info-dev.plist > $(DEV_APP)/Contents/Info.plist
@@ -104,7 +98,7 @@ clean:
 vendor:
 	vendir sync
 
-## icon: regenerate Packaging/AppIcon/AppIcon.icns from icon.svg (needs resvg)
+## icon: regenerate both .icns files (AppIcon + AppIconDev) from their SVG masters (needs resvg)
 icon:
 	Scripts/make-icon.sh
 

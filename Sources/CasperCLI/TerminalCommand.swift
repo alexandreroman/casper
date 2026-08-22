@@ -28,7 +28,7 @@ struct TerminalCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
-            guard let info = response.terminals?.first else { throw exitWithError("no terminal returned") }
+            let info = try requireFirst(response.terminals, "terminal")
             emit(TerminalNewOut(
                 terminal: info.id, workspace: response.workspaceRef,
                 command: nonEmpty(command), workingDir: info.cwd))
@@ -61,7 +61,8 @@ struct TerminalCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: id)
+            let id = try requireNonEmpty(self.id, "terminal id")
+            return ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: id)
         }
 
         func run() throws {

@@ -28,8 +28,9 @@ import os
 /// grows until it crosses the threshold and we capture. See `scheduleAck` for why
 /// the ack rides the run loop rather than the main dispatch queue.
 ///
-/// `@unchecked Sendable`: the timer's `DispatchSourceTimer` and shared detection
-/// state are confined to the serial `queue` / the `OSAllocatedUnfairLock`, the
+/// `@unchecked Sendable`: the `DispatchSourceTimer` is confined to the serial
+/// `queue`, and every other piece of mutable state — the detection counters and the
+/// injectable test seams alike — lives behind the `OSAllocatedUnfairLock`, the
 /// project's established concurrency idiom (see `SocketServerEngine`).
 public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Environment override for the hang threshold, in seconds. Ignored unless it
@@ -66,9 +67,11 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
             eventTrackingRunLoopMode as CFString,
         ] as CFArray
 
-    /// Detection state, guarded by `lock`. All of it is touched from both the
-    /// timer queue and the (possibly recovered) main-thread ack block, so it lives
-    /// behind a single lock rather than being confined to one queue.
+    /// Detection state and the injectable seams, guarded by `lock`. The detection
+    /// fields are touched from both the timer queue and the (possibly recovered)
+    /// main-thread ack block; the seams are written from a test's thread and read
+    /// from the timer queue. Neither is confined to a single queue, so both live
+    /// behind the same lock. The seams are documented on their accessors below.
     private struct State {
         var threshold: TimeInterval
         var lastMainAck: TimeInterval
@@ -79,6 +82,10 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         /// True while a capture is running, so a fresh episode that begins before
         /// the previous `sample` finishes does not overlap it.
         var captureInFlight = false
+        var nowProvider = MainThreadHangWatchdog.defaultNowProvider
+        var scheduleAck = MainThreadHangWatchdog.defaultScheduleAck
+        var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)?
+        var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)?
     }
 
     private let lock: OSAllocatedUnfairLock<State>
@@ -101,13 +108,24 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     // deterministically in tests — with a fake clock, a manual ack toggle and a
     // stubbed capture — without a real timer, a real blocked main thread or a real
     // `sample` subprocess. Production code never overrides them.
+    //
+    // Each is an accessor over the lock-guarded `State`, so a test assigning one
+    // from its own thread does not race the timer queue reading it.
 
     /// Monotonic clock reading, in seconds. Monotonic (not wall-clock) so a system
     /// clock change cannot manufacture a phantom hang.
-    var nowProvider: @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
-    /// Schedules the per-tick acknowledgement block onto the main thread. The
-    /// default enqueues it on the main *run loop*, for `ackRunLoopModes`; a main
-    /// thread that has stopped turning its run loop simply never runs it.
+    static let defaultNowProvider: @Sendable () -> TimeInterval = {
+        ProcessInfo.processInfo.systemUptime
+    }
+
+    var nowProvider: @Sendable () -> TimeInterval {
+        get { lock.withLock { $0.nowProvider } }
+        set { lock.withLock { $0.nowProvider = newValue } }
+    }
+
+    /// Schedules the per-tick acknowledgement block onto the main thread: it is
+    /// enqueued on the main *run loop*, for `ackRunLoopModes`, so a main thread that
+    /// has stopped turning its run loop simply never runs it.
     ///
     /// The obvious implementation — and the original one — was
     /// `DispatchQueue.main.async`, but it cried wolf. Choosing "Check for
@@ -129,7 +147,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// or a menu track that never ends — now reads as healthy. That is the price
     /// of not crying wolf on every alert the user opens. (A hard block, where the
     /// thread stops servicing any loop, is still caught.)
-    var scheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = { block in
+    static let defaultScheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = { block in
         let mainRunLoop = CFRunLoopGetMain()
         CFRunLoopPerformBlock(mainRunLoop, MainThreadHangWatchdog.ackRunLoopModes, block)
         // A run loop asleep in `mach_msg` would not notice the block until its
@@ -137,13 +155,26 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         // exactly like a hang. Wake it so the ack lands within this tick.
         CFRunLoopWakeUp(mainRunLoop)
     }
+
+    var scheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void {
+        get { lock.withLock { $0.scheduleAck } }
+        set { lock.withLock { $0.scheduleAck = newValue } }
+    }
+
     /// Dispatches the (blocking) capture work off the detection timer's queue. The
     /// default uses `captureQueue`; a test runs it inline for determinism.
-    var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)?
+    var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)? {
+        get { lock.withLock { $0.captureDispatch } }
+        set { lock.withLock { $0.captureDispatch = newValue } }
+    }
+
     /// Performs the capture for a detected hang of `hangDuration`, writing the dump
     /// to `destination`. The default runs `sample`; a test stubs it to record the
     /// call. Set to the real implementation in `init`.
-    var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)?
+    var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)? {
+        get { lock.withLock { $0.capture } }
+        set { lock.withLock { $0.capture = newValue } }
+    }
 
     /// - Parameters:
     ///   - threshold: how long the main thread may be unresponsive before a capture
@@ -158,9 +189,12 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         // `lastMainAck` starts neutral; `start()` re-baselines it from the clock
         // before the first tick runs, so this value never triggers a phantom hang.
         self.lock = OSAllocatedUnfairLock(initialState: State(threshold: threshold, lastMainAck: 0))
-        self.captureDispatch = { [captureQueue] block in captureQueue.async(execute: block) }
-        self.capture = { [weak self] hangDuration, destination in
-            self?.performDefaultCapture(hangDuration: hangDuration, destination: destination)
+        // These two defaults need `self`, so they cannot be State field defaults.
+        self.lock.withLock { state in
+            state.captureDispatch = { [captureQueue] block in captureQueue.async(execute: block) }
+            state.capture = { [weak self] hangDuration, destination in
+                self?.performDefaultCapture(hangDuration: hangDuration, destination: destination)
+            }
         }
     }
 
@@ -181,10 +215,13 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         queue.async { [weak self] in
             guard let self, self.timer == nil else { return }  // idempotent
 
+            // Read the clock before taking the lock: the seam is an injected closure,
+            // and calling one under the lock invites a lock-ordering surprise.
+            let now = self.nowProvider()
             self.lock.withLock { state in
                 if let resolvedThreshold { state.threshold = resolvedThreshold }
                 // Re-baseline the ack so time spent before `start()` cannot count as a hang.
-                state.lastMainAck = self.nowProvider()
+                state.lastMainAck = now
             }
 
             let timer = DispatchSource.makeTimerSource(queue: self.queue)

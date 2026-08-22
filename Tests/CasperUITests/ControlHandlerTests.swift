@@ -8,21 +8,9 @@ import UserNotifications
 
 @MainActor
 final class ControlHandlerTests: XCTestCase {
-    /// A model seeded with one Git-less space + workspace. `AppModel(sessionStore:)`
-    /// alone starts empty (it defaults to `Session()`, not a load from disk), so —
-    /// mirroring `AppModelTests`'s `session:` construction pattern — the seeded
-    /// `Session` is passed directly to the initializer instead of relying on the
-    /// store's file being read back.
     private func seededModel() -> (AppModel, UUID) {
-        let ws = Workspace(
-            name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
-        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: store, session: session), ws.id)
+        let (model, workspace) = makeSeededModel()
+        return (model, workspace.id)
     }
 
     /// Initialize a repo at `path` and create one commit on it, via libgit2 only
@@ -72,30 +60,21 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     /// Seeds a Git-backed model: a real temp repo with one commit, opened as a
-    /// Space whose primary workspace's `branch` is left empty. `primaryBranch`
-    /// names the scenario for the caller but is never assigned to the workspace:
-    /// libgit2's default branch after `initialize` depends on the host's
-    /// `git config init.defaultBranch` (`main` vs `master`), so hardcoding either
-    /// would be flaky. An empty branch makes `createLinkedWorkspace`'s `base`
-    /// resolve to `nil`, which `WorktreeManager.create` always accepts as "fork
-    /// from HEAD" — the same outcome without guessing the branch name.
-    private func seededGitModel(
-        primaryBranch: String, configJSON: String? = nil
-    ) throws -> (AppModel, UUID, String) {
-        let repoPath = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("casper-ctrl-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(atPath: repoPath, withIntermediateDirectories: true)
+    /// Space whose primary workspace's `branch` is left empty. libgit2's default
+    /// branch after `initialize` depends on the host's `git config
+    /// init.defaultBranch` (`main` vs `master`), so naming either would be flaky.
+    /// An empty branch makes `createLinkedWorkspace`'s `base` resolve to `nil`,
+    /// which `WorktreeManager.create` always accepts as "fork from HEAD" — the
+    /// same outcome without guessing the branch name.
+    private func seededGitModel(configJSON: String? = nil) throws -> (AppModel, UUID, String) {
+        let repoPath = makeTemporaryDirectory(prefix: "casper-ctrl").path
         try makeRepo(at: repoPath, configJSON: configJSON)
 
         let ws = Workspace(
             name: "main", worktreePath: repoPath, branch: "",
             portBase: 41000, layout: .leaf(Surface.terminal(cwd: repoPath)))
         let space = Space(name: "main", folderPath: repoPath, isGitRepo: true, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: store, session: session), ws.id, repoPath)
+        return (makeModel(spaces: [space], selecting: ws.id), ws.id, repoPath)
     }
 
     /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
@@ -147,11 +126,7 @@ final class ControlHandlerTests: XCTestCase {
             portBase: 41000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt-b"))))
         let space = Space(
             name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [workspaceA, workspaceB])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: workspaceA.id)
-        let model = AppModel(sessionStore: store, session: session)
+        let model = makeModel(spaces: [space], selecting: workspaceA.id)
 
         // `selectWorkspace` is the path that assigns focus to a workspace's top-left
         // surface — drive it so the focused surface is deterministically A's leaf.
@@ -183,11 +158,7 @@ final class ControlHandlerTests: XCTestCase {
             portBase: 41000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt-b"))))
         let space = Space(
             name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [workspaceA, workspaceB])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: workspaceA.id)
-        let model = AppModel(sessionStore: store, session: session)
+        let model = makeModel(spaces: [space], selecting: workspaceA.id)
         model.selectWorkspace(workspaceA.id)
 
         var materializedFor: [UUID] = []
@@ -288,7 +259,7 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(model.controlOpenBrowser(url: firstURL, in: id))
         let firstSurface = try XCTUnwrap(model.workspace(id: id)).inspector.browser
         let coordinator = try XCTUnwrap(model.browserCoordinator(for: firstSurface))
-        try await waitUntil { !coordinator.address.isEmpty }
+        await waitUntil { !coordinator.address.isEmpty }
         let firstCommitted = coordinator.address
 
         // Second open with a different URL. The coordinator already exists, so the
@@ -301,24 +272,11 @@ final class ControlHandlerTests: XCTestCase {
             model.browserCoordinator(for: secondSurface) === coordinator,
             "the cached coordinator must be preserved, not recreated")
 
-        try await waitUntil { coordinator.address != firstCommitted }
+        await waitUntil { coordinator.address != firstCommitted }
     }
 
     /// Polls `condition` on the main actor until it holds or `timeout` elapses,
     /// yielding between checks so pending `WKWebView` navigation callbacks can run.
-    private func waitUntil(
-        timeout: TimeInterval = 5, _ condition: () -> Bool,
-        file: StaticString = #filePath, line: UInt = #line
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() > deadline {
-                return XCTFail("condition not met within \(timeout)s", file: file, line: line)
-            }
-            try await Task.sleep(nanoseconds: 20_000_000)  // 20 ms
-        }
-    }
-
     func testCloseBrowserCollapsesWhenBrowserTabActive() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!
@@ -330,7 +288,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testCloseBrowserNoOpsWhenDiffTabActive() throws {
-        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        let (model, id, _) = try seededGitModel()
         guard case .success = model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
@@ -348,7 +306,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testCloseDiffCollapsesWhenDiffTabActive() throws {
-        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        let (model, id, _) = try seededGitModel()
         guard case .success = model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
@@ -376,7 +334,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testOpenDiffSelectsInspectorTab() throws {
-        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        let (model, id, _) = try seededGitModel()
         guard case .success = model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
@@ -388,7 +346,7 @@ final class ControlHandlerTests: XCTestCase {
     func testOpenDiffWithExistingFileSetsScrollTarget() throws {
         // `makeRepo` writes a real `README.md` into the fixture worktree, so the
         // on-disk existence check passes for it.
-        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        let (model, id, _) = try seededGitModel()
         guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
             return XCTFail("expected success")
         }
@@ -407,7 +365,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testOpenDiffWithMissingFileFails() throws {
-        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        let (model, id, _) = try seededGitModel()
         guard case .failure(let error) = model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
             return XCTFail("expected failure")
         }
@@ -416,7 +374,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testOpenDiffWithEscapingFileFails() throws {
-        let (model, id, _) = try seededGitModel(primaryBranch: "main")
+        let (model, id, _) = try seededGitModel()
         guard case .failure(let error) = model.controlOpenDiff(in: id, file: "../escape.txt") else {
             return XCTFail("expected failure")
         }
@@ -425,7 +383,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testCreateWorkspaceMakesWorktreeAndReturnsInfo() throws {
-        let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
+        let (model, primaryID, _) = try seededGitModel()
         switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-x", base: nil) {
         case .success(let info):
             XCTAssertEqual(info.branch, "feature-x")
@@ -436,7 +394,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testCreateWorkspaceHonorsCommand() throws {
-        let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
+        let (model, primaryID, _) = try seededGitModel()
         switch model.controlCreateWorkspace(
             inSpaceOf: primaryID, branch: "feature-cmd", base: nil, command: "npm test") {
         case .success(let info):
@@ -458,7 +416,6 @@ final class ControlHandlerTests: XCTestCase {
     /// observe the `onMaterializePendingForTest` seam rather than a real PTY.
     func testCreateWorkspaceMaterializesTheSetupHookSplitOffScreen() throws {
         let (model, primaryID, _) = try seededGitModel(
-            primaryBranch: "main",
             configJSON: #"{"workspace":{"scripts":{"setup":"echo setting up"}}}"#)
 
         var materializedFor: [UUID] = []
@@ -478,7 +435,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel(primaryBranch: "main")
+        let (model, primaryID, repoPath) = try seededGitModel()
         let info: ControlWorkspaceInfo
         switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-del", base: nil) {
         case .success(let created): info = created
@@ -500,7 +457,7 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     func testDeleteWorkspaceRefusesPrimary() async throws {
-        let (model, primaryID, _) = try seededGitModel(primaryBranch: "main")
+        let (model, primaryID, _) = try seededGitModel()
         guard case .failure(let error) = await deleteViaControl(model, id: primaryID) else {
             return XCTFail("expected failure for a primary workspace")
         }
@@ -915,22 +872,14 @@ final class ControlHandlerTests: XCTestCase {
     }
 
     private func modelWithWorktree(configJSON: String?) throws -> (AppModel, UUID) {
-        let wt = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("casper-run-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(atPath: wt, withIntermediateDirectories: true)
+        let worktree = makeTemporaryDirectory(prefix: "casper-run")
         if let configJSON {
             try configJSON.write(
-                to: URL(fileURLWithPath: wt).appendingPathComponent(".casper.json"),
+                to: worktree.appendingPathComponent(".casper.json"),
                 atomically: true, encoding: .utf8)
         }
-        let ws = Workspace(
-            name: "main", worktreePath: wt, branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: wt))))
-        let space = Space(name: "main", folderPath: wt, isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: SessionStore(fileURL: url), session: session), ws.id)
+        let (model, workspace) = makeSeededModel(worktreePath: worktree.path)
+        return (model, workspace.id)
     }
 
     func testControlRunLaunchesNamedCommand() throws {

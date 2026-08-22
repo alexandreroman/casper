@@ -1,4 +1,3 @@
-import AppKit
 import CasperCore
 import Foundation
 
@@ -253,60 +252,20 @@ final class ScriptHookRunner {
               generation == nil || generation == pending.generation
         else { return }
         pendingTeardownResumes[workspaceID] = nil
-        Self.onMainRunLoop { MainActor.assumeIsolated { pending.resume(status) } }
+        MainRunLoop.perform { MainActor.assumeIsolated { pending.resume(status) } }
     }
 
-    /// Run `body` on the main thread on a LATER turn of the main run loop.
-    ///
-    /// Deliberately not `DispatchQueue.main.async`: while the main thread sits in a
-    /// nested run loop — which it does on this very actor whenever
-    /// `AppModel+Presentation` runs an `NSAlert`/`NSOpenPanel` modally — libdispatch
-    /// refuses to re-enter the main queue, so a main-queue block waits until the user
-    /// dismisses the panel (the `main-queue-starved-by-modal-loops` note). A teardown
-    /// that finished behind a panel would stall the close awaiting it, and the safety
-    /// timeout below would be stalled with it, defeating the guarantee that a broken
-    /// cleanup script never traps the user. Run-loop blocks carry no such re-entrancy
-    /// guard: the nested loop drains them.
-    ///
-    /// The deferral off the current turn is load-bearing on the child-exit path (see
-    /// `finishTeardown`) and survives the switch: `CFRunLoopPerformBlock` enqueues the
-    /// block for a later pass of the loop, it never runs it inline.
-    ///
-    /// `nonisolated` because the whole point is to be callable from wherever the caller
-    /// happens to be — the timeout below hands work over from a background queue. The
-    /// three CoreFoundation calls are thread-safe by design; handing a block to another
-    /// thread's run loop is exactly what they are for. `body` carries its own isolation:
-    /// it is `@Sendable`, and the run loop drains it on the main thread.
-    nonisolated private static func onMainRunLoop(_ body: @escaping @Sendable () -> Void) {
-        let mainRunLoop = CFRunLoopGetMain()
-        CFRunLoopPerformBlock(mainRunLoop, runLoopModes, body)
-        // A run loop asleep in `mach_msg` would sit on the block until its next event,
-        // which on an idle app is however long the user takes to touch the app again.
-        CFRunLoopWakeUp(mainRunLoop)
-    }
-
-    /// `onMainRunLoop`, delayed by `delay` seconds.
+    /// `MainRunLoop.perform`, delayed by `delay` seconds.
     ///
     /// The wait itself is measured on a background queue so that a modal panel standing
     /// when the deadline elapses cannot push it out — only the delivery hops back to the
-    /// main thread, through the same modal-proof route.
+    /// main thread, through `MainRunLoop`'s modal-proof route. A timeout stalled behind a
+    /// panel would defeat the guarantee that a broken cleanup script never traps the user.
     private static func onMainRunLoop(
         after delay: TimeInterval, _ body: @escaping @Sendable () -> Void
     ) {
-        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { onMainRunLoop(body) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) { MainRunLoop.perform(body) }
     }
-
-    /// The run loop modes `onMainRunLoop` enqueues for: the common modes for ordinary
-    /// event processing, plus the two nested loops AppKit spins on its own (modal
-    /// sessions and menu/drag tracking). Built once and shared.
-    ///
-    /// `nonisolated(unsafe)` because `CFArray` is not `Sendable`, even though this one is
-    /// immutable and never handed out.
-    nonisolated(unsafe) private static let runLoopModes: CFArray = [
-        CFRunLoopMode.commonModes.rawValue,
-        RunLoop.Mode.modalPanel.rawValue as CFString,
-        RunLoop.Mode.eventTracking.rawValue as CFString,
-    ] as CFArray
 
     /// True while THIS teardown run is still the one in flight for `workspaceID` — i.e.
     /// its caller is still suspended and no later run has taken its place. What makes a

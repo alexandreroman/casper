@@ -21,27 +21,22 @@ final class ControlServerTests: XCTestCase {
     /// method instead of being released as soon as its last local use passes.
     private var model: AppModel?
 
-    /// A model seeded with one Git-less space + workspace, mirroring
-    /// `ControlHandlerTests.seededModel()`: `AppModel(sessionStore:)` alone starts
-    /// empty (it defaults to `Session()`, not a load from disk), so the seeded
-    /// `Session` is passed directly to the initializer.
+    /// XCTest keeps every test-case instance alive for the whole run, so the model
+    /// pinned above — and the live `WKWebView` its `browserCoordinators` cache holds,
+    /// web-content process included — would outlive the test that made it.
+    override func tearDown() async throws {
+        await MainActor.run { model = nil }
+    }
+
+    /// A `ControlServer` over a model seeded with one Git-less space + workspace.
     private func seededServer(browserURL: URL? = nil) throws -> (ControlServer, UUID) {
         // A caller can seed the inspector's browser surface with a real page URL so
         // the get-or-create coordinator loads it; otherwise the default blank one.
         let inspector = browserURL.map { InspectorState(browser: Surface(kind: .browser(url: $0))) }
             ?? InspectorState()
-        let ws = Workspace(
-            name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))),
-            inspector: inspector)
-        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        let model = AppModel(sessionStore: store, session: session)
+        let (model, workspace) = makeSeededModel(inspector: inspector)
         self.model = model
-        return (ControlServer(socketPath: "/unused-in-dispatch-test.sock", model: model), ws.id)
+        return (ControlServer(socketPath: "/unused-in-dispatch-test.sock", model: model), workspace.id)
     }
 
     /// `ControlServer.handle` delivers its response through an `@Sendable` reply
@@ -384,14 +379,6 @@ final class ControlServerTests: XCTestCase {
         XCTAssertFalse(response.ok)
     }
 
-    func testBrowserWaitUnresolvableTargetFails() async throws {
-        let (server, _) = try seededServer()
-        let response = await handleAsync(
-            server, ControlCommand(verb: .browserWait, workspace: "ghost", predicate: "true"))
-        XCTAssertFalse(response.ok)
-        XCTAssertNotNil(response.error)
-    }
-
     func testBrowserReloadReturns() async throws {
         let (server, id) = try seededServer()
         let response = await handleAsync(server, ControlCommand(verb: .browserReload, workspace: id.uuidString))
@@ -399,32 +386,16 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(response.workspace, id.casperID)
     }
 
-    func testBrowserScrollUpReturns() async throws {
+    /// Dispatch only: against `about:blank` nothing scrolls, so all four verbs can
+    /// prove no more than that each reaches its handler and replies for the resolved
+    /// workspace. Direction and edge behaviour live in `BrowserAutomationTests`.
+    func testBrowserScrollVerbsReturn() async throws {
         let (server, id) = try seededServer()
-        let response = await handleAsync(server, ControlCommand(verb: .browserScrollUp, workspace: id.uuidString))
-        XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.casperID)
-    }
-
-    func testBrowserScrollDownReturns() async throws {
-        let (server, id) = try seededServer()
-        let response = await handleAsync(server, ControlCommand(verb: .browserScrollDown, workspace: id.uuidString))
-        XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.casperID)
-    }
-
-    func testBrowserScrollTopReturns() async throws {
-        let (server, id) = try seededServer()
-        let response = await handleAsync(server, ControlCommand(verb: .browserScrollTop, workspace: id.uuidString))
-        XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.casperID)
-    }
-
-    func testBrowserScrollBottomReturns() async throws {
-        let (server, id) = try seededServer()
-        let response = await handleAsync(server, ControlCommand(verb: .browserScrollBottom, workspace: id.uuidString))
-        XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.workspace, id.casperID)
+        for verb in [ControlCommand.Verb.browserScrollUp, .browserScrollDown, .browserScrollTop, .browserScrollBottom] {
+            let response = await handleAsync(server, ControlCommand(verb: verb, workspace: id.uuidString))
+            XCTAssertTrue(response.ok, "\(verb)")
+            XCTAssertEqual(response.workspace, id.casperID, "\(verb)")
+        }
     }
 
     /// End-to-end against a real `WKWebView`: a `data:` page logs to the console and

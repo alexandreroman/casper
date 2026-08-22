@@ -113,6 +113,11 @@ final class AppModel {
     /// `diffRevision` bump.
     @ObservationIgnored private let diffDebouncer = Debouncer(delay: 0.2)
 
+    // Reached from AppModel+Spaces.swift.
+    /// Per-workspace watcher wiring, cached because `armWorktreeWatcher` runs far more
+    /// often than the answer changes — see `watcherPaths(for:isGitRepo:)`.
+    @ObservationIgnored var watcherPathsCache: [UUID: WatcherPaths] = [:]
+
     /// The surface that last became first responder (runtime-only, not persisted).
     /// Deliberately has NO `didSet { refreshMenuFlags() }`: no menu flag depends on
     /// the focused surface anymore (the always-enabled Split items enforce
@@ -363,8 +368,8 @@ final class AppModel {
     /// Populated at creation (`controlOpenTerminal`, `createLinkedWorkspace`),
     /// consumed and removed on first `surfaceView(for:in:)` for that surface id
     /// — never replayed after. Never persisted: restoring `session.json` starts
-    /// with an empty map, so a restored terminal never re-runs its original
-    /// launch command (see the `surface-command-bash-exec` project memory note).
+    /// with an empty map, so a restored terminal comes up as a plain login shell
+    /// instead of re-running its original launch command.
     @ObservationIgnored var pendingInitialInput: [UUID: String] = [:]
 
     /// Off-screen host window that materializes a silently-created (control-channel)
@@ -381,6 +386,11 @@ final class AppModel {
     /// for the rest, so SwiftUI never reads the file during `body` —
     /// `namedCommands(for:)` only ever reads this cache.
     @ObservationIgnored var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
+
+    // Reached from AppModel+Spaces.swift.
+    /// The `.casper.json` modification date each cache entry above was built from, so a
+    /// filesystem-driven refresh can skip the read and the decode on an untouched file.
+    @ObservationIgnored var namedCommandsStamps: [UUID: Date] = [:]
 
     // Reached from AppModel+WorkspaceLifecycle.swift.
     /// Workspaces with a close/delete operation in flight, claimed for the WHOLE
@@ -489,7 +499,7 @@ final class AppModel {
         self.sessionIdentity = sessionIdentity
         // Seeded before anything else can `persist()`: a save that ran with the set
         // still empty would wipe every dismissal the user has ever made.
-        self.dismissedAgentReminders = session.dismissedAgentReminders
+        self.restoredAgentReminderDismissals = session.dismissedAgentReminders
         self.spaces = Self.sortedByName(session.spaces)
         // Restore the persisted selection when it still resolves to a live
         // workspace; otherwise fall back to the first workspace of the first
@@ -511,22 +521,18 @@ final class AppModel {
         for space in session.spaces {
             for ws in space.workspaces { self.portAllocator.reserve(ws.portBase) }
         }
-        // `isGitRepo` is not persisted: every decoded Space arrives non-Git, so
-        // resolve each Space's Git backing now by probing its folder. Runs ONCE at
-        // startup — not on a timer — so it does not reintroduce the removed
-        // heartbeat poll. Then arm the watcher for the restored selection (set
-        // directly above, not through selectWorkspace).
-        resolveGitBacking()
-        self.availableEditors = EditorLauncher.detectInstalled()
-        reconfigureWorktreeWatcher()
+        // Everything that has to touch the disk — the per-Space Git probes, the editor
+        // sweep, the watchers — waits for `completeLaunchSetup()`; `init` decodes and
+        // selects, nothing more.
+        //
         // The selection is assigned directly above rather than through
-        // `selectWorkspace`, so warm its named commands here too — otherwise the
-        // launch selection would reach the first `body` with a cold cache.
+        // `selectWorkspace`, so warm its named commands here — otherwise the launch
+        // selection would reach the first `body` with a cold cache.
         if let selected { refreshNamedCommands(for: selected) }
-        // `spaces.didSet` has already fired for the writes above that follow the
-        // initializing assignment (the `isCollapsed` expansion, `resolveGitBacking`),
-        // but a session with no Space at all reaches here having never fired it, so
-        // seed the flags explicitly now that all three raw inputs are assigned.
+        // `spaces.didSet` has already fired for the write above that follows the
+        // initializing assignment (the `isCollapsed` expansion), but a session with no
+        // Space at all reaches here having never fired it, so seed the flags explicitly
+        // now that all three raw inputs are assigned.
         refreshMenuFlags()
     }
 
@@ -534,7 +540,8 @@ final class AppModel {
         worktreeWatcher?.stop()
         gitMetaWatcher?.stop()
         agentDetectionTask?.cancel()
-        agentIntegrationTask?.cancel()
+        // The integration probe is cancelled by `AgentIntegrationReminders`' own deinit —
+        // reaching for it here would build the lazy controller just to tear it down.
     }
 
     /// All workspaces across every Space, in sidebar order.
@@ -736,8 +743,8 @@ final class AppModel {
     /// the Space is missing, not a Git repo, the name is unusable, or the worktree
     /// cannot be created.
     @discardableResult
-    func addLinkedWorkspace(spaceID: UUID, name: String) -> Bool {
-        (try? createLinkedWorkspace(spaceID: spaceID, name: name, base: nil).get()) != nil
+    func addLinkedWorkspace(spaceID: UUID, name: String) async -> Bool {
+        (try? await createLinkedWorkspace(spaceID: spaceID, name: name, base: nil).get()) != nil
     }
 
     /// Create a linked workspace (new branch + worktree at `<parent>/<repo>-<branch>`)
@@ -747,10 +754,59 @@ final class AppModel {
     /// creation and is set to false for the control-channel (CLI) path so a workspace
     /// created remotely does not steal the user's current selection. Returns the new
     /// workspace or a human-readable error.
+    ///
+    /// `async` because the checkout in the middle runs off the main actor, like every
+    /// other libgit2 call on a workspace's lifecycle (`AppModel+WorkspaceLifecycle`):
+    /// `WorktreeManager.create` checks out the branch AND walks the repository tree to
+    /// seed the `copyFiles` entries, which is seconds of work on a large repo.
     func createLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil,
         select: Bool = true
-    ) -> Result<Workspace, WorkspaceCreationError> {
+    ) async -> Result<Workspace, WorkspaceCreationError> {
+        let plan: LinkedWorkspacePlan
+        switch planLinkedWorkspace(spaceID: spaceID, name: name, base: baseOverride) {
+        case .failure(let error): return .failure(error)
+        case .success(let resolved): plan = resolved
+        }
+        do {
+            try await Self.offloadGit { try plan.checkout() }
+        } catch {
+            return .failure(worktreeCreationError(error, releasing: plan))
+        }
+        return adoptLinkedWorkspace(plan, command: command, select: select)
+    }
+
+    /// Everything a linked-workspace creation settles before any git work starts: the
+    /// validated branch name and fork point, a free sibling directory, and the port
+    /// block already reserved for the workspace.
+    ///
+    /// `Sendable`, and identifying its Space by id rather than by index, so the checkout
+    /// can run off the main actor: `spaces` stays sorted by name, so an index captured
+    /// before the hop would point at a different Space if one were added meanwhile.
+    private struct LinkedWorkspacePlan: Sendable {
+        let spaceID: UUID
+        let repoPath: String
+        let branch: String
+        /// The fork point, or empty for "wherever the primary's branch points".
+        let base: String
+        let worktreePath: String
+        let portBase: Int
+        let inheritedEditor: EditorKind?
+
+        /// The libgit2 checkout this plan describes — the blocking part of creation.
+        func checkout() throws {
+            _ = try WorktreeManager.create(
+                repoPath: repoPath, name: branch, worktreePath: worktreePath,
+                base: base.isEmpty ? nil : base)
+        }
+    }
+
+    /// Validate a linked-workspace request and reserve what it needs. Pure main-actor
+    /// work — it reads the model and allocates a port, and touches neither git nor the
+    /// filesystem — which is what lets the caller hand the checkout to another thread.
+    private func planLinkedWorkspace(
+        spaceID: UUID, name: String, base baseOverride: String?
+    ) -> Result<LinkedWorkspacePlan, WorkspaceCreationError> {
         // Carry over the editor selected in the currently-active workspace (nil is
         // fine — it keeps the same resolved default). Captured before any selection
         // change so it reflects the workspace active when creation was requested.
@@ -772,26 +828,43 @@ final class AppModel {
         let folderURL = URL(fileURLWithPath: folder)
         let basePath = folderURL.deletingLastPathComponent()
             .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
-        let worktreePath = availableWorktreePath(basePath)
 
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
             CasperLog.app.failure("cannot add workspace: no free port block", error)
             return .failure(WorkspaceCreationError(message: "no free port block"))
         }
-        do {
-            _ = try WorktreeManager.create(
-                repoPath: folder, name: branch, worktreePath: worktreePath,
-                base: base.isEmpty ? nil : base)
-        } catch {
-            portAllocator.release(portBase)
-            CasperLog.app.failure("worktree creation failed", error)
-            return .failure(WorkspaceCreationError(message: error.localizedDescription))
+        return .success(LinkedWorkspacePlan(
+            spaceID: spaceID, repoPath: folder, branch: branch, base: base,
+            worktreePath: availableWorktreePath(basePath), portBase: portBase,
+            inheritedEditor: inheritedEditor))
+    }
+
+    /// Report a failed checkout, releasing the port block the plan had already reserved
+    /// so a failed attempt cannot leak one.
+    private func worktreeCreationError(
+        _ error: Error, releasing plan: LinkedWorkspacePlan
+    ) -> WorkspaceCreationError {
+        portAllocator.release(plan.portBase)
+        CasperLog.app.failure("worktree creation failed", error)
+        return WorkspaceCreationError(message: error.localizedDescription)
+    }
+
+    /// Fold a finished checkout into the model: append the workspace, queue its initial
+    /// command, take the selection when asked, and run the repo's `setup` hook.
+    private func adoptLinkedWorkspace(
+        _ plan: LinkedWorkspacePlan, command: String?, select: Bool
+    ) -> Result<Workspace, WorkspaceCreationError> {
+        // The Space can be discarded while the checkout runs. The worktree left on disk
+        // is inert — nothing in the model points at it — so the failure is honest.
+        guard let si = spaces.firstIndex(where: { $0.id == plan.spaceID }) else {
+            portAllocator.release(plan.portBase)
+            return .failure(WorkspaceCreationError(message: "space not found"))
         }
         var ws = WorkspaceFactory.makeLinkedWorkspace(
-            name: branch, worktreePath: worktreePath, branch: branch,
-            baseBranch: base, portBase: portBase)
-        ws.lastUsedEditor = inheritedEditor
+            name: plan.branch, worktreePath: plan.worktreePath, branch: plan.branch,
+            baseBranch: plan.base, portBase: plan.portBase)
+        ws.lastUsedEditor = plan.inheritedEditor
         if let command, let terminalID = LayoutTree.surfaceIDs(ws.layout).first {
             pendingInitialInput[terminalID] = command
         }
@@ -808,7 +881,7 @@ final class AppModel {
         // so no persisted "setup ran" flag is needed). A malformed .casper.json
         // already failed creation in WorktreeManager.create above (Part A); this
         // re-read's `try?`/nil therefore just means "no setup script".
-        if let setup = (try? RepoConfig.load(fromRepoRoot: worktreePath))??.setupScript() {
+        if let setup = (try? RepoConfig.load(fromRepoRoot: plan.worktreePath))??.setupScript() {
             scriptHooks.runSetupHook(in: ws.id, command: setup)
         }
         // A silently-created (control-channel) workspace is never selected, so its views
@@ -931,12 +1004,44 @@ final class AppModel {
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
         let ws = workspace(at: at)
+        let paths = watcherPaths(for: ws, isGitRepo: spaces[at.space].isGitRepo)
+        worktreeWatcher = makeWorktreeWatcher(
+            ws.worktreePath, paths.exclusions, makeWorktreeChangeHandler())
+        // Commit detection: watch the resolved gitdir's reflog directory, which the
+        // `.git`-excluded worktree watcher above can't see. Reuse `makeWorktreeWatcher`
+        // (the test injection seam) with no exclusions, routing through the same
+        // debounced hop as the primary watcher.
+        if let reflogDirectory = paths.reflogDirectory {
+            gitMetaWatcher = makeWorktreeWatcher(reflogDirectory, [], makeWorktreeChangeHandler())
+        }
+    }
+
+    /// What the FSEvents watchers for one workspace need to know about its repository.
+    struct WatcherPaths {
+        /// Directories FSEvents must not report changes under: `.git` plus the
+        /// gitignored top-level directories (`node_modules`, `build`, …).
+        let exclusions: [String]
+        /// The reflog directory whose writes mean "a commit landed", or nil for a
+        /// non-Git Space or a repository that could not be opened.
+        let reflogDirectory: String?
+    }
+
+    /// The watcher paths for `ws`, computed once per workspace and reused.
+    ///
+    /// The computation is a `Repository.open` plus a directory listing and one
+    /// `isPathIgnored` per top-level entry — a real cost on a large worktree, and
+    /// `armWorktreeWatcher` runs on every ⌘1…9 selection and every window-occlusion
+    /// transition. The answer only moves when the Space's Git backing flips or its
+    /// `.gitignore` changes, both of which land in `handleSelectedWorktreeChange`,
+    /// which drops the entry. Pruned with the workspace by `pruneTransientState`.
+    private func watcherPaths(for ws: Workspace, isGitRepo: Bool) -> WatcherPaths {
+        if let cached = watcherPathsCache[ws.id] { return cached }
         let path = ws.worktreePath
         // Open the repo once (when the Space is a Git repo) and reuse the same handle
-        // for both the ignored-directory exclusions and the reflog watcher below.
-        let repo = spaces[at.space].isGitRepo ? try? Repository.open(atPath: path) : nil
+        // for both the ignored-directory exclusions and the reflog path.
+        let repo = isGitRepo ? try? Repository.open(atPath: path) : nil
         var exclusions: [String] = []
-        if spaces[at.space].isGitRepo {
+        if isGitRepo {
             exclusions.append(path + "/.git")
             if let repo {
                 exclusions.append(contentsOf: (try? repo.ignoredTopLevelDirectories()) ?? [])
@@ -944,19 +1049,13 @@ final class AppModel {
         }
         // FSEventStreamSetExclusionPaths accepts at most 8 paths; .git stays first.
         if exclusions.count > 8 { exclusions = Array(exclusions.prefix(8)) }
-        worktreeWatcher = makeWorktreeWatcher(path, exclusions, makeWorktreeChangeHandler())
-        // Commit detection: watch the resolved gitdir's reflog directory, which the
-        // `.git`-excluded worktree watcher above can't see. `gitDirPath` carries a
-        // trailing slash and, for a linked worktree, resolves to
-        // `<maindir>/.git/worktrees/<name>/`, so its `logs/HEAD` reflog is the one
-        // that moves on this worktree's commits. Reuse `makeWorktreeWatcher` (the
-        // test injection seam) with no exclusions, routing through the same debounced
-        // hop as the primary watcher. Degrades gracefully to nil if the repo can't be
-        // opened or the logs dir can't be watched.
-        if let repo {
-            let logsPath = repo.gitDirPath + "logs"
-            gitMetaWatcher = makeWorktreeWatcher(logsPath, [], makeWorktreeChangeHandler())
-        }
+        // `gitDirPath` carries a trailing slash and, for a linked worktree, resolves to
+        // `<maindir>/.git/worktrees/<name>/`, so its `logs/HEAD` reflog is the one that
+        // moves on this worktree's commits.
+        let paths = WatcherPaths(
+            exclusions: exclusions, reflogDirectory: repo.map { $0.gitDirPath + "logs" })
+        watcherPathsCache[ws.id] = paths
+        return paths
     }
 
     /// Suspend or resume the selected-worktree FSEvents watchers with window
@@ -981,9 +1080,11 @@ final class AppModel {
 
     /// The debounced watcher callback shared by both worktree watchers: hop to the
     /// main actor and, after the debounce window, drive `handleSelectedWorktreeChange`.
+    /// The hop goes through the run loop rather than the main queue so a modal panel
+    /// standing when a change lands cannot hold it back (see `MainRunLoop`).
     private func makeWorktreeChangeHandler() -> @Sendable () -> Void {
         { [weak self] in
-            DispatchQueue.main.async {
+            MainRunLoop.perform {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.diffDebouncer.schedule { [weak self] in
@@ -1007,12 +1108,34 @@ final class AppModel {
     /// is still reached on demotion.
     private func handleSelectedWorktreeChange() {
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
+        // Anything at all may have changed under the worktree, `.gitignore` and `.git`
+        // included, so the cached watcher paths stop being trustworthy here. Dropping
+        // the entry (rather than recomputing) keeps the libgit2 work out of this
+        // 200 ms-debounced path: the next arm pays for it, once.
+        watcherPathsCache[id] = nil
         let flipped = spaces[at.space].isGitRepo
             ? demoteSpaceIfGitRemoved(spaceIndex: at.space)
             : promoteSpaceIfGitInitialized(spaceIndex: at.space)
         if flipped { armWorktreeWatcher() }   // backing changed → exclusions changed → re-arm
         diffRevision += 1
         refreshNamedCommandsIfChanged(for: id)
+    }
+
+    /// The startup work `init` deliberately leaves undone: probing every restored
+    /// Space's Git backing (a libgit2 `Repository.open`, a HEAD read and an `origin`
+    /// lookup per Space), detecting the launchable editors (a LaunchServices sweep),
+    /// and arming the selected worktree's watchers, which read the backing the first
+    /// step resolves. The cost scales with the size of the restored session and none of
+    /// it is needed to draw a frame, so `AppDelegate` calls this on a later main-actor
+    /// turn — see the `observed-startup-dependencies` note.
+    ///
+    /// Everything published here lands in an observed property (`spaces`,
+    /// `availableEditors`), so a view that already rendered against the pre-launch
+    /// values re-renders when the real ones arrive.
+    func completeLaunchSetup() {
+        resolveGitBacking()
+        availableEditors = EditorLauncher.detectInstalled()
+        reconfigureWorktreeWatcher()
     }
 
     /// Determine every Space's Git backing at load time. `isGitRepo` is no longer
@@ -1028,6 +1151,7 @@ final class AppModel {
             guard !spaces[si].workspaces.isEmpty,
                   let info = gitReprobe(spaces[si].folderPath) else { continue }
             spaces[si].isGitRepo = true
+            invalidateWatcherPaths(spaceIndex: si)
             // Resolve the primary by kind, not position; skip the branch write if none.
             if let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) {
                 spaces[si].workspaces[pi].branch = info.branch
@@ -1047,6 +1171,7 @@ final class AppModel {
               let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) else { return false }
         spaces[si].isGitRepo = true
         spaces[si].workspaces[pi].branch = info.branch
+        invalidateWatcherPaths(spaceIndex: si)
         persist()
         return true
     }
@@ -1063,8 +1188,16 @@ final class AppModel {
               let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) else { return false }
         spaces[si].isGitRepo = false
         spaces[si].workspaces[pi].branch = ""   // degenerate primaries carry an empty branch
+        invalidateWatcherPaths(spaceIndex: si)
         persist()
         return true
+    }
+
+    /// Forget the cached watcher paths of every workspace in a Space whose Git backing
+    /// just flipped: `.git` appearing or disappearing rewrites both the exclusion set
+    /// and the reflog path.
+    private func invalidateWatcherPaths(spaceIndex si: Int) {
+        for ws in spaces[si].workspaces { watcherPathsCache[ws.id] = nil }
     }
 
     func focusSurface(_ id: UUID) { focusedSurfaceID = id }
@@ -1076,9 +1209,13 @@ final class AppModel {
     /// change.
     /// A no-op for surfaces with no cached `NSView` (e.g. the diff surface),
     /// which manage their own focus.
+    ///
+    /// The deferral goes through the run loop rather than the main queue so a modal
+    /// panel standing over the app cannot hold the focus move back until it is
+    /// dismissed (see `MainRunLoop`).
     private func focusActiveSurfaceView() {
         guard let id = focusedSurfaceID else { return }
-        DispatchQueue.main.async { [weak self] in
+        MainRunLoop.perform { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, let view = self.surfaceViews[id], let window = view.window
                 else { return }
@@ -1114,10 +1251,16 @@ final class AppModel {
     /// workspace's layout tree. Non-layout surfaces (the Inspector browser), layout
     /// browser/diff surfaces, and "nothing focused" all return false. Gates
     /// `applyNewSplit` — Split only makes sense on a focused terminal.
-    func focusedSurfaceIsTerminal() -> Bool {
-        guard let id = focusedSurfaceID else { return false }
-        for space in spaces {
-            for ws in space.workspaces {
+    func focusedSurfaceIsTerminal() -> Bool { locateFocusedTerminal() != nil }
+
+    /// Where the focused surface lives, but only when it is a TERMINAL pane; nil for
+    /// every case `focusedSurfaceIsTerminal` rejects. One walk answers both questions
+    /// the Split action asks — is a terminal focused, and which workspace owns it — so
+    /// a split does not scan every Space's layout twice.
+    private func locateFocusedTerminal() -> WorkspaceIndex? {
+        guard let id = focusedSurfaceID else { return nil }
+        for (si, space) in spaces.enumerated() {
+            for (wi, ws) in space.workspaces.enumerated() {
                 // `forEachSurface` rather than `surfaces(_:)`: the latter materializes a
                 // fresh `[Surface]` — full values, browser URLs included — per workspace,
                 // and this runs on every Cmd+D.
@@ -1126,10 +1269,10 @@ final class AppModel {
                     guard surface.id == id else { return }
                     if case .terminal = surface.kind { isTerminal = true } else { isTerminal = false }
                 }
-                if let isTerminal { return isTerminal }
+                if let isTerminal { return isTerminal ? (space: si, workspace: wi) : nil }
             }
         }
-        return false
+        return nil
     }
 
     // Reached from AppModel+Control.swift.
@@ -1171,37 +1314,37 @@ final class AppModel {
         }
     }
 
-    /// Add a new terminal by splitting the focused surface to the RIGHT.
+    /// Add a new terminal by splitting the focused surface to the RIGHT — the New
+    /// Terminal action, which splits whatever pane holds focus, terminal or not.
     func applyNewTerminal() {
-        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
-        let cwd = workspace(at: at).worktreePath
-        insertSurfaceBySplitting(
-            at: at, focused: focus, orientation: .horizontal, side: .after,
-            surface: Surface.terminal(cwd: cwd))
+        guard let focus = focusedSurfaceID else { return }
+        applySplit(from: focus, direction: .right)
     }
 
     /// Split the given surface with a new terminal in `direction` (the pane
     /// context-menu action; always creates a terminal).
     func applySplit(from surfaceID: UUID, direction: GhosttySplitDirectionLike) {
         guard let at = locateSurface(surfaceID) else { return }
-        let cwd = workspace(at: at).worktreePath
-        let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
-        insertSurfaceBySplitting(
-            at: at, focused: surfaceID, orientation: orientation, side: side,
-            surface: Surface.terminal(cwd: cwd))
+        applySplit(at: at, from: surfaceID, direction: direction)
     }
 
     /// Split the focused terminal in `direction` (the View menu's Split items). Those
     /// items are always enabled in the menu — never greyed — so the action itself is
     /// the gate: it does nothing unless a terminal is focused.
     func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
-        guard focusedSurfaceIsTerminal() else { return }
-        guard let focus = focusedSurfaceID, let at = locateSurface(focus) else { return }
-        let cwd = workspace(at: at).worktreePath
+        guard let focus = focusedSurfaceID, let at = locateFocusedTerminal() else { return }
+        applySplit(at: at, from: focus, direction: direction)
+    }
+
+    /// The one implementation behind every "add a terminal by splitting" action, for a
+    /// caller that has already located the workspace holding `surfaceID`.
+    private func applySplit(
+        at: WorkspaceIndex, from surfaceID: UUID, direction: GhosttySplitDirectionLike
+    ) {
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(
-            at: at, focused: focus, orientation: orientation, side: side,
-            surface: Surface.terminal(cwd: cwd))
+            at: at, focused: surfaceID, orientation: orientation, side: side,
+            surface: Surface.terminal(cwd: workspace(at: at).worktreePath))
     }
 
     func applyCloseFocusedSurface() {
@@ -1283,12 +1426,19 @@ final class AppModel {
     }
 
     /// The persistent view for a terminal surface, created on first use. Returns nil
-    /// for a non-terminal surface or before the runtime exists.
-    func surfaceView(for surface: Surface, in workspace: Workspace) -> GhosttySurfaceView? {
+    /// for a non-terminal surface, before the runtime exists, or when `workspaceID`
+    /// resolves to no workspace.
+    ///
+    /// Takes the workspace id rather than the value because the workspace is needed
+    /// only to build a brand-new surface's environment: every later call is a cache
+    /// hit, and returning from it before reading `spaces` keeps a pane's body from
+    /// observing a workspace's transient agent fields.
+    func surfaceView(for surface: Surface, in workspaceID: UUID) -> GhosttySurfaceView? {
         guard let runtime, case .terminal = surface.kind else { return nil }
         if let existing = surfaceViews[surface.id] as? GhosttySurfaceView {
             return existing
         }
+        guard let workspace = workspace(id: workspaceID) else { return nil }
         var configuration = surfaceConfiguration(for: workspace, terminal: surface)
         if let command = pendingInitialInput.removeValue(forKey: surface.id) {
             configuration.initialInput = command + "\n"
@@ -1324,7 +1474,7 @@ final class AppModel {
             // surfaceView(for:) drains pendingInitialInput into the configuration and
             // caches the view; hosting it in a window drives viewDidMoveToWindow ->
             // createSurfaceIfNeeded -> PTY spawn -> the queued command.
-            guard let view = surfaceView(for: surface, in: workspace), view.window == nil else { continue }
+            guard let view = surfaceView(for: surface, in: workspace.id), view.window == nil else { continue }
             view.frame = host.bounds
             view.autoresizingMask = [.width, .height]
             host.addSubview(view)
@@ -1507,6 +1657,8 @@ final class AppModel {
 
     /// Re-read a workspace's named commands (e.g. after it becomes selected).
     private func refreshNamedCommands(for workspaceID: UUID) {
+        guard let ws = workspace(id: workspaceID) else { return }
+        namedCommandsStamps[workspaceID] = configFileStamp(inWorktree: ws.worktreePath)
         namedCommandsCache[workspaceID] = loadNamedCommands(for: workspaceID)
     }
 
@@ -1516,11 +1668,29 @@ final class AppModel {
     /// watcher has no `IgnoreSelf`, so Casper's own writes into the worktree also
     /// wake it, and an unchanged file must not churn the UI. A broken or missing
     /// file yields an empty list (same tolerance as `loadNamedCommands`).
+    ///
+    /// The modification date is checked first, so the common case — a build writing
+    /// into the worktree, which fires this once per 200 ms debounce window for as long
+    /// as it runs — costs one `stat` instead of a read and a JSON decode.
     func refreshNamedCommandsIfChanged(for workspaceID: UUID) {
+        guard let ws = workspace(id: workspaceID) else { return }
+        let stamp = configFileStamp(inWorktree: ws.worktreePath)
+        guard stamp != namedCommandsStamps[workspaceID] else { return }
+        namedCommandsStamps[workspaceID] = stamp
         let fresh = loadNamedCommands(for: workspaceID)
         guard fresh != namedCommandsCache[workspaceID] else { return }
         namedCommandsCache[workspaceID] = fresh
         scriptsRevision += 1
+    }
+
+    /// The modification date of `<worktreePath>/.casper.json`, or `.distantPast` when
+    /// there is no readable file there — "absent" is as much an answer as a date, and
+    /// keeping it non-optional means a workspace with no config still compares equal to
+    /// itself from one filesystem event to the next.
+    private func configFileStamp(inWorktree worktreePath: String) -> Date {
+        let path = URL(fileURLWithPath: worktreePath).appendingPathComponent(".casper.json").path
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        return attributes?[.modificationDate] as? Date ?? .distantPast
     }
 
     /// The command the toolbar's primary button runs: the remembered last-used
@@ -1635,7 +1805,7 @@ final class AppModel {
         do {
             let data = try sessionStore.encode(
                 Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID,
-                        dismissedAgentReminders: dismissedAgentReminders))
+                        dismissedAgentReminders: agentReminders.dismissed))
             saveQueue.async { [sessionStore] in
                 do {
                     try sessionStore.write(data)
@@ -1848,8 +2018,8 @@ final class AppModel {
     /// Write a *detected* agent state. Distinct from the explicit
     /// `controlSetAgentState`: it must NOT grant authority. Writes only when the
     /// value actually changes, so a steady detection stream doesn't thrash the UI.
-    /// Exposed (internal, not private) as a test seam so the notify-wiring can be
-    /// unit-tested directly, like `isUnderExplicitAuthority` / `runAgentDetectionTick`.
+    /// Internal, not private, because `scriptHooks`' `reportSetupFailure` closure calls
+    /// it from outside this file to flag a workspace whose `setup` hook failed.
     func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
         setDetectedAgentState(state, at: at)
@@ -1914,226 +2084,65 @@ final class AppModel {
     }
 
     // MARK: - Agent-integration reminders
-    //
-    // The machine-wide answer to "does the user have a coding agent whose Casper
-    // integration is missing, stale, or installed but not yet active?". The policy
-    // and the probing live in CasperCore (`AgentIntegration`, `AgentIntegrationProbe`);
-    // this is only the wiring: run the probe off the main actor, fold the dismissals
-    // in, and publish
-    // an ordered list the sidebar can render. Casper never repairs an agent's
-    // configuration — see `.superpowers/themes/agent-state-detection.md` and the
-    // agent-integration policy: detect and remind, nothing more.
 
-    /// One sidebar reminder line about a coding agent's Casper integration.
-    struct AgentIntegrationReminder: Identifiable, Equatable {
+    /// The dismissal ids the loaded session carried. Held as a plain `let` because the
+    /// controller below is lazy — it cannot be built from `init`, where `self` is not
+    /// yet whole enough to capture in its `persist` closure — and this is the one piece
+    /// of its state that only `init` knows.
+    @ObservationIgnored private let restoredAgentReminderDismissals: Set<String>
 
-        /// What the line is telling the user. Not derivable from `status` alone:
-        /// `.installed` means "nothing to do" for most agents, but "one manual step
-        /// left" for an agent whose hooks stay inert until they are approved.
-        enum Kind: Equatable {
-            /// The integration is missing or stale — the user installs or updates it.
-            case actionNeeded
-            /// The integration is installed but does nothing until its hooks are trusted.
-            case trustNotice
-        }
+    /// The sidebar's coding-agent integration reminders: the probe cadence, the
+    /// dismissals, and the published lines. `AppModel` keeps only the forwarding
+    /// surface below, which is what the sidebar views and the tests address.
+    ///
+    /// Lazy so the injected `persist` can capture a fully-initialized `self`, which it
+    /// captures WEAKLY — this model owns the controller, and a strong capture would
+    /// close the retain cycle. Same shape as `scriptHooks` and `browserAutomation`.
+    @ObservationIgnored private(set) lazy var agentReminders = AgentIntegrationReminders(
+        dismissed: restoredAgentReminderDismissals,
+        persist: { [weak self] in self?.persist() })
 
-        let agent: CodingAgent
-        let status: AgentIntegrationStatus
-        let kind: Kind
-
-        /// The dismissal id, which is also the stable list identity — a row must not
-        /// lose its SwiftUI identity when its status changes.
-        var id: String { Self.dismissalKey(agent: agent, kind: kind) }
-
-        var documentationURL: URL { agent.documentationURL }
-
-        /// The key a dismissal of this line is persisted under, in
-        /// `Session.dismissedAgentReminders`.
-        ///
-        /// The two kinds deliberately use *different* keys.
-        /// `applyAgentIntegrationStatuses` retires an agent's action-needed dismissal
-        /// as soon as that agent reports `.installed`. A trust notice only ever appears
-        /// *while* the agent reports `.installed`, so sharing the key would un-dismiss
-        /// it the instant it became relevant, leaving it impossible to silence.
-        static func dismissalKey(agent: CodingAgent, kind: Kind) -> String {
-            switch kind {
-            case .actionNeeded: return agent.reminderID
-            case .trustNotice: return "\(agent.reminderID)-trust"
-            }
-        }
-    }
+    /// One sidebar reminder line. Spelled `AppModel.AgentIntegrationReminder` by the
+    /// views and the tests, so the name stays put now that the type lives in its own file.
+    typealias AgentIntegrationReminder = AgentIntegrationReminders.Reminder
 
     /// How long a probe result stays fresh before a stale check re-runs one.
-    ///
-    /// Only the *first* probe is expensive: it resolves the three agent CLIs through
-    /// `LoginShellPath`, one login shell each (1–2.5 s of real work in total). Those
-    /// lookups are cached — misses included — for the lifetime of the process, so every
-    /// probe after the first is a handful of `stat` and `read` calls, far too cheap to
-    /// be worth rationing by the minute.
-    ///
-    /// Seconds are what let the reminder close its own loop. The expected way to install
-    /// an integration is a `plugin install` command typed *in a Casper terminal*, which
-    /// never resigns the app active, so nothing but this cadence can retire the line
-    /// while the user is still looking at it.
-    nonisolated static let agentIntegrationProbeInterval: TimeInterval = 5
-
-    /// Whether a stale check should re-probe. Pure and `static` so the interval is
-    /// unit-testable without a clock seam on the model.
-    ///
-    /// No earlier probe means there is nothing to *re*fresh — deliberately not "probe
-    /// immediately": the first probe is the expensive one, and starting it belongs to
-    /// the launch path, which runs it once and off the main actor.
-    nonisolated static func shouldRefreshAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
-        guard let lastProbeAt else { return false }
-        return now.timeIntervalSince(lastProbeAt) >= agentIntegrationProbeInterval
+    nonisolated static var agentIntegrationProbeInterval: TimeInterval {
+        AgentIntegrationReminders.probeInterval
     }
 
-    /// Probes each agent's integration. Injectable so tests never spawn a login
-    /// shell or read the real home directory. `@Sendable` because it is called off
-    /// the main actor.
-    @ObservationIgnored var agentIntegrationProbe: @Sendable () -> [CodingAgent: AgentIntegrationStatus] = {
-        AgentIntegrationProbe().statuses()
+    /// Whether a stale check should re-probe.
+    nonisolated static func shouldRefreshAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
+        AgentIntegrationReminders.shouldRefresh(lastProbeAt: lastProbeAt, now: now)
+    }
+
+    /// Probes each agent's integration. Injectable so tests never spawn a login shell
+    /// or read the real home directory.
+    var agentIntegrationProbe: @Sendable () -> [CodingAgent: AgentIntegrationStatus] {
+        get { agentReminders.probe }
+        set { agentReminders.probe = newValue }
     }
 
     /// The agents the sidebar should currently remind about, in `CodingAgent.allCases`
-    /// order. Observed: it is written from a background probe completing after the
-    /// view has already rendered, so the view has to re-render when it lands.
-    private(set) var agentIntegrationReminders: [AgentIntegrationReminder] = []
+    /// order. Observed through `agentReminders`, so a probe landing after the sidebar
+    /// has rendered still re-renders it.
+    var agentIntegrationReminders: [AgentIntegrationReminder] { agentReminders.reminders }
 
-    /// The last probe's raw result. Not observed — nothing renders it directly;
-    /// `agentIntegrationReminders` is the published projection.
-    @ObservationIgnored private var agentIntegrationStatuses: [CodingAgent: AgentIntegrationStatus] = [:]
+    /// The in-flight probe, if any — the seam a test awaits after triggering one.
+    var agentIntegrationTask: Task<Void, Never>? { agentReminders.task }
 
-    /// `CodingAgent.reminderID` values the user has dismissed. Mirrors
-    /// `Session.dismissedAgentReminders`: seeded from the loaded session in `init`
-    /// and written back by every `persist()`.
-    @ObservationIgnored private var dismissedAgentReminders: Set<String> = []
-
-    /// When the last probe was *started*, or nil before the first one.
-    @ObservationIgnored private var lastAgentIntegrationProbeAt: Date?
-
-    /// The in-flight probe, if any. Deduplicates overlapping requests, is cancelled
-    /// on teardown, and lets tests await a probe they just triggered.
-    @ObservationIgnored private(set) var agentIntegrationTask: Task<Void, Never>?
-
-    /// Probe now, whatever the last result's age: the launch probe, and the one the
-    /// user earns by opening a reminder's documentation. A probe already in flight is
-    /// left to finish.
-    func refreshAgentIntegrations() {
-        guard agentIntegrationTask == nil else { return }
-        lastAgentIntegrationProbeAt = Date()
-        let probe = agentIntegrationProbe
-        agentIntegrationTask = Task { @MainActor [weak self] in
-            // Detached, never inline: a cold `statuses()` blocks for seconds on three
-            // sequential login shells, and this actor is the one drawing the UI.
-            let statuses = await Task.detached(priority: .utility) { probe() }.value
-            // `Task.detached` neither inherits nor forwards cancellation, and awaiting a
-            // non-throwing task is not a cancellation point — so a cancelled probe runs to
-            // completion and still lands here. This check is what keeps it from publishing.
-            guard !Task.isCancelled, let self else { return }
-            self.agentIntegrationTask = nil
-            self.applyAgentIntegrationStatuses(statuses)
-        }
-    }
+    /// Probe now, whatever the last result's age (the launch probe).
+    func refreshAgentIntegrations() { agentReminders.refresh() }
 
     /// Re-probe if the last result is older than `agentIntegrationProbeInterval`.
-    /// Called from every detection tick and on app activation, so an integration
-    /// installed anywhere — a Casper terminal, another app — retires its own reminder
-    /// within one interval, with no user action to ask for.
-    func refreshAgentIntegrationsIfStale() {
-        guard Self.shouldRefreshAgentIntegrations(lastProbeAt: lastAgentIntegrationProbeAt, now: Date()) else {
-            return
-        }
-        refreshAgentIntegrations()
-    }
+    func refreshAgentIntegrationsIfStale() { agentReminders.refreshIfStale() }
 
-    /// The user opened a reminder's documentation, so an install is imminent: age the
-    /// current result out so the next stale check re-probes instead of leaving the line
-    /// up for the rest of the interval.
-    ///
-    /// Opening the URL stays with the view. Keeping `NSWorkspace` out of the model is
-    /// what lets a test drive this without launching a browser.
-    func agentReminderDocumentationOpened() {
-        lastAgentIntegrationProbeAt = .distantPast
-    }
+    /// The user opened a reminder's documentation, so an install is imminent.
+    func agentReminderDocumentationOpened() { agentReminders.documentationOpened() }
 
     /// Dismiss one reminder line, permanently as far as this problem is concerned.
-    ///
-    /// Keyed by `AgentIntegrationReminder.id`, never an agent's `rawValue`: those ids
-    /// outlive the process in `session.json` (`"claude-code"`, not `"claudeCode"`), so
-    /// the wrong key would make every dismissal a silent no-op.
-    ///
-    /// A line the current result no longer publishes is ignored. The click carries a
-    /// reminder captured when the view's body last ran, and a probe landing in between
-    /// can have retired it — dismissing it then would persist a key for a line nobody
-    /// was looking at, and `"<agent>-trust"` is the one key nothing ever retires, so a
-    /// mistimed click would silence the trust notice for good. Matched on `id` rather
-    /// than on the whole value, so a status changing under an unchanged line
-    /// (`.missing` → `.outdated`) still lets a genuine click through.
     func dismissAgentReminder(_ reminder: AgentIntegrationReminder) {
-        guard agentIntegrationReminders.contains(where: { $0.id == reminder.id }) else { return }
-        guard dismissedAgentReminders.insert(reminder.id).inserted else { return }
-        refreshAgentIntegrationReminders()
-        persist()
-    }
-
-    /// Publish a probe result, first retiring the dismissals it has made obsolete.
-    private func applyAgentIntegrationStatuses(_ statuses: [CodingAgent: AgentIntegrationStatus]) {
-        agentIntegrationStatuses = statuses
-
-        // A dismissal silences the *current* problem, not the agent forever. Once an
-        // agent's integration is healthy the dismissal has done its job, so drop it:
-        // if the user later breaks or uninstalls that integration, they get reminded
-        // again. Without this, one dismissal blinds them to that agent for good.
-        //
-        // Only the action-needed key is retired. A trust notice keys off `.installed`
-        // itself, so clearing its key here would un-dismiss it the moment it became
-        // relevant — which is exactly why it carries a key of its own.
-        let healed = statuses
-            .filter { $0.value == .installed }
-            .map { AgentIntegrationReminder.dismissalKey(agent: $0.key, kind: .actionNeeded) }
-        let remaining = dismissedAgentReminders.subtracting(healed)
-        if remaining != dismissedAgentReminders {
-            dismissedAgentReminders = remaining
-            persist()
-        }
-        refreshAgentIntegrationReminders()
-    }
-
-    /// Recompute the published list from the last probe and the dismissals.
-    ///
-    /// Driven by `CodingAgent.allCases` rather than by iterating the status
-    /// dictionary: dictionary order depends on a per-process hash seed, so the
-    /// sidebar's lines would shuffle from one launch to the next.
-    private func refreshAgentIntegrationReminders() {
-        let reminders = CodingAgent.allCases.compactMap { agent -> AgentIntegrationReminder? in
-            guard let status = agentIntegrationStatuses[agent],
-                  let kind = Self.reminderKind(for: status, of: agent) else { return nil }
-            let reminder = AgentIntegrationReminder(agent: agent, status: status, kind: kind)
-            guard !dismissedAgentReminders.contains(reminder.id) else { return nil }
-            return reminder
-        }
-        guard reminders != agentIntegrationReminders else { return }
-        agentIntegrationReminders = reminders
-    }
-
-    /// Which line, if any, a status earns. Exhaustive on purpose, so a new
-    /// `AgentIntegrationStatus` case forces a decision here rather than silently
-    /// defaulting to "say nothing".
-    private static func reminderKind(
-        for status: AgentIntegrationStatus,
-        of agent: CodingAgent
-    ) -> AgentIntegrationReminder.Kind? {
-        switch status {
-        case .missing, .outdated: return .actionNeeded
-        // The agent's CLI is absent, so the user does not use it: advertising an
-        // integration for a tool they never installed is pure noise.
-        case .notInstalled: return nil
-        // Installed and current is normally nothing to report. The exception is an
-        // agent whose hooks stay inert until approved — the install is real, but it
-        // does nothing at all until the user takes that last step.
-        case .installed: return agent.requiresHookTrust ? .trustNotice : nil
-        }
+        agentReminders.dismiss(reminder)
     }
 
     // MARK: - `.casper.json` lifecycle hooks
@@ -2169,13 +2178,28 @@ final class AppModel {
     /// Create a linked workspace in the Space that owns `workspaceID` (the control
     /// channel's "create workspace" verb, targetable from any workspace in that
     /// Space, not just the primary).
+    ///
+    /// Runs the checkout inline, unlike the UI's `createLinkedWorkspace`: `ControlServer`
+    /// dispatches and replies inside one synchronous `handle` call, so this verb has no
+    /// suspension point to offer. The steps themselves are shared, so the two paths
+    /// cannot drift.
     func controlCreateWorkspace(
         inSpaceOf workspaceID: UUID, branch: String, base: String?, command: String? = nil
     ) -> Result<ControlWorkspaceInfo, WorkspaceCreationError> {
         guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
             return .failure(WorkspaceCreationError(message: "no target workspace"))
         }
-        return createLinkedWorkspace(spaceID: space.id, name: branch, base: base, command: command, select: false)
+        let plan: LinkedWorkspacePlan
+        switch planLinkedWorkspace(spaceID: space.id, name: branch, base: base) {
+        case .failure(let error): return .failure(error)
+        case .success(let resolved): plan = resolved
+        }
+        do {
+            try plan.checkout()
+        } catch {
+            return .failure(worktreeCreationError(error, releasing: plan))
+        }
+        return adoptLinkedWorkspace(plan, command: command, select: false)
             .map { ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 }

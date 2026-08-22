@@ -15,11 +15,6 @@ final class LaunchModeTests: XCTestCase {
             LaunchMode.detect(arguments: ["/path/to/casper", "hooks"]), .cli)
     }
 
-    func testHooksSetupSubcommandMeansCLI() {
-        XCTAssertEqual(
-            LaunchMode.detect(arguments: ["casper", "hooks", "setup"]), .cli)
-    }
-
     func testHelpAndVersionFlagsMeanCLI() {
         XCTAssertEqual(LaunchMode.detect(arguments: ["casper", "--help"]), .cli)
         XCTAssertEqual(LaunchMode.detect(arguments: ["casper", "-h"]), .cli)

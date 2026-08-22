@@ -4,25 +4,11 @@ import CasperCore
 
 @MainActor
 final class AgentDetectionTests: XCTestCase {
-    /// A model seeded with one Git-less space + workspace, mirroring
-    /// `ControlHandlerTests.seededModel`: the seeded `Session` is passed straight
-    /// to the initializer (a bare `AppModel(sessionStore:)` starts empty).
-    private func seededModel() -> (AppModel, UUID) {
-        let ws = Workspace(
-            name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 42000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
-        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: store, session: session), ws.id)
-    }
-
     /// The authority latch protects terminal-independent attention states only;
     /// a hook-reported working state stays under native terminal observation.
     func testTerminalIndependentExplicitStateLatchesAuthorityWhileWorkingDoesNot() {
-        let (model, id) = seededModel()
+        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let id = workspace.id
         XCTAssertFalse(model.isUnderExplicitAuthority(id), "authority starts released")
 
         // A detection pass must never latch authority (with no live surface views
@@ -49,10 +35,7 @@ final class AgentDetectionTests: XCTestCase {
             name: "feature", worktreePath: "/wt-feature", branch: "feature", portBase: 42210,
             layout: .leaf(Surface(kind: .terminal(cwd: "/wt-feature"))), kind: .linked)
         let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [primary, linked])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let model = AppModel(sessionStore: SessionStore(fileURL: url),
-                             session: Session(spaces: [space], selectedWorkspaceID: primary.id))
+        let model = makeModel(spaces: [space], selecting: primary.id)
         model.deliverNotification = { _, _, _, _ in }
 
         XCTAssertTrue(model.controlSetAgentState(.done, for: linked.id))
@@ -68,7 +51,8 @@ final class AgentDetectionTests: XCTestCase {
     /// the injected `deliverNotification`) and raises the sidebar attention dot,
     /// with no agent hook involved — this is the notify-without-a-hook feature.
     func testDetectedBlockedDeliversNotificationAndRaisesDot() {
-        let (model, id) = seededModel()
+        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let id = workspace.id
         model.isWindowKey = { false }  // not focused ⇒ dot may raise
         var delivered: [(title: String, body: String, workspaceID: UUID)] = []
         model.deliverNotification = { title, body, workspaceID, _ in
@@ -89,7 +73,8 @@ final class AgentDetectionTests: XCTestCase {
 
     /// A detected transition into `done` likewise fires a notification.
     func testDetectedDoneDeliversNotification() {
-        let (model, id) = seededModel()
+        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let id = workspace.id
         model.isWindowKey = { false }
         var delivered: [(title: String, body: String)] = []
         model.deliverNotification = { title, body, _, _ in delivered.append((title, body)) }
@@ -102,7 +87,8 @@ final class AgentDetectionTests: XCTestCase {
 
     /// Non-attention states (`working`, `idle`) never notify.
     func testDetectedWorkingOrIdleDoesNotNotify() {
-        let (model, id) = seededModel()
+        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let id = workspace.id
         var delivered = 0
         model.deliverNotification = { _, _, _, _ in delivered += 1 }
 
@@ -114,7 +100,8 @@ final class AgentDetectionTests: XCTestCase {
 
     /// The "only on change" guard means a repeated same-state write notifies once.
     func testRepeatedBlockedNotifiesOnce() {
-        let (model, id) = seededModel()
+        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let id = workspace.id
         model.isWindowKey = { false }
         var delivered = 0
         model.deliverNotification = { _, _, _, _ in delivered += 1 }
@@ -130,7 +117,8 @@ final class AgentDetectionTests: XCTestCase {
     /// already looking at it. The focus semantics come for free from
     /// `controlRaiseNotification`.
     func testDetectedBlockedWhileFocusedDoesNotNotifyOrRaiseDot() {
-        let (model, id) = seededModel()  // seeded session selects this workspace
+        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let id = workspace.id  // seeded session selects this workspace
         model.isWindowKey = { true }
         var delivered = 0
         model.deliverNotification = { _, _, _, _ in delivered += 1 }

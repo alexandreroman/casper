@@ -108,9 +108,9 @@ struct TerminalNewOut: Encodable {
 
 /// `{"terminal":"...","working-dir":"..."}` — one terminal descriptor, used as
 /// an array element for `terminal list`. The id is keyed by its type name
-/// (`terminal`), matching the entity-keyed-by-type-name convention. No longer
-/// carries `command`: a terminal's launch command is a one-shot instruction, not
-/// durable state (see the `surface-command-bash-exec` project memory note).
+/// (`terminal`), matching the entity-keyed-by-type-name convention. It carries no
+/// `command`: a launch command is a one-shot instruction the terminal consumes at
+/// startup, not durable state a listing could report back.
 struct TerminalInfoOut: Encodable {
     let terminal: String
     let workingDir: String

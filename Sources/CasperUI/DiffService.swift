@@ -156,7 +156,12 @@ final class DiffService {
 /// One batch of file texts read by `DiffService.fileTexts(for:headPaths:worktreePaths:)`,
 /// each side keyed by the path it was requested under. A path with no entry has no
 /// readable text.
+///
+/// Both sides are `var` so a consumer can take each text out as it uses it: the
+/// batch holds up to `DiffHighlighter.maxHighlightBytes` per side per file, and
+/// the highlight pass that reads it is serialized over many files, so entries left
+/// in place stay alive for the whole pass.
 struct DiffFileTexts: Sendable {
-    let head: [String: String]
-    let worktree: [String: String]
+    var head: [String: String]
+    var worktree: [String: String]
 }

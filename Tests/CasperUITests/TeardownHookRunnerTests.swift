@@ -7,15 +7,8 @@ final class TeardownHookRunnerTests: XCTestCase {
     /// A minimal model holding one workspace rooted at `worktreePath`. No Git backing
     /// is needed: resolving the hook only reads `.casper.json` from the worktree.
     private func makeModel(worktreePath: String) -> (AppModel, UUID) {
-        let ws = Workspace(
-            name: "main", worktreePath: worktreePath, branch: "main",
-            portBase: 42000, layout: .leaf(Surface.terminal(cwd: worktreePath)))
-        let space = Space(name: "main", folderPath: worktreePath, isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: store, session: session), ws.id)
+        let (model, workspace) = makeSeededModel(worktreePath: worktreePath, portBase: 42000)
+        return (model, workspace.id)
     }
 
     /// Two workspaces in one Space: the first is selected (its views mount normally),
@@ -31,11 +24,7 @@ final class TeardownHookRunnerTests: XCTestCase {
             portBase: 43000, layout: .leaf(Surface.terminal(cwd: path)))
         let space = Space(
             name: "main", folderPath: path, isGitRepo: false, workspaces: [selected, background])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: selected.id)
-        return (AppModel(sessionStore: store, session: session), selected.id, background.id)
+        return (makeModel(spaces: [space], selecting: selected.id), selected.id, background.id)
     }
 
     /// Wait for the teardown split to land in `workspaceID` and return its surface id.
@@ -66,10 +55,8 @@ final class TeardownHookRunnerTests: XCTestCase {
     /// `GhosttySurfaceView.onChildExit` uses in the app. What stays uncovered is the 30 s
     /// timeout fallback, which no test can reach without waiting it out.
     func testReportsNoHookWhenThereIsNoTeardownScript() async throws {
-        let dir = (NSTemporaryDirectory() as NSString)
-            .appendingPathComponent("casper-teardown-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        let (model, workspaceID) = makeModel(worktreePath: dir)
+        let dir = makeTemporaryDirectory(prefix: "casper-teardown")
+        let (model, workspaceID) = makeModel(worktreePath: dir.path)
         let workspace = try XCTUnwrap(model.workspace(id: workspaceID))
 
         let command = model.teardownCommand(for: workspace)

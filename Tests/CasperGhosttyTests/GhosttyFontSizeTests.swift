@@ -8,41 +8,26 @@ import XCTest
 /// Risk/Spike): confirms `ghostty_surface_inherited_config` reflects a LIVE,
 /// runtime-adjusted font size — its documented purpose is building a config
 /// for a *new child* split, and whether it also echoes the current surface's
-/// own live size was unconfirmed before this test. Uses a real runtime + a
-/// real (offscreen) window, exactly like `GhosttyEditingCommandReplayTests`
-/// — the `.forTesting()` runtime never creates a surface.
+/// own live size was unconfirmed before this test. Runs on the shared
+/// `withRealSurface` harness — the `.forTesting()` runtime never creates a
+/// surface.
 final class GhosttyFontSizeTests: XCTestCase {
     @MainActor
     func testInheritedConfigReflectsLiveFontSizeIncrease() throws {
-        let runtime = try GhosttyRuntime()
-        let view = GhosttySurfaceView(runtime: runtime, configuration: GhosttySurfaceConfiguration())
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
+        try withRealSurface { _, surface in
+            let before = surface.currentFontSize()
+            surface.bindingAction("increase_font_size:1")
+            surface.bindingAction("increase_font_size:1")
+            settle(0.3)
+            let after = surface.currentFontSize()
 
-        // Surface creation can transiently return null and retry; poll until it
-        // lands, matching GhosttyEditingCommandReplayTests's precondition guard.
-        let deadline = Date().addingTimeInterval(10)
-        while view.surface == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            XCTAssertGreaterThan(
+                after, before,
+                "ghostty_surface_inherited_config did not reflect a live font-size " +
+                "increase (before: \(before), after: \(after)) — the capture design " +
+                "in terminal-font-size-persistence.md needs revisiting; see its " +
+                "Alternatives section")
         }
-        guard let surface = view.surface else {
-            throw XCTSkip("libghostty could not create a surface in this environment")
-        }
-
-        let before = surface.currentFontSize()
-        surface.bindingAction("increase_font_size:1")
-        surface.bindingAction("increase_font_size:1")
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-        let after = surface.currentFontSize()
-
-        XCTAssertGreaterThan(
-            after, before,
-            "ghostty_surface_inherited_config did not reflect a live font-size " +
-            "increase (before: \(before), after: \(after)) — the capture design " +
-            "in terminal-font-size-persistence.md needs revisiting; see its " +
-            "Alternatives section")
     }
 
     /// Without a live surface (the `.forTesting()` runtime never creates one), a
@@ -71,35 +56,25 @@ final class GhosttyFontSizeTests: XCTestCase {
     /// the exact method AppKit calls for a real physical Cmd+ keypress.
     @MainActor
     func testRealCommandEqualKeypressThroughPerformKeyEquivalentReportsChange() throws {
-        let runtime = try GhosttyRuntime()
         var reported: (UUID, Float)?
         let surfaceID = UUID()
-        let view = GhosttySurfaceView(
-            runtime: runtime, configuration: GhosttySurfaceConfiguration(), surfaceID: surfaceID,
-            onFontSizeChange: { id, size in reported = (id, size) })
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view
-
-        let deadline = Date().addingTimeInterval(10)
-        while view.surface == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        let makeView = { (runtime: GhosttyRuntime) in
+            GhosttySurfaceView(
+                runtime: runtime, configuration: GhosttySurfaceConfiguration(), surfaceID: surfaceID,
+                onFontSizeChange: { id, size in reported = (id, size) })
         }
-        guard view.surface != nil else {
-            throw XCTSkip("libghostty could not create a surface in this environment")
-        }
-        XCTAssertTrue(window.makeFirstResponder(view))
 
-        // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
-        // ANSI keyboard. This is a genuine NSEvent built the same way a real
-        // keypress arrives, not a synthetic debug-only path.
-        let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-            windowNumber: 0, context: nil, characters: "=",
-            charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24)!
-        _ = view.performKeyEquivalent(with: event)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        try withRealSurface(makeView: makeView) { view, _ in
+            // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
+            // ANSI keyboard. This is a genuine NSEvent built the same way a real
+            // keypress arrives, not a synthetic debug-only path.
+            let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+                windowNumber: 0, context: nil, characters: "=",
+                charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24)!
+            _ = view.performKeyEquivalent(with: event)
+            settle(0.3)
+        }
 
         let (reportedID, reportedSize) = try XCTUnwrap(reported)
         XCTAssertEqual(reportedID, surfaceID)

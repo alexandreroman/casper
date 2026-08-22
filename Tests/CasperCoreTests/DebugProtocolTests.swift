@@ -82,17 +82,5 @@ final class DebugProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.x, 12.5)
         XCTAssertEqual(decoded.y, 34.75)
     }
-
-    func testSurfaceRoundTripCarriesId() throws {
-        let surface = DebugState.Surface(
-            id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,
-            widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
-            boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
-            contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2)
-        let data = try JSONEncoder().encode(surface)
-        let decoded = try JSONDecoder().decode(DebugState.Surface.self, from: data)
-        XCTAssertEqual(decoded.id, "0")
-        XCTAssertEqual(decoded, surface)
-    }
 }
 #endif

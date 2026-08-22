@@ -17,10 +17,15 @@ extension AppModel {
 
     /// Prompt for a linked-workspace name and create it. AppKit alert with a text
     /// field; no-op on cancel or empty input.
+    ///
+    /// The prompt itself stays modal; only the creation that follows it is async (the
+    /// worktree checkout runs off the main actor), so the sidebar's call site keeps its
+    /// plain signature.
     func presentAddLinkedWorkspacePanel(spaceID: UUID) {
         guard let name = WorkspaceAlerts.askWorkspaceName() else { return }
-        if !addLinkedWorkspace(spaceID: spaceID, name: name) {
-            WorkspaceAlerts.reportCreationFailure(name: name)
+        Task { @MainActor in
+            let created = await self.addLinkedWorkspace(spaceID: spaceID, name: name)
+            if !created { WorkspaceAlerts.reportCreationFailure(name: name) }
         }
     }
 
@@ -126,18 +131,22 @@ extension AppModel {
     /// untouched, so the control channel and the tests still see it.
     ///
     /// Async because of the hop below: the progress sheet is dismissed by clearing
-    /// `closeProgress`, but SwiftUI only tears it down on a later main-queue turn, and an
-    /// `NSAlert` run modally before that stacks on top of a live sheet. Clearing here too
-    /// (the orchestrator already did on its way out) keeps that invariant local to the one
-    /// place that runs a modal — and, exactly like the reporter, only clears a sheet that
-    /// belongs to this operation.
+    /// `closeProgress`, but SwiftUI only tears it down on a later turn of the run loop,
+    /// and an `NSAlert` run modally before that stacks on top of a live sheet. Clearing
+    /// here too (the orchestrator already did on its way out) keeps that invariant local
+    /// to the one place that runs a modal — and, exactly like the reporter, only clears a
+    /// sheet that belongs to this operation.
+    ///
+    /// The hop goes through `MainRunLoop`, not the main queue: a close that fails while
+    /// any other panel is up (Add Folder…, Create Workspace…, a Sparkle update check)
+    /// would otherwise hold this alert back for that panel's whole lifetime.
     private func presentWorkspaceOperationFailureAlert(
         for workspaceID: UUID, title: String, message: String
     ) async {
         if closeProgress?.id == workspaceID { closeProgress = nil }
         guard workspace(id: workspaceID) != nil else { return }
         await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
+            MainRunLoop.perform { continuation.resume() }
         }
         WorkspaceAlerts.reportFailure(title: title, message: message)
     }

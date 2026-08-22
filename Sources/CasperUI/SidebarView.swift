@@ -68,14 +68,12 @@ struct SidebarView: View {
             case .delete: return isLinked
             }
         }
-        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-            if index > 0 { Divider() }
-            ForEach(group, id: \.title) { item in
-                Button(role: item.isDestructive ? .destructive : nil, action: item.action) {
-                    Label(item.title, systemImage: item.systemImage)
-                }
-                .disabled(!item.isEnabled)
+        MenuGroups(groups: groups, itemID: \.title) { item in
+            Button(role: item.isDestructive ? .destructive : nil, action: item.action) {
+                Label(item.title, systemImage: item.systemImage)
             }
+            .disabled(!item.isEnabled)
+        } groupSuffix: { index in
             if index == 0 { runScriptMenu(for: workspace) }
         }
     }

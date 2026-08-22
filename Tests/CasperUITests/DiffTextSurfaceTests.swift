@@ -59,10 +59,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     ) -> (controller: DiffSurfaceController, host: NSView) {
         let controller = DiffSurfaceController()
         let host = NSHostingView(
-            rootView: DiffTextSurface(
-                controller: controller,
-                rendering: DiffRendering(revision: 1, document: document, highlights: highlights))
-                .frame(width: 480, height: 600))
+            rootView: hostedSurface(controller, revision: 1, document: document, highlights: highlights))
         host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
         host.layoutSubtreeIfNeeded()
         return (controller, host)
@@ -78,15 +75,8 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// `makeCoordinator()` — an ordering SwiftUI does not document.
     func testRealizingTheSurfaceRendersADocumentThatAlreadyExists() throws {
         let document = makeDocument(fileCount: 3)
-        let controller = DiffSurfaceController()
-        let host = NSHostingView(
-            rootView: DiffTextSurface(
-                controller: controller,
-                rendering: DiffRendering(revision: 1, document: document, highlights: [:]))
-                .frame(width: 480, height: 600))
-        host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
 
-        host.layoutSubtreeIfNeeded()
+        let (controller, _) = makeHostedSurface(document)
 
         let coordinator = try XCTUnwrap(controller.coordinator)
         XCTAssertEqual(coordinator.textView.string, document.text)
@@ -98,48 +88,20 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// no caller has to remember to.
     func testAnUpdateSwapsTheDocumentAndKeepsTheReadersPlace() throws {
         let controller = DiffSurfaceController()
-        let host = NSHostingView(
-            rootView: DiffTextSurface(
-                controller: controller,
-                rendering: DiffRendering(revision: 1, document: makeDocument(fileCount: 4, linesPerFile: 40),
-                                         highlights: [:]))
-                .frame(width: 480, height: 600))
+        let host = NSHostingView(rootView: hostedSurface(
+            controller, revision: 1, document: makeDocument(fileCount: 4, linesPerFile: 40)))
         host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
         host.layoutSubtreeIfNeeded()
         let coordinator = try XCTUnwrap(controller.coordinator)
         coordinator.scroll(toFileID: "f2.swift")
 
         let refreshed = makeDocument(fileCount: 4, linesPerFile: 41)
-        host.rootView = DiffTextSurface(
-            controller: controller,
-            rendering: DiffRendering(revision: 2, document: refreshed, highlights: [:]))
-            .frame(width: 480, height: 600)
+        host.rootView = hostedSurface(controller, revision: 2, document: refreshed)
         host.layoutSubtreeIfNeeded()
 
         XCTAssertEqual(coordinator.appliedRevision, 2)
         XCTAssertEqual(coordinator.textView.string, refreshed.text)
         XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f2.swift")
-    }
-
-    /// Highlights carried over from the previous diff have to be repainted after a
-    /// swap: `DiffTextAssembly` builds the fresh storage from base attributes only,
-    /// and the files they belong to are deliberately not re-highlighted.
-    func testCarriedHighlightsArePaintedOntoTheFreshStorage() throws {
-        let document = makeDocument(fileCount: 1, linesPerFile: 3)
-        let carried = (1...3).map { index -> AttributedString in
-            var line = AttributedString("line \(index)")
-            line.foregroundColor = .purple
-            return line
-        }
-
-        let (controller, _) = makeHostedSurface(
-            document, highlights: ["f0.swift": DiffFileHighlight(new: carried, old: nil)])
-
-        let coordinator = try XCTUnwrap(controller.coordinator)
-        let span = document.lines[1]
-        let color = coordinator.textView.textStorage?
-            .attribute(.foregroundColor, at: span.contentRange.location, effectiveRange: nil)
-        XCTAssertEqual(color as? NSColor, NSColor(Color.purple))
     }
 
     /// The order the carried highlights are painted in, which is a performance
@@ -822,15 +784,4 @@ final class DiffTextSurfaceTests: XCTestCase {
             bitmap.colorAt(x: bitmap.pixelsWide / 2, y: row) ?? .clear
         }
     }
-}
-
-/// The largest per-channel difference between two colors, both taken into device
-/// RGB — how a color read out of a bitmap gets compared to a catalog color at all.
-private func channelDistance(_ one: NSColor, _ other: NSColor) -> CGFloat {
-    guard let one = one.usingColorSpace(.deviceRGB), let other = other.usingColorSpace(.deviceRGB) else {
-        return .greatestFiniteMagnitude
-    }
-    return max(abs(one.redComponent - other.redComponent),
-               abs(one.greenComponent - other.greenComponent),
-               abs(one.blueComponent - other.blueComponent))
 }

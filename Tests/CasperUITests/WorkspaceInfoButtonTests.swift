@@ -17,25 +17,15 @@ import CasperCore
 /// only the model primitive it relies on is pinned below.
 @MainActor
 final class WorkspaceInfoButtonTests: XCTestCase {
-    /// A model seeded with one Git-less space + workspace, mirroring
-    /// `WorkspaceInfoPanelTests.seeded()`. When `markdown` is non-nil, it is
-    /// published via `controlSetInfo` so the workspace starts unread, exactly
-    /// as it would after a real `casper info set`.
-    private static func seeded(markdown: String?) -> (AppModel, Workspace) {
-        let ws = Workspace(
-            name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
-        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        let model = AppModel(sessionStore: store, session: session)
+    /// The seeded model, plus its workspace re-read after `markdown` (when given)
+    /// is published via `controlSetInfo` — the same path a real `casper info set`
+    /// takes, so the workspace starts unread.
+    private func seeded(markdown: String?) -> (AppModel, Workspace) {
+        let (model, seed) = makeSeededModel()
         if let markdown {
-            _ = model.controlSetInfo(markdown: markdown, for: ws.id)
+            _ = model.controlSetInfo(markdown: markdown, for: seed.id)
         }
-        let workspace = model.workspace(id: ws.id) ?? ws
-        return (model, workspace)
+        return (model, model.workspace(id: seed.id) ?? seed)
     }
 
     /// With no message the chip itself shows nothing, but the button still
@@ -43,7 +33,7 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// keeping the branch title clear of the diff badge once the chip has
     /// collapsed. See `WorkspaceInfoButton.collapsedWidth`'s doc.
     func testCollapsesToOnlyItsGapWithoutAMessage() {
-        let (model, workspace) = Self.seeded(markdown: nil)
+        let (model, workspace) = seeded(markdown: nil)
         let host = NSHostingView(rootView: WorkspaceInfoButton(model: model, workspace: workspace))
 
         XCTAssertEqual(host.fittingSize.width, WorkspaceInfoButton.collapsedWidth, accuracy: 0.5)
@@ -53,7 +43,7 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// some positive width — a `> 0` check alone would still pass if the icon
     /// slot collapsed to the `collapsedWidth` gap, clipping the glyph.
     func testLaysOutWithAMessage() {
-        let (model, workspace) = Self.seeded(markdown: "## Ready")
+        let (model, workspace) = seeded(markdown: "## Ready")
         let host = NSHostingView(rootView: WorkspaceInfoButton(model: model, workspace: workspace))
 
         XCTAssertEqual(host.fittingSize.width, WorkspaceInfoButton.iconSlotWidth, accuracy: 0.5)
@@ -65,7 +55,7 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// itself (no headless click/hover), so this only pins the primitive: after
     /// `controlSetInfo` starts a workspace unread, `markInfoSeen` clears it.
     func testMarkInfoSeenClearsTheUnreadFlagThatRevealRelinquishes() {
-        let (model, workspace) = Self.seeded(markdown: "## Ready")
+        let (model, workspace) = seeded(markdown: "## Ready")
         XCTAssertTrue(model.workspace(id: workspace.id)?.infoUnread ?? false)
 
         model.markInfoSeen(for: workspace.id)
