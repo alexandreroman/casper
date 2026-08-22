@@ -1211,11 +1211,11 @@ final class AppModel {
 
     /// Close the given surface (from the pane context menu, a shell exit, or the
     /// keyboard). Preserves focus on the surviving pane when a non-focused pane is
-    /// closed. Closing the last surface tears down the workspace non-destructively:
-    /// a linked workspace is dropped (worktree/branch left on disk); a primary
-    /// closes its whole Space, unless linked workspaces depend on that Space, in
-    /// which case the Space stays and the primary is re-seeded with a fresh
-    /// terminal.
+    /// closed. Closing panes never tears a workspace down: closing the last surface
+    /// re-seeds the workspace with a fresh terminal, whatever its kind, so the
+    /// workspace and its Space stay put. Dropping a workspace or a Space remains an
+    /// explicit action (`removeWorkspace` / `removeSpace`, behind the close and
+    /// delete commands).
     func applyCloseSurface(_ surfaceID: UUID) {
         // Both setup guards below correlate a surface's child-exit with the
         // close_surface_cb libghostty delivers for it afterward — the same assumption
@@ -1249,34 +1249,17 @@ final class AppModel {
             focusActiveSurfaceView()
             return
         }
-        // Last surface in the workspace was closed. Close the workspace
-        // non-destructively — never taking down anything that depends on it (its
-        // worktree/branch, or a Space's linked workspaces). Each branch below
-        // discards the workspace's surface views, either directly or through
-        // `removeWorkspace`/`removeSpace`.
+        // The last surface in the workspace was closed. The workspace survives: it
+        // keeps its identity, worktree and Space, and gets a fresh terminal so it is
+        // never left empty. Nothing that depends on it (a worktree/branch, a Space's
+        // linked workspaces) can be lost by closing panes.
         let ws = workspace(at: at)
-        switch ws.kind {
-        case .linked:
-            // A linked workspace stands alone: drop it (its worktree and branch stay
-            // on disk). removeWorkspace reassigns the selection.
-            if wasFocused { focusedSurfaceID = nil }
-            removeWorkspace(id: ws.id)
-        case .primary where spaces[at.space].workspaces.contains(where: { $0.kind == .linked }):
-            // The primary anchors the Space and its linked workspaces depend on it,
-            // so removing the whole Space would destroy them too. Keep the Space and
-            // re-seed the primary with a fresh terminal to keep it alive.
-            discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
-            let fresh = Surface.terminal(cwd: ws.worktreePath)
-            updateWorkspace(at: at) { $0.layout = .leaf(fresh) }
-            if wasFocused || selectedWorkspaceID == ws.id { focusedSurfaceID = fresh.id }
-            persist()
-            focusActiveSurfaceView()
-        case .primary:
-            // No linked workspaces depend on this primary: closing its last pane
-            // closes the whole Space. removeSpace reassigns the selection.
-            if wasFocused { focusedSurfaceID = nil }
-            removeSpace(id: spaces[at.space].id)
-        }
+        discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout))
+        let fresh = Surface.terminal(cwd: ws.worktreePath)
+        updateWorkspace(at: at) { $0.layout = .leaf(fresh) }
+        if wasFocused || selectedWorkspaceID == ws.id { focusedSurfaceID = fresh.id }
+        persist()
+        focusActiveSurfaceView()
     }
 
     /// Relocate an existing surface to sit beside `targetID` on the side implied

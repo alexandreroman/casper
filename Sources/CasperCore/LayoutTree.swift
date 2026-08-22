@@ -153,7 +153,7 @@ public enum LayoutTree {
 
     /// Remove the leaf holding `surface`, dropping its ratio and replacing a
     /// single-child split by its surviving child. Returns `nil` when the tree
-    /// becomes empty (caller closes the workspace).
+    /// becomes empty (the caller re-seeds the workspace with a fresh terminal).
     public static func closeSurface(
         _ node: LayoutNode, surface id: UUID
     ) -> (node: LayoutNode?, focus: UUID?) {

@@ -176,9 +176,9 @@ opacity). Pure `LayoutTree` operations (`insertTab`/`split`/`closeSurface`) live
 in CasperCore; libghostty `newTab`/`newSplit`/`closeTab` route through a
 `LayoutActionHandler` (installed on `GhosttyRuntime.actionHandler`) to the
 focused workspace, focus tracked via the surface first-responder callback added
-in CasperGhostty. Closing the last surface closes the workspace
-non-destructively. Surface views live in a persistent cache keyed by
-`Surface.id` so PTYs/web state survive restructuring.
+in CasperGhostty. Closing the last surface re-seeds the workspace with a fresh
+terminal instead of closing it. Surface views live in a persistent cache keyed
+by `Surface.id` so PTYs/web state survive restructuring.
 
 **UI-4** is done: `.browser` leaves render a `WKWebView` surface (address bar
 with bare-host normalization, back/forward/reload), created via the tab-bar "+"
@@ -269,8 +269,9 @@ collapsible; the per-Space "+" adds a linked workspace.
 
 **Close-on-exit.** libghostty `close_surface_cb` (Ctrl-D / `exit`) is wired via
 `GhosttySurfaceView.onClose` → `AppModel.applyCloseSurface`; closing the last
-pane closes the workspace non-destructively. The callback defers to the next
-runloop turn (like `wakeup_cb`) to avoid re-entering the runtime mid-tick.
+pane re-seeds the workspace with a fresh terminal instead of closing it. The
+callback defers to the next runloop turn (like `wakeup_cb`) to avoid
+re-entering the runtime mid-tick.
 
 **Bug fixed.** On a split→leaf collapse a stale SwiftUI host stole the
 survivor's shared `NSView` into a container about to leave the window, blanking
