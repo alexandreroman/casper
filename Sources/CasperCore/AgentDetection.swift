@@ -174,6 +174,39 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         ],
         titleWorkingScalars: [],
         titleIdleScalar: nil)
+
+    /// opencode's on-screen affordances, measured against opencode 1.18.20 running
+    /// under a Casper-like terminal (`TERM_PROGRAM=ghostty`,
+    /// `TERM_PROGRAM_VERSION=1.3.1`). It emits **no** OSC 9;4 progress report at
+    /// all, and its OSC title is plain ASCII (`OpenCode`, `OC | <turn title>`) with
+    /// no glyph convention — so title matching stays disabled and the viewport is
+    /// its only source. While a turn runs, the footer row offers `esc interrupt`
+    /// (no "to", so Claude Code's needles do not match it), and the at-rest footer
+    /// overwrites that row as soon as the turn ends, so the affordance does not
+    /// latch. A pending permission prompt renders `Permission required` above
+    /// `Allow once` / `Reject` *while the interrupt footer is still on screen*,
+    /// which is exactly why `signal(fromViewport:)` tests `blocked` first. Both
+    /// needles are required so a chat message quoting either phrase on its own
+    /// cannot trip it.
+    public static let opencode = AgentDetectionRuleSet(
+        workingContains: [
+            "esc interrupt",
+        ],
+        blockedAllOf: [
+            ["permission required", "allow once"],
+        ],
+        titleWorkingScalars: [],
+        titleIdleScalar: nil)
+
+    /// Every known rule set, evaluated together on each detection pass.
+    ///
+    /// Casper owns the PTY but has no way to know *which* agent occupies a given
+    /// surface, so rather than pick one rule set it applies them all to the same
+    /// snapshot and aggregates the signals (`AgentSignal.aggregate`), letting the
+    /// most urgent one win. Each rule set's needles are specific enough to stay
+    /// quiet on another agent's screen, and the union is what makes the Codex and
+    /// opencode rules reachable at runtime at all.
+    public static let all: [AgentDetectionRuleSet] = [.claudeCode, .codex, .opencode]
 }
 
 extension String {

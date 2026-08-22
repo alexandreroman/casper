@@ -62,6 +62,97 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromViewport: ""), .idle)
     }
 
+    // MARK: - opencode rule set
+
+    // Captured from opencode 1.18.20 running under `script` with
+    // TERM_PROGRAM=ghostty / TERM_PROGRAM_VERSION=1.3.1, replayed into a grid.
+
+    /// The footer row opencode writes for as long as a turn is running.
+    private let opencodeWorkingFooter =
+        "■⬝⬝⬝⬝⬝⬝⬝  esc interrupt                         tab agents  ctrl+p commands"
+
+    /// A pending permission prompt. The working footer is still on screen beneath
+    /// it, which is precisely the case `blocked` has to win.
+    private let opencodePermissionPrompt = """
+        ┃  △ Permission required
+        ┃    # Shell command
+        ┃  $ echo hello
+        ┃   Allow once   Allow always   Reject  ctrl+f fullscreen  ⇆ select
+        ■⬝⬝⬝⬝⬝⬝⬝  esc interrupt                         tab agents  ctrl+p commands
+        """
+
+    /// The at-rest footer that overwrites the working one when the turn ends.
+    private let opencodeIdleFooter = "~/Projects/casper  12.4K/200K  ctrl+p commands"
+
+    func testOpencodeInterruptFooterIsWorking() {
+        // "esc interrupt" — no "to", so Claude Code's needles deliberately miss it.
+        XCTAssertEqual(
+            AgentDetectionRuleSet.opencode.signal(fromViewport: opencodeWorkingFooter),
+            .working)
+        XCTAssertEqual(rules.signal(fromViewport: opencodeWorkingFooter), .idle)
+    }
+
+    func testOpencodePermissionPromptIsBlockedDespiteTheInterruptFooter() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.opencode.signal(fromViewport: opencodePermissionPrompt),
+            .blocked)
+    }
+
+    func testOpencodePermissionNeedsBothSubstrings() {
+        // Either phrase alone (a chat message quoting it) must not read as blocked.
+        XCTAssertEqual(
+            AgentDetectionRuleSet.opencode.signal(fromViewport: "┃  △ Permission required"),
+            .idle)
+        XCTAssertEqual(
+            AgentDetectionRuleSet.opencode.signal(fromViewport: "we could Allow once here"),
+            .idle)
+    }
+
+    func testOpencodeAtRestFooterIsIdle() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.opencode.signal(fromViewport: opencodeIdleFooter),
+            .idle)
+    }
+
+    func testOpencodeTitleAssertsNothing() {
+        // Plain ASCII, no glyph convention — the title is not a state source.
+        XCTAssertEqual(AgentDetectionRuleSet.opencode.signal(fromTitle: "OpenCode"), .absent)
+        XCTAssertEqual(
+            AgentDetectionRuleSet.opencode.signal(fromTitle: "OC | Fix the detection tick"),
+            .absent)
+    }
+
+    // MARK: - Rule-set union
+
+    /// Mirrors what `runAgentDetectionTick` does: apply every rule set to the same
+    /// viewport snapshot and keep the most urgent signal.
+    private func unionViewportSignal(_ text: String) -> AgentSignal {
+        AgentSignal.aggregate(AgentDetectionRuleSet.all.map { $0.signal(fromViewport: text) })
+    }
+
+    func testUnionClassifiesAnOpencodeWorkingFrameAsWorking() {
+        // The regression this union fixes: with only the Claude Code rule set, a
+        // running opencode turn read as idle for its whole duration.
+        XCTAssertEqual(unionViewportSignal(opencodeWorkingFooter), .working)
+    }
+
+    func testUnionClassifiesAnOpencodePermissionPromptAsBlocked() {
+        XCTAssertEqual(unionViewportSignal(opencodePermissionPrompt), .blocked)
+    }
+
+    func testUnionStillClassifiesTheOtherAgentsFrames() {
+        XCTAssertEqual(unionViewportSignal("… esc to interrupt"), .working)
+        XCTAssertEqual(unionViewportSignal("Running tools…"), .working)
+        XCTAssertEqual(
+            unionViewportSignal("Do you want to proceed?\n❯ Yes  (esc to cancel)"),
+            .blocked)
+    }
+
+    func testUnionLeavesAPlainShellIdle() {
+        XCTAssertEqual(unionViewportSignal("alex@host ~/project % "), .idle)
+        XCTAssertEqual(unionViewportSignal(opencodeIdleFooter), .idle)
+    }
+
     // MARK: - OSC-title matcher
 
     func testTitleBraillePrefixIsWorking() {
