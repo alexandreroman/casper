@@ -12,14 +12,22 @@ enum WorkspaceFileCopier {
     /// Recursively copy every file under `sourceRoot` whose name matches one of
     /// `patterns` into the same relative location under `destinationRoot`,
     /// preserving the source file's POSIX permission bits. The `.git` directory is
-    /// never descended into. Returns the relative paths copied; zero matches is not
-    /// an error. Throws on the first copy failure (unreadable source, permission
-    /// denied on destination, etc.) — callers that need atomicity must roll back
-    /// their own side effects.
+    /// never descended into, nor is any immediate child directory of `sourceRoot`
+    /// named in `skippingTopLevelDirectories`. Returns the relative paths copied;
+    /// zero matches is not an error. Throws on the first copy failure (unreadable
+    /// source, permission denied on destination, etc.) — callers that need
+    /// atomicity must roll back their own side effects.
+    ///
+    /// - Parameter skippingTopLevelDirectories: names (not paths) of directories
+    ///   directly under `sourceRoot` to prune. Callers pass the repository's
+    ///   Git-ignored top-level trees: `.build` / `node_modules` and friends hold
+    ///   the overwhelming majority of a checkout's entries and never hold a file
+    ///   worth seeding a new workspace with.
     @discardableResult
     static func copy(
         patterns: [String] = defaultPatterns,
-        from sourceRoot: String, to destinationRoot: String
+        from sourceRoot: String, to destinationRoot: String,
+        skippingTopLevelDirectories: Set<String> = []
     ) throws -> [String] {
         let fm = FileManager.default
 
@@ -38,16 +46,22 @@ enum WorkspaceFileCopier {
 
         var copiedRelativePaths: [String] = []
         for case let fileURL as URL in enumerator {
+            let name = fileURL.lastPathComponent
             let isDirectory =
                 (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             if isDirectory {
-                if fileURL.lastPathComponent == ".git" {
+                // `.git` is pruned at any depth (nested repos, submodules); the
+                // caller's exclusions name immediate children only, and `level` is 1
+                // for the immediate children of `sourceStd`.
+                let pruned =
+                    name == ".git"
+                    || (enumerator.level == 1 && skippingTopLevelDirectories.contains(name))
+                if pruned {
                     enumerator.skipDescendants()
                 }
                 continue
             }
 
-            let name = fileURL.lastPathComponent
             guard patterns.contains(where: { fnmatch($0, name, 0) == 0 }) else { continue }
 
             // Enumerating from `sourceStd` is expected to yield paths under

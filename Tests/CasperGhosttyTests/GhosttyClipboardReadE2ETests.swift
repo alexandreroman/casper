@@ -16,8 +16,8 @@ import XCTest
 /// sequence can tell the two apart — hence the probe below, whose load-bearing assertion is
 /// that the gate was *consulted at all*.
 ///
-/// Uses a real `GhosttyRuntime` + real (offscreen) `NSWindow`, like
-/// `GhosttyEditingCommandReplayTests` — the `.forTesting()` runtime never creates a surface.
+/// Runs on the shared `withRealSurface` harness — the `.forTesting()` runtime never
+/// creates a surface.
 final class GhosttyClipboardReadE2ETests: XCTestCase {
     /// The clipboard content the terminal is made to ask for. Distinctive enough that finding
     /// it in the terminal grid cannot be a coincidence.
@@ -91,25 +91,6 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
     /// ended up showing.
     @MainActor
     private func runOSC52ReadProbe(approving: Bool) throws -> ReadOutcome {
-        let runtime = try GhosttyRuntime()
-        let view = GhosttySurfaceView(runtime: runtime, configuration: GhosttySurfaceConfiguration())
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
-
-        // Surface creation can transiently return null and retry; poll until it lands. When
-        // libghostty simply cannot produce a surface (a documented environmental flakiness —
-        // see the `e2e-surface-creation-flakiness` memory note), the test's precondition is
-        // unmet, so skip rather than report a false failure.
-        let deadline = Date().addingTimeInterval(10)
-        while view.surface == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
-        }
-        guard let surface = view.surface else {
-            throw XCTSkip("libghostty could not create a surface in this environment")
-        }
-
         var consulted: [String] = []
         let productionApproval = GhosttyClipboardRead.approveUntrusted
         let productionPasteboard = GhosttyClipboardRead.systemPasteboard
@@ -123,22 +104,29 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             consulted.append(text)
             return approving
         }
-        GhosttyClipboardRead.systemPasteboard = Self.pasteboardHoldingTheMarker()
+        let pasteboard = Self.pasteboardHoldingTheMarker()
+        // A named pasteboard outlives the process on the pasteboard server unless released.
+        defer { pasteboard.releaseGlobally() }
+        GhosttyClipboardRead.systemPasteboard = pasteboard
 
         let script = try Self.writeProbeScript()
         defer { try? FileManager.default.removeItem(at: script) }
 
-        // Let the shell reach an interactive prompt before typing.
-        settle(0.6)
-        surface.sendText("sh \(script.path)")
-        settle(0.4)
-        XCTAssertTrue(window.makeFirstResponder(view))
-        view.keyDown(with: Self.returnKeyEvent())
-        // Long enough for the script's own read timeout, plus the main-queue hop the OSC 52
-        // prompt is deferred onto.
-        settle(4.0)
+        var grid = ""
+        try withRealSurface { view, surface in
+            // Let the shell reach an interactive prompt before typing.
+            settle(0.6)
+            surface.sendText("sh \(script.path)")
+            settle(0.4)
+            view.keyDown(with: Self.returnKeyEvent())
+            // Long enough for the script's own read timeout, plus the main-queue hop the OSC 52
+            // prompt is deferred onto.
+            settle(4.0)
 
-        return ReadOutcome(consulted: consulted, grid: surface.readText(scrollback: false) ?? "")
+            grid = surface.readText(scrollback: false) ?? ""
+        }
+
+        return ReadOutcome(consulted: consulted, grid: grid)
     }
 
     /// A pasteboard of the test's own, so the probe never reads — nor disturbs — the
@@ -187,12 +175,5 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
             windowNumber: 0, context: nil, characters: "\r",
             charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
-    }
-
-    /// Pump the main run loop for a fixed duration so libghostty can drain PTY output and the
-    /// shell can settle. A stability-polling loop was flaky here; a fixed pump is enough.
-    @MainActor
-    private func settle(_ seconds: TimeInterval) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 }

@@ -4,12 +4,6 @@ import CasperCore
 
 @MainActor
 final class MenuStateTests: XCTestCase {
-    private func makeStore() -> SessionStore {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-test-\(UUID().uuidString).json")
-        return SessionStore(fileURL: url)
-    }
-
     private func makeModel(selecting kind: WorkspaceKind, baseBranch: String? = "main") -> AppModel {
         let primary = Workspace(
             name: "main", worktreePath: "/tmp/primary", branch: "main",
@@ -20,8 +14,7 @@ final class MenuStateTests: XCTestCase {
             kind: .linked, baseBranch: baseBranch)
         let space = Space(name: "main", folderPath: "/tmp", isGitRepo: true, workspaces: [primary, linked])
         let selectedID = kind == .primary ? primary.id : linked.id
-        let session = Session(spaces: [space], selectedWorkspaceID: selectedID)
-        return AppModel(sessionStore: makeStore(), session: session)
+        return makeModel(spaces: [space], selecting: selectedID)
     }
 
     func testCloseAndDeleteEnabledForLinkedWorkspaceWithBaseBranch() {
@@ -98,8 +91,7 @@ final class MenuStateTests: XCTestCase {
     }
 
     func testCanCreateWorkspaceIsFalseWithNoSpaces() {
-        let model = AppModel(sessionStore: makeStore())
-        XCTAssertFalse(model.canCreateWorkspace)
+        XCTAssertFalse(makeModel().canCreateWorkspace)
     }
 
     /// The edge-triggered `menu…` flags the menu body observes must track the

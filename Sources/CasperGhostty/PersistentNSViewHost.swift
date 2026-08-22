@@ -99,14 +99,29 @@ enum SharedViewOwnership {
     /// but leave the now-empty table keyed by the (dead) hosted view — an unbounded
     /// accumulation over a long session. This runs only on window transitions (from
     /// `viewDidMoveToWindow`), which is exactly when a torn-down container leaves its
-    /// table empty, so the registry stays bounded without paying the full-rebuild cost
-    /// on the `updateNSView`/reconcile hot path (which fires on every SwiftUI update).
+    /// table empty, so the registry stays bounded without paying the sweep cost on the
+    /// `updateNSView`/reconcile hot path (which fires on every SwiftUI update).
     ///
-    /// Emptiness is tested with `allObjects.isEmpty`, not `count`: `NSHashTable.count`
-    /// is documented as unreliable for weak tables (it can still report entries whose
-    /// objects have been deallocated but not yet cleared).
+    /// The sweep has to cover the whole registry, not just the transitioning
+    /// container's own key: a container is still alive while its own
+    /// `viewDidMoveToWindow` runs, so its table is never empty at that point. An entry
+    /// only empties out once its last container has deallocated, which some *other*
+    /// container's later transition is what observes. It stays cheap by collecting dead
+    /// keys first — no dictionary rebuild — and by testing emptiness through the
+    /// enumerator rather than `allObjects`, which would bridge a fresh `Array` out of
+    /// every live surface's table.
+    ///
+    /// Emptiness is not tested with `count`: `NSHashTable.count` is documented as
+    /// unreliable for weak tables (it can still report entries whose objects have been
+    /// deallocated but not yet cleared). The enumerator yields only live objects, which
+    /// is what `reconcile` above already relies on.
     static func pruneEmptyTables() {
-        registry = registry.filter { !$0.value.allObjects.isEmpty }
+        let emptyKeys = registry.compactMap { key, table in
+            table.objectEnumerator().nextObject() == nil ? key : nil
+        }
+        for key in emptyKeys {
+            registry.removeValue(forKey: key)
+        }
     }
 }
 

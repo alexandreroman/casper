@@ -2,10 +2,10 @@
 
 **Date:** 2026-07-09 **Status:** Partly shipped — the Casper-side half
 (selecting a `done` workspace collapses it to `idle`) is built; the
-`casper-claude-plugin` `hooks/stop.sh` half is not **Scope:** Make Claude Code's
+`casper-skills` `hooks/stop.sh` half is not **Scope:** Make Claude Code's
 `Stop` hook explicitly report `done` instead of `idle`, and make the app
 collapse an unseen `done` back to `idle` when the workspace is finally selected.
-Spans two repos: `casper-claude-plugin` (`hooks/stop.sh`) and this one
+Spans two repos: `casper-skills` (`hooks/stop.sh`) and this one
 (`Sources/CasperUI/AppModel.swift`: `controlSetAgentState`, `selectWorkspace`).
 
 ## Problem
@@ -51,12 +51,12 @@ passive notification the previous design intended.
 - No authority-release/timeout mechanism — still deferred, tracked in
   `agent-state-detection.md` § Deferred. This plan works within the
   permanent-latch reality, it doesn't fix it.
-- No change to `casper-claude-plugin`'s `hooks/notification.py` or the
+- No change to `casper-skills`'s `hooks/notification.py` or the
   `casper-status` skill.
 
 ## Design
 
-### `casper-claude-plugin`
+### `casper-skills`
 
 `hooks/stop.sh`:
 
@@ -163,7 +163,7 @@ explicit `casper status set` call.
 
 ## Testing
 
-- `casper-claude-plugin`: `tests/test_stop.sh` expects `status set done`; README
+- `casper-skills`: `tests/test_stop.sh` expects `status set done`; README
   hook table updated.
 - Casper (XCTest):
   - `controlSetAgentState(.done, ...)` sets `pendingNotification` /

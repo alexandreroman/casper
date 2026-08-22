@@ -6,12 +6,6 @@ import Observation
 
 @MainActor
 final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
-    private func makeStore() -> SessionStore {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-test-\(UUID().uuidString).json")
-        return SessionStore(fileURL: url)
-    }
-
     private func flagsChangedEvent(
         command: Bool, extraModifiers: NSEvent.ModifierFlags = []
     ) -> NSEvent {
@@ -52,13 +46,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     }
 
     func testCmdDigitSelectsWorkspaceAndConsumesEvent() {
-        let session = Session(spaces: [
-            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
-                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
-            ]),
-        ])
-        let model = AppModel(sessionStore: makeStore(), session: session)
+        let model = makeSeededModel().model
         let target = model.allWorkspaces[0].id
         model.selectedWorkspaceID = nil
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
@@ -70,7 +58,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     }
 
     func testCmdShiftDigitIsIgnored() {
-        let model = AppModel(sessionStore: makeStore())
+        let model = makeModel()
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
 
         let passthrough = monitor.handle(keyDownEvent(keyCode: 0x12, command: true, extraModifiers: .shift))
@@ -78,21 +66,17 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         XCTAssertNotNil(passthrough, "Cmd+Shift+digit is a different shortcut and must pass through")
     }
 
-    func testHoldingCommandRevealsHintsAfterDuration() {
-        let model = AppModel(sessionStore: makeStore())
+    func testHoldingCommandRevealsHintsAfterDuration() async {
+        let model = makeModel()
         let monitor = WorkspaceShortcutKeyMonitor(model: model, holdDuration: 0.05)
         _ = monitor.handle(flagsChangedEvent(command: true))
 
-        let expectation = expectation(description: "hints revealed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            XCTAssertTrue(model.showWorkspaceShortcutHints)
-            expectation.fulfill()
-        }
-        waitForExpectations(timeout: 1.0)
+        await waitUntil { model.showWorkspaceShortcutHints }
+        XCTAssertTrue(model.showWorkspaceShortcutHints)
     }
 
     func testReleasingCommandHidesHints() {
-        let model = AppModel(sessionStore: makeStore())
+        let model = makeModel()
         let monitor = WorkspaceShortcutKeyMonitor(model: model, holdDuration: 0.05)
         _ = monitor.handle(flagsChangedEvent(command: true))
         _ = monitor.handle(flagsChangedEvent(command: false))
@@ -108,7 +92,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     /// `withObservationTracking` proves the absence of that write with no test-only
     /// instrumentation in production code (the `observation-tracking-guard-tests` note).
     func testAbandonedCommandHoldDoesNotWriteTheHintsFlag() {
-        let model = AppModel(sessionStore: makeStore())
+        let model = makeModel()
         // Long hold so the reveal timer is still pending when Shift arrives.
         let monitor = WorkspaceShortcutKeyMonitor(model: model, holdDuration: 10)
         _ = monitor.handle(flagsChangedEvent(command: true))
@@ -131,13 +115,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     }
 
     func testCmdDigitWithNoMatchingWorkspacePassesThroughUnconsumed() {
-        let session = Session(spaces: [
-            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
-                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
-            ]),
-        ])
-        let model = AppModel(sessionStore: makeStore(), session: session)
+        let model = makeSeededModel().model
         let previousSelection = model.selectedWorkspaceID
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
 
@@ -148,13 +126,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     }
 
     func testCmdDigitMatchesPhysicalKeyRegardlessOfLayoutCharacters() {
-        let session = Session(spaces: [
-            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
-                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
-            ]),
-        ])
-        let model = AppModel(sessionStore: makeStore(), session: session)
+        let model = makeSeededModel().model
         let target = model.allWorkspaces[0].id
         model.selectedWorkspaceID = nil
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
@@ -168,13 +140,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     }
 
     func testCmdNumpadDigitSelectsWorkspaceAndConsumesEvent() {
-        let session = Session(spaces: [
-            Space(name: "a", folderPath: "/a", isGitRepo: false, workspaces: [
-                Workspace(name: "a", worktreePath: "/a", branch: "", portBase: 40000,
-                          layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
-            ]),
-        ])
-        let model = AppModel(sessionStore: makeStore(), session: session)
+        let model = makeSeededModel().model
         let target = model.allWorkspaces[0].id
         model.selectedWorkspaceID = nil
         let monitor = WorkspaceShortcutKeyMonitor(model: model)
@@ -186,26 +152,19 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         XCTAssertEqual(model.selectedWorkspaceID, target)
     }
 
-    func testResignActiveHidesHintsEvenAfterExternalCommandRelease() {
-        let model = AppModel(sessionStore: makeStore())
+    func testResignActiveHidesHintsEvenAfterExternalCommandRelease() async {
+        let model = makeModel()
         let monitor = WorkspaceShortcutKeyMonitor(model: model, holdDuration: 0.05)
         monitor.start()
         _ = monitor.handle(flagsChangedEvent(command: true))
 
-        let revealed = expectation(description: "hints revealed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            XCTAssertTrue(model.showWorkspaceShortcutHints)
-            revealed.fulfill()
-        }
-        wait(for: [revealed], timeout: 1.0)
+        await waitUntil { model.showWorkspaceShortcutHints }
+        XCTAssertTrue(model.showWorkspaceShortcutHints)
 
         NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: nil)
 
-        let hidden = expectation(description: "hints hidden after resigning active, even without a matching flagsChanged release")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            XCTAssertFalse(model.showWorkspaceShortcutHints)
-            hidden.fulfill()
-        }
-        wait(for: [hidden], timeout: 1.0)
+        // Resigning active hides the hints without a matching flagsChanged release.
+        await waitUntil { !model.showWorkspaceShortcutHints }
+        XCTAssertFalse(model.showWorkspaceShortcutHints)
     }
 }

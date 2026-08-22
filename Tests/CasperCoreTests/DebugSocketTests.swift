@@ -95,16 +95,17 @@ final class DebugSocketTests: XCTestCase {
                 timeout: 1))
     }
 
-    func testDefaultPathWhenUnset() {
+    func testDefaultPathWhenUnset() throws {
         // The `.default` property resolves to the historical path only when no
         // override is present. `.default` reads both CASPER_DEBUG_SOCKET and
         // CASPER_SESSION, so assert the clean-env contract only when neither is
         // set (a CASPER_SESSION-exporting shell, e.g. the debug-casper harness,
         // would otherwise fail this spuriously). SocketPathResolutionTests covers
-        // the session-derived paths, guarding itself against CASPER_CONTROL_SOCKET
-        // the same way.
+        // the session-derived paths, guarding its own dial-side assertions the same way.
         let env = ProcessInfo.processInfo.environment
-        guard env["CASPER_DEBUG_SOCKET"] == nil, env["CASPER_SESSION"] == nil else { return }
+        try XCTSkipUnless(
+            env["CASPER_DEBUG_SOCKET"] == nil && env["CASPER_SESSION"] == nil,
+            "an ambient CASPER_DEBUG_SOCKET/CASPER_SESSION overrides the default path")
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
     }
 
@@ -135,6 +136,7 @@ final class DebugSocketTests: XCTestCase {
 /// `@Sendable`; all state is a serial `queue` plus an `OSAllocatedUnfairLock`.
 private final class FlakyDebugServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "casper.debug-socket.flaky-server")
+    private let socketPath: String
     private let listener: NWListener
     private let connections = OSAllocatedUnfairLock(initialState: 0)
     private let framedResponse: Data
@@ -142,6 +144,7 @@ private final class FlakyDebugServer: @unchecked Sendable {
     var connectionCount: Int { connections.withLock { $0 } }
 
     init(socketPath: String, response: DebugResponse) throws {
+        self.socketPath = socketPath
         unlink(socketPath)  // remove any stale socket file before binding
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         params.allowLocalEndpointReuse = true
@@ -174,7 +177,12 @@ private final class FlakyDebugServer: @unchecked Sendable {
         }
     }
 
-    func stop() { listener.cancel() }
+    /// Cancelling the listener leaves the bound socket file on disk, so drop it too —
+    /// the real `SocketTransport.stop()` unlinks for the same reason.
+    func stop() {
+        listener.cancel()
+        unlink(socketPath)
+    }
 
     private func handle(_ connection: NWConnection) {
         let attempt = connections.withLock { $0 += 1; return $0 }

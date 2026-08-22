@@ -122,8 +122,14 @@ final class GhosttyClipboardTests: XCTestCase {
     }
 
     /// A pasteboard of the test's own, so no test ever touches the developer's clipboard.
+    /// A uniquely named pasteboard stays registered with the pasteboard server after the
+    /// process exits, so it is released again when the test ends.
     private func testPasteboard() -> NSPasteboard {
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("casper.tests.clipboard-write.\(UUID().uuidString)"))
+        let name = NSPasteboard.Name("casper.tests.clipboard-write.\(UUID().uuidString)")
+        // Named by its name rather than by the instance, so the teardown block carries
+        // nothing across isolation boundaries.
+        addTeardownBlock { NSPasteboard(name: name).releaseGlobally() }
+        let pasteboard = NSPasteboard(name: name)
         pasteboard.clearContents()
         return pasteboard
     }

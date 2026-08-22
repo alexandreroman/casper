@@ -19,6 +19,8 @@ enum BrowserCapture {
     /// Best-effort: the load already succeeded, so a stalled resource should
     /// still yield a snapshot rather than fail the capture.
     private static let renderSettleTimeout: Duration = .seconds(5)
+    /// `renderSettleTimeout` in whole milliseconds, for the readiness JS's own timer.
+    private static var renderSettleTimeoutMs: Int { Int(renderSettleTimeout.components.seconds) * 1000 }
 
     /// Render `url` off-screen at `width`×`height` and return a PNG of the resulting
     /// viewport. The capture shares the default website data store
@@ -94,8 +96,21 @@ enum BrowserCapture {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw BrowserOpError(message: "failed to render page snapshot")
         }
-        let bitmap = NSBitmapImageRep(cgImage: cgImage)
-        bitmap.size = image.size
+        // Only `takeSnapshot` needs the main actor. Re-encoding the raw buffer (1280x800
+        // at the backing scale, i.e. ~4 MB of pixels) is pure CPU work that would
+        // otherwise stall the UI and every other main-actor control-channel op, so it
+        // runs on a background executor.
+        let size = image.size
+        return try await Task.detached(priority: .userInitiated) {
+            try encodePNG(cgImage, size: size)
+        }.value
+    }
+
+    /// Encode a rendered snapshot as PNG data, sized in points so the PNG keeps the
+    /// backing scale. `nonisolated` so callers can run it off the main actor.
+    private nonisolated static func encodePNG(_ image: CGImage, size: CGSize) throws -> Data {
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        bitmap.size = size
         guard let png = bitmap.representation(using: .png, properties: [:]) else {
             throw BrowserOpError(message: "failed to encode snapshot as PNG")
         }
@@ -114,6 +129,11 @@ enum BrowserCapture {
     private static func waitForFullRender(of webView: WKWebView) async {
         let js = """
         await new Promise((resolve) => {
+          // Escape hatch, checked first so nothing below can strand the promise:
+          // `document.fonts.ready` (or an image that neither loads nor errors) can
+          // stall forever, and an unresolved promise never resumes the Swift bridge —
+          // whose task would then hold this web view alive for the process's lifetime.
+          setTimeout(resolve, \(renderSettleTimeoutMs));
           const settle = () => {
             const pending = Array.from(document.images)
               .filter((img) => !img.complete)
@@ -135,10 +155,11 @@ enum BrowserCapture {
 
         // Race the readiness JS against the timeout with a one-shot resume guard.
         // `callAsyncJavaScript`'s bridge ignores cancellation, so the timeout must
-        // resume the waiter directly rather than by cancelling the JS task — which
-        // is therefore left unreferenced, to finish (or not) on its own. Whichever
-        // fires first wins; the other resume is a no-op. Best-effort — a thrown JS
-        // error or the timeout both simply proceed to the snapshot.
+        // resume the waiter directly rather than by cancelling the JS task — which is
+        // therefore left unreferenced, and relies on the JS's own timer to finish and
+        // release the `webView` it captures. Whichever fires first wins; the other
+        // resume is a no-op. Best-effort — a thrown JS error or the timeout both
+        // simply proceed to the snapshot.
         let waiter = RenderWaiter()
         Task { @MainActor in
             _ = try? await webView.callAsyncJavaScript(

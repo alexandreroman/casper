@@ -9,9 +9,9 @@ remaining Space.
 
 ## Problem
 
-`AppModel.selectedWorkspaceID: UUID?` (`AppModel.swift:18`) is repaired in
-exactly two places today — `removeWorkspace(id:)` (`AppModel.swift:465`) and
-`removeSpace(id:)` (`AppModel.swift:362`) — both of which fall back to:
+`AppModel.selectedWorkspaceID: UUID?` is repaired in
+exactly two places today — `removeWorkspace(id:)` and `removeSpace(id:)`, both
+in `AppModel+Spaces.swift` — both of which fall back to:
 
 ```swift
 selectWorkspace(spaces.first?.workspaces.first?.id)
@@ -25,7 +25,7 @@ workspace" policy, with two problems:
    entirely unrelated Space even though a sibling (or the primary) is sitting
    right there in the same Space.
 2. It uses `Space.workspaces` (raw insertion order), not
-   `Space.orderedWorkspaces` (`Models.swift:375-382`, the primary-first,
+   `Space.orderedWorkspaces` (`CasperCore/Models.swift`, the primary-first,
    then-alphabetical order the sidebar actually renders) — so the "first"
    workspace picked is not always the one that appears first visually.
 
@@ -75,7 +75,7 @@ and no Spaces remain) — matching the existing invariant (asserted today by
 `assertSelectionValidOrNil` in `AppModelTests.swift`) that selection must be
 `nil` or resolve to a live workspace, never dangle.
 
-### `removeWorkspace(id:)` (`AppModel.swift:465`)
+### `removeWorkspace(id:)` (`AppModel+Spaces.swift`)
 
 Change the fallback call from:
 
@@ -103,7 +103,7 @@ same-Space sibling in current practice — the `?? spaces.first...` term is
 defensive, not dead code, for consistency with `removeSpace`'s call shape and in
 case that invariant ever changes.
 
-### `removeSpace(id:)` (`AppModel.swift:362`)
+### `removeSpace(id:)` (`AppModel+Spaces.swift`)
 
 Change the fallback call from:
 
@@ -127,7 +127,7 @@ in display order instead of insertion order.
 
 ### Unaffected
 
-- `selectWorkspace(_:)` itself (`AppModel.swift:490`) — still the single
+- `selectWorkspace(_:)` itself — still the single
   assignment point; unchanged.
 - `pruneWorkspaceFromDisk`, `deleteWorkspace`, `closeWorkspace`,
   `controlDeleteWorkspace`, `presentDeleteWorkspaceConfirmation`,

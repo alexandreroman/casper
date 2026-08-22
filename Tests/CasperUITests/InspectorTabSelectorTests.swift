@@ -52,7 +52,8 @@ final class InspectorTabSelectorTests: XCTestCase {
     /// Host the real control with `tab` selected (`nil` = the panel collapsed, so
     /// no indicator is drawn) and return the width it lays out to.
     private func selectorWidth(selecting tab: InspectorTab?) -> CGFloat {
-        let (model, workspaceID) = Self.seeded()
+        let (model, seed) = makeSeededModel()
+        let workspaceID = seed.id
         if let tab {
             // The workspace starts collapsed, so one toggle expands onto that tab.
             model.toggleInspectorTab(tab, for: workspaceID)
@@ -70,19 +71,5 @@ final class InspectorTabSelectorTests: XCTestCase {
         let host = NSHostingView(rootView: Image(systemName: systemImage))
         host.layoutSubtreeIfNeeded()
         return host.fittingSize.width
-    }
-
-    /// A model holding one Git-less space + workspace, as in
-    /// `WorkspaceInfoButtonTests.seeded()`.
-    private static func seeded() -> (AppModel, UUID) {
-        let ws = Workspace(
-            name: "main", worktreePath: "/wt", branch: "main",
-            portBase: 40000, layout: .leaf(Surface(kind: .terminal(cwd: "/wt"))))
-        let space = Space(name: "main", folderPath: "/wt", isGitRepo: false, workspaces: [ws])
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let store = SessionStore(fileURL: url)
-        let session = Session(spaces: [space], selectedWorkspaceID: ws.id)
-        return (AppModel(sessionStore: store, session: session), ws.id)
     }
 }

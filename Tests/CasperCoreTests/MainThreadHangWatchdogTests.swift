@@ -16,10 +16,7 @@ final class MainThreadHangWatchdogTests: XCTestCase {
         private var _mainResponsive = true
         private var _captures: [(hangDuration: TimeInterval, destination: URL)] = []
 
-        var now: TimeInterval {
-            get { lock.withLock { _now } }
-            set { lock.withLock { _now = newValue } }
-        }
+        var now: TimeInterval { lock.withLock { _now } }
         /// When true, the ack block runs immediately (main thread alive); when
         /// false, it is dropped (main thread hung).
         var mainResponsive: Bool {

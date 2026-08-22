@@ -19,8 +19,8 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 ## Design
 
 - **`CasperLog`** — a thin `os.Logger` wrapper (subsystem
-  `com.github.alexandreroman.casper`, categories
-  `app`/`ghostty`/`hooks`/`debug`).
+  `com.github.alexandreroman.casper`, three categories: `app`, `ghostty`,
+  `debug`).
 - **Control channel** — a bidirectional request/response Unix-domain-socket
   channel (protocol + client in CasperCore; the server is
   `CasperGhostty/DebugServer.swift`, started by CasperUI's `AppDelegate` against
@@ -42,9 +42,11 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
     libghostty top-left coordinates).
   - *Address* — `focus <id>`.
 - **Surface addressing** — each surface has a stable string `id`; `dump-state`
-  reports it. `focus <id>` moves UI focus; `--target <id>` on every other verb
-  acts on a specific surface **without** moving focus. An unmatched target fails
-  cleanly (no silent fallback).
+  reports it. `focus <id>` moves UI focus; `--target <id>` acts on a specific
+  surface **without** moving focus, and an unmatched target fails cleanly (no
+  silent fallback). Seven of the nine verbs take `--target`: `focus` addresses
+  by positional id instead, and `dump-state` takes none at all — it enumerates
+  every surface, so there is nothing to target.
 - **`debug-casper` skill** — the observe-act-verify runbook (build debug,
   launch, wait for the socket, drive, teardown).
 

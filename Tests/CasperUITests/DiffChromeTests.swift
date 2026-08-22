@@ -453,7 +453,7 @@ final class DiffChromeTests: XCTestCase {
         // Past the row's last glyph, where only the tint can be — and where a fill
         // that covered the code column would leave the plain background.
         assertSameColor(
-            color(in: canvas, x: codeX, y: rowY),
+            ChromeProbe.color(in: canvas, x: codeX, y: rowY),
             NSColor(DiffLineStyle.background(for: .addition)),
             "the added row's tint, \(codeX - surface.ruler.ruleThickness) pt into the code column")
 
@@ -463,7 +463,7 @@ final class DiffChromeTests: XCTestCase {
         let tint = NSColor(DiffLineStyle.background(for: .addition))
         let inked = stride(from: surface.ruler.ruleThickness, to: codeX, by: 0.5).contains { x in
             stride(from: rowY - addition.rect.height / 2, to: rowY + addition.rect.height / 2, by: 0.5)
-                .contains { y in channelDistance(color(in: canvas, x: x, y: y), tint) > 0.02 }
+                .contains { y in channelDistance(ChromeProbe.color(in: canvas, x: x, y: y), tint) > 0.02 }
         }
         XCTAssertTrue(inked, "the added row's glyphs are painted in the code column")
     }
@@ -506,7 +506,8 @@ final class DiffChromeTests: XCTestCase {
         for x in stride(from: 0, to: Self.scrollViewWidth, by: 1) {
             for y in stride(from: 0, to: strip, by: 1) {
                 assertSameColor(
-                    color(in: painted, x: x, y: y), color(in: untouched, x: x, y: y),
+                    ChromeProbe.color(in: painted, x: x, y: y),
+                    ChromeProbe.color(in: untouched, x: x, y: y),
                     "the strip above the surface, at (\(x), \(y))")
             }
         }
@@ -522,21 +523,6 @@ final class DiffChromeTests: XCTestCase {
             NSColor(deviceRed: 1, green: 0, blue: 1, alpha: 1).setFill()
             dirtyRect.fill()
         }
-    }
-
-    /// What a canvas holds at a point in its view's coordinates. The probe's own
-    /// sampler is bound to its two per-view canvases; this reads a composed one.
-    private func color(in canvas: ChromeProbe.Canvas, x: CGFloat, y: CGFloat) -> NSColor {
-        let scale = CGFloat(canvas.bitmap.pixelsWide) / canvas.rect.width
-        let pixelX = Int((x - canvas.rect.minX) * scale)
-        let pixelY = Int((y - canvas.rect.minY) * scale)
-        guard (0..<canvas.bitmap.pixelsWide).contains(pixelX),
-              (0..<canvas.bitmap.pixelsHigh).contains(pixelY)
-        else {
-            XCTFail("(\(x), \(y)) falls outside the repainted \(canvas.rect)")
-            return .clear
-        }
-        return canvas.bitmap.colorAt(x: pixelX, y: pixelY) ?? .clear
     }
 
     // MARK: - Partially configured views
@@ -745,14 +731,14 @@ final class DiffChromeTests: XCTestCase {
 
         /// What the text view painted at a point in its own coordinates.
         func codeColor(x: CGFloat, y: CGFloat) -> NSColor {
-            color(in: code, x: x, y: y)
+            Self.color(in: code, x: x, y: y)
         }
 
         /// What the ruler painted at `x` in its own coordinates and `y` in the *text
         /// view's*. The two vertical spaces coincide unscrolled, and holding the
         /// gutter to the text view's `y` is exactly what the alignment test checks.
         func gutterColor(x: CGFloat, y: CGFloat) -> NSColor {
-            color(in: gutter, x: x, y: y)
+            Self.color(in: gutter, x: x, y: y)
         }
 
         /// The pixel of the row's number column that differs most from the row's own
@@ -797,7 +783,9 @@ final class DiffChromeTests: XCTestCase {
 
         /// Points → pixels, with the scale measured off the rep rather than assumed,
         /// and relative to the rect the canvas covers rather than to the whole view.
-        private func color(in canvas: Canvas, x: CGFloat, y: CGFloat) -> NSColor {
+        /// `static` so a test can sample a canvas it composed itself, not only the
+        /// probe's own two.
+        static func color(in canvas: Canvas, x: CGFloat, y: CGFloat) -> NSColor {
             let scale = CGFloat(canvas.bitmap.pixelsWide) / canvas.rect.width
             let pixelX = Int((x - canvas.rect.minX) * scale)
             let pixelY = Int((y - canvas.rect.minY) * scale)
@@ -810,44 +798,4 @@ final class DiffChromeTests: XCTestCase {
             return canvas.bitmap.colorAt(x: pixelX, y: pixelY) ?? .clear
         }
     }
-}
-
-// MARK: - Color assertions
-
-/// The largest per-channel difference between two colors, both taken into device
-/// RGB. A color read out of a bitmap is a plain device RGB value, so this is how it
-/// gets compared to a catalog color at all.
-private func channelDistance(_ one: NSColor, _ other: NSColor) -> CGFloat {
-    guard let one = one.usingColorSpace(.deviceRGB), let other = other.usingColorSpace(.deviceRGB) else {
-        return .greatestFiniteMagnitude
-    }
-    return max(abs(one.redComponent - other.redComponent),
-               abs(one.greenComponent - other.greenComponent),
-               abs(one.blueComponent - other.blueComponent))
-}
-
-/// `ink` painted over `background` at the ink's own alpha — what a translucent
-/// color actually deposits in the bitmap. Opaque ink comes back unchanged, so this
-/// is safe to apply to every color the gutter draws.
-private func composite(_ ink: NSColor, over background: NSColor) -> NSColor {
-    guard let ink = ink.usingColorSpace(.deviceRGB), let background = background.usingColorSpace(.deviceRGB)
-    else { return ink }
-    let alpha = ink.alphaComponent
-    func blend(_ channel: KeyPath<NSColor, CGFloat>) -> CGFloat {
-        ink[keyPath: channel] * alpha + background[keyPath: channel] * (1 - alpha)
-    }
-    return NSColor(deviceRed: blend(\.redComponent), green: blend(\.greenComponent),
-                   blue: blend(\.blueComponent), alpha: 1)
-}
-
-/// Equal drawn colors, within a tolerance that absorbs the round trip through the
-/// bitmap. Not `==`: `NSColor` equality compares catalog identity, and nothing read
-/// back out of a bitmap has any.
-private func assertSameColor(
-    _ actual: NSColor, _ expected: NSColor, _ context: @autoclosure () -> String = "",
-    file: StaticString = #filePath, line: UInt = #line
-) {
-    let distance = channelDistance(actual, expected)
-    XCTAssertLessThan(
-        distance, 0.02, "\(context()): drew \(actual), expected \(expected)", file: file, line: line)
 }

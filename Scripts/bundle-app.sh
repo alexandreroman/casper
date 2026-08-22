@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Assemble a self-contained Casper.app from the release binary: copy the binary,
-# substitute the Info.plist version placeholders, bundle every non-system dylib
-# (libgit2 + llhttp + libssh2 + transitive deps) into Contents/Frameworks and
-# rewrite their load paths, then verify nothing non-relocatable remains.
+# Assemble a self-contained Casper.app from the release binary: stage the bundle
+# via Scripts/assemble-bundle.sh, substitute the Info.plist version placeholders,
+# compile the layered app icon, bundle every non-system dylib (libgit2 + llhttp +
+# libssh2 + transitive deps) into Contents/Frameworks and rewrite their load paths,
+# then strip, sign and verify nothing non-relocatable remains.
 #
 # Usage: Scripts/bundle-app.sh <short-version> <bundle-version>
 set -euo pipefail
@@ -16,36 +17,14 @@ cd "$ROOT"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# Same flags as the Makefile's `release` target, which exports them; the default
-# keeps a standalone run of this script honest. Building the release with one set
-# of flags and locating it with another risks resolving a different build
-# directory (or planning a rebuild without them).
-SWIFT_RELEASE_FLAGS="${SWIFT_RELEASE_FLAGS:--Xswiftc -Osize}"
-# Word splitting is intended here: the variable holds several arguments.
-# shellcheck disable=SC2086
-BIN_DIR="$(swift build -c release $SWIFT_RELEASE_FLAGS --show-bin-path)"
-BINARY="$BIN_DIR/casper"
-if [ ! -x "$BINARY" ]; then
-    echo "error: release binary not found at $BINARY (run 'make release' first)" >&2
-    exit 1
-fi
-
+# Stage everything the dev bundle and the release bundle have in common (layout,
+# binary, Resources, Sparkle.framework); the release-only steps follow below.
+BIN_DIR="$("$ROOT/Scripts/assemble-bundle.sh" release)"
 APP="$ROOT/Casper.app"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
-
-cp "$BINARY" "$APP/Contents/MacOS/casper"
-chmod +x "$APP/Contents/MacOS/casper"
 
 sed -e "s/__SHORT_VERSION__/${SHORT_VERSION}/g" \
     -e "s/__BUNDLE_VERSION__/${BUNDLE_VERSION}/g" \
     "$ROOT/Packaging/Info.plist" > "$APP/Contents/Info.plist"
-
-# UNNotificationSound(named:) resolves the file from the bundle's Resources dir.
-cp "$ROOT/Packaging/Sounds/NotificationAlert.aiff" "$APP/Contents/Resources/NotificationAlert.aiff"
-
-# CFBundleIconFile (Info.plist) resolves AppIcon.icns from the bundle's Resources dir.
-cp "$ROOT/Packaging/AppIcon/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # macOS 26+ prefers the layered Liquid Glass icon: compile AppIcon.icon into
 # Assets.car (resolved via CFBundleIconName). Requires Xcode 26's actool. The
@@ -59,7 +38,7 @@ if [ -d "$ICON_SRC" ]; then
     fi
     # Compile into a temp dir, not directly into Resources: actool also emits a
     # low-res AppIcon.icns (and a partial Info.plist) alongside Assets.car, and
-    # that icns would clobber the hand-crafted high-res fallback copied above.
+    # that icns would clobber the hand-crafted high-res fallback already staged.
     # Take only Assets.car; the icns and partial plist are intentionally dropped.
     ICON_OUT="$TMP/iconout"
     mkdir -p "$ICON_OUT"
@@ -80,28 +59,10 @@ else
     echo "note: $ICON_SRC not found — bundling .icns fallback only (no Liquid Glass icon)" >&2
 fi
 
-# HighlightSwift's generated Bundle.module ships as an ordinary sealed resource;
-# DiffHighlighter mirrors it to the app root at runtime (where Bundle.module looks).
-cp -R "$BIN_DIR/HighlightSwift_HighlightSwift.bundle" "$APP/Contents/Resources/HighlightSwift_HighlightSwift.bundle"
-
-# Sparkle: embed the auto-update framework the release binary links against.
-# The binary references it as @rpath/Sparkle.framework/Versions/B/Sparkle, and
-# dylibbundler below points @rpath at Contents/Frameworks, so dropping the
-# framework there is all the wiring needed.
+# The staged Sparkle.framework needs no further wiring: the binary references it
+# as @rpath/Sparkle.framework/Versions/B/Sparkle, and dylibbundler below points
+# @rpath at Contents/Frameworks.
 #
-# ditto, not cp: this is a versioned framework bundle whose Versions/Current
-# symlinks and Apple code signature must survive the copy byte for byte. That
-# signature seals Autoupdate, Updater.app and the XPC services nested inside —
-# Sparkle launches those as separate processes during an install, and a broken
-# seal there fails the update at the very last step.
-SPARKLE_FRAMEWORK="$BIN_DIR/Sparkle.framework"
-if [ ! -d "$SPARKLE_FRAMEWORK" ]; then
-    echo "error: $SPARKLE_FRAMEWORK not found (run 'make release' first)" >&2
-    exit 1
-fi
-ditto "$SPARKLE_FRAMEWORK" "$APP/Contents/Frameworks/Sparkle.framework"
-echo "Embedded Sparkle.framework -> Contents/Frameworks/"
-
 # Copy non-system dylibs into Contents/Frameworks and rewrite load commands to
 # @executable_path/../Frameworks (recurses into transitive dependencies).
 #

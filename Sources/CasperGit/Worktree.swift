@@ -25,15 +25,20 @@ extension Repository {
         try gitCheck(git_object_peel(&commit, baseObject, GIT_OBJECT_COMMIT))
         defer { git_object_free(commit) }
 
+        // Initialize the options BEFORE creating the branch: everything between the
+        // branch creation and the rollback `catch` below must be infallible, or a throw
+        // there would leave the new branch behind and break the retry idempotency the
+        // rollback exists to provide.
+        var options = git_worktree_add_options()
+        try gitCheck(git_worktree_add_options_init(
+            &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
+
         // Create the branch at that commit.
         var branchRef: OpaquePointer?
         try gitCheck(git_branch_create(&branchRef, pointer, name, commit, 0))
         defer { git_reference_free(branchRef) }
 
         // Add the worktree checked out to the new branch.
-        var options = git_worktree_add_options()
-        try gitCheck(git_worktree_add_options_init(
-            &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
         options.ref = branchRef
 
         var worktree: OpaquePointer?

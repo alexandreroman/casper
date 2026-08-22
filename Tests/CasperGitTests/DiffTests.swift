@@ -2,24 +2,33 @@ import XCTest
 @testable import CasperGit
 
 final class DiffTests: XCTestCase {
-    private func tempDir() -> URL {
-        let d = URL(fileURLWithPath: NSTemporaryDirectory())
+    /// A throwaway working tree, holding the fixture repository every test diffs.
+    private var directory: URL!
+    /// The fixture repository: one commit, clean, `README.md` = "casper fixture\n".
+    private var repo: Repository!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        directory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("casper-diff-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        repo = try GitFixture.repository(at: directory.path)
+    }
+
+    override func tearDownWithError() throws {
+        repo = nil
+        try? FileManager.default.removeItem(at: directory)
+        directory = nil
+        try super.tearDownWithError()
     }
 
     func testCleanRepoHasNoFiles() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)  // one commit, clean
         XCTAssertTrue(try repo.diffWorkdirToHead().files.isEmpty)
     }
 
     func testModifiedFileProducesHunk() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)  // README.md = "casper fixture\n"
         try "casper CHANGED\n".write(
-            to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
         let diff = try repo.diffWorkdirToHead()
         XCTAssertEqual(diff.files.count, 1)
         let file = diff.files[0]
@@ -33,10 +42,8 @@ final class DiffTests: XCTestCase {
     }
 
     func testUntrackedFileIsAddedWithAdditions() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)
         try "new\ncontent\n".write(
-            to: dir.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("new.txt"), atomically: true, encoding: .utf8)
         let file = try repo.diffWorkdirToHead().files.first { $0.newPath == "new.txt" }
         XCTAssertEqual(file?.status, .added)
         // An untracked text file must not be misclassified as binary.
@@ -51,12 +58,10 @@ final class DiffTests: XCTestCase {
     }
 
     func testFilesAreSortedAlphabetically() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)
         // Create untracked files deliberately out of alphabetical order.
         for name in ["zebra.txt", "apple.txt", "mango.txt"] {
             try "\(name)\n".write(
-                to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+                to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
         }
         let paths = try repo.diffWorkdirToHead().files.map { $0.newPath }
         XCTAssertEqual(paths, paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
@@ -64,9 +69,7 @@ final class DiffTests: XCTestCase {
     }
 
     func testDeletedFileIsDeletion() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)
-        try FileManager.default.removeItem(at: dir.appendingPathComponent("README.md"))
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("README.md"))
         let file = try repo.diffWorkdirToHead().files.first { $0.oldPath == "README.md" }
         XCTAssertEqual(file?.status, .deleted)
         // libgit2 mirrors `old_file.path` into `new_file.path` for a deletion (the two
@@ -77,50 +80,48 @@ final class DiffTests: XCTestCase {
     }
 
     func testUnbornHeadDiffsWholeTreeAsAdded() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try Repository.initialize(atPath: dir.path)  // no commit -> unborn HEAD
+        // A repository of its own: an unborn HEAD is the point here, and the shared
+        // fixture already carries a commit.
+        let unbornDirectory = directory.appendingPathComponent("unborn")
+        try FileManager.default.createDirectory(at: unbornDirectory, withIntermediateDirectories: true)
+        let unbornRepo = try Repository.initialize(atPath: unbornDirectory.path)
         try "hello\n".write(
-            to: dir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
-        let file = try repo.diffWorkdirToHead().files.first { $0.newPath == "a.txt" }
+            to: unbornDirectory.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let file = try unbornRepo.diffWorkdirToHead().files.first { $0.newPath == "a.txt" }
         XCTAssertEqual(file?.status, .added)
     }
 
     func testBinaryFileHasNoHunks() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)
         var bytes = Data([0x00, 0x01, 0x02, 0x00, 0xff, 0xfe])
         bytes.append(contentsOf: [0x00, 0x00])
-        try bytes.write(to: dir.appendingPathComponent("blob.bin"))
+        try bytes.write(to: directory.appendingPathComponent("blob.bin"))
         let file = try repo.diffWorkdirToHead().files.first { $0.newPath == "blob.bin" }
         XCTAssertEqual(file?.isBinary, true)
         XCTAssertTrue(file?.hunks.isEmpty ?? false)
     }
 
     func testChmodOnlyIsNotBinary() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)
         // Flip the executable bit without touching the file's content.
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755],
-            ofItemAtPath: dir.appendingPathComponent("README.md").path)
+            ofItemAtPath: directory.appendingPathComponent("README.md").path)
 
         let diff = try repo.diffWorkdirToHead()
-        // No file must ever be reported as binary — whether or not this libgit2
-        // build surfaces the mode-only change as a delta.
-        XCTAssertTrue(diff.files.allSatisfy { !$0.isBinary })
-        // When the mode change does surface, it must be a plain modification.
-        if let readme = diff.files.first(where: { $0.newPath == "README.md" }) {
-            XCTAssertEqual(readme.status, .modified)
-            XCTAssertFalse(readme.isBinary)
+        // Not every libgit2 build reports a mode-only change as a delta. Without one
+        // there is nothing to classify, and asserting over the empty list would pass
+        // while covering nothing — so say so instead.
+        guard let readme = diff.files.first(where: { $0.newPath == "README.md" }) else {
+            throw XCTSkip("this libgit2 build does not surface a mode-only change as a delta")
         }
+        XCTAssertEqual(readme.status, .modified)
+        XCTAssertFalse(readme.isBinary)
     }
 
     func testNoTrailingNewlineOmitsEOFNLMarker() throws {
-        let dir = tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
-        let repo = try GitFixture.repository(at: dir.path)  // README.md = "casper fixture\n"
-        // Overwrite with content that has no final newline.
+        // Overwrite the fixture's README with content that has no final newline.
         try "line one\nline two".write(
-            to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
 
         let file = try repo.diffWorkdirToHead().files.first { $0.newPath == "README.md" }
         let lines = file?.hunks.flatMap(\.lines) ?? []

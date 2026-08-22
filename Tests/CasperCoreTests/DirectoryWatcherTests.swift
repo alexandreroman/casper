@@ -51,6 +51,9 @@ final class DirectoryWatcherTests: XCTestCase {
         }
         XCTAssertNotNil(watcher)
         box.withLock { $0 = watcher }
+        // The box holds the watcher, which holds the callback, which captures the box:
+        // emptying the box breaks that cycle so the watcher and its queue are released.
+        defer { box.withLock { $0 = nil } }
         defer { watcher?.stop() }
 
         try "hello".write(to: dir.appendingPathComponent("change.txt"), atomically: true, encoding: .utf8)

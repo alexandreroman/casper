@@ -47,7 +47,9 @@ in-house means re-implementing signature verification and atomic bundle
 replacement, which is exactly the kind of security-critical code not worth
 owning. It ships a universal `Sparkle.framework` (~10 MB in the bundle) — the
 one place where the smallest-binary rule is knowingly traded away. Casper stays
-ad-hoc signed, so the EdDSA appcast signature is the only trust anchor: see [`.superpowers/plans/sparkle-auto-update.md`](../../../.superpowers/plans/sparkle-auto-update.md).
+ad-hoc signed, so the EdDSA appcast signature is the only trust anchor: see the
+plan
+[`sparkle-auto-update.md`](../../../.superpowers/plans/sparkle-auto-update.md).
 
 **Workspace info panel rendering:** the panel renders Markdown supplied by the
 `casper info` CLI without any external package. macOS parses Markdown natively

@@ -288,8 +288,15 @@ public final class SocketServerEngine<
         // intentionally no idle/read timeout here: this is a local, single-peer
         // channel; the >8 MB length guard bounds memory, and the client bounds
         // its own wait with `timeout`.
+        // Every callback below cancels the strongly-captured `connection` when the
+        // engine is already gone: nothing would untrack or cancel it otherwise, so it
+        // would survive to process exit. Cancelling from the connection's own queue
+        // keeps the serial-queue discipline the engine relies on.
         readExactly(4, on: connection, into: ReadBuffer()) { [weak self] header in
-            guard let self else { return }
+            guard let self else {
+                connection.cancel()
+                return
+            }
             guard let header else {
                 self.drop(connection)  // client closed before sending a full header
                 return
@@ -300,7 +307,10 @@ public final class SocketServerEngine<
                 return
             }
             readExactly(Int(length), on: connection, into: ReadBuffer()) { [weak self] payload in
-                guard let self else { return }
+                guard let self else {
+                    connection.cancel()
+                    return
+                }
                 guard let payload else {
                     self.drop(connection)  // client closed before sending the full payload
                     return
@@ -358,7 +368,10 @@ public final class SocketServerEngine<
         connection.send(
             content: framed, contentContext: .finalMessage, isComplete: true,
             completion: .contentProcessed { [weak self] error in
-                guard let self else { return }
+                guard let self else {
+                    connection.cancel()  // see `receive`: an orphaned connection must not linger
+                    return
+                }
                 if error != nil {
                     self.drop(connection)  // send failed; nothing to deliver, tear down now
                 } else {
@@ -394,7 +407,10 @@ public final class SocketServerEngine<
     private func waitForClientClose(on connection: NWConnection) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: maxSocketFrameBytes) {
             [weak self] _, _, isComplete, error in
-            guard let self else { return }
+            guard let self else {
+                connection.cancel()  // see `receive`: an orphaned connection must not linger
+                return
+            }
             if isComplete || error != nil {
                 self.drop(connection)
             } else {

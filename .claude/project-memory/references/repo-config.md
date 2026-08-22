@@ -23,9 +23,14 @@ and rationale that are NOT obvious from the code. Implementation STATUS lives in
 
 ## Hook wrap vs. named-command wrap (opposite goals)
 
-- Named commands wrap as `subshellWrappedScriptCommand` = `"(\n<cmd>\n)"` so a
-  script that `exit`s (or fails under `set -e`) kills only the subshell — the
-  interactive pane stays open with the output.
+- Named commands wrap as `subshellWrappedScriptCommand` =
+  `"(\n<cmd>\n)\n[ $? -eq 0 ] && exit"`. The subshell keeps a script that
+  `exit`s (or fails under `set -e`) from killing the interactive shell; the
+  trailing test then exits that shell — closing the pane through the normal
+  close path — only when the script succeeded. A non-zero status leaves the pane
+  alive at a prompt with the script's output still readable. The command and the
+  closing `[ … ]` test each sit on their own line so a trailing `#` comment
+  cannot swallow the closing paren or the test.
 - Hooks wrap as `hookWrappedScriptCommand` = `"<cmd>\nexit $?"` so the shell
   exits with the command's status, which makes libghostty emit a child-exit
   event — the completion signal a hook needs. The newline (not `;`) keeps a

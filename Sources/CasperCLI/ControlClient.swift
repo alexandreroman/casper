@@ -38,6 +38,13 @@ func requireNonEmpty(_ value: String, _ what: String) throws -> String {
     return value
 }
 
+/// The single element a reply is required to carry, or a clear error naming what
+/// the app failed to return.
+func requireFirst<Item>(_ items: [Item]?, _ what: String) throws -> Item {
+    guard let first = items?.first else { throw exitWithError("no \(what) returned") }
+    return first
+}
+
 /// Resolve a required target selector or exit with a clear message.
 func requireSelector(_ option: WorkspaceTargetOption) throws -> String {
     guard let selector = option.resolvedSelector() else {

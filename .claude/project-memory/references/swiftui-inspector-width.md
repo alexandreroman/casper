@@ -30,12 +30,16 @@ divider is a normal SwiftUI gesture that cannot trigger the loop.
 `.move` transition.** The panel is **always mounted**; collapsing animates a
 **trailing-pinned clip width** (`0 ↔ divider+panel`, `alignment: .trailing` +
 `.clipped()`) so the panel content sits at fixed coordinates and is *revealed*,
-not translated. A `.transition(.move(edge: .trailing))` looked right but made
-the **segmented tab `Picker` lag** the sliding chrome: it is an AppKit
-`NSSegmentedControl`, and AppKit-hosted views don't follow a SwiftUI
-transition's per-frame offset (a freshly inserted `NSView` is laid out straight
-at its final frame). This mirrors `SplitContainerView`, which animates hosted
-Metal views by frame/offset on always-mounted views for the same reason. Since
+not translated. A `.transition(.move(edge: .trailing))` looks right on paper
+but breaks any AppKit-hosted view inside the panel: a freshly inserted `NSView`
+is laid out straight at its final frame and never follows a SwiftUI
+transition's per-frame offset, so it lags the sliding chrome. The rule was paid
+for by an `NSSegmentedControl` behind an early segmented-`Picker` tab strip; the
+tab strip is hand-rolled SwiftUI (`InspectorTabSelector` in
+`WorkspaceDetailView.swift`), and the constraint survives it because the panel
+still hosts AppKit content — the terminal's Metal layer and `WKWebView`. This
+mirrors `SplitContainerView`, which animates hosted Metal views by frame/offset
+on always-mounted views for the same reason. Since
 the panel stays mounted while collapsed, `InspectorPanel` **gates its heavy
 `content`** (the diff / browser views) on the expanded state, so no diff
 computation or `WKWebView` runs while collapsed. Trailing (not leading)

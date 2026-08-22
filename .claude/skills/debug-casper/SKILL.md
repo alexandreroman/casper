@@ -141,8 +141,9 @@ A screenshot (then read the PNG to "see" the window):
 
 `screenshot`, `dump-state`, and `read-text` are idempotent, so the CLI
 retries them automatically on transient local-socket transport blips —
-they are reliable. `send-text` is **not** retried, to avoid
-double-injecting input.
+they are reliable. The mutating verbs (`send-text`, `send-keys`, `send-key`,
+`send-action`, `mouse-move`, `focus`) are **never** retried, so a replay
+cannot double-inject input or move focus twice.
 
 ## 3. Drive
 
@@ -163,7 +164,9 @@ Then re-read to verify:
 The debug bridge (`DebugSurfaceBridge.debugSurfaces()`) exposes **exactly one
 surface**: the *first* `GhosttySurfaceView` found in the key window's content
 hierarchy — i.e. the selected workspace's focused/first pane. Its reported `id`
-is the **selected workspace's UUID** (`selectedWorkspaceID.uuidString`), not a
+is the **selected workspace's UUID in Casper's canonical lowercase form**
+(`selectedWorkspaceID.casperID`, i.e. `uuidString.lowercased()` — Foundation's
+plain `uuidString` is uppercase and is never what the harness prints), not a
 per-pane id and not a numeric index. So `dump-state` always returns a
 single-element `surfaces` array. Consequently the harness **cannot reach** other
 panes in a split, or any unselected workspace's surface (including a
@@ -182,9 +185,10 @@ WS=$(.build/debug/casper debug dump-state | sed -n 's/.*"id" : "\([^"]*\)".*/\1/
 .build/debug/casper debug focus "$WS"          # changes UI focus (not retried)
 ```
 
-Without `--target`, verbs act on the focused surface (falling back to the
-first). An unknown id fails with `no surface with id <id>` — there is no silent
-fallback.
+Without `--target`, the verbs that accept it act on the focused surface
+(falling back to the first). `dump-state` accepts no `--target` at all, and
+`focus` needs its id as a positional argument. An unknown id fails with
+`no surface with id <id>` — there is no silent fallback.
 
 ### Switching workspace can't be driven by synthetic keys
 
@@ -205,11 +209,28 @@ unset CASPER_SESSION
 
 ## Notes
 
-- The four verbs are `dump-state`, `read-text [--scrollback]`,
-  `send-text <text> [--enter]`, and `screenshot <path>`.
+- The nine verbs, with their own options (every one also takes
+  `--socket <path>`, defaulting to `$CASPER_DEBUG_SOCKET`, else the
+  `$CASPER_SESSION`-derived path, else `/tmp/casper-debug.sock`):
+
+  | Verb                                   | Notes                                              |
+  | -------------------------------------- | -------------------------------------------------- |
+  | `dump-state`                           | Prints every exposed surface as JSON. No `--target`. |
+  | `read-text [--scrollback] [--target]`  | Viewport text, or the full screen with `--scrollback`. |
+  | `send-text <text> [--enter] [--target]`| Injects text; `--enter` submits with Return.       |
+  | `send-keys <text> [--target]`          | Types the text as real per-character key events.   |
+  | `send-key <char> [--mods …] [--target]`| One key event; `--mods` takes `ctrl`, `cmd`, `opt`, `shift`, repeatable (`--mods ctrl shift`). |
+  | `send-action <name> [--target]`        | Fires a libghostty keybinding action, e.g. `copy_to_clipboard`. |
+  | `mouse-move <x> <y> [--target]`        | Injects a mouse position in libghostty top-left coordinates. |
+  | `screenshot <path> [--target]`         | Writes a PNG of the app window.                    |
+  | `focus <id>`                           | Gives UI focus to a surface. The id is a **required positional**, not `--target`. |
+
 - `read-text` returns the terminal contents as plain text — prefer it over
   screenshots for asserting terminal output.
-- All verbs target the focused surface (falling back to the first surface).
+- Targeting is not uniform: `dump-state` has no `--target` (it always reports
+  every exposed surface) and `focus` demands an explicit positional id. The
+  other seven default to the focused surface — falling back to the first — when
+  `--target` is omitted.
 - Only the selected workspace's focused/first surface is ever exposed — see
   "What the harness can (and cannot) see". To exercise a specific pane or
   workspace, select/arrange it in the UI first.

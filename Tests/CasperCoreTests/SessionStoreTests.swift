@@ -3,10 +3,14 @@ import XCTest
 @testable import CasperCore
 
 final class SessionStoreTests: XCTestCase {
+    /// A `session.json` inside a throwaway directory that is removed when the test ends.
+    /// `SessionStore` writes for real, so an un-cleaned fixture leaves the file — and the
+    /// `.corrupt` backup the store makes beside it — behind on every run.
     private func tempFileURL() -> URL {
-        FileManager.default.temporaryDirectory
+        let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-test-\(UUID().uuidString)")
-            .appendingPathComponent("session.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return directory.appendingPathComponent("session.json")
     }
 
     // `isGitRepo` is intentionally not persisted (it is resolved at runtime), so
@@ -29,7 +33,6 @@ final class SessionStoreTests: XCTestCase {
 
     func testSaveThenLoadRoundTrips() throws {
         let url = tempFileURL()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = SessionStore(fileURL: url)
 
         let session = makeSampleSession()
@@ -45,7 +48,6 @@ final class SessionStoreTests: XCTestCase {
 
     func testLoadCorruptFileSelfHealsAndBacksItUp() throws {
         let url = tempFileURL()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let garbage = Data("{ this is not valid session json".utf8)
@@ -64,7 +66,6 @@ final class SessionStoreTests: XCTestCase {
 
     func testLoadCorruptFileReplacesPriorBackup() throws {
         let url = tempFileURL()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let backupURL = url.appendingPathExtension("corrupt")
@@ -79,10 +80,9 @@ final class SessionStoreTests: XCTestCase {
     }
 
     func testUI1FormatSessionIsRejectedAndBackedUp() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("session.json")
+        let url = tempFileURL()
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let legacy = """
         { "workspaces": [ { "id": "\(UUID().uuidString)", "name": "w",
           "repoPath": "/r", "worktreePath": "/r", "branch": "main",
@@ -100,7 +100,6 @@ final class SessionStoreTests: XCTestCase {
 
     func testSaveDoesNotPrettyPrint() throws {
         let url = tempFileURL()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = SessionStore(fileURL: url)
 
         let session = makeSampleSession()

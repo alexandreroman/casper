@@ -80,6 +80,7 @@ a clean break (the existing `SessionStore` self-heal discards incompatible
 legacy files), not the migration the original plan described.
 
 Remaining for this theme: **Space rename** only. The per-workspace `+/−` diff
-summary is **dropped** (see the top note), so the divergence-stats and
-diff-helper tasks in the old plan (`../plans/space-project.md`) are moot — that
-plan is superseded (its model/remote/naming tasks already landed with UI-2).
+summary is **dropped** (see the top note), so the divergence stats it needed —
+a `diffStat` on `Workspace`, branch-vs-merge-base line counts in `CasperGit` —
+were never built and are not planned. See [[space-diff-summary-dropped]] for the
+rationale.

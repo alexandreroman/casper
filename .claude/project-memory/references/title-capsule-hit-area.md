@@ -19,10 +19,12 @@ capsule is mere decoration over the button and the interactive region stays
 limited to the raw label (e.g. just the `Image` glyph) — clicking the capsule
 padding/background does nothing.
 
-**Why:** this is exactly how the inspector toggle broke (only the
-`sidebar.right` glyph was clickable, not the capsule). The `diffBadge` button in
-the same file had it right — `.titleCapsule()` inside the label — and was the
-reference for the fix.
+**Why:** the failure is silent. The capsule renders exactly right and only the
+click target is wrong, so it survives visual review — typically as a chip whose
+glyph works and whose padding does nothing. `diffBadge`
+(`Sources/CasperUI/WorkspaceDetailView.swift:216`) is the reference for the
+correct shape: `.titleCapsule()` sits inside the `label:` closure, so the whole
+pill is live.
 
 ## Split-button chips (Run Script / Editor)
 
@@ -33,12 +35,13 @@ put `.titleCapsule()` inside a single label — there are two controls, and
 `Label`'s glyph/text is clickable (the exact "Run Script only clickable on the
 icon" bug). No child can reach into the capsule's outer padding.
 
-Fix: split the helper. `titleCapsuleShell(filled:)` applies everything except
-the horizontal padding (`.frame(height: 36)`, background, border overlay,
-`.contentShape(Capsule())`); `titleCapsule(filled:)` = `.padding(.horizontal,
-10)` + `titleCapsuleShell`. Split buttons finish the `HStack` with
-`.titleCapsuleShell()` and move the interior geometry INSIDE each control's
-label: on the primary button's label add `.padding(.leading, 10)`,
+Fix: split the helper. `titleCapsuleShell(filled:interactive:)` applies
+everything except the horizontal padding (`.frame(height: 36)`, background,
+border overlay, `.contentShape(Capsule())`); `titleCapsule(filled:interactive:)`
+= `.padding(.horizontal, 10)` + `titleCapsuleShell`. (`interactive: true` adds
+the hover highlight for chips that are buttons.) Split buttons finish the
+`HStack` with `.titleCapsuleShell()` and move the interior geometry INSIDE each
+control's label: on the primary button's label add `.padding(.leading, 10)`,
 `.padding(.trailing, 4)`, `.frame(maxHeight: .infinity)`,
 `.contentShape(Rectangle())` (never `maxWidth: .infinity` — the button must stay
 content-sized or it stretches the toolbar); on the `Menu` add
@@ -46,7 +49,8 @@ content-sized or it stretches the toolbar); on the `Menu` add
 height plus its leading padding all fire the primary action.
 
 **How to access:** the pattern lives in
-`Sources/CasperUI/WorkspaceDetailView.swift`; see `inspectorToggle` and
-`diffBadge` (single-button, capsule inside label) and `TitleSplitButton`
-(split-button, `titleCapsuleShell` + interior padding), which `editorButton` and
-`ScriptToolbarButton` both render. Related: [[swiftui-inspector-width]].
+`Sources/CasperUI/WorkspaceDetailView.swift`; see `diffBadge` (`:216`) for the
+single-button form (capsule inside the label) and `TitleSplitButton` (`:363`)
+for the split-button form (`titleCapsuleShell` + interior padding), which
+`editorButton` and `ScriptToolbarButton` both render.
+Related: [[swiftui-inspector-width]].

@@ -52,7 +52,10 @@ enum SeparatorMetrics {
 /// tree on every drag frame.
 struct SplitContainerView: View {
     let model: AppModel
-    let workspace: Workspace
+    let workspaceID: UUID
+    /// Whether the workspace holds more than one pane — always true for a split,
+    /// carried only so the panes below can read it (see `LayoutNodeView`).
+    let canDragPanes: Bool
     /// Child-index path from the workspace's root layout to this split node
     /// (root = `[]`), used to address it in `AppModel.setSplitRatios`.
     let path: [Int]
@@ -80,7 +83,13 @@ struct SplitContainerView: View {
             if fractions.isEmpty { fractions = seededFractions() }
             if paneKeys.isEmpty { paneKeys = children.map(\.paneDiffKey) }
         }
-        .onChange(of: children.count) {
+        .onChange(of: ratios) {
+            // Keyed on the model's `ratios`, never on the local `fractions`: a live
+            // drag writes `fractions` on every frame and commits to the model only at
+            // mouse-up, so gating on them would reset the split mid-drag. `ratios`
+            // also covers a child-count change, which always rewrites them
+            // (`LayoutTree` re-evens the ratios whenever it adds or drops a child),
+            // and a reused view instance landing on a differently-proportioned split.
             fractions = seededFractions()
         }
         .onChange(of: children) {
@@ -95,7 +104,9 @@ struct SplitContainerView: View {
         if children.count < 2 {
             // A split always has ≥2 children; render the sole child defensively.
             if let only = children.first {
-                LayoutNodeView(model: model, workspace: workspace, node: only, path: path + [0])
+                LayoutNodeView(
+                    model: model, workspaceID: workspaceID, node: only,
+                    canDragPanes: canDragPanes, path: path + [0])
             }
         } else {
             let fracs = displayFractions()
@@ -142,7 +153,9 @@ struct SplitContainerView: View {
         axisLength: CGFloat, crossLength: CGFloat
     ) -> some View {
         let frame = paneAxisFrame(index: index, boundaries: boundaries, axisLength: axisLength)
-        let view = LayoutNodeView(model: model, workspace: workspace, node: node, path: path + [index])
+        let view = LayoutNodeView(
+            model: model, workspaceID: workspaceID, node: node,
+            canDragPanes: canDragPanes, path: path + [index])
         switch orientation {
         case .horizontal:
             view
@@ -213,12 +226,12 @@ struct SplitContainerView: View {
                 },
                 onCommit: {
                     // Persist once, at mouse-up: `fractions` holds the live drag result.
-                    model.setSplitRatios(at: path, ratios: fractions, for: workspace.id)
+                    model.setSplitRatios(at: path, ratios: fractions, for: workspaceID)
                 },
                 onEqualize: {
                     let even = LayoutNode.evenRatios(children.count)
                     fractions = even
-                    model.setSplitRatios(at: path, ratios: even, for: workspace.id)
+                    model.setSplitRatios(at: path, ratios: even, for: workspaceID)
                 })
                 .frame(
                     width: orientation == .horizontal ? hitThickness : crossLength,

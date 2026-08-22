@@ -218,15 +218,23 @@ struct MarkdownTextView: NSViewRepresentable {
     /// live view is no longer on TextKit 2, and it stops being on TextKit 2 on
     /// its own (see `LinkCursorTextView.reportLaidOutHeight()`).
     ///
-    /// Measured through a throwaway TextKit stack rather than off a live view: a
-    /// view's own frame height is whatever was proposed to it, which would make
-    /// the answer echo the question. That throwaway stack is assembled by hand as
-    /// `NSTextContentStorage` → `NSTextLayoutManager` → `NSTextContainer` so it
-    /// is the TextKit 2 engine — the one `makeNSView` builds and starts out
-    /// rendering with — and its container matches the real view's
-    /// `lineFragmentPadding = 0` so both wrap at exactly the same width.
+    /// Measured through a throwaway TextKit stack rather than off a live view —
+    /// see `measuredHeight(of:width:)` — and measured once per message, not once
+    /// per call: this is reached from a SwiftUI `body`, so every hover and every
+    /// live `casper info set` would otherwise re-lay-out the whole message.
     static func height(for markdown: String, width: CGFloat) -> CGFloat {
-        let content = renderedContent(for: markdown, width: width)
+        rendered(for: markdown, width: width).height
+    }
+
+    /// The height `content` lays out to at `width` on a throwaway TextKit 2
+    /// stack, rather than off a live view: a view's own frame height is whatever
+    /// was proposed to it, which would make the answer echo the question. The
+    /// stack is assembled by hand as `NSTextContentStorage` →
+    /// `NSTextLayoutManager` → `NSTextContainer` so it is the TextKit 2 engine —
+    /// the one `makeNSView` builds and starts out rendering with — and its
+    /// container matches the real view's `lineFragmentPadding = 0` so both wrap
+    /// at exactly the same width.
+    private static func measuredHeight(of content: NSAttributedString, width: CGFloat) -> CGFloat {
         guard content.length > 0 else { return 0 }
 
         let contentStorage = NSTextContentStorage()
@@ -243,30 +251,48 @@ struct MarkdownTextView: NSViewRepresentable {
         return ceil(layoutManager.usageBoundsForTextContainer.height)
     }
 
-    /// The rendered Markdown, built at most once per `(markdown, width)` pair.
+    /// One message as both halves the view needs it in: the rendered Markdown,
+    /// and the height it lays out to at the width it was rendered for.
+    private struct Rendered {
+        let markdown: String
+        let width: CGFloat
+        let content: NSAttributedString
+        let height: CGFloat
+    }
+
+    /// The rendered Markdown and its measured height, built at most once per
+    /// `(markdown, width)` pair.
     ///
     /// The panel measures the message and then renders it, and both go through
     /// the full pipeline — parsing, one pass over every block, a rasterized rule
-    /// per thematic break. Sharing one build between the two halves is what
-    /// keeps a panel that reopens or re-lays-out from paying for it again.
+    /// per thematic break, then a layout pass over the whole document to measure
+    /// it. Sharing one build between the two halves is what keeps a panel that
+    /// reopens or re-lays-out from paying for it again.
+    ///
+    /// The height is measured here, alongside the render, rather than on first
+    /// ask: the panel's `body` measures every message it renders, so a slot
+    /// filled lazily would carry a second mutable state for no work saved.
     ///
     /// Deliberately a single entry rather than a dictionary: only one message is
     /// on screen at a time, so one slot serves every hit this is here for, and a
     /// map keyed by arbitrary user-supplied Markdown could grow without bound.
-    private static func renderedContent(for markdown: String, width: CGFloat) -> NSAttributedString {
+    private static func rendered(for markdown: String, width: CGFloat) -> Rendered {
         if let cached = lastRendered, cached.markdown == markdown, cached.width == width {
-            return cached.content
+            return cached
         }
         let content = MarkdownAttributedString.make(
             markdown, font: Style.font, textColor: Style.textColor, contentWidth: width)
-        lastRendered = (markdown: markdown, width: width, content: content)
-        return content
+        let entry = Rendered(
+            markdown: markdown, width: width, content: content,
+            height: measuredHeight(of: content, width: width))
+        lastRendered = entry
+        return entry
     }
 
     /// Main-actor state, like every other member of this view: the two callers
     /// are `height(for:width:)`, reached from a SwiftUI `body`, and
     /// `updateNSView`.
-    private static var lastRendered: (markdown: String, width: CGFloat, content: NSAttributedString)?
+    private static var lastRendered: Rendered?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onOpenURL: onOpenURL)
@@ -351,7 +377,7 @@ struct MarkdownTextView: NSViewRepresentable {
         // leave a selection alone.
         guard context.coordinator.renderedMarkdown != markdown
             || context.coordinator.renderedWidth != width else { return }
-        textView.textStorage?.setAttributedString(Self.renderedContent(for: markdown, width: width))
+        textView.textStorage?.setAttributedString(Self.rendered(for: markdown, width: width).content)
         // New content, so the previous content's reported height is no longer a
         // reason to stay quiet at the next layout pass.
         textView.forgetReportedHeight()

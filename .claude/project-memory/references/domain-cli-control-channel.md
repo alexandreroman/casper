@@ -1,40 +1,23 @@
 ---
 name: "Domain CLI and control channel"
-description: "casper's domain CLI emits JSON over CASPER_CONTROL_SOCKET; full verb surface, error paths exit non-zero; no hook mechanism"
+description: "casper's domain CLI emits JSON over CASPER_CONTROL_SOCKET; the JSON key conventions, the non-zero-exit rule, and the no-hooks decision"
 type: project
 ---
 
 # Domain CLI and control channel
 
 `casper`'s CLI is organized by domain — one noun per area of app state, each
-with a handful of verbs. Full surface:
+with a handful of verbs: `status`, `progress`, `notify`, `info`, `terminal`,
+`browser`, `diff` and `workspace`. `run [<name>]` is the one exception to the
+noun rule: it runs a named `.casper.json` command in a visible split (defaulting
+to the command named `run`) and deliberately sits at the **top level**, because
+it acts on the workspace rather than on a resource of its own.
 
-- `status set <state>`
-- `progress set --total --current --label` / `progress clear`
-- `notify [--message <str>]`
-- `info set [--message <str> | --file <path> | -]` / `info clear`
-- `terminal new [--command <cmd>] [--working-dir <dir>]` / `terminal list` /
-  `terminal close <id>`
-- `browser open <url>` (the url must be absolute — scheme **and** host) /
-  `browser load <url>` (same, but a **background** load — does not open/select
-  the inspector) / `browser close`
-- `browser screenshot [--out <path>]` / `browser eval <js> [--raw]` /
-  `browser content [--selector <css>] [--raw]` / `browser url [--raw]` /
-  `browser click <selector>` / `browser type <selector> <text>` /
-  `browser key <key> [--selector <css>]` / `browser scroll-up` /
-  `browser scroll-down` / `browser scroll-top` / `browser scroll-bottom` —
-  browser automation over the workspace's inspector `WKWebView` (see
-  [[browser-automation-cli]])
-- `browser console [--level <lvl>] [--clear]` / `browser wait
-  <selector>|--js <expr> [--visible|--gone] [--timeout <ms>]` /
-  `browser reload [--wait]` — web-app debugging: page console/error capture,
-  deterministic waits, reload (see [[browser-automation-cli]])
-- `diff open [<file>]` / `diff close`
-- `workspace list` / `workspace current` / `workspace new <branch> [--base]
-  [--command]` / `workspace delete` (the branch is a required positional)
-- `run [<name>]` — run a named `.casper.json` command in a visible split
-  (defaults to the command named `run`); a workspace-targeted verb that sits at
-  the top level rather than under a noun
+`ControlCommand.Verb` and `casper --help` are the authoritative verb list — this
+note records the conventions every verb obeys, not the roster. The `browser`
+domain's automation, debugging and off-screen screenshot verbs (including
+`browser screenshot --width/--height/--url`) are documented in
+[[browser-automation-cli]].
 
 Every workspace-scoped command accepts `--workspace <id-or-name>`, defaulting to
 `$CASPER_WORKSPACE_ID` (set in every Casper terminal). `workspace current` is
@@ -78,18 +61,25 @@ keys on the injected `$CASPER_CONTROL_SOCKET` path, not `$CASPER_SESSION`.
 
 ## Behavior specifics
 
+- Every url argument must be **absolute** — scheme **and** host — and is
+  validated CLI-side before the app is contacted.
 - `browser open` loads the URL into the workspace's **single inspector browser
   surface** and selects the browser tab (mirroring how `diff open` selects the
   diff tab) — there are no browser layout panels; layout panels are
-  **terminal-only**. The browser-automation verbs (`screenshot`/`eval`/
-  `content`/`url`/`click`/`type`/`key`) act on that same inspector browser
-  surface, getting-or-creating its `BrowserCoordinator` so they work even when
-  the panel is collapsed or was never shown (see [[browser-automation-cli]]).
+  **terminal-only**. `browser load` is the background form of the same thing: it
+  loads without opening or selecting the inspector. The browser-automation verbs
+  act on that same inspector browser surface, getting-or-creating its
+  `BrowserCoordinator` so they work even when the panel is collapsed or was
+  never shown (see [[browser-automation-cli]]).
 - `diff open [<file>]` opens the diff view and scrolls to `<file>` (resolved
   against diff file ids by exact → path-suffix → basename). The file must exist
   on disk **and** be inside the worktree, else an error (`WorkspaceFilePath`
   containment + existence check). A valid but unchanged file opens the diff
   without scrolling.
+- `workspace new` takes the new branch name as a **required positional**, never
+  an option; `--base` and `--command` are its only verb-specific options.
+  `workspace delete` takes no positional at all — it names its target through
+  the shared `--workspace` option.
 - `workspace delete` is **destructive**: prunes the linked worktree (deleting
   its folder), deletes its branch in the origin repo, and drops it from the UI.
   It **refuses a primary workspace**, and git cleanup runs before the UI removal

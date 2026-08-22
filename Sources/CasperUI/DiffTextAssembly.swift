@@ -34,23 +34,9 @@ struct DiffFileHighlight: Sendable {
     /// only reaches lines a truncation note already warns the reader about.
     func prunedToRenderedLines(ofFileAt fileIndex: Int, in document: DiffDocument) -> DiffFileHighlight {
         guard document.files.indices.contains(fileIndex) else { return self }
-        let file = document.files[fileIndex]
-
-        var newNumbers: Set<Int> = []
-        var oldNumbers: Set<Int> = []
-        for line in document.lines[file.firstLineIndex..<(file.firstLineIndex + file.lineCount)] {
-            // The same three conditions `DiffTextAssembly.applyHighlight` skips
-            // on: chrome carries no source line, and a truncated line's content
-            // is only a prefix of one, so neither is ever looked up.
-            guard let kind = line.diffKind, let number = line.number, !line.truncated else { continue }
-            if kind == .deletion {
-                oldNumbers.insert(number)
-            } else {
-                newNumbers.insert(number)
-            }
-        }
+        let rendered = document.renderedLineNumbers(ofFileAt: fileIndex)
         return DiffFileHighlight(
-            new: Self.keeping(newNumbers, of: new), old: Self.keeping(oldNumbers, of: old))
+            new: Self.keeping(rendered.new, of: new), old: Self.keeping(rendered.old, of: old))
     }
 
     /// `lines` with everything outside `numbers` (1-based) blanked, truncated
@@ -140,7 +126,8 @@ enum DiffTextAssembly {
                 guard line.diffKind != nil else {
                     // A hunk header or a note: chrome, in the smaller face and
                     // the dimmer color.
-                    attributed.addAttributes(chromeAttributes(for: line.kind), range: paragraphRange(of: line))
+                    let chrome = line.kind == .hunkHeader ? hunkHeaderAttributes : noteAttributes
+                    attributed.addAttributes(chrome, range: paragraphRange(of: line))
                     continue
                 }
 
@@ -155,6 +142,27 @@ enum DiffTextAssembly {
             }
         }
         return attributed
+    }
+
+    /// Paints many files' syntax colors onto `storage` in a single edit
+    /// transaction, in the order given — which must be ascending, see
+    /// `DiffRendering.highlightsInDocumentOrder`.
+    ///
+    /// One transaction for the batch rather than one per file: `endEditing()`
+    /// invalidates the text view's layout, and a whole-document repaint after a
+    /// storage swap carries one highlight per file, so a 60-file diff would
+    /// otherwise cost 60 layout cycles for a single refresh. The transactions
+    /// nest, so `applyHighlight`'s own pair below stays where it is and is what
+    /// keeps a lone progressive highlight correct.
+    static func applyHighlights(
+        _ highlights: [(fileIndex: Int, highlight: DiffFileHighlight)],
+        in storage: NSMutableAttributedString, document: DiffDocument
+    ) {
+        storage.beginEditing()
+        defer { storage.endEditing() }
+        for (fileIndex, highlight) in highlights {
+            applyHighlight(highlight, forFileAt: fileIndex, in: storage, document: document)
+        }
     }
 
     /// Paints one file's syntax colors onto `storage`, which must have been
@@ -241,16 +249,20 @@ enum DiffTextAssembly {
         .paragraphStyle: wrappingStyle,
     ]
 
-    /// The chrome lines' overrides — face and color only, so whatever paragraph
-    /// style the line already carries survives.
-    private static func chromeAttributes(
-        for kind: DiffDocument.LineSpan.Kind
-    ) -> [NSAttributedString.Key: Any] {
-        [
-            .font: kind == .hunkHeader ? hunkHeaderFont : noteFont,
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ]
-    }
+    /// A hunk header's overrides — face and color only, so whatever paragraph
+    /// style the line already carries survives. Prebuilt for the same reason
+    /// `codeAttributes` is: every hunk of every file would otherwise allocate its
+    /// own copy of one of these two values.
+    private static let hunkHeaderAttributes: [NSAttributedString.Key: Any] = [
+        .font: hunkHeaderFont,
+        .foregroundColor: NSColor.secondaryLabelColor,
+    ]
+
+    /// A note's overrides, in the proportional face the notes are set in.
+    private static let noteAttributes: [NSAttributedString.Key: Any] = [
+        .font: noteFont,
+        .foregroundColor: NSColor.secondaryLabelColor,
+    ]
 
     /// The base paragraph style, built once.
     ///

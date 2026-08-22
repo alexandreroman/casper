@@ -85,7 +85,7 @@ extension AppModel {
     /// Derived state only — it reads `spaces` and writes nothing, so calling it from a
     /// guarded path cannot introduce a spurious `persist()` or `@Observable` write.
     func refreshDockAttention() {
-        let unread = spaces.reduce(0) { $0 + $1.workspaces.filter(\.pendingNotification).count }
+        let unread = spaces.reduce(0) { $0 + $1.workspaces.count(where: \.pendingNotification) }
         dockAttention.updateBadge(count: unread)
         if unread == 0 { dockAttention.cancelBounce() }
     }

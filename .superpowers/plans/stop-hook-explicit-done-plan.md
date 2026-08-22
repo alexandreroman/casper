@@ -1,5 +1,17 @@
 # Stop Hook Explicit `done` Implementation Plan
 
+> **Status: partly shipped.** Tasks 2 and 3 (the Casper half — the `.done`
+> notify branch and the `selectWorkspace` collapse) are **built and merged**;
+> their unticked boxes below are historical, not outstanding. Task 1 —
+> `hooks/stop.sh` in the separate `casper-skills` repository — is **not** done,
+> and is the only remaining work in this plan. Design doc:
+> [`stop-hook-explicit-done.md`](stop-hook-explicit-done.md).
+>
+> Code references below name **symbols, not line numbers**: `AppModel.swift` has
+> since been split across `AppModel+Control.swift`, `AppModel+Spaces.swift`,
+> `AppModel+Presentation.swift`, `AppModel+WorkspaceLifecycle.swift` and
+> `ScriptHookRunner.swift`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use
@@ -9,7 +21,7 @@
 finished, unseen turn shows in Casper's sidebar and raises its attention bubble;
 make selecting a `done` workspace collapse it back to `idle`.
 
-**Architecture:** `hooks/stop.sh` (in `casper-claude-plugin`) switches its one
+**Architecture:** `hooks/stop.sh` (in `casper-skills`) switches its one
 `casper status set` call from `idle` to `done`. In Casper,
 `AppModel.controlSetAgentState` gains a `.done`-only branch that raises the same
 attention bubble + passive notification `setDetectedAgentState` already raises
@@ -31,15 +43,15 @@ the resolver itself never runs for.
 - The `.done → .idle` collapse in `selectWorkspace` is **not** gated on
   `isWindowKey()` — it uses the resolver's own "seen" definition (selection
   alone), unlike the sibling bubble-clear which requires the window to be key.
-- Two repos: Task 1 is in `casper-claude-plugin` (a sibling checkout, not this
+- Two repos: Task 1 is in `casper-skills` (a sibling checkout, not this
   one); Tasks 2–4 are in this repo (`casper`).
 
 ---
 
-### Task 1: `casper-claude-plugin` — `Stop` hook reports `done`
+### Task 1: `casper-skills` — `Stop` hook reports `done`
 
-**Files** (repo: `casper-claude-plugin`, e.g.
-`/Users/alex/Projects/personal/casper-claude-plugin`):
+**Files** (repo: `casper-skills`, e.g.
+`/Users/alex/Projects/personal/casper-skills`):
 - Modify: `hooks/stop.sh`
 - Modify: `tests/test_stop.sh`
 - Modify: `README.md` (hook table, `Stop` row)
@@ -48,7 +60,7 @@ the resolver itself never runs for.
 - Consumes: nothing new — same `casper status set <state>` CLI already used by
   every other hook in this plugin.
 - Produces: nothing consumed by Tasks 2–4 (independent repo) — this task is
-  purely `casper-claude-plugin`-local and can run before, after, or in parallel
+  purely `casper-skills`-local and can run before, after, or in parallel
   with Tasks 2–4.
 
 - [ ] **Step 1: Update the failing test's expectation**
@@ -115,15 +127,15 @@ git commit -m "Report done explicitly from the Stop hook instead of idle"
 ### Task 2: Casper — `controlSetAgentState` raises the bubble/notification for `.done`
 
 **Files:**
-- Modify: `Sources/CasperUI/AppModel.swift:1245-1256` (`controlSetAgentState`)
+- Modify: `AppModel.controlSetAgentState`
+  (`Sources/CasperUI/AppModel+Control.swift`)
 - Test: `Tests/CasperUITests/ControlHandlerTests.swift`
 
 **Interfaces:**
-- Consumes: `AppModel.controlRaiseNotification(message:for:) -> Bool`
-  (`AppModel.swift:1292`), `AppModel.notificationMessage(for:) -> String?`
-  (private static, same file, `AppModel.swift:1219`), `AgentState`
-  (`CasperCore/Models.swift:3-4`, cases `working, blocked, idle, done, unknown,
-  error`).
+- Consumes: `AppModel.controlRaiseNotification(message:for:) -> Bool` and
+  `AppModel.notificationMessage(for:) -> String?` (private static, same file),
+  `AgentState` (`CasperCore/Models.swift`, cases `working, blocked, idle, done,
+  unknown, error`).
 - Produces: no signature change to `controlSetAgentState(_:for:) -> Bool` — same
   call sites in `ControlServer.swift` are unaffected. Test-visible behavior
   change: `controlSetAgentState(.done, for:)` now also sets
@@ -134,7 +146,7 @@ git commit -m "Report done explicitly from the Stop hook instead of idle"
 - [ ] **Step 1: Write the failing tests**
 
 Add to `Tests/CasperUITests/ControlHandlerTests.swift`, right after
-`testSetAgentState` (after line 335):
+the existing `testSetAgentState` cases:
 
 ```swift
     func testSetAgentStateDoneRaisesNotificationBubble() {
@@ -173,8 +185,7 @@ but they document the boundary this task must not cross).
 
 - [ ] **Step 3: Implement the `.done`-only notify branch**
 
-In `Sources/CasperUI/AppModel.swift`, change `controlSetAgentState` (currently
-lines 1245-1256) from:
+Change `AppModel.controlSetAgentState` from:
 
 ```swift
     @discardableResult
@@ -237,20 +248,19 @@ git commit -m "controlSetAgentState raises the attention bubble for explicit don
 ### Task 3: Casper — `selectWorkspace` collapses `.done` → `.idle`
 
 **Files:**
-- Modify: `Sources/CasperUI/AppModel.swift:477-493` (`selectWorkspace`)
+- Modify: `AppModel.selectWorkspace` (`Sources/CasperUI/AppModel.swift`)
 - Test: `Tests/CasperUITests/ControlHandlerTests.swift`
 
 **Interfaces:**
-- Consumes: `AppModel.locate(_:) -> (space: Int, workspace: Int)?` (private,
-  same file, `AppModel.swift:325`), `AgentState.done` / `.idle` (Task 2's
-  import, `CasperCore/Models.swift:3-4`).
+- Consumes: `AppModel.locate(_:) -> (space: Int, workspace: Int)?` (private),
+  `AgentState.done` / `.idle` (Task 2's import, `CasperCore/Models.swift`).
 - Produces: no signature change to `selectWorkspace(_:)` — behavior-only change,
   test-visible via `AppModel.workspace(id:)?.agentState`.
 
 - [ ] **Step 1: Write the failing tests**
 
 Add to `Tests/CasperUITests/ControlHandlerTests.swift`, right after
-`testSelectingWorkspaceClearsItsBubbleWhenKey` (after line 416):
+`testSelectingWorkspaceClearsItsBubbleWhenKey`:
 
 ```swift
     func testSelectingDoneWorkspaceCollapsesToIdle() {
@@ -295,8 +305,7 @@ this task must not cross).
 
 - [ ] **Step 3: Implement the collapse in `selectWorkspace`**
 
-In `Sources/CasperUI/AppModel.swift`, change `selectWorkspace(_:)` (currently
-lines 477-493) from:
+Change `AppModel.selectWorkspace(_:)` from:
 
 ```swift
     func selectWorkspace(_ id: UUID?) {
@@ -375,9 +384,9 @@ git commit -m "selectWorkspace collapses an explicit done back to idle"
 Run: `make test 2>&1 | tail -60` (in the `casper` repo) Expected: PASS, no
 regressions.
 
-- [ ] **Step 2: Run the full `casper-claude-plugin` test suite**
+- [ ] **Step 2: Run the full `casper-skills` test suite**
 
-Run (in the `casper-claude-plugin` repo):
+Run (in the `casper-skills` repo):
 
 ```bash
 for t in tests/test_*.sh; do bash "$t"; done
@@ -392,7 +401,7 @@ Expected: PASS, no regressions.
 In a Casper terminal workspace, with this plugin installed:
 
 ```bash
-claude --plugin-dir /path/to/casper-claude-plugin
+claude --plugin-dir /path/to/casper-skills
 ```
 
 Run one turn, then switch focus away from the workspace (select a different one,

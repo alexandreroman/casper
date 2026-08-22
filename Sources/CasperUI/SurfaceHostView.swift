@@ -9,22 +9,18 @@ import SwiftUI
 /// cache in `AppModel` keeps each PTY / web page alive across layout churn.
 struct SurfaceHostView: View {
     let model: AppModel
-    let workspace: Workspace
+    let workspaceID: UUID
     let surface: Surface
+    /// Whether this pane can be dragged (and is a drop target): true only when the
+    /// workspace has more than one pane, as a lone pane has nowhere to move.
+    /// Resolved once per workspace by `WorkspaceDetailView` and threaded down, so
+    /// no pane walks the layout tree on its own body pass.
+    let canDrag: Bool
 
     /// Measured pane size, feeding the drop delegate's zone computation.
     @State private var paneSize: CGSize = .zero
 
-    /// A pane can be dragged (and is a drop target) only when the workspace has
-    /// more than one pane — a lone pane has nowhere to move.
-    private var canDrag: Bool {
-        LayoutTree.surfaceIDs(workspace.layout).count > 1
-    }
-
     var body: some View {
-        // Hoisted: `canDrag` walks the whole layout tree and builds two arrays, and
-        // every pane's body reads it three times.
-        let canDrag = canDrag
         ZStack {
             content
             if canDrag {
@@ -84,7 +80,7 @@ struct SurfaceHostView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let view = model.surfaceView(for: surface, in: workspace) {
+        if let view = model.surfaceView(for: surface, in: workspaceID) {
             PersistentNSViewHost(view: view).id(surface.id)
         } else {
             Color.black  // runtime not ready yet
@@ -94,17 +90,12 @@ struct SurfaceHostView: View {
     /// The pane context menu, rendered from the shared
     /// `PaneMenuItem.groups(model:surfaceID:)` description so it stays identical to
     /// the AppKit twin in `PaneContextMenu.swift`.
-    @ViewBuilder
     private var paneMenu: some View {
-        let groups = PaneMenuItem.groups(model: model, surfaceID: surface.id)
-        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-            if index > 0 { Divider() }
-            ForEach(group, id: \.title) { item in
-                Button(role: item.isDestructive ? .destructive : nil, action: item.action) {
-                    Label(item.title, systemImage: item.systemImage)
-                }
-                .keyboardShortcut(item.commandKey.map { KeyboardShortcut(KeyEquivalent($0), modifiers: .command) })
+        MenuGroups(groups: PaneMenuItem.groups(model: model, surfaceID: surface.id), itemID: \.title) { item in
+            Button(role: item.isDestructive ? .destructive : nil, action: item.action) {
+                Label(item.title, systemImage: item.systemImage)
             }
+            .keyboardShortcut(item.commandKey.map { KeyboardShortcut(KeyEquivalent($0), modifiers: .command) })
         }
     }
 }

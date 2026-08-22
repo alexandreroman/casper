@@ -96,6 +96,23 @@ struct DiffDocument: Sendable, Equatable {
     /// Appended after a truncated line's content, outside `contentRange`.
     static let truncationMarker = "  … (line truncated)"
 
+    /// How big the diff is, as the refresh log reports it: the source lines it
+    /// carries, the largest file's share of them, and its longest single line in
+    /// characters.
+    ///
+    /// Measured over the *diff's* lines rather than the rendered ones — budgets
+    /// and display truncation included — because that is what makes the numbers
+    /// diagnostic: a minified bundle's multi-megabyte line is exactly what a
+    /// freeze report needs named, and the document renders a short prefix of it.
+    /// Accumulated in `init`, which already walks every line of every file, since
+    /// the diff view logs this on each FSEvents-driven refresh and a pass of its
+    /// own would walk the whole diff again on the main actor.
+    struct Shape: Sendable, Equatable {
+        var totalLines = 0
+        var maxFileLines = 0
+        var maxLineLen = 0
+    }
+
     let text: String
     /// `text`'s length in UTF-16 units — the unit every span here counts in.
     /// Accumulated as the text is built, because asking a Swift `String` for it
@@ -103,6 +120,7 @@ struct DiffDocument: Sendable, Equatable {
     let textLength: Int
     let files: [FileSpan]
     let lines: [LineSpan]
+    let shape: Shape
 
     init(diff: GitDiff) {
         var text = ""
@@ -112,6 +130,7 @@ struct DiffDocument: Sendable, Equatable {
         var offset = 0
         var files: [FileSpan] = []
         var lines: [LineSpan] = []
+        var shape = Shape()
         var remainingTotal = Self.maxTotalLines
 
         /// Appends one paragraph and records its span. `suffixLength` is the
@@ -192,6 +211,9 @@ struct DiffDocument: Sendable, Equatable {
             }
 
             let metrics = Self.metrics(of: file)
+            shape.totalLines += metrics.sourceLines
+            shape.maxFileLines = max(shape.maxFileLines, metrics.sourceLines)
+            shape.maxLineLen = max(shape.maxLineLen, metrics.longestLine)
             files.append(FileSpan(
                 id: file.id, title: Self.title(of: file), status: file.status.rawValue,
                 insertions: metrics.insertions, deletions: metrics.deletions,
@@ -204,6 +226,7 @@ struct DiffDocument: Sendable, Equatable {
         self.textLength = offset
         self.files = files
         self.lines = lines
+        self.shape = shape
     }
 
     /// The line whose paragraph contains `offset`, or `nil` past the end of the
@@ -230,6 +253,32 @@ struct DiffDocument: Sendable, Equatable {
     /// A linear scan on purpose: a diff has tens of files, not thousands.
     func fileIndex(withID id: String) -> Int? {
         files.firstIndex { $0.id == id }
+    }
+
+    /// The 1-based source line numbers one file's rendered lines carry, split by
+    /// the side of the diff they name — `new` for additions and context, `old`
+    /// for deletions. Empty for a file this document does not have.
+    ///
+    /// These are the only lines a syntax highlight is ever looked up for, so a
+    /// side with no numbers at all has nothing to color: highlighting it, and
+    /// even reading its text, is work whose every result is discarded.
+    func renderedLineNumbers(ofFileAt fileIndex: Int) -> (new: Set<Int>, old: Set<Int>) {
+        guard files.indices.contains(fileIndex) else { return ([], []) }
+        let file = files[fileIndex]
+        var newNumbers: Set<Int> = []
+        var oldNumbers: Set<Int> = []
+        for line in lines[file.firstLineIndex..<(file.firstLineIndex + file.lineCount)] {
+            // The same three conditions `DiffTextAssembly.applyHighlight` skips
+            // on: chrome carries no source line, and a truncated line's content
+            // is only a prefix of one, so neither is ever looked up.
+            guard let kind = line.diffKind, let number = line.number, !line.truncated else { continue }
+            if kind == .deletion {
+                oldNumbers.insert(number)
+            } else {
+                newNumbers.insert(number)
+            }
+        }
+        return (newNumbers, oldNumbers)
     }
 
     /// Every scalar TextKit starts a new paragraph on.
@@ -274,17 +323,20 @@ struct DiffDocument: Sendable, Equatable {
         return String(flattened)
     }
 
-    /// Header stats and gutter width, computed over **all** of a file's lines
-    /// including any the budgets hide: the header describes the change, not what
-    /// got rendered. Same arithmetic as the previous row-based renderer, so the
-    /// gutter keeps its width.
+    /// Header stats, gutter width and the file's share of the diff's `Shape`,
+    /// computed over **all** of a file's lines including any the budgets hide: the
+    /// header describes the change, not what got rendered. Same arithmetic as the
+    /// previous row-based renderer, so the gutter keeps its width.
     private static func metrics(
         of file: GitDiffFile
-    ) -> (insertions: Int, deletions: Int, gutterWidth: CGFloat) {
+    ) -> (insertions: Int, deletions: Int, gutterWidth: CGFloat, sourceLines: Int, longestLine: Int) {
         var insertions = 0
         var deletions = 0
         var widestLineNumber = 0
+        var sourceLines = 0
+        var longestLine = 0
         for hunk in file.hunks {
+            sourceLines += hunk.lines.count
             for line in hunk.lines {
                 switch line.kind {
                 case .addition: insertions += 1
@@ -293,13 +345,14 @@ struct DiffDocument: Sendable, Equatable {
                 }
                 if let old = line.oldLineNumber { widestLineNumber = max(widestLineNumber, old) }
                 if let new = line.newLineNumber { widestLineNumber = max(widestLineNumber, new) }
+                longestLine = max(longestLine, line.content.count)
             }
         }
         // The widest number sets the width so the column never truncates (e.g.
         // 5-digit numbers in a large file): one number plus trailing padding,
         // with a floor so short files don't get a cramped column.
         let maxDigits = max(String(widestLineNumber).count, 1)
-        return (insertions, deletions, max(CGFloat(maxDigits * 9 + 12), 36))
+        return (insertions, deletions, max(CGFloat(maxDigits * 9 + 12), 36), sourceLines, longestLine)
     }
 
     /// The path as the header bar shows it: both sides joined for a rename,

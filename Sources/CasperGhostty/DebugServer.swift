@@ -235,7 +235,7 @@ public final class DebugServer {
 
         case .focus:
             guard let id = command.target else { return .failure("missing target id") }
-            guard let handle = surfaces.first(where: { $0.id == id }) else {
+            guard let handle = Self.surface(withID: id, in: surfaces) else {
                 return .failure("no surface with id \(id)")
             }
             handle.focus()
@@ -249,8 +249,15 @@ public final class DebugServer {
     private func target(
         in surfaces: [DebugSurfaceHandle], matching target: String?
     ) -> DebugSurfaceHandle? {
-        if let target { return surfaces.first(where: { $0.id == target }) }
+        if let target { return Self.surface(withID: target, in: surfaces) }
         return focusedOrFirst(surfaces)
+    }
+
+    /// Matches a surface id case-insensitively, so the debug channel tolerates the
+    /// same stale-uppercase ids the control channel does — see `ControlTargeting`
+    /// for the rationale.
+    static func surface(withID id: String, in surfaces: [DebugSurfaceHandle]) -> DebugSurfaceHandle? {
+        surfaces.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
     }
 
     /// The failure for an unresolved target: id-specific when a target was

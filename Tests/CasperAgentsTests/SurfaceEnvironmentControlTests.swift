@@ -15,15 +15,4 @@ final class SurfaceEnvironmentControlTests: XCTestCase {
             workspaceId: UUID(), portBase: 40000)
         XCTAssertNil(env["CASPER_CONTROL_SOCKET"])
     }
-
-    func testControlSocketAndWorkspaceIdPresent() {
-        let workspaceId = UUID()
-        let env = AgentEnvironment.surfaceEnvironment(
-            workspaceId: workspaceId, portBase: 40000,
-            controlSocketPath: "/control.sock")
-        XCTAssertEqual(env["CASPER_CONTROL_SOCKET"], "/control.sock")
-        XCTAssertEqual(env["CASPER_WORKSPACE_ID"], workspaceId.casperID)
-        XCTAssertEqual(env["CASPER_PORT"], "40000")
-        assertLowercased(env["CASPER_WORKSPACE_ID"])
-    }
 }

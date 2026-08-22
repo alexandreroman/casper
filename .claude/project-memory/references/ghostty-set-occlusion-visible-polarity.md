@@ -10,7 +10,14 @@ type: reference
 **`visible`** flag: `true` = the surface is on screen → keep rendering; `false`
 = occluded → libghostty pauses the surface's render thread. The vendored header
 carries no doc comment, so the polarity is only discoverable from the source.
-Authoritative definition, Ghostty v1.3.1 `src/apprt/embedded.zig`: `export fn ghostty_surface_set_occlusion(surface, visible: bool) { surface.occlusionCallback(visible); }`.
+Authoritative definition, Ghostty v1.3.1 `src/apprt/embedded.zig`:
+
+```zig
+export fn ghostty_surface_set_occlusion(surface, visible: bool) {
+    surface.occlusionCallback(visible);
+}
+```
+
 `ghostty_surface_set_focus` and `ghostty_app_set_focus` follow the same
 convention (`true` = active/focused).
 

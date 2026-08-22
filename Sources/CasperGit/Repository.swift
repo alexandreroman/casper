@@ -213,6 +213,14 @@ public final class Repository {
             // every non-empty untracked text file as binary. With it, untracked text
             // produces real addition hunks while untracked binary still yields none.
             | GIT_DIFF_SHOW_UNTRACKED_CONTENT.rawValue
+        // Cap how much of a file libgit2 loads before its binary check. The default is
+        // 512 MB, and with untracked content shown that means one large un-gitignored
+        // artifact (an archive, a core dump, a model file) is read in full on every
+        // diff — which FSEvents re-runs on each worktree change. Past the cap libgit2
+        // marks the file binary without loading it, which `buildFile`'s existing binary
+        // path already renders correctly. Trade-off: a *text* file above the cap shows
+        // as "Binary file" rather than as a diff.
+        options.max_size = 8 * 1024 * 1024
 
         // Rename/copy detection is intentionally not enabled: we never call
         // `git_diff_find_similar`, so a renamed file surfaces as a delete + add
@@ -236,12 +244,16 @@ public final class Repository {
         // Present files in a stable alphabetical order by their display path,
         // matching how the diff view lists them. `localizedStandardCompare` gives
         // case-insensitive natural ordering.
-        files.sort { lhs, rhs in
-            // `GitDiffFile.id` is the display path — reuse it so the sort key can't
-            // drift from the identity (see its doc comment for how it is derived).
-            lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
-        }
-        return GitDiff(files: files)
+        //
+        // Decorate-sort-undecorate: `GitDiffFile.id` is the display path — reuse it so
+        // the sort key can't drift from the identity (see its doc comment for how it is
+        // derived) — but it is a computed property, so pairing each file with its key
+        // up front builds every path once instead of on every comparison.
+        let sorted = files
+            .map { (key: $0.id, file: $0) }
+            .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
+            .map(\.file)
+        return GitDiff(files: sorted)
         }
     }
 

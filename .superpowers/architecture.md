@@ -37,8 +37,12 @@ source), **no Apple notarization**.
   layout with fresh PTYs.
 - **UI stack:** SwiftUI for chrome/sidebar/diff/browser; targeted AppKit
   (`NSViewRepresentable`, responder chain) to host Ghostty surfaces.
-- **Single binary:** one executable is both the GUI app and the CLI (empty argv
-  → GUI; a recognized subcommand → CLI).
+- **Single binary:** one executable is both the GUI app and the CLI. The fork
+  routes on argv *shape*, not vocabulary (`LaunchMode.detect`): empty argv →
+  GUI; a first argument starting with `-` → GUI (it is an AppKit launch flag),
+  except `-h`/`--help`/`--version`; anything else → CLI, where an unrecognized
+  word fails with ArgumentParser's own error rather than silently opening a
+  window.
 - **v1 agents:** Claude Code, OpenAI Codex CLI, and opencode, all through the
   same agent-agnostic `casper` CLI. Only the terminal-scraping detection rules
   stay Claude-Code-tuned.
@@ -52,8 +56,10 @@ source), **no Apple notarization**.
 | **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API   | `themes/terminal.md`      |
 | **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals   | `themes/cli-agents.md`    |
 | **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                             | `themes/cli-agents.md`    |
-| **CasperUI**      | SwiftUI sidebar, chrome, diff, browser + AppKit bridges                                                          | `themes/app-ui.md`        |
-| **Casper** (app)  | Wiring, window, lifecycle, GUI/CLI dispatch                                                                      | all                       |
+| **CasperUI**      | SwiftUI sidebar, chrome, diff, browser + AppKit bridges; owns the window, the app lifecycle and all startup wiring | `themes/app-ui.md`        |
+| **Clibgit2**      | `.systemLibrary` target binding libgit2 via Homebrew + pkg-config; no Swift code of its own                       | `themes/git-worktrees.md` |
+| **CSigbusGuard**  | A C shim installing a `SIGBUS` handler around libgit2 diff, turning an mmap-truncation fault into a thrown error  | `themes/git-worktrees.md` |
+| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is ten lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()` | all                       |
 
 Rationale: instability (libghostty), Git specifics (libgit2), and agent
 specifics (per-agent integration detection) are each confined to one module, so

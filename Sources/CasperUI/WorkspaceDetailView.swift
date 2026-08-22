@@ -6,13 +6,13 @@ struct WorkspaceDetailView: View {
     let model: AppModel
     let workspace: Workspace
 
-    /// Cached diff summary so it isn't recomputed on every render; refreshed when
-    /// the selected workspace changes (see the `.task` below).
+    /// Cached diff summary so it isn't recomputed on every render; refreshed on
+    /// appear and on every diff revision (see `refreshDiffSummary`).
     @State private var diff: (insertions: Int, deletions: Int)?
 
-    /// The in-flight `diffRevision`-driven summary refresh, if any. Cancelled and
-    /// replaced on every new revision so rapid changes can't leave two tasks racing
-    /// to settle `diff` on a stale value.
+    /// The in-flight summary refresh, if any. Cancelled and replaced on every new
+    /// revision so rapid changes can't leave two tasks racing to settle `diff` on a
+    /// stale value, and cancelled on disappear so none outlives this view.
     @State private var diffSummaryTask: Task<Void, Never>?
 
     /// Live inspector width, seeded per-workspace on appear (the detail view has
@@ -42,7 +42,9 @@ struct WorkspaceDetailView: View {
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Divider()
-                    LayoutNodeView(model: model, workspace: workspace, node: workspace.layout)
+                    LayoutNodeView(
+                        model: model, workspaceID: workspace.id, node: workspace.layout,
+                        canDragPanes: Self.hasMultiplePanes(in: workspace.layout))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -107,7 +109,9 @@ struct WorkspaceDetailView: View {
             get: { model.editorLaunchError != nil },
             set: { if !$0 { model.editorLaunchError = nil } }
         )) {
-            Button("OK") { model.editorLaunchError = nil }
+            // Empty: dismissing the alert flips `isPresented` to false, and that
+            // binding's setter is what clears the error.
+            Button("OK", role: .cancel) {}
         } message: {
             Text(model.editorLaunchError ?? "")
         }
@@ -119,21 +123,41 @@ struct WorkspaceDetailView: View {
         } message: {
             Text(model.scriptRunError ?? "")
         }
-        .task {
-            // No `id:`: `RootView` gives this view a per-workspace `.id`, so one
-            // instance only ever renders one workspace.
-            diff = await model.diffService.diffSummary(for: workspace)
+        .onAppear {
+            // `RootView` gives this view a per-workspace `.id`, so one instance only
+            // ever renders one workspace — the first summary needs no keying.
+            refreshDiffSummary()
         }
         .onChange(of: model.diffRevision) { _, _ in
-            // Cancel the previous refresh before starting a new one so overlapping
-            // revisions can't race to settle `diff` on a stale value.
-            diffSummaryTask?.cancel()
-            diffSummaryTask = Task { @MainActor in
-                let summary = await model.diffService.diffSummary(for: workspace)
-                guard !Task.isCancelled else { return }
-                diff = summary
-            }
+            refreshDiffSummary()
         }
+        .onDisappear {
+            // Switching workspaces tears this instance down and discards its `@State`;
+            // without this the git diff behind the last refresh would keep running,
+            // holding `model`, to produce a summary nothing can display any more.
+            diffSummaryTask?.cancel()
+        }
+    }
+
+    /// Recompute the diff summary, cancelling any refresh still in flight. Every
+    /// refresh — the first one included — goes through this single task, so
+    /// overlapping revisions can't race to settle `diff` on a stale value.
+    private func refreshDiffSummary() {
+        diffSummaryTask?.cancel()
+        diffSummaryTask = Task { @MainActor in
+            let summary = await model.diffService.diffSummary(for: workspace)
+            guard !Task.isCancelled else { return }
+            diff = summary
+        }
+    }
+
+    /// Whether the workspace shows more than one pane. True exactly when its root
+    /// layout is a split: `LayoutTree` never builds a split with fewer than two
+    /// children (it collapses a split down to its survivor when one is closed), so
+    /// this needs no tree walk.
+    static func hasMultiplePanes(in layout: LayoutNode) -> Bool {
+        if case .split = layout { return true }
+        return false
     }
 
     /// Allowed inspector-width range for the given container width: never below

@@ -81,6 +81,19 @@ final class WorkspaceFileCopierTests: XCTestCase {
         XCTAssertEqual(copied, [])
     }
 
+    /// Exclusions name immediate children of the source root only, so a directory
+    /// of the same name nested deeper is still walked.
+    func testSkipsExcludedTopLevelDirectoriesOnly() throws {
+        try write("pruned\n", to: "node_modules/.env", in: sourceDir)
+        try write("kept\n", to: "src/node_modules/.env", in: sourceDir)
+
+        let copied = try WorkspaceFileCopier.copy(
+            patterns: [".env"], from: sourceDir.path, to: destinationDir.path,
+            skippingTopLevelDirectories: ["node_modules"])
+
+        XCTAssertEqual(copied, ["src/node_modules/.env"])
+    }
+
     func testPreservesPermissionBits() throws {
         try write("SECRET=1\n", to: ".env", in: sourceDir)
         try FileManager.default.setAttributes(

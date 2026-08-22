@@ -242,69 +242,64 @@ private struct Block {
     var runs: [(text: String, inline: InlinePresentationIntent, link: URL?)] = []
 }
 
-/// Every predicate below walks `components` directly. A shared
+/// Which renderer a block goes to, once the intents it carries at the same time
+/// have been ranked — see `Block.blockKind`, which is the only place that
+/// ranking is expressed.
+private enum BlockKind {
+    case thematicBreak
+    case tableCell(column: Int, table: (identity: Int, columnCount: Int))
+    case heading(level: Int)
+    case codeBlock
+    case listItem(ordinal: Int)
+    case blockQuote
+    case paragraph
+}
+
+/// Every accessor below walks `components` through one of the three helpers at
+/// the end of this extension, and those walk the array itself. A shared
 /// `components.map(\.kind)` would read better but allocates an array per
 /// access, and one block's render reads about a dozen of these.
 private extension Block {
     var headerLevel: Int? {
-        for component in components { if case .header(let level) = component.kind { return level } }
-        return nil
+        firstPayload { if case .header(let level) = $0.kind { return level }; return nil }
     }
 
-    var isCodeBlock: Bool {
-        components.contains { if case .codeBlock = $0.kind { return true }; return false }
-    }
+    var isCodeBlock: Bool { hasComponent { if case .codeBlock = $0 { return true }; return false } }
 
-    var isThematicBreak: Bool {
-        components.contains { if case .thematicBreak = $0.kind { return true }; return false }
-    }
+    var isThematicBreak: Bool { hasComponent { if case .thematicBreak = $0 { return true }; return false } }
 
-    var isBlockQuote: Bool {
-        components.contains { if case .blockQuote = $0.kind { return true }; return false }
-    }
+    var isBlockQuote: Bool { hasComponent { if case .blockQuote = $0 { return true }; return false } }
 
-    var isOrderedList: Bool {
-        components.contains { if case .orderedList = $0.kind { return true }; return false }
-    }
+    var isOrderedList: Bool { hasComponent { if case .orderedList = $0 { return true }; return false } }
 
     var listItemOrdinal: Int? {
-        for component in components { if case .listItem(let ordinal) = component.kind { return ordinal } }
-        return nil
+        firstPayload { if case .listItem(let ordinal) = $0.kind { return ordinal }; return nil }
     }
 
     /// Nesting depth used for indentation: one level per ancestor list item.
-    var listDepth: Int {
-        components.count { if case .listItem = $0.kind { return true }; return false }
-    }
+    var listDepth: Int { componentCount { if case .listItem = $0 { return true }; return false } }
 
-    var quoteDepth: Int {
-        components.count { if case .blockQuote = $0.kind { return true }; return false }
-    }
+    var quoteDepth: Int { componentCount { if case .blockQuote = $0 { return true }; return false } }
 
-    var isTableHeaderRow: Bool {
-        components.contains { if case .tableHeaderRow = $0.kind { return true }; return false }
-    }
+    var isTableHeaderRow: Bool { hasComponent { if case .tableHeaderRow = $0 { return true }; return false } }
 
     var tableRowIndex: Int? {
-        for component in components { if case .tableRow(let rowIndex) = component.kind { return rowIndex } }
-        return nil
+        firstPayload { if case .tableRow(let rowIndex) = $0.kind { return rowIndex }; return nil }
     }
 
     var tableColumnIndex: Int? {
-        for component in components { if case .tableCell(let columnIndex) = component.kind { return columnIndex } }
-        return nil
+        firstPayload { if case .tableCell(let columnIndex) = $0.kind { return columnIndex }; return nil }
     }
 
     /// The enclosing table's stable identity and column count. The identity
     /// lives on the `IntentType` rather than on its `kind`, and every cell of
-    /// the same table needs to share it.
+    /// the same table needs to share it — which is why `firstPayload` walks
+    /// whole components rather than bare kinds.
     var table: (identity: Int, columnCount: Int)? {
-        for component in components {
-            if case .table(let columns) = component.kind {
-                return (component.identity, columns.count)
-            }
+        firstPayload { component in
+            guard case .table(let columns) = component.kind else { return nil }
+            return (identity: component.identity, columnCount: columns.count)
         }
-        return nil
     }
 
     /// The indent a block inherits from whatever it is nested inside: one step
@@ -316,17 +311,33 @@ private extension Block {
         CGFloat(listDepth) * Layout.indentStep + CGFloat(quoteDepth) * Layout.blockQuoteIndent
     }
 
-    /// True exactly for the two block kinds that draw a block quote's leading
-    /// bar — `renderBlockQuote`, and a `renderListItem` whose item is itself
-    /// quoted — mirroring `render(_:tables:isFirstBlock:)`'s own dispatch
-    /// priority: those two are reached only once thematic break, table cell,
-    /// header, and code block have already been ruled out. One of the two
-    /// predicates `Builder.separator` reads to spot a block whose own
-    /// paragraph is bordered, and whose leading gap therefore cannot sit on
-    /// that paragraph.
-    var hasBlockQuoteRule: Bool {
-        guard isBlockQuote else { return false }
-        return !isThematicBreak && table == nil && headerLevel == nil && !isCodeBlock
+    /// The single ranking of the intents a block can carry at once (e.g.
+    /// `> - item` is both a block quote and a list item, `> | A | B |` is both a
+    /// block quote and a table cell), read by both
+    /// `Builder.render(_:tables:isFirstBlock:)` and `Builder.borderedLeadingGap`
+    /// — so a bordered block's leading gap cannot drift away from the branch
+    /// that draws the border.
+    ///
+    /// Foundation nests all of thematic break, table cell, and header under a
+    /// list/quote just as readily as it nests a paragraph or a code block —
+    /// verified directly against the parser, not assumed. Table cell and
+    /// thematic break each read `quoteDepth`/`listDepth` themselves and compose
+    /// the ambient indent (see `renderTableCell`, `renderThematicBreak`), so
+    /// which case a block resolves to does not cost it that chrome. Header is
+    /// the one deliberate exception: this renderer does not compose list/quote
+    /// chrome onto a heading, because a heading nested inside a list or quote is
+    /// rare in the panel's own messages and untested — it renders as a
+    /// standalone heading instead. Everything else — code block, list item,
+    /// block quote, plain paragraph — composes `quoteDepth`/`listDepth` into its
+    /// own indent the same way (see `renderListItem` and `renderCodeBlock`).
+    var blockKind: BlockKind {
+        if isThematicBreak { return .thematicBreak }
+        if let column = tableColumnIndex, let table { return .tableCell(column: column, table: table) }
+        if let level = headerLevel { return .heading(level: level) }
+        if isCodeBlock { return .codeBlock }
+        if let ordinal = listItemOrdinal { return .listItem(ordinal: ordinal) }
+        if isBlockQuote { return .blockQuote }
+        return .paragraph
     }
 
     /// True for a header cell of a GFM table that `previous` is not already
@@ -340,6 +351,26 @@ private extension Block {
     func opensTableBorder(after previous: Block) -> Bool {
         guard isTableHeaderRow, let table else { return false }
         return previous.table?.identity != table.identity
+    }
+
+    /// True when any component's kind satisfies `matches`.
+    func hasComponent(_ matches: (PresentationIntent.Kind) -> Bool) -> Bool {
+        components.contains { matches($0.kind) }
+    }
+
+    /// How many components' kinds satisfy `matches` — a kind's nesting depth.
+    func componentCount(_ matches: (PresentationIntent.Kind) -> Bool) -> Int {
+        components.count { matches($0.kind) }
+    }
+
+    /// The first value `payload` extracts from a component, walking the chain
+    /// innermost-first. Whole components rather than bare kinds, because a
+    /// payload can also live on the `IntentType` itself (see `table`).
+    func firstPayload<T>(_ payload: (PresentationIntent.IntentType) -> T?) -> T? {
+        for component in components {
+            if let value = payload(component) { return value }
+        }
+        return nil
     }
 }
 
@@ -427,17 +458,21 @@ private struct Builder {
     /// The two cases are the block quote's bar and a GFM table's header row;
     /// each keeps whatever value the equivalent unbordered block would have
     /// asked for, so a bordered block is not a spacing exception — only a
-    /// mechanism one. A quoted list item in particular mirrors
-    /// `renderListItem`'s own before/after-first rule.
+    /// mechanism one.
+    ///
+    /// The bar is drawn by exactly two branches — `renderBlockQuote`, and the
+    /// quoted half of `renderListItem` — so this asks `Block.blockKind` which
+    /// branch the block resolves to instead of restating that ranking here.
     private func borderedLeadingGap(before block: Block, after previous: Block) -> CGFloat? {
-        if block.hasBlockQuoteRule {
-            guard let ordinal = block.listItemOrdinal else { return Layout.blockSpacingBefore }
+        switch block.blockKind {
+        case .listItem(let ordinal) where block.isBlockQuote:
+            // Mirrors `renderListItem`'s own before/after-first rule.
             return ordinal == 1 ? Layout.blockSpacingBefore : Layout.listItemSpacingBefore
-        }
-        if block.opensTableBorder(after: previous) {
+        case .blockQuote:
             return Layout.blockSpacingBefore
+        case .thematicBreak, .tableCell, .heading, .codeBlock, .listItem, .paragraph:
+            return block.opensTableBorder(after: previous) ? Layout.blockSpacingBefore : nil
         }
-        return nil
     }
 
     // MARK: - Grouping
@@ -465,44 +500,28 @@ private struct Builder {
 
     // MARK: - Block dispatch
 
-    /// Priority order for a block that satisfies more than one predicate
-    /// (e.g. `> - item` is both a block quote and a list item, `> | A | B |`
-    /// is both a block quote and a table cell). Foundation nests all of
-    /// thematic break, table cell, and header under a list/quote just as
-    /// readily as it nests a paragraph or a code block — verified directly
-    /// against the parser, not assumed. Table cell and thematic break each
-    /// read `quoteDepth`/`listDepth` themselves and compose the ambient
-    /// indent (see `renderTableCell`, `renderThematicBreak`), so which
-    /// branch of this if-chain a block takes does not cost it that chrome.
-    /// Header is the one deliberate exception: this renderer does not
-    /// compose list/quote chrome onto a heading, because a heading nested
-    /// inside a list or quote is rare in the panel's own messages and
-    /// untested — it renders as a standalone heading instead. Everything
-    /// else — code block, list item, block quote, plain paragraph —
-    /// composes `quoteDepth`/`listDepth` into its own indent the same way
-    /// (see `renderListItem` and `renderCodeBlock`).
+    /// Hands a block to its renderer. Which renderer that is — the priority
+    /// between the intents a block carries at once, and why each branch still
+    /// keeps its ancestors' chrome — is `Block.blockKind`.
     private func render(
         _ block: Block, tables: inout [Int: NSTextTable], isFirstBlock: Bool
     ) -> NSAttributedString {
-        if block.isThematicBreak {
+        switch block.blockKind {
+        case .thematicBreak:
             return renderThematicBreak(block, isFirstBlock: isFirstBlock)
-        }
-        if let column = block.tableColumnIndex, let table = block.table {
+        case .tableCell(let column, let table):
             return renderTableCell(block, column: column, table: table, tables: &tables)
-        }
-        if let level = block.headerLevel {
+        case .heading(let level):
             return renderHeading(block, level: level, isFirstBlock: isFirstBlock)
-        }
-        if block.isCodeBlock {
+        case .codeBlock:
             return renderCodeBlock(block, isFirstBlock: isFirstBlock)
-        }
-        if let ordinal = block.listItemOrdinal {
+        case .listItem(let ordinal):
             return renderListItem(block, ordinal: ordinal, isFirstBlock: isFirstBlock)
-        }
-        if block.isBlockQuote {
+        case .blockQuote:
             return renderBlockQuote(block)
+        case .paragraph:
+            return renderParagraph(block, isFirstBlock: isFirstBlock)
         }
-        return renderParagraph(block, isFirstBlock: isFirstBlock)
     }
 
     /// The value every renderer below passes as its own `paragraphSpacingBefore`,
@@ -637,7 +656,7 @@ private struct Builder {
         style.tabStops = [NSTextTab(textAlignment: .left, location: style.headIndent)]
         if block.isBlockQuote {
             // This item's leading gap rides the separator ahead of it instead
-            // (`Block.hasBlockQuoteRule`, `Builder.separator`), so the bar it
+            // (`Builder.borderedLeadingGap`, `Builder.separator`), so the bar it
             // shares with `renderBlockQuote` wraps only its own text.
             style.paragraphSpacingBefore = 0
             style.textBlocks = [blockQuoteRule()]
@@ -692,7 +711,7 @@ private struct Builder {
         // above the first line and, on a quote wrapping to several lines,
         // leave it the wrong height for the rest of them. This block's own
         // leading gap rides the separator ahead of it instead; see
-        // `Builder.separator` and `Block.hasBlockQuoteRule`.
+        // `Builder.separator` and `Builder.borderedLeadingGap`.
         style.textBlocks = [blockQuoteRule()]
         applyThroughout(style, to: text)
         return text

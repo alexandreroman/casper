@@ -20,7 +20,7 @@
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — a worktree watcher plus a reflog one, so a commit refreshes
 - [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the branch-vs-merge-base row badge is not built, and why
-- [Domain CLI and control channel](references/domain-cli-control-channel.md) — the full verb surface and JSON shapes; no hook mechanism
+- [Domain CLI and control channel](references/domain-cli-control-channel.md) — JSON shapes and key conventions; non-zero error exits; no hooks
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning wrapped values crashes `.parse()`
 - [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
 - [App sessions (--session)](references/app-sessions.md) — DEBUG-only `--session <name>` isolates layout, sockets and env
@@ -30,6 +30,7 @@
 - [Debug channel and logging gating](references/debug-channel-gating.md) — `#if DEBUG` only, never in release; verbose logs gated
 - [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync contentsScale to the backing scale or it upscales ×2
 - [libghostty Control-combo key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint + a QWERTY-normalized keycode
+- [Command key-ups need a local monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null; wake the display and poll
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
@@ -46,18 +47,18 @@
 - [Intra-app drag pasteboard type](references/intra-app-drag-pasteboard-type.md) — a code-only UTType is ignored by SwiftUI `.onDrop`; use a standard
 - [Debug screenshot uses ScreenCaptureKit](references/debug-screenshot-screencapturekit.md) — SCScreenshotManager + a screen-recording grant
 - [Agents cannot self-verify SwiftUI visual changes](references/agent-visual-verification-limits.md) — subagents lack screen-recording TCC
-- [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a nested Menu breaks glassEffect's compositing
+- [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a nested Menu breaks glassEffect compositing
 - [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — match Ghostty's macOS Swift source rather than improvising
 - [Cursor for chrome over the terminal](references/terminal-overlay-cursor.md) — set the cursor from cursorUpdate AND mouseEntered; reset on exit
-- [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — the debug channel never clicks; use CGEvent on a key window
+- [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — debug channel never clicks; use CGEvent on a key window
 - [Browser address bar select-all](references/browser-address-bar-select-all.md) — select-all in mouseDown after super, if the selection is empty
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
 - [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
 - [The working signal is the OSC 9;4 progress report](references/agent-state-working-signal.md) — title spinner secondary; version-coupled detection
 - [libghostty config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — a bundle misses the user's config
-- [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, never after
-- [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips the CASPER_* vars so no live env leaks in
+- [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, not after
+- [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_* vars so no live env leaks in
 - [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — the env override is dial-side only, never listen-side
 - [In-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — the real-keyDown recipe; fixed settles, not polling
 - [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menus are `.commands`; Services needs a delegate proxy
@@ -66,6 +67,7 @@
 - [Main-thread hang watchdog and dump exploitation](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
 - [Release binary size budget](references/binary-size-budget.md) — the measured levers, which are applied, and which are declined
 - [Nested modal loops starve the main dispatch queue](references/main-queue-starved-by-modal-loops.md) — use `CFRunLoopPerformBlock` + modal modes
+- [MainRunLoop, the shared modal-proof hop](references/main-run-loop-hop.md) — `MainRunLoop.perform` reaches the main thread behind a modal panel
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — a non-empty `spaces` always resolves `selectedWorkspaceID`
 - [.casper.json scripts — decisions & invariants](references/repo-config.md) — copyFiles + commands + hooks: the child-exit race and wrap choices
 - [Project memory conventions](references/project-memory-conventions.md) — no `casper` filename prefix; status lives in `status.md`
@@ -75,6 +77,7 @@
 - [Title-bar chips carry no accent colour](references/title-bar-chip-chrome.md) — one neutral palette; inspector tabs are a segmented control
 - [Browser automation CLI](references/browser-automation-cli.md) — the automation/scroll/debug verbs, and their off-screen behavior
 - [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a UIDelegate
+- [Address submit resigns first responder first](references/browser-address-submit-order.md) — end editing before the load, not after
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — ATS blocks plain-HTTP to public-qualified hostnames
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — an mmap-truncation SIGBUS becomes a graceful throw
 - [App icon design and generation pipeline](references/app-icon.md) — SVG masters → `.icns`, plus an Icon Composer `.icon` → Assets.car
@@ -89,7 +92,7 @@
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — spacing lives inside layoutFragmentFrame; probes cost more
 - [Diff surface data flow](references/diff-surface-data-flow.md) — a revision-keyed property carries the document; events use the controller
 - [AttributedString interop limits](references/attributedstring-interop-limits.md) — AppKit-scope colors; `.utf16` needs macOS 26
-- [NSTextStorage attribute writes go in ascending order](references/nstextstorage-attribute-run-order.md) — out-of-order attribute writes go quadratic
+- [NSTextStorage attribute writes go in ascending order](references/nstextstorage-attribute-run-order.md) — out-of-order writes go quadratic
 - [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — in the text they poison selection
 - [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore re-resolves them off the scroll path
 - [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
@@ -113,5 +116,6 @@
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
 - [AppModel encapsulation across extension files](references/appmodel-extension-encapsulation.md) — `private(set)` survives the split via mutators
 - [UUID fixtures must carry hex letters](references/uuid-fixture-case-vacuity.md) — a digit-only id makes a case assertion vacuous
-- [ScrollView padding and height](references/scrollview-viewport-vs-document.md) — outer padding pads the viewport; a pinned height overflows the host
+- [ScrollView padding and height](references/scrollview-viewport-vs-document.md) — outer padding pads the viewport; pinned height overflows the host
 - [An NSTextTable drops a view back to TextKit 1](references/textkit1-fallback-on-nstexttable.md) — the two engines size the same string differently
+- [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick

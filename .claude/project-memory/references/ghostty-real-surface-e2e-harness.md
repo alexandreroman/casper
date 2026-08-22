@@ -20,7 +20,9 @@ permission and without the debug-channel bypass (`casper debug send-key` calls
    `ghostty_surface_new`.
 3. Poll `view.surface != nil` for up to ~10s on the RunLoop;
    `throw XCTSkip(...)` if it never appears (the documented
-   [[e2e-surface-creation-flakiness]], environmental).
+   [[e2e-surface-creation-flakiness]], environmental — running the suite with
+   the display awake, e.g. under `caffeinate -u`, is what makes these tests
+   actually execute).
 4. `window.makeFirstResponder(view)`, then call `view.keyDown(with:)` directly
    with a synthetic `NSEvent` — this is a genuine Swift method call, not
    synthetic OS input, so it needs no Accessibility permission and exercises the
@@ -41,6 +43,15 @@ then `settle(0.4)` after each subsequent input step
 "wait-until-stable" polling loop is flakier than this fixed-pump approach —
 prefer fixed settle times over adaptive polling here.
 
-See `Tests/CasperGhosttyTests/GhosttyEditingCommandReplayTests.swift` for the
-canonical example (`settle(_:)` helper +
-`assertControlAMovesToLineStart(keyCode:)`).
+`Tests/CasperGhosttyTests/RealSurfaceHarness.swift` implements steps 1-4 and
+owns the single `settle(_:)`: `withRealSurface(makeView:body:)` builds the
+runtime, view and window, polls, makes the view first responder, and tears the
+surface down with `view.invalidate()` before the window drops it (the ordering
+[[surface-view-invalidate-before-release]] requires). Every real-surface test
+goes through it rather than re-spelling the recipe.
+
+Its closure parameters are deliberately plain (non-`@MainActor`,
+non-escaping) so they inherit isolation from the `@MainActor` call site: a
+`@MainActor` closure parameter is implicitly `@Sendable` and rejects callers
+that capture mutable locals. The no-factory form is an overload, not a default
+argument, for the same reason.

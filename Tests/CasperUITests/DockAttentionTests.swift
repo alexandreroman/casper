@@ -153,10 +153,7 @@ final class DockAttentionTests: XCTestCase {
     private func makeModel(
         seededWith spaces: [Space], selecting selected: UUID?
     ) -> (AppModel, DockAttentionSpy) {
-        let url = URL(fileURLWithPath:
-            (NSTemporaryDirectory() as NSString).appendingPathComponent("s-\(UUID().uuidString).json"))
-        let session = Session(spaces: spaces, selectedWorkspaceID: selected)
-        let model = AppModel(sessionStore: SessionStore(fileURL: url), session: session)
+        let model = makeModel(spaces: spaces, selecting: selected)
         model.isWindowKey = { false }
         model.deliverNotification = { _, _, _, _ in }
         let spy = DockAttentionSpy()

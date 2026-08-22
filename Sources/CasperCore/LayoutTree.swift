@@ -151,9 +151,10 @@ public enum LayoutTree {
         return nil
     }
 
-    /// Remove the leaf holding `surface`, dropping its ratio and replacing a
-    /// single-child split by its surviving child. Returns `nil` when the tree
-    /// becomes empty (the caller re-seeds the workspace with a fresh terminal).
+    /// Remove the leaf holding `surface`, re-evening the ratios of the surviving
+    /// siblings and replacing a single-child split by its surviving child.
+    /// Returns `nil` when the tree becomes empty (the caller re-seeds the
+    /// workspace with a fresh terminal).
     public static func closeSurface(
         _ node: LayoutNode, surface id: UUID
     ) -> (node: LayoutNode?, focus: UUID?) {
@@ -170,7 +171,7 @@ public enum LayoutTree {
         switch node {
         case .leaf(let surface):
             return surface.id == id ? (nil, nil) : nil
-        case .split(let orientation, var children, var ratios):
+        case .split(let orientation, var children, let ratios):
             for i in children.indices {
                 guard let (child, f) = closing(children[i], surface: id) else { continue }
                 if let child {
@@ -179,15 +180,14 @@ public enum LayoutTree {
                                    ratios: ratios), f)
                 }
                 children.remove(at: i)
-                ratios.remove(at: i)
                 if children.count == 1 {
                     let survivor = children[0]
-                    return (survivor, surfaceIDs(survivor).first)
+                    return (survivor, firstSurfaceID(survivor))
                 }
                 let focusChild = children[min(i, children.count - 1)]
                 return (.split(orientation: orientation, children: children,
                                ratios: LayoutNode.evenRatios(children.count)),
-                        surfaceIDs(focusChild).first)
+                        firstSurfaceID(focusChild))
             }
             return nil
         }
@@ -206,7 +206,6 @@ public enum LayoutTree {
     ) -> (LayoutNode, focus: UUID)? {
         guard surfaceID != targetID else { return nil }
         guard let source = surface(node, id: surfaceID) else { return nil }
-        guard contains(node, id: targetID) else { return nil }
 
         let (reduced, _) = closeSurface(node, surface: surfaceID)
         guard let reduced, contains(reduced, id: targetID) else { return nil }
@@ -260,6 +259,21 @@ public enum LayoutTree {
             return surface.id == id
         case .split(_, let children, _):
             return children.contains { contains($0, id: id) }
+        }
+    }
+
+    /// The id of the first surface in visual (depth-first) order, or `nil` for an
+    /// empty subtree. Stops at the first leaf instead of materializing every id
+    /// like `surfaceIDs`.
+    private static func firstSurfaceID(_ node: LayoutNode) -> UUID? {
+        switch node {
+        case .leaf(let surface):
+            return surface.id
+        case .split(_, let children, _):
+            for child in children {
+                if let id = firstSurfaceID(child) { return id }
+            }
+            return nil
         }
     }
 

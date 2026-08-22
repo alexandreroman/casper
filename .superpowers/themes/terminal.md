@@ -1,7 +1,12 @@
 # Theme: Terminal Embedding (CasperGhostty)
 
-**Module:** CasperGhostty · **Status:** ✅ one terminal end-to-end (see
-`../status.md`) · **Code:** `Sources/CasperGhostty/`
+**Module:** CasperGhostty · **Status:** ✅ built (see `../status.md`) ·
+**Code:** `Sources/CasperGhostty/`
+
+Beyond the first end-to-end terminal, everything listed under § Remaining has
+shipped: tmux-style split composition, pane drag-and-drop, `flagsChanged`
+press/release semantics, scroll precision/momentum, clipboard write
+confirmation, and per-surface font-size persistence.
 
 The only module touching libghostty's unstable embedding API. In-process
 surfaces and PTYs (same model as the Ghostty app).

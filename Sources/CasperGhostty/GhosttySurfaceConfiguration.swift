@@ -15,10 +15,10 @@ public struct GhosttySurfaceConfiguration {
     ///
     /// Unlike libghostty's own `command` config field
     /// (`ghostty_surface_config_s.command`, left intentionally unused here), which
-    /// the vendored fork always execs via a hardcoded `bash -l -c` — ignoring the
-    /// user's real login shell — this text is fed to whatever shell libghostty
-    /// actually launches, so it inherits the user's real `$SHELL`/PATH. See the
-    /// `surface-command-bash-exec` project memory note.
+    /// the vendored fork always runs as `bash -l -c "exec <command>"` — ignoring the
+    /// user's real login shell, and replacing that shell, so a compound `a; b`
+    /// command stops after `a` — this text is fed to whatever shell libghostty
+    /// actually launches, so it inherits the user's real `$SHELL`/PATH.
     public var initialInput: String?
     public var environment: [String: String]
     public var scaleFactor: Double

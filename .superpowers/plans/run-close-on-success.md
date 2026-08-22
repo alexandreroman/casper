@@ -10,7 +10,7 @@ user can inspect or re-run.
 
 `casper run <name>` opens a new terminal split and injects the resolved command
 into the interactive shell, wrapped by `subshellWrappedScriptCommand`
-(`AppModel.swift:2091`), which today produces:
+(`ScriptHookRunner.subshellWrappedScriptCommand`), which today produces:
 
 ```bash
 (
@@ -26,7 +26,7 @@ open **regardless of the exit code**. That is the current behavior: a
 The desired behavior is the same one the **setup** lifecycle hook already has
 (close on success, keep on failure), but `casper run` surfaces are not wired to
 it: they are created via `controlOpenTerminal` and are never registered in
-`scriptSurfaces`, so `handleScriptSurfaceExit` (`AppModel.swift:2000`) is a
+`scriptSurfaces`, so `ScriptHookRunner.handleScriptSurfaceExit` is a
 no-op for them.
 
 ## Goals
@@ -58,7 +58,7 @@ no-op for them.
 
 ### The one-line wrapper change
 
-`subshellWrappedScriptCommand` (`AppModel.swift:2091`) changes from:
+`ScriptHookRunner.subshellWrappedScriptCommand` changes from:
 
 ```swift
 static func subshellWrappedScriptCommand(_ command: String) -> String {
@@ -94,8 +94,8 @@ line after `)` so the same comment cannot swallow it either.
   inside the subshell. Either way it is "did the script succeed."
 - **Success** (`$?` == 0): the test succeeds, `&& exit` runs, the interactive
   shell exits. libghostty detects the child process exit and fires
-  `close_surface_cb` (`GhosttyRuntime.swift:348`) → `view.requestClose()` →
-  `onClose` → `applyCloseSurface` (`AppModel.swift:1082`), which prunes the pane
+  `close_surface_cb` (`GhosttyRuntime`) → `view.requestClose()` →
+  `onClose` → `AppModel.applyCloseSurface`, which prunes the pane
   from the layout via `LayoutTree.closeSurface`. This is the exact path already
   used when a user types `exit` in any terminal.
 - **Failure** (`$?` != 0): the test fails (`[ … ]` returns status 1), `&& exit`
@@ -103,7 +103,7 @@ line after `)` so the same comment cannot swallow it either.
   prompt with the subshell's output scrolled above.
 
 `POSIX` `[ $? -eq 0 ]` is safe across `sh`/`bash`/`zsh`. The wrapper is injected
-as typed text (`pendingInitialInput` → `initialInput`, `AppModel.swift:1174`),
+as typed text (`AppModel.pendingInitialInput` → `initialInput`),
 exactly as today; only the text changes.
 
 ### `close_surface_cb` does not need to distinguish these surfaces
@@ -125,7 +125,7 @@ guard that blocks closing an unregistered surface arriving via
 
 ### Doc-comment update
 
-The comment above `subshellWrappedScriptCommand` (`AppModel.swift:2085-2090`)
+The comment above `ScriptHookRunner.subshellWrappedScriptCommand`
 currently states the subshell keeps the pane open. Rewrite it to describe the
 new contract: subshell isolates the script's `exit`/`set -e` from the
 interactive shell, then the shell exits (closing the pane) only when the script
@@ -140,7 +140,7 @@ dev server) never exit, so they simply stay open as before.
 
 ## Testing
 
-- `Tests/CasperUITests/ControlHandlerTests.swift:702-704` — update the expected
+- `Tests/CasperUITests/ControlHandlerTests.swift` — update the expected
   output of `subshellWrappedScriptCommand`:
   - `subshellWrappedScriptCommand("exit 1")` →
     `"(\nexit 1\n)\n[ $? -eq 0 ] && exit"`

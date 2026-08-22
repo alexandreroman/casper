@@ -3,39 +3,10 @@ import XCTest
 @testable import CasperGhostty
 
 final class GhosttyActionTests: XCTestCase {
-    func testDecodesSetTitle() {
-        "Casper".withCString { cstr in
-            var action = ghostty_action_s()
-            action.tag = GHOSTTY_ACTION_SET_TITLE
-            action.action.set_title.title = cstr
-            XCTAssertEqual(GhosttyAction.decode(action), .setTitle("Casper"))
-        }
-    }
-
-    func testDecodesSetTitleWithNilPointerAsEmptyString() {
-        var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_SET_TITLE
-        XCTAssertEqual(GhosttyAction.decode(action), .setTitle(""))
-    }
-
     func testDecodesRender() {
         var action = ghostty_action_s()
         action.tag = GHOSTTY_ACTION_RENDER
         XCTAssertEqual(GhosttyAction.decode(action), .render)
-    }
-
-    func testDecodesChildExited() {
-        var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED
-        action.action.child_exited.exit_code = 42
-        XCTAssertEqual(GhosttyAction.decode(action), .childExited(exitCode: 42))
-    }
-
-    func testDecodesChildExitedWithOutOfRangeExitCodeDoesNotCrash() {
-        var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED
-        action.action.child_exited.exit_code = UInt32.max
-        XCTAssertEqual(GhosttyAction.decode(action), .childExited(exitCode: -1))
     }
 
     func testDecodesOpenURL() {

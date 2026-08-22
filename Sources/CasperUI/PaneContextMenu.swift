@@ -1,5 +1,42 @@
 import AppKit
 import CasperCore
+import SwiftUI
+
+/// Renders grouped menu items the one way every SwiftUI menu in the app does: the
+/// items of each group in order, with a `Divider` before every group past the
+/// first. Shared by the pane context menu (`SurfaceHostView`) and the sidebar
+/// row's menu (`SidebarView`) so their grouping and separators cannot drift apart.
+///
+/// The per-item view comes from the caller because the extra each menu attaches to
+/// its button differs — a keyboard shortcut for the pane menu, an enabled flag for
+/// the sidebar's.
+struct MenuGroups<Item, ItemView: View, GroupSuffix: View>: View {
+    let groups: [[Item]]
+    /// Identity of an item within its group; both menu descriptions key on the title.
+    let itemID: KeyPath<Item, String>
+    @ViewBuilder let item: (Item) -> ItemView
+    /// Extra entries appended to the group at the given index, for a menu that mixes
+    /// its own items into the shared description (the sidebar's "Run Script").
+    @ViewBuilder let groupSuffix: (Int) -> GroupSuffix
+
+    var body: some View {
+        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+            if index > 0 { Divider() }
+            ForEach(group, id: itemID) { item($0) }
+            groupSuffix(index)
+        }
+    }
+}
+
+extension MenuGroups where GroupSuffix == EmptyView {
+    /// A menu rendering nothing but the groups themselves.
+    init(
+        groups: [[Item]], itemID: KeyPath<Item, String>,
+        @ViewBuilder item: @escaping (Item) -> ItemView
+    ) {
+        self.init(groups: groups, itemID: itemID, item: item, groupSuffix: { _ in EmptyView() })
+    }
+}
 
 /// An `NSMenuItem` that runs a stored closure when fired, targeting itself so no
 /// separate target object has to be kept alive. Mirrors SwiftUI `Button` actions

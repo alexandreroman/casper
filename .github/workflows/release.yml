@@ -68,6 +68,14 @@ jobs:
             echo "bundle=$(git rev-list --count HEAD)"
           } >> "$GITHUB_OUTPUT"
 
+      # A tag can point at any commit, including one CI never ran. Sparkle
+      # auto-updates every installed copy to whatever this job publishes, so the
+      # suite runs here too rather than trusting that the tagged SHA was green.
+      - name: Test
+        run: make test
+        env:
+          SWIFT_BACKTRACE: enable=yes
+
       - name: Bundle & package
         env:
           SHORT: ${{ steps.version.outputs.short }}

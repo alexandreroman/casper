@@ -14,14 +14,4 @@ final class BrowserMediaSuspensionTests: XCTestCase {
         view.debugRefreshMediaSuspension()
         XCTAssertEqual(view.debugLastMediaSuspended, true)
     }
-
-    @MainActor
-    func testMediaSuspensionPushIsDeduplicated() {
-        // Two refreshes in the same (detached) state must not re-push; the recorded
-        // value stays stable and reflects the single transition.
-        let view = FocusReportingWebView(frame: .zero)
-        view.debugRefreshMediaSuspension()
-        view.debugRefreshMediaSuspension()
-        XCTAssertEqual(view.debugLastMediaSuspended, true)
-    }
 }

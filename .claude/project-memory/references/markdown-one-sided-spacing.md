@@ -41,8 +41,9 @@ measured to realize **0 pt** of the 12 pt they asked for:
 Both are consequences of the same two TextKit 2 layout rules — see
 [[textkit2-layout-geometry]] for the measurements and the general formula.
 
-The working mechanism (`Builder.separator`, keyed off `Block.hasBlockQuoteRule`
-and `Block.opensTableBorder(after:)`) emits the gap as real occupied height: the
+The working mechanism (`Builder.separator`, keyed off
+`Builder.borderedLeadingGap`, which reads `Block.blockKind` and
+`Block.opensTableBorder(after:)`) emits the gap as real occupied height: the
 separator becomes `"\n\n"`, whose second newline is a paragraph of its own
 carrying a tiny font (`Layout.spacerFontSize`) and `minimumLineHeight ==
 maximumLineHeight == gap`. Being its own unbordered paragraph, it sits outside
