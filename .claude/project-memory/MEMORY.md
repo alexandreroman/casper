@@ -121,3 +121,4 @@
 - [An NSTextTable drops a view back to TextKit 1](references/textkit1-fallback-on-nstexttable.md) — the two engines size the same string differently
 - [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick
 - [DEBUG memory observability](references/memory-observability.md) — weak-ref live-object census + `casper debug memory` + the churn script
+- [Only the layout may create a surface view](references/surface-view-layout-membership.md) — a stale `Surface` value must not refill the view cache

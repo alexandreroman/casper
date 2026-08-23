@@ -28,6 +28,26 @@ final class LayoutTreeTests: XCTestCase {
         XCTAssertEqual(surfaces.map(\.id), LayoutTree.surfaceIDs(root))  // mirrors the id walk
     }
 
+    // MARK: - contains
+
+    func testContainsFindsSurfacesAtEveryDepth() {
+        let a = term(); let b = term(); let c = term()
+        let root = LayoutNode.split(
+            orientation: .horizontal,
+            children: [leaf(a), .split(orientation: .vertical, children: [leaf(b), leaf(c)],
+                                       ratios: [0.5, 0.5])],
+            ratios: [0.5, 0.5])
+        for surface in [a, b, c] {
+            XCTAssertTrue(LayoutTree.contains(root, id: surface.id))
+        }
+        XCTAssertEqual(LayoutTree.surfaceIDs(root).count, 3)  // no leaf missed above
+    }
+
+    func testContainsRejectsAnAbsentSurface() {
+        let a = term()
+        XCTAssertFalse(LayoutTree.contains(leaf(a), id: term().id))
+    }
+
     // MARK: - updateSurface
 
     func testUpdateSurfaceMutatesMatchingLeaf() {

@@ -83,7 +83,12 @@ struct SurfaceHostView: View {
         if let view = model.surfaceView(for: surface, in: workspaceID) {
             PersistentNSViewHost(view: view).id(surface.id)
         } else {
-            Color.black  // runtime not ready yet
+            // Two ways to land here. Before launch finishes, the runtime is not ready
+            // and no view can exist yet. Far more often, this is the departing pane's
+            // final body pass after `applyCloseSurface` removed `surface` from the
+            // layout: `surfaceView(for:in:)` refuses to build a view for a surface the
+            // layout no longer holds, and this frame is the last one drawn.
+            Color.black
         }
     }
 
