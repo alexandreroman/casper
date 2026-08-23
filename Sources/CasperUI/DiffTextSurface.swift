@@ -1,4 +1,5 @@
 import AppKit
+import CasperCore
 import SwiftUI
 
 /// Where the reader is, in terms that survive the diff being recomputed: which
@@ -24,6 +25,12 @@ struct DiffScrollAnchor: Equatable, Sendable {
 @MainActor
 final class DiffSurfaceController {
     weak var coordinator: DiffTextSurface.Coordinator?
+
+    #if DEBUG
+    // Spelled out only so the memory census sees every controller; the body is
+    // otherwise the implicit `init()`.
+    init() { LiveObjectCensus.track(self) }
+    #endif
 }
 
 /// One revision of the diff, everything needed to paint it from scratch.
@@ -489,6 +496,9 @@ final class DiffSurfaceContainerView: NSView {
         self.scrollView = scrollView
         self.stickyHeader = stickyHeader
         super.init(frame: .zero)
+        #if DEBUG
+        LiveObjectCensus.track(self)
+        #endif
         addSubview(scrollView)
         // Added last, so it draws over the text without taking part in its layout.
         addSubview(stickyHeader)

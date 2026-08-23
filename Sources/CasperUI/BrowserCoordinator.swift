@@ -91,6 +91,9 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         ]
         self.address = url == .aboutBlank ? "" : url.absoluteString
         web.load(URLRequest(url: url))
+        #if DEBUG
+        LiveObjectCensus.track(self)
+        #endif
     }
 
     /// Load a user-entered address (already normalized to a URL).
@@ -424,6 +427,18 @@ private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
 /// content updates the focused surface (parallels `GhosttySurfaceView`).
 final class FocusReportingWebView: WKWebView {
     var onFocus: (() -> Void)?
+
+    #if DEBUG
+    // Overridden only so the memory census sees every web view. Declaring a
+    // designated init here is what forces the `init?(coder:)` below.
+    override init(frame: CGRect, configuration: WKWebViewConfiguration) {
+        super.init(frame: frame, configuration: configuration)
+        LiveObjectCensus.track(self)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    #endif
 
     // The occlusion observer for the current window, and the last suspension
     // value pushed to WebKit (so a repeat state is not re-pushed). `lastSuspended`

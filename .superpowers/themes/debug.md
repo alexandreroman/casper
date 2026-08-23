@@ -30,9 +30,10 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
   `/tmp/casper-debug-<name>.sock`, and an external driver targets a session by
   exporting `CASPER_SESSION=<name>` (the CLI derives the same path). See
   [[app-sessions]].
-- **Verbs** — nine, in three groups:
+- **Verbs** — ten, in three groups:
   - *Observe* — `dump-state` (windows/surfaces/cwd/title/cols/rows/focus),
-    `read-text [--scrollback]`, `screenshot <path>`.
+    `read-text [--scrollback]`, `screenshot <path>`, and `memory` (process
+    footprint, the live-object census, and the app's collection sizes).
   - *Inject* — `send-text <str> [--enter]` (writes the text straight into the
     surface), `send-keys <str>` (the same text as real per-character press +
     release key events), `send-key <key> [--mods …]` (one key with modifiers as
@@ -44,9 +45,10 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 - **Surface addressing** — each surface has a stable string `id`; `dump-state`
   reports it. `focus <id>` moves UI focus; `--target <id>` acts on a specific
   surface **without** moving focus, and an unmatched target fails cleanly (no
-  silent fallback). Seven of the nine verbs take `--target`: `focus` addresses
-  by positional id instead, and `dump-state` takes none at all — it enumerates
-  every surface, so there is nothing to target.
+  silent fallback). Seven of the ten verbs take `--target`: `focus` addresses
+  by positional id instead, and `dump-state` and `memory` take none at all —
+  `dump-state` enumerates every surface and `memory` describes the process, so
+  neither has anything to target.
 - **`debug-casper` skill** — the observe-act-verify runbook (build debug,
   launch, wait for the socket, drive, teardown).
 
@@ -57,9 +59,9 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 - Transport uses symmetric **4-byte big-endian length-prefixed framing in both
   directions** (a plain half-close intermittently failed with `ENETDOWN`); an 8
   MB length guard bounds each read.
-- **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot` are retriable
-  (up to 4 attempts); every injecting verb and `focus` are **not** (they
-  mutate).
+- **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot`/`memory` are
+  retriable (up to 4 attempts); every injecting verb and `focus` are **not**
+  (they mutate).
 - Logging emits `debug server listening`, `debug command: <verb>`,
   `debug command failed: …`; read via the absolute `/usr/bin/log` (a zsh builtin
   shadows `log`).

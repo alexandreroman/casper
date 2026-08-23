@@ -139,8 +139,8 @@ A screenshot (then read the PNG to "see" the window):
 .build/debug/casper debug screenshot /tmp/casper.png
 ```
 
-`screenshot`, `dump-state`, and `read-text` are idempotent, so the CLI
-retries them automatically on transient local-socket transport blips —
+`screenshot`, `dump-state`, `read-text`, and `memory` are idempotent, so the
+CLI retries them automatically on transient local-socket transport blips —
 they are reliable. The mutating verbs (`send-text`, `send-keys`, `send-key`,
 `send-action`, `mouse-move`, `focus`) are **never** retried, so a replay
 cannot double-inject input or move focus twice.
@@ -209,13 +209,14 @@ unset CASPER_SESSION
 
 ## Notes
 
-- The nine verbs, with their own options (every one also takes
+- The ten verbs, with their own options (every one also takes
   `--socket <path>`, defaulting to `$CASPER_DEBUG_SOCKET`, else the
   `$CASPER_SESSION`-derived path, else `/tmp/casper-debug.sock`):
 
   | Verb                                   | Notes                                              |
   | -------------------------------------- | -------------------------------------------------- |
   | `dump-state`                           | Prints every exposed surface as JSON. No `--target`. |
+  | `memory`                               | Process memory, the live-object census and named collection sizes. No `--target`. |
   | `read-text [--scrollback] [--target]`  | Viewport text, or the full screen with `--scrollback`. |
   | `send-text <text> [--enter] [--target]`| Injects text; `--enter` submits with Return.       |
   | `send-keys <text> [--target]`          | Types the text as real per-character key events.   |
@@ -228,8 +229,9 @@ unset CASPER_SESSION
 - `read-text` returns the terminal contents as plain text — prefer it over
   screenshots for asserting terminal output.
 - Targeting is not uniform: `dump-state` has no `--target` (it always reports
-  every exposed surface) and `focus` demands an explicit positional id. The
-  other seven default to the focused surface — falling back to the first — when
+  every exposed surface), `memory` has none either (it describes the process,
+  not a surface), and `focus` demands an explicit positional id. The other
+  seven default to the focused surface — falling back to the first — when
   `--target` is omitted.
 - Only the selected workspace's focused/first surface is ever exposed — see
   "What the harness can (and cannot) see". To exercise a specific pane or

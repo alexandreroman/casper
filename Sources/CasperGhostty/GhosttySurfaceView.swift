@@ -132,6 +132,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // libghostty attaches its own CAMetalLayer to this view.
         wantsLayer = true
         installCommandKeyUpMonitor()
+        #if DEBUG
+        LiveObjectCensus.track(self)
+        #endif
     }
 
     /// Catch the ⌘-combo key-ups AppKit withholds from the responder chain and feed
@@ -240,6 +243,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             // clipboard callbacks, letting them recover this view.
             surface = try GhosttySurface(
                 runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+            #if DEBUG
+            // Censused here rather than from `GhosttySurface.init`: that init is
+            // nonisolated (the class is main-thread affine only by contract) and the
+            // census is main-actor, so tracking it there would need a hop the
+            // concurrency model rightly rejects. This is the type's only
+            // construction site, so nothing escapes the count.
+            if let surface { LiveObjectCensus.track(surface) }
+            #endif
             // The surface init typed the queued command into the new child (see the
             // ghostty-initial-input-utf8 note). Drop it now that it has run, so no later
             // creation on this view can replay it. The local copy above is what was just

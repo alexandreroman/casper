@@ -27,6 +27,19 @@ final class DebugProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.state?.surfaces.first?.columns, 80)
     }
 
+    func testResponseWithMemoryRoundTrip() throws {
+        let memory = DebugMemory(
+            footprintBytes: 120_000_000, residentBytes: 90_000_000, peakFootprintBytes: 130_000_000,
+            liveObjects: [.init(label: "GhosttySurfaceView", live: 2, created: 7)],
+            counters: ["surfaceViews": 2, "nsWindows": 1])
+        let response = DebugResponse.success(memory: memory)
+        let data = try JSONEncoder().encode(response)
+        let decoded = try JSONDecoder().decode(DebugResponse.self, from: data)
+        XCTAssertEqual(decoded, response)
+        XCTAssertEqual(decoded.memory?.liveObjects.first?.live, 2)
+        XCTAssertEqual(decoded.memory?.counters["surfaceViews"], 2)
+    }
+
     func testSurfaceRoundTripCarriesAgentDetectionFields() throws {
         let surface = DebugState.Surface(
             id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,

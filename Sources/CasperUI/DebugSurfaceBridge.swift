@@ -49,4 +49,35 @@ extension AppModel: DebugSurfaceProvider {
         return nil
     }
 }
+
+extension AppModel: DebugMemoryProvider {
+    /// Sizes of the per-id caches and of the layout collections, so a churn test can
+    /// attribute growth to a named collection instead of only to a rising footprint.
+    /// Every one of these is keyed by a workspace or surface id, so each should fall
+    /// back to its pre-churn value once the terminals are closed.
+    ///
+    /// `nsWindows` is not built here: `DebugServer` contributes it, being a property
+    /// of the process rather than of the model.
+    func debugMemoryCounters() -> [String: Int] {
+        let workspaces = spaces.flatMap(\.workspaces)
+        let sharedViews = GhosttyDebugCensus.sharedViewCounts
+        return [
+            "surfaceViews": debugSurfaceViewCount,
+            "browserCoordinators": browserCoordinators.count,
+            "pendingInitialInput": pendingInitialInput.count,
+            "watcherPathsCache": watcherPathsCache.count,
+            "namedCommandsCache": namedCommandsCache.count,
+            "namedCommandsStamps": namedCommandsStamps.count,
+            "agentResolvers": agentResolvers.count,
+            "lastNotifiedAt": lastNotifiedAt.count,
+            "spaces": spaces.count,
+            "workspaces": workspaces.count,
+            // The surfaces the layout trees still reference — the number
+            // `surfaceViews` is expected to track.
+            "layoutSurfaces": workspaces.reduce(0) { $0 + LayoutTree.surfaceIDs($1.layout).count },
+            "sharedViewRegistryEntries": sharedViews.registryEntries,
+            "sharedViewContainers": sharedViews.containers,
+        ]
+    }
+}
 #endif

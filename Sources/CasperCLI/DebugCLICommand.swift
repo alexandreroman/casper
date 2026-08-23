@@ -9,8 +9,8 @@ struct DebugCLICommand: ParsableCommand {
         commandName: "debug",
         abstract: "Drive and observe the running Casper GUI (debug builds only).",
         subcommands: [
-            DumpState.self, ReadText.self, SendText.self, SendKeys.self, SendKey.self,
-            SendAction.self, MouseMove.self, Screenshot.self, Focus.self,
+            DumpState.self, Memory.self, ReadText.self, SendText.self, SendKeys.self,
+            SendKey.self, SendAction.self, MouseMove.self, Screenshot.self, Focus.self,
         ])
 }
 
@@ -59,6 +59,25 @@ extension DebugCLICommand {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let data = try encoder.encode(response.state ?? DebugState(surfaces: []))
             print(String(decoding: data, as: UTF8.self))
+        }
+    }
+
+    struct Memory: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Print process memory and the live-object census as JSON.")
+        @OptionGroup var socket: SocketOption
+
+        func run() throws {
+            let response = try CasperCLI.run(
+                DebugCommand(verb: .memory), socket: socket.path, retriable: true)
+            // An `ok` reply without a payload can only be a protocol mismatch;
+            // printing a zero-filled snapshot would read as a healthy measurement.
+            guard let memory = response.memory else {
+                throw exitWithError("memory reply carried no snapshot")
+            }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            print(String(decoding: try encoder.encode(memory), as: UTF8.self))
         }
     }
 

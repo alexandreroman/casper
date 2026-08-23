@@ -1,6 +1,6 @@
 ---
 name: "Test toolchain"
-description: "How to build/test Casper locally — XCTest needs the Xcode toolchain, not Command Line Tools"
+description: "How to build/test Casper locally — XCTest needs the Xcode toolchain, and the suite compiles in debug only"
 type: reference
 ---
 
@@ -20,6 +20,16 @@ with `rm -rf .build`. Without a global switch, use
 **Gotcha:** recent SDKs no longer re-export Foundation through `import XCTest` —
 every XCTest file using `URL`/`Data`/`FileManager`/`UUID`/`JSONEncoder` must
 `import Foundation` explicitly.
+
+**Debug-only suite:** the tests compile in the **debug configuration only**.
+`swift test -c release` fails at compile time, because the suite reaches
+`#if DEBUG` seams in the production modules — `LoginShellPath.resetForTesting`
+and `.runner`, `MainThreadHangWatchdog`, the browser suites' debug hooks, and
+`AppModel`'s `debug*` accessors — none of which exist in a release build.
+`make test` and plain `swift test` are the supported way to run them. A
+`#if DEBUG` wrapper around a test that reaches such a symbol is therefore
+optional: a few files carry one, most do not, and neither shape breaks the
+suite. See [[debug-channel-gating]] for what that gating protects.
 
 Tests also run in **GitHub Actions CI** on a `macos-15` / `macos-26` matrix —
 `.github/workflows/ci.yml`. See [[swift-toolchain-floor]] for the required Xcode

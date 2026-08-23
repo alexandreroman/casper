@@ -752,9 +752,10 @@ hover/pulse/link-cursor/link-routing pass needs a human — see the
 ## Developer tooling (`#if DEBUG`)
 
 - **Debug & observability channel — ✅.** `DebugProtocol`/`DebugSocket`/
-  `DebugServer`/`DebugCLICommand`; nine verbs — `dump-state`, `read-text`,
-  `send-text`, `send-keys`, `send-key`, `send-action`, `mouse-move`,
-  `screenshot`, `focus`. As-built deviations are recorded in `themes/debug.md`.
+  `DebugServer`/`DebugCLICommand`; ten verbs — `dump-state`, `memory`,
+  `read-text`, `send-text`, `send-keys`, `send-key`, `send-action`,
+  `mouse-move`, `screenshot`, `focus`. As-built deviations are recorded in
+  `themes/debug.md`.
 - **Debug surface addressing — ✅.** Stable surface `id`, `focus` verb,
   `--target` option.
 

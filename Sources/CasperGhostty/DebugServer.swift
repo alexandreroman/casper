@@ -126,6 +126,19 @@ public protocol DebugSurfaceProvider: AnyObject {
     func debugSurfaces() -> [DebugSurfaceHandle]
 }
 
+/// Supplies the sizes of the app's per-id caches and collections to the `memory`
+/// verb, so a leak can be attributed to a named collection rather than only to a
+/// growing footprint.
+///
+/// Deliberately a *separate* protocol the server resolves by conditionally casting
+/// its `DebugSurfaceProvider`, rather than a refinement of it: a provider that only
+/// serves surfaces stays valid and simply reports no counters, and the surface
+/// contract keeps describing surfaces only.
+@MainActor
+public protocol DebugMemoryProvider: AnyObject {
+    func debugMemoryCounters() -> [String: Int]
+}
+
 /// Binds the debug socket and dispatches `DebugCommand`s against the provider's
 /// surfaces on the main thread. Debug builds only.
 @MainActor
@@ -233,6 +246,10 @@ public final class DebugServer {
             guard let window = handle.window else { return .failure("no window") }
             return await screenshot(window: window, to: path)
 
+        case .memory:
+            // The one verb that needs no target surface: it describes the process.
+            return memoryResponse()
+
         case .focus:
             guard let id = command.target else { return .failure("missing target id") }
             guard let handle = Self.surface(withID: id, in: surfaces) else {
@@ -241,6 +258,27 @@ public final class DebugServer {
             handle.focus()
             return .success()
         }
+    }
+
+    /// Process memory, the live-object census, and the provider's collection sizes.
+    ///
+    /// An unreadable footprint fails the whole command rather than reporting zeros:
+    /// a zero-filled snapshot renders as a perfectly well-formed table of 0.0 MB
+    /// rows, which reads as a measurement instead of as the failure it is.
+    ///
+    /// `nsWindows` is contributed here rather than by the provider because it is a
+    /// property of the process, not of the app model — so it is reported even when
+    /// the provider does not implement `DebugMemoryProvider`.
+    private func memoryResponse() -> DebugResponse {
+        guard let sample = ProcessMemory.sample() else { return .failure("task_info failed") }
+        var counters = (provider as? any DebugMemoryProvider)?.debugMemoryCounters() ?? [:]
+        counters["nsWindows"] = NSApp?.windows.count ?? 0
+        return .success(memory: DebugMemory(
+            footprintBytes: sample.footprintBytes,
+            residentBytes: sample.residentBytes,
+            peakFootprintBytes: sample.peakFootprintBytes,
+            liveObjects: LiveObjectCensus.snapshot(),
+            counters: counters))
     }
 
     /// The surface a verb acts on: the id-matched surface when `target` is set,

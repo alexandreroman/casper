@@ -252,8 +252,9 @@ public enum LayoutTree {
     // MARK: - Helpers
 
     /// Whether the subtree rooted at `node` holds a surface with `id`. Stops at the
-    /// first match instead of materializing every id like `surfaceIDs`.
-    private static func contains(_ node: LayoutNode, id: UUID) -> Bool {
+    /// first match instead of materializing every id like `surfaceIDs`, so it is
+    /// cheap enough for the render path.
+    public static func contains(_ node: LayoutNode, id: UUID) -> Bool {
         switch node {
         case .leaf(let surface):
             return surface.id == id

@@ -356,6 +356,13 @@ final class AppModel {
     /// tree is restructured.
     @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
 
+    #if DEBUG
+    /// Cache size for the debug memory census (`debugMemoryCounters`). An accessor
+    /// rather than widened visibility, so the cache itself stays private — see the
+    /// appmodel-extension-encapsulation project-memory note.
+    var debugSurfaceViewCount: Int { surfaceViews.count }
+    #endif
+
     // Reached from AppModel+Control.swift.
     /// Live browser coordinators, keyed by surface id. Each owns a browser
     /// surface's `WKWebView` and navigation state; caching them here keeps the
@@ -1426,8 +1433,9 @@ final class AppModel {
     }
 
     /// The persistent view for a terminal surface, created on first use. Returns nil
-    /// for a non-terminal surface, before the runtime exists, or when `workspaceID`
-    /// resolves to no workspace.
+    /// for a non-terminal surface, before the runtime exists, when `workspaceID`
+    /// resolves to no workspace, or when the surface is no longer in that workspace's
+    /// layout (see the guard below).
     ///
     /// Takes the workspace id rather than the value because the workspace is needed
     /// only to build a brand-new surface's environment: every later call is a cache
@@ -1439,6 +1447,18 @@ final class AppModel {
             return existing
         }
         guard let workspace = workspace(id: workspaceID) else { return nil }
+        // Only the layout may bring a surface view into existence. `SurfaceHostView`
+        // stores the `Surface` *value* it was built with, so when a pane is closed
+        // SwiftUI evaluates the departing view's body one last time with that now-stale
+        // value — after `applyCloseSurface` has removed the surface and
+        // `discardSurfaceViews` has emptied its cache slot. Creating a view there would
+        // silently refill the slot for a surface that no longer exists, and nothing
+        // prunes it afterwards: every closed terminal would leak a `GhosttySurfaceView`
+        // (with its process-wide key-up monitor) for the life of the process. The
+        // departing pane renders `Color.black` for the nil and then disappears.
+        // Deliberately below the cache-hit return above, so a live pane's every-render
+        // call never pays for this walk — only genuine creation does.
+        guard LayoutTree.contains(workspace.layout, id: surface.id) else { return nil }
         var configuration = surfaceConfiguration(for: workspace, terminal: surface)
         if let command = pendingInitialInput.removeValue(forKey: surface.id) {
             configuration.initialInput = command + "\n"

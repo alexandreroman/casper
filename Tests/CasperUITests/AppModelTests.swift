@@ -1080,6 +1080,43 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(view.debugLastFocusValue, false)
     }
 
+    #if DEBUG
+    // Gated because `debugSurfaceViewCount` is, so `swift test -c release` still
+    // compiles this file.
+    /// Closing a pane must not leave a cached view behind. When SwiftUI tears the
+    /// pane down it evaluates the departing `SurfaceHostView`'s body one last time,
+    /// and that body still holds the `Surface` value captured when the pane tree was
+    /// built — so it asks the model for a view for a surface the model has already
+    /// removed. Answering with a freshly built view re-fills the cache slot
+    /// `applyCloseSurface` just emptied, and nothing ever empties it again: every
+    /// closed terminal would permanently leak a zombie `GhosttySurfaceView` (an
+    /// NSView, its closures retaining the model, and a process-wide `.keyUp` monitor)
+    /// for the life of the process.
+    func testSurfaceViewDoesNotRecreateAViewForAClosedSurface() throws {
+        let (model, first) = try modelWithOneGitWorkspace()
+        model.runtime = try GhosttyRuntime()
+        model.applyNewSplit(.right)  // two surfaces; focus moves to the new one
+
+        let workspace = model.spaces[0].workspaces[0]
+        let surfaces = LayoutTree.surfaces(workspace.layout)
+        let survivor = try XCTUnwrap(surfaces.first { $0.id == first })
+        let closing = try XCTUnwrap(surfaces.first { $0.id != first })
+        // Mount both panes, so the count below distinguishes "the closed surface was
+        // dropped" from "the cache happens to be empty".
+        XCTAssertNotNil(model.surfaceView(for: survivor, in: workspace.id))
+        XCTAssertNotNil(model.surfaceView(for: closing, in: workspace.id))
+        XCTAssertEqual(model.debugSurfaceViewCount, 2)
+
+        model.applyCloseSurface(closing.id)
+        XCTAssertEqual(model.debugSurfaceViewCount, 1)
+
+        // Exactly what the departing `SurfaceHostView.content` does: the same stale
+        // `Surface` value, re-asked after the model has forgotten the surface.
+        XCTAssertNil(model.surfaceView(for: closing, in: workspace.id))
+        XCTAssertEqual(model.debugSurfaceViewCount, 1)
+    }
+    #endif
+
     /// Full wiring, real libghostty surface: adjusting font size through the
     /// live view must update the exact matching `Surface` in the model and
     /// schedule a save — the whole capture path (Task 4's
