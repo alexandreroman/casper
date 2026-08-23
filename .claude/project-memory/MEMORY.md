@@ -11,7 +11,7 @@
 - [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — without the untracked-content flag, text misflags as binary
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
 - [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes ScrollView centers undersized content; anchor it
-- [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; how to build/test locally + gotchas
+- [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
 - [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
 - [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
