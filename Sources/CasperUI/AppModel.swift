@@ -356,6 +356,13 @@ final class AppModel {
     /// tree is restructured.
     @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
 
+    #if DEBUG
+    /// Cache size for the debug memory census (`debugMemoryCounters`). An accessor
+    /// rather than widened visibility, so the cache itself stays private — see the
+    /// appmodel-extension-encapsulation project-memory note.
+    var debugSurfaceViewCount: Int { surfaceViews.count }
+    #endif
+
     // Reached from AppModel+Control.swift.
     /// Live browser coordinators, keyed by surface id. Each owns a browser
     /// surface's `WKWebView` and navigation state; caching them here keeps the

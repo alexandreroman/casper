@@ -1,4 +1,5 @@
 import AppKit
+import CasperCore
 import SwiftUI
 
 /// Hosts an EXISTING `NSView` in SwiftUI, re-parenting it into a fresh container
@@ -48,6 +49,9 @@ final class SharedHostContainer: NSView {
         self.hostedView = hostedView
         super.init(frame: .zero)
         SharedViewOwnership.register(self)
+        #if DEBUG
+        LiveObjectCensus.track(self)
+        #endif
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -123,7 +127,38 @@ enum SharedViewOwnership {
             registry.removeValue(forKey: key)
         }
     }
+
+    #if DEBUG
+    /// Registry size and the live container population, for the memory census.
+    ///
+    /// Counted through the enumerator, never `NSHashTable.count`, for the reason
+    /// `pruneEmptyTables` documents: a weak table's `count` can still report entries
+    /// whose objects have already deallocated.
+    static func debugCounts() -> (registryEntries: Int, containers: Int) {
+        var containers = 0
+        for table in registry.values {
+            let enumerator = table.objectEnumerator()
+            while enumerator.nextObject() != nil { containers += 1 }
+        }
+        return (registry.count, containers)
+    }
+    #endif
 }
+
+#if DEBUG
+/// Reads `CasperGhostty`'s internal shared-view registry for the debug memory
+/// census. It exists only because `SharedViewOwnership` is internal to this
+/// module and the census is assembled in `CasperUI`.
+@MainActor
+public enum GhosttyDebugCensus {
+    /// The number of registry entries (one per shared view still keyed) and the
+    /// total number of live containers across all of them. Both should return to
+    /// the pre-churn level once terminals are closed.
+    public static var sharedViewCounts: (registryEntries: Int, containers: Int) {
+        SharedViewOwnership.debugCounts()
+    }
+}
+#endif
 
 @MainActor
 private func place(_ view: NSView, in container: NSView) {

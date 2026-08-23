@@ -13,6 +13,7 @@ public struct DebugCommand: Codable, Equatable, Sendable {
         case screenshot
         case focus
         case mouseMove
+        case memory
     }
 
     public var verb: Verb
@@ -121,24 +122,54 @@ public struct DebugState: Codable, Equatable, Sendable {
     public init(surfaces: [Surface]) { self.surfaces = surfaces }
 }
 
+/// Process memory plus the live-object census, returned by `memory`. Together
+/// they separate "the process grew" from "these objects were never released",
+/// which is what tells a real leak apart from allocator noise.
+public struct DebugMemory: Codable, Equatable, Sendable {
+    public var footprintBytes: Int
+    public var residentBytes: Int
+    public var peakFootprintBytes: Int
+    public var liveObjects: [LiveObjectCensus.Entry]
+    /// Named sizes of the app's per-id caches and collections, e.g. "surfaceViews": 3.
+    public var counters: [String: Int]
+
+    public init(
+        footprintBytes: Int = 0, residentBytes: Int = 0, peakFootprintBytes: Int = 0,
+        liveObjects: [LiveObjectCensus.Entry] = [], counters: [String: Int] = [:]
+    ) {
+        self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
+        self.peakFootprintBytes = peakFootprintBytes
+        self.liveObjects = liveObjects
+        self.counters = counters
+    }
+}
+
 /// The reply to a `DebugCommand`. `text` carries read-text output or a
-/// screenshot path; `state` carries a `dumpState` snapshot; `error` is set when
-/// `ok` is false.
+/// screenshot path; `state` carries a `dumpState` snapshot; `memory` carries a
+/// `memory` snapshot; `error` is set when `ok` is false.
 public struct DebugResponse: Codable, Equatable, Sendable {
     public var ok: Bool
     public var text: String?
     public var state: DebugState?
+    public var memory: DebugMemory?
     public var error: String?
 
-    public init(ok: Bool, text: String? = nil, state: DebugState? = nil, error: String? = nil) {
+    public init(
+        ok: Bool, text: String? = nil, state: DebugState? = nil, memory: DebugMemory? = nil,
+        error: String? = nil
+    ) {
         self.ok = ok
         self.text = text
         self.state = state
+        self.memory = memory
         self.error = error
     }
 
-    public static func success(text: String? = nil, state: DebugState? = nil) -> DebugResponse {
-        DebugResponse(ok: true, text: text, state: state)
+    public static func success(
+        text: String? = nil, state: DebugState? = nil, memory: DebugMemory? = nil
+    ) -> DebugResponse {
+        DebugResponse(ok: true, text: text, state: state, memory: memory)
     }
 
     public static func failure(_ message: String) -> DebugResponse {
