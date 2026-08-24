@@ -65,6 +65,20 @@ final class AgentIntegrationProbeTests: XCTestCase {
         enabled = false
         """
 
+    /// A `config.toml` whose `[hooks.state]` records the plugin's hooks as approved,
+    /// in the shape Codex writes: one table per hook, plus an unrelated hook keyed by
+    /// absolute path.
+    private static let codexConfigHooksTrusted = """
+        [hooks.state]
+
+        [hooks.state."\(AgentIntegration.pluginID):hooks/hooks.json:session_start:0:0"]
+        trusted_hash = "sha256:63ef580c6830c4c80d21164707f0c0afe2daf03eeb2238cb3ee154"
+        enabled = true
+
+        [hooks.state."/stub-home/.codex/hooks.json:stop:0:0"]
+        trusted_hash = "sha256:86cfa1963b6b0f3d2a1c8e4d5b6a7f8091a2b3c4d5e6f708192a3b"
+        """
+
     // MARK: - Stub environment
 
     /// Records every path the probe read or listed. `@unchecked Sendable` because
@@ -106,6 +120,9 @@ final class AgentIntegrationProbeTests: XCTestCase {
         [
             Self.claudeRegistryPath: Self.claudeRegistry(version: Self.currentVersion),
             "\(Self.opencodePluginPath)/casper.js": Self.opencodePlugin(version: Self.currentVersion),
+            // Codex's half of "complete" includes the hook approval: without it the
+            // install is on disk but inert.
+            Self.codexConfigPath: Self.codexConfigHooksTrusted,
         ]
     }
 
@@ -355,10 +372,74 @@ final class AgentIntegrationProbeTests: XCTestCase {
         XCTAssertEqual(probe.status(for: .codex), .missing)
     }
 
-    func testCodexInstalledWhenCurrent() {
+    func testCodexInstalledWhenCurrentAndItsHooksAreTrusted() {
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["codex"],
+                files: [Self.codexConfigPath: Self.codexConfigHooksTrusted],
+                directories: fullyInstalledDirectories))
+        XCTAssertEqual(probe.status(for: .codex), .installed)
+    }
+
+    func testCodexAwaitsHookTrustWithoutAConfig() {
+        // Nothing on disk records an approval, so nothing says the hooks run. The
+        // install is real; it is simply one `/hooks` visit short of doing anything.
         let probe = AgentIntegrationProbe(
             environment: makeEnvironment(executables: ["codex"], directories: fullyInstalledDirectories))
+        XCTAssertEqual(probe.status(for: .codex), .installedAwaitingHookTrust)
+    }
+
+    func testCodexTrustsAnUnreadableConfig() {
+        // The config is there — `~/.codex` lists it — but its bytes will not come
+        // back. That answers neither question it is consulted for, and unknown stays
+        // quiet: nagging a user whose hooks are approved, permanently, because one
+        // file is unreadable is exactly the false nag this feature refuses to produce.
+        var directories = fullyInstalledDirectories
+        directories["\(Self.home)/.codex"] = ["config.toml"]
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(executables: ["codex"], directories: directories))
         XCTAssertEqual(probe.status(for: .codex), .installed)
+    }
+
+    func testCodexAwaitsHookTrustWhenTheConfigHasNoHooksState() {
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["codex"],
+                files: [Self.codexConfigPath: #"model = "gpt-5""#],
+                directories: fullyInstalledDirectories))
+        XCTAssertEqual(probe.status(for: .codex), .installedAwaitingHookTrust)
+    }
+
+    func testCodexAwaitsHookTrustWhenOnlyOtherHooksAreTrusted() {
+        let config = """
+            [hooks.state]
+
+            [hooks.state."/stub-home/.codex/hooks.json:session_start:0:0"]
+            trusted_hash = "sha256:86cfa1963b6b"
+
+            [hooks.state."notes@some-marketplace:hooks/hooks.json:stop:0:0"]
+            trusted_hash = "sha256:11223344556677"
+            """
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["codex"],
+                files: [Self.codexConfigPath: config],
+                directories: fullyInstalledDirectories))
+        XCTAssertEqual(probe.status(for: .codex), .installedAwaitingHookTrust)
+    }
+
+    func testCodexAwaitsHookTrustWhenItsOnlyTrustedHookIsDisabled() {
+        let config = """
+            [hooks.state."\(AgentIntegration.pluginID):hooks/hooks.json:session_start:0:0"]
+            trusted_hash = "sha256:63ef580c6830"
+            enabled = false
+            """
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["codex"],
+                files: [Self.codexConfigPath: config],
+                directories: fullyInstalledDirectories))
+        XCTAssertEqual(probe.status(for: .codex), .installedAwaitingHookTrust)
     }
 
     func testCodexOutdatedCarriesTheHighestCachedVersion() {
@@ -382,6 +463,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
             let probe = AgentIntegrationProbe(
                 environment: makeEnvironment(
                     executables: ["codex"],
+                    files: [Self.codexConfigPath: Self.codexConfigHooksTrusted],
                     directories: [
                         Self.codexCachePath: marketplaces,
                         "\(Self.codexCachePath)/alpha": ["casper"],
@@ -417,11 +499,24 @@ final class AgentIntegrationProbeTests: XCTestCase {
         XCTAssertEqual(probe.status(for: .codex), .missing)
     }
 
-    func testCodexEnabledInConfigStaysInstalled() {
+    func testCodexDisabledInConfigOutranksTrustedHooks() {
+        // Hooks approved once and the plugin switched off since: the plugin is the
+        // problem to report, and it is the one the user has to fix first.
+        let config = "\(Self.codexConfigDisabled)\n\n\(Self.codexConfigHooksTrusted)"
         let probe = AgentIntegrationProbe(
             environment: makeEnvironment(
                 executables: ["codex"],
-                files: [Self.codexConfigPath: "[plugins.\"\(AgentIntegration.pluginID)\"]\nenabled = true\n"],
+                files: [Self.codexConfigPath: config],
+                directories: fullyInstalledDirectories))
+        XCTAssertEqual(probe.status(for: .codex), .missing)
+    }
+
+    func testCodexEnabledInConfigStaysInstalled() {
+        let enabled = "[plugins.\"\(AgentIntegration.pluginID)\"]\nenabled = true\n"
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["codex"],
+                files: [Self.codexConfigPath: "\(enabled)\n\(Self.codexConfigHooksTrusted)"],
                 directories: fullyInstalledDirectories))
         XCTAssertEqual(probe.status(for: .codex), .installed)
     }

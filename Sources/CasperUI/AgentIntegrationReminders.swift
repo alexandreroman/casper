@@ -23,9 +23,8 @@ final class AgentIntegrationReminders {
     /// One sidebar reminder line about a coding agent's Casper integration.
     struct Reminder: Identifiable, Equatable {
 
-        /// What the line is telling the user. Not derivable from `status` alone:
-        /// `.installed` means "nothing to do" for most agents, but "one manual step
-        /// left" for an agent whose hooks stay inert until they are approved.
+        /// What the line is telling the user: something to install or update, or an
+        /// install that is one manual approval short of doing anything.
         enum Kind: Equatable {
             /// The integration is missing or stale — the user installs or updates it.
             case actionNeeded
@@ -47,10 +46,12 @@ final class AgentIntegrationReminders {
         /// `Session.dismissedAgentReminders`.
         ///
         /// The two kinds deliberately use *different* keys. `apply(_:)` retires an
-        /// agent's action-needed dismissal as soon as that agent reports `.installed`.
-        /// A trust notice only ever appears *while* the agent reports `.installed`, so
-        /// sharing the key would un-dismiss it the instant it became relevant, leaving
-        /// it impossible to silence.
+        /// agent's action-needed dismissal as soon as the plugin is installed, which
+        /// includes `.installedAwaitingHookTrust` — the one status a trust notice
+        /// appears under — so sharing the key would un-dismiss the notice the instant
+        /// it became relevant, leaving it impossible to silence. The trust key is
+        /// retired by `.installed` alone, the only status that proves the notice's own
+        /// problem gone.
         static func dismissalKey(agent: CodingAgent, kind: Kind) -> String {
             switch kind {
             case .actionNeeded: return agent.reminderID
@@ -177,10 +178,10 @@ final class AgentIntegrationReminders {
     /// A line the current result no longer publishes is ignored. The click carries a
     /// reminder captured when the view's body last ran, and a probe landing in between
     /// can have retired it — dismissing it then would persist a key for a line nobody
-    /// was looking at, and `"<agent>-trust"` is the one key nothing ever retires, so a
-    /// mistimed click would silence the trust notice for good. Matched on `id` rather
-    /// than on the whole value, so a status changing under an unchanged line
-    /// (`.missing` → `.outdated`) still lets a genuine click through.
+    /// was looking at, silencing a notice the user has never seen until whatever it
+    /// names is fixed. Matched on `id` rather than on the whole value, so a status
+    /// changing under an unchanged line (`.missing` → `.outdated`) still lets a genuine
+    /// click through.
     func dismiss(_ reminder: Reminder) {
         guard reminders.contains(where: { $0.id == reminder.id }) else { return }
         guard dismissed.insert(reminder.id).inserted else { return }
@@ -192,18 +193,14 @@ final class AgentIntegrationReminders {
     private func apply(_ statuses: [CodingAgent: AgentIntegrationStatus]) {
         self.statuses = statuses
 
-        // A dismissal silences the *current* problem, not the agent forever. Once an
-        // agent's integration is healthy the dismissal has done its job, so drop it:
+        // A dismissal silences the *current* problem, not the agent forever. Once a
+        // status proves that problem gone the dismissal has done its job, so drop it:
         // if the user later breaks or uninstalls that integration, they get reminded
         // again. Without this, one dismissal blinds them to that agent for good.
-        //
-        // Only the action-needed key is retired. A trust notice keys off `.installed`
-        // itself, so clearing its key here would un-dismiss it the moment it became
-        // relevant — which is exactly why it carries a key of its own.
-        let healed = statuses
-            .filter { $0.value == .installed }
-            .map { Reminder.dismissalKey(agent: $0.key, kind: .actionNeeded) }
-        let remaining = dismissed.subtracting(healed)
+        let retired = statuses.flatMap { agent, status in
+            Self.retiredKinds(for: status).map { Reminder.dismissalKey(agent: agent, kind: $0) }
+        }
+        let remaining = dismissed.subtracting(retired)
         if remaining != dismissed {
             dismissed = remaining
             persist()
@@ -219,7 +216,7 @@ final class AgentIntegrationReminders {
     private func rebuild() {
         let rebuilt = CodingAgent.allCases.compactMap { agent -> Reminder? in
             guard let status = statuses[agent],
-                  let kind = Self.reminderKind(for: status, of: agent) else { return nil }
+                  let kind = Self.reminderKind(for: status) else { return nil }
             let reminder = Reminder(agent: agent, status: status, kind: kind)
             guard !dismissed.contains(reminder.id) else { return nil }
             return reminder
@@ -228,22 +225,42 @@ final class AgentIntegrationReminders {
         reminders = rebuilt
     }
 
+    /// Which dismissals a status retires — the problems it proves are gone.
+    /// Exhaustive for the same reason as `reminderKind(for:)`, so a new
+    /// `AgentIntegrationStatus` case forces a decision here too rather than silently
+    /// retiring nothing.
+    private static func retiredKinds(for status: AgentIntegrationStatus) -> [Reminder.Kind] {
+        switch status {
+        // Nothing is fixed, so nothing is retired. `.notInstalled` included: the
+        // agent's CLI is gone, which is not the same as its integration being healthy.
+        case .missing, .outdated, .notInstalled: return []
+        // Installed, current, and its hooks approved — both problems are gone, so both
+        // dismissals go with them. Retiring the trust key here and nowhere else is
+        // what lets a user who dismissed the notice hear about it again if Codex
+        // later loses that approval.
+        case .installed: return [.actionNeeded, .trustNotice]
+        // The plugin is installed and current, which is what the action-needed line
+        // was about. What is left is a different problem with a line of its own — and
+        // this is the very status that line appears under, so retiring its key here
+        // would un-dismiss it the moment it became relevant.
+        case .installedAwaitingHookTrust: return [.actionNeeded]
+        }
+    }
+
     /// Which line, if any, a status earns. Exhaustive on purpose, so a new
     /// `AgentIntegrationStatus` case forces a decision here rather than silently
     /// defaulting to "say nothing".
-    private static func reminderKind(
-        for status: AgentIntegrationStatus,
-        of agent: CodingAgent
-    ) -> Reminder.Kind? {
+    private static func reminderKind(for status: AgentIntegrationStatus) -> Reminder.Kind? {
         switch status {
         case .missing, .outdated: return .actionNeeded
         // The agent's CLI is absent, so the user does not use it: advertising an
         // integration for a tool they never installed is pure noise.
         case .notInstalled: return nil
-        // Installed and current is normally nothing to report. The exception is an
-        // agent whose hooks stay inert until approved — the install is real, but it
-        // does nothing at all until the user takes that last step.
-        case .installed: return agent.requiresHookTrust ? .trustNotice : nil
+        // Installed and current: nothing to report.
+        case .installed: return nil
+        // The install is real, but its hooks stay inert until the user approves
+        // them, so there is one manual step left to point at.
+        case .installedAwaitingHookTrust: return .trustNotice
         }
     }
 }

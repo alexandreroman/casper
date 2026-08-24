@@ -71,29 +71,27 @@ final class AgentIntegrationReminderTests: XCTestCase {
     //
     // Codex hashes non-managed command hooks and will not run them until the user
     // approves them through `/hooks` in its TUI, so a Codex integration can be fully
-    // installed on disk and completely inert. That is the one case where `.installed`
-    // still has something to say.
+    // installed on disk and completely inert. Codex records that approval in its own
+    // `config.toml`, so the probe reports it as a status of its own.
 
-    func testInstalledCodexProducesATrustNotice() async throws {
+    func testCodexAwaitingHookTrustProducesATrustNotice() async throws {
         let (store, _) = makeTemporarySessionStore()
         let model = makeModel(store: store)
 
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
 
         let line = try reminder(model, .codex)
         XCTAssertEqual(line.kind, .trustNotice)
-        XCTAssertEqual(line.status, .installed)
+        XCTAssertEqual(line.status, .installedAwaitingHookTrust)
     }
 
-    func testInstalledAgentsThatNeedNoTrustProduceNothing() async {
+    func testInstalledAgentsProduceNothing() async {
         let (store, _) = makeTemporarySessionStore()
         let model = makeModel(store: store)
 
-        // Only an agent flagged `requiresHookTrust` earns a notice; the other two are
-        // simply done once installed.
-        XCTAssertFalse(CodingAgent.claudeCode.requiresHookTrust)
-        XCTAssertFalse(CodingAgent.opencode.requiresHookTrust)
-        await probe(model, [.claudeCode: .installed, .opencode: .installed])
+        // `.installed` is the end of the story for every agent, Codex included: a user
+        // whose hooks are approved must not be told, permanently, to go approve them.
+        await probe(model, [.claudeCode: .installed, .codex: .installed, .opencode: .installed])
 
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
     }
@@ -109,26 +107,48 @@ final class AgentIntegrationReminderTests: XCTestCase {
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
     }
 
-    func testTrustNoticeStaysDismissedAcrossARefreshThatStillReportsInstalled() async throws {
+    func testTrustNoticeStaysDismissedWhileTheHooksAreStillUnapproved() async throws {
         let (store, _) = makeTemporarySessionStore()
         let model = makeModel(store: store)
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
         try dismiss(model, .codex)
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
 
         // The regression the separate dismissal key exists to prevent: the auto-clear
-        // retires an agent's dismissal once it reports `.installed`, which is the only
-        // status a trust notice ever appears under. Sharing the key would un-dismiss
-        // the notice on the very next probe, making it impossible to silence.
-        await probe(model, [.codex: .installed])
+        // retires an agent's action-needed dismissal once the plugin is installed, and
+        // `.installedAwaitingHookTrust` counts as installed — it is the only status a
+        // trust notice appears under. Sharing the key, or retiring the trust key on this
+        // status, would un-dismiss the notice on the very next probe and make it
+        // impossible to silence.
+        await probe(model, [.codex: .installedAwaitingHookTrust])
 
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
+    }
+
+    func testApprovingTheHooksRetiresADismissedTrustNotice() async throws {
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        await probe(model, [.codex: .installedAwaitingHookTrust])
+        try dismiss(model, .codex)
+
+        // `.installed` is the only status that proves the notice's own problem gone, so
+        // it is the one that retires the dismissal — the module's general rule, applied
+        // to the trust key too.
+        await probe(model, [.codex: .installed])
+        XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
+
+        // Codex can lose that record later — an `/hooks` disable, a config reset, a
+        // plugin update whose hooks get new keys. A dismissal must not silence the
+        // notice for the rest of the install's life.
+        await probe(model, [.codex: .installedAwaitingHookTrust])
+
+        XCTAssertEqual(model.agentIntegrationReminders.map(\.kind), [.trustNotice])
     }
 
     func testDismissingTheTrustNoticeLeavesALaterActionNeededLineAlone() async throws {
         let (store, _) = makeTemporarySessionStore()
         let model = makeModel(store: store)
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
         try dismiss(model, .codex)
 
         // The user silenced "approve it in /hooks". Losing the integration afterwards
@@ -147,7 +167,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
 
         // Installing the integration retires that dismissal, and surfaces the notice
         // the user has never seen, let alone dismissed.
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
 
         XCTAssertEqual(model.agentIntegrationReminders.map(\.kind), [.trustNotice])
     }
@@ -155,7 +175,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     func testTrustNoticeDismissalUsesItsOwnPersistedKey() async throws {
         let (store, url) = makeTemporarySessionStore()
         let model = makeModel(store: store)
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
         try dismiss(model, .codex)
 
         model.flushPendingSave()
@@ -168,9 +188,10 @@ final class AgentIntegrationReminderTests: XCTestCase {
 
     func testNoAgentIDCanCollideWithAnotherAgentsTrustKey() {
         // The auto-clear retires action-needed dismissals by subtracting plain reminder
-        // ids from the dismissed set, and a trust notice is keyed as an id plus "-trust".
-        // An id spelled "<another-id>-trust" would therefore clear, silently and from a
-        // completely unrelated agent, a notice the user dismissed on purpose.
+        // ids from the dismissed set for a healed agent, and a trust notice is keyed as
+        // an id plus "-trust". An id spelled "<another-id>-trust" would therefore clear,
+        // silently and from a completely unrelated agent, a notice the user dismissed on
+        // purpose.
         let ids = Set(CodingAgent.allCases.map(\.reminderID))
         for agent in CodingAgent.allCases {
             XCTAssertFalse(
@@ -187,8 +208,6 @@ final class AgentIntegrationReminderTests: XCTestCase {
 
         let reminder = try XCTUnwrap(model.agentIntegrationReminders.first)
         XCTAssertEqual(reminder.documentationURL, CodingAgent.codex.documentationURL)
-        // The hook-trust caveat is the UI's to word, but it has to be reachable here.
-        XCTAssertTrue(reminder.agent.requiresHookTrust)
     }
 
     func testReminderOrderFollowsAllCasesNotDictionaryOrder() async {
@@ -284,13 +303,13 @@ final class AgentIntegrationReminderTests: XCTestCase {
     func testDismissingALineThatIsNoLongerPublishedIsIgnored() async throws {
         let (store, url) = makeTemporarySessionStore()
         let model = makeModel(store: store)
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
         let trustNotice = try reminder(model, .codex)
 
         // A probe lands between the view's last body pass and the click it delivers, so
         // the click carries a line that no longer exists. Honouring it would persist
-        // "codex-trust" — the one key nothing ever retires — and permanently silence a
-        // notice the user has not even seen yet.
+        // "codex-trust" and silence, until the hooks are approved, a notice the user has
+        // not even seen yet.
         await probe(model, [.codex: .missing])
         model.dismissAgentReminder(trustNotice)
 
@@ -299,7 +318,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
         XCTAssertTrue(try SessionStore(fileURL: url).load().dismissedAgentReminders.isEmpty)
 
         // So the notice is still there to be dismissed once the integration comes back.
-        await probe(model, [.codex: .installed])
+        await probe(model, [.codex: .installedAwaitingHookTrust])
         XCTAssertEqual(model.agentIntegrationReminders.map(\.kind), [.trustNotice])
     }
 

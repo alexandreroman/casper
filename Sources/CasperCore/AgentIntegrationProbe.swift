@@ -208,20 +208,44 @@ public struct AgentIntegrationProbe: Sendable {
     // MARK: - Codex
 
     /// Codex keeps installs in a cache tree whose *path* carries the version, and
-    /// records disabled plugins in its config.
+    /// records both disabled plugins and hook approvals in its config.
     private func codexStatus() -> AgentIntegrationStatus {
         guard let version = installedCodexPluginVersion() else { return .missing }
+
+        // One read answers both config questions. Nil is kept nil rather than folded
+        // into an empty string: "there is no config" and "the config would not read"
+        // are different answers, and `codexHooksTrusted` has to tell them apart.
+        let config = environment.fileContents(homePath(".codex/config.toml"))
+            .map { String(decoding: $0, as: UTF8.self) }
 
         // A plugin the user has switched off is functionally absent: its hooks never
         // run. Reporting `.installed` there would be actively unhelpful — the user
         // would be told the integration is fine while nothing happens — so a
         // disabled install is reported as `.missing`, which is what the reminder is
-        // for.
-        if let config = environment.fileContents(homePath(".codex/config.toml")),
-           AgentIntegration.parseCodexDisabled(String(decoding: config, as: UTF8.self)) {
-            return .missing
-        }
-        return status(forInstalledVersion: version)
+        // for. This outranks hook trust: switched off is a bigger problem than
+        // unapproved, and it is the one the user has to fix first.
+        if let config, AgentIntegration.parseCodexDisabled(config) { return .missing }
+
+        // Hooks that are installed but never approved are just as inert, but the fix
+        // is a different one (`/hooks` in the Codex TUI), so it earns its own status.
+        // An outdated install keeps saying so: updating the plugin comes first, and
+        // it re-opens the trust question anyway.
+        let versionStatus = status(forInstalledVersion: version)
+        guard versionStatus == .installed, !codexHooksTrusted(config) else { return versionStatus }
+        return .installedAwaitingHookTrust
+    }
+
+    /// Whether Codex records at least one of the plugin's hooks as approved.
+    ///
+    /// A config that could not be read answers neither way, and unknown stays quiet:
+    /// it counts as trusted, so a user whose hooks *are* approved is not nagged for
+    /// the rest of the install's life by a permissions problem on one file. An absent
+    /// config is a genuine no — nothing on disk records an approval — so the two are
+    /// told apart by listing `~/.codex` before an unreadable file is allowed to pass
+    /// for an absent one.
+    private func codexHooksTrusted(_ config: String?) -> Bool {
+        if let config { return AgentIntegration.parseCodexHooksTrusted(config) }
+        return environment.directoryEntries(homePath(".codex")).contains("config.toml")
     }
 
     /// Walks `~/.codex/plugins/cache/<marketplace>/casper/<version>/` and returns the
@@ -239,10 +263,20 @@ public struct AgentIntegrationProbe: Sendable {
     /// discovery order falling through to it, so probing by manifest file name would
     /// match nothing.
     ///
-    /// NOTE: this cache layout comes from Codex's published documentation and has
-    /// **not** been verified against a real install — none was available on either
-    /// the app or the plugin side. Whoever first gets a real Codex should confirm it
-    /// (`codex plugin add`, then `codex plugin list --json` as a cross-check).
+    /// The layout is confirmed against a real Codex 0.149.0 install, under the
+    /// default Codex home this method hard-codes (a `CODEX_HOME` override is not
+    /// read): `~/.codex/plugins/cache/casper/casper/0.2.0/`, with the version as the
+    /// leaf path segment, and `codex plugin list --json` reporting
+    /// `"pluginId": "casper@casper"`, `"marketplaceName": "casper"`,
+    /// `"version": "0.2.0"`, `"installed": true` and `"enabled": true`.
+    ///
+    /// That command is the stricter cross-check, with two caveats. It exposes
+    /// `pluginId`, `name`, `marketplaceName`, `version`, `installed`, `enabled`,
+    /// `source`, `marketplaceSource`, `installPolicy` and `authPolicy` — and no
+    /// hook-trust field, so it answers "is it installed", never "is it approved". And
+    /// its stdout can carry trailing terminal escape bytes when a user's shell wraps
+    /// `codex` in a function, so a parser must read the first JSON document rather
+    /// than the whole stream.
     private func installedCodexPluginVersion() -> String? {
         let cacheRoot = homePath(".codex/plugins/cache")
         var versionDirectoryNames: [String] = []

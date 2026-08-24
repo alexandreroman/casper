@@ -109,7 +109,7 @@
 - [Agent integration policy](references/agent-integration-policy.md) — detect and remind only; never write another tool's config
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
 - [Agent-integration probe cadence](references/agent-integration-probe-cadence.md) — launch pays the cold cost; the tick refreshes
-- [Codex detection caveats](references/codex-detection-caveats.md) — unverified cache path, no manifest read, hooks.json false positive
+- [Codex detection caveats](references/codex-detection-caveats.md) — confirmed cache path, hook trust in config.toml, hooks.json false positive
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
 - [Unused-import false positives](references/unused-import-grep-false-positives.md) — a green build proves nothing
 - [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind

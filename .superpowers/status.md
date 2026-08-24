@@ -873,15 +873,15 @@ that, and Casper only detects and links to documentation. Design:
 [[agent-integration-policy]].
 
 **Built — policy (`CasperCore/AgentIntegration.swift`).** The agent catalogue
-(`CodingAgent`: reminder id, display name, executable name, `requiresHookTrust`,
-documentation URL), the status vocabulary (`AgentIntegrationStatus`:
-`notInstalled` / `missing` / `outdated(installed:)` / `installed`), the numeric
-`installed < required` comparison against `requiredPluginVersion`, and one pure
-parser per agent — Claude Code's `installed_plugins.json` registry and
+(`CodingAgent`: reminder id, display name, executable name, documentation URL),
+the status vocabulary (`AgentIntegrationStatus`: `notInstalled` / `missing` /
+`outdated(installed:)` / `installed` / `installedAwaitingHookTrust`), the
+numeric `installed < required` comparison against `requiredPluginVersion`, and
+one pure parser per agent — Claude Code's `installed_plugins.json` registry and
 `settings.json` `enabledPlugins`, opencode's JSONC config and `casper.js`
-`CASPER_PLUGIN_VERSION`, Codex's cache directory names and `config.toml`
-`enabled = false`. Zero I/O in the whole file, so every hostile input is a plain
-unit test.
+`CASPER_PLUGIN_VERSION`, Codex's cache directory names, `config.toml`
+`enabled = false` and `config.toml` `[hooks.state]` trust records. Zero I/O in
+the whole file, so every hostile input is a plain unit test.
 
 **Built — probing (`CasperCore/AgentIntegrationProbe.swift`).** The I/O half
 behind an injectable `Environment` (executable lookup, file contents, directory
@@ -917,10 +917,14 @@ on case-insensitive APFS; Claude Code detection therefore reads the registry key
 and the record's `version` field and never `installPath`, and every lookup on
 that path has to stay case-sensitive.
 
-The **Codex cache layout is documentation-derived and has never been verified
-against a real install**, on either side; the source, the theme doc and the
-README all say so. No plugin manifest is read (the plugin ships only
-`.claude-plugin/plugin.json` and relies on Codex's discovery order), and
+The **Codex cache layout is confirmed against a real Codex 0.149.0 install** —
+`~/.codex/plugins/cache/casper/casper/0.2.0/` under the default Codex home, the
+only one the probe builds paths from (a `CODEX_HOME` override is not read), with
+`codex plugin list --json` reporting `casper@casper` at `0.2.0`, installed and
+enabled (that command carries no hook-trust field, so it answers "is it
+installed", never "is it approved"). No plugin manifest is read (the plugin
+ships only `.claude-plugin/plugin.json` and relies on Codex's discovery order),
+and
 `~/.codex/hooks.json` is deliberately never consulted. See
 [[codex-detection-caveats]].
 
@@ -941,9 +945,10 @@ immediately. `applicationDidBecomeActive` applies the same stale check. See
 [[agent-integration-probe-cadence]].
 
 Each result publishes one ordered `AgentIntegrationReminder` per agent with
-something to say: `missing`/`outdated` → an *action-needed* line, `installed` →
-a *trust notice* for Codex only, `notInstalled` → nothing at all. Order comes
-from `CodingAgent.allCases`, never from the status dictionary (hash-seeded).
+something to say: `missing`/`outdated` → an *action-needed* line,
+`installedAwaitingHookTrust` → a *trust notice*, `installed` and `notInstalled`
+→ nothing at all. Order comes from `CodingAgent.allCases`, never from the status
+dictionary (hash-seeded).
 `AgentIntegrationReminderView` renders the rows between the workspace list and
 the "Add Folder…" footer, drawing **nothing** — not even a divider — when the
 list is empty; the row button (opens the guide) and the dismiss button are
@@ -959,23 +964,36 @@ the parenthesis outright when nothing printable survives.
 
 The Codex **trust notice** exists because Codex hashes non-managed command hooks
 and does not run them until they are approved via `/hooks` in its TUI, so an
-installed Codex integration can be completely inert and no disk state records
-whether it was approved. It dismisses under its own `<id>-trust` key: it only
-ever appears *while* Codex reports `installed`, and an action-needed dismissal
-is retired exactly then, so a shared key would un-dismiss it the instant it
-became relevant.
+installed Codex integration can be completely inert. That approval is recorded
+in `~/.codex/config.toml` under `[hooks.state]`, one table per hook keyed
+`"<pluginId>:<hooks file>:<event>:<index>:<index>"`, and the probe reads it from
+the same config text as the disabled check: a `trusted_hash` under a
+`casper@casper:` key, on an entry not carrying `enabled = false`, means approved
+and the notice stays off. The hash is never recomputed — that would mean
+reproducing Codex's hashing scheme — so a plugin update that invalidates a
+stored hash reads as trusted while Codex re-prompts, a false negative preferred
+to nagging every approved user. The notice dismisses under its own `<id>-trust`
+key: it only ever appears while the integration reports installed, and an
+action-needed dismissal is retired exactly then, so a shared key would
+un-dismiss it the instant it became relevant. Its own key is retired by
+`installed` alone — the one status that proves the hooks approved — so a Codex
+that later loses that record surfaces the notice again.
 
 Dismissals persist in `Session.dismissedAgentReminders` (encoded as a sorted
 array so an unchanged session serialises byte-identically — see
 [[session-json-stable-encoding]]), keyed by stable `reminderID` strings spelled
 out independently of the enum's `rawValue`. A dismissal silences the current
-problem, not the agent: it is retired once that agent reports `installed`, so a
-later regression reminds again.
+problem, not the agent: it is retired once a status proves that problem gone —
+the action-needed key as soon as the plugin is installed, approved or not; the
+trust key only once the hooks are approved — so a later regression reminds
+again. Both mappings are exhaustive switches on `AgentIntegrationStatus`, so a
+sixth case cannot default silently into either.
 
-**Tests.** 125 in total: 57 in `AgentIntegrationTests` (the parsers and the
+**Tests.** 137 in total: 64 in `AgentIntegrationTests` (the parsers and the
 version comparison, including CRLF, JSONC comments inside string literals,
-lookalike plugin names, `"unknown"` versions, and the two plugin ids staying
-distinct-but-case-equal), 30 in `AgentIntegrationProbeTests` (the full
+lookalike plugin names, `"unknown"` versions, a real `[hooks.state]` table with
+a non-plugin absolute-path key, and the two plugin ids staying
+distinct-but-case-equal), 35 in `AgentIntegrationProbeTests` (the full
 resolution against in-memory fixtures, per agent and per status), 26 in
 `AgentIntegrationReminderTests` (probe scheduling and the staleness interval,
 the published projection, dismissal and retirement), 8 in

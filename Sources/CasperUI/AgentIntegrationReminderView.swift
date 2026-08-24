@@ -46,9 +46,7 @@ struct AgentIntegrationReminderView: View {
     /// lines, so a longer sentence would be truncated rather than read. The outdated
     /// line still names the installed version, bounded by
     /// `maxDisplayedVersionLength`: it is the one detail that makes a nag someone
-    /// believes is wrong diagnosable from a screenshot, and it matters most on the
-    /// Codex path, whose install layout has never been checked against a real
-    /// install.
+    /// believes is wrong diagnosable from a screenshot.
     static func message(for reminder: AppModel.AgentIntegrationReminder) -> String {
         let name = reminder.agent.displayName
         switch reminder.kind {
@@ -61,9 +59,9 @@ struct AgentIntegrationReminderView: View {
                     return "\(name) integration is outdated"
                 }
                 return "\(name) integration is outdated (\(version))"
-            // Only `.missing` reaches here; `.notInstalled` and `.installed` never
-            // produce an action-needed line, and are listed to keep this exhaustive.
-            case .missing, .notInstalled, .installed:
+            // Only `.missing` reaches here; the installed statuses and `.notInstalled`
+            // never produce an action-needed line, and are listed to keep this exhaustive.
+            case .missing, .notInstalled, .installed, .installedAwaitingHookTrust:
                 return "\(name) integration not installed"
             }
         }
