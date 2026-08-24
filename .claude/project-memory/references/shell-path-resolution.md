@@ -38,6 +38,13 @@ three rungs are tried and **unioned**, in this order:
    here too.
 3. `-l -c` — neither rc file, but every shell accepts it.
 
+All three run on every cold probe. That is a deliberate trade: dropping the
+`-i -c` rung takes the cold probe from ~0.5 s to ~0.3 s, and a login-only probe
+costs ~0.1 s, but each cut buys speed by making the lookup wrong again — first
+for every bash user whose `PATH` lives in `.bashrc`, then for everyone. The cost
+is paid once per process, off the main actor, and is flat in the number of
+command names, so it stays a launch cost and never a per-lookup one.
+
 `-c` alone is the last rung, reached only when all three produced nothing, for
 `/bin/csh` and `/bin/tcsh`, which reject `-l` with `Unknown option: '-l'`.
 
