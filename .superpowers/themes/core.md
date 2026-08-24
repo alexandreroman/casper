@@ -55,9 +55,13 @@ The pure-Swift, UI-free core. Fully unit-tested.
   - **`Debouncer`** — a main-actor coalescing timer: each `schedule` cancels the
     pending work and re-arms, so a burst fires once. The `SessionStore` save
     idiom, extracted.
-  - **`LoginShellPath`** — resolves a command against the user's **login shell**
-    `PATH`, which Casper's own environment lacks because it is launched from
-    Finder/Dock.
+  - **`LoginShellPath`** — probes the user's shell for its `PATH` once per
+    process, then resolves command names against it in Swift. Casper's own
+    environment lacks that `PATH` because it is launched from Finder/Dock, and
+    only an *interactive* shell sources the rc file where a great many users
+    actually build it — `.zshrc` for zsh, and `.bashrc`, which bash reads only
+    for an interactive **non-login** shell. Hence a union of rungs rather than
+    one invocation; see [[cli-agents]].
   - **`SpaceName`** / **`IdentifierFormatting`** — display-name derivation for a
     Space, and `UUID.casperID`, the lowercase canonical external form every id
     Casper emits uses.

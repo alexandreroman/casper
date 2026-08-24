@@ -20,16 +20,16 @@ import Foundation
 ///
 /// The probe is global — one answer per agent for the whole app, not per
 /// workspace — and cheap enough to re-run: `LoginShellPath` caches the expensive
-/// part (the login-shell lookup) for the lifetime of the process.
+/// part (the shell `PATH` probe) for the lifetime of the process.
 ///
 /// **Never call this from the main actor on a cold process.** `statuses()` gates
-/// each agent on its CLI, so the first call resolves three commands through
-/// `LoginShellPath`, which spawns three login shells *sequentially* — each one
-/// sourcing the user's profile, routinely 1–2.5 s in total on a real machine with
-/// Homebrew, nvm and friends in `~/.zprofile`. On the main actor that is a frozen
-/// UI for the whole duration. Run it off the main actor and hand the result back.
-/// Subsequent calls are cached and effectively free, but nothing may depend on the
-/// cache being warm.
+/// each agent on its CLI, so the first call warms `LoginShellPath`: one shell
+/// `PATH` probe — up to three spawns, ~0.5 s on a real machine with Homebrew,
+/// nvm and friends in the profile — shared by all three commands, followed by the
+/// probe's own file reads and directory listings. On the main actor that is a
+/// frozen UI for the whole duration. Run it off the main actor and hand the
+/// result back. Subsequent calls are cached and effectively free, but nothing
+/// may depend on the cache being warm.
 public struct AgentIntegrationProbe: Sendable {
 
     /// Every filesystem and PATH access the probe makes, injectable so tests can

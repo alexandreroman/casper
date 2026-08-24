@@ -266,23 +266,92 @@ them:
   `AgentIntegration.requiredPluginVersion`.
 - `installed` — installed and current; normally nothing to report.
 
-CLI presence is resolved through the user's **login shell** (`LoginShellPath`,
-shared with the rest of CasperCore), not through the process `PATH`. Casper is
-launched from Finder or the Dock, so its own `PATH` is the bare launchd default
-— no Homebrew, no nvm, no `~/.local/bin`. Probing that would report every agent
-`notInstalled` for exactly the people who have the agents installed.
+CLI presence is resolved through the user's **interactive login shell**
+(`LoginShellPath`, shared with the rest of CasperCore), not through the process
+`PATH`. Casper is launched from Finder or the Dock, so its own `PATH` is the
+bare launchd default — no Homebrew, no nvm, no `~/.local/bin`. Probing that
+would report every agent `notInstalled` for exactly the people who have the
+agents installed. **Interactive** is load-bearing: `-lc` is a login but
+*non-interactive* shell, so zsh sources `.zshenv`, `.zprofile` and `.zlogin` and
+never `.zshrc` — and `.zshrc` is where a great many users actually build their
+`PATH`. bash splits its files differently rather than symmetrically: it reads
+`~/.bashrc` **only** for an interactive *non-login* shell, so an interactive
+login bash reads `~/.bash_profile` and stops. Reaching a bash user's `.bashrc`
+therefore needs a rung of its own, `-i -c`; against bash, `-i -l -c` answers
+exactly what `-l -c` answers. Probed the login-only way, `codex` reads as absent
+for a user whose terminal resolves it fine at `~/.local/bin/codex`, which
+short-circuits the whole agent to `notInstalled` — the one status that renders
+nothing at all.
+
+The shell is asked for its **`PATH`**, not for the location of a command: the
+probe body is `/usr/bin/printenv PATH`, and command names are then resolved
+against that search path in Swift — an executable **regular file**, since
+`FileManager.isExecutableFile` is `access(X_OK)` and says yes to any searchable
+directory. Asking an
+interactive shell `which codex` or `command -v codex` instead would be worse
+than the bug it fixes — an interactive shell also defines aliases and functions,
+and both builtins report those. Against a `.zshrc` that defines a `codex`
+*function*, `which` prints a multi-line function body and `command -v` prints
+the bare word `codex`; neither is a path, and neither is something `Process`
+could execute. Reading `PATH` and testing directories cannot produce that class
+of answer.
+
+`printenv` is an absolute external command with no shell syntax in it, so the
+probe is dialect-independent whatever `$SHELL` is (fish, whose `$PATH` is a
+list; nu; csh) — `PATH` is exported to every child. Only the *flags* are
+dialect-specific, so three sets of them are tried in order, as separate
+arguments, and their answers **unioned**:
+
+- `-i -l -c` — interactive *and* login. The rung that sources zsh's `.zshrc`;
+  bash on it reads `.bash_profile` and stops.
+- `-i -c` — interactive, *not* login. The only rung that sources bash's
+  `.bashrc`, and so the decisive one for every bash user. zsh sources `.zshrc`
+  here too, which costs one spawn and changes nothing for zsh.
+- `-l -c` — login only. Misses both rc files, but every shell accepts it.
+
+`-c` alone follows only when all three produced nothing (`/bin/csh` and
+`/bin/tcsh` reject `-l` outright, so they were broken before too). The union
+means no rung's answer can be **shrunk** by another — even a `.zshrc` that
+clobbers `PATH` instead of prepending can only add directories. It is not a
+promise that resolution never returns less than a single login shell would: a
+probe that never completes contributes only what its finished rungs found. The
+process's own `PATH` is appended last, and a shell that rejects a flag set exits
+non-zero (a `$SHELL` naming a shell that is not installed fails to spawn), so an
+unknown shell degrades to no worse than before. `-i` is also not side-effect
+free: an `exec tmux` guarded on `$TMUX` is a common rc-file line, and when it
+fires that rung contributes nothing at all.
+
+Output is parsed generously — every `/`-prefixed, `:`-separated component of
+every line, deduplicated — because a shell that sources a profile prints
+whatever the profile prints. **Order** is what keeps that safe: banners are
+printed *before* `printenv` runs, so the real `PATH` line (the last one whose
+components are all absolute) is emitted first and the leftovers of every other
+line follow it. A banner, a MOTD or a `.zlogout` line can therefore still
+contribute a directory — `https://docs.example.com` alone yields
+`//docs.example.com` — but never one ranked ahead of a genuine `PATH` entry,
+and resolution then demands an executable regular file, so what it contributes
+is in practice nothing.
 
 Two properties of that lookup shape everything downstream:
 
-- **It is bounded.** One lookup spawns `$SHELL -lc 'which <command>'`, which
-  sources the user's profile, and the wait is capped by
-  `LoginShellPath.lookupTimeout`. A profile that blocks outright — a hung
-  network mount, an `nvm` or `conda` bootstrap waiting on the network, anything
-  reading stdin — would otherwise hold its caller forever; the cap turns that
-  into a cached "not found". It matters beyond this feature: the same lookup
-  runs on the main actor for `EditorLauncher`, where an unbounded wait is a
-  frozen app. The abandoned worker thread is left to finish on its own, and the
-  shell is terminated on the same deadline.
+- **It is bounded.** `LoginShellPath.lookupTimeout` caps the **whole** probe
+  rather than each spawn, and the terminate-watchdog arms on that one shared
+  deadline. A profile that blocks outright — a hung network mount, an `nvm` or
+  `conda` bootstrap waiting on the network, anything reading stdin — would
+  otherwise hold its caller forever; the cap turns that into a cached "not
+  found". Stdin is `/dev/null` for the same reason: an interactive rc file may
+  `read`, and a child inheriting a terminal would block right past any watchdog
+  — a `.zshrc` holding a bare `read` completes instantly against `/dev/null` and
+  hangs forever otherwise. It matters beyond this feature: the same lookup runs
+  on the main actor for `EditorLauncher`, where an unbounded wait is a frozen
+  app. The abandoned worker thread is left to finish on its own, and the shell
+  is terminated on the same deadline. Each rung publishes its components as it
+  finishes, so an answer already in hand is kept rather than discarded along
+  with the rung still in flight. What the timeout does cost is **permanent**:
+  an abandoned probe's result is cached like any other, so the process is left
+  on the bare launchd `PATH` until Casper is relaunched — deliberate, since
+  re-probing would spawn shells again on every detection tick and a profile
+  that blocks once blocks every time.
 - **Every answer is cached for the process lifetime, misses included.** That is
   what makes re-probing cheap, and it is a deliberate trade-off with a visible
   cost: an agent CLI installed *while Casper is running* stays `notInstalled`
@@ -415,9 +484,11 @@ so a new status case forces a decision rather than defaulting to silence, and
 the list is driven by `CodingAgent.allCases` — dictionary order depends on a
 per-process hash seed and would shuffle the rows between launches.
 
-The probe runs **off the main actor**, always. A cold `statuses()` spawns three
-sequential login shells (1–2.5 s of real work on a machine with a populated
-`~/.zprofile`), so running it inline would freeze the UI for that whole time.
+The probe runs **off the main actor**, always. A cold `statuses()` pays for the
+`LoginShellPath` probe — up to three shell spawns, measured at ~0.5 s on a
+machine with a populated `~/.zshrc` — on top of the file reads behind it, and a
+shell profile is entitled to take seconds, so running it inline would freeze the
+UI for that whole time.
 
 `AppDelegate` starts exactly one probe at launch, and that is the only one that
 pays the cold cost. Afterwards a **staleness check** rides the existing agent
@@ -426,10 +497,10 @@ re-probes once the last result is older than
 `AppModel.agentIntegrationProbeInterval` — **five seconds**. It is a freshness
 horizon, not a rate limiter: nothing is being protected from load, the answer is
 simply not trusted past that age. The cadence is affordable precisely because of
-the `LoginShellPath` cache above: every probe after the first is a handful of
-`stat` and `read` calls, far too cheap to ration by the minute.
-`applicationDidBecomeActive` applies the same check, so a Cmd-Tab storm still
-probes at most once per interval.
+the `LoginShellPath` cache above: every probe after the first spawns nothing at
+all — a handful of `stat` and `read` calls, far too cheap to ration by the
+minute. `applicationDidBecomeActive` applies the same check, so a Cmd-Tab storm
+still probes at most once per interval.
 
 Three rules hold the cadence together:
 

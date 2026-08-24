@@ -62,10 +62,11 @@ final class AgentIntegrationReminders {
     /// How long a probe result stays fresh before a stale check re-runs one.
     ///
     /// Only the *first* probe is expensive: it resolves the three agent CLIs through
-    /// `LoginShellPath`, one login shell each (1–2.5 s of real work in total). Those
-    /// lookups are cached — misses included — for the lifetime of the process, so every
-    /// probe after the first is a handful of `stat` and `read` calls, far too cheap to
-    /// be worth rationing by the minute.
+    /// `LoginShellPath`, whose one shell `PATH` probe — up to three spawns, ~0.5 s — is
+    /// shared by all three. That search path and every answer drawn from it are cached —
+    /// misses included — for the lifetime of the process, so every probe after the first
+    /// is a handful of `stat` and `read` calls, far too cheap to be worth rationing by
+    /// the minute.
     ///
     /// Seconds are what let the reminder close its own loop. The expected way to install
     /// an integration is a `plugin install` command typed *in a Casper terminal*, which
@@ -135,8 +136,9 @@ final class AgentIntegrationReminders {
         lastProbeAt = Date()
         let probe = self.probe
         task = Task { @MainActor [weak self] in
-            // Detached, never inline: a cold `statuses()` blocks for seconds on three
-            // sequential login shells, and this actor is the one drawing the UI.
+            // Detached, never inline: a cold `statuses()` pays for the shared `PATH`
+            // probe — several shell spawns, bounded but not quick — and this actor is
+            // the one drawing the UI.
             let statuses = await Task.detached(priority: .utility) { probe() }.value
             // `Task.detached` neither inherits nor forwards cancellation, and awaiting a
             // non-throwing task is not a cancellation point — so a cancelled probe runs to
