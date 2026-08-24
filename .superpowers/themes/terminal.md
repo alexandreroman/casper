@@ -47,9 +47,9 @@ surfaces and PTYs (same model as the Ghostty app).
   view pointer); paste completes through
   `ghostty_surface_complete_clipboard_request` — see
   [[ghostty-clipboard-callbacks]].
-- **Main menu** — the App/Edit/View/Window menu bar is SwiftUI `.commands` in
-  CasperUI (`MenuCommands.swift`), not an AppKit menu built here; its Edit/View
-  items invoke libghostty binding actions (`copy_to_clipboard`,
+- **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
+  in CasperUI (`MenuCommands.swift`), not an AppKit menu built here; its
+  Edit/View items invoke libghostty binding actions (`copy_to_clipboard`,
   `paste_from_clipboard`, `select_all`,
   `increase_font_size`/`decrease_font_size`/`reset_font_size`) on the focused
   surface through the responder chain. See

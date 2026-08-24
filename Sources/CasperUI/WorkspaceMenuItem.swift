@@ -2,7 +2,7 @@ import CasperCore
 import SwiftUI
 
 /// One item of a workspace's action menu. The menu is offered in two forms — the
-/// sidebar row's SwiftUI `.contextMenu` (`SidebarView`) and the File/Edit menu-bar
+/// sidebar row's SwiftUI `.contextMenu` (`SidebarView`) and the Space/Edit menu-bar
 /// groups (`CasperCommands`) — and both render this one description, so their
 /// titles, symbols and actions cannot drift apart.
 ///

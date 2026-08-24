@@ -627,13 +627,13 @@ final class AppModel {
     }
 
     /// Reveal a workspace's worktree folder in Finder. Backs the "Open in
-    /// Finder" items in the sidebar context menu and the File menu.
+    /// Finder" items in the sidebar context menu and the Space menu.
     func openInFinder(id: UUID) {
         guard let workspace = workspace(id: id) else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: workspace.worktreePath))
     }
 
-    /// The Space a File-menu "Create Workspace" action targets: the selected
+    /// The Space a menu-bar "Create Workspace" action targets: the selected
     /// workspace's Space when it is a Git repo, otherwise the first Git Space.
     /// nil when no Git Space exists (the menu item is then disabled).
     func targetSpaceForNewWorkspace() -> Space? {
