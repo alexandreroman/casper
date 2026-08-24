@@ -104,7 +104,7 @@ it). Rendering is display-link driven, so `GHOSTTY_ACTION_RENDER` needs no
 explicit `draw()` wiring.
 - **Keyboard & clipboard — ✅.** Control/Option/⌘ combos all work (Ctrl-C/D,
   ⌘C/⌘V/⌘A via NSPasteboard, ⌘±/0 font size, ⌘Q, ⌘W); macOS menu bar
-  (App/Edit/View/Window); `macos-option-as-alt` wired (inert in the pinned
+  (App/Space/Edit/View/Window); `macos-option-as-alt` wired (inert in the pinned
   binary). ⌘-key/menu paths confirmed by structure + live keypress (the debug
   channel bypasses `performKeyEquivalent`).
 - **Mouse — cmd+click opens URLs — ✅.** libghostty forwards the ⌘ modifier and

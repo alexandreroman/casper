@@ -9,6 +9,9 @@ import UserNotifications
 /// `AppModel` with the SwiftUI scene via `AppModel.shared`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate {
+    /// Visible title of the standard File menu — see `renameFileMenu(in:)`.
+    private static let spaceMenuTitle = "Space"
+
     private var controlServer: ControlServer?
     private var keyWindowObserver: NSObjectProtocol?
     private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
@@ -229,6 +232,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             stripServicesItems(fromAppMenu: appMenu)
         }
         stripEmptyTopLevelMenus(in: mainMenu)
+        renameFileMenu(in: mainMenu)
+    }
+
+    /// Retitle the standard File menu to "Space": its items adopt folders and act on
+    /// spaces and workspaces — Casper has no notion of a file to offer there.
+    ///
+    /// SwiftUI cannot express this. `.commands` can *position* a group into the
+    /// standard File slot (`CommandGroup(replacing: .newItem)`, see `CasperCommands`),
+    /// but it offers no way to retitle a standard menu — only an additive
+    /// `CommandMenu` carries a title of its own, and that lands the menu after Window
+    /// instead of in the File slot. So the rename happens in AppKit, and like every
+    /// other fixup here it has to be re-applied on every pass rather than once at
+    /// launch: each SwiftUI resync re-asserts `NSApp.mainMenu` with the standard
+    /// localized title back in place.
+    ///
+    /// The menu is matched structurally, never by title — macOS localizes "File", and
+    /// from the second pass on the title is Casper's own anyway. The marker is
+    /// `CasperCommands.addFolderTitle`, an unlocalized string of Casper's own: the
+    /// `.newItem` group is the only one Casper leaves populated in that menu, so its
+    /// first button is the submenu's first item.
+    ///
+    /// This cannot interfere with `stripEmptyTopLevelMenus(in:)`, which keys on an
+    /// empty submenu: the menu matched here always carries items.
+    private func renameFileMenu(in mainMenu: NSMenu) {
+        for index in 0..<mainMenu.numberOfItems {
+            guard let item = mainMenu.item(at: index), let submenu = item.submenu,
+                  submenu.item(at: 0)?.title == CasperCommands.addFolderTitle
+            else { continue }
+            // AppKit draws the *submenu's* title in the bar, not the item's, so both
+            // are set — and only when one of them actually differs, since this runs on
+            // every update pass.
+            if item.title != Self.spaceMenuTitle || submenu.title != Self.spaceMenuTitle {
+                item.title = Self.spaceMenuTitle
+                submenu.title = Self.spaceMenuTitle
+            }
+            return
+        }
     }
 
     /// Strip every empty top-level menu from the main menu.
@@ -240,7 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// will- and did-update passes minimizes the window in which the stubs are
     /// visible, which is what produced the intermittent menu-bar flicker.
     ///
-    /// This is safe and terminating: it never touches File/Edit/View/App/Window
+    /// This is safe and terminating: it never touches App/Space/Edit/View/Window
     /// (always populated), so it cannot make a real menu disappear, and once the
     /// stubs are removed a subsequent pass finds nothing to strip. Matching empty
     /// submenus (rather than titles) keeps it locale-independent.

@@ -9,7 +9,9 @@ type: reference
 Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands`
 in `Sources/CasperUI/MenuCommands.swift`, wired via `CasperApp.body`'s
 `.commands { CasperCommands(model: model) }`). File ← `.newItem`, Edit ←
-`.pasteboard`, View ← `.sidebar`; App/Window use SwiftUI defaults. Edit
+`.pasteboard`, View ← `.sidebar`; App/Window use SwiftUI defaults. The File
+slot's menu is titled **"Space"** on the bar — see "Renaming the File menu"
+below; every other placement's visible title is the standard one. Edit
 Copy/Paste/Select All carry no target —
 `NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)` routes
 through the responder chain to the focused `GhosttySurfaceView` (and to text
@@ -118,6 +120,27 @@ install on a delegate-less menu.
 `applicationWillUpdate`/`DidUpdate`, before `stripEmptyTopLevelMenus()` (so the
 empty-stub pass sees the final menu). That call is a safety net for
 re-injections that happen with no menu open — not the fix.
+
+## Renaming the File menu
+
+The menu occupying the standard File slot reads **"Space"** on the bar, applied
+by `AppDelegate.renameFileMenu(in:)` from `resyncMainMenu()`. SwiftUI cannot do
+it: `.commands` positions a group into a standard menu
+(`CommandGroup(replacing: .newItem)`) but exposes no title for it, and the only
+titled construct — an additive `CommandMenu` — lands after Window instead of in
+the File slot. Like the strips, the rename runs on **every** update pass, since
+each resync re-asserts `NSApp.mainMenu` with the standard localized title.
+
+Both `NSMenuItem.title` and `submenu.title` are set (AppKit draws the
+*submenu's* title in the bar), and only when one of them differs. The menu is
+matched **structurally**, never by title (macOS localizes "File", and after the
+first pass the title is Casper's own): the marker is
+`CasperCommands.addFolderTitle` — `"Add Folder…"`, an unlocalized Casper string
+— compared against the submenu's **first** item, which holds because
+`.newItem` is the only group Casper leaves populated there. That string is
+load-bearing for the rename; the shared `static let` is what keeps the two
+sites from drifting. The rename cannot disturb `stripEmptyTopLevelMenus(in:)`,
+which keys on an empty submenu.
 
 ## The resync pass runs unconditionally — do not add an early-out cache
 

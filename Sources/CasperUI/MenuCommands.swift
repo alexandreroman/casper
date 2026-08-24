@@ -12,8 +12,12 @@ import SwiftUI
 ///
 /// Menus are positioned by *replacing the standard command-group placements*
 /// rather than adding `CommandMenu`s, so each menu lands in its native slot and a
-/// group left empty makes its menu disappear entirely:
-/// - File   ← `.newItem`   (other File groups emptied)
+/// group left empty makes its menu disappear entirely. The list below names the
+/// *placement* on the right and the *visible title* on the left; the two differ for
+/// one menu: Casper's items go in the standard File slot but the menu reads "Space",
+/// retitled in AppKit by `AppDelegate.renameFileMenu(in:)` because `.commands` can
+/// position a group into a standard menu but not rename one.
+/// - Space  ← `.newItem`   (other File groups emptied)
 /// - Edit   ← `.pasteboard` (other Edit groups emptied)
 /// - View   ← `.sidebar`   (`.toolbar` emptied)
 /// - Format ← `.textFormatting` emptied (menu removed)
@@ -22,6 +26,12 @@ import SwiftUI
 ///            everything else SwiftUI defaults
 /// - Window ← SwiftUI defaults
 struct CasperCommands: Commands {
+    /// Title of the first item of the standard File slot, and the marker
+    /// `AppDelegate.renameFileMenu(in:)` matches that menu on — it is Casper's own
+    /// string, so unlike the standard File items macOS does not localize it. Keep
+    /// this item first in the `.newItem` group below.
+    static let addFolderTitle = "Add Folder…"
+
     let model: AppModel
 
     var body: some Commands {
@@ -38,11 +48,11 @@ struct CasperCommands: Commands {
             }
         }
 
-        // File menu.
+        // Space menu (the standard File slot, retitled in AppDelegate).
         Group {
             CommandGroup(replacing: .newItem) {
                 Button { model.presentAddFolderPanel() } label: {
-                    Label("Add Folder…", systemImage: "plus")
+                    Label(Self.addFolderTitle, systemImage: "plus")
                 }
                 .keyboardShortcut("o", modifiers: .command)
                 Button {
@@ -136,7 +146,7 @@ struct CasperCommands: Commands {
 }
 
 extension AppModel {
-    /// Enable-state for the File menu's "Create Workspace…": a space to create into.
+    /// Enable-state for the Space menu's "Create Workspace…": a space to create into.
     var canCreateWorkspace: Bool { targetSpaceForNewWorkspace() != nil }
 
     /// Enable-state for "Delete Workspace…": only a linked worktree can be deleted.
