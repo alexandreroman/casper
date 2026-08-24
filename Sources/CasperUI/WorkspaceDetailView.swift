@@ -87,14 +87,14 @@ struct WorkspaceDetailView: View {
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.flexible)
             }
+            if canMerge {
+                ToolbarItem(placement: .primaryAction) { mergeButton }.flatToolbarItem()
+            }
             if !model.namedCommands(for: workspace.id).isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     ScriptToolbarButton(model: model, workspace: workspace)
                 }
                 .flatToolbarItem()
-            }
-            if canMerge {
-                ToolbarItem(placement: .primaryAction) { mergeButton }.flatToolbarItem()
             }
             if !model.availableEditors.isEmpty {
                 ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
