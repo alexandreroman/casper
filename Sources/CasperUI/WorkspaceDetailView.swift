@@ -93,6 +93,9 @@ struct WorkspaceDetailView: View {
                 }
                 .flatToolbarItem()
             }
+            if canMerge {
+                ToolbarItem(placement: .primaryAction) { mergeButton }.flatToolbarItem()
+            }
             if !model.availableEditors.isEmpty {
                 ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
             }
@@ -274,6 +277,39 @@ struct WorkspaceDetailView: View {
             }
         }
         .help("Open in Editor")
+    }
+
+    /// Whether this workspace can be merged into its recorded base branch: only a
+    /// linked worktree that records one has anywhere to merge to. Mirrors the
+    /// menus' `canCloseSelectedWorkspace` gate, but derives from the workspace this
+    /// view renders instead of the model's selection — the toolbar always acts on
+    /// the workspace it is drawn for, which this view already holds.
+    private var canMerge: Bool {
+        workspace.kind == .linked && !(workspace.baseBranch?.isEmpty ?? true)
+    }
+
+    /// The "Merge" chip. It routes to the same merge-and-close confirmation as the
+    /// menus' "Merge and Close Workspace…" item — merging a workspace always ends
+    /// by closing it, and there is no merge-only flow to offer. The label stays a
+    /// bare "Merge" because the confirmation dialog is what spells out the "and
+    /// close" part; the tooltip says so too, before the click.
+    ///
+    /// Geometry follows the `title-capsule-hit-area` memory note: `titleCapsule` is
+    /// applied INSIDE the label, so the whole pill is clickable and not just the glyph.
+    /// The label style is pinned because the toolbar environment otherwise resolves the
+    /// `Label` to icon-only and swallows the title, and the neighbouring Editor and Run
+    /// chips are text-bearing, so a glyph-only Merge chip would read as a different class
+    /// of control.
+    private var mergeButton: some View {
+        Button {
+            model.presentCloseWorkspaceConfirmation(id: workspace.id)
+        } label: {
+            Label("Merge", systemImage: "arrow.triangle.merge")
+                .labelStyle(.titleAndIcon)
+                .titleCapsule(interactive: true)
+        }
+        .buttonStyle(.plain)
+        .help("Merge and close workspace")
     }
 
     @ViewBuilder
