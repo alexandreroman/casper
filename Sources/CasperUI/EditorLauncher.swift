@@ -11,9 +11,12 @@ import Foundation
 /// system: it runs on every `WorkspaceDetailView` body pass (once per editor
 /// menu entry, and a `Menu`'s content is built eagerly), and the icon cannot
 /// change during a session. Main-actor-isolated for that shared state; every
-/// caller is already on the main actor. The other expensive lookup — resolving
-/// an editor's CLI shim against the user's login-shell `PATH` — is memoized by
-/// `LoginShellPath` in CasperCore, which is shared with its non-UI callers.
+/// caller is already on the main actor. Resolving an editor's CLI shim against
+/// the `PATH` the user has in a terminal is served from `LoginShellPath`'s
+/// process-wide search path in CasperCore — shared with its non-UI callers,
+/// which normally warm it off the main actor, and spawning nothing of its own.
+/// On a *cold* search path it does spawn: the whole shell probe then runs here,
+/// on the main actor, bounded by `LoginShellPath.lookupTimeout`.
 @MainActor
 enum EditorLauncher {
     private static var iconCache: [EditorKind: NSImage] = [:]

@@ -66,21 +66,6 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         }
     }
 
-    /// Whether an integration that is fully installed can still be inert.
-    ///
-    /// Codex hashes non-managed command hooks and refuses to run them until the user
-    /// reviews and approves them through `/hooks` in the Codex TUI. A Codex install
-    /// can therefore be complete on disk and do absolutely nothing. Trust state is
-    /// not observable from disk, so rather than guess, the UI always states the
-    /// caveat for agents flagged here.
-    ///
-    /// This is a *presentation* flag on the agent and deliberately not a fifth
-    /// `AgentIntegrationStatus` case: the status vocabulary describes what was found
-    /// on disk and stays agent-neutral, while this describes how to word it.
-    public var requiresHookTrust: Bool {
-        self == .codex
-    }
-
     /// Where to send the user to install or fix this agent's integration.
     public var documentationURL: URL {
         // Force-unwrapped: both operands are literals, so this cannot fail.
@@ -109,6 +94,15 @@ public enum AgentIntegrationStatus: Equatable, Sendable {
     case outdated(installed: String)
     /// The integration is installed and current. Nothing to report.
     case installed
+    /// The integration is installed and current, but the agent's hooks are not
+    /// recorded as trusted, so none of them run yet.
+    ///
+    /// Codex hashes non-managed command hooks and refuses to run them until the user
+    /// approves them through `/hooks` in its TUI, which leaves an install that is
+    /// complete on disk doing absolutely nothing. That approval *is* recorded on
+    /// disk (`~/.codex/config.toml`, `[hooks.state]`), so this stays what the rest of
+    /// the vocabulary is: a description of what was found, not of how to word it.
+    case installedAwaitingHookTrust
 }
 
 /// Namespace for the integration constants and the pure parsers behind
@@ -563,10 +557,11 @@ public enum AgentIntegration {
     /// on Codex's discovery order falling through to it, so probing by manifest file
     /// name would miss the install entirely.
     ///
-    /// NOTE: this layout comes from Codex's published documentation and has **not**
-    /// been verified against a real install — no Codex was available on either side
-    /// of this work. It is the parser most likely to need correcting, and this
-    /// comment is the marker for whoever first gets a real Codex to check it against.
+    /// The layout is confirmed against a real Codex 0.149.0 install:
+    /// `~/.codex/plugins/cache/casper/casper/0.2.0/`, with the version as the leaf
+    /// path segment — under the default Codex home, the only one the probe builds
+    /// paths from (a `CODEX_HOME` override is not read).
+    ///
     /// Dot-prefixed names are dropped first: an uninstall that leaves the directory
     /// behind with nothing but a Finder-written `.DS_Store` in it must read as an
     /// absent install, not as one whose version is `.DS_Store`. A visible name that
@@ -627,13 +622,140 @@ public enum AgentIntegration {
         return false
     }
 
+    /// Whether Codex's config records at least one of the plugin's hooks as trusted.
+    ///
+    /// Codex hashes non-managed command hooks and refuses to run them until the user
+    /// approves them through `/hooks` in its TUI, so an install can be complete on
+    /// disk and still do nothing. That approval is recorded in the same
+    /// `~/.codex/config.toml` the disabled check reads, one table per hook:
+    ///
+    /// ```toml
+    /// [hooks.state."casper@casper:hooks/hooks.json:session_start:0:0"]
+    /// trusted_hash = "sha256:63ef580c6830…"
+    /// enabled = true
+    /// ```
+    ///
+    /// The key is `"<pluginId>:<hooks file>:<event>:<index>:<index>"`, so the
+    /// plugin's own entries are the ones prefixed with `pluginID` and a colon —
+    /// hooks that belong to no plugin put an absolute path where the id goes
+    /// (`"/Users/…/.codex/hooks.json:stop:0:0"`), which the prefix match excludes. An
+    /// entry carrying an explicit `enabled = false` is switched off and does not
+    /// count; an absent `enabled` means enabled.
+    ///
+    /// **Casper does not recompute the hash.** Doing so would mean reproducing
+    /// Codex's hashing scheme, so a plugin update that invalidates a stored hash
+    /// reads as trusted here while Codex re-prompts for approval. That false
+    /// negative is the deliberate choice: staying quiet is cheaper than asserting a
+    /// trust problem the user usually does not have.
+    ///
+    /// **The quantifier is "any", not "all".** A single approved, enabled entry under
+    /// the plugin's prefix answers yes. Casper cannot know which hooks the installed
+    /// plugin version ships, so "all of them" is a set it has no way to enumerate, and
+    /// a user who approved `session_start` and switched `stop` off therefore reads as
+    /// trusted. That is the quiet direction, and it keeps the notice to the one thing
+    /// Casper can state honestly: whether the user has ever been through `/hooks` for
+    /// this plugin.
+    ///
+    /// The prefix match is case-sensitive, so an install from the legacy `Casper`
+    /// marketplace — whose keys read `casper@Casper:` — never matches and reads as
+    /// untrusted. `parseCodexDisabled` has the same gap, and neither is worth closing
+    /// for what is one pre-publication dev install (see `legacyPluginID`).
+    ///
+    /// Like `parseCodexDisabled` this is a targeted line scan rather than a TOML
+    /// parser (see that method for why), and every form it fails to recognise reads as
+    /// *not* trusted, which at worst leaves an informational line up:
+    ///
+    /// - an inline `hooks = { state = { … } }` table, which is not what Codex writes;
+    /// - a lone `["Bash"]` line — a whole array on one line inside a table — which is
+    ///   indistinguishable from a table header and discards its table's verdict;
+    /// - a `#` inside a quoted key, which the comment stripping cuts the line at.
+    public static func parseCodexHooksTrusted(
+        _ configTOML: String,
+        pluginID: String = AgentIntegration.pluginID
+    ) -> Bool {
+        // The three facts about the table currently being scanned. A table only
+        // answers the question once it is complete, so the verdict is taken when the
+        // next header arrives, and once more at the end of the file.
+        var isPluginHook = false
+        var hasTrustedHash = false
+        var isDisabled = false
+        var isTrusted: Bool { isPluginHook && hasTrustedHash && !isDisabled }
+
+        // Split on any newline rather than the literal "\n" — a CRLF is a single
+        // Swift Character, so splitting on "\n" hands a CRLF config back as one line.
+        for line in configTOML.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Only a genuine header banks the verdict. Testing for a leading `[` alone
+            // would let a multi-line array's continuation line (`["Bash"],`, or the `]`
+            // closing it) bank the table's verdict early and drop an `enabled = false`
+            // written after it — a *false* trusted answer, the one direction this
+            // parser must never fail in.
+            if let tableKey = tomlTableKey(trimmed) {
+                if isTrusted { return true }
+                isPluginHook = isPluginHookStateKey(tableKey, pluginID: pluginID)
+                hasTrustedHash = false
+                isDisabled = false
+                continue
+            }
+            guard isPluginHook else { continue }
+            if isTrustedHash(trimmed) { hasTrustedHash = true }
+            if isEnabledFalse(trimmed) { isDisabled = true }
+        }
+        return isTrusted
+    }
+
+    /// The key a TOML table header declares (`[hooks.state."x"]` yields
+    /// `hooks.state."x"`), or nil when the line is not a table header.
+    ///
+    /// A header both opens with `[` and closes with `]`, once a trailing `#` comment
+    /// and the surrounding whitespace are gone. Demanding the closing bracket is what
+    /// keeps a multi-line array's lines out: `["Bash"],` ends in a comma, and the `]`
+    /// that closes the array opens nothing — so both stay values of the table they are
+    /// written in. The key comes back trimmed, so the spaced `[ hooks.state."x" ]`,
+    /// which TOML allows, reads the same as the compact form.
+    private static func tomlTableKey(_ line: String) -> String? {
+        let statement = line
+            .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard statement.hasPrefix("["), statement.hasSuffix("]") else { return nil }
+        return statement.dropFirst().dropLast().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True for a `hooks.state."<pluginID>:…"` table key.
+    ///
+    /// Both quoting styles are accepted, and so is no quoting at all: Codex writes a
+    /// basic-string key (the key holds `:` and `/`, which a bare TOML key cannot), but
+    /// a hand-edited config is not held to that.
+    private static func isPluginHookStateKey(_ tableKey: String, pluginID: String) -> Bool {
+        let prefix = "hooks.state."
+        guard tableKey.hasPrefix(prefix) else { return false }
+        let key = tableKey.dropFirst(prefix.count)
+        let unquoted = key.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+        return unquoted.hasPrefix("\(pluginID):")
+    }
+
     /// True for a TOML `enabled = false` assignment, tolerant of spacing and of a
     /// trailing `#` comment.
     private static func isEnabledFalse(_ line: String) -> Bool {
+        guard let assignment = tomlAssignment(line) else { return false }
+        return assignment.key == "enabled" && assignment.value == "false"
+    }
+
+    /// True for a `trusted_hash` assignment carrying an actual value. An empty
+    /// string records no approval, so it is not read as one.
+    private static func isTrustedHash(_ line: String) -> Bool {
+        guard let assignment = tomlAssignment(line), assignment.key == "trusted_hash" else { return false }
+        return !assignment.value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'")).isEmpty
+    }
+
+    /// Splits a TOML `key = value` line, dropping any trailing `#` comment, or nil
+    /// when the line is not an assignment.
+    private static func tomlAssignment(_ line: String) -> (key: String, value: String)? {
         let statement = line.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
         let parts = statement.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-        guard parts.count == 2 else { return false }
-        return parts[0].trimmingCharacters(in: .whitespacesAndNewlines) == "enabled"
-            && parts[1].trimmingCharacters(in: .whitespacesAndNewlines) == "false"
+        guard parts.count == 2 else { return nil }
+        return (
+            key: parts[0].trimmingCharacters(in: .whitespacesAndNewlines),
+            value: parts[1].trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

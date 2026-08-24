@@ -49,12 +49,6 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertEqual(AgentIntegration.pluginID.lowercased(), AgentIntegration.legacyPluginID.lowercased())
     }
 
-    func testOnlyCodexRequiresHookTrust() {
-        XCTAssertTrue(CodingAgent.codex.requiresHookTrust)
-        XCTAssertFalse(CodingAgent.claudeCode.requiresHookTrust)
-        XCTAssertFalse(CodingAgent.opencode.requiresHookTrust)
-    }
-
     func testDocumentationURLCarriesPerAgentFragment() {
         XCTAssertEqual(
             CodingAgent.claudeCode.documentationURL.absoluteString,
@@ -606,5 +600,148 @@ final class AgentIntegrationTests: XCTestCase {
             enabled = false
             """#
         XCTAssertFalse(AgentIntegration.parseCodexDisabled(toml))
+    }
+
+    // MARK: - Codex hook trust
+
+    /// `[hooks.state]` as Codex 0.149.0 actually writes it: one table per hook, keyed
+    /// `"<pluginId>:<hooks file>:<event>:<index>:<index>"`, `enabled` present on only
+    /// some entries, and a non-plugin hook whose key is an absolute path instead of a
+    /// plugin id.
+    private static let codexConfigWithTrustedHooks = #"""
+        model = "gpt-5"
+
+        [hooks.state]
+
+        [hooks.state."casper@casper:hooks/hooks.json:pre_tool_use:0:0"]
+        trusted_hash = "sha256:cf20c90350d8ff844abbefae4ce2b3c6b78228ff31684cf98e0e97"
+
+        [hooks.state."casper@casper:hooks/hooks.json:session_start:0:0"]
+        trusted_hash = "sha256:63ef580c6830c4c80d21164707f0c0afe2daf03eeb2238cb3ee154"
+        enabled = true
+
+        [hooks.state."/Users/alex/.codex/hooks.json:session_start:0:0"]
+        trusted_hash = "sha256:86cfa1963b6b0f3d2a1c8e4d5b6a7f8091a2b3c4d5e6f708192a3b"
+        """#
+
+    func testParseCodexHooksTrustedReadsARealHooksStateTable() {
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted(Self.codexConfigWithTrustedHooks))
+    }
+
+    func testParseCodexHooksTrustedIgnoresHooksThatAreNotThePlugins() {
+        // An absolute-path key is a hook belonging to no plugin, and another plugin's
+        // approval says nothing about Casper's. Neither counts.
+        let toml = #"""
+            [hooks.state]
+
+            [hooks.state."/Users/alex/.codex/hooks.json:session_start:0:0"]
+            trusted_hash = "sha256:86cfa1963b6b"
+
+            [hooks.state."notes@some-marketplace:hooks/hooks.json:stop:0:0"]
+            trusted_hash = "sha256:11223344556677"
+            """#
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(toml))
+    }
+
+    func testParseCodexHooksTrustedTreatsAnAbsentTableAsUntrusted() {
+        // A config with no `[hooks.state]` at all, and no config at all, are the same
+        // answer: the user has never been through `/hooks`.
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(""))
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(#"model = "gpt-5""#))
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted("[hooks.state]\n"))
+    }
+
+    func testParseCodexHooksTrustedIgnoresAnEntryWithoutAHash() {
+        let toml = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:stop:0:0"]
+            enabled = true
+            """#
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(toml))
+
+        let empty = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:stop:0:0"]
+            trusted_hash = ""
+            """#
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(empty))
+    }
+
+    func testParseCodexHooksTrustedIgnoresADisabledEntry() {
+        let toml = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:stop:0:0"]
+            trusted_hash = "sha256:20cbfea5ef2e"
+            enabled = false
+            """#
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(toml))
+
+        // One switched-off hook does not hide the approval recorded for another.
+        let alsoTrusted = toml + #"""
+
+            [hooks.state."casper@casper:hooks/hooks.json:session_start:0:0"]
+            trusted_hash = "sha256:63ef580c6830"
+            """#
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted(alsoTrusted))
+    }
+
+    func testParseCodexHooksTrustedStopsAtTheNextTableHeader() {
+        // The hash belongs to the table that follows, not to Casper's.
+        let toml = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:stop:0:0"]
+
+            [hooks.state."/Users/alex/.codex/hooks.json:stop:0:0"]
+            trusted_hash = "sha256:86cfa1963b6b"
+            """#
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(toml))
+    }
+
+    func testParseCodexHooksTrustedIgnoresAMultiLineArrayInsideTheTable() {
+        // The continuation lines of a multi-line array start with `[` and end with a
+        // comma or nothing. Taking either for a table header would bank this table's
+        // verdict before its `enabled = false` is read — the one direction this parser
+        // must never fail in, since it silently suppresses the notice.
+        let toml = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:session_start:0:0"]
+            trusted_hash = "sha256:abc"
+            matchers = [
+              ["Bash"],
+            ]
+            enabled = false
+            """#
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted(toml))
+    }
+
+    func testParseCodexHooksTrustedAcceptsSpacingCommentsAndAnUnquotedHeader() {
+        let spaced = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:stop:0:0"]
+              trusted_hash   =   "sha256:20cbfea5ef2e"   # approved on 2026-08-01
+            """#
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted(spaced))
+
+        // Spaces inside the brackets are legal TOML, and a header may carry a trailing
+        // comment of its own.
+        let spacedHeader = #"""
+            [ hooks.state."casper@casper:hooks/hooks.json:stop:0:0" ]
+            trusted_hash = "sha256:20cbfea5ef2e"
+            """#
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted(spacedHeader))
+
+        let commentedHeader = #"""
+            [hooks.state."casper@casper:hooks/hooks.json:stop:0:0"] # approved
+            trusted_hash = "sha256:20cbfea5ef2e"
+            """#
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted(commentedHeader))
+
+        let unquoted = """
+            [hooks.state.casper@casper:hooks/hooks.json:stop:0:0]
+            trusted_hash = "sha256:20cbfea5ef2e"
+            """
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted(unquoted))
+    }
+
+    func testParseCodexHooksTrustedReadsACRLFConfig() {
+        // A CRLF "\r\n" is a single Swift Character, so a parser splitting on "\n"
+        // sees the whole file as one line and matches nothing.
+        let header = "[hooks.state.\"\(AgentIntegration.pluginID):hooks/hooks.json:stop:0:0\"]"
+        XCTAssertTrue(AgentIntegration.parseCodexHooksTrusted("\(header)\r\ntrusted_hash = \"sha256:20cb\"\r\n"))
+        XCTAssertFalse(AgentIntegration.parseCodexHooksTrusted("\(header)\r\nenabled = true\r\n"))
     }
 }

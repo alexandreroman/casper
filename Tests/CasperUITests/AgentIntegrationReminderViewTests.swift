@@ -58,7 +58,8 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         let missing = AppModel.AgentIntegrationReminder(agent: .claudeCode, status: .missing, kind: .actionNeeded)
         let outdated = AppModel.AgentIntegrationReminder(
             agent: .claudeCode, status: .outdated(installed: "0.1.0"), kind: .actionNeeded)
-        let trust = AppModel.AgentIntegrationReminder(agent: .codex, status: .installed, kind: .trustNotice)
+        let trust = AppModel.AgentIntegrationReminder(
+            agent: .codex, status: .installedAwaitingHookTrust, kind: .trustNotice)
 
         XCTAssertEqual(AgentIntegrationReminderView.message(for: missing), "Claude Code integration not installed")
         XCTAssertEqual(
@@ -129,7 +130,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         let model = makeModel()
         await probe(model, [
             .claudeCode: .missing,
-            .codex: .installed,
+            .codex: .installedAwaitingHookTrust,
             .opencode: .outdated(installed: "0.1.0"),
         ])
         XCTAssertEqual(model.agentIntegrationReminders.count, 3)

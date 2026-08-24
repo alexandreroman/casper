@@ -1,6 +1,6 @@
 ---
 name: "Agent-integration probe cadence"
-description: "The launch probe pays the cold login-shell cost; the detection tick refreshes it every few seconds"
+description: "The launch probe pays the cold shell PATH probe; the detection tick refreshes it every few seconds"
 type: project
 ---
 
@@ -10,10 +10,16 @@ The integration probe runs in two distinct roles.
 
 **The launch probe is the expensive one.** `AppDelegate` calls
 `AppModel.refreshAgentIntegrations()` once at startup; that call resolves the
-three agent CLIs through `LoginShellPath`, one login shell each (1–2.5 s in
-total). `LoginShellPath` caches every lookup — misses included — for the
-lifetime of the process, so each later probe is a handful of `stat`/`read`
-calls.
+three agent CLIs through `LoginShellPath`, whose single shell `PATH` probe — a
+few spawns, a few tenths of a second on a machine with a populated profile — is
+shared by all three and bounded as a whole by `LoginShellPath.lookupTimeout`.
+`LoginShellPath` caches that search path, and every answer drawn from it —
+misses included — for the lifetime of the process, so each later probe is a
+handful of `stat`/`read` calls and spawns nothing.
+
+That probe is deliberately interactive as well as login, which is what it costs
+rather than an inefficiency to trim: see [[shell-path-resolution]] for why a
+login-only shell cannot see the `PATH` the user has in a terminal.
 
 **Every later probe is a refresh, and it is cheap.** `runAgentDetectionTick()`
 calls `refreshAgentIntegrationsIfStale()` on each pass, so the check rides the

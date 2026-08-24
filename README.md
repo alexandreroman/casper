@@ -105,15 +105,22 @@ by the newest record — a reminder you did not need is worse than one you misse
 
 Codex hashes command hooks it did not install itself and refuses to run them
 until you review and approve them with `/hooks` in its TUI. A Codex integration
-can therefore be installed, current, and completely inert, and nothing on disk
-records whether you have approved it — so rather than guess, Casper always
-states the caveat while your Codex integration is otherwise healthy. That line
-dismisses under its own key, independently of the other reminders.
+can therefore be installed, current, and completely inert. Codex records that
+approval in `~/.codex/config.toml`, so the line appears only while nothing there
+says your Casper hooks are approved, and it dismisses under its own key,
+independently of the other reminders.
 
-Codex detection is also built from Codex's published documentation and has never
-been verified against a real Codex install. If Casper reports your Codex
-integration as missing when you know it is there, that is the likeliest
-explanation — dismiss the line.
+Casper reads that record without re-checking the hash behind it, which is
+Codex's own. So if a plugin update invalidates an approval you gave earlier,
+Codex asks you to approve it again while Casper stays quiet — the quieter of the
+two mistakes.
+
+Codex detection is verified against a real Codex install (0.149.0) in the
+default `~/.codex` location, which is the only one Casper looks in: the plugin
+lands in `~/.codex/plugins/cache/casper/casper/0.2.0/`, and
+`codex plugin list --json` reports it installed and enabled. That command
+answers whether the plugin is installed, never whether its hooks are approved —
+only `/hooks` in Codex's TUI does that.
 
 ## Installation
 
