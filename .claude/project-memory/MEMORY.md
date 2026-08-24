@@ -76,6 +76,7 @@
 - [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
 - [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply it inside the Button's label, or only the glyph is live
 - [Title-bar chips carry no accent colour](references/title-bar-chip-chrome.md) — one neutral palette; inspector tabs are a segmented control
+- [Toolbar Labels resolve to icon-only](references/toolbar-label-style.md) — pin `.labelStyle(.titleAndIcon)` or the title is dropped
 - [Browser automation CLI](references/browser-automation-cli.md) — the automation/scroll/debug verbs, and their off-screen behavior
 - [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a UIDelegate
 - [Address submit resigns first responder first](references/browser-address-submit-order.md) — end editing before the load, not after
