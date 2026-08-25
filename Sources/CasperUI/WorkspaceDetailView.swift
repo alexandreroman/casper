@@ -430,13 +430,13 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
     }
 }
 
-/// The "Run Script" toolbar split-button. A separate view so it carries its own
-/// `@State`: `WorkspaceDetailView` is recreated per workspace (`.id`), so this
-/// mounts fresh on each switch and plays an entrance animation via `onAppear`.
+/// The "Run Script" toolbar split-button. It holds no state of its own; it stays a
+/// separate view to keep the toolbar item's body readable and to scope the script
+/// observation reads (`namedCommands`, `resolvedScript`) to the chip that draws
+/// them.
 private struct ScriptToolbarButton: View {
     let model: AppModel
     let workspace: Workspace
-    @State private var appeared = false
 
     var body: some View {
         let commands = model.namedCommands(for: workspace.id)
@@ -460,16 +460,13 @@ private struct ScriptToolbarButton: View {
             }
         }
         .help("Run Script")
-        .opacity(appeared ? 1 : 0)
-        .scaleEffect(appeared ? 1 : 0.85)
-        .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }
     }
 }
 
 /// The "Merge" toolbar chip, which becomes a "Delete" chip while Option is held. A
-/// separate view for the same reason as `ScriptToolbarButton`: `WorkspaceDetailView`
-/// is recreated per workspace (`.id`), so this mounts fresh on each switch and plays
-/// its entrance animation via `onAppear`.
+/// separate view because it reads `model.optionKeyHeld` in its own body, which scopes
+/// that observation dependency to the chip instead of to all of
+/// `WorkspaceDetailView`.
 ///
 /// Merge routes to the same merge-and-close confirmation as the menus' "Merge and
 /// Close Workspace…" item — merging a workspace always ends by closing it, and there
@@ -485,8 +482,8 @@ private struct ScriptToolbarButton: View {
 /// red tint: title-bar chips use one neutral palette (`title-bar-chip-chrome`).
 ///
 /// The swap is ONE `Button` whose label, action and tooltip change — not two views
-/// behind a condition — so `appeared` survives it and pressing Option can never
-/// replay the entrance animation.
+/// behind a condition — so the button keeps its identity across the swap and the
+/// chrome's hover state survives an Option press under a stationary pointer.
 ///
 /// Geometry follows the `title-capsule-hit-area` memory note: `titleCapsule` is
 /// applied INSIDE the label, so the whole pill is clickable and not just the glyph.
@@ -497,7 +494,6 @@ private struct ScriptToolbarButton: View {
 private struct MergeToolbarButton: View {
     let model: AppModel
     let workspace: Workspace
-    @State private var appeared = false
 
     var body: some View {
         // Read here rather than in `WorkspaceDetailView`: the observation dependency
@@ -518,9 +514,6 @@ private struct MergeToolbarButton: View {
         }
         .buttonStyle(.plain)
         .help(deleting ? "Delete workspace" : "Merge and close workspace")
-        .opacity(appeared ? 1 : 0)
-        .scaleEffect(appeared ? 1 : 0.85)
-        .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }
     }
 }
 
