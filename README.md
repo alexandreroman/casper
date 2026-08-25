@@ -9,13 +9,6 @@ Casper is a native macOS app that embeds [libghostty][ghostty] to give every
 agents. It tracks each agent's state and task progress, reserves network ports
 per workspace, and bundles a native browser and diff viewer.
 
-> **Status:** under active development and not yet ready for general use. All
-> core layers — the terminal engine, the Git worktree layer, and the `casper`
-> control CLI — and the SwiftUI app (Space-grouped sidebar, linked worktrees,
-> tmux-style split panes, browser, and diff viewer) are built and have passed a
-> live GUI verification pass; polish is ongoing. Claude Code, OpenAI Codex CLI,
-> and opencode are supported, all through the same agent-agnostic `casper` CLI.
-
 ## Features
 
 - **Worktree = workspace** — each workspace maps to a Git worktree; creating one
@@ -34,7 +27,7 @@ per workspace, and bundles a native browser and diff viewer.
 - **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
   tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
   native diff view per workspace. Each terminal remembers the font size you set
-  with ⌘+ / ⌘- / ⌘0 and restores it on relaunch.
+  with ⌘+ / ⌘- and restores it on relaunch.
 - **Open in Editor** — a title-bar split button opens the workspace's worktree
   in Visual Studio Code, IntelliJ IDEA, or Xcode; each workspace remembers the
   editor it was last opened with.
@@ -45,82 +38,6 @@ per workspace, and bundles a native browser and diff viewer.
 - **Native & lean** — prefers built-in macOS frameworks; only five external
   dependencies (libghostty, swift-argument-parser, libgit2, HighlightSwift for
   diff syntax highlighting, and Sparkle for auto-update); **arm64-only**.
-
-## Coding agents
-
-Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI**,
-and **opencode**. Everything an agent drives *explicitly* is agent-agnostic: the
-`casper` CLI verbs behind agent state, progress, notifications and the info
-panel behave identically whichever agent calls them, and the working badge
-lights up for any agent that emits the standard OSC 9;4 progress sequence. What
-is not agent-neutral is the *passive* fallback — the terminal-viewport and
-window-title heuristics Casper uses to guess a state nobody reported are tuned
-to Claude Code's output, so an uninstrumented Codex CLI or opencode session gets
-a less precise badge. Casper never launches an agent for you; you start yours
-in a Casper terminal yourself.
-
-Agents talk to Casper through the `casper` CLI (see [CLI](#cli)). You can call
-those commands by hand, but the usual route is a small **integration plugin**
-installed into the agent, which wires the agent's own lifecycle to them so the
-sidebar badge, the progress bar and the notification dot work without you
-instrumenting anything. Each agent installs that plugin with its own installer:
-**Casper never writes another tool's configuration.** All Casper does is detect
-what an installer left behind.
-
-### Integration reminders
-
-Casper asks one question per agent, for the whole app rather than per workspace:
-do you have that agent's CLI, and is its Casper integration installed and
-current? An agent whose CLI you don't have is ignored entirely. No reminder for
-it ever appears, and Casper reads nothing on your disk to work that out.
-
-It asks once at launch and rechecks every few seconds from then on, so you can
-install or update a plugin in a Casper terminal and watch the line retire itself
-a moment later — no relaunch, nothing to click. Installing the *agent's own CLI*
-while Casper is running is the one change it won't notice: restart Casper and
-the agent appears.
-
-When there is something to say, one quiet line per agent appears in the sidebar
-just above **Add Folder…**; when there isn't, nothing is drawn at all:
-
-- **"… integration not installed"** — you have the agent, but not its Casper
-  integration. A plugin you have explicitly switched off says the same thing:
-  none of its hooks run, so an install that is disabled is functionally absent.
-- **"… integration is outdated (0.1.0)"** — installed, but older than the plugin
-  version this build of Casper expects. The version in brackets is the one you
-  currently have.
-- **"Codex integration needs approval"** — informational rather than a
-  fault; see below.
-
-Click a line to open that agent's integration guide, or the **×** beside it to
-dismiss it for good. A dismissal silences that one problem, not the agent: once
-the integration reports healthy the dismissal is retired, so if it later breaks
-or you uninstall it, Casper tells you again.
-
-Casper errs towards silence throughout. An integration whose version it cannot
-read counts as current, and an integration recorded in several places is judged
-by the newest record — a reminder you did not need is worse than one you missed.
-
-### Codex specifics
-
-Codex hashes command hooks it did not install itself and refuses to run them
-until you review and approve them with `/hooks` in its TUI. A Codex integration
-can therefore be installed, current, and completely inert. Codex records that
-approval in `~/.codex/config.toml`, so the line appears only while nothing there
-says your Casper hooks are approved, and it dismisses under its own key,
-independently of the other reminders.
-
-Casper reads that record without re-checking the hash behind it, which is
-Codex's own. So if a plugin update invalidates an approval you gave earlier,
-Codex asks you to approve it again while Casper stays quiet — the quieter of the
-two mistakes.
-
-Codex detection is verified against a real Codex install (0.149.0) in the
-default `~/.codex` location, which is the only one Casper looks in: the plugin
-lands in `~/.codex/plugins/cache/casper/casper/0.2.0/`, and
-`codex plugin list --json` reports it installed and enabled. That command
-answers whether the plugin is installed, never whether its hooks are approved —
-only `/hooks` in Codex's TUI does that.
 
 ## Installation
 
@@ -134,10 +51,74 @@ Casper is distributed as a standalone `Casper.app`.
 needs no installation: Casper injects it into the `PATH` of every terminal it
 opens, so agents and shells running inside a workspace can call it directly.
 
+**Agent integration (strongly recommended):** install
+[casper-skills][casper-skills] for the agent you use. Casper works fine without
+it, but nothing then reports the agent's state: the sidebar badge, the progress
+bar and the notification dot only move if the agent calls the `casper` CLI
+itself. With the plugin its own lifecycle does that for you. See
+[The integration plugin](#the-integration-plugin) for the per-agent installers.
+
 **Updates:** Casper checks for new releases once a day and offers them through
 **Casper ▸ Check for Updates…**; nothing is installed without your say-so. Every
 update is verified against a signing key embedded in the app, so a tampered
 download is refused.
+
+## Coding agents
+
+Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI**,
+and **opencode**. Everything an agent drives *explicitly* is agent-agnostic: the
+`casper` CLI verbs behind agent state, progress, notifications and the info
+panel behave identically whichever agent calls them, and the working badge
+lights up for any agent that emits the standard OSC 9;4 progress sequence.
+Casper never launches an agent for you; you start yours in a Casper terminal
+yourself.
+
+Agents talk to Casper through the `casper` CLI (see [CLI](#cli)). You can call
+those commands by hand, but the usual route is a small **integration plugin**
+installed into the agent, which wires the agent's own lifecycle to them so the
+sidebar badge, the progress bar and the notification dot work without you
+instrumenting anything. Each agent installs that plugin with its own installer:
+**Casper never writes another tool's configuration.** All Casper does is detect
+what an installer left behind.
+
+### The integration plugin
+
+That plugin lives in its own repository, [casper-skills][casper-skills], and
+covers all three agents from a single source. It wires the agent's own hook or
+plugin lifecycle to the `casper` CLI: the sidebar badge follows the turn and
+every tool call, the progress bar mirrors the agent's own todo list step by
+step, and a blocked agent raises a notification instead of ending its turn
+quietly. It also ships a `casper` skill that teaches the agent the rest of the
+surface — the info panel, the browser panel, the diff view, extra terminals,
+workspaces, and a repository's `.casper.json`. Outside a Casper terminal it
+does nothing at all, and it never blocks or fails a turn when Casper isn't
+running.
+
+Each agent installs it with its own installer. **Claude Code**, from its TUI:
+
+```text
+/plugin marketplace add alexandreroman/casper-skills
+/plugin install casper@casper
+```
+
+**OpenAI Codex CLI**:
+
+```bash
+codex plugin marketplace add alexandreroman/casper-skills
+codex plugin add casper@casper
+```
+
+**opencode** (drop `-g` to install into the project's config instead):
+
+```bash
+opencode plugin github:alexandreroman/casper-skills -g
+```
+
+Codex needs one step more: it hashes command hooks it did not install itself, so
+this plugin's hooks stay completely inert — installed, current, and doing
+nothing — until you review and approve them with `/hooks` in its TUI. An upgrade
+that changes a hook sends it back for review, so check `/hooks` after every
+update, not only the first install.
 
 ## Keyboard shortcuts
 
@@ -151,7 +132,6 @@ download is refused.
 | `⌘V`      | Paste into the terminal                        |
 | `⌘A`      | Select all in the terminal                     |
 | `⌘+`/`⌘-` | Grow / shrink the focused terminal's font      |
-| `⌘0`      | Reset the focused terminal's font size         |
 
 Holding ⌘ for a moment reveals the `⌘1`–`⌘9` number hints in the sidebar.
 
@@ -432,3 +412,4 @@ Casper is licensed under the [Apache License 2.0](./LICENSE).
 
 [ghostty]: https://ghostty.org
 [releases]: https://github.com/alexandreroman/casper/releases
+[casper-skills]: https://github.com/alexandreroman/casper-skills
