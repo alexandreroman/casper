@@ -114,6 +114,66 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
         XCTAssertFalse(model.showWorkspaceShortcutHints)
     }
 
+    func testHoldingBareOptionFlagsTheModelAndReleasingClearsIt() {
+        let model = makeModel()
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+
+        _ = monitor.handle(flagsChangedEvent(command: false, extraModifiers: .option))
+        XCTAssertTrue(model.optionKeyHeld, "bare Option must flag the model so the Merge chip becomes Delete")
+
+        _ = monitor.handle(flagsChangedEvent(command: false))
+        XCTAssertFalse(model.optionKeyHeld, "releasing Option must restore the Merge chip")
+    }
+
+    func testCmdOptionDoesNotFlagOptionHeld() {
+        let model = makeModel()
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+
+        _ = monitor.handle(flagsChangedEvent(command: true, extraModifiers: .option))
+
+        XCTAssertFalse(model.optionKeyHeld, "Option as part of a combo must leave the chip alone")
+    }
+
+    /// Every modifier transition reaches `handle`, so the many that don't change
+    /// whether Option is held must not write the flag: an unconditional write to an
+    /// `@Observable` property re-renders the toolbar for no change. Proven with
+    /// `withObservationTracking` (the `observation-tracking-guard-tests` note).
+    func testRedundantFlagsChangedDoesNotWriteOptionHeld() {
+        let model = makeModel()
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+        _ = monitor.handle(flagsChangedEvent(command: false, extraModifiers: .option))
+        XCTAssertTrue(model.optionKeyHeld)
+
+        // `onChange` is `@Sendable`, even though this test only ever touches the model
+        // on the main actor it also runs on.
+        nonisolated(unsafe) var wrote = false
+        withObservationTracking {
+            _ = model.optionKeyHeld
+        } onChange: {
+            wrote = true
+        }
+
+        _ = monitor.handle(flagsChangedEvent(command: false, extraModifiers: .option))
+
+        XCTAssertFalse(wrote, "an Option-still-held transition must not write the flag")
+        XCTAssertTrue(model.optionKeyHeld)
+    }
+
+    func testResignActiveClearsOptionHeld() async {
+        let model = makeModel()
+        let monitor = WorkspaceShortcutKeyMonitor(model: model)
+        monitor.start()
+        _ = monitor.handle(flagsChangedEvent(command: false, extraModifiers: .option))
+        XCTAssertTrue(model.optionKeyHeld)
+
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: nil)
+
+        // Cmd+Tabbing away never delivers the Option release, so resigning active is
+        // what unsticks the chip.
+        await waitUntil { !model.optionKeyHeld }
+        XCTAssertFalse(model.optionKeyHeld)
+    }
+
     func testCmdDigitWithNoMatchingWorkspacePassesThroughUnconsumed() {
         let model = makeSeededModel().model
         let previousSelection = model.selectedWorkspaceID

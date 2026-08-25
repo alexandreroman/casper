@@ -591,6 +591,12 @@ final class AppModel {
     /// Cmd is held past the reveal delay.
     var showWorkspaceShortcutHints: Bool = false
 
+    /// Whether Option is held on its own, with no other modifier. Set by
+    /// `WorkspaceShortcutKeyMonitor` on every modifier transition; read by the
+    /// title bar's `MergeToolbarButton`, which becomes a Delete chip while it is
+    /// down.
+    var optionKeyHeld: Bool = false
+
     /// Look up a workspace by id across all Spaces.
     func workspace(id: UUID) -> Workspace? {
         for space in spaces {
