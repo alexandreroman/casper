@@ -136,13 +136,14 @@ persistence, `#if DEBUG` debug bridge). Release gating verified (no debug
 symbols in `make release`). UI-1 is verified live on a real desktop session.
 
 **UI-2** is done: the `Space` level (`Session → Space → Workspace`), Space
-assembly from a folder (Git or not), one-Space-per-repository enforced in both
-directions (adoption and reunification), the collapsible Space-grouped sidebar,
-non-destructive removal, and live Git promotion/demotion of a Space. The
-as-built behaviour is `themes/app-ui.md` § Sub-projects → UI-2 and
-`themes/space-project.md`; persistence was a clean break (the `SessionStore`
-self-heal discards an incompatible legacy `session.json`). The `+/−` diff
-summary was deferred to UI-5, and later dropped.
+assembly from a folder (Git or not), one-Space-per-repository enforced in every
+direction (adoption, pulling in the repository of a worktree opened on its own,
+and reunification), the collapsible Space-grouped sidebar, non-destructive
+removal, and live Git promotion/demotion of a Space. The as-built behaviour is
+`themes/app-ui.md` § Sub-projects → UI-2 and `themes/space-project.md`;
+persistence was a clean break (the `SessionStore` self-heal discards an
+incompatible legacy `session.json`). The `+/−` diff summary was deferred to
+UI-5, and later dropped.
 
 **UI-3** is done: a workspace renders its `LayoutNode` tree recursively — splits
 as native `HSplitView`/`VSplitView`; a tab group renders only its active surface

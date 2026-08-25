@@ -143,7 +143,7 @@ download is refused.
 
 | Shortcut  | Action                                         |
 | --------- | ---------------------------------------------- |
-| `⌘O`      | Add Folder… — open a repository as a new Space |
+| `⌘O`      | Add Folder… — open a repository or worktree    |
 | `⌘D`      | Split Right                                    |
 | `⌘⇧D`     | Split Down                                     |
 | `⌘1`–`⌘9` | Switch to the sidebar's 1st–9th workspace      |
