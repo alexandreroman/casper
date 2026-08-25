@@ -13,7 +13,11 @@ dedicated terminal workspace, specialized for running code agents (Claude Code,
 OpenAI Codex CLI, and opencode). It surfaces each agent's live state and task
 progress in a sidebar, and bundles a native browser and diff viewer.
 Distributable as a self-contained `Casper.app` from GitHub Releases (or from
-source), **no Apple notarization**.
+source), **no Apple notarization**. The bundle is not cosmetic: a GUI app users
+double-click expects one, Sparkle updates a `.app` delivered as a top-level
+`.zip`, and `UNUserNotificationCenter` refuses to register without a valid
+bundle identifier — a bare executable cannot post a notification at all (see
+[[unusernotificationcenter-unbundled-abort]]).
 
 ## Hard constraints
 
@@ -35,8 +39,9 @@ source), **no Apple notarization**.
 - **Process model: in-process.** Surfaces and their PTYs live in the Casper
   process; if Casper quits, running agents die (accepted). Relaunch restores the
   layout with fresh PTYs.
-- **UI stack:** SwiftUI for chrome/sidebar/diff/browser; targeted AppKit
-  (`NSViewRepresentable`, responder chain) to host Ghostty surfaces.
+- **UI stack:** SwiftUI for chrome, sidebar and browser; targeted AppKit
+  (`NSViewRepresentable`, responder chain) to host Ghostty surfaces and to draw
+  the diff, which is one TextKit 2 text document rather than a view tree.
 - **Single binary:** one executable is both the GUI app and the CLI. The fork
   routes on argv *shape*, not vocabulary (`LaunchMode.detect`): empty argv →
   GUI; a first argument starting with `-` → GUI (it is an AppKit launch flag),
@@ -44,32 +49,40 @@ source), **no Apple notarization**.
   word fails with ArgumentParser's own error rather than silently opening a
   window.
 - **v1 agents:** Claude Code, OpenAI Codex CLI, and opencode, all through the
-  same agent-agnostic `casper` CLI. Only the terminal-scraping detection rules
-  stay Claude-Code-tuned.
+  same agent-agnostic `casper` CLI. Each has its own terminal-scraping rule set,
+  and all of them are applied to every surface — detection cannot tell which
+  agent occupies a terminal, so it aggregates rather than choosing.
 
 ## Module boundaries
 
 | Module            | Responsibility                                                                                                   | Theme                     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                        | `themes/git-worktrees.md` |
-| **CasperCore**    | Models, `SessionStore`, `WorktreeManager`, `PortAllocator`, control-channel protocol + socket. Pure Swift, no UI | `themes/core.md`          |
+| **CasperCore**    | Models + `LayoutTree`, `SessionStore`, `WorktreeManager`, `PortAllocator`, `RepoConfig`, agent detection + integration probing, control channel. Pure Swift, no UI | `themes/core.md`          |
 | **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API   | `themes/terminal.md`      |
 | **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals   | `themes/cli-agents.md`    |
 | **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                             | `themes/cli-agents.md`    |
-| **CasperUI**      | SwiftUI sidebar, chrome, diff, browser + AppKit bridges; owns the window, the app lifecycle and all startup wiring | `themes/app-ui.md`        |
+| **CasperUI**      | SwiftUI sidebar, chrome and browser, the AppKit diff renderer and Ghostty bridges; owns the window, the app lifecycle and all startup wiring | `themes/app-ui.md`        |
 | **Clibgit2**      | `.systemLibrary` target binding libgit2 via Homebrew + pkg-config; no Swift code of its own                       | `themes/git-worktrees.md` |
 | **CSigbusGuard**  | A C shim installing a `SIGBUS` handler around libgit2 diff, turning an mmap-truncation fault into a thrown error  | `themes/git-worktrees.md` |
-| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is ten lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()` | all                       |
+| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is a handful of lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()` | all                       |
 
-Rationale: instability (libghostty), Git specifics (libgit2), and agent
-specifics (per-agent integration detection) are each confined to one module, so
-churn stays local.
+Rationale: instability (libghostty) and Git specifics (libgit2) are each
+confined to one module, so churn stays local. Agent specifics are split on
+purpose: the rule sets and the integration probe are pure logic and live in
+`CasperCore`, while `CasperAgents` holds only what a terminal needs in its
+environment.
 
 ## Data model (canonical)
 
 ```text
 Session
- └─ [Space]                          // a Git repository (see themes/space-project.md)
+ ├─ selectedWorkspaceID: UUID?
+ ├─ dismissedAgentReminders: Set<String>  // encoded sorted, so an idle session is byte-stable
+ └─ [Space]                          // a folder, Git or not (see themes/space-project.md)
+     ├─ id, name, folderPath
+     ├─ isGitRepo: Bool                   // runtime-only, never persisted
+     ├─ isCollapsed: Bool
      └─ [Workspace]
          ├─ id, name, kind: primary | linked
          ├─ worktreePath, branch, baseBranch
@@ -111,25 +124,30 @@ restored as-is.
 | App crash                                     | Agents lost (accepted); relaunch restores layout cold            |
 | Agent never calls the CLI                     | State inferred from the terminal; `unknown` only when unreadable |
 | Binary size creep                             | Five justified externals only; arm64-only; `-Osize` + strip      |
+| libgit2 diff faults on a truncated mmap       | `CSigbusGuard` turns the `SIGBUS` into a thrown error            |
+| Main thread blocked long enough to freeze the UI | DEBUG-only `MainThreadHangWatchdog` samples and reports it    |
+| Corrupt or incompatible `session.json`        | `SessionStore` self-heals by discarding it rather than failing   |
+| libgit2 unpinned in brew and CI               | Unmitigated — a brew bump can change diff behaviour underfoot    |
 
 ## Testing strategy
 
 - **Unit (XCTest):** `WorktreeManager`, control protocol/targeting, the CLI
   command builders + JSON output, `SessionStore` round-trip, `PortAllocator`.
   Needs the full Xcode toolchain — see [[test-toolchain]].
-- **Integration:** end-to-end adapter driven by a fake agent over the socket.
+- **Integration:** the control channel end to end over a real socket, and a
+  live libghostty surface driven by real key events (`RealSurfaceHarness`).
 - **Manual:** terminal rendering, keyboard/focus, notifications — via the
   `debug-casper` harness (`themes/debug.md`).
 
 ## v1 scope
 
-**In:** worktree=workspace, free-form splits, terminal + browser + diff
-surfaces, per-workspace 10-port reservation, agent state + todo progress,
-enriched sidebar, session persistence, single GUI+CLI binary, arm64-only, a
-workspace info panel (`casper info set`/`clear`, control-channel `infoSet`/
-`infoClear` verbs) publishing a Markdown message into a toolbar-anchored
-popover.
+**In:** worktree=workspace; free-form terminal panes; a per-workspace inspector
+panel carrying the browser and the diff; a 10-port reservation per workspace;
+agent state + todo progress in an enriched sidebar, with notifications and Dock
+attention; a workspace info panel publishing Markdown into a toolbar popover;
+per-repository `.casper.json` scripts with `setup`/`teardown` hooks; merge-and-
+close and delete; Open in Editor; agent-integration detection; session
+persistence; in-app auto-update; a single GUI+CLI binary, arm64-only.
 
 **Out (later):** persistent daemon (agents surviving restart), multi-agent
-orchestration, terminal-scraping detection rules for agents beyond Claude Code,
-editable diffs, notarized distribution.
+orchestration, editable diffs, notarized distribution.

@@ -29,6 +29,16 @@ binary. We own this surface; it exposes only what Casper needs.
   `ignoredTopLevelDirectories` over `git_ignore_path_is_ignored` — used to keep
   high-churn ignored dirs out of the filesystem watcher, `app-ui.md`).
   `WorktreeInfo`, `GitError`.
+- **Repository identity** — `isBare`, `commonDirPath` (the `.git` directory
+  every working tree of a repository shares, and so the repository's identity)
+  and `isLinkedWorktree`, plus **`mainWorkingTree()`**, which opens that common
+  directory to reach the main repository and returns its workdir. That is what
+  lets a linked worktree opened on its own pull its repository in rather than
+  standing alone — including the two refusals, a bare repository and a
+  main working tree that does not resolve to a folder of the same repository
+  (see `space-project.md`).
+- **`fileTextAtHead(path:)`** — the HEAD side of a file, read by the diff
+  service.
 - **Worktree model** — creating a workspace = `git_worktree_add` on a chosen
   branch/base, then opening a plain Ghostty terminal in its folder. Cleanliness
   is read through `git_status_list_new` (`isClean`), and a failure at any step
@@ -37,8 +47,9 @@ binary. We own this surface; it exposes only what Casper needs.
   operation being attempted, so a second validating call would only duplicate
   it.
 - **Diff — ✅ built for working-tree-vs-HEAD.** `Repository.diffWorkdirToHead()`
-  returns a structured `GitDiff` (files → hunks → lines, statuses, binary flag)
-  — no text parsing — feeding the diff viewer (`app-ui.md`).
+  returns a structured `GitDiff` (files → hunks → lines, statuses, binary flag,
+  `insertions`/`deletions`) — no text parsing — feeding the diff viewer
+  (`app-ui.md`). The types live in `Sources/CasperGit/Diff.swift`.
   (Branch-vs-merge-base line counts were designed for the workspace diff
   summary, now **dropped** — see `space-project.md`.)
 
@@ -51,11 +62,11 @@ binary. We own this surface; it exposes only what Casper needs.
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.
 
-## Remaining
+## Standing limitations
 
-- **`git_diff` — ✅ built** (`diffWorkdirToHead()`, working tree + index vs
-  HEAD). (Branch-vs-merge-base line counts for the workspace diff summary are
-  **dropped** — see `space-project.md`.)
-- Standing limitations: `remove` prunes the worktree but not its branch (an
-  opaque `.gitFailure` on same-name recreation); libgit2 is unpinned in
-  brew/CI.
+- `WorktreeManager.remove` prunes a worktree without deleting its branch. Its
+  one production caller deletes the branch on the next line, so recreating a
+  same-named workspace works; a second caller that forgets would meet an opaque
+  `.gitFailure`.
+- **libgit2 is unpinned** in Homebrew and in CI, so a brew bump can change diff
+  or status behaviour underfoot.

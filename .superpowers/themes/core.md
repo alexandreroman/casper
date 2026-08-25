@@ -8,12 +8,22 @@ The pure-Swift, UI-free core. Fully unit-tested.
 ## Design
 
 - **Models** — the canonical data model (see `../architecture.md`): `Session`,
-  `Space`, `Workspace`, `LayoutNode`, `Surface`, `Todo`, `AgentState`.
+  `Space`, `Workspace` (with `WorkspaceKind`, `InspectorState`/`InspectorTab`
+  and `EditorKind`), `LayoutNode`, `Surface`, `Todo`/`TodoStatus`, `AgentState`.
+- **`LayoutTree`** — the pure engine behind the tmux-style pane layout:
+  `split`, `closeSurface`, `move`, `dropZone`, `updateRatios`, `contains`, and
+  the `forEachSurface`/`surfaceIDs` walks the detection tick runs on every pass.
+  Heavily tested, and the reason pane restructuring needs no UI state (see
+  `app-ui.md` § Design → "Layout composition").
 - **Agent state** — `Workspace.agentState` (an `AgentState` enum) and its
   `todos` are plain fields set directly by the control-channel handlers
   (`casper status set` / `progress set`); there is no reducer or state machine.
-- **`WorktreeManager`** — create/list/remove/deleteBranch/isClean over
-  `CasperGit`, mapping failures to `WorktreeError` (see `git-worktrees.md`).
+- **`WorktreeManager`** — create/list/remove/deleteBranch/isClean/`merge` over
+  `CasperGit`, plus `registeredName` (a worktree's admin entry resolved by path,
+  since an adopted worktree can carry any name), `resyncWorkingTree` and
+  `forceRemoveDirectory`, mapping failures to `WorktreeError` (see
+  `git-worktrees.md`). Its entry points are static and not actor-isolated, so
+  the close/delete paths can offload them to a detached task.
 - **`PortAllocator`** — assigns the first free contiguous **10-port block** from
   a configurable range (default `40000–49990` → ~1000 workspaces), persisted as
   `portBase`, released on workspace removal. **Logical only** — blocks never
@@ -61,16 +71,21 @@ The pure-Swift, UI-free core. Fully unit-tested.
     only an *interactive* shell sources the rc file where a great many users
     actually build it — `.zshrc` for zsh, and `.bashrc`, which bash reads only
     for an interactive **non-login** shell. Hence a union of rungs rather than
-    one invocation; see [[cli-agents]].
+    one invocation; see [[shell-path-resolution]] and `cli-agents.md`.
   - **`SpaceName`** / **`IdentifierFormatting`** — display-name derivation for a
     Space, and `UUID.casperID`, the lowercase canonical external form every id
     Casper emits uses.
+- **`LiveObjectCensus`** / **`ProcessMemory`** — **DEBUG-only**, the weak-ref
+  live-object census and the process footprint behind `casper debug memory`
+  (see `debug.md` and [[memory-observability]]).
 - **`MainThreadHangWatchdog`** — **DEBUG-only** freeze diagnosis: it detects a
   blocked main thread and, on the first stall of an episode, spawns
   `/usr/bin/sample`. The whole file compiles out of release. It stays wired
   until the diff-view hang is confirmed fixed live — see [[hang-dump-watchdog]]
   and [[diff-view-refresh-hang]].
 
-## Remaining
+## Standing limitations
 
-None for the core itself.
+`WorktreeManager.remove` prunes a worktree without deleting its branch. Its one
+production caller deletes the branch on the next line, so this only bites a
+second caller — see `git-worktrees.md` § Standing limitations.

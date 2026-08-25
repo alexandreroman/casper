@@ -440,7 +440,7 @@ final class AppModelTests: XCTestCase {
         return dir
     }
 
-    // MARK: - Linked workspaces (Task 5)
+    // MARK: - Linked workspaces
 
     func testAddLinkedWorkspaceCreatesWorktreeAndPort() async throws {
         let repo = try makeTempGitRepo()
@@ -1264,7 +1264,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.diffRevision, revisionBefore + 1)
     }
 
-    // MARK: - Focus and layout mutations (Task 3)
+    // MARK: - Focus and layout mutations
 
     private func modelWithOneGitWorkspace() throws -> (AppModel, UUID) {
         let root = try makeTempGitRepo()
@@ -1384,9 +1384,10 @@ final class AppModelTests: XCTestCase {
 
     /// Full wiring, real libghostty surface: adjusting font size through the
     /// live view must update the exact matching `Surface` in the model and
-    /// schedule a save — the whole capture path (Task 4's
-    /// `onFontSizeChange` -> Task 5's `updateSurfaceFontSize` -> Task 3's
-    /// `LayoutTree.updateSurface`) exercised together, not just unit-by-unit.
+    /// schedule a save — the whole capture path (CasperGhostty's
+    /// `GhosttySurfaceView.onFontSizeChange` -> `AppModel.updateSurfaceFontSize` ->
+    /// CasperCore's `LayoutTree.updateSurface`) exercised together, not just
+    /// unit-by-unit.
     @MainActor
     func testLiveFontSizeChangeFlowsFromViewIntoModelAndSchedulesSave() throws {
         let (model, surfaceID) = try modelWithOneGitWorkspace()
@@ -1593,7 +1594,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(surfaceKindIsTerminal(layout, focus))
     }
 
-    // MARK: - Browser surfaces (UI-4 Task 1)
+    // MARK: - Browser surfaces
 
     private func modelWithOnePlainWorkspace() -> (AppModel, UUID) {
         let dir = makeTemporaryDirectory()
@@ -1855,7 +1856,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
     }
 
-    // MARK: - Diff surfaces (UI-5 Task 1)
+    // MARK: - Diff surfaces
 
     func testComputeDiffReturnsChangesForDirtyWorktree() async throws {
         let dir = try makeTempGitRepo()

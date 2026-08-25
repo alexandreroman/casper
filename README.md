@@ -243,7 +243,7 @@ install it with
 `security add-certificates -k login.keychain-db AppleWWDRCAG3.cer`.
 
 See the plan
-[`screenshot-capture-permissions.md`](./.superpowers/plans/screenshot-capture-permissions.md)
+[`tcc-screen-recording-needs-a-bundle.md`](./.claude/project-memory/references/tcc-screen-recording-needs-a-bundle.md)
 for the full rationale.
 
 ### Continuous integration
@@ -258,7 +258,7 @@ a failure on the other machine. Tagging a `v*` release builds and publishes
 the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
 the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
 missing — an unsigned feed would be rejected by every installed copy. See the
-plan [`sparkle-auto-update.md`](./.superpowers/plans/sparkle-auto-update.md).
+note [`sparkle-eddsa-key.md`](./.claude/project-memory/references/sparkle-eddsa-key.md).
 
 ## Architecture
 

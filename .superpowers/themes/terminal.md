@@ -30,8 +30,8 @@ surfaces and PTYs (same model as the Ghostty app).
   [[ghostty-config-dir-bundle-id]]).
 - **`GhosttyActionDispatcher`** — the extensible seam (`GhosttyActionHandler`)
   for libghostty app-level actions (`newTab`/`newSplit`/`newWindow`/`closeTab`/
-  `closeWindow`); the default `LoggingActionHandler` logs unbuilt actions as
-  no-ops.
+  `closeWindow`, plus `openURL` for a cmd+clicked link and `quit`); the default
+  `LoggingActionHandler` logs unbuilt actions as no-ops.
 - Rendering is **display-link driven**, so `GHOSTTY_ACTION_RENDER` needs no
   explicit `draw()` wiring.
 
@@ -63,28 +63,18 @@ vendored header. See [[ghosttykit-pin]]. Correct glyph size requires syncing the
 Metal layer's `contentsScale` to the window backing scale — see
 [[ghostty-layer-contents-scale]].
 
-## Remaining (for CasperUI)
+## Composition by CasperUI
 
-- **Splits/tabs layout composition — ✅ done (CasperUI UI-3), now tmux-style.**
-  The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a
-  recursive `LayoutNode` tree by CasperUI's `LayoutActionHandler` (installed on
-  `GhosttyRuntime.actionHandler`). **Tabs are gone**: `LayoutNode` is now
-  `split | leaf`, rendered as native split views only (no tab bar); `newTab`
-  maps to a right split. `close_surface_cb` is wired (Ctrl-D / `exit` closes the
-  pane via `GhosttySurfaceView.onClose`). See `../status.md` → "Surface layout —
-  tmux-style panes".
-- **`flagsChanged` press/release semantics — ✅ done.** A modifier transition is
-  reported as a press while the modifier is still held and a release once it is
-  let go, mapped from the physical key code (Ghostty is the reference).
-- **Scroll precision/momentum — ✅ done.** `scrollWheel` packs the precision bit
-  and the momentum phase into `ghostty_input_scroll_mods_t` — see
-  [[ghostty-scroll-mods-layout]].
-- **Clipboard write confirmation — ✅ done.** `write_clipboard_cb`'s `confirm`
-  flag is honored: `GhosttyClipboardWrite.apply(_:confirm:to:)` routes an
-  untrusted write through `approveUntrusted`, an `NSAlert` previewing the
-  content whose "Allow" button deliberately carries **no** Return key
-  equivalent, so a stray Return can never grant clipboard access. Nothing
-  remains for CasperUI here.
-- **Real-keypress verification** — `performKeyEquivalent`, the menu ⌘-shortcuts,
-  and ⌘W/close depend on real OS key events; the debug channel bypasses them, so
-  they are confirmed by structure + a live keypress, not by automated e2e.
+The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a recursive
+`LayoutNode` tree by CasperUI's `LayoutActionHandler`, installed on
+`GhosttyRuntime.actionHandler`. **Tabs are gone**: `LayoutNode` is
+`split | leaf`, rendered by CasperUI's own `SplitContainerView`, and `newTab`
+maps to a right split. `close_surface_cb` is wired, so Ctrl-D or `exit` closes
+the pane via `GhosttySurfaceView.onClose`. See `app-ui.md` § Design → "Layout
+composition".
+
+## Standing caveat
+
+**Real-keypress verification.** `performKeyEquivalent`, the menu ⌘-shortcuts and
+⌘W/close depend on real OS key events, which the debug channel bypasses. They
+are confirmed by structure plus a live keypress, never by automated e2e.

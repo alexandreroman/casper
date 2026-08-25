@@ -94,7 +94,7 @@ jobs:
           if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
             echo "error: the SPARKLE_PRIVATE_KEY repository secret is not set" >&2
             echo "       (base64 EdDSA private seed — see" \
-                 ".superpowers/plans/sparkle-auto-update.md)" >&2
+                 ".claude/project-memory/references/sparkle-eddsa-key.md)" >&2
             exit 1
           fi
           KEY_FILE="$(mktemp)"

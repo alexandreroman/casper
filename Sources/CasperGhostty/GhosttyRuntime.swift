@@ -19,7 +19,7 @@ let ghosttyInitialized: Bool = {
 /// one exception is `wakeup_cb`, which libghostty may invoke off the main thread;
 /// its trampoline only marshals back to main before touching the runtime.
 public final class GhosttyRuntime {
-    /// The raw libghostty app handle, consumed by `GhosttySurface` (Task 4). Nil
+    /// The raw libghostty app handle, consumed by `GhosttySurface`. Nil
     /// only for the test-only `forTesting()` runtime, which creates no app.
     private(set) var app: ghostty_app_t?
 

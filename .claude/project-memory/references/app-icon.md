@@ -60,8 +60,7 @@ used (Apple dropped support for it in Xcode 26.1).
   dir and copies only `Assets.car`** — actool also emits its own low-res
   `AppIcon.icns`, which would otherwise clobber the hand-crafted high-res one.
   The step no-ops (icns-only) when `AppIcon.icon` is absent.
-- Dev build stays `.icns`-only (no `.icon`). Design/plan:
-  `.superpowers/plans/app-icon-composer.md` (+ `-plan.md`).
+- Dev build stays `.icns`-only (no `.icon`).
 
 **Why:** the app had no icon; this gives it a native macOS one whose form
 encodes Casper's essence — the split = per-worktree terminal workspaces, the
@@ -69,8 +68,21 @@ sparkle = the agent — with a Ghostty family resemblance (Casper embeds
 libghostty). The Liquid Glass variant keeps the icon current on macOS 26 without
 dropping older-OS support.
 
-**How to apply:** for the `.icns`, edit `icon.svg`, then run `make icon`; never
-hand-edit the `.icns`. `iconutil` requires the iconset directory name to end in
+**Authoring the Liquid Glass icon** is a manual, one-time step Icon Composer
+owns and nothing automates: create the icon, set the background to the dark
+gradient (`#3C3C3C` top → `#1E1E1E` bottom), import `layers/terminal.svg` and
+`layers/sparkle.svg` as two foreground layers, tune their material (specular /
+glass) with a glow on the sparkle, then tune the **Dark** appearance (darker
+body, brighter sparkle) and check **Clear** — the sparkle silhouette has to read
+as monochrome. Save the whole package (`icon.json` + `Assets/`) to
+`Packaging/AppIcon/AppIcon.icon` and commit it. Treat `icon.json`'s schema as
+undocumented and version-sensitive: re-author through Icon Composer rather than
+editing it by hand.
+
+**How to apply:** for the `.icns`, edit `icon.svg`, then run `make icon`, which
+rebuilds **both** `AppIcon.icns` (from `icon.svg`) and `AppIconDev.icns` (from
+`icon-dev.svg`); never hand-edit an `.icns`. `iconutil` requires the iconset
+directory name to end in
 `.iconset` (the script renders into `<tmp>/AppIcon.iconset`, not the bare
 `mktemp -d`). For the Liquid Glass icon, edit `layers/*.svg`, re-import them
 into Icon Composer, and commit the updated `AppIcon.icon`; verify with

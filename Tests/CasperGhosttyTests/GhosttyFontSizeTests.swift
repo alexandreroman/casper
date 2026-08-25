@@ -4,13 +4,12 @@ import XCTest
 
 @testable import CasperGhostty
 
-/// Spike (see `.superpowers/plans/terminal-font-size-persistence.md`,
-/// Risk/Spike): confirms `ghostty_surface_inherited_config` reflects a LIVE,
-/// runtime-adjusted font size — its documented purpose is building a config
-/// for a *new child* split, and whether it also echoes the current surface's
-/// own live size was unconfirmed before this test. Runs on the shared
-/// `withRealSurface` harness — the `.forTesting()` runtime never creates a
-/// surface.
+/// Spike (see [[ghostty-inherited-config-font-size]]): confirms
+/// `ghostty_surface_inherited_config` reflects a LIVE, runtime-adjusted font
+/// size — its documented purpose is building a config for a *new child* split,
+/// and whether it also echoes the current surface's own live size was
+/// unconfirmed before this test. Runs on the shared `withRealSurface` harness —
+/// the `.forTesting()` runtime never creates a surface.
 final class GhosttyFontSizeTests: XCTestCase {
     @MainActor
     func testInheritedConfigReflectsLiveFontSizeIncrease() throws {
@@ -25,8 +24,8 @@ final class GhosttyFontSizeTests: XCTestCase {
                 after, before,
                 "ghostty_surface_inherited_config did not reflect a live font-size " +
                 "increase (before: \(before), after: \(after)) — the capture design " +
-                "in terminal-font-size-persistence.md needs revisiting; see its " +
-                "Alternatives section")
+                "needs revisiting; see the ghostty-inherited-config-font-size " +
+                "memory note for the recorded alternative")
         }
     }
 

@@ -345,7 +345,8 @@ final class AppModel {
     /// must not reach for `NSApp`.
     @ObservationIgnored var dockAttention: any DockAttentionPresenting = DockAttention()
 
-    /// Set during Task 7 bootstrap once the Ghostty runtime and IPC socket exist.
+    /// Assigned by `AppDelegate.applicationDidFinishLaunching`; nil until that
+    /// startup wiring has built the Ghostty runtime and the IPC socket.
     var runtime: GhosttyRuntime?
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var controlSocketPath: String?
@@ -1893,7 +1894,8 @@ final class AppModel {
     }
 
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
-    /// state; returns nil for a non-Git folder (accepted per UI-1 design).
+    /// state; returns nil for a non-Git folder (accepted by the UI-1 design — see
+    /// `.superpowers/themes/app-ui.md` § Sub-projects).
     /// Uses `Repository.open`, an exact-path open, rather than `discover`,
     /// which walks up to parent directories — a Space must root at the
     /// folder the user picked, not at an ancestor repository.

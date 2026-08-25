@@ -106,8 +106,12 @@
 - [Markdown block spacing is one-sided](references/markdown-one-sided-spacing.md) — a bordered block needs a dedicated spacer paragraph
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
 - [Casper.app bundle codesign seal](references/app-bundle-codesign-seal.md) — dylibs, executable, bundle — never `--deep` (it breaks Sparkle)
+- [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — lose the seed without a bridge release and every copy is stranded
+- [Screen Recording needs an app bundle](references/tcc-screen-recording-needs-a-bundle.md) — a loose signed binary never appears in the list at all
+- [inherited_config reports a live font size](references/ghostty-inherited-config-font-size.md) — the read-back font-size persistence rests on
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
 - [Line width is measured in characters](references/line-width-in-characters.md) — em dashes are 3 bytes; count characters, not bytes
+- [Markdown table columns align by display width](references/table-emoji-column-alignment.md) — ✅ is two columns; the two table checkers conflict
 - [Agent integration policy](references/agent-integration-policy.md) — detect and remind only; never write another tool's config
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
 - [Agent-integration probe cadence](references/agent-integration-probe-cadence.md) — launch pays the cold cost; the tick refreshes
