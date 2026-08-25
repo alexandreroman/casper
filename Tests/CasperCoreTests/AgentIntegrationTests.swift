@@ -341,7 +341,7 @@ final class AgentIntegrationTests: XCTestCase {
             {
               // Casper integration, installed by the casper-skills installer.
               "$schema": "https://opencode.ai/config.json",
-              /* the plugin list is a plain array of npm package names */
+              /* the plugin list is a plain array of plugin specs */
               "plugin": ["casper-skills@0.2.0"]
             }
             """#
@@ -380,6 +380,53 @@ final class AgentIntegrationTests: XCTestCase {
     func testParseOpencodeConfigMatchesALocalPluginPath() {
         let config = #"{"plugin": ["./plugin/casper.js"]}"#
         XCTAssertTrue(AgentIntegration.parseOpencodeConfig(config))
+    }
+
+    func testParseOpencodeConfigMatchesEveryDocumentedGitSpec() {
+        // `opencode plugin <spec> -g` writes the spec verbatim, and the plugin's
+        // README documents the GitHub shorthand plus "any Git spec" alongside it.
+        // Each form ends in the repository name, which is what the matcher reads.
+        for entry in [
+            "github:alexandreroman/casper-skills",
+            "github:alexandreroman/casper-skills#main",
+            "git+https://github.com/alexandreroman/casper-skills.git",
+            "git+ssh://git@github.com/alexandreroman/casper-skills.git",
+            "git@github.com:alexandreroman/casper-skills.git",
+            "file:///Users/alex/Projects/personal/casper-skills",
+        ] {
+            XCTAssertTrue(
+                AgentIntegration.parseOpencodeConfig(#"{"plugin": ["\#(entry)"]}"#),
+                "expected \(entry) to read as installed")
+        }
+    }
+
+    func testParseOpencodeConfigMatchesALocalCheckoutDirectory() {
+        // Pointing the config at a working copy is how a contributor runs the plugin,
+        // and the trailing slash is a spelling a shell's tab completion produces.
+        for entry in [
+            "/Users/alex/Projects/personal/casper-skills",
+            "/Users/alex/Projects/personal/casper-skills/",
+            "~/src/casper-skills",
+        ] {
+            XCTAssertTrue(
+                AgentIntegration.parseOpencodeConfig(#"{"plugin": ["\#(entry)"]}"#),
+                "expected \(entry) to read as installed")
+        }
+    }
+
+    func testParseOpencodeConfigMatchesAForkOfThePluginRepository() {
+        // Deliberate: the matcher reads the repository name, so a fork counts as
+        // installed. A fork carries the integration, and a false "install the plugin"
+        // nag costs more trust than a missed one.
+        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["github:someone/casper-skills"]}"#))
+    }
+
+    func testParseOpencodeConfigDoesNotMatchAGitSpecForAnotherRepository() {
+        let config = #"""
+            {"plugin": ["github:evil/casper-skills-fork",
+                        "git+https://github.com/evil/not-casper-skills.git"]}
+            """#
+        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(config))
     }
 
     func testParseOpencodeConfigWithoutAPluginArray() {

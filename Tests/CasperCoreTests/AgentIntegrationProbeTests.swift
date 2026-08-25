@@ -335,6 +335,26 @@ final class AgentIntegrationProbeTests: XCTestCase {
         XCTAssertEqual(probe.status(for: .opencode), .installed)
     }
 
+    func testOpencodeFoundInJSONCConfigPointingAtALocalCheckout() {
+        // The install `opencode plugin <spec> -g` performs writes the spec verbatim
+        // and copies no file into the plugin directories, so a contributor running
+        // from a working copy has nothing on disk but this one config entry.
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    Self.opencodeConfigJSONCPath: #"""
+                        {
+                          "$schema": "https://opencode.ai/config.json",
+                          "plugin": [
+                            "/Users/alex/Projects/personal/casper-skills"
+                          ]
+                        }
+                        """#
+                ]))
+        XCTAssertEqual(probe.status(for: .opencode), .installed)
+    }
+
     func testOpencodeWithUnreadableVersionIsInstalledNotOutdated() {
         // The plugin file is listed but its contents cannot be read, and a plugin
         // whose version is unknown must never produce a nag.

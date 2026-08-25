@@ -390,15 +390,24 @@ layout, and its cache path legitimately does carry the version.)
 **opencode.** Two independent install shapes, either of which counts: a
 `casper.js` file in `~/.config/opencode/plugin` or `…/plugins` (opencode's
 loader globs both spellings), or a top-level `plugin[]` entry in
-`~/.config/opencode/opencode.json` / `.jsonc` naming the npm package
-`casper-skills` or a local `casper.js`. Both forms are matched *whole* rather
-than by substring, so `@evil/casper-skills-fork` and `./plugin/notcasper.js` are
-not mistaken for the integration. Despite the `.json` name the config format is
-**JSONC**, and real files carry comments, so comments are stripped before
-parsing — never inside a string literal, since opencode's own default config
-holds `"$schema": "https://opencode.ai/config.json"`. The version exists only
-inside a local plugin file, as `export const CASPER_PLUGIN_VERSION = "…"`; a
-config-only install has none to read and is `installed`, not `outdated`.
+`~/.config/opencode/opencode.json` / `.jsonc` naming the plugin. opencode
+accepts any Git spec in that slot and the plugin is installed from Git rather
+than from a registry, so the entry can be a `github:owner/repo` shorthand, a
+`git+https`/`git+ssh`/scp-style/`file://` URL, a local checkout directory, a
+bare `casper-skills`, or a path to `casper.js` — all of which name the plugin in
+their **last path component**. That component is what is compared, as a *whole*
+token rather than by substring, so `@evil/casper-skills-fork` and
+`./plugin/notcasper.js` are not mistaken for the integration. Matching the
+repository name does mean a **fork** of `casper-skills` reads as installed; that
+is the direction to fail in, since a fork carries the integration and a false
+"install the plugin" nag costs more trust than a missed one.
+
+Despite the `.json` name the config format is **JSONC**, and real files carry
+comments, so comments are stripped before parsing — never inside a string
+literal, since opencode's own default config holds
+`"$schema": "https://opencode.ai/config.json"`. The version exists only inside a
+local plugin file, as `export const CASPER_PLUGIN_VERSION = "…"`; a config-only
+install has none to read and is `installed`, not `outdated`.
 
 **Codex.** Installs land in
 `~/.codex/plugins/cache/<marketplace>/casper/<version>/`, so the version is a
