@@ -1,4 +1,4 @@
-# Casper
+# Casper — a macOS terminal built for coding agents
 
 [![CI](https://github.com/alexandreroman/casper/actions/workflows/ci.yml/badge.svg)](https://github.com/alexandreroman/casper/actions/workflows/ci.yml)
 [![License: Apache
@@ -13,31 +13,114 @@ per workspace, and bundles a native browser and diff viewer.
 
 - **Worktree = workspace** — each workspace maps to a Git worktree; creating one
   opens a plain Ghostty terminal in that worktree (no agent is auto-launched).
-  ⌘-click a link in the terminal to open it in your browser.
+  ⌘-click a link in the terminal to open it in your default browser.
 - **Agent state & progress** — each workspace carries an agent state (`working`
-  / `blocked` / `idle` / `done` / `unknown` / `error`) and a `completed / total`
-  todo progress bar, surfaced in the sidebar with pending-notification dots.
-  State is inferred from terminal output by built-in detection (no hooks) and
-  can also be set explicitly via the `casper` CLI (see below).
+  / `blocked` / `idle` / `done` / `unknown` / `error`) and a todo progress bar
+  filled to the completed fraction, surfaced in the sidebar with
+  pending-notification dots. Every state but `error` is inferred from terminal
+  output by built-in detection (no hooks); all six can also be set explicitly
+  via the `casper` CLI (see below).
 - **Agent integrations** — works with Claude Code, OpenAI Codex CLI, and
-  opencode, and launches none of them. Casper detects whether each agent's
-  Casper integration is installed and current, and shows a quiet, dismissible
-  reminder in the sidebar when one needs attention; it never writes another
-  tool's configuration. See [Coding agents](#coding-agents).
+  opencode, and launches none of them. A dedicated integration plugin covers
+  all three agents and wires their lifecycle to Casper. See
+  [Coding agents](#coding-agents).
 - **Split-pane layout** — tmux-style nested splits (one terminal per pane, no
   tabs); a collapsible right-hand inspector offers a `WKWebView` browser and a
-  native diff view per workspace. Each terminal remembers the font size you set
-  with ⌘+ / ⌘- and restores it on relaunch.
+  native diff view per workspace.
 - **Open in Editor** — a title-bar split button opens the workspace's worktree
-  in Visual Studio Code, IntelliJ IDEA, or Xcode; each workspace remembers the
-  editor it was last opened with.
+  in Visual Studio Code, IntelliJ IDEA, or Xcode; it appears only when one of
+  them is installed.
 - **Per-workspace port reservation** — a contiguous block of 10 ports per
   workspace, injected as `CASPER_PORT` in worktree workspaces only, so the same
   app can run once per worktree without collisions. The repository's main
   working tree gets no `CASPER_PORT` and keeps the project's default ports.
-- **Native & lean** — prefers built-in macOS frameworks; only five external
-  dependencies (libghostty, swift-argument-parser, libgit2, HighlightSwift for
-  diff syntax highlighting, and Sparkle for auto-update); **arm64-only**.
+- **Native & lean** — prefers built-in macOS frameworks, with a handful of
+  external dependencies; **arm64-only**.
+
+## In practice
+
+With [casper-skills][casper-skills] installed, your agent already knows this
+whole surface — terminals, the browser panel, the diff view, workspaces,
+`.casper.json`. So you ask for what you want in plain language, and it drives
+Casper itself. The `casper` commands quoted below are what it runs for you;
+[CLI](#cli) documents them if you'd rather type them yourself.
+
+### "Start the app, open the home page and take a screenshot"
+
+The agent opens the dev server in its own split (`casper terminal new
+--command`), loads the page in the workspace's browser panel
+(`casper browser open`), and hands you back a PNG (`casper browser screenshot`)
+— all without leaving the terminal you're talking to it in.
+
+From there the same panel is its feedback loop: it can click and type
+(`casper browser click` / `type`), wait for an element (`casper browser wait`),
+evaluate JavaScript (`casper browser eval`), and read the page's uncaught
+errors (`casper browser console`). So "the submit button does nothing, fix it"
+becomes something it can actually check before telling you it's done.
+
+### "Take this in a new workspace and work on it there"
+
+Each workspace is a Git worktree, so agents working in parallel never share a
+checkout, a branch, or a build directory. The agent creates one on demand
+(`casper workspace new feature/login`), Casper does the `git worktree`
+bookkeeping and seeds the untracked files listed in
+[`.casper.json`](#per-repository-configuration-casperjson), and the new
+workspace can start with its own agent already running in it.
+
+The sidebar then shows every agent's state and todo progress side by side, with
+a dot on the ones waiting for you; `⌘1`–`⌘9` jumps between them. When the branch
+is done, closing the workspace removes the worktree and its branch in one step.
+
+### "Keep the server and the logs running while you work"
+
+Long-running processes don't have to tie up the agent's prompt: it opens each
+one in a visible split (`casper terminal new --command "npm run dev"`), leaves
+it there, and keeps going. You watch the output in the workspace as it happens,
+and the agent closes the splits when it no longer needs them.
+
+### "Run it here too, it won't clash"
+
+Every worktree workspace reserves a contiguous block of 10 ports and exposes the
+first as `CASPER_PORT`, so the same server runs in all of them at once with no
+port to arbitrate — the agent starts it on `$CASPER_PORT` and points the browser
+panel at it.
+
+### "Now tell me where it's listening"
+
+Ports that shift from workspace to workspace are exactly what you don't want to
+hunt for in the scrollback, so the agent publishes them once, in the workspace's
+info panel (`casper info set`), as Markdown:
+
+```bash
+casper info set --message "## Dev server
+- App: <http://localhost:$CASPER_PORT>
+- API: <http://localhost:$CASPER_PORT/api>
+- Health: <http://localhost:$CASPER_PORT/actuator/health>"
+```
+
+The panel hangs off the info button next to the workspace's title, so those
+addresses stay one hover away however far the terminal has scrolled, and
+clicking one opens it in this workspace's own browser panel (⌘-click sends it to
+your default browser). It's the workspace's scratchpad for anything you'll want
+to come back to — the endpoints it just started, the plan it's about to follow,
+what it found while investigating. Only the latest message is kept, and it never
+survives an app restart; `casper info clear` empties it.
+
+### "Set this repo up so a new workspace is ready to go"
+
+A repository's `.casper.json` binds shell commands to its workspaces: `setup`
+runs once when a workspace is created (install dependencies, start containers),
+`teardown` just before it is destroyed, and every other entry is a named command
+launched from the toolbar or with `casper run <name>`. The agent writes that
+file for you — it knows the schema.
+
+### It tells you when it's stuck
+
+You don't have to watch the window. The
+[integration plugin](#the-integration-plugin) ties the agent's own lifecycle to
+the sidebar: the badge follows its turn, the progress bar mirrors its todo list
+step by step, and an agent that needs a decision, a credential or a login raises
+a notification and marks itself blocked instead of ending its turn quietly.
 
 ## Installation
 
@@ -53,9 +136,10 @@ opens, so agents and shells running inside a workspace can call it directly.
 
 **Agent integration (strongly recommended):** install
 [casper-skills][casper-skills] for the agent you use. Casper works fine without
-it, but nothing then reports the agent's state: the sidebar badge, the progress
-bar and the notification dot only move if the agent calls the `casper` CLI
-itself. With the plugin its own lifecycle does that for you. See
+it — the sidebar badge still follows the agent through built-in output
+detection — but the todo progress bar and the notification dot only move if the
+agent calls the `casper` CLI itself. With the plugin its own lifecycle does
+that for you, and the badge gets precise instead of inferred. See
 [The integration plugin](#the-integration-plugin) for the per-agent installers.
 
 **Updates:** Casper checks for new releases once a day and offers them through
@@ -77,9 +161,7 @@ Agents talk to Casper through the `casper` CLI (see [CLI](#cli)). You can call
 those commands by hand, but the usual route is a small **integration plugin**
 installed into the agent, which wires the agent's own lifecycle to them so the
 sidebar badge, the progress bar and the notification dot work without you
-instrumenting anything. Each agent installs that plugin with its own installer:
-**Casper never writes another tool's configuration.** All Casper does is detect
-what an installer left behind.
+instrumenting anything.
 
 ### The integration plugin
 
@@ -122,16 +204,19 @@ update, not only the first install.
 
 ## Keyboard shortcuts
 
-| Shortcut  | Action                                         |
-| --------- | ---------------------------------------------- |
-| `⌘O`      | Add Folder… — open a repository or worktree    |
-| `⌘D`      | Split Right                                    |
-| `⌘⇧D`     | Split Down                                     |
-| `⌘1`–`⌘9` | Switch to the sidebar's 1st–9th workspace      |
-| `⌘C`      | Copy the terminal selection                    |
-| `⌘V`      | Paste into the terminal                        |
-| `⌘A`      | Select all in the terminal                     |
-| `⌘+`/`⌘-` | Grow / shrink the focused terminal's font      |
+| Shortcut  | Action                                              |
+| --------- | --------------------------------------------------- |
+| `⌘O`      | Add Folder… — open a repository or worktree         |
+| `⌘D`      | Split Right                                         |
+| `⌘⇧D`     | Split Down                                          |
+| `⌘T`      | Split Right (Ghostty's New Tab, remapped — no tabs) |
+| `⌘W`      | Close the focused pane                              |
+| `⌘1`–`⌘9` | Switch to the sidebar's 1st–9th workspace           |
+| `⌘C`      | Copy the terminal selection                         |
+| `⌘V`      | Paste into the terminal                             |
+| `⌘A`      | Select all in the terminal                          |
+| `⌘+`/`⌘-` | Grow / shrink the focused terminal's font           |
+| `⌘0`      | Reset the focused terminal's font size              |
 
 Holding ⌘ for a moment reveals the `⌘1`–`⌘9` number hints in the sidebar.
 
@@ -188,9 +273,9 @@ is only worth running when the GhosttyKit pin moves. Nothing in `Sources/`
 compiles against the vendored copy; it exists so the exact C API the code
 targets stays readable in-tree.
 
-`make bundle` compiles with `-Osize`, extracts the debug symbols to a
-`Casper.dSYM` bundle **next to** `Casper.app`, and strips the shipped
-executable. `make dist` publishes that dSYM as its own
+`make release` compiles with `-Osize`; `make bundle` runs it, extracts the debug
+symbols to a `Casper.dSYM` bundle **next to** `Casper.app`, and strips the
+shipped executable. `make dist` publishes that dSYM as its own
 `Casper-<version>-arm64.dSYM.zip` archive, so a crash report from a release can
 still be symbolicated without shipping the symbols to every user.
 
@@ -230,10 +315,10 @@ for the full rationale.
 
 Tests run on every push to `main` and every pull request via GitHub Actions, on
 both `macos-15` (the deployment target's floor) and `macos-26`
-([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — some AppKit layout
-behaviour differs between the two, so a single runner would only ever show it as
-a failure on the other machine. Tagging a `v*` release builds and publishes
-`Casper.app` as a GitHub Release
+([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)) — TextKit's
+cold-layout height estimates differ between the two, so a single runner would
+only ever show it as a failure on the other machine. Tagging a `v*` release
+builds and publishes `Casper.app` as a GitHub Release
 ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), along with
 the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
 the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
@@ -253,23 +338,29 @@ flowchart TD
     UI --> Git[CasperGit]
     UI --> Ghostty[CasperGhostty]
     UI --> Agents[CasperAgents]
+    UI --> HL[HighlightSwift]
+    UI --> SP[Sparkle]
     CLI --> Core
     CLI --> Agents
+    CLI --> AP[swift-argument-parser]
     Agents --> Core
     Ghostty --> Core
     Ghostty --> GK[GhosttyKit / libghostty]
     Core --> Git
     Git --> LG[libgit2]
+    Git --> Shims[Clibgit2 / CSigbusGuard]
 ```
 
-| Module          | Description                                                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------- |
-| `CasperCore`    | Models, session store, worktree manager, port allocator, control-channel protocol + socket (pure Swift) |
-| `CasperGit`     | In-house wrapper over libgit2 (worktrees, diff, status)                                                 |
-| `CasperGhostty` | Embeds GhosttyKit; owns terminal surfaces and layout                                                    |
-| `CasperAgents`  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …)                   |
-| `CasperUI`      | SwiftUI sidebar, chrome, diff, and browser views                                                        |
-| `CasperCLI`     | Domain subcommands, sharing the single app binary (swift-argument-parser)                               |
+- **`CasperCore`** — models, session store, worktree manager, port allocator,
+  control-channel protocol + socket.
+- **`CasperGit`** — in-house wrapper over libgit2 (worktrees, diff, status),
+  with the `Clibgit2` module map and the `CSigbusGuard` shim around libgit2's
+  diff.
+- **`CasperGhostty`** — embeds GhosttyKit; owns terminal surfaces and layout.
+- **`CasperAgents`** — per-surface environment injection
+  (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …).
+- **`CasperUI`** — SwiftUI sidebar, chrome, diff, and browser views.
+- **`CasperCLI`** — domain subcommands, sharing the single app binary.
 
 The app and CLI ship as one binary, and the routing keys on the *shape* of the
 first argument, not on a list of known verbs: empty argv — or a leading `-…`
@@ -310,8 +401,10 @@ casper workspace delete                      # destroy a workspace (worktree + b
 casper run [name]                            # run a named .casper.json command in a split (defaults to 'run')
 ```
 
-`casper workspace new <branch>` takes the branch name as a positional argument;
-`--base <ref>` forks from a ref other than the space's base branch, and
+`casper workspace new <branch>` takes the branch name as a positional argument
+and sanitizes it into a valid Git ref (lowercased, separators collapsed), which
+is the form the reply echoes back; `--base <ref>` forks from a ref other than
+the space's base branch, and
 `--command <cmd>` seeds the workspace's first terminal with a command to run.
 `casper terminal new` takes the same `--command <cmd>` to seed the new split,
 plus `--working-dir <path>` to start it somewhere other than the workspace's
@@ -323,7 +416,7 @@ and inspect the page it just changed:
 ```bash
 casper browser load https://localhost:8080   # navigate without opening the panel
 casper browser screenshot --out out.png      # PNG of the page (--width/--height/--url)
-casper browser content                       # dump the page's HTML
+casper browser content                       # dump the page's HTML (--selector)
 casper browser url                           # print the page's current URL
 casper browser eval "document.title"         # evaluate JavaScript in the page
 casper browser click "button.submit"         # click the first matching element
@@ -331,23 +424,28 @@ casper browser type "input[name=q]" casper   # type into the first matching elem
 casper browser key Enter                     # dispatch a keydown/keyup to the page
 casper browser console                       # captured console output + uncaught errors (--level)
 casper browser wait ".ready"                 # block until a selector holds (or --js <expr>)
+                                             # --visible/--gone, --timeout <ms> (default 5000)
 casper browser reload                        # reload the page
 casper browser scroll-down                   # also scroll-up / scroll-top / scroll-bottom
 ```
 
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
-workspace other than the current one. The one exception is `workspace current`,
-which reports the terminal's own workspace from `$CASPER_WORKSPACE_ID` and takes
-no target. Commands talk to the running app over a Unix domain socket named by
-`$CASPER_CONTROL_SOCKET`, injected per terminal alongside `$CASPER_WORKSPACE_ID`
-— and, in worktree workspaces only, `$CASPER_PORT`.
+workspace other than the current one. The exceptions are the two that aren't
+workspace-scoped: `workspace list` enumerates all of them, and
+`workspace current` reports the terminal's own workspace from
+`$CASPER_WORKSPACE_ID`. Commands talk to the running app over a Unix domain
+socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal alongside
+`$CASPER_WORKSPACE_ID` — and, in worktree workspaces only, `$CASPER_PORT`.
 
-Every command is machine-readable: on success it prints a JSON object (or array)
-to stdout describing the affected `workspace` and any resulting state; on error
-it prints `{"error":"…"}` to stderr and exits non-zero. Ids are printed in
-lowercase, and `--workspace` matches an id in either case. `workspace delete` is
-destructive (it removes the worktree folder and its branch) and refuses the
-primary workspace.
+Every command is machine-readable: on success it prints a JSON object — or, for
+the `list` verbs, an array — to stdout describing the workspace and any
+resulting state; on error it prints `{"error":"…"}` to stderr and exits
+non-zero. Usage errors (an unknown subcommand or flag, a missing option) are the
+exception: they keep the argument parser's own plain-text format and exit 64. On
+`browser eval`, `content` and `url`, `--raw` prints the bare value instead of
+the JSON envelope. Ids are printed in lowercase, and `--workspace` matches an id
+in either case. `workspace delete` is destructive (it removes the worktree
+folder and its branch) and refuses the primary workspace.
 
 Casper installs and serves no agent hooks of its own: an agent reports its state
 by calling these commands itself (e.g. `casper status set working`), so the
@@ -361,9 +459,10 @@ KB; `--message` and `--file` together are an error; and a bare `casper info set`
 at an interactive terminal errors instead of waiting on stdin (pipe, redirect,
 or the explicit `-` marker all still work).
 
-Clicking a link in the message opens it in the workspace's own browser panel,
-since a published endpoint is almost always local; **Command-clicking** it opens
-the same link in the system's default browser instead.
+Clicking an `http(s)` link in the message opens it in the workspace's own
+browser panel, since a published endpoint is almost always local;
+**Command-clicking** it — or clicking any other scheme — opens it in the
+system's default browser instead.
 
 ### Per-repository configuration (`.casper.json`)
 
