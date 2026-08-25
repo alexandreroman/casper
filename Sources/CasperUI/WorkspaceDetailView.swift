@@ -82,6 +82,10 @@ struct WorkspaceDetailView: View {
                     WorkspaceInfoButton(model: model, workspace: workspace)
                     diffBadge
                 }
+                // A toolbar group proposed less than its ideal width must truncate,
+                // never wrap: without this the badge's `+N`/`−N` stack vertically
+                // and push the title bar open (see `WorkspaceTitleLabel`).
+                .lineLimit(1)
             }
             .flatToolbarItem()
             if #available(macOS 26.0, *) {
@@ -214,23 +218,10 @@ struct WorkspaceDetailView: View {
         // workspaces, so both the git-backed flag and the name derive from this
         // single lookup rather than scanning the model twice per body pass.
         let space = model.space(for: workspace)
-        let isGitRepo = space?.isGitRepo ?? false
-        let spaceName = space?.name ?? workspace.name
-        return HStack(spacing: 7) {
-            // Mirror WorkspaceRow: git-branch glyph + "Space / branch" for a
-            // Git-backed Space, folder glyph + Space name for a degenerate one.
-            if isGitRepo {
-                Octicon(.gitBranch).foregroundStyle(.secondary)
-                Text(spaceName).foregroundStyle(.secondary)
-                Text("/").foregroundStyle(.secondary)
-                Text(workspace.branchLabel)
-                    .fontWeight(.bold)
-            } else {
-                Octicon(.fileDirectory).foregroundStyle(.secondary)
-                Text(spaceName)
-                    .fontWeight(.bold)
-            }
-        }
+        return WorkspaceTitleLabel(
+            isGitRepo: space?.isGitRepo ?? false,
+            spaceName: space?.name ?? workspace.name,
+            branchLabel: workspace.branchLabel)
         // Chrome-less on purpose: the title is not a control, so it keeps the
         // shared capsule metrics (alignment with the chips) without the pill.
         // Asymmetric interior padding (not the shared `titleCapsule`'s symmetric
