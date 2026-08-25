@@ -14,6 +14,14 @@ Casper hosts views that must lay out and run without being visible in borderless
 - `BrowserCapture.snapshot(url:width:height:)` — the one-shot `WKWebView`
   capturer.
 
+Test host windows follow the same rule — `AppModelTests`,
+`WorkspaceInfoPanelTests`, `RealSurfaceHarness` and `BrowserSurfaceViewTests`
+all park their hosts there and order none of them in. Ordering is what matters,
+not the style mask: `WorkspaceInfoPanelTests` keeps `.titled` because the panel
+geometry it asserts on is measured against that mask. A test host ordered
+on-screen at the default `(0, 0)` origin pops a real window into the bottom-left
+corner of the developer's desktop for the length of each test method.
+
 **These windows are never ordered on-screen** — no `orderFrontRegardless()`, no
 `orderFront(_:)`. Mission Control lays out *every* window the WindowServer
 reports as on-screen, so an ordered window at -100_000 stretches the layout

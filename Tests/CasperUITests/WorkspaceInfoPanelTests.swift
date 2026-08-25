@@ -138,7 +138,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
             "the fixture must be far taller than the panel, or it would never scroll")
 
         let panel = try hostPanel(markdown, hostHeight: WorkspaceInfoPanel.maxHeight + 24)
-        defer { panel.window.orderOut(nil) }
 
         // Equality still holds for THIS fixture, and only because it holds no
         // table: the frame the panel assigns is the larger of this measurement
@@ -210,11 +209,16 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         let (model, workspace) = makeSeededModel()
         let view = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown)
         let host = NSHostingView(rootView: view)
+        // Parked far off-screen and never ordered in, the way the production hosts are
+        // (`AppModel.makeBackgroundSurfaceNursery`, `BrowserCapture.snapshot`): a window at
+        // (0, 0) ordered on-screen flashes in the bottom-left corner of the developer's desktop
+        // on every test run, and an ordered window at -100_000 joins Mission Control's layout,
+        // whose bounding box then spans ~101,000 px and scales every real window to nothing.
+        // Layout only needs a non-nil `window`, which `contentView` gives it either way.
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: WorkspaceInfoPanel.width, height: hostHeight),
+            contentRect: NSRect(x: -100_000, y: -100_000, width: WorkspaceInfoPanel.width, height: hostHeight),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = host
-        window.makeKeyAndOrderFront(nil)
         // One pass before the search: SwiftUI realizes the representable's text
         // view during layout, so there is nothing to find until it has run.
         host.layoutSubtreeIfNeeded()
@@ -279,7 +283,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     func testLastLineKeepsATrailingMarginAtMaximumScroll() throws {
         let panel = try hostScrolledToBottom(
             Self.tallMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + 24)
-        defer { panel.window.orderOut(nil) }
 
         // TextKit 2 lays out viewport-first, so the tail of the document has no
         // real geometry until layout is forced over the whole range.
@@ -314,7 +317,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         // Well under the panel's natural maxHeight + 2 * padding.
         let hostHeight: CGFloat = 300
         let panel = try hostScrolledToBottom(Self.tallMarkdown(), hostHeight: hostHeight)
-        defer { panel.window.orderOut(nil) }
 
         let contentView = try XCTUnwrap(panel.window.contentView)
         let clipInHost = panel.clipView.convert(panel.clipView.bounds, to: contentView)
@@ -377,7 +379,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// different amount or not at all.
     func testATableMessageIsSizedByTheEngineThatLaysItOut() throws {
         let panel = try hostPanel(Self.tableMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + 24)
-        defer { panel.window.orderOut(nil) }
 
         let layoutManager = try XCTUnwrap(panel.textView.layoutManager)
         let container = try XCTUnwrap(panel.textView.textContainer)
@@ -400,7 +401,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// migration — the point is precisely that none happens.
     func testATableFreeMessageStaysOnTextKit2AndKeepsItsLaidOutHeight() throws {
         let panel = try hostPanel(Self.tallMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + 24)
-        defer { panel.window.orderOut(nil) }
 
         let layoutManager = try XCTUnwrap(
             panel.textView.textLayoutManager, "a table-free message must still be on the TextKit 2 stack")
