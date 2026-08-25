@@ -58,6 +58,47 @@ public final class Repository {
         git_repository_is_worktree(pointer) == 1
     }
 
+    /// True when the repository has no working directory of its own — a bare
+    /// repository (`git init --bare`, `git clone --bare`).
+    public var isBare: Bool {
+        git_repository_is_bare(pointer) == 1
+    }
+
+    /// What the repository behind a working tree — the one its common `.git`
+    /// directory belongs to — has to say about its **main** working tree. The two
+    /// facts travel together because a single open of the common directory answers
+    /// both; see `mainWorkingTree()`.
+    public struct MainWorkingTree: Sendable {
+        /// Absolute path to the main working tree's directory (trailing slash, per
+        /// libgit2), or nil for a bare repository, which has none.
+        public let path: String?
+        /// True when the repository is bare, so it has no main working tree and never
+        /// will — as opposed to one that merely failed to resolve.
+        public let isBare: Bool
+    }
+
+    /// The main working tree of the repository this handle belongs to, whichever of
+    /// its working trees the handle was opened on — so a linked worktree can name the
+    /// repository folder it is part of.
+    ///
+    /// **Opens a repository**, unlike the cheap `gitDirPath`/`commonDirPath`/
+    /// `workdirPath` neighbours: it calls `git_repository_open` on `commonDirPath`,
+    /// since `<repo>/.git` yields the main repository, whose workdir is `<repo>/`. A
+    /// method rather than a property so that cost is visible at the call site.
+    ///
+    /// Nil when the common directory can no longer be opened — a repository moved or
+    /// deleted out from under one of its worktrees.
+    ///
+    /// A non-nil `path` is the workdir libgit2 derived, which is **not** guaranteed to
+    /// be a working tree of this repository: `git init --separate-git-dir` records no
+    /// `core.worktree`, so libgit2 falls back to the git directory's parent, an
+    /// unrelated existing folder. A caller that depends on the answer belonging to
+    /// this repository must verify it — open it and compare common directories.
+    public func mainWorkingTree() -> MainWorkingTree? {
+        guard let main = try? Repository.open(atPath: commonDirPath) else { return nil }
+        return MainWorkingTree(path: main.workdirPath, isBare: main.isBare)
+    }
+
     /// Short name of the branch HEAD currently points to.
     public func headBranchName() throws -> String {
         var head: OpaquePointer?
