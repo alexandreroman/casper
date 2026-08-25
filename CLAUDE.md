@@ -30,9 +30,8 @@ out of Git.
 
 Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via
 pkg-config). The first build downloads the ~53 MB `GhosttyKit.xcframework` from
-the pinned `libghostty-spm` release; afterwards
-`swift build --disable-automatic-resolution` reuses the extracted artifact
-instead of re-resolving.
+the pinned `libghostty-spm` release; later builds reuse the extracted
+artifact.
 
 ```bash
 make build   # compile
@@ -54,8 +53,7 @@ moves. No target compiles against the vendored header.
 `make bundle`/`make dist` need `brew install dylibbundler` (embeds the libgit2
 dylib chain into the bundle so the app runs on a clean Mac). The
 `.github/workflows/release.yml` workflow runs `make dist` on every `v*` tag and
-publishes the `.app` as a GitHub Release — see
-[`.superpowers/plans/github-release.md`](.superpowers/plans/github-release.md).
+publishes the `.app` as a GitHub Release.
 
 The release build compiles with `-Osize`, and `make bundle` extracts the debug
 symbols to `Casper.dSYM` (kept **outside** `Casper.app`) before stripping the
@@ -63,7 +61,8 @@ shipped executable. `make dist` publishes that dSYM as a separate `.dSYM.zip`
 asset so release crash reports stay symbolicatable.
 
 The app icon ships in two forms: the legacy `Packaging/AppIcon/AppIcon.icns`
-(fallback for macOS 15–25, regenerated from `icon.svg` via `make icon`, needs
+(fallback for macOS 15–25, regenerated from `icon.svg` via `make icon` — which
+also rebuilds `AppIconDev.icns` from `icon-dev.svg` — and needs
 `brew install resvg`), and the macOS 26 Liquid Glass
 `Packaging/AppIcon/AppIcon.icon` (Icon Composer bundle, compiled to `Assets.car`
 by `actool` during `make bundle`). Both `CFBundleIconName` and

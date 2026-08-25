@@ -1,7 +1,7 @@
 # Sparkle auto-update
 
 **Status: shipped.** Completes the auto-update scaffolding described in
-[`github-release.md`](github-release.md) ("Future step"), minus code-signing
+the GitHub release workflow ("Future step"), minus code-signing
 identity and notarization, which stay deliberately out of scope.
 
 ## Goal

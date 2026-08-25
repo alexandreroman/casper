@@ -13,7 +13,7 @@ Status legend: ✅ built · ◐ partial · ❌ not started.
 
 ## At a glance
 
-All five modules are built, and Casper is a working product: a Space-grouped
+Every module is built, and Casper is a working product: a Space-grouped
 sidebar over linked Git worktrees, tmux-style terminal panes, a right inspector
 panel carrying the browser and the diff view, per-repository `.casper.json`
 scripts, agent-state detection for three coding agents, and in-app auto-update.
@@ -49,8 +49,7 @@ than falling back). Linked worktrees are created as visible siblings of the
 repo, under a collapsible Space-grouped sidebar
 with agent state, todo progress and a notification bubble, non-destructive
 removal, and live Git promotion/demotion. Session persistence with
-legacy-decode self-healing. Selection after a close follows
-[`plans/workspace-close-selection.md`](plans/workspace-close-selection.md).
+legacy-decode self-healing.
 
 **Terminal & layout.** libghostty embedding end-to-end — keyboard, clipboard
 (including untrusted-write confirmation), mouse and cmd+click URL opening,

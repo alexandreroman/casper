@@ -248,9 +248,9 @@ Three layers, deliberately separated:
   only exist once real files are involved. Every side effect goes through an
   injectable `Environment` (executable lookup, file contents, directory entries,
   home directory), so the whole resolution runs against in-memory fixtures.
-- `CasperUI` — `AppModel` § *Agent-integration reminders* (scheduling,
-  dismissals, the published list) and `AgentIntegrationReminderView.swift` (the
-  sidebar rows).
+- `CasperUI` — `AgentIntegrationReminders.swift` (scheduling, dismissals, the
+  published list; `AppModel` only forwards) and
+  `AgentIntegrationReminderView.swift` (the sidebar rows).
 
 #### Status model
 

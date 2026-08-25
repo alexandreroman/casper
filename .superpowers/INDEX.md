@@ -43,42 +43,26 @@ themes, the code or Git history. A plan whose content has been absorbed into
 `architecture.md` + `themes/` is deleted rather than kept marked "shipped" — the
 themes are the design source of truth, and a stale plan is worse than no plan.
 
-- [`plans/stop-hook-explicit-done.md`](plans/stop-hook-explicit-done.md) +
-  [`plans/stop-hook-explicit-done-plan.md`](plans/stop-hook-explicit-done-plan.md)
-  — the `Stop` hook reports `done` explicitly instead of `idle`, since every
-  hook-driven workspace is permanently under `explicitAuthority` and never gets
-  a detected `done`; selecting a `done` workspace collapses it back to `idle`
-  (**partly shipped** — the Casper-side collapse is built, the `casper-skills`
-  hook is not).
-- [`plans/notification-idle-best-practices.md`](plans/notification-idle-best-practices.md)
-  — stop notifying on ordinary idle/turn-end events; only `blocked` and unseen
-  `done` should raise a notification (**shipped** — spans this repo and
-  `casper-skills`).
-- [`plans/run-close-on-success.md`](plans/run-close-on-success.md) — a named
-  `.casper.json` command's split closes on exit 0 and stays open with a live
-  shell on failure (**shipped**).
-- [`plans/github-release.md`](plans/github-release.md) — GitHub release workflow
-  publishing a downloadable `Casper.app` (`.github/workflows/release.yml`)
-  (**shipped**).
+Each entry below says what it carries that exists nowhere else — a plan with no
+such answer has been deleted.
+
 - [`plans/sparkle-auto-update.md`](plans/sparkle-auto-update.md) — in-app
   auto-update via Sparkle, anchored on an EdDSA-signed appcast because Casper
-  ships ad-hoc signed. Carries the **EdDSA key rotation procedure**, which is
-  recorded nowhere else, and is cited by `.github/workflows/release.yml`
-  (**shipped**).
+  ships ad-hoc signed. Carries the **EdDSA key rotation procedure**: Sparkle
+  rotates a key but never removes one, so losing the seed strands every
+  installed copy. Recorded nowhere else, and `release.yml` prints this path
+  when signing fails.
 - [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
   — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
-  skill's Screen Recording grant survives rebuilds. Cited by the `Makefile` for
-  the Apple Development certificate setup (**shipped**).
-- [`plans/workspace-close-selection.md`](plans/workspace-close-selection.md) —
-  closing, deleting or merging a workspace reselects a sibling in the same Space
-  first, falling back to the first workspace of the first remaining Space
-  (**shipped**).
-- [`plans/app-icon-composer.md`](plans/app-icon-composer.md) — the macOS 26
-  Liquid Glass `AppIcon.icon`, compiled to `Assets.car` by `actool` during
-  `make bundle` alongside the legacy `.icns` (**shipped**).
+  skill's Screen Recording grant survives rebuilds. Carries **why the `.app`
+  wrapper is mandatory** — a loose Mach-O binary never registers with TCC at
+  all — and is cited twice by the `Makefile` for the certificate setup.
 - [`plans/terminal-font-size-persistence.md`](plans/terminal-font-size-persistence.md)
-  — per-surface terminal font size persisted as `Surface.fontSize` and reapplied
-  on restore (**shipped**).
+  — per-surface terminal font size persisted as `Surface.fontSize`. Carries the
+  spike result the capture mechanism rests on (whether
+  `ghostty_surface_inherited_config` echoes a *live* runtime font size) and the
+  rejected `ghostty_surface_update_config` alternative; cited by
+  `Tests/CasperGhosttyTests/GhosttyFontSizeTests.swift`.
 
 The agent-plugin repository these plans refer to is **`casper-skills`**. It
 ships the `casper` plugin for all three supported agents: Claude Code and Codex

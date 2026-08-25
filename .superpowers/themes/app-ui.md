@@ -286,6 +286,17 @@ notes, § Design describes the app that exists.
   control-channel path is deliberately silent: it reports back as JSON and gets
   no sheet.
 
+  **What gets selected next** is a sibling in the same Space first — the Space's
+  first workspace in display order (primary, then linked alphabetically) — and
+  only failing that the first workspace of the first remaining Space. Removing
+  a whole Space has no same-Space to prefer, so it always takes the second
+  branch. The helper returns `nil` only when no candidate exists anywhere,
+  upholding the invariant that selection is either `nil` or a live workspace and
+  never dangles ([[workspace-selection-invariant]]). Landing on a sibling
+  matters because closing one workspace of a repository is the middle of a piece
+  of work, not the end of it: jumping to an unrelated Space would lose the
+  user's place.
+
   A failing hook **never blocks the destroy**. A non-zero exit or a timeout
   posts an active user notification — the only place it surfaces outside the
   log; a spawn failure is Casper's own fault rather than the user's script, so

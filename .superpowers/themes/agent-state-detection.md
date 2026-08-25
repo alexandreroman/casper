@@ -148,7 +148,8 @@ the agent each pattern was measured against.
   signal (`absent`), and the viewport's at-rest prompt then resolves to `idle`.
 - **`blocked`** — from the **viewport**: a pending confirmation the agent shows
   only while it waits for the user — `do you want to proceed?` together with an
-  `esc to cancel` affordance (and sibling confirmation prompts), or opencode's
+  `esc to cancel` affordance (one group per rule set, not a family of
+  variants), or opencode's
   `Permission required` together with an `Allow once` choice. Two substrings
   are required in each group so a chat message quoting either phrase alone
   cannot trip it. `blocked` outranks a `working` progress report in
@@ -288,8 +289,13 @@ An explicit `done` suppresses detection, so `AppModel.selectWorkspace` collapses
 it to `.idle` when selected. This mirrors the resolver's own "seen" definition
 (`selectedWorkspaceID` pointing at it — not gated on `isWindowKey()`, unlike the
 sibling bubble-clear in `clearNotificationForFocusedWorkspace()`). Only `done`
-collapses this way; `blocked` and `error` are untouched. See
-`plans/stop-hook-explicit-done.md`.
+collapses this way; `blocked` and `error` are untouched.
+
+This exists because every hook-driven workspace is permanently under explicit
+authority and so never gets a *detected* `done`: the plugin's `Stop` hook
+reports `done` outright rather than `idle`, and the collapse is what lets that
+state end. Both halves are built — the plugin maps `turn-end` to
+`casper status set done`.
 
 ## Process lifecycle: `done` / `error` — not implemented
 
@@ -358,7 +364,13 @@ state lives only at the workspace level.
 - **CasperUI** — a detector owned by `AppModel` (main actor): a timer that ticks
   every ~250 ms while the window is visible and is throttled to ~1 s while it is
   hidden — it is never stopped (`agentDetectionIntervalVisible` /
-  `agentDetectionIntervalHidden`) — scrapes each workspace's terminals,
+  `agentDetectionIntervalHidden`). Not every workspace is read on every tick:
+  the selected one always is, and the rest only every fourth tick
+  (`backgroundDetectionStride`). Scraping is the expensive half — one viewport
+  read per surface — and a workspace nobody is looking at only has to be right
+  by the time they look, so the stride buys back most of that cost without
+  changing what any state eventually resolves to. Each tick scrapes its
+  workspaces' terminals,
   viewport, OSC title **and** OSC 9;4 progress state, evaluates the two text
   sources against **every** rule set in `AgentDetectionRuleSet.all`
   (`claudeCode`, `codex`, `opencode` — read once per surface and replayed
@@ -366,9 +378,9 @@ state lives only at the workspace level.
   surface), aggregates all the signals, runs the resolver, and writes
   `agentState` via `setDetectedAgentState` unless the workspace is under
   explicit authority. `controlSetAgentState` latches only `blocked`, `done`, and
-  `error`; it releases terminal-observable states immediately. The sidebar status
-  icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the chevron
-  column, animated `working`).
+  `error`; it releases terminal-observable states immediately. The sidebar
+  status icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the
+  chevron column, animated `working`).
 
 ### Notifications
 
@@ -398,9 +410,8 @@ are unaffected by it.
 an explicit `casper status set done` also raises the bubble + passive
 notification. It deliberately does **not** do the same for
 `blocked`/`error`: both already get an explicit `casper notify` from their own
-callers (`hooks/notification.py`, the `casper-status` skill), so mirroring
-`setDetectedAgentState` there would double the notification. See
-`plans/stop-hook-explicit-done.md`.
+callers (the plugin's own notification hook, the `casper-status` skill), so
+mirroring `setDetectedAgentState` there would double the notification.
 
 Arming the bubble also drives the Dock icon — a bounce that runs until Casper is
 activated, plus a badge counting the unread workspaces. Their exact clearing

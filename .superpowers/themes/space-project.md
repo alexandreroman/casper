@@ -29,11 +29,13 @@ Promotes the sidebar's implicit "group by repository" into a first-class
 
 ### Space — the project level
 
-A **Space** is a **Git repository**, sitting between `Session` and `Workspace`.
-It maps 1:1 to a `repoPath` and always has **≥ 1 workspace**: exactly one
-**primary** (the repo's main working tree, typically `main`) and 0..n **linked**
-(each a `git worktree add`). *Invariant: Space = Git repository, always ≥ 1
-workspace.*
+A **Space** sits between `Session` and `Workspace` and always has **≥ 1
+workspace**: exactly one **primary** and 0..n **linked** (each a
+`git worktree add`). For a Git repository the primary is the repo's main
+working tree, typically `main`. A folder that is not a repository is a
+**degenerate** Space — one primary workspace, no worktree creation — and is
+promoted the moment its folder gains a `.git`. *Invariant: one Space per
+repository, always ≥ 1 workspace.*
 
 - **Naming** — default from the `origin` remote's last path segment without
   `.git` (fallback: the root folder name). Renamable; a renamed Space stops
@@ -42,6 +44,38 @@ workspace.*
   repo); add a workspace via `git worktree add`; **remove is non-destructive**
   (drops the Space from `session.json` and releases ports; leaves the repo,
   worktrees, and branches on disk).
+
+### Space identity — one Space per repository
+
+Identity is the common `.git` directory every working tree of a repository
+shares, not a path. Three rules keep it 1:1, and the point of all three is that
+a repository is never represented twice:
+
+- **Adoption.** A folder that is a linked worktree of a repository *already
+  open* joins that Space as a linked workspace instead of becoming a Space of
+  its own. Nothing is created on disk, so no `setup` hook runs.
+- **Pull-in.** A folder that is a linked worktree of a repository *not open*
+  pulls that repository in rather than standing alone. The Space roots at the
+  repository's **main working tree**, built exactly as opening that folder
+  would build it, and the folder the user actually picked joins it as a linked
+  workspace named after its branch, with the primary's branch as its
+  `baseBranch` — and it is the one selected, being what the user chose. The
+  main working tree is resolved through `CasperGit`'s `mainWorkingTree()`.
+- **Reunification.** Opening a repository whose worktrees are *already open as
+  Spaces* folds them into the Space it creates, moving those workspaces whole —
+  ids, ports, layouts and live terminals unchanged — with each ex-primary
+  becoming a linked workspace named after its branch.
+
+Two layouts are **refused outright**, with an alert and nothing added: a
+worktree of a **bare** repository, which has no main working tree and never
+will; and one whose main working tree does not resolve to a folder of the *same*
+repository — the repository directory gone from disk, or a `--separate-git-dir`
+layout, where libgit2 answers the git directory's parent, an unrelated folder a
+same-repository guard rejects. There is deliberately **no silent fallback** to a
+Space rooted at the worktree: that is precisely the shape these rules exist to
+prevent.
+
+Re-adding a folder Casper already tracks only selects it.
 
 ### Data model changes (vs `architecture.md`)
 
@@ -77,7 +111,8 @@ the full `Session → Space → Workspace` tree.
 assembly, the collapsible Space-grouped sidebar, `CasperGit`
 `Repository.remoteURL`, and repo-name derivation from `origin`. Persistence uses
 a clean break (the existing `SessionStore` self-heal discards incompatible
-legacy files), not the migration the original plan described.
+legacy files), not the migration the original plan described. The three identity
+rules above and their two refusals are built (`AppModel+Spaces.swift`).
 
 Remaining for this theme: **Space rename** only. The per-workspace `+/−` diff
 summary is **dropped** (see the top note), so the divergence stats it needed —

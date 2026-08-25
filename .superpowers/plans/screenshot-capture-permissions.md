@@ -87,7 +87,7 @@ optional.
   other user; making the shipped `.app` persist TCC grants across updates needs
   a paid Developer ID Application certificate + notarization, which is separate,
   larger work.
-- **No Sparkle/notarization work.** `.superpowers/plans/github-release.md`
+- **No Sparkle/notarization work.** The release workflow
   already tracks Developer ID signing as a prerequisite for Sparkle
   auto-updates; this plan doesn't touch that. It's moot for the debug channel
   specifically anyway, since `DebugServer` is `#if DEBUG`-gated and never ships
