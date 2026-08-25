@@ -6,8 +6,7 @@ The progress ledger: what is built, what is left, and what was decided against.
 [`architecture.md`](architecture.md) carries the foundation and `themes/` owns
 one area each — how a thing works is described there, once, and when this file
 disagrees with a theme the theme wins. One-off technical findings live in
-`.claude/project-memory/`; the map is [`INDEX.md`](INDEX.md); plans still worth
-keeping are in `plans/`.
+`.claude/project-memory/`; the map is [`INDEX.md`](INDEX.md).
 
 Status legend: ✅ built · ◐ partial · ❌ not started.
 

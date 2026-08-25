@@ -9,7 +9,6 @@ Layout:
 - [`architecture.md`](architecture.md) — cross-cutting foundation
 - `themes/` — one doc per area: the **authoritative** design *and* as-built
   behaviour
-- `plans/` — implementation plans still worth keeping (see § Plans)
 
 ## Foundation
 
@@ -38,37 +37,25 @@ Per-theme status markers appear in each doc's header.
 
 ## Plans
 
-`plans/` holds design docs for work whose rationale is not recoverable from the
-themes, the code or Git history. A plan whose content has been absorbed into
-`architecture.md` + `themes/` is deleted rather than kept marked "shipped" — the
-themes are the design source of truth, and a stale plan is worse than no plan.
+There is no `plans/` directory, and its absence is the design.
 
-Each entry below says what it carries that exists nowhere else — a plan with no
-such answer has been deleted.
+A plan is a forward-looking document: it exists while its work is still ahead.
+Once the work ships, its design belongs in `architecture.md` + `themes/` and its
+one-off findings in `.claude/project-memory/` — the places a reader already
+looks. A shipped plan kept as a container for the few facts nobody relocated is
+the worst of both: it is not where anyone searches, and nothing signals when it
+starts describing an app that no longer exists.
 
-- [`plans/sparkle-auto-update.md`](plans/sparkle-auto-update.md) — in-app
-  auto-update via Sparkle, anchored on an EdDSA-signed appcast because Casper
-  ships ad-hoc signed. Carries the **EdDSA key rotation procedure**: Sparkle
-  rotates a key but never removes one, so losing the seed strands every
-  installed copy. Recorded nowhere else, and `release.yml` prints this path
-  when signing fails.
-- [`plans/screenshot-capture-permissions.md`](plans/screenshot-capture-permissions.md)
-  — `make build` assembles a signed `Casper-dev.app` so the `debug-casper`
-  skill's Screen Recording grant survives rebuilds. Carries **why the `.app`
-  wrapper is mandatory** — a loose Mach-O binary never registers with TCC at
-  all — and is cited twice by the `Makefile` for the certificate setup.
-- [`plans/terminal-font-size-persistence.md`](plans/terminal-font-size-persistence.md)
-  — per-surface terminal font size persisted as `Surface.fontSize`. Carries the
-  spike result the capture mechanism rests on (whether
-  `ghostty_surface_inherited_config` echoes a *live* runtime font size) and the
-  rejected `ghostty_surface_update_config` alternative; cited by
-  `Tests/CasperGhosttyTests/GhosttyFontSizeTests.swift`.
+So when a plan's work lands, absorb it and delete it. If something in it has no
+obvious home, that is a gap in the themes or the memory notes to be filled, not
+a reason to keep the plan. New plans are welcome — for work that has not
+happened yet.
 
-The agent-plugin repository these plans refer to is **`casper-skills`**. It
+The agent-plugin repository these docs refer to is **`casper-skills`**. It
 ships the `casper` plugin for all three supported agents: Claude Code and Codex
 register it as `casper@casper` (plugin `casper`, marketplace `casper`), and
 opencode pulls it as the npm package `casper-skills`.
 
 Design specs for work that has fully landed are recoverable from Git history
-(tracked under the now-removed `docs/superpowers/` tree before being distilled
-into `architecture.md` + `themes/`, and under `plans/` before being deleted).
+(tracked under the now-removed `docs/superpowers/` and `.superpowers/plans/`
+trees before being distilled into `architecture.md` + `themes/`).

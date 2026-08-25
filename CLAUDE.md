@@ -19,7 +19,7 @@ out of Git.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),
   **swift-argument-parser**, **libgit2**, **HighlightSwift** (syntax
   highlighting for the diff view), and **Sparkle** (auto-update — see the plan
-  [`sparkle-auto-update.md`](.superpowers/plans/sparkle-auto-update.md)).
+  [`sparkle-eddsa-key.md`](.claude/project-memory/references/sparkle-eddsa-key.md)).
   Everything else uses built-in macOS frameworks. (`swiftui-introspect` was
   tried for the diff view's frozen file header but dropped — its
   `.introspect(.scrollView, on: .macOS(.v26))` closure fires unreliably on macOS

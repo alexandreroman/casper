@@ -25,10 +25,8 @@ into `.superpowers/architecture.md` + `.superpowers/themes/`. Do not create it.
 authoritative distilled design in `.superpowers/architecture.md` + `themes/` and
 durable facts in `.claude/project-memory/`.
 
-**Watch out for `.superpowers/plans/`:** this directory also exists, is tracked
-in Git, and holds the committed design/plan pairs that `CLAUDE.md` and
-`.superpowers/INDEX.md` cite (about twenty files, some describing shipped work
-and some still open). Its name and sibling position next to `.superpowers/sdd/`
-make it an easy false target — do not write new SDD design or plan docs there.
-New output always goes in the gitignored `.superpowers/sdd/`, never
-`.superpowers/plans/` or `docs/superpowers/specs/`.
+**There is no `.superpowers/plans/`.** A plan is absorbed into
+`architecture.md` + `themes/` (and `.claude/project-memory/` for its one-off
+findings) once its work ships, then deleted — see `.superpowers/INDEX.md`
+§ Plans. Do not recreate the directory to park a shipped design in it. SDD
+output always goes in the gitignored `.superpowers/sdd/`.

@@ -25,7 +25,7 @@ DEV_SESSION := $(shell br=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null); \
 	echo "$${name:-dev}")
 
 # Local code-signing identity for debug builds (Screen Recording TCC
-# persistence — see .superpowers/plans/screenshot-capture-permissions.md).
+# persistence — see the tcc-screen-recording-needs-a-bundle memory note).
 # Auto-detects the first "Apple Development" identity in the keychain;
 # override with `make build CODESIGN_IDENTITY="Apple Development: ..."`.
 # Empty means "no identity available" — falls back to an ad-hoc signature.
@@ -53,7 +53,8 @@ build:
 		codesign --force --sign - $(DEV_APP); \
 		echo "note: no Apple Development signing identity found — $(DEV_APP)" \
 			"stays ad-hoc signed and Screen Recording permission will" \
-			"reset on rebuild. Setup: .superpowers/plans/screenshot-capture-permissions.md"; \
+			"reset on rebuild. Setup: the tcc-screen-recording-needs-a-bundle" \
+			"memory note."; \
 	fi
 
 ## dev: recompile and launch the app under a per-branch isolated dev session
