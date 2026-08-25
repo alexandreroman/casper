@@ -108,6 +108,7 @@
 - [Casper.app bundle codesign seal](references/app-bundle-codesign-seal.md) — dylibs, executable, bundle — never `--deep` (it breaks Sparkle)
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
 - [Line width is measured in characters](references/line-width-in-characters.md) — em dashes are 3 bytes; count characters, not bytes
+- [Markdown table columns align by display width](references/table-emoji-column-alignment.md) — ✅ is two columns; the two table checkers conflict
 - [Agent integration policy](references/agent-integration-policy.md) — detect and remind only; never write another tool's config
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
 - [Agent-integration probe cadence](references/agent-integration-probe-cadence.md) — launch pays the cold cost; the tick refreshes
