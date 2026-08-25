@@ -157,22 +157,43 @@ recursive splits/tabs layout (UI-3) depends on Ghostty layout composition
   the common `.git` directory every working tree of a repository shares. A
   folder that is a **linked worktree of a repository already open as a Space**
   is adopted into that Space as a linked workspace instead of becoming a Space
-  of its own (nothing is created on disk, so no `setup` hook runs); conversely,
-  opening a **repository whose worktrees are already open as Spaces** reunifies
-  them into the Space it creates, moving those workspaces whole (ids, ports,
-  layouts and live terminals unchanged) with each ex-primary becoming a linked
-  workspace named after its branch. Re-adding a folder Casper already tracks
-  only selects it; a per-Space "+" creates a **linked** workspace as a new
-  branch + `git worktree` at a visible sibling of the repo folder,
-  `<parent>/<repo>-<branch>` (outside the repo, so naturally untracked — no
-  in-repo `.casper/worktrees/` and no `.git/info/exclude` entry; a `-2`/`-3`…
-  suffix is used if the sibling name is taken). The sidebar is grouped by Space
-  in collapsible sections; removal is non-destructive (drop a linked workspace,
-  or a whole Space, leaving worktrees/branches on disk); a degenerate Space is
-  promoted to Git when its folder gains a `.git` (detected live by the
-  filesystem watcher, and once per Space at launch), and demoted back if the
-  `.git` is removed. The per-workspace `+/−` diff summary is **dropped**
-  (decision 2026-07-06) — see the "Next action" note below.
+  of its own (nothing is created on disk, so no `setup` hook runs); a folder
+  that is a **linked worktree of a repository not open** pulls that repository
+  in rather than standing alone — the Space roots at the repository's **main
+  working tree**, built exactly as opening that folder would build it (its name
+  taken from the `origin` remote, its primary workspace sitting on the
+  repository's checked-out branch, typically `main`), and the folder the user
+  picked joins it as a **linked** workspace named after its branch, with the
+  primary's branch as its `baseBranch`; that linked workspace is the one
+  selected, being the folder actually chosen, and again nothing is created on
+  disk and no `setup` hook runs. That main working tree is resolved with
+  libgit2: opening the repository's common `.git` directory, shared by every
+  working tree, yields the main repository, whose workdir is the folder to root
+  at. A worktree of a **bare** repository is refused: rooting at a main working
+  tree is the rule, a bare repository has none and never will, so that layout is
+  one Casper does not support and the alert says exactly that. So is a worktree
+  whose main working tree does not come back as a folder of the *same*
+  repository — the repository directory gone from disk, or a
+  `--separate-git-dir` layout, which records no `core.worktree` and so has
+  libgit2 answer the git directory's parent, an unrelated existing folder a
+  same-repository guard rejects. Either way the picked folder is **refused
+  outright**: nothing is added and an alert says so, there being deliberately no
+  silent fallback to a Space rooted at the worktree, precisely the shape this
+  rule exists to avoid. Conversely, opening a **repository whose worktrees are
+  already open as Spaces** reunifies them into the Space it creates, moving
+  those workspaces whole (ids, ports, layouts and live terminals unchanged) with
+  each ex-primary becoming a linked workspace named after its branch. Re-adding
+  a folder Casper already tracks only selects it; a per-Space "+" creates a
+  **linked** workspace as a new branch + `git worktree` at a visible sibling of
+  the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so naturally
+  untracked — no in-repo `.casper/worktrees/` and no `.git/info/exclude` entry;
+  a `-2`/`-3`… suffix is used if the sibling name is taken). The sidebar is
+  grouped by Space in collapsible sections; removal is non-destructive (drop a
+  linked workspace, or a whole Space, leaving worktrees/branches on disk); a
+  degenerate Space is promoted to Git when its folder gains a `.git` (detected
+  live by the filesystem watcher, and once per Space at launch), and demoted
+  back if the `.git` is removed. The per-workspace `+/−` diff summary is
+  **dropped** (decision 2026-07-06) — see the "Next action" note below.
 - **UI-3 — ✅ built.** Recursive `LayoutNode` composition: splits render as
   native `HSplitView`/`VSplitView`; a tab group shows a Ghostty-style tab bar
   (rounded "pill" tabs sharing the width equally, centered titles; the active
