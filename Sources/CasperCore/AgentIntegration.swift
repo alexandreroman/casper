@@ -152,8 +152,10 @@ public enum AgentIntegration {
     /// Base of the integration documentation; `CodingAgent` appends its own anchor.
     public static let documentationBaseURL = "https://github.com/alexandreroman/casper-skills"
 
-    /// npm package name of the opencode plugin, as written in an opencode config's
-    /// top-level `plugin` array.
+    /// The opencode plugin's package *and* repository name — the token every form
+    /// of a top-level `plugin` entry ends in. A bare entry spells it directly, a Git
+    /// spec spells it as its last path component (`github:owner/casper-skills`,
+    /// `…/casper-skills.git`), and a local checkout spells it as its directory name.
     public static let opencodePackageName = "casper-skills"
 
     /// File name of an opencode plugin installed locally. The plugin is plain
@@ -375,11 +377,10 @@ public enum AgentIntegration {
     /// carries `"$schema": "https://opencode.ai/config.json"`, so that case is
     /// routine rather than theoretical.
     ///
-    /// A match is a top-level `plugin` entry that names the npm package
-    /// (`casper-skills`, with or without an `@version` suffix) or points at a local
-    /// `casper.js`. Anchoring to those two forms, rather than to a bare `casper`
-    /// substring, keeps an unrelated plugin that merely has `casper` in its name from
-    /// being mistaken for the integration.
+    /// A match is a top-level `plugin` entry naming the Casper plugin in any of the
+    /// forms opencode accepts — see `isOpencodePluginEntry`, which anchors to a whole
+    /// token so that an unrelated plugin merely *containing* `casper` in its name is
+    /// not mistaken for the integration.
     ///
     /// When parsing fails, the string literals of the comment-stripped text are
     /// scanned instead of returning a hard `false`: a config Casper cannot parse is
@@ -434,20 +435,43 @@ public enum AgentIntegration {
 
     /// True for an opencode `plugin[]` entry that refers to the Casper plugin.
     ///
-    /// Two forms count, and each is matched whole rather than by substring, because
-    /// `casper` is a common enough word that a loose match mistakes someone else's
-    /// plugin for the integration: `@evil/casper-skills-fork` merely *contains* the
-    /// package name, and `./plugin/notcasper.js` merely *ends with* the file name.
+    /// opencode takes any Git spec in that slot, and the plugin is installed from Git
+    /// rather than from a registry (`opencode plugin github:alexandreroman/casper-skills -g`),
+    /// so the entry in the wild is a `github:owner/repo` shorthand, a
+    /// `git+https://`/`git+ssh://`/scp-style/`file://` URL, the directory of a local
+    /// checkout, a bare package name, or a path to the plugin file itself. Every one
+    /// of those spells the plugin's name in its **last path component**, so the entry
+    /// is reduced to that component and the comparison is made against the whole
+    /// token — never a substring, because `casper` is a common enough word that a
+    /// loose match claims someone else's plugin: `@evil/casper-skills-fork` merely
+    /// *contains* the package name, and `./plugin/notcasper.js` merely *ends with*
+    /// the file name.
+    ///
+    /// Reading the repository name means an actual **fork** of casper-skills also
+    /// counts as installed. That is the direction to fail in: a fork still carries
+    /// the integration, and — as with the version comparison above — a false "install
+    /// the plugin" nag costs more trust than a missed one.
     private static func isOpencodePluginEntry(_ entry: String) -> Bool {
-        let lowercased = entry.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var specification = entry.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !specification.isEmpty else { return false }
 
-        // The npm form: the package name, optionally followed by `@<version>`.
-        let packageName = String(lowercased.prefix { $0 != "@" })
-        if packageName == opencodePackageName { return true }
+        // A Git spec can pin a `#ref` and a URL can carry a `?query`; neither belongs
+        // to the name. They are cut before the split because a query string may
+        // itself contain slashes and would otherwise become the last component.
+        specification = String(specification.prefix { $0 != "#" && $0 != "?" })
+        // A directory is often written with a trailing slash, which would otherwise
+        // leave the last component empty.
+        while specification.hasSuffix("/") { specification.removeLast() }
 
-        // The local-file form: the plugin file has to be the entry's own last path
-        // component, not just the tail of some longer file name.
-        return lowercased.split(separator: "/").last.map(String.init) == opencodePluginFileName
+        guard var name = specification.split(separator: "/").last.map(String.init) else { return false }
+        if name.hasSuffix(".git") { name.removeLast(".git".count) }
+        // Strip an npm `@<version>` suffix, but only a suffix: a leading `@` opens a
+        // scope (`@evil/…`), and cutting there would leave an empty name.
+        if let versionSeparator = name.firstIndex(of: "@"), versionSeparator != name.startIndex {
+            name = String(name[..<versionSeparator])
+        }
+
+        return name == opencodePackageName || name == opencodePluginFileName
     }
 
     /// Removes `//` line comments and `/* */` block comments from JSONC text.

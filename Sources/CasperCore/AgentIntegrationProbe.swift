@@ -161,7 +161,7 @@ public struct AgentIntegrationProbe: Sendable {
 
     /// opencode has two independent install shapes, and either one counts: a plugin
     /// file dropped in the plugin directory, or an entry in the config's `plugin`
-    /// array (which points at an npm package opencode fetches itself).
+    /// array (a Git spec or a local path opencode resolves itself).
     private func opencodeStatus() -> AgentIntegrationStatus {
         let pluginFile = installedOpencodePluginFile()
         guard pluginFile != nil || opencodeConfigRegistersPlugin() else { return .missing }

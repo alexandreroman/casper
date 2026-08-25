@@ -54,7 +54,8 @@ happened yet.
 The agent-plugin repository these docs refer to is **`casper-skills`**. It
 ships the `casper` plugin for all three supported agents: Claude Code and Codex
 register it as `casper@casper` (plugin `casper`, marketplace `casper`), and
-opencode pulls it as the npm package `casper-skills`.
+opencode installs it from a Git spec — `github:alexandreroman/casper-skills`, a
+`git+https`/`git+ssh` URL, or a local checkout path.
 
 Design specs for work that has fully landed are recoverable from Git history
 (tracked under the now-removed `docs/superpowers/` and `.superpowers/plans/`
