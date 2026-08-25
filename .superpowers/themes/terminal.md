@@ -69,10 +69,10 @@ Metal layer's `contentsScale` to the window backing scale — see
   The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a
   recursive `LayoutNode` tree by CasperUI's `LayoutActionHandler` (installed on
   `GhosttyRuntime.actionHandler`). **Tabs are gone**: `LayoutNode` is now
-  `split | leaf`, rendered as native split views only (no tab bar); `newTab`
-  maps to a right split. `close_surface_cb` is wired (Ctrl-D / `exit` closes the
-  pane via `GhosttySurfaceView.onClose`). See `../status.md` → "Surface layout —
-  tmux-style panes".
+  `split | leaf`, rendered by CasperUI's own `SplitContainerView` (no tab bar);
+  `newTab` maps to a right split. `close_surface_cb` is wired (Ctrl-D / `exit`
+  closes the pane via `GhosttySurfaceView.onClose`). See `app-ui.md` § Design →
+  "Layout composition".
 - **`flagsChanged` press/release semantics — ✅ done.** A modifier transition is
   reported as a press while the modifier is still held and a release once it is
   let go, mapped from the physical key code (Ghostty is the reference).

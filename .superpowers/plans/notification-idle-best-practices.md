@@ -166,9 +166,6 @@ hit it.
 - `.timeSensitive` authorization — revisit only if `blocked` notifications are
   reported missed during Focus modes.
 - Replacing the dropped `idle_prompt` signal — no compensation planned.
-- `status.md` currently says the `blocked`/`done` → `casper notify` wiring is
-  "deferred," while `themes/agent-state-detection.md` says it's built — that's a
-  stale doc, not a design question; fix as a doc-only edit alongside this work.
 
 ## Testing
 
