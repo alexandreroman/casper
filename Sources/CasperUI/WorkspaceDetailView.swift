@@ -88,7 +88,10 @@ struct WorkspaceDetailView: View {
                 ToolbarSpacer(.flexible)
             }
             if canMerge {
-                ToolbarItem(placement: .primaryAction) { mergeButton }.flatToolbarItem()
+                ToolbarItem(placement: .primaryAction) {
+                    MergeToolbarButton(model: model, workspace: workspace)
+                }
+                .flatToolbarItem()
             }
             if !model.namedCommands(for: workspace.id).isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -288,30 +291,6 @@ struct WorkspaceDetailView: View {
         workspace.kind == .linked && !(workspace.baseBranch?.isEmpty ?? true)
     }
 
-    /// The "Merge" chip. It routes to the same merge-and-close confirmation as the
-    /// menus' "Merge and Close Workspace…" item — merging a workspace always ends
-    /// by closing it, and there is no merge-only flow to offer. The label stays a
-    /// bare "Merge" because the confirmation dialog is what spells out the "and
-    /// close" part; the tooltip says so too, before the click.
-    ///
-    /// Geometry follows the `title-capsule-hit-area` memory note: `titleCapsule` is
-    /// applied INSIDE the label, so the whole pill is clickable and not just the glyph.
-    /// The label style is pinned because the toolbar environment otherwise resolves the
-    /// `Label` to icon-only and swallows the title, and the neighbouring Editor and Run
-    /// chips are text-bearing, so a glyph-only Merge chip would read as a different class
-    /// of control.
-    private var mergeButton: some View {
-        Button {
-            model.presentCloseWorkspaceConfirmation(id: workspace.id)
-        } label: {
-            Label("Merge", systemImage: "arrow.triangle.merge")
-                .labelStyle(.titleAndIcon)
-                .titleCapsule(interactive: true)
-        }
-        .buttonStyle(.plain)
-        .help("Merge and close workspace")
-    }
-
     @ViewBuilder
     private func editorLabel(_ kind: EditorKind) -> some View {
         if let icon = EditorLauncher.icon(for: kind) {
@@ -481,6 +460,64 @@ private struct ScriptToolbarButton: View {
             }
         }
         .help("Run Script")
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared ? 1 : 0.85)
+        .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }
+    }
+}
+
+/// The "Merge" toolbar chip, which becomes a "Delete" chip while Option is held. A
+/// separate view for the same reason as `ScriptToolbarButton`: `WorkspaceDetailView`
+/// is recreated per workspace (`.id`), so this mounts fresh on each switch and plays
+/// its entrance animation via `onAppear`.
+///
+/// Merge routes to the same merge-and-close confirmation as the menus' "Merge and
+/// Close Workspace…" item — merging a workspace always ends by closing it, and there
+/// is no merge-only flow to offer. The label stays a bare "Merge" because the
+/// confirmation dialog is what spells out the "and close" part; the tooltip says so
+/// too, before the click.
+///
+/// Option swaps in the menus' "Delete Workspace…" item, which discards the branch
+/// rather than merging it. Both answer the same question at the same moment — this
+/// workspace is done — so they share one chip instead of sending the "not worth
+/// merging" case off to the sidebar's context menu, and both open a confirmation
+/// dialog, so an accidental Option press costs nothing. The Delete state carries no
+/// red tint: title-bar chips use one neutral palette (`title-bar-chip-chrome`).
+///
+/// The swap is ONE `Button` whose label, action and tooltip change — not two views
+/// behind a condition — so `appeared` survives it and pressing Option can never
+/// replay the entrance animation.
+///
+/// Geometry follows the `title-capsule-hit-area` memory note: `titleCapsule` is
+/// applied INSIDE the label, so the whole pill is clickable and not just the glyph.
+/// The label style is pinned because the toolbar environment otherwise resolves the
+/// `Label` to icon-only and swallows the title, and the neighbouring Editor and Run
+/// chips are text-bearing, so a glyph-only chip would read as a different class of
+/// control.
+private struct MergeToolbarButton: View {
+    let model: AppModel
+    let workspace: Workspace
+    @State private var appeared = false
+
+    var body: some View {
+        // Read here rather than in `WorkspaceDetailView`: the observation dependency
+        // that re-renders the chip on every Option press and release is registered by
+        // reading the property inside the body that draws it.
+        let deleting = model.optionKeyHeld
+        return Button {
+            if deleting {
+                model.presentDeleteWorkspaceConfirmation(id: workspace.id)
+            } else {
+                model.presentCloseWorkspaceConfirmation(id: workspace.id)
+            }
+        } label: {
+            Label(deleting ? "Delete" : "Merge",
+                  systemImage: deleting ? "trash" : "arrow.triangle.merge")
+                .labelStyle(.titleAndIcon)
+                .titleCapsule(interactive: true)
+        }
+        .buttonStyle(.plain)
+        .help(deleting ? "Delete workspace" : "Merge and close workspace")
         .opacity(appeared ? 1 : 0)
         .scaleEffect(appeared ? 1 : 0.85)
         .onAppear { withAnimation(.easeOut(duration: 0.2)) { appeared = true } }

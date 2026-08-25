@@ -1,8 +1,10 @@
 import AppKit
 
 /// Watches for Cmd being held ≥250ms to reveal the sidebar's `Cmd+N` shortcut
-/// hints (see `WorkspaceRow`), and handles `Cmd+1…9` itself so the workspace
-/// switch works even before the hint appears. Installed once from
+/// hints (see `WorkspaceRow`), handles `Cmd+1…9` itself so the workspace switch
+/// works even before the hint appears, and mirrors a bare Option press onto
+/// `AppModel.optionKeyHeld` (which turns the title bar's Merge chip into a
+/// Delete chip while it is down). Installed once from
 /// `AppDelegate.applicationDidFinishLaunching` — a local (not global) `NSEvent`
 /// monitor, so this only fires while a Casper window is key and needs no
 /// Accessibility permission.
@@ -61,6 +63,9 @@ final class WorkspaceShortcutKeyMonitor {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.tracker.commandKeyUp()
+                // Same reasoning for Option: Cmd+Tabbing away while holding it
+                // would otherwise leave the chip stuck on Delete.
+                self?.setOptionKeyHeld(false)
             }
         }
     }
@@ -91,6 +96,10 @@ final class WorkspaceShortcutKeyMonitor {
             } else {
                 tracker.commandKeyUp()
             }
+            // Bare Option only, for the same reason: Cmd+Option and Shift+Option
+            // belong to other shortcuts, and morphing the Merge chip mid-combo
+            // would be noise.
+            setOptionKeyHeld(relevantFlags == .option)
             return event
         case .keyDown:
             // Match the physical key position, not the character: on an AZERTY
@@ -107,5 +116,13 @@ final class WorkspaceShortcutKeyMonitor {
         default:
             return event
         }
+    }
+
+    /// Guarded write, like the hint flag above: `optionKeyHeld` is `@Observable`
+    /// and EVERY modifier transition lands here, so an unconditional write would
+    /// re-render the workspace toolbar on each Shift, Control and Cmd press too.
+    private func setOptionKeyHeld(_ held: Bool) {
+        guard model.optionKeyHeld != held else { return }
+        model.optionKeyHeld = held
     }
 }
