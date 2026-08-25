@@ -16,16 +16,36 @@ enum WorkspaceFactory {
         /// True when the probed folder is a linked worktree rather than the
         /// repository's main working tree.
         let isLinkedWorktree: Bool
+        /// The repository's main working tree directory — the folder a Space for this
+        /// repository roots at, whichever of its working trees was probed. It is the
+        /// same string as `canonicalPath` when the probed folder *is* the main working
+        /// tree: the same libgit2 workdir, put through the same normalizer. Nil when
+        /// the prober doesn't report it, when the repository is bare
+        /// (`isBareRepository`), or when it is no longer reachable from the probed
+        /// worktree.
+        ///
+        /// Not verified to belong to the probed folder's repository: in a
+        /// `--separate-git-dir` layout libgit2 derives it from the git directory's
+        /// parent, an unrelated existing folder. `AppModel.addSpace` re-probes it and
+        /// compares common directories before rooting anything at it.
+        let mainWorkingTreePath: String?
+        /// True when the repository behind the probed folder — the one its common
+        /// `.git` directory belongs to — is bare, so it has no main working tree and
+        /// never will. Distinct from a main working tree that merely failed to resolve.
+        let isBareRepository: Bool
 
         init(
             canonicalPath: String, branch: String, remoteURL: String?,
-            commonDirPath: String? = nil, isLinkedWorktree: Bool = false
+            commonDirPath: String? = nil, isLinkedWorktree: Bool = false,
+            mainWorkingTreePath: String? = nil, isBareRepository: Bool = false
         ) {
             self.canonicalPath = canonicalPath
             self.branch = branch
             self.remoteURL = remoteURL
             self.commonDirPath = commonDirPath
             self.isLinkedWorktree = isLinkedWorktree
+            self.mainWorkingTreePath = mainWorkingTreePath
+            self.isBareRepository = isBareRepository
         }
     }
 

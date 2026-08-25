@@ -6,37 +6,69 @@ import Foundation
 /// its own worktrees — plus the teardown shared by every path that drops a
 /// workspace. Part of `AppModel`.
 extension AppModel {
+    /// What `addSpace(folderURL:probe:)` did, so the caller — and only the caller —
+    /// decides whether to put an alert on screen. `addSpace` never runs a modal
+    /// itself: it is also driven headlessly, by the tests.
+    enum AddSpaceOutcome: Equatable {
+        /// The folder is now open, as a Space of its own or as a workspace of one.
+        case added
+        /// The folder was already open: its workspace was selected instead.
+        case selected
+        /// Nothing was added.
+        case failed(reason: Failure)
+
+        /// Why a folder could not be added.
+        enum Failure: Equatable {
+            /// The folder is a worktree of a **bare** repository: a Space roots at a main
+            /// working tree and a bare repository has none, so Casper does not support
+            /// that layout.
+            case bareRepository
+            /// The folder is a linked worktree whose repository's main working tree did
+            /// not resolve to a folder of that same repository — gone from disk, or never
+            /// named correctly in the first place — so there is nothing to root its Space
+            /// at.
+            case mainWorkingTreeUnresolved
+            /// No free port block is left for the workspaces the folder needs.
+            case noFreePortBlock
+        }
+    }
+
     /// Adopt `folderURL` into the session, keeping one Space per Git repository:
     ///
     /// - a folder that is a linked worktree of a repository already open joins that
     ///   repository's Space as a linked workspace — a worktree is part of its repo,
     ///   not a project of its own;
+    /// - a folder that is a linked worktree of a repository *not* open pulls that
+    ///   repository in: the Space roots at the repository's main working tree and the
+    ///   chosen worktree joins it, so the shape is the same either way;
     /// - a folder that is a repository whose worktrees are already open as Spaces of
     ///   their own becomes their Space, reunifying them into it as linked workspaces;
     /// - any other folder becomes a Space, as before.
     ///
     /// A folder that is already tracked (as a Space or as one of its workspaces) is
     /// not added twice: it is just selected.
-    func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) {
+    @discardableResult
+    func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) -> AddSpaceOutcome {
         let folderPath = folderURL.path
         let candidate = Self.canonicalPath(folderPath)
-        if let known = trackedWorkspaceID(atCanonicalPath: candidate) {
+        if let known = trackedWorkspace(atCanonicalPath: candidate) {
             CasperLog.app.error("folder already open: \(folderPath, privacy: .public)")
-            selectWorkspace(known)
-            return
+            selectWorkspace(known.workspaceID)
+            return .selected
         }
         let info = probe(folderURL)
-        if let info, info.isLinkedWorktree,
-           let spaceID = spaceSharingRepository(with: info, probe: probe) {
-            adoptWorktree(at: folderURL, info: info, into: spaceID)
-            return
+        if let info, info.isLinkedWorktree {
+            if let si = spaceIndexSharingRepository(with: info, probe: probe) {
+                return adoptWorktree(at: folderURL, info: info, into: si)
+            }
+            return addSpacePullingInRepository(ofWorktreeAt: folderURL, info: info, probe: probe)
         }
         let portBase: Int
         do {
             portBase = try portAllocator.allocate()
         } catch {
             CasperLog.app.failure("cannot add space: no free port block", error)
-            return
+            return .failed(reason: .noFreePortBlock)
         }
         var space = WorkspaceFactory.makeSpace(
             folderURL: folderURL, info: info, portBase: portBase)
@@ -55,6 +87,110 @@ extension AppModel {
         refreshDockAttention()
         selectWorkspace(space.workspaces.first?.id)
         persist()
+        return .added
+    }
+
+    /// Open the repository of a linked worktree no open Space shares: the Space roots
+    /// at the repository's **main working tree**, built exactly as opening that folder
+    /// would build it, and `folderURL` joins it as a linked workspace — the same shape
+    /// `adoptWorktree` produces. A worktree is part of its repository, so opening one
+    /// opens the repository.
+    ///
+    /// Nothing is created on disk and the repo's `setup` hook does not run: both
+    /// working trees already exist, and the hook fires at creation only (same
+    /// rationale as `adoptWorktree`).
+    ///
+    /// Nothing is absorbed either. The caller reaches this only after
+    /// `spaceIndexSharingRepository` answered nil, so no open Space is backed by this
+    /// repository and `reunify` would provably have nothing to fold in.
+    ///
+    /// Fails, adding nothing, when there is no main working tree to root at: the
+    /// repository is bare — a layout Casper does not support — or the folder libgit2
+    /// names is gone from disk, or is not a working tree of this repository at all (the
+    /// `--separate-git-dir` case, caught by the same-repository guard below rather than
+    /// by failing to resolve). Rooting the Space at the worktree instead is exactly the
+    /// shape this path exists to avoid, so the folder is refused and the caller reports
+    /// it.
+    private func addSpacePullingInRepository(
+        ofWorktreeAt folderURL: URL, info: WorkspaceFactory.GitInfo,
+        probe: (URL) -> WorkspaceFactory.GitInfo?
+    ) -> AddSpaceOutcome {
+        guard !info.isBareRepository else {
+            CasperLog.app.error(
+                "cannot add worktree: its repository is bare, at \(folderURL.path, privacy: .public)")
+            return .failed(reason: .bareRepository)
+        }
+        guard let mainPath = info.mainWorkingTreePath, Self.directoryExists(atPath: mainPath) else {
+            CasperLog.app.error(
+                "cannot add worktree: main working tree not found on disk for \(folderURL.path, privacy: .public)")
+            return .failed(reason: .mainWorkingTreeUnresolved)
+        }
+        let mainURL = URL(fileURLWithPath: mainPath)
+        // That path is only what libgit2 derived, so check it really is this
+        // repository's main working tree: `git init --separate-git-dir` records no
+        // `core.worktree`, and libgit2 then answers the git directory's parent — an
+        // existing folder, which in a nested layout is a repository of its own.
+        guard let mainInfo = probe(mainURL), !mainInfo.isLinkedWorktree,
+              mainInfo.commonDirPath == info.commonDirPath else {
+            CasperLog.app.error(
+                "cannot add worktree: not its repository's main working tree at \(mainPath, privacy: .public)")
+            return .failed(reason: .mainWorkingTreeUnresolved)
+        }
+        // The repository's own folder can already be open while `spacesSharingRepository`
+        // fails to see it: that lookup also requires `Space.isGitRepo`, which is not
+        // persisted — `resolveGitBacking()` sets it once at launch, and a Space whose
+        // launch probe transiently failed stays flagged non-Git for the session unless
+        // it is selected. Building a Space here would then root a second one at the same
+        // folder, each with a `.primary` on the same working tree, which is exactly what
+        // `linkedWorkspaces(absorbing:baseBranch:excluding:)` guards against on the
+        // reunify side. Adopt into the Space already tracking that folder instead.
+        if let tracked = trackedWorkspace(atCanonicalPath: Self.canonicalPath(mainPath)) {
+            return adoptWorktree(at: folderURL, info: info, into: tracked.spaceIndex)
+        }
+        // Two workspaces, so two port blocks: the repository's primary and the worktree.
+        let portBase: Int
+        let worktreePortBase: Int
+        do {
+            portBase = try portAllocator.allocate()
+        } catch {
+            CasperLog.app.failure("cannot add space: no free port block", error)
+            return .failed(reason: .noFreePortBlock)
+        }
+        do {
+            worktreePortBase = try portAllocator.allocate()
+        } catch {
+            // Nothing is added, so nothing may stay reserved.
+            portAllocator.release(portBase)
+            CasperLog.app.failure("cannot adopt worktree: no free port block", error)
+            return .failed(reason: .noFreePortBlock)
+        }
+        // Read before the selection moves below, exactly as `adoptWorktree` does.
+        let inheritedEditor = selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
+        var space = WorkspaceFactory.makeSpace(
+            folderURL: mainURL, info: mainInfo, portBase: portBase)
+        let branch = info.branch
+        let baseBranch = space.workspaces.first(where: { $0.kind == .primary })?.branch ?? ""
+        var adopted = WorkspaceFactory.makeLinkedWorkspace(
+            name: branch.isEmpty ? folderURL.lastPathComponent : branch,
+            worktreePath: info.canonicalPath, branch: branch,
+            baseBranch: baseBranch, portBase: worktreePortBase)
+        adopted.lastUsedEditor = inheritedEditor
+        space.workspaces.append(adopted)
+        var updated = spaces
+        updated.append(space)
+        mutateSpaces { $0 = Self.sortedByName(updated) }
+        // The folder the user picked is the worktree, not the repository pulled in
+        // behind it, so that is what the selection lands on.
+        selectWorkspace(adopted.id)
+        persist()
+        return .added
+    }
+
+    /// True when `path` is an existing directory (a plain file at that path is not one).
+    private static func directoryExists(atPath path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+        return exists && isDirectory.boolValue
     }
 
     // Reached from AppModel.swift.
@@ -64,27 +200,32 @@ extension AppModel {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
-    /// The id of the workspace Casper already tracks at `canonical`: either a Space
-    /// rooted there (answering with its primary workspace) or any workspace whose
-    /// worktree is that folder.
-    private func trackedWorkspaceID(atCanonicalPath canonical: String) -> UUID? {
-        for space in spaces {
+    /// The workspace Casper already tracks at `canonical` — either a Space rooted
+    /// there (answering with its primary workspace) or any workspace whose worktree is
+    /// that folder — together with the index of the Space holding it, for the callers
+    /// that go on to mutate that Space.
+    private func trackedWorkspace(
+        atCanonicalPath canonical: String
+    ) -> (spaceIndex: Int, workspaceID: UUID)? {
+        for (si, space) in spaces.enumerated() {
             if Self.canonicalPath(space.folderPath) == canonical {
-                return space.firstOrderedWorkspaceID
+                return space.firstOrderedWorkspaceID.map { (si, $0) }
             }
             if let match = space.workspaces.first(where: {
                 Self.canonicalPath($0.worktreePath) == canonical
             }) {
-                return match.id
+                return (si, match.id)
             }
         }
         return nil
     }
 
     /// An open Space that turns out to be backed by the same Git repository as a
-    /// folder being added, and which of the repository's working trees it roots at.
+    /// folder being added: its index in `spaces`, and which of the repository's working
+    /// trees it roots at. Its index rather than the Space itself, so a caller that goes
+    /// on to mutate it has no "no such Space" branch to write that could never be taken.
     private struct RepositoryMatch {
-        let space: Space
+        let spaceIndex: Int
         let isLinkedWorktree: Bool
     }
 
@@ -94,23 +235,23 @@ extension AppModel {
         with info: WorkspaceFactory.GitInfo, probe: (URL) -> WorkspaceFactory.GitInfo?
     ) -> [RepositoryMatch] {
         guard let commonDir = info.commonDirPath else { return [] }
-        return spaces.compactMap { space in
-            guard space.isGitRepo,
-                  let spaceInfo = probe(URL(fileURLWithPath: space.folderPath)),
+        return spaces.indices.compactMap { si in
+            guard spaces[si].isGitRepo,
+                  let spaceInfo = probe(URL(fileURLWithPath: spaces[si].folderPath)),
                   spaceInfo.commonDirPath == commonDir else { return nil }
-            return RepositoryMatch(space: space, isLinkedWorktree: spaceInfo.isLinkedWorktree)
+            return RepositoryMatch(spaceIndex: si, isLinkedWorktree: spaceInfo.isLinkedWorktree)
         }
     }
 
-    /// The Space a worktree described by `info` should join, or nil when its
-    /// repository isn't open. When both a repository's main working tree and one of
+    /// The index of the Space a worktree described by `info` should join, or nil when
+    /// its repository isn't open. When both a repository's main working tree and one of
     /// its worktrees are open as Spaces, the main working tree wins: its folder is
     /// what worktree operations (create, prune, merge) run against.
-    private func spaceSharingRepository(
+    private func spaceIndexSharingRepository(
         with info: WorkspaceFactory.GitInfo, probe: (URL) -> WorkspaceFactory.GitInfo?
-    ) -> UUID? {
+    ) -> Int? {
         let matches = spacesSharingRepository(with: info, probe: probe)
-        return (matches.first(where: { !$0.isLinkedWorktree }) ?? matches.first)?.space.id
+        return (matches.first(where: { !$0.isLinkedWorktree }) ?? matches.first)?.spaceIndex
     }
 
     /// The open Spaces rooted at a worktree of `info`'s repository: what opening that
@@ -123,7 +264,7 @@ extension AppModel {
     ) -> [Space] {
         spacesSharingRepository(with: info, probe: probe)
             .filter(\.isLinkedWorktree)
-            .map(\.space)
+            .map { spaces[$0.spaceIndex] }
     }
 
     /// Move every workspace of `absorbed` into `space` as a linked workspace (see
@@ -175,20 +316,22 @@ extension AppModel {
             }
     }
 
-    /// Add an existing worktree to `spaceID` as a linked workspace. Unlike
-    /// `createLinkedWorkspace` nothing is created on disk — the branch and the
+    /// Add an existing worktree to the Space at index `si` as a linked workspace.
+    /// Unlike `createLinkedWorkspace` nothing is created on disk — the branch and the
     /// worktree already exist, Casper merely starts tracking them — so the repo's
     /// `setup` hook does not run: it fires at creation only.
+    ///
+    /// Takes the Space's index rather than its id because the caller has just resolved
+    /// it: there is then no "no such Space" branch here that could never be taken.
     private func adoptWorktree(
-        at folderURL: URL, info: WorkspaceFactory.GitInfo, into spaceID: UUID
-    ) {
-        guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else { return }
+        at folderURL: URL, info: WorkspaceFactory.GitInfo, into si: Int
+    ) -> AddSpaceOutcome {
         // Read before the selection moves below, exactly as `createLinkedWorkspace` does.
         let inheritedEditor = selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
             CasperLog.app.failure("cannot adopt worktree: no free port block", error)
-            return
+            return .failed(reason: .noFreePortBlock)
         }
         // Same shape as a Casper-created linked workspace: named after its branch,
         // with the Space's primary branch as the base it merges back into. A worktree
@@ -203,6 +346,7 @@ extension AppModel {
         mutateSpaces { $0[si].workspaces.append(ws) }
         selectWorkspace(ws.id)
         persist()
+        return .added
     }
 
     // Reached from AppModel.swift.

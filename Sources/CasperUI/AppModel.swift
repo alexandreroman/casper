@@ -1902,13 +1902,23 @@ final class AppModel {
               let workdir = repo.workdirPath else { return nil }
         let branch = (try? repo.headBranchName()) ?? ""
         let remote = (try? repo.remoteURL(named: "origin")) ?? nil
+        let mainWorkingTree = repo.mainWorkingTree()
         return WorkspaceFactory.GitInfo(
-            canonicalPath: URL(fileURLWithPath: workdir).standardizedFileURL.path,
+            canonicalPath: standardizedPath(workdir),
             branch: branch, remoteURL: remote,
             // Canonicalized (not just standardized) because it is compared across
-            // folders reached by different spellings — see `spaceSharingRepository`.
+            // folders reached by different spellings — see `spacesSharingRepository`.
             commonDirPath: canonicalPath(repo.commonDirPath),
-            isLinkedWorktree: repo.isLinkedWorktree)
+            isLinkedWorktree: repo.isLinkedWorktree,
+            // Standardized like `canonicalPath` and for the same reason: on the main
+            // working tree the two name that one folder, so they must normalize alike.
+            mainWorkingTreePath: mainWorkingTree?.path.map(standardizedPath),
+            isBareRepository: mainWorkingTree?.isBare ?? false)
+    }
+
+    /// `path` with `.`, `..` and a trailing slash resolved away, symlinks left alone.
+    private static func standardizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     /// Error carrying a human-readable reason for a failed workspace creation.

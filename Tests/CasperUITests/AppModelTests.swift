@@ -13,6 +13,12 @@ final class AppModelTests: XCTestCase {
         model.spaces.first(where: { $0.workspaces.contains(where: { $0.id == id }) })!.id
     }
 
+    /// `path` with symlinks resolved, so a path the model canonicalized compares
+    /// equal to the temp-dir path a fixture handed out (`/tmp` vs `/private/tmp`).
+    private func resolved(_ path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
     func testStartsEmptyWhenSessionEmpty() {
         let (store, _) = makeTemporarySessionStore()
         let model = makeModel(store: store)
@@ -594,7 +600,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces.count, 2)
     }
 
-    func testAddFolderKeepsWorktreeOfUnopenedRepositoryAsItsOwnSpace() throws {
+    func testAddFolderPullsInTheRepositoryOfAWorktreeWhoseRepositoryIsNotOpen() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+
+        let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        // The repository comes along: a worktree is part of it, not a project of its
+        // own, so the Space roots at the repository and the worktree joins it.
+        XCTAssertEqual(outcome, .added)
+        XCTAssertEqual(model.spaces.count, 1)
+        let space = model.spaces[0]
+        XCTAssertEqual(resolved(space.folderPath), resolved(repo.path))
+        XCTAssertEqual(space.workspaces.count, 2)
+        let adopted = try XCTUnwrap(space.workspaces.first(where: { $0.kind == .linked }))
+        XCTAssertEqual(resolved(adopted.worktreePath), resolved(worktree.path))
+        // The selection lands on the folder the user picked, not on the repository
+        // pulled in behind it.
+        XCTAssertEqual(model.selectedWorkspaceID, adopted.id)
+    }
+
+    func testPulledInRepositoryPrimaryIsTheRepositoryOnItsOwnBranch() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        let repoBranch = try XCTUnwrap(AppModel.gitProbe(repo)?.branch)
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        let space = model.spaces[0]
+        let primary = space.orderedWorkspaces[0]
+        XCTAssertEqual(primary.kind, .primary)
+        XCTAssertEqual(resolved(primary.worktreePath), resolved(repo.path))
+        // On whatever the repository has checked out — never the worktree's branch.
+        XCTAssertEqual(primary.branch, repoBranch)
+        XCTAssertNotEqual(primary.branch, "solo")
+        // Named after the repository, as opening the repository itself would name it.
+        XCTAssertEqual(space.name, repo.lastPathComponent)
+    }
+
+    func testWorktreeAdoptedWithItsPulledInRepositoryIsShapedLikeAnyAdoptedWorktree() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
         let (store, _) = makeTemporarySessionStore()
@@ -602,9 +650,206 @@ final class AppModelTests: XCTestCase {
 
         model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
+        let space = model.spaces[0]
+        let primary = space.orderedWorkspaces[0]
+        let adopted = try XCTUnwrap(space.workspaces.first(where: { $0.kind == .linked }))
+        XCTAssertEqual(adopted.branch, "solo")
+        XCTAssertEqual(adopted.name, "solo")
+        XCTAssertEqual(adopted.baseBranch, primary.branch)
+        XCTAssertNotEqual(adopted.portBase, primary.portBase)
+    }
+
+    func testPulledInRepositoryAndItsWorktreeSurviveASessionRoundTrip() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+
+        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        // The disk write is backgrounded; flush so the synchronous load is deterministic.
+        model.flushPendingSave()
+        let saved = try store.load()
+        XCTAssertEqual(saved.spaces.count, 1)
+        XCTAssertEqual(resolved(saved.spaces[0].folderPath), resolved(repo.path))
+        XCTAssertEqual(saved.spaces[0].workspaces.count, 2)
+        XCTAssertEqual(saved.spaces[0].workspaces.filter { $0.kind == .primary }.count, 1)
+        XCTAssertEqual(saved.spaces[0].workspaces.filter { $0.kind == .linked }.count, 1)
+        XCTAssertEqual(saved.selectedWorkspaceID, model.selectedWorkspaceID)
+    }
+
+    /// The probe is injected on purpose: once the repository is gone, a fresh probe of
+    /// the worktree fails outright (its `.git` file points into the deleted repository),
+    /// so the folder would never reach the guard under test. Snapshotting the probe is
+    /// the only way to hand `addSpace` a worktree whose main working tree exists in
+    /// `GitInfo` but not on disk — the state a repository deleted mid-session leaves
+    /// behind. `testAddFolderRefusesAWorktreeOfABareRepository` covers the other
+    /// refusal, through the real prober.
+    func testAddFolderRefusesAWorktreeWhoseRepositoryIsGoneFromDisk() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "orphan")
+        // Probe while the repository is still there, then take it away: the folder is
+        // still a worktree, but the main working tree it names is no longer on disk.
+        let info = try XCTUnwrap(AppModel.gitProbe(worktree))
+        try FileManager.default.removeItem(at: repo)
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+
+        let outcome = model.addSpace(
+            folderURL: worktree, probe: { $0 == worktree ? info : AppModel.gitProbe($0) })
+
+        // Refused outright rather than falling back to a Space of its own.
+        XCTAssertEqual(outcome, .failed(reason: .mainWorkingTreeUnresolved))
+        XCTAssertTrue(model.spaces.isEmpty)
+        // The guard returns before any allocation, so the first block is still free.
+        XCTAssertEqual(try model.portAllocator.allocate(), PortAllocator.defaultRangeStart)
+    }
+
+    /// A bare repository with linked worktrees, the `git clone --bare` layout, is a
+    /// **settled** refusal: Casper roots a Space at a repository's main working tree,
+    /// which that layout does not have, and it does not fall back to rooting one at the
+    /// worktree. This test pins that product decision, reached through the real prober.
+    func testAddFolderRefusesAWorktreeOfABareRepository() throws {
+        let (_, worktree) = try makeBareRepoWithWorktree(named: "solo")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+
+        let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(outcome, .failed(reason: .bareRepository))
+        XCTAssertTrue(model.spaces.isEmpty)
+        XCTAssertEqual(try model.portAllocator.allocate(), PortAllocator.defaultRangeStart)
+    }
+
+    /// The stale-`isGitRepo` case: the flag is not persisted and the launch probe is
+    /// what sets it, so a Space whose probe never ran looks non-Git to the
+    /// repository-sharing lookup. The worktree still has to join that Space instead of
+    /// rooting a second one at the very same folder.
+    func testAddFolderAdoptsAWorktreeIntoARepositorySpaceNotYetKnownToBeGit() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        var repoSpace = gitSpace(
+            name: repo.lastPathComponent, path: repo.path, branch: "main", portBase: 41000)
+        repoSpace.isGitRepo = false   // `completeLaunchSetup()` never ran
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store, session: Session(spaces: [repoSpace]))
+
+        let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(outcome, .added)
         XCTAssertEqual(model.spaces.count, 1)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
+        let adopted = try XCTUnwrap(
+            model.spaces[0].workspaces.first(where: { $0.kind == .linked }))
+        XCTAssertEqual(adopted.branch, "solo")
+        XCTAssertEqual(adopted.baseBranch, "main")
+        XCTAssertEqual(model.selectedWorkspaceID, adopted.id)
+    }
+
+    /// A bare repository at `<repo>.git` holding one commit, plus a linked worktree of
+    /// it at a sibling path. Built by copying a seeded repository's `.git` directory and
+    /// flipping `core.bare`, which is what `git clone --bare` produces; libgit2 offers no
+    /// clone, and the suite shells out to no external `git`.
+    private func makeBareRepoWithWorktree(named name: String) throws -> (bare: URL, worktree: URL) {
+        let seed = try makeTempGitRepo()
+        let bare = seed.deletingLastPathComponent()
+            .appendingPathComponent(seed.lastPathComponent + ".git")
+        try FileManager.default.copyItem(at: seed.appendingPathComponent(".git"), to: bare)
+        let configURL = bare.appendingPathComponent("config")
+        let config = try String(contentsOf: configURL, encoding: .utf8)
+        XCTAssertTrue(config.contains("bare = false"), "unexpected libgit2 config layout")
+        try config.replacingOccurrences(of: "bare = false", with: "bare = true")
+            .write(to: configURL, atomically: true, encoding: .utf8)
+        let handle = try Repository.open(atPath: bare.path)
+        XCTAssertTrue(handle.isBare)
+        let worktree = bare.deletingLastPathComponent()
+            .appendingPathComponent(seed.lastPathComponent + "-" + name)
+        addTeardownBlock { try? FileManager.default.removeItem(at: worktree) }
+        _ = try handle.addWorktree(name: name, atPath: worktree.path, basedOn: nil)
+        return (bare, worktree)
+    }
+
+    /// A `PortAllocator` with exactly `freeBlocks` blocks left to hand out, for the
+    /// paths that have to cope with the range running dry. The blocks it still holds
+    /// start one block above `PortAllocator.defaultRangeStart`.
+    private func makeAllocator(freeBlocks: Int) throws -> PortAllocator {
+        var allocator = PortAllocator(
+            rangeStart: PortAllocator.defaultRangeStart,
+            rangeEnd: PortAllocator.defaultRangeStart
+                + freeBlocks * PortAllocator.defaultBlockSize)
+        // Sequential from `rangeStart`, so this takes the range's first block and leaves
+        // exactly `freeBlocks` behind it.
+        _ = try allocator.allocate()
+        return allocator
+    }
+
+    func testAddFolderRefusesAnyFolderWhenNoPortBlockIsFree() throws {
+        let plain = makeTemporaryDirectory()
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        model.portAllocator = try makeAllocator(freeBlocks: 0)
+
+        // A plain folder needs one block; a worktree pulling its repository in needs the
+        // first of the two it would take.
+        XCTAssertEqual(
+            model.addSpace(folderURL: plain, probe: AppModel.gitProbe),
+            .failed(reason: .noFreePortBlock))
+        XCTAssertEqual(
+            model.addSpace(folderURL: worktree, probe: AppModel.gitProbe),
+            .failed(reason: .noFreePortBlock))
+        XCTAssertTrue(model.spaces.isEmpty)
+    }
+
+    func testAddFolderRefusesToAdoptAWorktreeWhenNoPortBlockIsFree() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "adopted")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        model.portAllocator = try makeAllocator(freeBlocks: 0)
+
+        let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(outcome, .failed(reason: .noFreePortBlock))
         XCTAssertEqual(model.spaces[0].workspaces.count, 1)
-        XCTAssertEqual(model.spaces[0].workspaces[0].kind, .primary)
+    }
+
+    func testAddFolderReleasesTheRepositoryPortWhenTheWorktreeHasNoneLeft() throws {
+        let repo = try makeTempGitRepo()
+        let worktree = try makeWorktree(of: repo, named: "solo")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        // One block left: enough for the repository pulled in, one short for the
+        // worktree that has to join it.
+        model.portAllocator = try makeAllocator(freeBlocks: 1)
+
+        let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
+
+        XCTAssertEqual(outcome, .failed(reason: .noFreePortBlock))
+        XCTAssertTrue(model.spaces.isEmpty)
+        // Nothing was added, so nothing may stay reserved: the block the repository took
+        // is back, and it is still the only free one.
+        XCTAssertEqual(
+            try model.portAllocator.allocate(),
+            PortAllocator.defaultRangeStart + PortAllocator.defaultBlockSize)
+    }
+
+    func testAddFolderStillGivesANonWorktreeFolderASpaceOfItsOwn() throws {
+        let repo = try makeTempGitRepo()
+        let plain = makeTemporaryDirectory()
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+
+        XCTAssertEqual(model.addSpace(folderURL: repo, probe: AppModel.gitProbe), .added)
+        XCTAssertEqual(model.addSpace(folderURL: plain, probe: AppModel.gitProbe), .added)
+
+        XCTAssertEqual(model.spaces.count, 2)
+        XCTAssertTrue(model.spaces.allSatisfy { $0.workspaces.count == 1 })
+        XCTAssertTrue(model.spaces.allSatisfy { $0.workspaces[0].kind == .primary })
+        let repoSpace = try XCTUnwrap(model.spaces.first(where: { $0.isGitRepo }))
+        XCTAssertEqual(resolved(repoSpace.folderPath), resolved(repo.path))
     }
 
     func testAddFolderIgnoresRepositoryOpenedInADifferentSession() throws {
@@ -617,9 +862,16 @@ final class AppModelTests: XCTestCase {
 
         model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
-        // Another repo's Space must not absorb it.
+        // Another repo's Space must not absorb it: it pulls its own repository in.
         XCTAssertEqual(model.spaces.count, 2)
-        XCTAssertTrue(model.spaces.allSatisfy { $0.workspaces.count == 1 })
+        let spaceA = try XCTUnwrap(model.spaces.first(where: {
+            resolved($0.folderPath) == resolved(repoA.path)
+        }))
+        XCTAssertEqual(spaceA.workspaces.count, 1)
+        let spaceB = try XCTUnwrap(model.spaces.first(where: {
+            resolved($0.folderPath) == resolved(repoB.path)
+        }))
+        XCTAssertEqual(spaceB.workspaces.count, 2)
     }
 
     func testAddFolderSelectsAnAlreadyAdoptedWorktreeInsteadOfDuplicatingIt() throws {
@@ -665,12 +917,23 @@ final class AppModelTests: XCTestCase {
     func testAddFolderReunifiesAWorktreeSpaceIntoTheRepositorySpace() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
-        // The worktree is opened first, so it lands as a Space of its own.
-        model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
-        let stranded = model.spaces[0].workspaces[0]
+        // A stored session from before worktrees were grouped: the worktree sits in a
+        // Space of its own, named after its folder. Adding a worktree no longer builds
+        // that shape — it pulls its repository in — so only a session can still carry
+        // it, and reunification is what a session like this needs on the way in.
+        var strandedSpace = gitSpace(
+            name: worktree.lastPathComponent, path: worktree.path, branch: "solo",
+            portBase: 41000)
+        // `isGitRepo` is not persisted: a decoded Space arrives non-Git, and
+        // `completeLaunchSetup()` below is what probes the folder and sets it — the very
+        // step reunification depends on, so the test goes through it rather than around.
+        strandedSpace.isGitRepo = false
+        let stranded = strandedSpace.workspaces[0]
         let strandedSurfaces = LayoutTree.surfaceIDs(stranded.layout)
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store, session: Session(spaces: [strandedSpace]))
+        model.completeLaunchSetup()
+        XCTAssertTrue(model.spaces[0].isGitRepo)
 
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
 
@@ -754,15 +1017,17 @@ final class AppModelTests: XCTestCase {
         model.addSpace(folderURL: one, probe: AppModel.gitProbe)
         model.addSpace(folderURL: two, probe: AppModel.gitProbe)
 
-        // Same repository, so still a single Space — rooted at the first worktree,
-        // since only the repository's main working tree can take that place and it
-        // is not open.
+        // Same repository, so a single Space — rooted at the repository, which the
+        // first worktree pulled in, with both worktrees as linked workspaces of it.
         XCTAssertEqual(model.spaces.count, 1)
-        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
-        XCTAssertEqual(
-            URL(fileURLWithPath: model.spaces[0].folderPath).resolvingSymlinksInPath().path,
-            one.resolvingSymlinksInPath().path)
-        XCTAssertEqual(model.spaces[0].workspaces[1].branch, "two")
+        let space = model.spaces[0]
+        XCTAssertEqual(resolved(space.folderPath), resolved(repo.path))
+        // Appended in the order the folders were added, behind the primary the first of
+        // them pulled in.
+        XCTAssertEqual(space.workspaces.count, 3)
+        XCTAssertEqual(space.workspaces[0].kind, .primary)
+        XCTAssertEqual(space.workspaces[1].branch, "one")
+        XCTAssertEqual(space.workspaces[2].branch, "two")
     }
 
     func testReunifiedWorkspacesKeepTheirOwnRecordedBaseBranch() throws {

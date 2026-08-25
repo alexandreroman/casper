@@ -9,10 +9,14 @@ import Foundation
 /// confirmation. The dialogs themselves are built by `WorkspaceAlerts` below, so the
 /// methods here stay readable as orchestration.
 extension AppModel {
-    /// Open a directory picker and adopt the chosen folder as a workspace.
+    /// Open a directory picker and adopt the chosen folder as a workspace, reporting
+    /// a folder that could not be added. `addSpace` runs no modal of its own — it is
+    /// also driven headlessly — so the alert belongs here.
     func presentAddFolderPanel() {
         guard let url = WorkspaceAlerts.chooseFolder() else { return }
-        addSpace(folderURL: url, probe: Self.gitProbe)
+        if case .failed(let reason) = addSpace(folderURL: url, probe: Self.gitProbe) {
+            WorkspaceAlerts.reportAddFolderFailure(folder: url.lastPathComponent, reason: reason)
+        }
     }
 
     /// Prompt for a linked-workspace name and create it. AppKit alert with a text
@@ -183,6 +187,26 @@ private enum WorkspaceAlerts {
         let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }
         return name
+    }
+
+    /// Report a folder the user picked that Casper could not add.
+    static func reportAddFolderFailure(
+        folder: String, reason: AppModel.AddSpaceOutcome.Failure
+    ) {
+        let message: String
+        switch reason {
+        case .bareRepository:
+            message = "This folder is a worktree of a bare repository. Casper opens a "
+                + "repository at its main working tree, which a bare repository does not "
+                + "have, so it does not support this layout."
+        case .mainWorkingTreeUnresolved:
+            message = "This folder is a Git worktree, but Casper could not resolve its "
+                + "repository\u{2019}s main working tree, so it has no folder to open the "
+                + "repository at."
+        case .noFreePortBlock:
+            message = "Casper has no free port block left to give a new workspace."
+        }
+        reportFailure(title: "Could not add \u{201c}\(folder)\u{201d}", message: message)
     }
 
     static func reportCreationFailure(name: String) {
