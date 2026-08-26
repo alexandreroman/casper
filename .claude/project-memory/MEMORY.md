@@ -74,6 +74,7 @@
 - [Project memory conventions](references/project-memory-conventions.md) — no `casper` filename prefix; status lives in `status.md`
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI
 - [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
+- [Surface focus is first responder AND window key](references/surface-focus-responder-and-key.md) — key loss sends no resign
 - [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply it inside the Button's label, or only the glyph is live
 - [Title-bar chips carry no accent colour](references/title-bar-chip-chrome.md) — one neutral palette; inspector tabs are a segmented control
 - [Toolbar Labels resolve to icon-only](references/toolbar-label-style.md) — pin `.labelStyle(.titleAndIcon)` or the title is dropped
