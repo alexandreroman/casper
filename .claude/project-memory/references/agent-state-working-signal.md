@@ -16,27 +16,25 @@ it as `GHOSTTY_ACTION_PROGRESS_REPORT`, which the pinned header already
 models (`ghostty_action_progress_report_s`) — reaching it needs no
 `make vendor` bump and no fork change.
 
-Casper's detection treats it as the **primary** `working` signal:
-`casperGhosttyAction` latches it per-surface into
-`GhosttySurfaceView.latestProgressReport`, and
-`AgentSignal(progress:)` in `AgentDetection.swift` maps `set`/`indeterminate`
-to `working` and `removed`/`error`/`paused` to `absent`.
+Casper's detection treats it as the **primary** `working` signal;
+`AgentSignal(progress:)` in `AgentDetection.swift` carries the mapping and the
+reasoning behind each `absent` case.
 
-Two **secondary** signals back it up, both version-coupled to Claude Code's
-UI:
+Two **secondary** signals back it up, both version-coupled to Claude Code's UI
+and both expressed in `AgentDetectionRuleSet.claudeCode`. What that declaration
+cannot record is where the values come from:
 
-- **The OSC title.** Claude Code prefixes it with a spinner glyph while
-  working — the quadrant circles `◐◑◒◓` (U+25D0–U+25D3) in 2.1.239, Braille
-  (U+2800–U+28FF) in earlier builds; both ranges are matched, and kept
-  disjoint. A `✳` (U+2733) prefix marks rest. The pinned libghostty-spm fork
-  forwards OSC 0/1/2 title sequences intact as `SET_TITLE` actions — a
-  capability boundary worth remembering, since the same fork does NOT honor a
-  surface's `command` at spawn (see [[ghosttykit-pin]]).
-- **The viewport.** The only source for `blocked`
-  (`do you want to proceed?` + `esc to cancel`) and the only `working` source
-  for an agent that reports no progress. Claude Code's `esc to interrupt`
-  hint survives in the bundle only under the `low_priority_waiting` API-retry
-  banner and is never rendered during normal work.
+- **The OSC title.** Claude Code's spinner glyph set has already moved once —
+  quadrant circles `◐◑◒◓` (U+25D0–U+25D3) in 2.1.239, Braille (U+2800–U+28FF)
+  in earlier builds — which is why both disjoint ranges are matched. Reaching
+  the title at all depends on the pinned libghostty-spm fork forwarding OSC
+  0/1/2 intact as `SET_TITLE` actions: a capability boundary worth remembering,
+  since the same fork does NOT honor a surface's `command` at spawn (see
+  [[ghosttykit-pin]]).
+- **The viewport.** The only source for `blocked` and the only `working` source
+  for an agent that reports no progress. Claude Code's `esc to interrupt` hint
+  survives in the bundle only under the `low_priority_waiting` API-retry banner
+  and is never rendered during normal work.
 
 OSC 21337 (`TAB_STATUS`) carries exactly the right payload but is
 feature-flagged off — its gate function returns `false` unconditionally — and

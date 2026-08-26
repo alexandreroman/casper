@@ -3,11 +3,6 @@
 **Module:** CasperGhostty · **Status:** ✅ built (see `../status.md`) ·
 **Code:** `Sources/CasperGhostty/`
 
-Beyond the first end-to-end terminal, everything listed under § Remaining has
-shipped: tmux-style split composition, pane drag-and-drop, `flagsChanged`
-press/release semantics, scroll precision/momentum, clipboard write
-confirmation, and per-surface font-size persistence.
-
 The only module touching libghostty's unstable embedding API. In-process
 surfaces and PTYs (same model as the Ghostty app).
 
@@ -32,8 +27,11 @@ surfaces and PTYs (same model as the Ghostty app).
   for libghostty app-level actions (`newTab`/`newSplit`/`newWindow`/`closeTab`/
   `closeWindow`, plus `openURL` for a cmd+clicked link and `quit`); the default
   `LoggingActionHandler` logs unbuilt actions as no-ops.
-- Rendering is **display-link driven**, so `GHOSTTY_ACTION_RENDER` needs no
-  explicit `draw()` wiring.
+- **Rendering is libghostty's**, not Casper's: it owns the Metal layer and
+  drives it from its own render thread. `GHOSTTY_ACTION_RENDER` is decoded like
+  any other action but needs no `draw()` wiring on the AppKit side — the view's
+  job is to keep the layer's `contentsScale` and occlusion state correct, not to
+  schedule frames.
 
 ### Keyboard & clipboard
 
@@ -48,11 +46,13 @@ surfaces and PTYs (same model as the Ghostty app).
   `ghostty_surface_complete_clipboard_request` — see
   [[ghostty-clipboard-callbacks]].
 - **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
-  in CasperUI (`MenuCommands.swift`), not an AppKit menu built here; its
-  Edit/View items invoke libghostty binding actions (`copy_to_clipboard`,
-  `paste_from_clipboard`, `select_all`,
-  `increase_font_size`/`decrease_font_size`/`reset_font_size`) on the focused
-  surface through the responder chain. See
+  in CasperUI (`MenuCommands.swift`), not an AppKit menu built here. Its Edit
+  items reach the focused surface through the responder chain, where
+  `GhosttySurfaceView` turns them into libghostty binding actions
+  (`copy_to_clipboard`, `paste_from_clipboard`, `select_all`). The View group
+  holds the four pane splits and nothing else: font size is changed by
+  libghostty's own keybindings inside the surface and reported back to the model
+  through `onFontSizeChange`, so no menu item drives it. See
   [[swiftui-mainmenu-miniaturize-resync]].
 - **`macos-option-as-alt`** is wired via `ghostty_surface_key_translation_mods`;
   the observable effect is inert in the current pinned binary (revisit on pin

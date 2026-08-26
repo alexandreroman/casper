@@ -30,16 +30,20 @@ Three consequences the title bar is built around:
   priority it vanished at 500 pt and came back at 260 pt, because folding the
   chips freed room that SwiftUI handed straight back to it, and degradation ran
   backwards.
-- **`rowWidth` undershoots on purpose** (`safetyMargin`): a row narrower than the
-  bar leaves a few invisible points at the right, while a row wider than the bar
-  empties the whole title bar into the chevron.
-- **An overflowed item recovers only when it genuinely fits again.** AppKit runs
-  its fit check during the resize and never re-runs it; at a width where the row
-  really is too wide, nothing brings it back — not `validateVisibleItems()`, not
-  cycling `displayMode` or `toolbar.isVisible`, not
-  `invalidateIntrinsicContentSize()`, not nudging the window. So the row's width
-  has to be right at the moment AppKit looks, which makes every input to it
-  load-bearing.
+- **`rowWidth` undershoots on purpose** (`safetyMargin`): a row narrower than
+  the bar leaves a few invisible points at the right, while a row wider than the
+  bar empties the whole title bar into the chevron.
+- **AppKit runs its fit check during the resize and never re-runs it.** At a
+  width where the row really is too wide, nothing brings it back —
+  `validateVisibleItems()`, cycling `displayMode` or `toolbar.isVisible` and
+  nudging the window all do nothing. So the row's width has to be right at the
+  moment AppKit looks, which makes every input to it load-bearing.
+- **The one lever that does re-trigger the check** is invalidating the item
+  *views'* intrinsic size, which is what `WorkspaceDetailView`'s
+  `healToolbarOverflow()` does — measured on the running app at a 400 pt shrink
+  jump, it brings a wrongly-clipped row back immediately. It heals a row that
+  now fits but was measured stale; it cannot rescue a row that genuinely does
+  not fit.
 
 **How to access:** the row and its constants live in
 `Sources/CasperUI/WorkspaceDetailView.swift`. The chevron is observable without

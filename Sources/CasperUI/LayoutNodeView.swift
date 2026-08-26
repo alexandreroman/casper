@@ -17,8 +17,9 @@ struct LayoutNodeView: View {
     let workspaceID: UUID
     let node: LayoutNode
     /// Whether the workspace holds more than one pane, which is what makes a pane
-    /// draggable and a drop target. Resolved once for the whole tree by
-    /// `WorkspaceDetailView`, since no node below the root can see the root layout.
+    /// draggable and a drop target. `WorkspaceDetailView` resolves it for the root,
+    /// which is the only node that can be a lone leaf; a `SplitContainerView`
+    /// always passes `true` for its children.
     let canDragPanes: Bool
     /// Child-index path from the workspace's root layout to `node` (root = `[]`).
     /// Threaded so a split can persist its dragged ratios back to the model.
@@ -28,7 +29,7 @@ struct LayoutNodeView: View {
         switch node {
         case .split(let orientation, let children, let ratios):
             SplitContainerView(
-                model: model, workspaceID: workspaceID, canDragPanes: canDragPanes, path: path,
+                model: model, workspaceID: workspaceID, path: path,
                 orientation: orientation, children: children, ratios: ratios)
         case .leaf(let surface):
             SurfaceHostView(

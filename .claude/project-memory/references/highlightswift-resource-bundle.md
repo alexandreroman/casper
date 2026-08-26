@@ -26,13 +26,13 @@ every CI-built `make dist` artifact) `buildPath` does not exist, so only the
 
 **How to apply:** the bundle must end up at the `.app` root at runtime, but it
 cannot ship there — code signing seals only `Contents/`, and unsealed root
-content breaks signing. So packaging (`Scripts/bundle-app.sh` for `Casper.app`,
-the `build` target in `Makefile` for `Casper-dev.app`) ships the bundle inside
+content breaks signing. So `Scripts/assemble-bundle.sh` — the one staging step
+behind both `Casper.app` and `Casper-dev.app` — ships the bundle inside
 `Contents/Resources/` as an ordinary sealed resource, and
 `DiffHighlighter.resourceBundleReady` mirrors it from `Contents/Resources/` to
 the `.app` root once, lazily, before the first highlight call. The mirror is
 **load-bearing, not redundant** — never remove it or "simplify" the highlighter
-to rely on `Contents/Resources`; that reintroduces the crash for distributed
-builds while still passing on the compiling machine. The mirror is best-effort:
+to rely on `Contents/Resources`; a build that does so crashes for distributed
+users while still passing on the compiling machine. The mirror is best-effort:
 if the copy fails (read-only or translocated `.app`), the flag stays `false` and
 `highlightedLines` falls back to neutral text instead of crashing.

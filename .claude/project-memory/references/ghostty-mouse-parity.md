@@ -15,7 +15,8 @@ while bringing `GhosttySurfaceView` to upstream mouse parity.
   (line) selection are detected inside libghostty from timing plus position in
   the continuous `ghostty_surface_mouse_pos` stream. Consequence: the view must
   feed that stream via an NSView tracking area (`updateTrackingAreas` with
-  `[.mouseEnteredAndExited, .mouseMoved, .inVisibleRect, .activeAlways]`), or a
+  `[.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .inVisibleRect,
+  .activeAlways]`), or a
   fresh click lands at a stale cell and word/line selection cannot work. There
   is nothing to "enable" on the C side — position tracking alone fixes it.
 

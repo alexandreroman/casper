@@ -86,21 +86,41 @@ dylibbundler \
 # make dyld warn on every launch. Collapse them to a single entry, then re-sign
 # ad-hoc (install_name_tool invalidates the signature dylibbundler applied).
 BUNDLED_BIN="$APP/Contents/MacOS/casper"
-RPATH="@executable_path/../Frameworks/"
-while otool -l "$BUNDLED_BIN" | grep -qF "path $RPATH"; do
-    install_name_tool -delete_rpath "$RPATH" "$BUNDLED_BIN" 2>/dev/null || break
+RPATH="@executable_path/../Frameworks"
+
+# The binary's LC_RPATH entries, one raw path per line.
+rpath_entries() {
+    otool -l "$BUNDLED_BIN" \
+        | awk '/ cmd LC_RPATH$/ {in_rpath = 1; next} in_rpath && / path / {print $2; in_rpath = 0}'
+}
+
+# The first entry pointing at Contents/Frameworks, exactly as it is stored —
+# dylibbundler writes a trailing slash and the Makefile's dev bundle does not,
+# while `-delete_rpath` matches the stored string literally.
+frameworks_rpath() {
+    rpath_entries | awk -v want="$RPATH" '{
+        normalized = $0
+        sub(/\/+$/, "", normalized)
+        if (normalized == want) { print; exit }
+    }'
+}
+
+while true; do
+    entry="$(frameworks_rpath)"
+    [ -n "$entry" ] || break
+    install_name_tool -delete_rpath "$entry" "$BUNDLED_BIN" 2>/dev/null || break
 done
 install_name_tool -add_rpath "$RPATH" "$BUNDLED_BIN"
 # Hard fail on anything but a single entry: duplicates make dyld warn on every
 # launch, and none at all means the bundled dylibs are unreachable. Trailing
-# slashes are normalized away first, since `--install-path` and the Makefile's
-# dev bundle spell the same rpath without one.
-rpath_count="$(otool -l "$BUNDLED_BIN" \
-    | awk '/ cmd LC_RPATH$/ {in_rpath = 1; next} in_rpath && / path / {print $2; in_rpath = 0}' \
-    | sed 's:/*$::' \
-    | grep -cxF '@executable_path/../Frameworks' || true)"
+# slashes are normalized away first, so an entry spelled with one still counts.
+rpath_count="$(rpath_entries | sed 's:/*$::' | grep -cxF "$RPATH" || true)"
+# `|| true` above absorbs grep's exit 1 on a zero count — and an otool failure
+# with it, which leaves the count empty. An empty count would make the test
+# below error out instead of failing, skipping the very branch that reports it.
+rpath_count="${rpath_count:-0}"
 if [ "$rpath_count" -ne 1 ]; then
-    echo "error: $BUNDLED_BIN has $rpath_count @executable_path/../Frameworks LC_RPATH entries, expected 1" >&2
+    echo "error: $BUNDLED_BIN has $rpath_count $RPATH LC_RPATH entries, expected 1" >&2
     otool -l "$BUNDLED_BIN" | grep -A2 LC_RPATH >&2 || true
     exit 1
 fi

@@ -36,13 +36,14 @@ public struct GitDiff: Equatable, Sendable {
 
 public struct GitDiffFile: Equatable, Sendable, Identifiable {
     public enum Status: String, Sendable {
-        case added, deleted, modified, renamed, copied, typechange, unmodified
+        case added, deleted, modified, renamed, copied, typechange
+        case conflicted, unreadable, unmodified
     }
-    public var oldPath: String
-    public var newPath: String
-    public var status: Status
-    public var isBinary: Bool
-    public var hunks: [GitDiffHunk]
+    public let oldPath: String
+    public let newPath: String
+    public let status: Status
+    public let isBinary: Bool
+    public let hunks: [GitDiffHunk]
     /// Stable identity for a file across successive diff computations, and the path
     /// it is displayed under. Unique within a single diff.
     ///
@@ -63,12 +64,12 @@ public struct GitDiffFile: Equatable, Sendable, Identifiable {
 }
 
 public struct GitDiffHunk: Equatable, Sendable {
-    public var header: String
-    public var oldStart: Int
-    public var oldLines: Int
-    public var newStart: Int
-    public var newLines: Int
-    public var lines: [GitDiffLine]
+    public let header: String
+    public let oldStart: Int
+    public let oldLines: Int
+    public let newStart: Int
+    public let newLines: Int
+    public let lines: [GitDiffLine]
     public init(
         header: String, oldStart: Int, oldLines: Int,
         newStart: Int, newLines: Int, lines: [GitDiffLine]
@@ -80,10 +81,10 @@ public struct GitDiffHunk: Equatable, Sendable {
 
 public struct GitDiffLine: Equatable, Sendable {
     public enum Kind: String, Sendable { case context, addition, deletion }
-    public var kind: Kind
-    public var content: String
-    public var oldLineNumber: Int?
-    public var newLineNumber: Int?
+    public let kind: Kind
+    public let content: String
+    public let oldLineNumber: Int?
+    public let newLineNumber: Int?
     public init(
         kind: Kind, content: String, oldLineNumber: Int?, newLineNumber: Int?
     ) {

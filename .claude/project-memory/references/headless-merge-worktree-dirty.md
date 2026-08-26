@@ -22,7 +22,8 @@ post-merge `WorktreeManager.resyncWorkingTree` (force `git_checkout_head`) then
 runs **unconditionally**, since the precondition already established that the
 primary was clean.
 
-**How to access:** see `Sources/CasperUI/AppModel.swift` (`closeWorkspace`),
+**How to access:** see `closeWorkspace` in
+`Sources/CasperUI/AppModel+WorkspaceLifecycle.swift`,
 `Sources/CasperGit/Merge.swift` (`mergeBranchHeadless`, `forceCheckoutHead`),
 and `Sources/CasperCore/WorktreeManager.swift` (`resyncWorkingTree`). Reproduce
 with: `git commit-tree` a merge commit, `git update-ref refs/heads/<base> <oid>`

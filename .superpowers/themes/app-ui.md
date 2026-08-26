@@ -10,11 +10,8 @@ five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle
 diff viewer (UI-5) depends on CasperGit `git_diff` (`git-worktrees.md`); the
 pane layout (UI-3) depends on Ghostty layout composition (`terminal.md`).
 
-Several designs this doc once carried have been superseded — UI-3 shipped with
-tab groups and now has none, UI-4's and UI-5's layout leaves moved into the
-inspector panel, and UI-5's per-line rendering became one text document. Each is
-marked with a `> **Superseded:**` note where the old wording sits. Outside those
-notes, § Design describes the app that exists.
+§ Design describes the app that exists. Designs this doc once carried and no
+longer does are recorded in `../status.md` § Superseded designs.
 
 ## Design
 
@@ -35,8 +32,10 @@ notes, § Design describes the app that exists.
   `in_progress` todo label — the more urgent signal wins, and stays up until the
   notification clears — and falling back to `"Done"` once every todo is
   complete. There is no numeric `completed/total` text. Nothing in the row
-  carries a hue: selection tints every glyph and label white on the accent pill,
-  and that is the only colour involved.
+  carries a hue of its own: selection tints every glyph and label white on the
+  accent pill. The `AgentStatusIcon` glyphs and the caption stay monochrome
+  throughout — but the row is not: the notification dot is blue (white while
+  selected), and the `ProgressBar` turns green once every todo is complete.
 - **Dock attention** — the sidebar dot's out-of-app counterpart, owned by
   `DockAttention` (a `DockAttentionPresenting` seam on `AppModel`, over a
   `DockAttentionBackend` seam on `NSApp`, so both the wiring and the latch are
@@ -96,17 +95,9 @@ notes, § Design describes the app that exists.
   line is a prefix of the real one. Syntax colors are applied progressively per
   file (HighlightSwift), **color attributes only**, so a highlight landing
   mid-scroll cannot change a line height and shift the text under the reader.
-
-  > **Superseded:** the original design — a SwiftUI surface with per-file
-  > navigation, `+`/`-` line coloring via `AttributedString`, and no external
-  > highlighter — no longer holds on either count. The external highlighter
-  > arrived with the Claude Code color restyle (`DiffHighlighter.swift` +
-  > `DiffLineStyle.swift`, whose tints are sampled from Claude Code's own diff
-  > rendering); the per-line SwiftUI view tree was removed because it put the
-  > SwiftUI layout graph on the per-diff-line path, which is exactly what the
-  > text document exists to avoid.
-- **Browser** — a `WKWebView` surface (address bar, reload), aimed at previewing
-  a `localhost:PORT` app started by the agent. No Chromium.
+- **Browser** — a `WKWebView` surface (address bar with bare-host
+  normalization, back/forward/reload), aimed at previewing a `localhost:PORT`
+  app started by the agent. No Chromium.
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
   view with two tabs (Browser | Diff), per workspace and persisted
   (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
@@ -169,8 +160,7 @@ notes, § Design describes the app that exists.
 
   That width is the one measured number in the row. It comes from the detail
   area's `GeometryReader` — never from content that can overflow its column,
-  which reports a width the column never had
-  ([[measure-the-geometryreader-not-its-content]]) — minus the window chrome
+  which reports a width the column never had — minus the window chrome
   when the detail starts at the window's leading edge
   (traffic lights and sidebar toggle share the row only when the sidebar is
   collapsed, which the frame's origin is what reveals), minus a safety margin.
@@ -181,14 +171,14 @@ notes, § Design describes the app that exists.
   **The row degrades along ONE ordered ladder**, widest first, and everything
   that yields is a rung of that same list:
 
-  | rung | title | badge | actions |
-  |---|---|---|---|
-  | 1 | Space / branch | yes | `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )` |
-  | 2 | Space / branch | — | as above |
-  | 3 | branch | — | as above |
-  | 4 | branch | — | `( ⤭ )( ⋯ )( ± │ 🌐 )` |
-  | 5 | branch | — | `( ⋯ )( ± │ 🌐 )` |
-  | 6 | branch | — | `( ⋯ )` |
+  | rung | title          | badge | actions                                          |
+  | ---- | -------------- | ----- | ------------------------------------------------ |
+  | 1    | Space / branch | yes   | `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )` |
+  | 2    | Space / branch | —     | as above                                         |
+  | 3    | branch         | —     | as above                                         |
+  | 4    | branch         | —     | `( ⤭ )( ⋯ )( ± │ 🌐 )`                           |
+  | 5    | branch         | —     | `( ⋯ )( ± │ 🌐 )`                                |
+  | 6    | branch         | —     | `( ⋯ )`                                          |
 
   The order encodes what each element is worth: the diff badge is
   **informational** and goes first, the Space name is **context**, the chip
@@ -294,12 +284,12 @@ notes, § Design describes the app that exists.
   Copy button**: one `NSTextView` answers ⌘A/⌘C over the whole message
   natively, so a button would duplicate a shortcut that already works — this is
   a deliberate departure from the approved design, alongside the tighter hover
-  dwell and the absence of capsule chrome. Links open in the workspace's **own
-  browser** by default (a published endpoint is almost always local) and in the
-  system browser when ⌘ is held; ⌘ is the one modifier `NSTextView` does not
-  already spend on a click. That routing is a pure decision so tests can pin it
-  without a browser launching. See [[nstextview-link-cursor-and-selection]],
-  [[markdown-one-sided-spacing]], [[nstextblock-border-unreliable]].
+  dwell and the absence of capsule chrome. Link routing is `README.md`'s to
+  describe; the design constraints behind it are that ⌘ is the one modifier
+  `NSTextView` does not already spend on a click, and that the routing is a pure
+  decision so tests can pin it without a browser launching. See
+  [[nstextview-link-cursor-and-selection]] and
+  [[nstextblock-border-unreliable]].
 
   Sizing takes the **maximum** of two independent measurements — a throwaway
   TextKit 2 measurement made before any view exists, and the height the hosted
@@ -474,19 +464,6 @@ notes, § Design describes the app that exists.
   workspace or a Space. The pure tree operations live in CasperCore and are
   heavily tested (see § Design → "Layout composition", which also owns the
   action mapping).
-
-  > **Superseded:** this sub-project shipped with **tab groups** — a
-  > Ghostty-style bar of rounded pill tabs with a hover-revealed `×` and a
-  > trailing `+` menu, a tab group rendering only its active surface. Tabs were
-  > removed entirely for the tmux-style model above: `LayoutNode` is
-  > `split | leaf`, `TabBarView` is deleted, and `tabGroup` survives only as a
-  > legacy decoding key that migrates an old session into an even horizontal
-  > split. Two follow-ups the tab bar carried
-  > went with it — deriving tab shades from the live terminal background, and
-  > per-tab `⌘N` switching. `⌘N` came back at a different scope: ⌘1–⌘9 select
-  > **workspaces** (`AppModel.workspaceShortcutNumbers` numbers them down the
-  > sidebar, `WorkspaceShortcutKeyMonitor` maps them by physical key code so
-  > AZERTY works), and holding ⌘ for ≥250 ms reveals the hints in the rows.
 - **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
   normalization, back/forward/reload). It originally rendered `.browser` layout
   leaves created from the tab-bar "+" menu; the tmux-pane redesign removed that
@@ -515,13 +492,6 @@ notes, § Design describes the app that exists.
   was later **removed** — the diff view now lives **only** in the right
   inspector panel (`Workspace.inspector`). The rendering above is unchanged,
   just hosted by the inspector instead of a layout leaf.
-
-  > **Superseded:** the per-line rendering described above (a `LazyVStack` of
-  > per-file sections, one SwiftUI row per diff line, pinned `Section` headers)
-  > is replaced by a single TextKit 2 text document, which also adds text
-  > selection and copy. The diff computation, the FSEvents live refresh and the
-  > reading experience are unchanged. The as-built pipeline is § Design → "Diff
-  > viewer" above.
 
 ## Next action
 

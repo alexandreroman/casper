@@ -18,7 +18,7 @@ public enum TerminalLocale {
     /// A UTF-8 POSIX `LANG` value derived from `locale` (e.g. `fr_FR.UTF-8`),
     /// used only when it can be formed and the C library recognizes it;
     /// otherwise `en_US.UTF-8`, which is always available on macOS.
-    public static func resolvedLANG(
+    static func resolvedLANG(
         locale: Locale = .current,
         isInstalled: (String) -> Bool = TerminalLocale.isInstalled
     ) -> String {
@@ -41,7 +41,7 @@ public enum TerminalLocale {
 
     /// Reports whether the C library recognizes `name` as a locale, without
     /// mutating the process's global locale state.
-    public static func isInstalled(_ name: String) -> Bool {
+    static func isInstalled(_ name: String) -> Bool {
         guard let loc = newlocale(LC_CTYPE_MASK, name, nil) else { return false }
         freelocale(loc)
         return true

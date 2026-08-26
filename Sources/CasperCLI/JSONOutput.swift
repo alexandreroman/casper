@@ -1,3 +1,4 @@
+import ArgumentParser
 import Foundation
 
 /// Shared encoder for all CLI JSON output. `sortedKeys` gives deterministic,
@@ -194,7 +195,20 @@ struct URLOut: Encodable {
     let workspace: String
 }
 
+// MARK: - Error output
+
 /// `{"error":"<message>"}` — the sole error shape, written to stderr.
 struct ErrorOut: Encodable {
     let error: String
+}
+
+/// Write a `{"error":"<message>"}` JSON line to stderr and signal a failing exit.
+///
+/// Shared by every CLI subcommand so user-facing failures read the same way and
+/// raw Foundation errors (`Error Domain=… Code=…`) never leak through
+/// ArgumentParser's default handler. Encoding via `ErrorOut` keeps the message
+/// correctly JSON-escaped.
+func exitWithError(_ message: String) -> ExitCode {
+    FileHandle.standardError.write(Data((jsonLine(ErrorOut(error: message)) + "\n").utf8))
+    return .failure
 }

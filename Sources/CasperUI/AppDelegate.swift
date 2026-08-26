@@ -162,7 +162,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             } else if !granted {
                 // Not an error, but worth a diagnostic trail: with authorization denied,
                 // macOS drops every request, so `casper notify` silently does nothing.
+                #if DEBUG
                 CasperLog.app.debug("notification authorization denied by the user")
+                #endif
             }
         }
     }
@@ -312,8 +314,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         appMenu.delegate = proxy
         appMenuDelegateProxy = proxy
 
+        #if DEBUG
         let originalName = original.map { String(describing: type(of: $0)) } ?? "none"
         CasperLog.app.debug("installed App-menu delegate proxy over \(originalName, privacy: .public)")
+        #endif
     }
 
     /// Tell libghostty the app regained focus (cursor blink, focus animation),
@@ -377,8 +381,13 @@ private final class AppMenuDelegateProxy: NSObject, NSMenuDelegate {
     /// re-inject/strip ordering without re-instrumenting the app, and this bug class
     /// recurs. A "before" list still carrying Services shows the item survived until
     /// display time; the "after" list proves the strip won the race.
+    ///
+    /// Dev builds only: each dump bridges `menu.items` into a Swift array twice, and
+    /// this runs on every `menuNeedsUpdate` *and* `menuWillOpen` — exactly the cost
+    /// `stripServicesItems` is written to avoid. In release this is the bare strip.
     @MainActor
     private func stripAndLog(_ menu: NSMenu, hook: String) {
+        #if DEBUG
         let before = menu.items.map(\.title).joined(separator: " | ")
         stripServicesItems(fromAppMenu: menu)
         let after = menu.items.map(\.title).joined(separator: " | ")
@@ -386,6 +395,9 @@ private final class AppMenuDelegateProxy: NSObject, NSMenuDelegate {
             App menu \(hook, privacy: .public): \
             before=[\(before, privacy: .public)] after=[\(after, privacy: .public)]
             """)
+        #else
+        stripServicesItems(fromAppMenu: menu)
+        #endif
     }
 
     // Everything this proxy does not implement itself must behave exactly as if
@@ -447,7 +459,9 @@ private func stripServicesItems(fromAppMenu appMenu: NSMenu) {
         guard let item = appMenu.item(at: index), item.submenu != nil else { continue }
         appMenu.removeItem(at: index)
         removedAny = true
+        #if DEBUG
         CasperLog.app.debug("removed App-menu submenu item: \(item.title, privacy: .public)")
+        #endif
     }
     guard removedAny else { return }
     NSApp.servicesMenu = nil

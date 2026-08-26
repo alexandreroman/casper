@@ -19,11 +19,11 @@ extension Repository {
     ) throws -> WorktreeInfo {
         // Resolve the base commit.
         var baseObject: OpaquePointer?
+        defer { git_object_free(baseObject) }  // before the call: free on the throw path too
         try gitCheck(git_revparse_single(&baseObject, pointer, basedOn ?? "HEAD"))
-        defer { git_object_free(baseObject) }
         var commit: OpaquePointer?
-        try gitCheck(git_object_peel(&commit, baseObject, GIT_OBJECT_COMMIT))
         defer { git_object_free(commit) }
+        try gitCheck(git_object_peel(&commit, baseObject, GIT_OBJECT_COMMIT))
 
         // Initialize the options BEFORE creating the branch: everything between the
         // branch creation and the rollback `catch` below must be infallible, or a throw
@@ -35,8 +35,8 @@ extension Repository {
 
         // Create the branch at that commit.
         var branchRef: OpaquePointer?
-        try gitCheck(git_branch_create(&branchRef, pointer, name, commit, 0))
         defer { git_reference_free(branchRef) }
+        try gitCheck(git_branch_create(&branchRef, pointer, name, commit, 0))
 
         // Add the worktree checked out to the new branch.
         options.ref = branchRef
@@ -94,6 +94,13 @@ extension Repository {
     ///
     /// Does not set `GIT_WORKTREE_PRUNE_LOCKED`, so a locked worktree is not
     /// pruned. Casper never locks its worktrees.
+    ///
+    /// **Not the general-purpose deleter** — use `pruneWorktreeMetadata` after
+    /// removing the directory yourself. `GIT_WORKTREE_PRUNE_WORKING_TREE` drops the
+    /// admin entry *before* the working tree, so a recursive rmdir that fails on a
+    /// read-only entry (a Go/Cargo/npm cache at mode 0555) orphans the directory with
+    /// nothing left to retry against. It stays here for the `addWorktree` rollback,
+    /// where the worktree was created seconds ago and holds no such cache.
     func pruneWorktree(name: String) throws {
         try prune(
             name: name,

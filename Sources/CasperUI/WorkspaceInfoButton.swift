@@ -21,8 +21,8 @@ struct WorkspaceInfoButton: View {
     let model: AppModel
     let workspace: Workspace
 
-    static let hoverDelay: Duration = .milliseconds(150)
-    static let dismissGrace: Duration = .milliseconds(250)
+    private static let hoverDelay: Duration = .milliseconds(150)
+    private static let dismissGrace: Duration = .milliseconds(250)
     /// Width of the glyph's slot while visible. Measured, not guessed: an
     /// `NSHostingView` around just the label (icon + its `.frame(height: 36)` +
     /// `.padding(.horizontal, 2)`, at the toolbar's inherited font) reports a

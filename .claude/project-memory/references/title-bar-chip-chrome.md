@@ -35,7 +35,7 @@ sliding indicator.
 The segments are glyph-only (`Image(systemName:)`, no visible text); their one
 `help` string serves as both the tooltip and the `.accessibilityLabel`.
 
-Each segment reserves a fixed glyph slot (`InspectorTabSelector.glyphSlotWidth`)
+Each segment reserves a fixed glyph slot (`TitleCapsuleMetrics.glyphSlotWidth`)
 inside its 10pt horizontal insets, so both halves are the same width by
 construction. SF Symbols carry different intrinsic widths (`plusminus` measures
 12pt against `globe`'s 15pt), and content-sized segments therefore come out

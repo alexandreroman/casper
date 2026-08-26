@@ -26,11 +26,9 @@ public struct PersistentNSViewHost: NSViewRepresentable {
     public init(view: NSView) { self.view = view }
 
     public func makeNSView(context: Context) -> NSView {
-        // Registration happens in the container's init.
-        let container = SharedHostContainer(hostedView: view)
-        // Handle the rare case the container is already in a window at creation.
-        SharedViewOwnership.reconcile(view)
-        return container
+        // Registration happens in the container's init; the first reconcile follows
+        // from `updateNSView`, which SwiftUI calls immediately after this.
+        return SharedHostContainer(hostedView: view)
     }
 
     public func updateNSView(_ container: NSView, context: Context) {

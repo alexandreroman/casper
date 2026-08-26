@@ -15,8 +15,10 @@ threshold (default 2 s) and runs `/usr/bin/sample` against Casper's own pid, so
 the resulting stack dump shows what the main thread is blocked on. The whole
 file and its wiring sit behind `#if DEBUG`, so the shipped app carries none of
 it. The scaffolding is deliberately temporary: it comes out entirely once the
-hang is root-caused **and** the fix is confirmed live (which takes a live
-session — see [[diff-view-refresh-hang]]).
+hang is root-caused **and** the fix is confirmed live, which takes a visible
+real instance: an unbundled debug binary's window counts as not-visible, so a
+headless run exercises none of the UI work a freeze rides on (see
+[[agent-visual-verification-limits]]).
 
 **Why:** a freeze is not a crash — the process stays alive, so macOS writes **no
 crash report**, and the published dSYM (see [[binary-size-budget]]) covers real
@@ -25,15 +27,13 @@ stuck is a live `sample`/`spindump` while it is hung, or the retrospective
 unified log. Automating that is worth its weight while iterating locally; on a
 distributed build the same capture is a one-line manual command, which is why
 the shipped binary carries no permanent 500 ms timer. Sibling instrumentation to
-the diff SIGBUS guard (see [[sigbus-guard-diff]], which *does* ship in release);
-the earlier fixed UI freeze is [[diff-view-refresh-hang]]. If captured samples
-repeatedly point at the diff/libgit2 path (`computeDiff` / `diffWorkdirToHead`),
-start there.
+the diff SIGBUS guard (see [[sigbus-guard-diff]], which *does* ship in release).
+If captured samples repeatedly point at the diff/libgit2 path (`computeDiff` /
+`diffWorkdirToHead`), start there.
 
 The liveness probe rides the **main run loop** (`CFRunLoopPerformBlock`), not
 the main dispatch queue, or every modal alert reads as a hang — see
-[[main-queue-starved-by-modal-loops]] for the mechanism and the accepted
-trade-off.
+[[main-run-loop-hop]] for the mechanism and the accepted trade-off.
 
 **How to access after a freeze:**
 
@@ -63,3 +63,20 @@ trade-off.
 
 - **Tuning (dev builds, no rebuild):** `CASPER_HANG_THRESHOLD=<seconds>`
   overrides the 2 s threshold; `CASPER_HANG_WATCHDOG=0` disables it entirely.
+
+**How to read a capture:**
+
+- `ps -o %cpu,state -p <pid>` first. State `R` near 100% is a spin — a busy
+  loop, not a deadlock — and a 3 s `sample` catches it every time, because the
+  main thread is running rather than waiting. A blocked thread instead wants a
+  longer sample or a spindump.
+- Take **two** samples a few minutes apart. A marker whose frame count holds
+  steady or grows across both is the driver; one that shrinks was transient.
+  Fewer than ~10 frames of any marker is background noise.
+- A dump whose Thread 0 sits in `mach_msg_trap` is a waiting main thread, so
+  the cause is whatever it waits on, not the frames above it.
+- `CasperLog.app` writes one `.notice` per diff refresh (`diff refresh: files=…
+  lines=… computeMs=…`). A flood of those with unchanged `files=`/`lines=` is a
+  refresh-churn signature; read them back with the `log show` command above.
+  Release builds often persist nothing, so an empty result is no evidence
+  rather than evidence of absence.

@@ -8,6 +8,10 @@ func ghosttyMods(from flags: NSEvent.ModifierFlags) -> ghostty_input_mods_e {
     if flags.contains(.control) { raw |= GHOSTTY_MODS_CTRL.rawValue }
     if flags.contains(.option) { raw |= GHOSTTY_MODS_ALT.rawValue }
     if flags.contains(.command) { raw |= GHOSTTY_MODS_SUPER.rawValue }
+    // `flagsChanged` sends libghostty a press/release for Caps Lock, and a TUI
+    // negotiating the Kitty keyboard protocol reads this bit off every keystroke to
+    // tell Caps-Lock-on from off.
+    if flags.contains(.capsLock) { raw |= GHOSTTY_MODS_CAPS.rawValue }
     return ghostty_input_mods_e(raw)
 }
 

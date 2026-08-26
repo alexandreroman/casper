@@ -1,6 +1,6 @@
 ---
 name: "Debug channel and logging gating"
-description: "Debug control channel is #if DEBUG only; verbose logs gated, errors kept"
+description: "Debug control channel is #if DEBUG only; verbose logs are gated and error logs ship"
 type: feedback
 ---
 
@@ -29,9 +29,9 @@ what is release-safe.
 a shipped build is an attack surface, and it must never reach a distributed
 release. `#if DEBUG` guarantees absence by construction because `make release`
 builds `-c release`, where `DEBUG` is undefined — a dedicated `-D` flag would
-leave room for accidental release activation. Logging errors are kept because
-`os.Logger` is privacy-preserving and near-zero cost, and is the only way to
-diagnose a crash reported from the field.
+leave room for accidental release activation. Error logging ships in release
+because `os.Logger` is privacy-preserving and near-zero cost, and is the only
+way to diagnose a crash reported from the field.
 
 **How to apply:** wrap the whole control-channel code path and its `casper
 debug` subcommand registration in `#if DEBUG`. For logs, keep `.error`/`.fault`

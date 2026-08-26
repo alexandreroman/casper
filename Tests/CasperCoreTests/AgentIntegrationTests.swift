@@ -649,6 +649,28 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertFalse(AgentIntegration.parseCodexDisabled(toml))
     }
 
+    func testParseCodexDisabledAcceptsATrailingCommentOnTheHeader() {
+        let toml = #"""
+            [plugins."casper@casper"] # installed by the setup script
+            enabled = false
+            """#
+        XCTAssertTrue(AgentIntegration.parseCodexDisabled(toml))
+    }
+
+    func testParseCodexDisabledSeesPastAMultiLineArray() {
+        // `["Bash"],` opens no table — it is a continuation line of the array above
+        // it — so it must not end the section's scan before `enabled = false`.
+        let toml = #"""
+            [plugins."casper@casper"]
+            matchers = [
+              ["Bash"],
+              ["Read"],
+            ]
+            enabled = false
+            """#
+        XCTAssertTrue(AgentIntegration.parseCodexDisabled(toml))
+    }
+
     // MARK: - Codex hook trust
 
     /// `[hooks.state]` as Codex 0.149.0 actually writes it: one table per hook, keyed

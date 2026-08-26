@@ -40,11 +40,17 @@ final class ControlServer {
                 reply(.failure(Self.targetError(command.workspace))); return
             }
             guard let branch = command.branch else { reply(.failure("missing branch")); return }
-            switch model.controlCreateWorkspace(
-                inSpaceOf: id, branch: branch, base: command.base, command: command.command) {
-            case .success(let info): reply(.success(text: info.id, workspaces: [info])); return
-            case .failure(let error): reply(.failure(error.message)); return
+            // The checkout runs off the main actor, so — like `workspaceDelete` — this
+            // awaits the AppModel call and replies on completion rather than returning a
+            // response synchronously.
+            Task { @MainActor in
+                switch await model.controlCreateWorkspace(
+                    inSpaceOf: id, branch: branch, base: command.base, command: command.command) {
+                case .success(let info): reply(.success(text: info.id, workspaces: [info]))
+                case .failure(let error): reply(.failure(error.message))
+                }
             }
+            return
         default:
             break
         }

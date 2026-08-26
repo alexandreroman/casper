@@ -6,14 +6,10 @@ type: reference
 
 # Browser address bar select-all on click
 
-The browser address bar (`AddressField` / `SelectAllTextField` in
-`Sources/CasperUI/BrowserSurfaceView.swift`) selects its whole text on a plain
-click by overriding `NSTextField.mouseDown` and calling `selectAll` **after**
-`super.mouseDown` returns, gated on
-`currentEditor()?.selectedRange.length == 0`.
-
-**Why:** two non-obvious facts make the intuitive approaches fail, both
-confirmed by instrumenting the running app:
+`SelectAllTextField.mouseDown` in `Sources/CasperUI/BrowserSurfaceView.swift`
+holds the rule and its rationale. What the code cannot show is why the
+intuitive approaches fail — both facts below come from instrumenting the
+running app:
 
 - The field is **already first-responder** when the user clicks it — SwiftUI
   gives the `NSTextField` focus as soon as the inspector's Browser tab appears
@@ -22,18 +18,17 @@ confirmed by instrumenting the running app:
   `controlTextDidBeginEditing`) never triggers on the user's click.
 - Selecting *during* the mouse-down (in `controlTextDidBeginEditing`, even
   deferred with `DispatchQueue.main.async`) is racy: it can run before the
-  click's own caret placement and gets collapsed. Only selecting **after
-  `super.mouseDown` returns** (i.e. after the click's caret placement) is
-  deterministic and sticks.
+  click's own caret placement and gets collapsed.
 
-SwiftUI's `TextField` exposes no selection hook at all, which is why the address
-bar is a hand-owned `NSViewRepresentable` over `NSTextField` — consistent with
-[[ghostty-is-the-reference]] (own the AppKit control for native behavior).
-
-**How to access:** the `selectedRange.length == 0` gate means a plain click
-selects the whole URL while a click-drag or double-click that produced a real
-selection is preserved. To verify select-all visually the `debug-casper` channel
-is not enough (it can't target the address `NSTextField`); drive a **crisp**
+**How to access:** to verify select-all visually the `debug-casper` channel is
+not enough (it can't target the address `NSTextField`); drive a **crisp**
 synthetic click (mouse-down and mouse-up back-to-back — a gap lets the mouse-up
 arrive after `super.mouseDown` returns and collapse the selection, a test-only
 artifact) per [[gui-synthetic-input]], then screenshot and check the highlight.
+
+To check the *submit* ordering by hand — `doCommandBy` ends editing before
+issuing the load, and the skipped `syncNav` write is never retried — type a
+host with no scheme (`localhost:3000`) into the address bar and press Return.
+The bar must settle on the normalized absolute URL, not the typed string. See
+[[webkit-page-driven-navigation]] for why `webView.url` moves synchronously
+inside `load(_:)`.

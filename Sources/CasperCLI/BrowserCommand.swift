@@ -143,7 +143,7 @@ struct BrowserCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            if let selector, selector.isEmpty { throw exitWithError("empty selector") }
+            let selector = try requireNonEmptyIfPresent(self.selector, "selector")
             return ControlCommand(verb: .browserContent, workspace: try requireSelector(target), selector: selector)
         }
 
@@ -225,7 +225,7 @@ struct BrowserCommand: ParsableCommand {
 
         func makeCommand() throws -> ControlCommand {
             let key = try requireNonEmpty(self.key, "key")
-            if let selector, selector.isEmpty { throw exitWithError("empty selector") }
+            let selector = try requireNonEmptyIfPresent(self.selector, "selector")
             return ControlCommand(
                 verb: .browserKey, workspace: try requireSelector(target), selector: selector, key: key)
         }

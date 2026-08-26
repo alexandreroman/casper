@@ -373,6 +373,23 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertNil(model.diffScrollTarget)
     }
 
+    /// A directory resolves and exists, and the worktree root's relative path is the
+    /// empty string — which matches no `GitDiffFile.id`. Accepting one would report
+    /// success and then scroll nowhere, so it has to fail like a missing file.
+    func testOpenDiffWithDirectoryFails() throws {
+        let (model, id, repoPath) = try seededGitModel()
+        try FileManager.default.createDirectory(
+            atPath: repoPath + "/Sources", withIntermediateDirectories: true)
+
+        for directory in [".", "Sources"] {
+            guard case .failure(let error) = model.controlOpenDiff(in: id, file: directory) else {
+                return XCTFail("expected '\(directory)' to be refused")
+            }
+            XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
+        }
+        XCTAssertNil(model.diffScrollTarget)
+    }
+
     func testOpenDiffWithEscapingFileFails() throws {
         let (model, id, _) = try seededGitModel()
         guard case .failure(let error) = model.controlOpenDiff(in: id, file: "../escape.txt") else {
@@ -382,9 +399,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertNil(model.diffScrollTarget)
     }
 
-    func testCreateWorkspaceMakesWorktreeAndReturnsInfo() throws {
+    func testCreateWorkspaceMakesWorktreeAndReturnsInfo() async throws {
         let (model, primaryID, _) = try seededGitModel()
-        switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-x", base: nil) {
+        switch await model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-x", base: nil) {
         case .success(let info):
             XCTAssertEqual(info.branch, "feature-x")
             XCTAssertTrue(model.allWorkspaces.contains { $0.id.casperID == info.id })
@@ -393,9 +410,9 @@ final class ControlHandlerTests: XCTestCase {
         }
     }
 
-    func testCreateWorkspaceHonorsCommand() throws {
+    func testCreateWorkspaceHonorsCommand() async throws {
         let (model, primaryID, _) = try seededGitModel()
-        switch model.controlCreateWorkspace(
+        switch await model.controlCreateWorkspace(
             inSpaceOf: primaryID, branch: "feature-cmd", base: nil, command: "npm test") {
         case .success(let info):
             let ws = try XCTUnwrap(model.workspace(id: try XCTUnwrap(UUID(uuidString: info.id))))
@@ -414,14 +431,14 @@ final class ControlHandlerTests: XCTestCase {
     /// that very workspace. Without off-screen materialization the split's PTY is never
     /// spawned and the hook silently never runs. Headless tests have no runtime, so we
     /// observe the `onMaterializePendingForTest` seam rather than a real PTY.
-    func testCreateWorkspaceMaterializesTheSetupHookSplitOffScreen() throws {
+    func testCreateWorkspaceMaterializesTheSetupHookSplitOffScreen() async throws {
         let (model, primaryID, _) = try seededGitModel(
             configJSON: #"{"workspace":{"scripts":{"setup":"echo setting up"}}}"#)
 
         var materializedFor: [UUID] = []
         model.onMaterializePendingForTest = { materializedFor.append($0) }
 
-        guard case .success(let info) = model.controlCreateWorkspace(
+        guard case .success(let info) = await model.controlCreateWorkspace(
             inSpaceOf: primaryID, branch: "feature-setup", base: nil)
         else { return XCTFail("expected the workspace to be created") }
         let createdID = try XCTUnwrap(UUID(uuidString: info.id))
@@ -437,7 +454,7 @@ final class ControlHandlerTests: XCTestCase {
     func testDeleteWorkspaceRemovesWorktreeFolderAndBranch() async throws {
         let (model, primaryID, repoPath) = try seededGitModel()
         let info: ControlWorkspaceInfo
-        switch model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-del", base: nil) {
+        switch await model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-del", base: nil) {
         case .success(let created): info = created
         case .failure(let error): return XCTFail("setup failed: \(error.message)")
         }
@@ -469,6 +486,58 @@ final class ControlHandlerTests: XCTestCase {
         let (model, id) = seededModel()
         XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
         XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
+    }
+
+    /// `agentState`, `pendingNotification*` and `explicitAuthority` are all transient —
+    /// `Workspace.encode(to:)` omits the first two and the third never reaches the store.
+    /// An agent hook fires `casper status set` every turn, so none of them may cost a
+    /// session encode plus a disk write.
+    func testSetAgentStateNeverSaves() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        model.deliverNotification = { _, _, _, _ in }  // mock to avoid UNUserNotificationCenter crash
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        for state in [AgentState.working, .blocked, .done, .idle, .error] {
+            XCTAssertTrue(model.controlSetAgentState(state, for: id))
+        }
+
+        XCTAssertEqual(saves, 0)
+    }
+
+    /// The bubble clear writes only the transient `pendingNotification*` pair, and
+    /// `AppDelegate` calls it on every window-key notification — every Cmd-Tab back into
+    /// Casper would otherwise rewrite the whole session.
+    func testClearNotificationForFocusedWorkspaceNeverSaves() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        _ = model.controlRaiseNotification(message: nil, for: id)
+        model.isWindowKey = { true }
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        model.clearNotificationForFocusedWorkspace()
+
+        XCTAssertEqual(model.workspace(id: id)?.pendingNotification, false)
+        XCTAssertEqual(saves, 0)
+    }
+
+    /// Raising a notification saves only for the one persisted thing it can change: a
+    /// collapsed Space expanding to reveal the workspace.
+    func testRaiseNotificationSavesOnlyWhenItExpandsASpace() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertEqual(saves, 0, "the bubble alone is transient")
+
+        model.mutateSpaces { $0[0].isCollapsed = true }
+        XCTAssertTrue(model.controlRaiseNotification(message: nil, for: id))
+        XCTAssertFalse(model.spaces[0].isCollapsed)
+        XCTAssertEqual(saves, 1)
     }
 
     func testSetAgentStateDoneRaisesNotificationBubble() {

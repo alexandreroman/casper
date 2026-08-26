@@ -576,7 +576,7 @@ private struct Builder {
     }
 
     /// Applies `style` to the whole of `text`, for a block that is **one**
-    /// paragraph by construction — a heading, a block quote, a table cell. There
+    /// paragraph by construction — a block quote, a table cell. There
     /// is no following paragraph to keep the leading gap off, which is the only
     /// thing `applyLeadingSpacing` exists to arrange, so the split it performs
     /// would be dead work here.

@@ -5,12 +5,6 @@ let package = Package(
     name: "Casper",
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "CasperCore", targets: ["CasperCore"]),
-        .library(name: "CasperGit", targets: ["CasperGit"]),
-        .library(name: "CasperAgents", targets: ["CasperAgents"]),
-        .library(name: "CasperCLI", targets: ["CasperCLI"]),
-        .library(name: "CasperGhostty", targets: ["CasperGhostty"]),
-        .library(name: "CasperUI", targets: ["CasperUI"]),
         .executable(name: "casper", targets: ["casper"]),
     ],
     dependencies: [
@@ -66,7 +60,6 @@ let package = Package(
             name: "CasperCLI",
             dependencies: [
                 "CasperCore",
-                "CasperAgents",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),

@@ -24,9 +24,13 @@ first and every installed copy is stranded — it will reject every future updat
 and can only be replaced by a manual download.
 
 **How to access:** the public half is in `Packaging/Info.plist`; the private
-half is a GitHub Actions secret, consumed by `Scripts/sparkle-tool.sh` and
-`Scripts/update-appcast.sh` from `.github/workflows/release.yml`, whose signing
-step points here when it fails. Regenerate only if the secret leaks or is lost:
+half is the `SPARKLE_PRIVATE_KEY` GitHub Actions secret. Only
+`.github/workflows/release.yml` ever touches it — its signing step writes the
+secret to a temp key file, hands that file to Sparkle's `sign_update`, and
+points here when it fails. Neither script sees the key:
+`Scripts/sparkle-tool.sh` merely resolves the path to a Sparkle tool, and
+`Scripts/update-appcast.sh` takes the resulting *signature* as an argument.
+Regenerate only if the secret leaks or is lost:
 
 ```bash
 "$(Scripts/sparkle-tool.sh generate_keys)"              # writes to the login keychain
@@ -40,4 +44,4 @@ release described above before the old key stops being used.
 Gatekeeper is not a concern on the update path: Sparkle clears the quarantine
 attribute from the extracted bundle before swapping it in. The quarantine caveat
 in `Packaging/release-notes.md` applies only to the first, manually downloaded
-copy. See [[app-bundle-codesign-seal]] for the signing seal the bundle needs.
+copy. `Scripts/bundle-app.sh` owns the signing seal the bundle needs.

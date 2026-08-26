@@ -33,11 +33,12 @@ corruption.
 - Always run tests via `make test`, not a bare `swift test`, when inside a
   Casper terminal — `make test` is hermetic against this leak regardless of
   which instance (or session) opened the terminal.
-- `SocketPathResolutionTests.swift`, `ControlSocketTests.swift`, and
-  `DebugSocketTests.swift` also each guard their env-independent-derivation
-  assertions with `guard ProcessInfo.processInfo.environment["CASPER_..."] ==
-  nil else { return }`. These guards are defense in depth for a bare
-  `swift test` run, and stay even though `make test` covers the common case.
+- Two test files guard their env-independent-derivation assertions themselves:
+  `SocketPathResolutionTests.swift` and `DebugSocketTests.swift`. Both use
+  `try XCTSkipUnless(…)` against the ambient `CASPER_*` variable. Skipping
+  rather than silently returning is the point — a `guard … else { return }`
+  reports a vacuous pass. These guards are defense in depth for a bare
+  `swift test` run; `make test` covers the common case.
 - If Casper starts injecting a new per-surface env var in the future, add it to
   both the `make test` strip list and, ideally, avoid a bespoke per-test guard
   as the *only* line of defense — the Makefile-level fix is the precedent to

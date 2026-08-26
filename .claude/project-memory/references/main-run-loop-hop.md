@@ -23,8 +23,7 @@ from any thread — an FSEvents queue as readily as the main actor. It wraps
 **`DispatchQueue.main.async` is not a substitute.** A nested modal run loop —
 `NSAlert`/`NSOpenPanel` `runModal`, a Sparkle update check, menu or drag
 tracking — starves the main dispatch queue for its whole duration, while it
-does drain run-loop blocks. See [[main-queue-starved-by-modal-loops]] for the
-mechanism and why adding modes to a dispatch hop changes nothing.
+does drain run-loop blocks.
 
 **Use it for** any main-thread hop that must run while a panel or alert is up:
 a workspace close awaiting a lifecycle hook, a watcher-driven refresh, a
@@ -36,6 +35,27 @@ the current tick.
 **Do not use it** where the hazard is re-entering a library mid-tick and the
 main queue's inability to run inside the current tick is the point; see
 [[osc52-clipboard-write-confirmation]] for the rule that picks between the two.
+
+## Mechanism
+
+The nested loop is entered from inside a main-queue block, and libdispatch
+refuses to re-enter `_dispatch_main_queue_drain`, so everything queued behind
+it waits until the modal ends. Mode membership is not the lever: adding
+`NSModalPanelRunLoopMode` to a *dispatch* hop changes nothing, because the
+limit is dispatch's re-entrancy guard. Only a run-loop block gets in.
+
+CasperCore carries its own copy of the three CoreFoundation calls
+(`MainThreadHangWatchdog`) because it does not link CasperUI. It spells
+`NSModalPanelRunLoopMode` and `NSEventTrackingRunLoopMode` as string literals:
+`RunLoop.Mode.modalPanel` / `.eventTracking` are declared by **AppKit**, which
+CasperCore does not link either.
+
+Corollary for any main-thread liveness probe: a main-queue round trip measures
+"the main queue is draining", **not** "the main thread is alive". The two
+differ for the whole duration of every modal and every menu track — which is
+why `MainThreadHangWatchdog` acknowledges through a run-loop block. A
+main-queue probe reports a UI freeze whenever "Check for Updates…" (Sparkle's
+`runModal`) is up on a perfectly healthy app.
 
 ## Caveat: delayed hops
 

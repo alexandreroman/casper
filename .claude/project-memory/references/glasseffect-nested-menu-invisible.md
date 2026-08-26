@@ -6,26 +6,28 @@ type: feedback
 
 # glassEffect renders invisible with a nested Menu
 
-When building a custom capsule/pill background around a view hierarchy that
-contains a native `Menu` (e.g. `.menuStyle(.borderlessButton)` used for a
-toolbar split-button's chevron), `.glassEffect(in: .capsule)` renders the
-capsule as nearly invisible — no visible fill contrast — even though the same
-modifier renders a clearly visible pill when applied to a plain view (e.g. an
-`HStack` of `Text` views, as `WorkspaceDetailView.diffBadge` does).
+This note is why `.glassEffect` appears nowhere in `Sources/`.
 
-**Why:** a native menu control mid-hierarchy appears to interfere with how
-`.glassEffect` composites/renders its material around it, likely because the
-glass effect assumes a single flattened SwiftUI rendering pass and the native
-AppKit-bridged `Menu` breaks that assumption. The same construction that renders
-a solid, visible pill for `WorkspaceDetailView.diffBadge` renders invisible once
-a `Menu` is added inside the same `HStack` (as in `editorButton`).
+When a custom capsule/pill background wraps a view hierarchy containing a
+native `Menu` (e.g. `.menuStyle(.borderlessButton)` for a toolbar split
+button's chevron), `.glassEffect(in: .capsule)` composites as nearly invisible
+— no fill contrast at all — even though the same modifier renders a clearly
+visible pill over a plain `HStack` of `Text`.
 
-**How to apply:** for any custom SwiftUI toolbar control whose view hierarchy
+**Why:** a native menu control mid-hierarchy interferes with how `.glassEffect`
+composites its material, most likely because the effect assumes a single
+flattened SwiftUI rendering pass and the AppKit-bridged `Menu` breaks that
+assumption. Measured on `WorkspaceDetailView`'s split-button chip: the exact
+construction that renders a solid pill without a `Menu` renders invisible with
+one inside the same `HStack`.
+
+**How to apply:** for any custom SwiftUI toolbar control whose hierarchy
 contains a native `Menu`/`Picker`/other AppKit-bridged control, skip
-`.glassEffect(in:)` for the background and use an explicit, unconditional
-`.background(Color.secondary.opacity(0.15), in: Capsule())` plus
-`.overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))` to
-approximate the native Liquid Glass pill's fill + edge highlight. This is an
-approximation, not a pixel-perfect match to the system's automatic toolbar
-background (used by plain, unflattened `ToolbarItem`s like the branch-title
-capsule) — expect one extra round of human-eyeballed opacity/width tuning.
+`.glassEffect(in:)` and paint the background explicitly. `TitleCapsuleChrome`
+in `Sources/CasperUI/WorkspaceDetailView.swift` — reached through
+`.titleCapsule(interactive:)`, which `diffBadge` and every other chip uses — is
+the shipped form of that: an unconditional fill plus a `strokeBorder` overlay
+approximating the Liquid Glass pill's fill and edge highlight. It is an
+approximation, not a pixel match to the system's automatic toolbar background
+(used by plain, unflattened `ToolbarItem`s), so a change there costs one round
+of human-eyeballed opacity/width tuning.

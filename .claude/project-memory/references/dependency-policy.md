@@ -38,7 +38,13 @@ targets, Neon pre-1.0, AppKit/TextKit-oriented) because it is a single
 dependency, Swift 6 strict-concurrency clean, SwiftUI-native, and produces an
 `AttributedString` directly. It wraps highlight.js via **JavaScriptCore** (a
 system framework), so only the JS text asset is bundled — no extra binary.
-Pinned at 1.1.0.
+Declared as `from: "1.1.0"` — an up-to-next-major range, like every dependency
+here except GhosttyKit, which is the one `exact:` pin (see [[ghosttykit-pin]]).
+
+`Package.resolved` lists more entries than this policy sanctions, because it
+records the whole manifest graph rather than what is linked: `MSDisplayLink`
+arrives that way through the libghostty-spm package and reaches no Casper
+target. Count linked products, not resolved pins, when checking the policy.
 
 **Sparkle exception (sanctioned):** macOS offers no in-app update mechanism
 outside the App Store, and Casper is distributed as a direct download. Sparkle

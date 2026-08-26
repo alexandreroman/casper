@@ -55,7 +55,7 @@ final class WorktreeManagerTests: XCTestCase {
             to: repoDir.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
         let wtPath = root.appendingPathComponent("feature").path
 
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         XCTAssertEqual(
@@ -122,7 +122,7 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testListReflectsCreatedWorktrees() throws {
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature",
             worktreePath: wtPath, base: nil)
 
@@ -132,7 +132,7 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testRegisteredNameResolvesTheAdminEntryByPath() throws {
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         XCTAssertEqual(
@@ -145,7 +145,7 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testRemoveDeletesWorktree() throws {
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature",
             worktreePath: wtPath, base: nil)
 
@@ -160,7 +160,7 @@ final class WorktreeManagerTests: XCTestCase {
     /// recursive rmdir. The robust removal must still delete the directory.
     func testRemoveDeletesWorktreeWithReadOnlyEntries() throws {
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         // A read-only directory containing a read-only file: unlinking the file
@@ -190,7 +190,7 @@ final class WorktreeManagerTests: XCTestCase {
     /// directory itself and tolerate the missing metadata without error.
     func testRemoveDeletesOrphanedWorktreeDirectory() throws {
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         // Simulate the prior half-prune: drop only the admin entry, leaving the
@@ -226,7 +226,7 @@ final class WorktreeManagerTests: XCTestCase {
         let fileModeBefore = try mode(of: externalFile.path)
 
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
         try FileManager.default.createSymbolicLink(
             at: URL(fileURLWithPath: wtPath).appendingPathComponent("escape-link"),
@@ -293,7 +293,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testMergeMergesFeatureIntoBaseBranch() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
         try commitFile(
             atPath: wtPath, filename: "feature.txt", content: "new\n", message: "add feature")
@@ -309,7 +309,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testMergeAlreadyUpToDateReturnsNoCommit() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         let outcome = try WorktreeManager.merge(
@@ -321,7 +321,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testMergeConflictThrowsMergeConflictReason() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
         try commitFile(
             atPath: wtPath, filename: "README.md", content: "from feature\n", message: "feature readme")
@@ -339,7 +339,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testResyncWorkingTreeSyncsToNewHead() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
         try commitFile(
             atPath: wtPath, filename: "feature.txt", content: "new\n", message: "add feature")
@@ -368,7 +368,7 @@ final class WorktreeManagerTests: XCTestCase {
         try writeRepoConfig(#"{"workspace":{"copyFiles":[".env"]}}"#)
         let wtPath = root.appendingPathComponent("feature").path
 
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         let wt = URL(fileURLWithPath: wtPath)
@@ -383,7 +383,7 @@ final class WorktreeManagerTests: XCTestCase {
         try writeRepoConfig(#"{"workspace":{"copyFiles":[]}}"#)
         let wtPath = root.appendingPathComponent("feature").path
 
-        _ = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
 
         XCTAssertFalse(

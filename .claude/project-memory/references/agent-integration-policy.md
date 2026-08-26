@@ -28,6 +28,12 @@ does not own and cannot safely migrate; detection is honest and reversible. The
 global probe answers "the user has Codex but not the integration", which is a
 property of the machine, not of any one workspace.
 
+The probe resolves the three agent CLIs through `LoginShellPath`, whose shell
+`PATH` lookup is deliberately **interactive as well as login**. That is the
+price of a correct answer, not an inefficiency to trim — see
+[[shell-path-resolution]] for why a login-only shell cannot see the `PATH` the
+user has in a terminal.
+
 **How to apply:** when adding an agent, extend the probe and the reminder only.
 Do not add install or repair actions that mutate an agent's config. See
 [[codex-detection-caveats]] and [[plugin-version-coupling]].

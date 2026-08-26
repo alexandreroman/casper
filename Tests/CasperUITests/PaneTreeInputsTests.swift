@@ -110,7 +110,6 @@ final class PaneTreeInputsTests: XCTestCase {
         guard case .split(let orientation, let children, let ratios) = workspace.layout else { return nil }
         return SplitContainerView(
             model: model, workspaceID: workspace.id,
-            canDragPanes: WorkspaceDetailView.hasMultiplePanes(in: workspace.layout),
             path: [], orientation: orientation, children: children, ratios: ratios)
     }
 

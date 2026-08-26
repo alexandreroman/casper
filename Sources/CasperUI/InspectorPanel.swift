@@ -28,12 +28,15 @@ struct InspectorPanel: View {
         // fills whatever width it is given.
         VStack(spacing: 0) {
             // Spans the full panel width, so the line continues the workspace
-            // title bar's line uninterrupted.
+            // title bar's line uninterrupted. Twice the hairline, pulled up and
+            // leading by one: the extra thickness is a deliberate bleed past the
+            // panel's own top-leading corner, so the line meets the title bar's
+            // rather than stopping a hairline short of it.
             Rectangle()
                 .fill(SeparatorMetrics.fill)
-                .frame(height: 2)
-                .padding(.top, -1)
-                .padding(.leading, -1)
+                .frame(height: 2 * SeparatorMetrics.visibleWidth)
+                .padding(.top, -SeparatorMetrics.visibleWidth)
+                .padding(.leading, -SeparatorMetrics.visibleWidth)
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

@@ -107,7 +107,7 @@ final class DiffDocumentTests: XCTestCase {
         ]))
 
         XCTAssertEqual(document.files[0].title, "old/a.swift \u{2192} new/b.swift")
-        XCTAssertEqual(document.files[0].status, "renamed")
+        XCTAssertEqual(document.files[0].status, .renamed)
         XCTAssertEqual(document.files[0].id, "new/b.swift")
     }
 
@@ -161,13 +161,16 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(document.files[0].lineCount, 1)
     }
 
-    /// A mode-only change (`chmod +x`) or a typechange is a non-binary file with
-    /// no hunks. It still gets a paragraph of its own: a zero-length `FileSpan`
-    /// would start where the next file starts, and the geometry could not tell
-    /// the two apart, so the file would silently disappear from the view.
+    /// A non-binary file with no hunks — a mode-only change (`chmod +x`), or the
+    /// conflicted entry libgit2 reports for a file whose merge is unresolved. It
+    /// still gets a paragraph of its own: a zero-length `FileSpan` would start where
+    /// the next file starts, and the geometry could not tell the two apart, so the
+    /// file would silently disappear from the view. Its status has to survive the
+    /// crossing too — the header is where a conflict is announced, and a file with
+    /// nothing to show is exactly where the word is all the reader gets.
     func testFileWithNoHunksRendersASingleNote() throws {
         let document = DiffDocument(diff: GitDiff(files: [
-            file(status: .typechange, []),
+            file(status: .conflicted, []),
         ]))
 
         XCTAssertEqual(document.lines.map(\.kind), [.note])
@@ -176,6 +179,7 @@ final class DiffDocumentTests: XCTestCase {
         let span = try XCTUnwrap(document.files.first)
         XCTAssertEqual(span.lineCount, 1)
         XCTAssertGreaterThan(span.range.length, 0)
+        XCTAssertEqual(span.status, .conflicted)
     }
 
     // MARK: - Truncation

@@ -17,14 +17,15 @@ also absent under CLT).
 with `rm -rf .build`. Without a global switch, use
 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test`.
 
-**Gotcha:** recent SDKs no longer re-export Foundation through `import XCTest` —
+**Gotcha:** `import XCTest` does not re-export Foundation on current SDKs —
 every XCTest file using `URL`/`Data`/`FileManager`/`UUID`/`JSONEncoder` must
 `import Foundation` explicitly.
 
 **Debug-only suite:** the tests compile in the **debug configuration only**.
 `swift test -c release` fails at compile time, because the suite reaches
-`#if DEBUG` seams in the production modules — `LoginShellPath.resetForTesting`
-and `.runner`, `MainThreadHangWatchdog`, the browser suites' debug hooks, and
+`#if DEBUG` seams in the production modules — `LoginShellPath`'s `.shellProbe`
+and `.processSearchPath`, `MainThreadHangWatchdog`, the browser suites' debug
+hooks, and
 `AppModel`'s `debug*` accessors — none of which exist in a release build.
 `make test` and plain `swift test` are the supported way to run them. A
 `#if DEBUG` wrapper around a test that reaches such a symbol is therefore

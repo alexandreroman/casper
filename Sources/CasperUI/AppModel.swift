@@ -49,7 +49,6 @@ final class AppModel {
     /// every geometry change, and a SwiftUI view observing it would invalidate itself
     /// mid-layout. Its consumer is AppKit, which needs no observation.
     @ObservationIgnored private(set) var terminalHostMetrics: TerminalHostMetrics?
-    @ObservationIgnored private(set) var terminalHostSize: CGSize?
 
     /// Set when `openInEditor` fails to launch; drives a `.alert` in
     /// `WorkspaceDetailView`. Not part of any persisted model.
@@ -79,6 +78,7 @@ final class AppModel {
     private(set) var diffScrollTarget: DiffScrollTarget?
     @ObservationIgnored private var diffScrollNonce = 0
 
+    // Reached from AppModel+Control.swift.
     /// Ask `DiffSurfaceView` to scroll `workspaceID`'s diff to `file`.
     ///
     /// The nonce bump and the target write belong together: the nonce is what
@@ -367,6 +367,11 @@ final class AppModel {
     /// tree is restructured.
     @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
 
+    /// The live Ghostty view for a surface id, or nil for a browser/absent surface.
+    private func ghosttyView(_ surfaceID: UUID) -> GhosttySurfaceView? {
+        surfaceViews[surfaceID] as? GhosttySurfaceView
+    }
+
     #if DEBUG
     /// Cache size for the debug memory census (`debugMemoryCounters`). An accessor
     /// rather than widened visibility, so the cache itself stays private — see the
@@ -535,9 +540,21 @@ final class AppModel {
             // `init` runs before the view exists, so mutate directly (no animation).
             spaces[si].isCollapsed = false
         }
-        // Reserve restored port blocks so a later allocate() never collides.
+        // Reserve restored port blocks so a later allocate() never collides. A base
+        // the allocator refuses — out of its range, misaligned, or already held by
+        // another workspace — is NOT reserved, so `allocate()` stays free to hand the
+        // same block to a new workspace. That surfaces as two workspaces sharing a
+        // port rather than as a failure, so it is logged; startup carries on, since a
+        // single unreserved base is no reason to refuse the whole session.
         for space in session.spaces {
-            for ws in space.workspaces { self.portAllocator.reserve(ws.portBase) }
+            for ws in space.workspaces {
+                guard !self.portAllocator.reserve(ws.portBase) else { continue }
+                CasperLog.app.error(
+                    """
+                    workspace \(ws.name, privacy: .public) (\(ws.id.uuidString, privacy: .public)): \
+                    port base \(ws.portBase, privacy: .public) rejected by the allocator
+                    """)
+            }
         }
         // Everything that has to touch the disk — the per-Space Git probes, the editor
         // sweep, the watchers — waits for `completeLaunchSetup()`; `init` decodes and
@@ -659,6 +676,13 @@ final class AppModel {
             return space
         }
         return spaces.first(where: { $0.isGitRepo })
+    }
+
+    // Reached from AppModel+Spaces.swift.
+    /// The editor the currently-selected workspace remembers, carried over to a
+    /// workspace being created or adopted. Must be read BEFORE the selection moves.
+    var inheritedEditor: EditorKind? {
+        selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
     }
 
     // Internal because `locate` / `workspace(at:)` are reached from
@@ -819,7 +843,7 @@ final class AppModel {
 
         /// The libgit2 checkout this plan describes — the blocking part of creation.
         func checkout() throws {
-            _ = try WorktreeManager.create(
+            try WorktreeManager.create(
                 repoPath: repoPath, name: branch, worktreePath: worktreePath,
                 base: base.isEmpty ? nil : base)
         }
@@ -831,10 +855,6 @@ final class AppModel {
     private func planLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?
     ) -> Result<LinkedWorkspacePlan, WorkspaceCreationError> {
-        // Carry over the editor selected in the currently-active workspace (nil is
-        // fine — it keeps the same resolved default). Captured before any selection
-        // change so it reflects the workspace active when creation was requested.
-        let inheritedEditor = selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
             return .failure(WorkspaceCreationError(message: "space not found"))
         }
@@ -845,10 +865,7 @@ final class AppModel {
             return .failure(WorkspaceCreationError(message: "invalid branch name: \(name)"))
         }
         let folder = spaces[si].folderPath
-        // Resolve the primary by kind, not position, so a future reordering of a Space's
-        // workspaces can't silently fork the new branch off a linked one.
-        let base = baseOverride
-            ?? (spaces[si].workspaces.first(where: { $0.kind == .primary })?.branch ?? "")
+        let base = baseOverride ?? (spaces[si].primaryWorkspace?.branch ?? "")
         let folderURL = URL(fileURLWithPath: folder)
         let basePath = folderURL.deletingLastPathComponent()
             .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
@@ -858,6 +875,9 @@ final class AppModel {
             CasperLog.app.failure("cannot add workspace: no free port block", error)
             return .failure(WorkspaceCreationError(message: "no free port block"))
         }
+        // The editor carries over from the currently-active workspace (nil is fine — it
+        // keeps the same resolved default), read here rather than after the checkout so
+        // it reflects the workspace active when creation was requested.
         return .success(LinkedWorkspacePlan(
             spaceID: spaceID, repoPath: folder, branch: branch, base: base,
             worktreePath: availableWorktreePath(basePath), portBase: portBase,
@@ -1176,8 +1196,7 @@ final class AppModel {
                   let info = gitReprobe(spaces[si].folderPath) else { continue }
             spaces[si].isGitRepo = true
             invalidateWatcherPaths(spaceIndex: si)
-            // Resolve the primary by kind, not position; skip the branch write if none.
-            if let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) {
+            if let pi = spaces[si].primaryWorkspaceIndex {
                 spaces[si].workspaces[pi].branch = info.branch
             }
         }
@@ -1189,10 +1208,10 @@ final class AppModel {
     /// `gitReprobe`. (Formerly driven by the heartbeat poll.)
     @discardableResult
     func promoteSpaceIfGitInitialized(spaceIndex si: Int) -> Bool {
-        // Resolve the primary by kind, not position; a missing primary fails safe (no promotion).
+        // A missing primary fails safe: no promotion.
         guard spaces.indices.contains(si), !spaces[si].isGitRepo,
               let info = gitReprobe(spaces[si].folderPath),
-              let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) else { return false }
+              let pi = spaces[si].primaryWorkspaceIndex else { return false }
         spaces[si].isGitRepo = true
         spaces[si].workspaces[pi].branch = info.branch
         invalidateWatcherPaths(spaceIndex: si)
@@ -1206,10 +1225,10 @@ final class AppModel {
     /// filesystem-change event — never from a launch/selection-time probe, where a
     /// transient read failure must not be mistaken for `.git` removal.
     private func demoteSpaceIfGitRemoved(spaceIndex si: Int) -> Bool {
-        // Resolve the primary by kind, not position; a missing primary fails safe (no demotion).
+        // A missing primary fails safe: no demotion.
         guard spaces.indices.contains(si), spaces[si].isGitRepo,
               gitReprobe(spaces[si].folderPath) == nil,
-              let pi = spaces[si].workspaces.firstIndex(where: { $0.kind == .primary }) else { return false }
+              let pi = spaces[si].primaryWorkspaceIndex else { return false }
         spaces[si].isGitRepo = false
         spaces[si].workspaces[pi].branch = ""   // degenerate primaries carry an empty branch
         invalidateWatcherPaths(spaceIndex: si)
@@ -1259,7 +1278,7 @@ final class AppModel {
     /// early return, or it would keep libghostty's default (solid-caret) state.
     private func focusSurfaceViewIfActive(_ id: UUID) {
         guard id == focusedSurfaceID else {
-            (surfaceViews[id] as? GhosttySurfaceView)?.blurForLayoutChange()
+            ghosttyView(id)?.blurForLayoutChange()
             return
         }
         focusActiveSurfaceView()
@@ -1325,7 +1344,7 @@ final class AppModel {
             // view from the window (reparenting an ancestor container) before AppKit
             // fires `resignFirstResponder`, so libghostty would otherwise keep
             // rendering a solid caret on it even though the new surface holds focus.
-            (surfaceViews[currentlyFocused] as? GhosttySurfaceView)?.blurForLayoutChange()
+            ghosttyView(currentlyFocused)?.blurForLayoutChange()
         }
         let (layout, newFocus) = LayoutTree.split(
             workspace(at: at).layout,
@@ -1443,6 +1462,15 @@ final class AppModel {
             workspace(at: at).layout,
             surfaceID: surfaceID, toTarget: targetID, direction: zone.direction)
         else { return }
+        // Blur the pane that currently holds focus before the restructure, for the same
+        // reason `insertSurfaceBySplitting` does: dropping a pane collapses the split it
+        // left and re-nests the one it joined, and the SwiftUI re-render can detach the
+        // focused view from the window before AppKit fires `resignFirstResponder` — so
+        // libghostty would keep rendering a solid caret on it. `newFocus` is the moved
+        // pane, which is not necessarily the one that had focus.
+        if let currentlyFocused = focusedSurfaceID, currentlyFocused != newFocus {
+            ghosttyView(currentlyFocused)?.blurForLayoutChange()
+        }
         updateWorkspace(at: at) { $0.layout = layout }
         focusedSurfaceID = newFocus
         persist()
@@ -1460,7 +1488,7 @@ final class AppModel {
     /// observing a workspace's transient agent fields.
     func surfaceView(for surface: Surface, in workspaceID: UUID) -> GhosttySurfaceView? {
         guard let runtime, case .terminal = surface.kind else { return nil }
-        if let existing = surfaceViews[surface.id] as? GhosttySurfaceView {
+        if let existing = ghosttyView(surface.id) {
             return existing
         }
         guard let workspace = workspace(id: workspaceID) else { return nil }
@@ -1535,22 +1563,23 @@ final class AppModel {
         return window
     }
 
+    // Internal for AppModelTests.
     /// Visible viewport text of a live terminal surface, or nil if it has no
     /// live Ghostty view. Read-only; used by agent-state detection.
     func surfaceViewportText(_ surfaceID: UUID) -> String? {
-        (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readViewportText()
+        ghosttyView(surfaceID)?.readViewportText()
     }
 
     /// OSC window title of a live terminal surface, or nil if it has no live
     /// Ghostty view. Read-only; used by agent-state detection.
     private func surfaceOSCTitle(_ surfaceID: UUID) -> String? {
-        (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readOSCTitle()
+        ghosttyView(surfaceID)?.readOSCTitle()
     }
 
     /// Latest OSC 9;4 progress state of a live terminal surface, or nil if it has
     /// no live Ghostty view. Read-only; used by agent-state detection.
     private func surfaceProgressReport(_ surfaceID: UUID) -> AgentProgressState? {
-        (surfaceViews[surfaceID] as? GhosttySurfaceView)?.readProgressReport()
+        ghosttyView(surfaceID)?.readProgressReport()
     }
 
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
@@ -1762,7 +1791,6 @@ final class AppModel {
         }
     }
 
-    /// Persist the inspector panel's width for a workspace. Called from the panel's
     /// Publishes what the window's floor is built from, or `nil` once no workspace is
     /// on screen — which drops the floor rather than stranding the last workspace's
     /// one over an empty window.
@@ -1770,6 +1798,7 @@ final class AppModel {
         terminalHostMetrics = metrics
     }
 
+    /// Persist the inspector panel's width for a workspace. Called from the panel's
     /// live width measurement as the user drags the divider; clamps to the allowed
     /// range and no-ops when the (rounded) width is unchanged so a drag does not
     /// thrash the store. Uses the debounced `scheduleSave()` since it fires rapidly
@@ -1831,7 +1860,7 @@ final class AppModel {
             // the reference alone frees the surface after `deinit`, when a libghostty
             // callback recovering the view from the per-surface userdata would resurrect
             // an object that is already deallocating.
-            (surfaceViews[id] as? GhosttySurfaceView)?.invalidate()
+            ghosttyView(id)?.invalidate()
             surfaceViews[id] = nil
             browserCoordinators[id] = nil
             pendingInitialInput[id] = nil
@@ -2239,32 +2268,4 @@ final class AppModel {
     @ObservationIgnored private(set) lazy var browserAutomation = BrowserAutomationController(
         resolveWorkspace: { [weak self] id in self?.workspace(id: id) },
         coordinator: { [weak self] surface in self?.browserCoordinator(for: surface) })
-
-    /// Create a linked workspace in the Space that owns `workspaceID` (the control
-    /// channel's "create workspace" verb, targetable from any workspace in that
-    /// Space, not just the primary).
-    ///
-    /// Runs the checkout inline, unlike the UI's `createLinkedWorkspace`: `ControlServer`
-    /// dispatches and replies inside one synchronous `handle` call, so this verb has no
-    /// suspension point to offer. The steps themselves are shared, so the two paths
-    /// cannot drift.
-    func controlCreateWorkspace(
-        inSpaceOf workspaceID: UUID, branch: String, base: String?, command: String? = nil
-    ) -> Result<ControlWorkspaceInfo, WorkspaceCreationError> {
-        guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
-            return .failure(WorkspaceCreationError(message: "no target workspace"))
-        }
-        let plan: LinkedWorkspacePlan
-        switch planLinkedWorkspace(spaceID: space.id, name: branch, base: base) {
-        case .failure(let error): return .failure(error)
-        case .success(let resolved): plan = resolved
-        }
-        do {
-            try plan.checkout()
-        } catch {
-            return .failure(worktreeCreationError(error, releasing: plan))
-        }
-        return adoptLinkedWorkspace(plan, command: command, select: false)
-            .map { ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
-    }
 }

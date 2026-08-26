@@ -61,7 +61,6 @@ extension AppModel {
     /// Shared by the
     /// `casper workspace delete` control-channel verb and the sidebar's "Merge and
     /// Close Workspace…"/"Delete Workspace…" actions.
-    @discardableResult
     private func pruneWorkspaceFromDisk(id workspaceID: UUID) async -> Result<Void, WorkspaceDeleteError> {
         guard let at = locate(workspaceID) else {
             return .failure(WorkspaceDeleteError(message: "workspace not found"))
@@ -181,7 +180,7 @@ extension AppModel {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked,
               let space = space(for: ws), space.isGitRepo,
               let baseBranch = ws.baseBranch, !baseBranch.isEmpty,
-              let primary = space.workspaces.first(where: { $0.kind == .primary })
+              let primary = space.primaryWorkspace
         else {
             return .mergeFailed(message: "workspace not found or has no base branch")
         }

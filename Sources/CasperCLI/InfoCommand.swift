@@ -37,11 +37,14 @@ struct InfoCommand: ParsableCommand {
             readStdin: () throws -> String = Set.readStandardInput,
             isStandardInputATTY: () -> Bool = Set.isStandardInputATTY
         ) throws -> String {
-            if message != nil, file != nil {
-                throw exitWithError("pass either --message or --file, not both")
-            }
             if let source, source != "-" {
                 throw exitWithError("unexpected argument '\(source)' (pass '-' to read stdin)")
+            }
+            // A '-' counts as a source of its own, so `--message x -` is a conflict
+            // rather than a silently ignored stdin request.
+            let sourceCount = [message != nil, file != nil, source != nil].filter { $0 }.count
+            guard sourceCount <= 1 else {
+                throw exitWithError("pass exactly one of --message, --file, or '-' (stdin)")
             }
             let raw: String
             if let message {

@@ -21,8 +21,9 @@ beyond `open`/`close`, all on the **release control channel**
 Add a new verb the same way as any control verb: `ControlCommand.Verb` case +
 flat field(s) + async completion-reply `ControlServer` dispatch +
 `BrowserAutomationController.controlBrowser*` + `BrowserCommand` subcommand +
-JSON output. Pure JS generation lives in the WebKit-free, unit-testable
-`BrowserAutomation` module.
+JSON output. Pure JS generation lives in `BrowserAutomation`, a caseless
+`enum` in `Sources/CasperUI/BrowserAutomation.swift` — WebKit-free and
+unit-testable, but not a target of its own.
 
 ## Design decisions (the durable "why")
 

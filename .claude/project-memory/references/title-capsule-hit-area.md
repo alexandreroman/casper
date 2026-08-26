@@ -21,10 +21,10 @@ padding/background does nothing.
 
 **Why:** the failure is silent. The capsule renders exactly right and only the
 click target is wrong, so it survives visual review — typically as a chip whose
-glyph works and whose padding does nothing. `diffBadge`
-(`Sources/CasperUI/WorkspaceDetailView.swift:216`) is the reference for the
-correct shape: `.titleCapsule()` sits inside the `label:` closure, so the whole
-pill is live.
+glyph works and whose padding does nothing. `diffBadge` in
+`Sources/CasperUI/WorkspaceDetailView.swift` is the reference for the correct
+shape: `.titleCapsule()` sits inside the `label:` closure, so the whole pill is
+live.
 
 ## Split-button chips (Run Script / Editor)
 
@@ -49,8 +49,8 @@ content-sized or it stretches the toolbar); on the `Menu` add
 height plus its leading padding all fire the primary action.
 
 **How to access:** the pattern lives in
-`Sources/CasperUI/WorkspaceDetailView.swift`; see `diffBadge` (`:216`) for the
-single-button form (capsule inside the label) and `TitleSplitButton` (`:363`)
-for the split-button form (`titleCapsuleShell` + interior padding), which
-`editorButton` and `ScriptToolbarButton` both render.
+`Sources/CasperUI/WorkspaceDetailView.swift`; see `diffBadge` for the
+single-button form (capsule inside the label) and `TitleSplitButton` for the
+split-button form (`titleCapsuleShell` + interior padding), which `editorChip`
+and `ScriptToolbarButton` both render.
 Related: [[swiftui-inspector-width]].

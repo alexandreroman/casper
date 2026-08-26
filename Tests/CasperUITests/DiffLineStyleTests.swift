@@ -23,6 +23,21 @@ final class DiffLineStyleTests: XCTestCase {
         XCTAssertEqual(DiffLineStyle.background(for: .context), Color.clear)
     }
 
+    /// A conflicted file is the one status the header has to make impossible to
+    /// read past, and an unreadable one the one it has to make impossible to mistake
+    /// for a real change. Everything else is chrome, including `unmodified` — which
+    /// is what a conflict used to be labelled before `GitDiffFile.Status` could say
+    /// otherwise.
+    func testConflictedAndUnreadableStandApartFromOrdinaryStatuses() {
+        XCTAssertEqual(DiffLineStyle.statusEmphasis(for: .conflicted), .warning(DiffLineStyle.deletionTint))
+        XCTAssertEqual(DiffLineStyle.statusEmphasis(for: .unreadable),
+                       .muted(Color(nsColor: .tertiaryLabelColor)))
+        for status: GitDiffFile.Status in [.added, .deleted, .modified, .renamed, .copied,
+                                           .typechange, .unmodified] {
+            XCTAssertEqual(DiffLineStyle.statusEmphasis(for: status), .chrome, "\(status)")
+        }
+    }
+
     func testLineNumberPicksOldForDeletionAndNewForAdditionOrContext() {
         let deletion = GitDiffLine(kind: .deletion, content: "x", oldLineNumber: 30, newLineNumber: nil)
         let addition = GitDiffLine(kind: .addition, content: "x", oldLineNumber: nil, newLineNumber: 31)

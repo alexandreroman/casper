@@ -48,8 +48,8 @@ reader actually sees — `cacheDisplay` the scroll view, or a wrapper holding th
 surface under a stand-in for the chrome above it — and assert there. Two
 captures of the same wrapper, one before the surface is added and one after,
 compare cleanly pixel for pixel; an absolute color literal does not, because
-`NSBitmapImageRep` returns colors in its own space and a literal put through
-that conversion no longer matches itself.
+`NSBitmapImageRep` returns colors in its own space, and a literal put through
+that conversion comes back as a different value than the one written.
 
 **Probe a partial dirty rect, not only the full bounds.** `cacheDisplay(in:to:)`
 accepts any sub-rect of the view and passes it through as the dirty rect, and

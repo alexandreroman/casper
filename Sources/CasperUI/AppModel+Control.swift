@@ -40,7 +40,13 @@ extension AppModel {
         if state == .done {
             controlRaiseNotification(message: Self.notificationMessage(for: .done), for: workspaceID)
         }
-        persist()
+        // Nothing written here is persisted: `agentState` and the
+        // `pendingNotification*` pair `clearNotificationOnResume` may clear are
+        // transient (`Workspace.encode(to:)` omits them) and `explicitAuthority` is an
+        // in-memory set. An agent hook fires this on every turn, so saving here would
+        // cost a full session encode plus a disk write for a byte-identical file. The
+        // one write worth a save — expanding a collapsed Space — is
+        // `controlRaiseNotification`'s, and it persists that itself.
         return true
     }
 
@@ -121,18 +127,17 @@ extension AppModel {
         // workspace you are NOT looking at. If the target is already focused
         // (selected AND the window is key), raising either is noise, so skip both.
         let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
-        // Whether either branch below actually changed the model. Raising a
-        // notification on a workspace that is both focused and already expanded writes
-        // nothing, and that case is reached on every detected `blocked`/`done` edge and
-        // every `casper notify` — so it must not encode the whole session and queue a
-        // disk write for a state nobody changed.
-        var wrote = false
+        // Whether the ONE persisted thing this can change — a Space expanding — actually
+        // changed. The bubble write just below is transient (`Workspace.encode(to:)`
+        // omits `pendingNotification*`), and this runs on every detected `blocked`/`done`
+        // edge and every `casper notify`, so it must not encode the whole session and
+        // queue a disk write for state the store does not hold.
+        var expandedSpace = false
         if !focused {
             updateWorkspace(at: at) {
                 $0.pendingNotification = true
                 $0.pendingNotificationMessage = message
             }
-            wrote = true
             // The one and only place a bounce starts: arming a bubble is the event that
             // asks the user to come back. Losing focus later must NOT re-bounce — the
             // badge already carries that unread, and the window the user just left is
@@ -147,7 +152,7 @@ extension AppModel {
         // avoid a redundant no-op animation.
         if spaces[at.space].isCollapsed {
             withAnimation(.snappy) { mutateSpaces { $0[at.space].isCollapsed = false } }
-            wrote = true
+            expandedSpace = true
         }
         if let message, !focused, !isWithinNotificationCooldown(workspaceID) {
             // The interruption level follows the workspace's current agent state: the
@@ -160,7 +165,7 @@ extension AppModel {
                 Self.interruptionLevel(for: state))
             lastNotifiedAt[workspaceID] = Date()
         }
-        guard wrote else { return true }
+        guard expandedSpace else { return true }
         persist()
         return true
     }
@@ -209,8 +214,12 @@ extension AppModel {
     /// you are NOT looking at, so as soon as you look at it — by selecting it while
     /// the app is frontmost, or by bringing the app back to the foreground while it
     /// is already selected — it must clear. Complements `controlRaiseNotification`,
-    /// which never raises the bubble on an already-focused workspace. Persists only
-    /// when it actually clears a bubble, so the common no-op case is free.
+    /// which never raises the bubble on an already-focused workspace.
+    ///
+    /// Writes nothing to the store: the `pendingNotification*` pair is transient
+    /// (`Workspace.encode(to:)` omits it). That matters here — `AppDelegate` calls this
+    /// on every `NSWindow.didBecomeKeyNotification`, so every Cmd-Tab back into Casper
+    /// would otherwise re-encode and rewrite the whole session.
     func clearNotificationForFocusedWorkspace() {
         guard let id = selectedWorkspaceID, isWindowKey(), let at = locate(id) else { return }
         guard workspace(at: at).pendingNotification else { return }
@@ -219,7 +228,6 @@ extension AppModel {
             $0.pendingNotificationMessage = nil
         }
         refreshDockAttention()
-        persist()
     }
 
     /// Resolve a control-channel target selector to a workspace id. A nil selector
@@ -236,6 +244,25 @@ extension AppModel {
         allWorkspaces.map {
             ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath)
         }
+    }
+
+    /// Create a linked workspace in the Space that owns `workspaceID` (the control
+    /// channel's "create workspace" verb, targetable from any workspace in that
+    /// Space, not just the primary).
+    ///
+    /// Nothing but the target lookup is specific to this path, so the whole creation —
+    /// including the off-actor checkout — is `createLinkedWorkspace`'s. `select: false`
+    /// is what keeps a workspace created from the CLI from stealing the user's
+    /// selection.
+    func controlCreateWorkspace(
+        inSpaceOf workspaceID: UUID, branch: String, base: String?, command: String? = nil
+    ) async -> Result<ControlWorkspaceInfo, WorkspaceCreationError> {
+        guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
+            return .failure(WorkspaceCreationError(message: "no target workspace"))
+        }
+        return await createLinkedWorkspace(
+            spaceID: space.id, name: branch, base: base, command: command, select: false)
+            .map { ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
     }
 
     /// Why a `casper run <name>` request could not launch a command.
@@ -394,7 +421,6 @@ extension AppModel {
     /// the inspector: unlike `controlOpenBrowser`, it never selects the browser tab
     /// or expands the panel, so it drives a hidden/unselected browser in the
     /// background (useful for parallel automation of a browser that isn't visible).
-    @discardableResult
     func controlLoadBrowser(url: URL, in workspaceID: UUID) -> Bool {
         guard navigateInspectorBrowser(to: url, in: workspaceID) else { return false }
         scheduleSave()   // persist the new URL exactly like `setBrowserURL`
@@ -431,7 +457,6 @@ extension AppModel {
     /// scroll to its worktree-relative path (matching `GitDiffFile.id`). Mirrors
     /// `controlOpenBrowser`, but returns a `Result` so an invalid file surfaces as
     /// a control-channel error instead of a silent no-op.
-    @discardableResult
     func controlOpenDiff(in workspaceID: UUID, file: String? = nil) -> Result<Void, DiffOpenError> {
         guard let at = locate(workspaceID) else {
             return .failure(DiffOpenError(message: "workspace not found"))
@@ -443,7 +468,12 @@ extension AppModel {
             guard let resolved = WorkspaceFilePath.resolve(file, inWorktree: worktree) else {
                 return .failure(DiffOpenError(message: "file is outside the workspace: \(file)"))
             }
-            guard FileManager.default.fileExists(atPath: resolved) else {
+            // A directory is rejected, not just a missing path: `WorkspaceFilePath`
+            // resolves the worktree root itself, whose relative path is "", which
+            // matches no `GitDiffFile.id` and would scroll nowhere while reporting
+            // success.
+            guard FileManager.default.fileExists(atPath: resolved),
+                  !Self.directoryExists(atPath: resolved) else {
                 return .failure(DiffOpenError(message: "file does not exist: \(file)"))
             }
             scrollTarget = WorkspaceFilePath.relative(resolved, toWorktree: worktree)
@@ -466,7 +496,6 @@ extension AppModel {
 
     /// Collapse the inspector if `workspaceID`'s active tab is `.diff`.
     /// Mirrors `controlCloseBrowser`.
-    @discardableResult
     func controlCloseDiff(in workspaceID: UUID) -> Bool {
         collapseInspector(ifTabIs: .diff, in: workspaceID)
     }

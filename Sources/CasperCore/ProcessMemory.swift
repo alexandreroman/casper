@@ -4,7 +4,7 @@ import Darwin
 /// Reads the process's own memory accounting from the Mach kernel, so a churn
 /// test can watch the footprint instead of reading Activity Monitor by eye.
 public enum ProcessMemory {
-    public struct Sample: Codable, Equatable, Sendable {
+    public struct Sample: Equatable, Sendable {
         /// `phys_footprint` — the number Activity Monitor shows as "Memory".
         public var footprintBytes: Int
         /// `resident_size` — physical pages currently mapped in.
@@ -12,7 +12,7 @@ public enum ProcessMemory {
         /// `ledger_phys_footprint_peak`, or 0 when the kernel does not report it.
         public var peakFootprintBytes: Int
 
-        public init(footprintBytes: Int = 0, residentBytes: Int = 0, peakFootprintBytes: Int = 0) {
+        public init(footprintBytes: Int, residentBytes: Int, peakFootprintBytes: Int) {
             self.footprintBytes = footprintBytes
             self.residentBytes = residentBytes
             self.peakFootprintBytes = peakFootprintBytes

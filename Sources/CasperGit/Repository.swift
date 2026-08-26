@@ -156,9 +156,7 @@ public final class Repository {
     /// false if the branch does not exist.
     public func isBranchCheckedOut(_ name: String) throws -> Bool {
         try withLocalBranch(name, ifMissing: false) { ref in
-            let rc = git_branch_is_checked_out(ref)
-            if rc < 0 { try gitCheck(rc) }
-            return rc == 1
+            try gitCheck(git_branch_is_checked_out(ref)) == 1
         }
     }
 
@@ -277,10 +275,11 @@ public final class Repository {
             var patch: OpaquePointer?
             try gitCheck(git_patch_from_diff(&patch, diff, i))
             defer { git_patch_free(patch) }
+            let handle = try requireNonNull(patch, "patch")
             // Read the delta back off the patch (not the diff): binary detection
             // reads file content, which only happens once the patch is generated.
-            guard let deltaPtr = git_patch_get_delta(patch) else { continue }
-            files.append(try Repository.buildFile(delta: deltaPtr, patch: patch))
+            guard let deltaPtr = git_patch_get_delta(handle) else { continue }
+            files.append(try Repository.buildFile(delta: deltaPtr, patch: handle))
         }
         // Present files in a stable alphabetical order by their display path,
         // matching how the diff view lists them. `localizedStandardCompare` gives
@@ -335,7 +334,7 @@ public final class Repository {
     }
 
     private static func buildFile(
-        delta deltaPtr: UnsafePointer<git_diff_delta>, patch: OpaquePointer?
+        delta deltaPtr: UnsafePointer<git_diff_delta>, patch: OpaquePointer
     ) throws -> GitDiffFile {
         let delta = deltaPtr.pointee
         let oldPath = delta.old_file.path.map { String(cString: $0) } ?? ""
@@ -404,12 +403,22 @@ public final class Repository {
         case GIT_DELTA_ADDED, GIT_DELTA_UNTRACKED: return .added
         case GIT_DELTA_DELETED: return .deleted
         case GIT_DELTA_MODIFIED: return .modified
-        // `.renamed` / `.copied` are mapped for completeness but are currently
-        // unreachable: `diffWorkdirToHead` does not run `git_diff_find_similar`,
-        // so libgit2 never emits rename/copy deltas for our diffs.
+        // A file with unresolved merge conflicts: `git_diff_tree_to_workdir_with_index`
+        // reports the conflicted index entry as its own delta, and its hunks carry the
+        // conflict markers — so it must not read as an unmodified file.
+        case GIT_DELTA_CONFLICTED: return .conflicted
+        // A file libgit2 could not read at all (permissions, a vanished path).
+        case GIT_DELTA_UNREADABLE: return .unreadable
+        // `.renamed` / `.copied` / `.typechange` are mapped for completeness but are
+        // currently unreachable: `diffWorkdirToHead` does not run
+        // `git_diff_find_similar`, so libgit2 never emits rename/copy deltas for our
+        // diffs, and it emits typechange deltas only under
+        // `GIT_DIFF_INCLUDE_TYPECHANGE`, which we never set.
         case GIT_DELTA_RENAMED: return .renamed
         case GIT_DELTA_COPIED: return .copied
         case GIT_DELTA_TYPECHANGE: return .typechange
+        // GIT_DELTA_UNMODIFIED and GIT_DELTA_IGNORED: neither is emitted unless the
+        // matching include flag is set, and neither is a change to show.
         default: return .unmodified
         }
     }

@@ -18,11 +18,13 @@ unprefixed naming when creating a note.
 
 ## Line width exemptions
 
-Markdown here wraps at 80 characters, with two accepted exemptions. `MEMORY.md`
-is exempt because the skill mandates one line per entry, each under 150
-characters, so an entry cannot be wrapped. Every note's frontmatter
-`description:` is likewise exempt: it is a YAML single-line scalar and cannot
-wrap either.
+Markdown here wraps at 80 characters, with three accepted exemptions.
+`MEMORY.md` is exempt because the skill mandates one line per entry, each under
+150 characters, so an entry cannot be wrapped. All YAML frontmatter is exempt:
+`name:` and `description:` are single-line scalars and cannot wrap. And a line
+whose overflow is a single unbreakable token — a code identifier, a path, a URL
+— stays long rather than being broken mid-token; wrap the prose around it
+instead.
 
 ## Memory vs status
 

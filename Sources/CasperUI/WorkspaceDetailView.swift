@@ -21,6 +21,17 @@ struct WorkspaceDetailView: View {
     /// observed model state mid-layout.
     @State private var inspectorWidth: Double?
 
+    /// True for the length of a divider drag, which suspends `publish`.
+    ///
+    /// The window's floor is a function of the inspector's width, so without this a
+    /// drag rewrites every window's minimum size on every frame — and, because
+    /// `WindowFloor.apply` also grows a window that has fallen under its floor, a
+    /// window already resting on that floor is resized to match on every frame too,
+    /// chasing the pointer across the screen. The floor is therefore deferred to
+    /// drag-end exactly as the model write already is: the width the drag comes to
+    /// rest at is the only one the floor has to be right for.
+    @State private var isDraggingInspector = false
+
     /// The detail area's frame in window coordinates, or `nil` until the first
     /// layout pass has measured it. `nil` means "not measured yet", which the chip
     /// row must read as roomy: a row that started out folded and unfolded a frame
@@ -154,7 +165,17 @@ struct WorkspaceDetailView: View {
         // is what is left after the panel takes its slice.
         .onChange(of: terminalHostMetrics) { _, metrics in publish(metrics) }
         .onAppear { publish(terminalHostMetrics) }
-        .onDisappear { publish(nil) }
+        .onDisappear {
+            // Gated on "nothing is selected any more", not on this instance going
+            // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
+            // so switching workspaces tears one instance down while the incoming
+            // one publishes its own geometry, and SwiftUI does not promise the
+            // teardown runs first. A `nil` landing last would leave
+            // `WindowConfigurator`'s window observer re-applying a zero floor to
+            // every window until the next geometry change. Losing the last
+            // workspace still clears the metrics, which is the case this is for.
+            if model.selectedWorkspaceID == nil { publish(nil) }
+        }
         .toolbar {
             // EVERY title-bar control lives in this ONE item: title, info chip, diff
             // badge, Merge, Run Script, Editor and the inspector selector.
@@ -270,6 +291,7 @@ struct WorkspaceDetailView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.inspectorDragSpace))
                             .onChanged { value in
+                                isDraggingInspector = true
                                 // Track the pointer's ABSOLUTE x in the stable container space:
                                 // the inspector's left edge sits at value.location.x, so its
                                 // width is the space remaining to the right. Using the absolute
@@ -279,9 +301,14 @@ struct WorkspaceDetailView: View {
                                 inspectorWidth = (total - value.location.x).clamped(to: range)
                             }
                             .onEnded { _ in
+                                isDraggingInspector = false
                                 if let width = inspectorWidth {
                                     model.setInspectorWidth(width, for: workspace.id)
                                 }
+                                // `terminalHostMetrics` settled while the publish was
+                                // suspended, so `.onChange` has already fired for the
+                                // final width and will not fire again.
+                                publish(terminalHostMetrics)
                             })
             }
     }
@@ -334,7 +361,12 @@ struct WorkspaceDetailView: View {
     /// alone: opening the inspector changes the floor without necessarily producing a
     /// window update, and a floor computed one state late is a floor the drag gets
     /// through.
+    ///
+    /// Suspended for the length of a divider drag — see `isDraggingInspector`, which
+    /// also republishes once the drag ends. Every other trigger (a window resize, a
+    /// workspace switch, the inspector collapsing or expanding) publishes as it did.
     private func publish(_ metrics: TerminalHostMetrics?) {
+        guard !isDraggingInspector else { return }
         model.setTerminalHostMetrics(metrics)
         WindowFloor.apply(metrics)
     }
@@ -676,14 +708,11 @@ struct WorkspaceToolbarActions: View {
     /// never do.
     static func showsInspectorSelector(at density: Density) -> Bool { density != .minimal }
 
-    /// Whether this workspace can be merged into its recorded base branch: only a
-    /// linked worktree that records one has anywhere to merge to. Mirrors the
-    /// menus' `canCloseSelectedWorkspace` gate, but derives from the workspace this
-    /// row renders instead of the model's selection — the toolbar always acts on
-    /// the workspace it is drawn for, which this view already holds.
-    private var canMerge: Bool {
-        workspace.kind == .linked && !(workspace.baseBranch?.isEmpty ?? true)
-    }
+    /// `Workspace.canMerge` for the workspace this row renders. Mirrors the menus'
+    /// `canCloseSelectedWorkspace` gate, but derives from that workspace instead of
+    /// the model's selection — the toolbar always acts on the workspace it is drawn
+    /// for, which this view already holds.
+    private var canMerge: Bool { workspace.canMerge }
 
     private var hasScripts: Bool { !model.namedCommands(for: workspace.id).isEmpty }
 
@@ -859,12 +888,12 @@ struct WorkspaceToolbarActions: View {
 ///
 /// Internal rather than private so `InspectorTabSelectorTests` can host it.
 struct InspectorTabSelector: View {
+    /// The width this control always lays out to — two identical segments, and the
+    /// capsule shell adds nothing around them.
+    ///
     /// Each segment is one glyph chip wide, from the shared metrics: the sliding
     /// indicator would otherwise change size as it moved between two symbols of
     /// different widths, and the segments would not match the chips beside them.
-
-    /// The width this control always lays out to — two identical segments, and the
-    /// capsule shell adds nothing around them.
     ///
     /// Exposed so the row's layout tests can assert against the control they
     /// describe: it rides in every tier but the last, so its width is part of what

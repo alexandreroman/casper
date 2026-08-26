@@ -40,8 +40,11 @@ repository, always ≥ 1 workspace.*
 - **Naming** — default from the `origin` remote's last path segment without
   `.git` (fallback: the root folder name). Renamable; a renamed Space stops
   tracking the folder/remote.
-- **Lifecycle** — open a folder (offer `git init` with explicit auth if not a
-  repo); add a workspace via `git worktree add`; **remove is non-destructive**
+- **Lifecycle** — open a folder; a folder that is not a repository opens as a
+  degenerate Space rather than prompting for anything, and
+  `AppModel.promoteSpaceIfGitInitialized` promotes it once a `.git` appears
+  (`Repository.initialize` has no production caller). Add a workspace via
+  `git worktree add`; **remove is non-destructive**
   (drops the Space from `session.json` and releases ports; leaves the repo,
   worktrees, and branches on disk).
 
@@ -81,8 +84,7 @@ Re-adding a folder Casper already tracks only selects it.
 
 - `repoPath` **moves up** from `Workspace` to `Space` (one repo per Space).
 - `Workspace` gains `kind: primary | linked` and `baseBranch`.
-  `LayoutNode`/`Surface`/`Todo`/`AgentState` unchanged. (A derived `diffStat`
-  was designed for the dropped diff summary; it was never built.)
+  `LayoutNode`/`Surface`/`Todo`/`AgentState` unchanged.
 
 ### Sidebar
 

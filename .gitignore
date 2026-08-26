@@ -16,6 +16,10 @@ DerivedData/
 ## The design docs under .superpowers/ ARE tracked; only the scratch is ignored.
 .superpowers/sdd/
 
+## vendir lock file. The `directory:` content type records no revision, digest
+## or version, so it pins nothing; vendir.yml and Package.resolved do.
+vendir.lock.yml
+
 ## Packaging output
 /Casper.app/
 /Casper-dev.app/

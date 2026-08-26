@@ -45,8 +45,12 @@ struct WorkspaceTitleLabel: View {
         Group {
             switch (isGitRepo, form) {
             case (true, .spaceAndBranch): spaceAndBranch
-            case (true, .branchOnly): branchOnly
-            case (false, _): folderName
+            // The branch alone, middle-truncated so both ends of a long name (its
+            // prefix and the part that usually distinguishes it) survive.
+            case (true, .branchOnly): glyphTitle(.gitBranch, branchLabel)
+            // A Space with no Git repository behind it has no branch to fall back
+            // to, so its name is the identity and simply truncates.
+            case (false, _): glyphTitle(.fileDirectory, spaceName)
             }
         }
         .lineLimit(1)
@@ -63,23 +67,13 @@ struct WorkspaceTitleLabel: View {
         }
     }
 
-    /// The branch alone, middle-truncated so both ends of a long name (its prefix
-    /// and the part that usually distinguishes it) survive.
-    private var branchOnly: some View {
+    /// A glyph and the one bold run that carries the workspace's identity, middle-
+    /// truncated so both ends of a long name survive. The shape both single-run
+    /// forms take — which glyph and which text is the caller's choice.
+    private func glyphTitle(_ name: Octicon.Name, _ text: String) -> some View {
         HStack(spacing: Self.spacing) {
-            Octicon(.gitBranch).foregroundStyle(.secondary)
-            Text(branchLabel)
-                .fontWeight(.bold)
-                .truncationMode(.middle)
-        }
-    }
-
-    /// A Space with no Git repository behind it has no branch to fall back to,
-    /// so its name is the identity and simply truncates.
-    private var folderName: some View {
-        HStack(spacing: Self.spacing) {
-            Octicon(.fileDirectory).foregroundStyle(.secondary)
-            Text(spaceName)
+            Octicon(name).foregroundStyle(.secondary)
+            Text(text)
                 .fontWeight(.bold)
                 .truncationMode(.middle)
         }

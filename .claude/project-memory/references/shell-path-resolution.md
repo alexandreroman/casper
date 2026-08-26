@@ -85,5 +85,5 @@ asking it the wrong question yields a confident wrong answer, not a miss.
 
 **How to apply:** keep every command lookup going through
 `LoginShellPath.resolve`, and treat a suggestion to shell out to
-`which`/`command -v` as a regression. See
-[[agent-integration-probe-cadence]] for what pays that cold cost.
+`which`/`command -v` as a regression. See [[agent-integration-policy]] for
+what that cold cost buys.

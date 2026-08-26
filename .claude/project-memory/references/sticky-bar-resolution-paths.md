@@ -55,14 +55,8 @@ non-forcing `scheduleStickyHeaderUpdate()`, and the rule against forcing layout
 covers that hook alone: `DiffTextView.didLayout` fires from inside the pass that
 is settling, while the container's own `layout()` is a safe place to lay out.
 
-Two reasons the container path is exempt, both stated in the code comment at
-`Sources/CasperUI/DiffTextSurface.swift:210-230`:
-
-- The viewport the container has just tiled reaches further into the document
-  than TextKit's real layout does, so every band past that point is cold and a
-  non-forcing walk stops at the first cold one.
-- Forcing from there re-enters nothing, because the text view lays itself out
-  after the container's pass.
+The two reasons the container path is exempt sit in the comment on
+`containerView.viewportDidChange` in `Sources/CasperUI/DiffTextSurface.swift`.
 
 `DiffTextSurfaceTests.testEveryBandOnScreenCarriesItsOwnBar` pins it: with the
 non-forcing variant on this path a 600 pt viewport carries a single bar instead

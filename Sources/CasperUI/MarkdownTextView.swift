@@ -3,10 +3,10 @@ import SwiftUI
 
 /// The single source of truth for how rendered Markdown looks in this view.
 ///
-/// Both `makeNSView`'s content and the static `height(for:width:)` measurement
-/// read these, so a future font change cannot desync the reported height from
-/// what actually renders. `NSColor.labelColor` stays dynamic on purpose — it
-/// resolves per appearance at draw time, so light/dark both look right.
+/// Both halves of the view reach these through the one `rendered(for:width:)`
+/// build, so a future font change cannot desync the reported height from what
+/// actually renders. `NSColor.labelColor` stays dynamic on purpose — it resolves
+/// per appearance at draw time, so light/dark both look right.
 private enum Style {
     static var font: NSFont { .systemFont(ofSize: NSFont.systemFontSize) }
     static var textColor: NSColor { .labelColor }
@@ -222,8 +222,13 @@ struct MarkdownTextView: NSViewRepresentable {
     /// see `measuredHeight(of:width:)` — and measured once per message, not once
     /// per call: this is reached from a SwiftUI `body`, so every hover and every
     /// live `casper info set` would otherwise re-lay-out the whole message.
+    ///
+    /// The application's appearance stands in for the hosted view's, there being no
+    /// view to ask yet. The two agree — the panel overrides neither — and they have
+    /// to: the shared build is keyed on the appearance, so two different answers
+    /// would evict each other's entry on every pass.
     static func height(for markdown: String, width: CGFloat) -> CGFloat {
-        rendered(for: markdown, width: width).height
+        rendered(for: markdown, width: width, appearance: NSApp.effectiveAppearance.name).height
     }
 
     /// The height `content` lays out to at `width` on a throwaway TextKit 2
@@ -256,12 +261,19 @@ struct MarkdownTextView: NSViewRepresentable {
     private struct Rendered {
         let markdown: String
         let width: CGFloat
+        let appearance: NSAppearance.Name
         let content: NSAttributedString
         let height: CGFloat
     }
 
     /// The rendered Markdown and its measured height, built at most once per
-    /// `(markdown, width)` pair.
+    /// `(markdown, width, appearance)` triple.
+    ///
+    /// The appearance is part of the key because not every color in the render
+    /// stays dynamic: `MarkdownAttributedString` rasterizes a thematic break into
+    /// an `NSImage` and bakes the quote and table borders from a resolved
+    /// `textColor`, so a build made under one appearance keeps that appearance's
+    /// chrome for good.
     ///
     /// The panel measures the message and then renders it, and both go through
     /// the full pipeline — parsing, one pass over every block, a rasterized rule
@@ -276,14 +288,17 @@ struct MarkdownTextView: NSViewRepresentable {
     /// Deliberately a single entry rather than a dictionary: only one message is
     /// on screen at a time, so one slot serves every hit this is here for, and a
     /// map keyed by arbitrary user-supplied Markdown could grow without bound.
-    private static func rendered(for markdown: String, width: CGFloat) -> Rendered {
-        if let cached = lastRendered, cached.markdown == markdown, cached.width == width {
+    private static func rendered(
+        for markdown: String, width: CGFloat, appearance: NSAppearance.Name
+    ) -> Rendered {
+        if let cached = lastRendered, cached.markdown == markdown, cached.width == width,
+           cached.appearance == appearance {
             return cached
         }
         let content = MarkdownAttributedString.make(
             markdown, font: Style.font, textColor: Style.textColor, contentWidth: width)
         let entry = Rendered(
-            markdown: markdown, width: width, content: content,
+            markdown: markdown, width: width, appearance: appearance, content: content,
             height: measuredHeight(of: content, width: width))
         lastRendered = entry
         return entry
@@ -375,14 +390,23 @@ struct MarkdownTextView: NSViewRepresentable {
         // panel re-renders while the popover is open (a live `casper info set`
         // lands as a new body), and every unrelated SwiftUI update in between must
         // leave a selection alone.
+        //
+        // The appearance is the third input for the same reason the width is: the
+        // rasterized rule and the quote/table borders bake a resolved color, so a
+        // light↔dark switch leaves them tinted for the appearance they were built
+        // under until the storage is rebuilt.
+        let appearance = textView.effectiveAppearance.name
         guard context.coordinator.renderedMarkdown != markdown
-            || context.coordinator.renderedWidth != width else { return }
-        textView.textStorage?.setAttributedString(Self.rendered(for: markdown, width: width).content)
+            || context.coordinator.renderedWidth != width
+            || context.coordinator.renderedAppearance != appearance else { return }
+        textView.textStorage?.setAttributedString(
+            Self.rendered(for: markdown, width: width, appearance: appearance).content)
         // New content, so the previous content's reported height is no longer a
         // reason to stay quiet at the next layout pass.
         textView.forgetReportedHeight()
         context.coordinator.renderedMarkdown = markdown
         context.coordinator.renderedWidth = width
+        context.coordinator.renderedAppearance = appearance
     }
 
     /// Routes link clicks to the injected closure, and remembers what is currently
@@ -402,6 +426,9 @@ struct MarkdownTextView: NSViewRepresentable {
         /// The width `renderedMarkdown` was last built at — see `updateNSView`'s
         /// rebuild guard.
         var renderedWidth: CGFloat?
+        /// The appearance `renderedMarkdown` was last built under — see
+        /// `updateNSView`'s rebuild guard.
+        var renderedAppearance: NSAppearance.Name?
 
         init(onOpenURL: @escaping (URL, NSEvent.ModifierFlags) -> Bool) {
             self.onOpenURL = onOpenURL
@@ -422,7 +449,7 @@ struct MarkdownTextView: NSViewRepresentable {
         /// delegate is called synchronously inside its handling. Masked to the
         /// device-independent bits so the raw left/right-key and numeric-pad bits
         /// cannot make an exact-match comparison fail.
-        static func modifiers() -> NSEvent.ModifierFlags {
+        private static func modifiers() -> NSEvent.ModifierFlags {
             guard let event = NSApp.currentEvent else { return [] }
             return event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         }

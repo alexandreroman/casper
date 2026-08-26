@@ -78,6 +78,10 @@ public enum WorktreeManager {
     /// file is absent or does not specify them) from `repoPath` into
     /// `worktreePath`; a copy failure rolls back the worktree and branch so
     /// nothing is left half-created on disk.
+    ///
+    /// The returned `CreatedWorktree` is discardable: callers that already know the
+    /// name, path and branch they asked for have nothing to read from it.
+    @discardableResult
     public static func create(
         repoPath: String, name: String, worktreePath: String, base: String?
     ) throws -> CreatedWorktree {

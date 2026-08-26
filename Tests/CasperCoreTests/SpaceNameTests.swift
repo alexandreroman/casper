@@ -12,6 +12,11 @@ final class SpaceNameTests: XCTestCase {
             SpaceName.derive(remoteURL: "git@github.com:acme/casper.git",
                              folderName: "x"), "casper")
     }
+    func testTrailingSlashAfterTheGitSuffix() {
+        XCTAssertEqual(
+            SpaceName.derive(remoteURL: "https://github.com/acme/casper.git/",
+                             folderName: "x"), "casper")
+    }
     func testNoRemoteFallsBack() {
         XCTAssertEqual(SpaceName.derive(remoteURL: nil, folderName: "myfolder"),
                        "myfolder")

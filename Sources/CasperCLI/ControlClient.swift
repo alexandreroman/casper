@@ -38,6 +38,13 @@ func requireNonEmpty(_ value: String, _ what: String) throws -> String {
     return value
 }
 
+/// Reject an explicitly empty optional value with the same wording as
+/// `requireNonEmpty`, passing an absent value through untouched. For an option
+/// whose absence is meaningful (a defaulted target) but whose empty string is not.
+func requireNonEmptyIfPresent(_ value: String?, _ what: String) throws -> String? {
+    try value.map { try requireNonEmpty($0, what) }
+}
+
 /// The single element a reply is required to carry, or a clear error naming what
 /// the app failed to return.
 func requireFirst<Item>(_ items: [Item]?, _ what: String) throws -> Item {

@@ -86,18 +86,18 @@ extension AgentSignal {
 /// `AgentDetectionRuleSet`.
 public struct AgentDetectionRuleSet: Equatable, Sendable {
     /// Any single substring present ⇒ `working`.
-    public let workingContains: [String]
+    private let workingContains: [String]
     /// Any group whose every substring is present ⇒ `blocked`.
-    public let blockedAllOf: [[String]]
+    private let blockedAllOf: [[String]]
     /// Unicode scalar ranges whose prefix in the OSC title ⇒ `working`. Several
     /// disjoint ranges rather than one widened range: Claude Code 2.1.239 spins
     /// the quadrant circles ◐◑◒◓ (U+25D0–U+25D3) while earlier builds spun Braille
     /// (U+2800–U+28FF), and bridging the gap between the two would swallow every
     /// unrelated symbol in between. An empty list disables title-`working`
     /// matching outright.
-    public let titleWorkingScalars: [ClosedRange<UInt32>]
+    private let titleWorkingScalars: [ClosedRange<UInt32>]
     /// Single Unicode scalar whose prefix in the OSC title ⇒ `idle`.
-    public let titleIdleScalar: UInt32?
+    private let titleIdleScalar: UInt32?
 
     public init(
         workingContains: [String],

@@ -1,4 +1,5 @@
 #if DEBUG
+import AppKit
 import GhosttyKit
 import XCTest
 
@@ -26,6 +27,13 @@ final class GhosttyInputModsTests: XCTestCase {
     func testParsesShift() {
         let mods = ghosttyModsFromNames(["shift"])
         XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_SHIFT.rawValue, 0)
+    }
+
+    // Caps Lock is a modifier in its own right: `flagsChanged` sends a press for
+    // keyCode 0x39, and a keystroke typed with it on must carry the bit too.
+    func testMapsCapsLockFromEventFlags() {
+        let mods = ghosttyMods(from: [.capsLock])
+        XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_CAPS.rawValue, 0)
     }
 
     // Guards against a regression where a case-sensitive check downstream of

@@ -21,7 +21,7 @@ valid object. It is idempotent, and `AppModel.discardSurfaceViews` calls it on
 each view before releasing the reference.
 
 This is a cross-module invariant with no compiler enforcement — an edit to
-`discardSurfaceViews` that drops the `invalidate()` call reintroduces the window
+`discardSurfaceViews` that drops the `invalidate()` call opens the window
 silently, and the residual is narrow enough that tests are unlikely to catch it.
 Keep the call whenever surface views are torn down, including any new teardown
 path. See also [[persistent-nsview-host-sharing]] and [[surface-identity]].
