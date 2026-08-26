@@ -41,6 +41,16 @@ final class AppModel {
     /// while the app is running.
     private(set) var availableEditors: [EditorKind] = []
 
+    /// What the window's floor is built from, or `nil` when no workspace is on
+    /// screen. Published by `WorkspaceDetailView`, which is the only place that can
+    /// measure it; consumed by `WindowFloor`.
+    ///
+    /// `@ObservationIgnored` on purpose — it is written from a layout callback on
+    /// every geometry change, and a SwiftUI view observing it would invalidate itself
+    /// mid-layout. Its consumer is AppKit, which needs no observation.
+    @ObservationIgnored private(set) var terminalHostMetrics: TerminalHostMetrics?
+    @ObservationIgnored private(set) var terminalHostSize: CGSize?
+
     /// Set when `openInEditor` fails to launch; drives a `.alert` in
     /// `WorkspaceDetailView`. Not part of any persisted model.
     var editorLaunchError: String?
@@ -1753,6 +1763,13 @@ final class AppModel {
     }
 
     /// Persist the inspector panel's width for a workspace. Called from the panel's
+    /// Publishes what the window's floor is built from, or `nil` once no workspace is
+    /// on screen — which drops the floor rather than stranding the last workspace's
+    /// one over an empty window.
+    func setTerminalHostMetrics(_ metrics: TerminalHostMetrics?) {
+        terminalHostMetrics = metrics
+    }
+
     /// live width measurement as the user drags the divider; clamps to the allowed
     /// range and no-ops when the (rounded) width is unchanged so a drag does not
     /// thrash the store. Uses the debounced `scheduleSave()` since it fires rapidly

@@ -9,19 +9,14 @@ import CasperCore
 /// The failure they guard against is purely geometric and easy to reintroduce:
 /// `plusminus` and `globe` do not measure the same, so segments sized to their
 /// content come out lopsided and the sliding selection indicator changes size as
-/// it moves. `InspectorTabSelector.glyphSlotWidth` is what makes the two halves
+/// it moves. `TitleCapsuleMetrics.glyphSlotWidth` is what makes the two halves
 /// identical by construction, and these tests pin both ends of it — the slot is
 /// wide enough for either symbol, and the assembled control measures exactly two
 /// equal segments.
 @MainActor
 final class InspectorTabSelectorTests: XCTestCase {
-    /// Mirrors the `.padding(.horizontal, 10)` each segment applies around its
-    /// glyph slot; the capsule shell itself adds no width.
-    private static let segmentInset: CGFloat = 10
-
-    private static var expectedSegmentWidth: CGFloat {
-        InspectorTabSelector.glyphSlotWidth + 2 * segmentInset
-    }
+    /// A segment is one glyph chip, from the metrics every title-bar chip shares.
+    private static var expectedSegmentWidth: CGFloat { TitleCapsuleMetrics.glyphChipWidth }
 
     /// The whole control measures exactly two segments of the declared width — so
     /// neither symbol widened its own half. Checked in all three visible states
@@ -43,8 +38,16 @@ final class InspectorTabSelectorTests: XCTestCase {
         let globe = symbolWidth("globe")
 
         XCTAssertNotEqual(plusminus, globe, accuracy: 0.5)
-        XCTAssertLessThanOrEqual(plusminus, InspectorTabSelector.glyphSlotWidth)
-        XCTAssertLessThanOrEqual(globe, InspectorTabSelector.glyphSlotWidth)
+        XCTAssertLessThanOrEqual(plusminus, TitleCapsuleMetrics.glyphSlotWidth)
+        XCTAssertLessThanOrEqual(globe, TitleCapsuleMetrics.glyphSlotWidth)
+    }
+
+    /// The chip row's width budget subtracts `intrinsicWidth` because this control
+    /// is exempt from the degradation ladder — it never collapses and never folds.
+    /// Pinning the constant against the hosted control is what keeps the budget's
+    /// arithmetic honest if the segment metrics ever move.
+    func testIntrinsicWidthMatchesTheHostedControl() {
+        XCTAssertEqual(InspectorTabSelector.intrinsicWidth, selectorWidth(selecting: nil), accuracy: 0.5)
     }
 
     // MARK: - Helpers

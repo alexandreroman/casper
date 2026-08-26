@@ -21,9 +21,75 @@ struct WorkspaceDetailView: View {
     /// observed model state mid-layout.
     @State private var inspectorWidth: Double?
 
+    /// The detail area's frame in window coordinates, or `nil` until the first
+    /// layout pass has measured it. `nil` means "not measured yet", which the chip
+    /// row must read as roomy: a row that started out folded and unfolded a frame
+    /// later would flicker on every workspace switch.
+    @State private var detailFrame: CGRect?
+
+    /// Floor for the TERMINAL region — the pane tree, not the inspector panel and
+    /// not the sidebar. Calibrated so a surface stays usable: `GhosttySurfaceView`
+    /// has no intrinsic size of its own and collapses to nothing given the chance,
+    /// and a terminal a few points wide renders a one-column sliver that can display
+    /// no output worth reading.
+    ///
+    /// This is where the window's own floor comes from: no minimum is declared on
+    /// the window (see `CasperApp`), so whatever this implies once the sidebar and
+    /// the inspector are added is what the window can be dragged down to.
+    static let terminalMinimumSize: CGFloat = 200
+
     /// Keep at least this much room for the detail area when clamping the
     /// inspector's maximum width.
     private static let minDetailWidth: Double = 320
+
+    /// Gap between two adjacent title-bar capsules.
+    ///
+    /// Measured off a 2× screenshot of the shipped row: the Merge capsule's
+    /// trailing edge and the Run capsule's leading edge sit ~15 px apart, i.e.
+    /// 7.5 pt. 8 pt therefore reproduces the spacing AppKit was inserting between
+    /// the separate toolbar items that the collapsible chips now share.
+    static let chipGap: CGFloat = 8
+
+    /// Room the window's own chrome takes out of the toolbar row this view shares,
+    /// counted only when the detail area starts at the window's leading edge.
+    ///
+    /// When the sidebar is open, the traffic lights and the sidebar toggle sit over
+    /// the sidebar column and cost the detail's region nothing. When it is
+    /// collapsed, the detail starts at the window's leading edge and that same
+    /// chrome eats into the row. `minX` is how this view knows which case it is in:
+    /// `RootView`'s `columnVisibility` is private `@State` and is not reachable
+    /// from here.
+    ///
+    /// Measured on a real `NSWindow` + `NSToolbar` carrying the standard
+    /// toggle-sidebar item: the traffic lights push the first toolbar content to
+    /// x = 92, and that item's viewer measures 48 pt. 92 + 48 = 140.
+    static let windowChromeReserve: CGFloat = 140
+
+    /// Deliberate undershoot on the row's width.
+    ///
+    /// The two failures are wildly asymmetric. A row a few points narrower than the
+    /// bar leaves a sliver of empty space at the trailing edge that nobody will ever
+    /// notice. A row a few points wider overflows the ONE item that now holds every
+    /// title-bar control, emptying the whole title bar into AppKit's chevron — so
+    /// this is sized to lose that race on purpose, not calibrated to fit exactly.
+    static let safetyMargin: CGFloat = 24
+
+    /// Narrowest row worth mounting. The `⋯` chip alone measures 34 pt, so below
+    /// this there is nothing left to draw — and at such a width the detail area is
+    /// a sliver anyway (a 320 pt window leaves it 22 pt beside the sidebar).
+    ///
+    /// The row is then dropped from the toolbar entirely rather than shown at a few
+    /// points wide, because AppKit cannot fit ANY item into a bar that narrow and
+    /// would answer with the overflow chevron. No item, nothing to overflow.
+    static let minimumRowWidth: CGFloat = 40
+
+    /// Width the row takes while the detail area has not been measured yet.
+    ///
+    /// Small on purpose: unmeasured must mean NARROW. At this width the chips start
+    /// folded and grow once the real width arrives, which costs at most one frame of
+    /// a `⋯` chip — where starting wide would cost an overflowed row, and an
+    /// overflowed row does not always come back on its own.
+    static let unmeasuredRowWidth: CGFloat = 240
 
     /// Stable coordinate space for the inspector divider drag, anchored to the
     /// full-width detail container so the pointer's absolute location is read
@@ -31,10 +97,6 @@ struct WorkspaceDetailView: View {
     private static let inspectorDragSpace = "inspectorDrag"
 
     var body: some View {
-        // Observe the scripts revision so a live `.casper.json` change re-runs the
-        // `.toolbar` content — re-evaluating the Run Script visibility gate, its
-        // menu list, and the resolved default (see `AppModel.scriptsRevision`).
-        let _ = model.scriptsRevision
         GeometryReader { proxy in
             let range = inspectorRange(container: proxy.size.width)
             let width = (inspectorWidth ?? workspace.inspector.width)
@@ -47,6 +109,7 @@ struct WorkspaceDetailView: View {
                         canDragPanes: Self.hasMultiplePanes(in: workspace.layout))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                .frame(minWidth: Self.terminalMinimumSize, minHeight: Self.terminalMinimumSize)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // The inspector region (divider + panel) is ALWAYS mounted and
                 // pinned at its full width; collapsing animates the OUTER clip
@@ -70,50 +133,49 @@ struct WorkspaceDetailView: View {
             .coordinateSpace(.named(Self.inspectorDragSpace))
             .animation(.easeInOut(duration: 0.18), value: workspace.inspector.collapsed)
         }
+        // Measured on the `GeometryReader` ITSELF, not on the content inside it. A
+        // reader takes exactly the space its column offers; that content does not.
+        // At a narrow window the inspector panel's minimum width pushes the content
+        // WIDER than the column, which simply clips it — measured at a 450 pt window
+        // with the panel open, the split divider stays at x = 300 and the column is
+        // 150 pt wide, while the content reports 241 pt starting at x = 209. Handing
+        // `rowWidth` that 241 is what overflows the toolbar item, and an overflowed
+        // item does not come back: neither invalidation, nor a toolbar reset, nor a
+        // window nudge recovers it, because at that width it genuinely does not fit.
+        //
+        // Captured from an ACTION rather than read off the reader's own proxy: that
+        // proxy is only reachable inside the body, and writing `@State` from inside a
+        // body is what SwiftUI warns about. The whole frame, not just the size — the
+        // origin is what tells `rowWidth` whether the window's own chrome shares this
+        // row.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { detailFrame = $0 }
+        // The window's floor is rebuilt from this, so it has to be republished when
+        // the inspector moves as well as when the detail area does — the panes' share
+        // is what is left after the panel takes its slice.
+        .onChange(of: terminalHostMetrics) { _, metrics in publish(metrics) }
+        .onAppear { publish(terminalHostMetrics) }
+        .onDisappear { publish(nil) }
         .toolbar {
-            // These three leading chips share ONE toolbar item: AppKit inserts its
-            // own spacing between separate toolbar items, which left the
-            // glyph-only info chip visually adrift from its neighbours. Each chip
-            // keeps its own interior padding, so that padding — not the system's
-            // inter-item gap — is what separates them now.
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 0) {
-                    title
-                    WorkspaceInfoButton(model: model, workspace: workspace)
-                    diffBadge
-                }
-                // A toolbar group proposed less than its ideal width must truncate,
-                // never wrap: without this the badge's `+N`/`−N` stack vertically
-                // and push the title bar open (see `WorkspaceTitleLabel`).
-                .lineLimit(1)
-            }
-            .flatToolbarItem()
-            if #available(macOS 26.0, *) {
-                ToolbarSpacer(.flexible)
-            }
-            if canMerge {
-                ToolbarItem(placement: .primaryAction) {
-                    MergeToolbarButton(model: model, workspace: workspace)
+            // EVERY title-bar control lives in this ONE item: title, info chip, diff
+            // badge, Merge, Run Script, Editor and the inspector selector.
+            //
+            // Not a stylistic grouping — it is the only structure that cannot end up
+            // in AppKit's overflow chevron, where these custom chips render without
+            // their capsule chrome and the segmented control clips to a lone glyph.
+            // A `ToolbarItem`'s hosted view is sized to its content's IDEAL width and
+            // AppKit will not shrink it below that: faced with a bar too narrow, it
+            // overflows the item whole rather than proposing it less. Measured on the
+            // running app at a 600 pt window, where the leading group alone reported
+            // 293 pt and went into the chevron with the title still one truncatable
+            // line. So the only reliable rule is to hand AppKit a single item that is
+            // never wider than the bar, and to do the degrading ourselves inside it.
+            if rowWidth >= Self.minimumRowWidth {
+                ToolbarItem(placement: .navigation) {
+                    WorkspaceTitleBarRow(
+                        model: model, workspace: workspace, diff: diff, width: rowWidth)
                 }
                 .flatToolbarItem()
             }
-            if !model.namedCommands(for: workspace.id).isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    ScriptToolbarButton(model: model, workspace: workspace)
-                }
-                .flatToolbarItem()
-            }
-            if !model.availableEditors.isEmpty {
-                ToolbarItem(placement: .primaryAction) { editorButton }.flatToolbarItem()
-            }
-            // The two inspector tabs are mutually exclusive, so they share ONE item
-            // and render as a single segmented control rather than as two independent
-            // pills. Flattened like the Script and Editor chips: it draws its own
-            // capsule, so the system shared glass is stripped in every state.
-            ToolbarItem(placement: .primaryAction) {
-                InspectorTabSelector(model: model, workspace: workspace)
-            }
-            .flatToolbarItem()
         }
         .alert("Couldn't Open Editor", isPresented: Binding(
             get: { model.editorLaunchError != nil },
@@ -133,10 +195,21 @@ struct WorkspaceDetailView: View {
         } message: {
             Text(model.scriptRunError ?? "")
         }
+        // Two triggers, because the row can outgrow the bar for two unrelated
+        // reasons: the window narrowed, or the CONTENT changed while the window
+        // stood still (opening the inspector, a diff summary arriving, a script
+        // appearing). `rowWidth` catches only the first.
+        .onChange(of: rowWidth) { _, _ in Self.healToolbarOverflow() }
+        .onChange(of: workspace.inspector) { _, _ in Self.healToolbarOverflow() }
         .onAppear {
             // `RootView` gives this view a per-workspace `.id`, so one instance only
             // ever renders one workspace — the first summary needs no keying.
             refreshDiffSummary()
+            #if DEBUG
+            // Layout harness — see `WorkspaceDetailView+ToolbarProbe.swift`. Inert
+            // unless `CASPER_TIERPROBE_WIDTHS` names the widths to sweep.
+            startToolbarProbe { ToolbarProbeSample(detailFrame: detailFrame, rowWidth: rowWidth) }
+            #endif
         }
         .onChange(of: model.diffRevision) { _, _ in
             refreshDiffSummary()
@@ -213,7 +286,246 @@ struct WorkspaceDetailView: View {
             }
     }
 
-    private var title: some View {
+    /// Gets the row back out of AppKit's overflow chevron, and keeps checking until
+    /// it is out.
+    ///
+    /// One invalidation is enough for the common case, but not for every one: the
+    /// content can change again while AppKit is still settling, and a row that stays
+    /// in the chevron empties the whole title bar. So this re-checks, and re-checks
+    /// only while the clipped-items indicator is actually on screen.
+    ///
+    /// The loop is broken three ways, which matters because the cure and the symptom
+    /// share a mechanism: the retries stop the moment the indicator is gone, they are
+    /// capped, and nothing here ever schedules itself from an invalidation — only an
+    /// outside trigger starts a run.
+    private static func healToolbarOverflow(retriesLeft: Int = 3) {
+        invalidateToolbarItemSizes()
+        guard retriesLeft > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard NSApp.windows.contains(where: { $0.isVisible && $0.hasClippedToolbarItems })
+            else { return }
+            healToolbarOverflow(retriesLeft: retriesLeft - 1)
+        }
+    }
+
+    /// Tells AppKit that the toolbar items' sizes have changed.
+    ///
+    /// The row's width is always one pass behind the window: AppKit lays the toolbar
+    /// out during the resize, while this row only learns its new width afterwards,
+    /// from the detail area's geometry. When a shrink is large enough, AppKit
+    /// therefore runs its fit check against the STALE, wider row, pushes the item
+    /// into the overflow chevron — and never re-runs that check on its own, so the
+    /// row stays in the chevron long after it has narrowed. That is not cosmetic:
+    /// inside the chevron the chips lose their capsule chrome entirely.
+    ///
+    /// Measured on the running app at a 400 pt shrink jump: `validateVisibleItems()`
+    /// changes nothing and neither does forcing the titlebar to lay out again;
+    /// invalidating the item views' intrinsic size brings the row back immediately.
+    /// Cheap enough to do unconditionally — a Casper window carries four items.
+    private static func invalidateToolbarItemSizes() {
+        for window in NSApp.windows where window.isVisible {
+            window.toolbar?.items.forEach { $0.view?.invalidateIntrinsicContentSize() }
+        }
+    }
+
+    /// Publishes what the window's floor is built from, and pushes that floor.
+    ///
+    /// Pushed from here rather than left to `WindowConfigurator`'s window observer
+    /// alone: opening the inspector changes the floor without necessarily producing a
+    /// window update, and a floor computed one state late is a floor the drag gets
+    /// through.
+    private func publish(_ metrics: TerminalHostMetrics?) {
+        model.setTerminalHostMetrics(metrics)
+        WindowFloor.apply(metrics)
+    }
+
+    /// What the window's floor is built from, or `nil` until the detail area has been
+    /// measured. The inspector's slice is the width it OCCUPIES right now — the panel
+    /// stays mounted at full width and is revealed by animating an outer clip, so the
+    /// clip's width is the honest number and it is zero while collapsed.
+    private var terminalHostMetrics: TerminalHostMetrics? {
+        guard let detailFrame else { return nil }
+        let inspectorSlice = workspace.inspector.collapsed
+            ? 0
+            : SeparatorMetrics.visibleWidth + (inspectorWidth ?? workspace.inspector.width)
+                .clamped(to: inspectorRange(container: detailFrame.width))
+        // Collapsed reads as a true zero; open never reads below the column minimum
+        // (see `TerminalHostMetrics.sidebarWidth`).
+        let sidebarWidth = detailFrame.minX < 1
+            ? 0
+            : max(detailFrame.minX, Self.sidebarColumnMinimum)
+        return TerminalHostMetrics(
+            sidebarWidth: sidebarWidth,
+            inspectorSlice: inspectorSlice,
+            detailChromeHeight: Self.paneDividerHeight)
+    }
+
+    /// The sidebar column's own minimum, mirroring `RootView`'s
+    /// `.navigationSplitViewColumnWidth(min: 220, ...)`.
+    private static let sidebarColumnMinimum: CGFloat = 220
+
+    /// The `Divider()` above the pane tree, which is part of the detail area's height
+    /// but not part of the terminal.
+    static let paneDividerHeight: CGFloat = 1
+
+    /// The width the title bar has for this row.
+    ///
+    /// The detail area is ordinary in-window content, so it measures reliably —
+    /// unlike anything read back from the toolbar itself. Everything else about the
+    /// row's layout is then decided by the `HStack` from this one number.
+    private var rowWidth: CGFloat {
+        guard let detailFrame else { return Self.unmeasuredRowWidth }
+        let windowChrome = detailFrame.minX < 1 ? Self.windowChromeReserve : 0
+        // Never negative: at a window narrower than the sidebar the detail area is a
+        // few points wide, and a row wider than that would overflow.
+        return max(0, detailFrame.width - windowChrome - Self.safetyMargin)
+    }
+}
+
+extension NSWindow {
+    /// Whether the toolbar is currently showing its clipped-items chevron.
+    ///
+    /// Shared by the floor's self-healing retry and by the title bar's measurement
+    /// harness (`WorkspaceDetailView+ToolbarProbe.swift`), which reports it as the
+    /// one reliable signal that the row has been pushed into the overflow popover.
+    ///
+    /// Read off the view tree because AppKit publishes no API for it, and
+    /// `NSToolbar.visibleItems` cannot stand in: SwiftUI's own split-view separator
+    /// item is absent from that collection at every width, chevron or not. A miss
+    /// here (an OS that renames the class) costs one skipped retry, never a crash.
+    var hasClippedToolbarItems: Bool {
+        func containsIndicator(_ view: NSView) -> Bool {
+            if String(describing: type(of: view)).contains("ClippedItemsIndicator") { return true }
+            return view.subviews.contains(where: containsIndicator)
+        }
+        guard toolbar != nil, let themeFrame = contentView?.superview else { return false }
+        return containsIndicator(themeFrame)
+    }
+}
+
+/// The whole title bar, laid out in one row of a known width.
+///
+/// It is one view because it is one `ToolbarItem` (see the toolbar's own comment),
+/// and it decides its own order of sacrifice as that width shrinks. Ranked by
+/// layout priority, highest first:
+///
+/// 1. **the title group** (`2`) — the workspace's identity, which never drops. It
+///    degrades on its own terms instead: the Space name goes whole, then the branch
+///    middle-truncates.
+/// 2. **the chips** (`1`) — they step down their own four-tier ladder rather than
+///    disappear (see `WorkspaceToolbarActions`).
+/// 3. **the diff badge** (`0`) — the first thing to go, before the chips even lose
+///    their text. It is informational where the chips are actions, which is the
+///    trade this ranking encodes.
+/// 4. **the spacer** (`-1`) — below the badge on purpose: at an equal priority it
+///    would swallow the room the badge needs and the badge would never appear.
+///
+/// The priorities are what make that order real, and they are independent of the
+/// order the elements are written in — the badge still renders in its usual place,
+/// between the info chip and the chips.
+struct WorkspaceTitleBarRow: View {
+    let model: AppModel
+    let workspace: Workspace
+    let diff: (insertions: Int, deletions: Int)?
+    let width: CGFloat
+
+    /// Report what the badge and the chips laid out to, so the row's layout tests can
+    /// see which rung it settled on. A fixed-width stack tells an outside observer
+    /// nothing about what is inside it, and the ladder's order — and its
+    /// monotonicity — is precisely what needs pinning. Unused by the app.
+    var onBadgeWidth: ((CGFloat) -> Void)?
+    var onChipsWidth: ((CGFloat) -> Void)?
+
+    var body: some View {
+        // ONE ordered list for everything that yields. Every element that can give
+        // way is a column of this table, and each rung gives up exactly one thing:
+        //
+        //   rung | title           | badge | actions
+        //   -----+-----------------+-------+-------------------
+        //    1   | Space / branch  |  yes  | full
+        //    2   | Space / branch  |   -   | full
+        //    3   | branch          |   -   | full
+        //    4   | branch          |   -   | ( ⤭ )( ⋯ )
+        //    5   | branch          |   -   | ( ⋯ )
+        //    6   | branch          |   -   | ( ⋯ ), selector in its menu
+        //
+        // The order is what the pieces are FOR: the badge is informational, the
+        // Space name is context, the chip labels are actions, and the branch is
+        // identity — so they yield in that order and the branch never goes.
+        //
+        // One list rather than one ladder per element, because two ladders cannot be
+        // ordered against each other: each sees only the room the other left it, so
+        // whatever one releases the other takes back, and narrowing the window hands
+        // an element its content RETURNED. Measured three times in this row before it
+        // was one list — a badge that reappeared at 260 pt beside a folded chip, a
+        // badge ranked by layout priority that came back the moment the chips folded,
+        // and a selector that returned at 279 pt because the title had just dropped
+        // its Space name and freed 90 pt.
+        //
+        // Within a rung the branch still middle-truncates. That is `Text` answering a
+        // proposal — it changes how a rung looks, never which rung is chosen — so it
+        // is not a second ladder.
+        ViewThatFits(in: .horizontal) {
+            rung(title: .spaceAndBranch, badge: true, chips: .full)
+            rung(title: .spaceAndBranch, badge: false, chips: .full)
+            rung(title: .branchOnly, badge: false, chips: .full)
+            rung(title: .branchOnly, badge: false, chips: .mergeGlyph)
+            rung(title: .branchOnly, badge: false, chips: .folded)
+            rung(title: .branchOnly, badge: false, chips: .minimal)
+        }
+        // Giving the row a definite width is also what drives the ladder: it hands it
+        // a real proposal, which a toolbar item on its own never does.
+        .frame(width: width, alignment: .leading)
+    }
+
+    /// One rung, laid out left to right: title, badge, then the chips at the trailing
+    /// edge.
+    private func rung(
+        title titleForm: WorkspaceTitleLabel.Form, badge: Bool,
+        chips: WorkspaceToolbarActions.Density
+    ) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 0) {
+                title(titleForm)
+                WorkspaceInfoButton(model: model, workspace: workspace)
+            }
+            // A group proposed less than its ideal width must truncate, never wrap:
+            // without this the title pushes the title bar open instead of shortening
+            // (see `WorkspaceTitleLabel` and the `toolbar-group-truncation` note).
+            .lineLimit(1)
+            // Served first, so the branch keeps its room and the chips are what give
+            // way inside a rung.
+            .layoutPriority(2)
+
+            Group {
+                if badge {
+                    diffBadge
+                }
+            }
+            // Both the badge and the chips are fixed at their ideal width inside a
+            // rung, so a rung is all-or-nothing. Left flexible they compress instead:
+            // `ViewThatFits` accepts a candidate that can squeeze its text, so the
+            // chip labels would tighten a few points at a time and then spring back
+            // to full width at the next rung — measured growing 253 -> 265 pt as the
+            // row NARROWED past 601 pt. The title is the one thing that stays
+            // flexible, because truncating the branch is what a rung is allowed to
+            // do internally.
+            .fixedSize(horizontal: true, vertical: false)
+            // Fires with 0 on the rungs that drop the badge, which is what lets the
+            // row's tests see that it went whole rather than shrank.
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { onBadgeWidth?($0) }
+
+            Spacer(minLength: WorkspaceDetailView.chipGap)
+
+            WorkspaceToolbarActions(model: model, workspace: workspace, density: chips)
+                .fixedSize(horizontal: true, vertical: false)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                    onChipsWidth?($0)
+                }
+        }
+    }
+
+    private func title(_ form: WorkspaceTitleLabel.Form) -> some View {
         // Resolve the owning Space once — `model.space(for:)` scans every Space's
         // workspaces, so both the git-backed flag and the name derive from this
         // single lookup rather than scanning the model twice per body pass.
@@ -221,7 +533,8 @@ struct WorkspaceDetailView: View {
         return WorkspaceTitleLabel(
             isGitRepo: space?.isGitRepo ?? false,
             spaceName: space?.name ?? workspace.name,
-            branchLabel: workspace.branchLabel)
+            branchLabel: workspace.branchLabel,
+            form: form)
         // Chrome-less on purpose: the title is not a control, so it keeps the
         // shared capsule metrics (alignment with the chips) without the pill.
         // Asymmetric interior padding (not the shared `titleCapsule`'s symmetric
@@ -235,23 +548,151 @@ struct WorkspaceDetailView: View {
     }
 
     @ViewBuilder private var diffBadge: some View {
-        if let diff, diff.insertions > 0 || diff.deletions > 0 {
+        if let summary = visibleDiffSummary {
             Button {
                 model.toggleInspectorTab(.diff, for: workspace.id)
             } label: {
-                HStack(spacing: 5) {
-                    Text("+\(diff.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
-                    Text("−\(diff.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
-                }
-                .font(.body.monospacedDigit().bold())
-                .titleCapsule(interactive: true)
+                diffCounters(summary)
+                    .titleCapsule(interactive: true)
             }
             .buttonStyle(.plain)
             .help("Toggle diff")
         }
     }
 
-    private var editorButton: some View {
+    /// The summary the badge renders, or `nil` when there is nothing to show.
+    private var visibleDiffSummary: (insertions: Int, deletions: Int)? {
+        guard let diff, diff.insertions > 0 || diff.deletions > 0 else { return nil }
+        return diff
+    }
+
+    /// The badge's two counters.
+    private func diffCounters(_ summary: (insertions: Int, deletions: Int)) -> some View {
+        HStack(spacing: 5) {
+            Text("+\(summary.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
+            Text("−\(summary.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
+        }
+        .font(.body.monospacedDigit().bold())
+    }
+}
+
+
+/// Every trailing title-bar chip, in one row that gives way as the window narrows:
+/// Merge, Run Script, Editor and the Diff / Browser selector.
+///
+/// - `.full` — every chip with its text:
+///   `( ⤭ Merge )( ▶ Run )( icon VS Code ⌄)( ± | 🌐 )`.
+/// - `.mergeGlyph` — Merge keeps a chip of its own, as a glyph; Run and Editor move
+///   into the `⋯` menu: `( ⤭ )( ⋯ )( ± | 🌐 )`. Merge is the one action worth a chip
+///   at this width, and Run and Editor have no glyph-only form on the bar at all —
+///   they go from their full text form straight into the menu, because an icon alone
+///   names neither "which script" nor "which editor" the way their labels do.
+/// - `.folded` — Merge joins them: `( ⋯ )( ± | 🌐 )`.
+/// - `.minimal` — the `⋯` chip alone, the selector's two toggles moving into its
+///   menu. The floor, so the ladder still terminates in something that fits at the
+///   narrowest window AppKit allows.
+///
+/// The point of the ladder is that AppKit's own toolbar overflow is never reached:
+/// the custom SwiftUI chips render without their capsule chrome inside that
+/// popover, and the segmented control clips to a lone glyph. Overflow is also why
+/// the selector lives here rather than in a `ToolbarItem` of its own — AppKit can
+/// only overflow an item it can single out.
+///
+/// Internal rather than private so `WorkspaceToolbarActionsTests` can host it and
+/// measure each tier — same reason as `InspectorTabSelector`.
+struct WorkspaceToolbarActions: View {
+    /// The four tiers, widest first. Named for the row each one draws.
+    enum Density: CaseIterable {
+        /// Every chip with its text.
+        case full
+        /// Merge as a glyph chip beside the `⋯` menu that holds Run and Editor.
+        case mergeGlyph
+        /// One `⋯` chip and the selector.
+        case folded
+        /// The `⋯` chip alone.
+        case minimal
+    }
+
+    let model: AppModel
+    let workspace: Workspace
+    /// Which tier to draw. Chosen by `WorkspaceTitleBarRow`, never here: the choice
+    /// has to be made together with the diff badge's, or the two ladders disagree.
+    let density: Density
+
+    var body: some View {
+        // Observe the scripts revision: the Run Script visibility gate, its menu
+        // list and the resolved default are all read in this body, and the cache
+        // behind `namedCommands(for:)` is `@ObservationIgnored`, so a live
+        // `.casper.json` change reaches them only through the revision. Read here
+        // rather than in `WorkspaceDetailView` so a script change re-renders this
+        // row alone — the same scoping `MergeToolbarButton` uses for `optionKeyHeld`.
+        let _ = model.scriptsRevision
+        // Every chip label stays on ONE line. The row hands the chips a definite
+        // width, and a `Text` given less than it wants answers by WRAPPING — mid-word
+        // — which would push the title bar open instead of shortening (the failure
+        // the `toolbar-group-truncation` note describes). A chip is a fixed-height
+        // capsule, so a second line has nowhere to go.
+        return row(density).lineLimit(1)
+    }
+
+    /// One tier, drawn. Non-private so the tests can measure each tier directly
+    /// rather than inferring which one the row picked.
+    @ViewBuilder
+    func row(_ density: Density) -> some View {
+        HStack(spacing: WorkspaceDetailView.chipGap) {
+            switch density {
+            case .full:
+                if canMerge {
+                    MergeToolbarButton(model: model, workspace: workspace, density: density)
+                }
+                if hasScripts {
+                    ScriptToolbarButton(model: model, workspace: workspace)
+                }
+                if hasEditors {
+                    editorChip
+                }
+            case .mergeGlyph:
+                if canMerge {
+                    MergeToolbarButton(model: model, workspace: workspace, density: density)
+                }
+                foldedChip(density)
+            case .folded, .minimal:
+                // Always drawn, whatever the action gates say: at these tiers the chip
+                // is the only route to the actions it holds.
+                foldedChip(density)
+            }
+            if Self.showsInspectorSelector(at: density) {
+                InspectorTabSelector(model: model, workspace: workspace)
+            }
+        }
+    }
+
+    /// Whether the Diff / Browser control rides on the bar at `density`.
+    ///
+    /// The single source for that fact: the `⋯` menu's `Sidebar` entry is exactly its
+    /// complement, so the control is reachable at every tier and duplicated at none.
+    /// Read by the row and by the menu, which is what keeps the two from drifting —
+    /// a menu listing what is already on the bar is the one thing the `⋯` chip must
+    /// never do.
+    static func showsInspectorSelector(at density: Density) -> Bool { density != .minimal }
+
+    /// Whether this workspace can be merged into its recorded base branch: only a
+    /// linked worktree that records one has anywhere to merge to. Mirrors the
+    /// menus' `canCloseSelectedWorkspace` gate, but derives from the workspace this
+    /// row renders instead of the model's selection — the toolbar always acts on
+    /// the workspace it is drawn for, which this view already holds.
+    private var canMerge: Bool {
+        workspace.kind == .linked && !(workspace.baseBranch?.isEmpty ?? true)
+    }
+
+    private var hasScripts: Bool { !model.namedCommands(for: workspace.id).isEmpty }
+
+    private var hasEditors: Bool { !model.availableEditors.isEmpty }
+
+    /// Text form only, for the same reason as the Run chip: an app icon alone does
+    /// not say which editor will open, and the tier below lists them all by name in
+    /// the `⋯` menu.
+    private var editorChip: some View {
         let current = model.resolvedEditor(nil, for: workspace)
         return TitleSplitButton {
             model.openInEditor(nil, for: workspace.id)
@@ -271,15 +712,7 @@ struct WorkspaceDetailView: View {
             }
         }
         .help("Open in Editor")
-    }
-
-    /// Whether this workspace can be merged into its recorded base branch: only a
-    /// linked worktree that records one has anywhere to merge to. Mirrors the
-    /// menus' `canCloseSelectedWorkspace` gate, but derives from the workspace this
-    /// view renders instead of the model's selection — the toolbar always acts on
-    /// the workspace it is drawn for, which this view already holds.
-    private var canMerge: Bool {
-        workspace.kind == .linked && !(workspace.baseBranch?.isEmpty ?? true)
+        .accessibilityLabel("Open in Editor")
     }
 
     @ViewBuilder
@@ -291,6 +724,120 @@ struct WorkspaceDetailView: View {
         }
     }
 
+    /// The `⋯` chip: every action the row can no longer show, behind one menu. At
+    /// `.minimal` it also carries the Diff / Browser toggles, which have no
+    /// segmented control left to live in.
+    ///
+    /// `.menuStyle(.button)` + `.buttonStyle(.plain)` rather than the split
+    /// buttons' `.borderlessButton`, so the capsule can live INSIDE the label and
+    /// the whole pill stays clickable (see the `title-capsule-hit-area` note). A
+    /// borderless menu ignores its label's height and keeps its click target on
+    /// the bare glyph, which measured 20×14 against this chip's 34×36. The chrome
+    /// stays the explicit fill + hairline border — never glass, which renders
+    /// nearly invisible around a nested `Menu`
+    /// (`glasseffect-nested-menu-invisible`).
+    private func foldedChip(_ density: Density) -> some View {
+        Menu {
+            foldedMenuContent(density)
+        } label: {
+            Image(systemName: "ellipsis")
+                .glyphSlot()
+                .titleCapsule(interactive: true)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        // The plain button style draws no disclosure chevron of its own; this
+        // keeps it that way if the menu style is ever revisited — a `⋯` chip must
+        // not carry an indicator.
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More actions")
+        .accessibilityLabel("More actions")
+    }
+
+    /// The `⋯` menu lists exactly what the bar cannot show, in the SAME order the
+    /// chips appear in — Merge, Run Script, Editor, then the inspector — so the
+    /// folded form reads like the row it stands in for. The two orders are coupled:
+    /// changing one means changing the other.
+    ///
+    /// Its contents therefore vary by tier, and never duplicate a chip that is still
+    /// on the bar: at `.mergeGlyph` the Merge chip is right beside it, so the menu
+    /// opens on Run Script, and `Sidebar` appears only once the segmented control has
+    /// folded in here too.
+    @ViewBuilder
+    private func foldedMenuContent(_ density: Density) -> some View {
+        // Merge has its own chip at `.mergeGlyph`; below that it lives here.
+        if canMerge, density != .mergeGlyph {
+            // The chip's Option-held Merge → Delete swap is not reproduced here:
+            // a menu has room for both at once, so there is nothing to disambiguate
+            // with a modifier.
+            Button("Merge and Close Workspace…") {
+                model.presentCloseWorkspaceConfirmation(id: workspace.id)
+            }
+            Button("Delete Workspace…") {
+                model.presentDeleteWorkspaceConfirmation(id: workspace.id)
+            }
+            // The destructive pair is the only group set apart; the three submenus
+            // below read as one list.
+            Divider()
+        }
+        if hasScripts {
+            Menu("Run Script") {
+                // These items RUN the script, unlike the split button's menu, which
+                // only selects the one its primary action will run: a menu has no
+                // primary action, so selecting without running would do nothing.
+                ForEach(model.namedCommands(for: workspace.id), id: \.name) { command in
+                    Button(command.displayName) {
+                        model.runScript(command.name, for: workspace.id)
+                    }
+                }
+            }
+        }
+        if hasEditors {
+            Menu("Open in Editor") {
+                ForEach(model.availableEditors, id: \.self) { kind in
+                    Button {
+                        model.openInEditor(kind, for: workspace.id)
+                    } label: {
+                        editorLabel(kind)
+                    }
+                }
+            }
+        }
+        // Named for the panel it drives — the inspector panel on the right, not the
+        // workspace column on the left that the toolbar's own sidebar toggle opens.
+        if !Self.showsInspectorSelector(at: density) {
+            Menu("Sidebar") {
+                inspectorTabItems
+            }
+        }
+    }
+
+    /// The Diff / Browser toggles as menu items, for the tier that has no room left
+    /// for the segmented control. They route through the very same mutator the
+    /// segments use, so the three states the control makes visible survive the
+    /// fold: a checkmark marks the tab currently showing, and neither is marked
+    /// while the panel is collapsed.
+    @ViewBuilder
+    private var inspectorTabItems: some View {
+        let showing: InspectorTab? = workspace.inspector.collapsed ? nil : workspace.inspector.tab
+        inspectorTabItem(.diff, title: "Toggle Diff", showing: showing)
+        inspectorTabItem(.browser, title: "Toggle Browser", showing: showing)
+    }
+
+    @ViewBuilder
+    private func inspectorTabItem(_ tab: InspectorTab, title: String,
+                                  showing: InspectorTab?) -> some View {
+        Button {
+            model.toggleInspectorTab(tab, for: workspace.id)
+        } label: {
+            if showing == tab {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
 }
 
 /// The title-bar Diff / Browser control: one capsule enclosing both glyph-only
@@ -312,15 +859,18 @@ struct WorkspaceDetailView: View {
 ///
 /// Internal rather than private so `InspectorTabSelectorTests` can host it.
 struct InspectorTabSelector: View {
-    /// Width of the slot each segment reserves for its glyph.
+    /// Each segment is one glyph chip wide, from the shared metrics: the sliding
+    /// indicator would otherwise change size as it moved between two symbols of
+    /// different widths, and the segments would not match the chips beside them.
+
+    /// The width this control always lays out to — two identical segments, and the
+    /// capsule shell adds nothing around them.
     ///
-    /// Fixed on purpose: SF Symbols have different intrinsic widths (`plusminus`
-    /// measures 12pt against `globe`'s 15pt), so content-sized segments would come
-    /// out lopsided and the sliding selection indicator would change size as it
-    /// moves between them. Reserving one slot makes both segments identical by
-    /// construction. Deliberately roomier than the widest glyph — a slightly
-    /// generous segment looks fine, an overflowing one does not.
-    static let glyphSlotWidth: CGFloat = 18
+    /// Exposed so the row's layout tests can assert against the control they
+    /// describe: it rides in every tier but the last, so its width is part of what
+    /// each of those tiers costs. `InspectorTabSelectorTests` pins it against the
+    /// hosted control so the two cannot drift apart.
+    static let intrinsicWidth: CGFloat = 2 * TitleCapsuleMetrics.glyphChipWidth
 
     let model: AppModel
     let workspace: Workspace
@@ -351,11 +901,11 @@ struct InspectorTabSelector: View {
         } label: {
             Image(systemName: systemImage)
                 .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                // The fixed slot goes INSIDE the padding so the 10pt insets still
-                // widen the segment (see the `fixed-frame-swallows-inner-padding`
-                // memory note) and the whole pill half stays clickable.
-                .frame(width: Self.glyphSlotWidth)
-                .padding(.horizontal, 10)
+                // The fixed slot goes INSIDE the padding so the insets still widen
+                // the segment (see the `fixed-frame-swallows-inner-padding` memory
+                // note) and the whole pill half stays clickable.
+                .glyphSlot()
+                .padding(.horizontal, TitleCapsuleMetrics.horizontalInset)
                 .frame(maxHeight: .infinity)
                 // The indicator exists only behind the selected segment and is
                 // matched across the two, so it slides rather than cross-fades.
@@ -435,6 +985,12 @@ private struct ScriptToolbarButton: View {
         return TitleSplitButton {
             if let current { model.runScript(current.name, for: workspace.id) }
         } primaryLabel: {
+            // Pinned explicitly: the toolbar environment resolves a `Label` icon-only
+            // on its own and would drop the title (see the `toolbar-label-style`
+            // note) — and the title is the whole point of this chip. Which script it
+            // will run is exactly what the glyph cannot say, so there is no
+            // glyph-only form of it on the bar: the tier below moves it into the `⋯`
+            // menu, where every command is listed by name.
             Label(current?.displayName ?? "Run", systemImage: "play.fill")
                 .labelStyle(.titleAndIcon)
         } menuContent: {
@@ -451,46 +1007,23 @@ private struct ScriptToolbarButton: View {
             }
         }
         .help("Run Script")
+        .accessibilityLabel("Run Script")
     }
 }
 
-/// The "Merge" toolbar chip, which becomes a "Delete" chip while Option is held. A
-/// separate view because it reads `model.optionKeyHeld` in its own body, which scopes
-/// that observation dependency to the chip instead of to all of
-/// `WorkspaceDetailView`.
-///
-/// Merge routes to the same merge-and-close confirmation as the menus' "Merge and
-/// Close Workspace…" item — merging a workspace always ends by closing it, and there
-/// is no merge-only flow to offer. The label stays a bare "Merge" because the
-/// confirmation dialog is what spells out the "and close" part; the tooltip says so
-/// too, before the click.
-///
-/// Option swaps in the menus' "Delete Workspace…" item, which discards the branch
-/// rather than merging it. Both answer the same question at the same moment — this
-/// workspace is done — so they share one chip instead of sending the "not worth
-/// merging" case off to the sidebar's context menu, and both open a confirmation
-/// dialog, so an accidental Option press costs nothing. The Delete state carries no
-/// red tint: title-bar chips use one neutral palette (`title-bar-chip-chrome`).
-///
-/// The swap is ONE `Button` whose label, action and tooltip change — not two views
-/// behind a condition — so the button keeps its identity across the swap and the
-/// chrome's hover state survives an Option press under a stationary pointer.
-///
-/// Geometry follows the `title-capsule-hit-area` memory note: `titleCapsule` is
-/// applied INSIDE the label, so the whole pill is clickable and not just the glyph.
-/// The label style is pinned because the toolbar environment otherwise resolves the
-/// `Label` to icon-only and swallows the title, and the neighbouring Editor and Run
-/// chips are text-bearing, so a glyph-only chip would read as a different class of
-/// control.
-private struct MergeToolbarButton: View {
+/// Internal rather than private so the row's tests can host it: the Merge/Delete
+/// swap has to be pinned at equal width, and that is invisible from outside the row.
+struct MergeToolbarButton: View {
     let model: AppModel
     let workspace: Workspace
+    let density: WorkspaceToolbarActions.Density
 
     var body: some View {
         // Read here rather than in `WorkspaceDetailView`: the observation dependency
         // that re-renders the chip on every Option press and release is registered by
         // reading the property inside the body that draws it.
         let deleting = model.optionKeyHeld
+        let help = deleting ? "Delete workspace" : "Merge and close workspace"
         return Button {
             if deleting {
                 model.presentDeleteWorkspaceConfirmation(id: workspace.id)
@@ -498,14 +1031,64 @@ private struct MergeToolbarButton: View {
                 model.presentCloseWorkspaceConfirmation(id: workspace.id)
             }
         } label: {
-            Label(deleting ? "Delete" : "Merge",
-                  systemImage: deleting ? "trash" : "arrow.triangle.merge")
-                .labelStyle(.titleAndIcon)
-                .titleCapsule(interactive: true)
+            let label = Label(deleting ? "Delete" : "Merge",
+                              systemImage: deleting ? "trash" : "arrow.triangle.merge")
+            Group {
+                // Both styles are pinned explicitly: the toolbar environment's own
+                // default is icon-only, so leaving it to that would drop the title at
+                // `.full`, and it is not what the glyph tier should lean on either.
+                if density == .full {
+                    label.labelStyle(.titleAndIcon)
+                } else {
+                    // The shared slot is what keeps Merge and Delete the same size:
+                    // `trash` is 3 pt wider than `arrow.triangle.merge`, so without it
+                    // the chip would resize the instant Option is held — under a
+                    // stationary pointer, which is exactly when a size change reads as
+                    // a different control appearing.
+                    label.labelStyle(.iconOnly).glyphSlot()
+                }
+            }
+            // The capsule geometry stays INSIDE the label in both forms, so the whole
+            // pill keeps firing the action rather than just the glyph.
+            .titleCapsule(interactive: true)
         }
         .buttonStyle(.plain)
-        .help(deleting ? "Delete workspace" : "Merge and close workspace")
+        .help(help)
+        // In the glyph form the tooltip is the only thing naming the action, and it
+        // names the action the click will actually perform.
+        .accessibilityLabel(help)
     }
+}
+
+/// The metrics every title-bar chip shares.
+///
+/// A named constant rather than a literal per call site so the layout tests can
+/// assert the chips still lay out as one row against the very number the chrome
+/// applies.
+enum TitleCapsuleMetrics {
+    static let height: CGFloat = 36
+
+    /// The capsule's interior horizontal inset.
+    static let horizontalInset: CGFloat = 10
+
+    /// The slot every glyph-only chip reserves for its glyph.
+    ///
+    /// Fixed on purpose: SF Symbols carry different intrinsic widths, so chips sized
+    /// to their content come out uneven — measured, `arrow.triangle.merge` and
+    /// `play.fill` are 12 pt against `trash` and `globe` at 15 and
+    /// `square.and.pencil` at 16. A row of glyph-only chips is a row of identical
+    /// pills; one wider than its neighbours reads as a different KIND of control
+    /// rather than as the same control shortened. The slot makes them identical by
+    /// construction rather than by two symbols happening to agree.
+    ///
+    /// Sized from the `⋯` chip, which is the reference dimension for the set, then
+    /// widened to clear the widest glyph that has to sit in it — so every chip
+    /// widened together and they stayed identical. Roomier than that widest glyph on
+    /// purpose: a slightly generous chip looks fine, an overflowing one does not.
+    static let glyphSlotWidth: CGFloat = 18
+
+    /// The width every glyph-only chip lays out to, `⋯` included.
+    static let glyphChipWidth: CGFloat = glyphSlotWidth + 2 * horizontalInset
 }
 
 /// The capsule chrome itself — fixed height, fill, hairline border, hit shape —
@@ -546,7 +1129,7 @@ private struct TitleCapsuleChrome: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         let shell = content
-            .frame(height: 36)
+            .frame(height: TitleCapsuleMetrics.height)
             .background(fill, in: Capsule())
             .overlay(showsChrome ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
             .contentShape(Capsule())
@@ -579,8 +1162,18 @@ private extension View {
     /// hover like a native toolbar button; see `TitleCapsuleChrome`.
     func titleCapsule(filled: Bool = true, interactive: Bool = false) -> some View {
         self
-            .padding(.horizontal, 10)
+            .padding(.horizontal, TitleCapsuleMetrics.horizontalInset)
             .titleCapsuleShell(filled: filled, interactive: interactive)
+    }
+
+    /// Reserves the shared glyph slot, so every glyph-only chip is the same width
+    /// whatever symbol it draws.
+    ///
+    /// Goes INSIDE the capsule's padding (see the `fixed-frame-swallows-inner-padding`
+    /// note): the insets still widen the pill around it, and the whole pill stays
+    /// clickable rather than just the glyph.
+    func glyphSlot() -> some View {
+        frame(width: TitleCapsuleMetrics.glyphSlotWidth)
     }
 
     /// The capsule chrome WITHOUT the interior horizontal padding. Split out from
