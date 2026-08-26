@@ -206,7 +206,9 @@ struct WorkspaceDetailView: View {
             // ever renders one workspace — the first summary needs no keying.
             refreshDiffSummary()
             #if DEBUG
-            probeToolbarState()
+            // Layout harness — see `WorkspaceDetailView+ToolbarProbe.swift`. Inert
+            // unless `CASPER_TIERPROBE_WIDTHS` names the widths to sweep.
+            startToolbarProbe { ToolbarProbeSample(detailFrame: detailFrame, rowWidth: rowWidth) }
             #endif
         }
         .onChange(of: model.diffRevision) { _, _ in
@@ -219,126 +221,6 @@ struct WorkspaceDetailView: View {
             diffSummaryTask?.cancel()
         }
     }
-
-    #if DEBUG
-    /// TEMPORARY diagnostic: resizes the window across `CASPER_TIERPROBE_WIDTHS`
-    /// and logs, at each width, what AppKit did with the toolbar items.
-    private func probeToolbarState() {
-        guard let list = ProcessInfo.processInfo.environment["CASPER_TIERPROBE_WIDTHS"] else { return }
-        let widths = list.split(separator: ",").compactMap { Double($0) }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
-            for width in widths {
-                guard let window = NSApp.windows.first(where: { $0.toolbar != nil && $0.isVisible })
-                else { return }
-                window.setFrame(NSRect(x: 60, y: 200, width: width, height: 760), display: true)
-                try? await Task.sleep(for: .milliseconds(1200))
-                logToolbarState(window, requested: width, phase: "collapsed")
-
-                model.toggleInspectorTab(.diff, for: workspace.id)
-                try? await Task.sleep(for: .milliseconds(1200))
-                logToolbarState(window, requested: width, phase: "diff")
-
-                model.toggleInspectorTab(.browser, for: workspace.id)
-                try? await Task.sleep(for: .milliseconds(1200))
-                logToolbarState(window, requested: width, phase: "browser")
-
-                model.toggleInspectorTab(.browser, for: workspace.id)
-                try? await Task.sleep(for: .milliseconds(1200))
-                logToolbarState(window, requested: width, phase: "recollapsed")
-            }
-            await probeWindowFloor()
-        }
-    }
-
-    /// TEMPORARY diagnostic: drives every sidebar x inspector combination down to the
-    /// window's floor and reports the room the terminal region is left with.
-    private func probeWindowFloor() async {
-        guard let window = NSApp.windows.first(where: { $0.toolbar != nil && $0.isVisible })
-        else { return }
-        for sidebarOpen in [true, false] {
-            if !sidebarOpen {
-                NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-                try? await Task.sleep(for: .milliseconds(900))
-            }
-            for tab in [nil, InspectorTab.diff, .browser] as [InspectorTab?] {
-                await setInspector(tab)
-                // `setFrame` bypasses `contentMinSize` (it constrains user drags, not
-                // programmatic sizing), so drive the window TO the floor instead and
-                // measure there — the state a drag would come to rest in.
-                window.setContentSize(window.contentMinSize)
-                try? await Task.sleep(for: .milliseconds(1000))
-                window.setContentSize(window.contentMinSize)
-                try? await Task.sleep(for: .milliseconds(1000))
-                let metrics = model.terminalHostMetrics
-                let terminal = CGSize(
-                    width: (detailFrame?.width ?? 0) - (metrics?.inspectorSlice ?? 0),
-                    height: (detailFrame?.height ?? 0) - Self.paneDividerHeight)
-                CasperLog.app.debug(
-                    """
-                    TIERPROBE FLOOR sidebar=\(sidebarOpen ? "open" : "collapsed", privacy: .public) \
-                    tab=\(tab.map(String.init(describing:)) ?? "collapsed", privacy: .public) \
-                    window=\(window.frame.width, privacy: .public)x\(window.frame.height, privacy: .public) \
-                    contentMin=\(window.contentMinSize.width, privacy: .public)x\
-                    \(window.contentMinSize.height, privacy: .public) \
-                    minSize=\(window.minSize.width, privacy: .public)x\
-                    \(window.minSize.height, privacy: .public) \
-                    terminal=\(terminal.width, privacy: .public)x\(terminal.height, privacy: .public)
-                    """)
-            }
-            if !sidebarOpen {
-                NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-                try? await Task.sleep(for: .milliseconds(900))
-            }
-        }
-    }
-
-    /// Drives the inspector to an explicit state through the same mutator the UI uses.
-    private func setInspector(_ tab: InspectorTab?) async {
-        for _ in 0..<3 {
-            guard let current = model.workspace(id: workspace.id) else { return }
-            let showing: InspectorTab? = current.inspector.collapsed ? nil : current.inspector.tab
-            if showing == tab { return }
-            model.toggleInspectorTab(tab ?? current.inspector.tab, for: workspace.id)
-            try? await Task.sleep(for: .milliseconds(500))
-        }
-    }
-
-    private func logToolbarState(_ window: NSWindow, requested: Double, phase: String) {
-        guard let toolbar = window.toolbar else { return }
-        let visible = Set(toolbar.visibleItems?.map(\.itemIdentifier.rawValue) ?? [])
-        let ours = toolbar.items
-            .filter { UUID(uuidString: $0.itemIdentifier.rawValue) != nil }
-            .map { item in
-                let w = item.view.map { "\($0.frame.width)" } ?? "-"
-                return "\(visible.contains(item.itemIdentifier.rawValue) ? "V" : "OVF"):\(w)"
-            }
-        var chevrons: [String] = []
-        func walk(_ view: NSView) {
-            let name = String(describing: type(of: view))
-            if name.contains("Clipped") || name.contains("Overflow") {
-                chevrons.append("\(name) hidden=\(view.isHidden) w=\(view.frame.width)")
-            }
-            view.subviews.forEach(walk)
-        }
-        if let themeFrame = window.contentView?.superview { walk(themeFrame) }
-        let overflowed = toolbar.items
-            .filter { !visible.contains($0.itemIdentifier.rawValue) }
-            .map(\.itemIdentifier.rawValue)
-        let detail = detailFrame?.debugDescription ?? "nil"
-        CasperLog.app.debug(
-            """
-            TIERPROBE SWEEP want=\(requested, privacy: .public) phase=\(phase, privacy: .public) \
-            got=\(window.frame.width, privacy: .public) \
-            detail=\(detail, privacy: .public) row=\(self.rowWidth, privacy: .public) \
-            items=\(toolbar.items.count, privacy: .public) \
-            visible=\(toolbar.visibleItems?.count ?? -1, privacy: .public) \
-            ours=[\(ours.joined(separator: ","), privacy: .public)] \
-            overflowed=[\(overflowed.joined(separator: ","), privacy: .public)] \
-            chevron=\(chevrons.isEmpty ? "no" : "YES", privacy: .public)
-            """)
-    }
-    #endif
 
     /// Recompute the diff summary, cancelling any refresh still in flight. Every
     /// refresh — the first one included — goes through this single task, so
@@ -484,7 +366,7 @@ struct WorkspaceDetailView: View {
 
     /// The `Divider()` above the pane tree, which is part of the detail area's height
     /// but not part of the terminal.
-    private static let paneDividerHeight: CGFloat = 1
+    static let paneDividerHeight: CGFloat = 1
 
     /// The width the title bar has for this row.
     ///
@@ -500,8 +382,12 @@ struct WorkspaceDetailView: View {
     }
 }
 
-private extension NSWindow {
+extension NSWindow {
     /// Whether the toolbar is currently showing its clipped-items chevron.
+    ///
+    /// Shared by the floor's self-healing retry and by the title bar's measurement
+    /// harness (`WorkspaceDetailView+ToolbarProbe.swift`), which reports it as the
+    /// one reliable signal that the row has been pushed into the overflow popover.
     ///
     /// Read off the view tree because AppKit publishes no API for it, and
     /// `NSToolbar.visibleItems` cannot stand in: SwiftUI's own split-view separator
