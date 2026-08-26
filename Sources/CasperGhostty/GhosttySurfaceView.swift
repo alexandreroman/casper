@@ -108,7 +108,22 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // reference). Held for the view's whole lifetime and `nonisolated(unsafe)` for the
     // same reason as the observers above, so `deinit` can drop it without a hop.
     nonisolated(unsafe) private var commandKeyUpMonitor: Any?
+    // The key/resign-key observers for the current window, registered and torn down
+    // alongside `occlusionObserver` and `nonisolated(unsafe)` for the same reason.
+    nonisolated(unsafe) private var becomeKeyObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var resignKeyObserver: NSObjectProtocol?
     private var lastOcclusion: Bool?
+    // The two inputs `refreshFocus()` ANDs into the focus state libghostty is given:
+    // whether this view is AppKit's first responder, and whether its window is key.
+    // Both are needed because AppKit sends no `resignFirstResponder` when a window
+    // merely stops being key — the view stays that window's first responder — so a
+    // responder-only view of focus leaves libghostty rendering a solid caret in an
+    // inactive window, where upstream Ghostty (and every native terminal) draws a
+    // hollow one. `windowIsKey` is re-synced from the window on every window entry,
+    // so a view built into an already-key window does not wait for a notification
+    // that only reports later transitions.
+    private var hasResponderFocus = false
+    private var windowIsKey = false
 
     public init(
         runtime: GhosttyRuntime, configuration: GhosttySurfaceConfiguration,
@@ -166,6 +181,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
         if let screenChangeObserver {
             NotificationCenter.default.removeObserver(screenChangeObserver)
+        }
+        if let becomeKeyObserver {
+            NotificationCenter.default.removeObserver(becomeKeyObserver)
+        }
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
         }
         if let commandKeyUpMonitor {
             NSEvent.removeMonitor(commandKeyUpMonitor)
@@ -268,6 +289,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             // so reset it before reconciling occlusion for the real surface.
             lastOcclusion = nil
             refreshOcclusion()
+            // Same reconciliation for focus: creation can land *after* the responder
+            // transition that would have defined it (the retry path above, or any
+            // ordering where the view is already first responder in a key window), and
+            // the push that transition made went to a nil surface. Without this the new
+            // surface keeps libghostty's undefined default focus state — and renders
+            // the wrong caret until the next focus change.
+            refreshFocus()
         } catch {
             CasperLog.ghostty.failure("surface creation failed", error)
             surfaceCreationAttempts += 1
@@ -547,13 +575,15 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // MARK: Focus
 
     public override func becomeFirstResponder() -> Bool {
-        pushFocus(true)
+        hasResponderFocus = true
+        refreshFocus()
         onFocus(surfaceID)
         return super.becomeFirstResponder()
     }
 
     public override func resignFirstResponder() -> Bool {
-        pushFocus(false)
+        hasResponderFocus = false
+        refreshFocus()
         return super.resignFirstResponder()
     }
 
@@ -565,8 +595,31 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// never invokes it — leaving libghostty's focus state (and the solid
     /// caret it renders) stuck on this surface. Call this explicitly, before
     /// the restructure, on whichever surface currently holds focus.
+    ///
+    /// Clears the responder input rather than pushing `false` behind its back, so a
+    /// later key-window notification cannot re-derive a focused state — and a solid
+    /// caret — on a view the layout coordinator deliberately blurred.
     public func blurForLayoutChange() {
-        pushFocus(false)
+        hasResponderFocus = false
+        refreshFocus()
+    }
+
+    // Recompute the focus state from its two inputs and push it. Deliberately *not*
+    // de-duplicated the way `pushOcclusion` is: libghostty's focus state for a freshly
+    // created surface is undefined, so `blurForLayoutChange()` and the host's focus
+    // restore (`AppModel.focusSurfaceViewIfActive`) rely on their push landing
+    // unconditionally — a dedup cache would swallow the very push that defines it.
+    private func refreshFocus() {
+        pushFocus(hasResponderFocus && windowIsKey)
+    }
+
+    // Record the window's key state from the notification that fired rather than
+    // reading `window.isKeyWindow` back: the notification *is* the transition, and
+    // reading the window back re-derives it from a flag AppKit has not necessarily
+    // settled yet.
+    private func setWindowIsKey(_ isKey: Bool) {
+        windowIsKey = isKey
+        refreshFocus()
     }
 
     // Single point that pushes focus state into libghostty, so every
@@ -602,7 +655,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         pushOcclusion(!window.occlusionState.contains(.visible))
     }
 
-    // (Re)subscribe to the current window's occlusion and screen-change
+    // (Re)subscribe to the current window's occlusion, key-status and screen-change
     // notifications; unsubscribe when leaving a window. Called from
     // `viewDidMoveToWindow`.
     private func updateWindowObservers() {
@@ -614,11 +667,36 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             NotificationCenter.default.removeObserver(screenChangeObserver)
             self.screenChangeObserver = nil
         }
+        if let becomeKeyObserver {
+            NotificationCenter.default.removeObserver(becomeKeyObserver)
+            self.becomeKeyObserver = nil
+        }
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
+        // Entering or leaving a window changes key status wholesale and fires no
+        // notification, so reconcile it here. No window ⇒ a detached cached surface,
+        // which is never focused (it is marked occluded for the same reason).
+        windowIsKey = window?.isKeyWindow ?? false
+        refreshFocus()
         guard let window else { return }
         occlusionObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshOcclusion() }
+        }
+        // A window losing key status leaves this view its first responder, so these two
+        // are the only signals that the caret must go hollow and solid again.
+        becomeKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setWindowIsKey(true) }
+        }
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setWindowIsKey(false) }
         }
         // Dragging the window onto another screen can change its backing scale, its
         // refresh rate, or both. Two screens sharing a scale factor change no backing
