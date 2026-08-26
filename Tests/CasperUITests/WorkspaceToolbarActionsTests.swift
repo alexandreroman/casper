@@ -46,18 +46,36 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         XCTAssertGreaterThan(folded, minimal, "dropping the segmented control freed no width")
     }
 
-    /// The inspector tab selector rides inside every tier but the last, which is
-    /// what keeps it out of AppKit's overflow popover. A refactor that quietly
-    /// dropped it from a tier flunks this.
-    func testEveryTierButTheLastCarriesTheInspectorSelector() {
+    /// The Diff / Browser control is reachable at every tier and duplicated at none:
+    /// it rides on the bar until the last rung, where it folds into the `⋯` menu as
+    /// `Sidebar`. Both sides read `showsInspectorSelector(at:)`, so this pins the
+    /// predicate against what the row actually renders — the menu entry is that same
+    /// predicate negated, and SwiftUI menu contents cannot be measured headlessly, so
+    /// the shared predicate is what keeps the two from drifting apart.
+    func testTheSelectorIsOnTheBarExactlyWhereTheMenuDoesNotCarryIt() {
         let actions = makeActions()
         let ellipsisChip = width(actions.row(.minimal))
 
-        for density in [WorkspaceToolbarActions.Density.full, .mergeGlyph, .folded] {
-            XCTAssertGreaterThanOrEqual(
-                width(actions.row(density)), InspectorTabSelector.intrinsicWidth + ellipsisChip,
-                "density \(density)")
+        for density in WorkspaceToolbarActions.Density.allCases {
+            let onBar = WorkspaceToolbarActions.showsInspectorSelector(at: density)
+            let rendered = width(actions.row(density))
+            if onBar {
+                XCTAssertGreaterThanOrEqual(
+                    rendered, InspectorTabSelector.intrinsicWidth + ellipsisChip,
+                    "\(density) claims the selector but has no room for it")
+            } else {
+                XCTAssertLessThan(
+                    rendered, InspectorTabSelector.intrinsicWidth,
+                    "\(density) drew the selector the menu is carrying")
+            }
         }
+
+        // The last rung is the only one without it, so the menu entry appears exactly
+        // once across the ladder.
+        XCTAssertEqual(
+            WorkspaceToolbarActions.Density.allCases
+                .filter { !WorkspaceToolbarActions.showsInspectorSelector(at: $0) },
+            [.minimal])
     }
 
     /// Every tier stays one row of the shared capsule height. A body whose chips

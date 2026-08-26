@@ -204,9 +204,10 @@ notes, § Design describes the app that exists.
   Run and Editor have **no glyph-only form**: they go from full text straight
   into the `⋯` menu. Only Merge and the selector have a glyph form on the bar.
 
-  The **`⋯` menu** lists exactly what is not on the bar, so its contents vary by
-  rung and never duplicate a visible chip — except `Sidebar`, which stays at
-  every rung that shows `⋯`. Its order mirrors the chips' order on the bar
+  The **`⋯` menu** lists exactly what is not on the bar, without exception, so
+  its contents vary by rung and never duplicate a visible chip — `Sidebar`
+  appears only at the last rung, where the selector itself has folded into the
+  menu. Its order mirrors the chips' order on the bar
   (Merge/Delete, `Run Script` ▸, `Open in Editor` ▸, `Sidebar` ▸) so the folded
   menu reads like the row it replaces; the two orders are coupled and change
   together. `Sidebar` names the **inspector panel on the right**, not the left

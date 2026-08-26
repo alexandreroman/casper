@@ -765,23 +765,30 @@ struct WorkspaceToolbarActions: View {
                 if hasEditors {
                     editorChip
                 }
-                InspectorTabSelector(model: model, workspace: workspace)
             case .mergeGlyph:
                 if canMerge {
                     MergeToolbarButton(model: model, workspace: workspace, density: density)
                 }
                 foldedChip(density)
-                InspectorTabSelector(model: model, workspace: workspace)
             case .folded, .minimal:
-                // Always drawn, whatever the action gates say: the chip carries the
-                // inspector's own two toggles as well, so its menu is never empty.
+                // Always drawn, whatever the action gates say: at these tiers the chip
+                // is the only route to the actions it holds.
                 foldedChip(density)
-                if density == .folded {
-                    InspectorTabSelector(model: model, workspace: workspace)
-                }
+            }
+            if Self.showsInspectorSelector(at: density) {
+                InspectorTabSelector(model: model, workspace: workspace)
             }
         }
     }
+
+    /// Whether the Diff / Browser control rides on the bar at `density`.
+    ///
+    /// The single source for that fact: the `⋯` menu's `Sidebar` entry is exactly its
+    /// complement, so the control is reachable at every tier and duplicated at none.
+    /// Read by the row and by the menu, which is what keeps the two from drifting —
+    /// a menu listing what is already on the bar is the one thing the `⋯` chip must
+    /// never do.
+    static func showsInspectorSelector(at density: Density) -> Bool { density != .minimal }
 
     /// Whether this workspace can be merged into its recorded base branch: only a
     /// linked worktree that records one has anywhere to merge to. Mirrors the
@@ -869,10 +876,8 @@ struct WorkspaceToolbarActions: View {
     ///
     /// Its contents therefore vary by tier, and never duplicate a chip that is still
     /// on the bar: at `.mergeGlyph` the Merge chip is right beside it, so the menu
-    /// opens on Run Script. `Sidebar` is the one exception — it is listed at every
-    /// tier that draws this chip, including the two where the segmented control is
-    /// also on the bar, because both routes go through the same mutator and cannot
-    /// disagree.
+    /// opens on Run Script, and `Sidebar` appears only once the segmented control has
+    /// folded in here too.
     @ViewBuilder
     private func foldedMenuContent(_ density: Density) -> some View {
         // Merge has its own chip at `.mergeGlyph`; below that it lives here.
@@ -915,12 +920,10 @@ struct WorkspaceToolbarActions: View {
         }
         // Named for the panel it drives — the inspector panel on the right, not the
         // workspace column on the left that the toolbar's own sidebar toggle opens.
-        //
-        // Present at BOTH tiers that draw the `⋯` chip. At `.folded` the segmented
-        // control is still on the bar, so this duplicates it; it routes through the
-        // same mutator, so the two can never disagree.
-        Menu("Sidebar") {
-            inspectorTabItems
+        if !Self.showsInspectorSelector(at: density) {
+            Menu("Sidebar") {
+                inspectorTabItems
+            }
         }
     }
 
