@@ -169,7 +169,14 @@ public final class SocketServerEngine<
     }
 
     public func start() throws {
-        unlink(socketPath)  // remove any stale socket file before binding
+        // Remove any stale socket file before binding. Known limitation: there is
+        // deliberately no "is a live listener already bound here?" probe, so a
+        // second app instance sharing a session silently takes over the first's
+        // control socket, and every later `casper` invocation reaches the newer
+        // process. Unconditional cleanup is the accepted trade-off — it is what
+        // lets a crashed instance's leftover socket file be reclaimed — and
+        // `--session` keeps dev builds off the default path.
+        unlink(socketPath)
 
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         params.allowLocalEndpointReuse = true

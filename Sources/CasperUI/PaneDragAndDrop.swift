@@ -264,7 +264,23 @@ struct PaneDropDelegate: DropDelegate {
     let clearHover: () -> Void
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [.utf8PlainText])
+        // The same payload check `performDrop` makes, and made here too so the drop
+        // highlight only ever lights up for a drag this pane can actually accept:
+        // `.utf8PlainText` alone matches any text dragged in from Safari or an
+        // editor, which would light the pane up and then be rejected on release.
+        // `DropInfo` cannot answer what the payload IS synchronously (an
+        // `NSItemProvider` only loads asynchronously), so the drag pasteboard —
+        // which carries the id for the duration of the drag — is read instead.
+        Self.draggedSurfaceID() != nil
+    }
+
+    /// The dragged `Surface.id`, or `nil` when the drag carries anything else.
+    ///
+    /// Read off the drag pasteboard rather than through the `NSItemProvider`,
+    /// because both callers have to answer synchronously.
+    private static func draggedSurfaceID() -> UUID? {
+        guard let string = NSPasteboard(name: .drag).string(forType: .string) else { return nil }
+        return UUID(uuidString: string)
     }
 
     func dropEntered(info: DropInfo) {
@@ -284,17 +300,12 @@ struct PaneDropDelegate: DropDelegate {
         clearHover()
 
         // The return value must be decided synchronously (`false` animates the drag
-        // back to its source), but `NSItemProvider` only loads asynchronously. The
-        // dragged id is on the drag pasteboard for the duration of the drop, so read
-        // it there. A payload that is not one of our surface UUIDs is a foreign text
-        // drag we don't own: reject it instead of accepting a silent no-op. `.onDrop`
-        // still registers on `.utf8PlainText`, so the standard-type transport (which
-        // is what makes SwiftUI engage this delegate at all) is unchanged.
-        guard let string = NSPasteboard(name: .drag).string(forType: .string),
-              let sourceID = UUID(uuidString: string)
-        else {
-            return false
-        }
+        // back to its source). A payload that is not one of our surface UUIDs is a
+        // foreign text drag we don't own: reject it instead of accepting a silent
+        // no-op. `.onDrop` still registers on `.utf8PlainText`, so the standard-type
+        // transport (which is what makes SwiftUI engage this delegate at all) is
+        // unchanged.
+        guard let sourceID = Self.draggedSurfaceID() else { return false }
         // Our own drag dropped onto its own pane: accept it as an intentional no-op
         // rather than animating a rejection back.
         guard sourceID != targetID else { return true }

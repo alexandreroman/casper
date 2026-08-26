@@ -1,4 +1,5 @@
 import AppKit
+import CasperGit
 
 /// The diff's pinned file header, drawn over the top of the viewport.
 ///
@@ -162,7 +163,7 @@ final class DiffStickyHeader: NSView {
                 // above it.
                 Self.piece("\u{2212}\(file.deletions)", DiffStickyHeader.deletionCountAttributes),
                 Self.piece("+\(file.insertions)", DiffStickyHeader.insertionCountAttributes),
-                Self.piece(file.status, DiffStickyHeader.statusAttributes),
+                Self.piece(file.status.rawValue, DiffStickyHeader.statusAttributes(for: file.status)),
             ]
         }
 
@@ -295,8 +296,34 @@ final class DiffStickyHeader: NSView {
         .paragraphStyle: middleTruncating,
     ]
 
-    /// The status word, in the same 10 pt chrome size as the hunk headers.
-    private static let statusAttributes: [NSAttributedString.Key: Any] = [
+    /// The status word, in the same 10 pt chrome size as the hunk headers. The
+    /// emphasis `DiffLineStyle.statusEmphasis(for:)` decides on is carried by weight
+    /// and colour alone, at that one size, so a conflict stays a status label rather
+    /// than turning into a second title.
+    ///
+    /// A warning is bold as well as tinted: at this size a colour alone is easy to
+    /// miss beside the file's name.
+    private static func statusAttributes(
+        for status: GitDiffFile.Status
+    ) -> [NSAttributedString.Key: Any] {
+        switch DiffLineStyle.statusEmphasis(for: status) {
+        case .chrome:
+            return chromeStatusAttributes
+        case .warning(let tint):
+            return [
+                .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize, weight: .bold),
+                .foregroundColor: NSColor(tint),
+            ]
+        case .muted(let tint):
+            return [
+                .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize),
+                .foregroundColor: NSColor(tint),
+            ]
+        }
+    }
+
+    /// What every status that is only chrome is drawn in.
+    private static let chromeStatusAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize),
         .foregroundColor: NSColor.secondaryLabelColor,
     ]

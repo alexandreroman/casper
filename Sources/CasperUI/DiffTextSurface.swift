@@ -136,7 +136,7 @@ struct DiffTextSurface: NSViewRepresentable {
 
         /// The document currently in the text storage — the one every span the
         /// chrome draws from belongs to.
-        private(set) var document: DiffDocument?
+        private var document: DiffDocument?
 
         /// `DiffRendering.revision` of the document in the text storage; `0`
         /// before the first one lands. Nothing else may render a document, or the
@@ -366,16 +366,8 @@ struct DiffTextSurface: NSViewRepresentable {
         /// concurrently with refreshes, so a file finishing just after it left the
         /// diff is ordinary.
         func applyHighlight(_ highlight: DiffFileHighlight, forFileID fileID: String) {
-            guard let fileIndex = document?.fileIndex(withID: fileID) else { return }
-            applyHighlight(highlight, forFileAt: fileIndex)
-        }
-
-        /// Paints one file's syntax colors, for a caller that already knows where
-        /// that file sits — the whole-document repaint, which walks the files in
-        /// order precisely so it never has to look an index up.
-        func applyHighlight(_ highlight: DiffFileHighlight, forFileAt fileIndex: Int) {
-            guard let document, let storage = textView.textContentStorage?.textStorage
-            else { return }
+            guard let document, let fileIndex = document.fileIndex(withID: fileID),
+                  let storage = textView.textContentStorage?.textStorage else { return }
             DiffTextAssembly.applyHighlight(
                 highlight, forFileAt: fileIndex, in: storage, document: document)
         }

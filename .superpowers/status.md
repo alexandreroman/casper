@@ -16,8 +16,9 @@ Every module is built, and Casper is a working product: a Space-grouped
 sidebar over linked Git worktrees, tmux-style terminal panes, a right inspector
 panel carrying the browser and the diff view, per-repository `.casper.json`
 scripts, agent-state detection for three coding agents, and in-app auto-update.
-`make build` and `make test` are green (1226 tests, 2 skipped, 0 failures —
-measured 2026-08-25).
+`make build` and `make test` are green — last measured 2026-08-26. The suite's
+test count is deliberately not recorded here: it moves with every commit, and a
+stale number reads as a regression. Run `make test` for the current figure.
 
 | Area                                 | Status | Design & as-built                                                    |
 | ------------------------------------ | ------ | -------------------------------------------------------------------- |

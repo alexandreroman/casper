@@ -120,8 +120,8 @@ extension RepoNamedCommand {
 
 /// Reserved `workspace.scripts` keys that are lifecycle hooks rather than
 /// user-invocable named commands.
-public enum RepoScripts {
-    public static let reservedNames: Set<String> = ["setup", "teardown"]
+enum RepoScripts {
+    static let reservedNames: Set<String> = ["setup", "teardown"]
 }
 
 extension RepoConfig {
@@ -153,7 +153,9 @@ extension RepoConfig {
         if RepoScripts.reservedNames.contains(name) {
             return .denied("'\(name)' is a reserved lifecycle hook, not a runnable command")
         }
-        if let command = namedCommand(name) { return .command(command) }
+        // The reserved-name guard above already ran, so this skips `namedCommand`
+        // (which would only re-apply it) and looks the script up directly.
+        if let command = nonEmptyScript(named: name) { return .command(command) }
         let available = namedCommands().map(\.name)
         let hint = available.isEmpty
             ? "no named commands defined in .casper.json"

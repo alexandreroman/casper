@@ -60,8 +60,10 @@ as the panel resizes, so the gesture's local origin moves under the cursor.
 session — the crash is a silent framework limitation, and the translation-based
 drag looks correct but feels laggy.
 
-**How to access:** width bounds are `InspectorState.minWidth` / `defaultWidth` /
-`maxWidth` (plus a `minDetailWidth` floor kept for the detail area). The live
+**How to access:** the inspector's own width bounds are
+`InspectorState.minWidth` / `defaultWidth` / `maxWidth`; the floor reserved for
+the detail area beside it belongs to the other side of the divider and lives as
+`WorkspaceDetailView.minDetailWidth`. The live
 width is a per-workspace `@State` in `WorkspaceDetailView`, seeded on
 `.onAppear` (re-seeded per workspace because the detail view carries a
 per-workspace `.id`) and persisted **on drag-end only** via

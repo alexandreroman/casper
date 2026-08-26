@@ -31,7 +31,10 @@ struct DiffDocument: Sendable, Equatable {
         /// is what scroll anchoring and progressive highlighting key on.
         let id: String
         let title: String
-        let status: String
+        /// Carried as the status itself, not as its word: the header both prints it
+        /// and styles a conflict apart from an ordinary change (see
+        /// `DiffLineStyle.statusEmphasis(for:)`), which a string cannot answer.
+        let status: GitDiffFile.Status
         let insertions: Int
         let deletions: Int
         let gutterWidth: CGFloat
@@ -215,7 +218,7 @@ struct DiffDocument: Sendable, Equatable {
             shape.maxFileLines = max(shape.maxFileLines, metrics.sourceLines)
             shape.maxLineLen = max(shape.maxLineLen, metrics.longestLine)
             files.append(FileSpan(
-                id: file.id, title: Self.title(of: file), status: file.status.rawValue,
+                id: file.id, title: Self.title(of: file), status: file.status,
                 insertions: metrics.insertions, deletions: metrics.deletions,
                 gutterWidth: metrics.gutterWidth,
                 range: NSRange(location: fileStart, length: offset - fileStart),

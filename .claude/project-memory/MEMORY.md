@@ -6,11 +6,18 @@
 > updating. **Do NOT take any action** — no tool calls, no file writes — until
 > confirmed.
 
+> **Note wording** — state permanent facts in the present tense. A note read out
+> of context must not reveal what it replaces or what just happened. Ban
+> narration markers: "now", "no longer", "previously / used to", "reverses /
+> replaces", "kept", "changed to", "reintroduce", "the user asked to". Phrase
+> prohibitions positively ("the API is versioned under /v2"), not as the
+> negation of a former state. Test: remove the note from its context — if a
+> sentence only makes sense knowing the prior state, rewrite it.
+
 - [Dependency policy](references/dependency-policy.md) — prefer native macOS APIs; five sanctioned externals, listed
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
 - [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — without the untracked-content flag, text misflags as binary
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
-- [Dual-axis ScrollView centering](references/dual-axis-scrollview-centering.md) — a both-axes ScrollView centers undersized content; anchor it
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
 - [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
@@ -35,7 +42,7 @@
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null; wake the display and poll
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
 - [OSC 52 clipboard writes](references/osc52-clipboard-write-confirmation.md) — untrusted writes need approval; needs `clipboard-write = ask`
-- [OSC 52 clipboard reads](references/osc52-clipboard-read-confirmation.md) — untrusted reads need approval; completing as confirmed skips the policy
+- [OSC 52 clipboard reads](references/osc52-clipboard-read-confirmation.md) — untrusted reads need approval; confirming completion skips it
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring; the pinned binary's effect is unconfirmed
 - [libghostty mouse handling parity](references/ghostty-mouse-parity.md) — multi-click is core-side; shape actions are surface-scoped
 - [libghostty scroll mods packed layout](references/ghostty-scroll-mods-layout.md) — opaque `int` = packed i32: precision bit, then momentum
@@ -44,7 +51,7 @@
 - [Observed startup dependencies](references/observed-startup-dependencies.md) — a startup-set @Observable prop must not be @ObservationIgnored
 - [PersistentNSViewHost view ownership](references/persistent-nsview-host-sharing.md) — window membership picks the container holding a shared view
 - [Custom resizable inspector panel](references/swiftui-inspector-width.md) — hand-rolled: native .inspector aborts on a macOS 26 drag
-- [Intra-app drag pasteboard type](references/intra-app-drag-pasteboard-type.md) — a code-only UTType is ignored by SwiftUI `.onDrop`; use a standard
+- [Intra-app drag pasteboard type](references/intra-app-drag-pasteboard-type.md) — SwiftUI `.onDrop` ignores a code-only UTType
 - [Debug screenshot uses ScreenCaptureKit](references/debug-screenshot-screencapturekit.md) — SCScreenshotManager + a screen-recording grant
 - [Agents cannot self-verify SwiftUI visual changes](references/agent-visual-verification-limits.md) — subagents lack screen-recording TCC
 - [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a nested Menu breaks glassEffect compositing
@@ -56,7 +63,7 @@
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
 - [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
 - [The working signal is the OSC 9;4 progress report](references/agent-state-working-signal.md) — title spinner secondary; version-coupled detection
-- [Measuring a TUI agent's viewport affordance](references/viewport-affordance-measurement.md) — replay the PTY into a grid; grepping the raw capture misses split writes
+- [Measuring a TUI viewport affordance](references/viewport-affordance-measurement.md) — replay the PTY into a grid; raw greps miss split writes
 - [libghostty config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — a bundle misses the user's config
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, not after
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_* vars so no live env leaks in
@@ -64,10 +71,8 @@
 - [In-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — the real-keyDown recipe; fixed settles, not polling
 - [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menus are `.commands`; Services needs a delegate proxy
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module never checks Contents/Resources
-- [Diff-view main-thread layout hang](references/diff-view-refresh-hang.md) — the measured signature, why size misleads, the sample recipe
-- [Main-thread hang watchdog and dump exploitation](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
+- [Main-thread hang watchdog and dumps](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
 - [Release binary size budget](references/binary-size-budget.md) — the measured levers, which are applied, and which are declined
-- [Nested modal loops starve the main dispatch queue](references/main-queue-starved-by-modal-loops.md) — use `CFRunLoopPerformBlock` + modal modes
 - [MainRunLoop, the shared modal-proof hop](references/main-run-loop-hop.md) — `MainRunLoop.perform` reaches the main thread behind a modal panel
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — a non-empty `spaces` always resolves `selectedWorkspaceID`
 - [.casper.json scripts — decisions & invariants](references/repo-config.md) — copyFiles + commands + hooks: the child-exit race and wrap choices
@@ -81,7 +86,6 @@
 - [A toolbar group must be told to truncate](references/toolbar-group-truncation.md) — no lineLimit means it wraps mid-word, not truncates
 - [Browser automation CLI](references/browser-automation-cli.md) — the automation/scroll/debug verbs, and their off-screen behavior
 - [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a UIDelegate
-- [Address submit resigns first responder first](references/browser-address-submit-order.md) — end editing before the load, not after
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — ATS blocks plain-HTTP to public-qualified hostnames
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — an mmap-truncation SIGBUS becomes a graceful throw
 - [App icon design and generation pipeline](references/app-icon.md) — SVG masters → `.icns`, plus an Icon Composer `.icon` → Assets.car
@@ -104,10 +108,8 @@
 - [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — a new verb case breaks CasperUI until routed; one commit
 - [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — the pointing hand has to be driven explicitly
 - [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a set border can draw nothing; avoid needing one
-- [Markdown block spacing is one-sided](references/markdown-one-sided-spacing.md) — a bordered block needs a dedicated spacer paragraph
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
-- [Casper.app bundle codesign seal](references/app-bundle-codesign-seal.md) — dylibs, executable, bundle — never `--deep` (it breaks Sparkle)
-- [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — lose the seed without a bridge release and every copy is stranded
+- [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
 - [Screen Recording needs an app bundle](references/tcc-screen-recording-needs-a-bundle.md) — a loose signed binary never appears in the list at all
 - [inherited_config reports a live font size](references/ghostty-inherited-config-font-size.md) — the read-back font-size persistence rests on
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
@@ -115,7 +117,6 @@
 - [Markdown table columns align by display width](references/table-emoji-column-alignment.md) — ✅ is two columns; the two table checkers conflict
 - [Agent integration policy](references/agent-integration-policy.md) — detect and remind only; never write another tool's config
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
-- [Agent-integration probe cadence](references/agent-integration-probe-cadence.md) — launch pays the cold cost; the tick refreshes
 - [Codex detection caveats](references/codex-detection-caveats.md) — confirmed cache path, hook trust in config.toml, hooks.json false positive
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
 - [Unused-import false positives](references/unused-import-grep-false-positives.md) — a green build proves nothing
@@ -130,6 +131,7 @@
 - [DEBUG memory observability](references/memory-observability.md) — weak-ref live-object census + `casper debug memory` + the churn script
 - [Only the layout may create a surface view](references/surface-view-layout-membership.md) — a stale `Surface` value must not refill the view cache
 - [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH and search it in Swift; never ask it to resolve a command
-- [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — one item, one measured width; an overflowed item recovers only when it fits
-- [A toolbar item ignores .frame(maxWidth:)](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward to a ViewThatFits
-- [Measure the GeometryReader, not its content](references/measure-the-geometryreader-not-its-content.md) — content that overflows its column reports a width the column never had
+- [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — one item, one measured width
+- [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
+- [Repeating animations are gated at the call site](references/repeating-animation-state-gating.md) — a one-shot @State flag must die with the view
+- [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag

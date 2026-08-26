@@ -51,12 +51,6 @@ obvious home, that is a gap in the themes or the memory notes to be filled, not
 a reason to keep the plan. New plans are welcome — for work that has not
 happened yet.
 
-The agent-plugin repository these docs refer to is **`casper-skills`**. It
-ships the `casper` plugin for all three supported agents: Claude Code and Codex
-register it as `casper@casper` (plugin `casper`, marketplace `casper`), and
-opencode installs it from a Git spec — `github:alexandreroman/casper-skills`, a
-`git+https`/`git+ssh` URL, or a local checkout path.
-
-Design specs for work that has fully landed are recoverable from Git history
-(tracked under the now-removed `docs/superpowers/` and `.superpowers/plans/`
-trees before being distilled into `architecture.md` + `themes/`).
+The agent-plugin repository these docs refer to is **`casper-skills`**; see
+[`README.md`](../README.md) § Coding agents for the per-agent plugin ids and
+install specs.

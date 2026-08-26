@@ -128,7 +128,11 @@ Casper is distributed as a standalone `Casper.app`.
 
 1. Download the latest `Casper.app` archive from the [Releases][releases] page.
 2. Unzip it and move `Casper.app` to your `/Applications` folder.
-3. Launch it like any other macOS app.
+3. **Right-click `Casper.app` ▸ Open**, then confirm at the prompt. Casper is
+   ad-hoc signed rather than notarized, so a plain double-click on the first
+   launch is blocked by Gatekeeper. The equivalent from a terminal is
+   `xattr -dr com.apple.quarantine /Applications/Casper.app`.
+4. Every later launch works like any other macOS app.
 
 **Requirements:** macOS 15 or later, on Apple Silicon (arm64). The `casper` CLI
 needs no installation: Casper injects it into the `PATH` of every terminal it
@@ -241,7 +245,7 @@ The first build downloads the pinned `GhosttyKit.xcframework` (~53 MB) from the
 ```bash
 git clone <repo-url> casper
 cd casper
-make build   # compile (the first run downloads GhosttyKit.xcframework)
+make build   # compile + assemble Casper-dev.app (first run downloads GhosttyKit)
 make test    # run the test suite
 ```
 
@@ -251,7 +255,7 @@ Common tasks are exposed through the `Makefile`:
 make          # debug build (default target)
 make help     # list available targets
 make dev      # recompile and launch the app under a per-branch dev session
-make build    # debug build
+make build    # debug build + signed Casper-dev.app bundle
 make test     # run the full test suite
 make all      # build then test
 make release  # size-optimized release build (arm64)
@@ -259,6 +263,7 @@ make bundle   # assemble a self-contained Casper.app (release binary + dylibs)
 make dist     # package Casper.app into a downloadable .zip + .sha256 + dSYM
 make vendor   # re-sync the pinned libghostty header via Carvel vendir
 make icon     # rebuild AppIcon.icns + AppIconDev.icns from the SVGs (needs resvg)
+make memory   # DEBUG only — watch a running dev instance for memory growth
 make clean    # remove build artifacts
 ```
 
@@ -323,7 +328,8 @@ builds and publishes `Casper.app` as a GitHub Release
 the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
 the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
 missing — an unsigned feed would be rejected by every installed copy. See the
-note [`sparkle-eddsa-key.md`](./.claude/project-memory/references/sparkle-eddsa-key.md).
+note
+[`sparkle-eddsa-key.md`](./.claude/project-memory/references/sparkle-eddsa-key.md).
 
 ## Architecture
 
@@ -362,12 +368,9 @@ flowchart TD
 - **`CasperUI`** — SwiftUI sidebar, chrome, diff, and browser views.
 - **`CasperCLI`** — domain subcommands, sharing the single app binary.
 
-The app and CLI ship as one binary, and the routing keys on the *shape* of the
-first argument, not on a list of known verbs: empty argv — or a leading `-…`
-flag, which is what macOS injects on launch — starts the GUI, while any leading
-non-dash word (plus `-h`, `--help` and `--version`) runs the CLI and exits. An
-unrecognized word such as `casper bogus` therefore still enters the CLI, which
-then reports it as an unknown subcommand.
+The app and CLI ship as one binary, routed on the *shape* of the first argument
+rather than a list of known verbs — so `casper` opens the GUI and `casper
+anything` runs the CLI.
 
 ### CLI
 

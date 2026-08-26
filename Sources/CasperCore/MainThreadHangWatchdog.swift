@@ -288,13 +288,20 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Runs the capture off the timer queue, then clears the in-flight flag so a
     /// later episode can capture again.
     private func dispatchCapture(hangDuration: TimeInterval) {
+        // `evaluate` already set `captureInFlight`, and only the work block below
+        // clears it. With no dispatcher there is no work block, so clear it here or
+        // the watchdog stays armed-but-mute for the rest of the process's life.
+        guard let captureDispatch else {
+            lock.withLock { $0.captureInFlight = false }
+            return
+        }
         let destination = Self.dumpDestination(at: Date())
         let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             self.capture?(hangDuration, destination)
             self.lock.withLock { $0.captureInFlight = false }
         }
-        captureDispatch?(work)
+        captureDispatch(work)
     }
 
     // MARK: Default capture (the real `sample` run)

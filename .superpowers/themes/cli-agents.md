@@ -25,110 +25,63 @@ Parsing uses swift-argument-parser; the fork happens before the
 ### Domain CLI (`casper <domain> <verb>`)
 
 The CLI is organized by domain, one noun per area of app state, each with a
-handful of verbs:
+handful of verbs. **`README.md` § CLI is the verb inventory** and the
+user-facing reference for every flag; what follows is the design behind it.
 
-- `status set <state>` — set the agent state of a workspace.
-- `progress set --total --current --label` / `progress clear` — set or clear
-  todo progress.
-- `notify [--message <str>]` — raise the attention flag; `--message` also posts
-  a macOS notification (suppressed when the target is already focused).
-- `info set [--message <str> | --file <path> | -]` — replace the workspace's
-  info-panel Markdown message, read from the flag, a file, or stdin. `-` reads
-  stdin explicitly; a bare invocation reads stdin too, but only when it is not a
-  TTY (piped or redirected) — at an interactive terminal it errors instead of
-  hanging. `info clear` — empty the panel and hide its button. The panel keeps
-  only the latest message and never persists it across restarts.
-- `terminal new [--command <cmd>] [--working-dir <dir>]` — open a terminal,
-  split below (cwd defaults to the worktree); `terminal list` — list the
-  workspace's terminals; `terminal close <id>` — close a terminal by id.
-  `--command` types the given text into the newly opened terminal's real login
-  shell once it starts, via `ghostty_surface_text` right after the surface is
-  created. Both of libghostty's own config fields are deliberately left unused:
-  `command` (the vendored fork execs it as `bash -l -c "exec …"`, ignoring the
-  user's real shell) and `initial_input` (it mojibakes non-ASCII — see
-  [[ghostty-initial-input-utf8]]). The text therefore inherits the user's actual
-  `$SHELL` and PATH (Homebrew, mise, etc., from `~/.zprofile`/`~/.zshrc` for a
-  zsh user). It is typed as plain text, not `exec`'d: after the command exits,
-  the terminal returns to an interactive shell prompt rather than closing, and a
-  compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
-  instruction, not persisted — restoring a saved session never re-runs it.
-- `browser open <url>` — load an **absolute** URL (scheme + host) into the
-  workspace's single **inspector** browser surface and select the browser tab.
-  There is no other browser to target: `Surface.Kind.browser` is reached only
-  through `Workspace.inspector.browser`, splits always create a terminal, and a
-  `.browser` layout leaf cannot be created at all (see `app-ui.md` § Design →
-  "Inspector panel"). `browser load <url>` is the same navigation **without**
-  opening or selecting the inspector (a background load). `browser close` —
-  collapse the inspector if the browser tab is the one showing.
-- **Browser automation and debugging** — the same inspector browser doubles as a
-  drivable surface, so an agent can verify the frontend change it just made.
-  Every verb targets a workspace by id independently of selection and works
-  off-screen:
-  - `browser screenshot [--out <path>] [--width <n>] [--height <n>] [--url
-    <url>]` — write a PNG (a temp file when `--out` is omitted); a sized or
-    `--url` capture renders in a dedicated off-screen `WKWebView`.
-  - `browser content [--selector <css>] [--raw]` / `browser url [--raw]` — print
-    the page's HTML, or its current URL.
-  - `browser eval <js> [--raw]` — evaluate JavaScript and print the result.
-  - `browser click <selector>` / `browser type <selector> <text>` /
-    `browser key <key> [--selector <css>]` — JS-synthesized input against the
-    first matching element (`key` defaults to the focused one).
-  - `browser console [--level <lvl>] [--clear]` — print the captured `console.*`
-    output and uncaught errors (a 500-entry ring buffer fed by an injected
-    `WKUserScript`).
-  - `browser wait <selector> | --js <expr> [--visible|--gone] [--timeout <ms>]`
-    — block until a selector is present/visible/gone or a JS predicate holds.
-  - `browser reload [--wait]` — reload the page.
-  - `browser scroll-up` / `scroll-down` / `scroll-top` / `scroll-bottom` —
-    scroll by one viewport, or jump to either end.
+**`terminal new --command` types, it does not exec.** The text goes into the
+newly opened terminal's real login shell via `ghostty_surface_text` right after
+the surface is created. Both of libghostty's own config fields are deliberately
+left unused: `command` (the vendored fork execs it as `bash -l -c "exec …"`,
+ignoring the user's real shell) and `initial_input` (it mojibakes non-ASCII —
+see [[ghostty-initial-input-utf8]]). The text therefore inherits the user's
+actual `$SHELL` and PATH (Homebrew, mise, etc., from `~/.zprofile`/`~/.zshrc`
+for a zsh user). Because it is typed rather than `exec`'d, the terminal returns
+to an interactive prompt after the command exits instead of closing, and a
+compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
+instruction, not persisted — restoring a saved session never re-runs it.
 
-  See [[browser-automation-cli]] for the synthesized-input, snapshot and
-  off-screen caveats.
-- `diff open [<file>]` — open the diff view and scroll to `<file>` (which must
-  exist on disk and be inside the worktree, else an error). `diff close` —
-  collapse the inspector if the diff tab is the one showing.
-- `workspace list` / `workspace current` /
-  `workspace new <branch> [--base <ref>] [--command <cmd>]` / `workspace delete`
-  — enumerate, identify, create, and destroy workspaces. The branch name is a
-  **positional argument**, not a flag; `--base` forks from a ref other than the
-  space's base branch, and `--command` seeds the workspace's first terminal.
-  `workspace delete` is **destructive** (prunes the worktree folder, deletes the
-  branch, drops it from the UI) and **refuses a primary workspace**.
-- `run [<name>]` — run a named command from the workspace's `.casper.json` in a
-  new visible terminal (defaults to the command named `run`). Not scoped under
-  its own noun like the others, but still a workspace-targeted verb.
+**`browser open` has exactly one possible target.** `Surface.Kind.browser` is
+reached only through `Workspace.inspector.browser`, splits always create a
+terminal, and a `.browser` layout leaf cannot be created at all (see
+`app-ui.md` § Design → "Inspector panel"). That is what lets the verb take no
+target: `browser load` is the same navigation without opening or selecting the
+inspector, and `browser close` collapses the inspector only when the browser tab
+is the one showing.
 
-Every workspace-scoped command shares a `--workspace <id-or-name>` option,
-defaulting to `$CASPER_WORKSPACE_ID` (set in every Casper terminal); this is why
-plain `casper status set working` works with no flags inside a Casper terminal
-but needs `--workspace` from anywhere else. The one deliberate exception is
-`workspace current`: it answers "which workspace is *this* terminal", so it
-reads `$CASPER_WORKSPACE_ID` only and takes no target option — outside a Casper
-terminal it errors rather than defaulting to something.
+**Browser automation is a first-class surface, not a debug aid.** The same
+inspector browser is drivable, so an agent can verify the frontend change it
+just made; every verb targets a workspace by id independently of selection and
+works off-screen. See [[browser-automation-cli]] for the synthesized-input,
+snapshot and off-screen caveats.
 
-Each command sends a `ControlCommand` to the running app over a Unix domain
-socket named by `$CASPER_CONTROL_SOCKET` (also per-surface env, alongside
-`$CASPER_WORKSPACE_ID` and `$CASPER_PORT`); the app replies with a
-`ControlResponse`. If `$CASPER_CONTROL_SOCKET` is unset, the CLI exits with a
-"Casper is not running" error instead of hanging. `casper debug …` is a
-separate, `#if DEBUG`-only channel — never present in a release build. See
-[[debug-channel-gating]].
+**Targeting.** Every workspace-scoped command shares `--workspace <id-or-name>`,
+defaulting to `$CASPER_WORKSPACE_ID`. `workspace current` is the deliberate
+exception: it answers "which workspace is *this* terminal", so it reads the env
+var only and takes no target option — outside a Casper terminal it errors
+rather than defaulting to something.
+
+**Transport.** Each command sends a `ControlCommand` over the Unix domain socket
+named by `$CASPER_CONTROL_SOCKET` and reads back a `ControlResponse`. With that
+variable unset the CLI exits with a "Casper is not running" error rather than
+hanging. `casper debug …` is a separate, `#if DEBUG`-only channel — never
+present in a release build. See [[debug-channel-gating]].
 
 ### JSON output
 
-Every command is machine-readable. On **success** it prints a JSON object (or
-array) to stdout and exits 0, describing the resulting resource state and always
-including the affected `workspace` id — e.g. `status set blocked` →
-`{"status":"blocked","workspace":"<id>"}`; verbs with no meaningful state
-(`progress clear`, `notify`, `browser open`, `diff open`) →
-`{"workspace":"<id>"}`. `terminal new` carries `working-dir` (always) and
-`command` (when given); `terminal list` carries only `working-dir` (it no longer
-carries `command` — a terminal's launch command is a one-shot instruction, not
-durable state); `workspace new`/`list`/`current` carry the worktree `path`
-(`branch` omitted for a degenerate, non-Git space). On **error** it prints
-`{"error":"<msg>"}` to stderr and exits **non-zero** — a command in error never
-returns 0; validate CLI-side in `makeCommand()` where possible. ArgumentParser's
-own output (`--help`, missing option, unknown flag) stays native.
+`README.md` § CLI records the per-verb success shapes. Two contracts behind
+them bind every new verb:
+
+- **A success payload always carries the affected `workspace` id**, even when
+  the verb has no state of its own to report (`progress clear`, `notify`,
+  `browser open`, `diff open` all reduce to `{"workspace":"<id>"}`). A payload
+  omits anything that is not durable state — `terminal list` carries
+  `working-dir` but no `command`, because a launch command is a one-shot
+  instruction.
+- **A command in error never exits 0.** It prints `{"error":"<msg>"}` to stderr
+  and exits non-zero; validate CLI-side in `makeCommand()` wherever the check is
+  possible without the app. The one exception is ArgumentParser's own output
+  (`--help`, a missing option, an unknown flag), which stays native and exits
+  64.
 
 Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_ID`
 — is **lowercase**, its canonical external form (`UUID.casperID`); `--workspace`
@@ -209,6 +162,13 @@ project's default ports), and — when a debug build runs under `--session <name
 `CASPER_WORKSPACE_ID` for its default target and `CASPER_CONTROL_SOCKET` to
 reach the app; state changes flow straight into the sidebar (badge, progress,
 notification dot) and, for `notify`, `UserNotifications`.
+
+`notify` is suppressed **entirely** for a focused target, not merely muted: the
+`!focused` guard in `controlRaiseNotification` wraps both the
+`pendingNotification` / `pendingNotificationMessage` write and the delivery, so
+a focused workspace gets no macOS notification, no sidebar dot and no Dock
+bounce. The user is already looking at it, and an unread marker on a workspace
+in view is noise.
 
 When a debug build is launched with `--session <name>`, its control socket is
 the session-scoped `casper-control-<name>.sock` and that path is the value
@@ -588,8 +548,6 @@ A probe already in flight is left to finish rather than joined by a second one,
 and the task is cancelled on teardown — `Task.detached` neither inherits nor
 forwards cancellation, so a cancelled probe still runs to completion and the
 `Task.isCancelled` check on the way back is what stops it publishing.
-
-See [[agent-integration-probe-cadence]].
 
 The rows sit between the scrolling workspace list and the "Add Folder…" footer,
 and render **nothing at all** — no divider, no padding, no container — when

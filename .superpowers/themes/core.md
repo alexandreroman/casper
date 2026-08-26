@@ -16,8 +16,14 @@ The pure-Swift, UI-free core. Fully unit-tested.
   Heavily tested, and the reason pane restructuring needs no UI state (see
   `app-ui.md` § Design → "Layout composition").
 - **Agent state** — `Workspace.agentState` (an `AgentState` enum) and its
-  `todos` are plain fields set directly by the control-channel handlers
-  (`casper status set` / `progress set`); there is no reducer or state machine.
+  `todos` have **two** producers. The control-channel handlers
+  (`casper status set` / `progress set`) write the fields directly and are
+  authoritative. The detection tick is the second: it feeds each surface's
+  signals through `AgentStateResolver` — a per-workspace `struct` holding
+  `observedWorking` / `idleStreak` / `doneLatched` behind a
+  `mutating func resolve(...)`, so it is a small state machine — and lands the
+  result through `setDetectedAgentState`, which never grants authority to a
+  detected value. See `agent-state-detection.md`.
 - **`WorktreeManager`** — create/list/remove/deleteBranch/isClean/`merge` over
   `CasperGit`, plus `registeredName` (a worktree's admin entry resolved by path,
   since an adopted worktree can carry any name), `resyncWorkingTree` and
@@ -81,11 +87,5 @@ The pure-Swift, UI-free core. Fully unit-tested.
 - **`MainThreadHangWatchdog`** — **DEBUG-only** freeze diagnosis: it detects a
   blocked main thread and, on the first stall of an episode, spawns
   `/usr/bin/sample`. The whole file compiles out of release. It stays wired
-  until the diff-view hang is confirmed fixed live — see [[hang-dump-watchdog]]
-  and [[diff-view-refresh-hang]].
-
-## Standing limitations
-
-`WorktreeManager.remove` prunes a worktree without deleting its branch. Its one
-production caller deletes the branch on the next line, so this only bites a
-second caller — see `git-worktrees.md` § Standing limitations.
+  until the hang it diagnoses is confirmed fixed live — see
+  [[hang-dump-watchdog]].

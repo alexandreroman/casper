@@ -38,7 +38,7 @@ public enum AgentState: String, Codable, Sendable {
 }
 ```
 
-This is the same enum `architecture.md` records. The field is **transient** —
+This is the same enum `../architecture.md` records. The field is **transient** —
 not persisted, reset on load — like the rest of the agent-facing runtime state
 (`core.md`, `SessionStore`).
 
@@ -90,22 +90,7 @@ through **non-DEBUG accessors** on `GhosttySurfaceView` / `AppModel`
 (`readViewportText()` / `surfaceViewportText`, `readOSCTitle()` /
 `surfaceOSCTitle`, `readProgressReport()` / `surfaceProgressReport`) so the
 detector can reach them in a release build (distinct from the `#if DEBUG` debug
-channel, `themes/debug.md`).
-
-### Trigger
-
-Re-read on a coalesced "screen changed" signal rather than a busy poll.
-`GHOSTTY_ACTION_RENDER` is already decoded as `GhosttyAction.render` (and, being
-display-link driven, already fires — see `terminal.md`), but the runtime
-currently discards it. Observe it, **throttled** (~150–300 ms), to schedule a
-re-read. A plain timer poll is an acceptable fallback for a first cut.
-
-Caveat: `GHOSTTY_ACTION_RENDER` is still handled app-wide. The action dispatch
-(`casperGhosttyAction`) already resolves the target surface from the per-surface
-`userdata` for five actions — `MOUSE_SHAPE`, `MOUSE_VISIBILITY`, `SET_TITLE`,
-`PROGRESS_REPORT` and `SHOW_CHILD_EXITED` — each of which terminates there
-rather than flowing on to the app-level `onAction`. Extending the same
-resolution to `render` is what would tell us **which** surface changed.
+channel, `debug.md`).
 
 ### Rules
 
@@ -197,11 +182,11 @@ agent under `script -q` with `TERM_PROGRAM=ghostty` and
 the raw file for `ESC]9;4;` and `ESC]0;`. Re-run that capture before trusting
 any row after an agent upgrade.
 
-| Agent | OSC 9;4 progress | OSC title | Viewport affordance |
-| ----- | ---------------- | --------- | ------------------- |
-| Claude Code 2.1.239 | `9;4;3` for the whole turn, `9;4;0` at its end | `◐◑` while working, `✳` at rest | none |
-| opencode 1.18.20 | none | plain ASCII (`OpenCode`, `OC \| <turn title>`) — never a glyph prefix | `esc interrupt` footer while a turn runs; `Permission required` + `Allow once`/`Reject` when blocked |
-| codex-cli 0.149.0 | none (static: the binary contains no `9;4` and no `ConEmu`) | not measured | not measured |
+| Agent               | OSC 9;4 progress                                            | OSC title                                                             | Viewport affordance                                                                                  |
+| ------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Claude Code 2.1.239 | `9;4;3` for the whole turn, `9;4;0` at its end              | `◐◑` while working, `✳` at rest                                       | none                                                                                                 |
+| opencode 1.18.20    | none                                                        | plain ASCII (`OpenCode`, `OC \| <turn title>`) — never a glyph prefix | `esc interrupt` footer while a turn runs; `Permission required` + `Allow once`/`Reject` when blocked |
+| codex-cli 0.149.0   | none (static: the binary contains no `9;4` and no `ConEmu`) | not measured                                                          | not measured                                                                                         |
 
 Two consequences worth stating outright:
 
@@ -236,10 +221,32 @@ JavaScript bundle, where glyphs and escapes are stored as `\uXXXX` text and a
 raw-byte grep proves nothing — the trap that produced the initial, incorrect
 "the title spinner is gone" reading of Claude Code.)
 
+### Codex native viewport detection
+
+Codex has a native viewport rule set (`AgentDetectionRuleSet.codex`) alongside
+Claude Code's. Its `esc to interrupt` / `ctrl+c to interrupt` affordance and
+`Running tools` status identify live execution; Codex has no documented
+OSC-title state, so its title is deliberately ignored (its
+`titleWorkingScalars` is empty) and it publishes no OSC 9;4 progress, so the
+viewport is its only source.
+
+**Whether those affordances still exist is unverified** — see the open question
+below. They are what the rule set was written against; nothing has confirmed
+them against a current Codex build.
+
+**It is reachable at runtime.** `runAgentDetectionTick` applies every rule set
+in `AgentDetectionRuleSet.all` to the same snapshot and aggregates the
+signals, so the `Running tools` needle contributes too. Selecting *one* rule
+set per surface would need a way to know which agent runs there, which
+detection does not have; the union sidesteps that, at the price of every
+agent's needles being live on every terminal. The same union is what makes
+opencode's `esc interrupt` footer and `Permission required` prompt reachable.
+
 ### Resolver
 
-The raw signal becomes the reported state through a small resolver — the only
-place with policy; there is still no state machine on the model (`core.md`):
+The raw signal becomes the reported state through `AgentStateResolver` — the
+only place with policy, and the only state machine involved: the model's
+`agentState` stays a plain field (`core.md`).
 
 1. **No foreground agent → `unknown`.** The resolver maps the `absent` signal to
    `unknown`. **As built, the tick never feeds `absent`**: a workspace with no
@@ -253,8 +260,10 @@ place with policy; there is still no state machine on the model (`core.md`):
    N consecutive reads** before `working → idle`, so a gap between two tool
    calls does not flicker to idle. Never let a late or stale read revive `idle`
    once a terminal state has been set.
-3. **Priority (multi-signal / aggregation):** `blocked` > `working` > `done` >
-   `idle` > `unknown`.
+3. **Priority (multi-signal / aggregation):** `AgentSignal` has four cases and
+   ranks them `blocked` > `working` > `idle` > `absent`, so rolling several
+   surfaces up is a `max`. `done` is not in that order: it is a *state*, derived
+   from an aggregated `idle` by `AgentStateResolver.resolveIdle`.
 4. **`done` is derived, not matched.** A `working → idle` transition while the
    workspace is **unseen** presents as `done`; it collapses to `idle` once seen
    (`focusedSurfaceID` / `selectedWorkspaceID` point at it). `done` is the
@@ -317,7 +326,7 @@ does not replace the shell process. See [[ghostty-initial-input-utf8]]. Agents
 therefore still always run **inside a shell** (the user types `claude`, or
 `--command claude` types it for them); the shell survives when the agent exits,
 and no agent-scoped exit event is available. See the CasperGhostty note in
-`themes/cli-agents.md`.
+`cli-agents.md`.
 
 Given the shell-hosted reality:
 - **`done`** is still produced by the resolver's own `working → idle` derivation
@@ -385,7 +394,8 @@ state lives only at the workspace level.
 ### Notifications
 
 `setDetectedAgentState` raises a notification on a transition into an attention
-state — `blocked` → `"Waiting for your input"`, `done` → `"Task finished"` — by
+state — `blocked` → `"Waiting for your input"`, `done` → `"Done"`,
+`error` → `"Something went wrong"` — by
 calling `controlRaiseNotification(message:for:)`, the same mechanism `casper
 notify` uses. This is what makes notification + sidebar-dot support work **with
 no Claude Code hook**: it is driven purely by Casper's own OSC/viewport scraping
@@ -420,8 +430,12 @@ rules live in `app-ui.md` § Design → "Dock attention".
 ## Deferred / out of scope
 
 - **`.render`-driven trigger** — replace the timer poll (~250 ms while the
-  window is visible, ~1 s while it is hidden) with a throttled re-read on
-  `GHOSTTY_ACTION_RENDER` (decoded as `.render`, currently discarded).
+  window is visible, ~1 s while it is hidden) with a throttled (~150–300 ms)
+  re-read on `GHOSTTY_ACTION_RENDER`, which is decoded as `.render` and
+  discarded. It is handled app-wide, so it would first need the per-surface
+  `userdata` target resolution `casperGhosttyAction` already does for
+  `MOUSE_SHAPE`, `MOUSE_VISIBILITY`, `SET_TITLE`, `PROGRESS_REPORT` and
+  `SHOW_CHILD_EXITED` — that is what says *which* surface changed.
 - **Timeout-based authority release** for shell-hosted agents (option B), wired
   with `casper notify`.
 - **A real `error` signal** and the **agent-as-command** `done`/`error` path —
@@ -430,33 +444,6 @@ rules live in `app-ui.md` § Design → "Dock attention".
   agent-as-command surface; re-evaluating that path is a separate, unscoped
   project.
 - **Per-surface status** field + pane-chrome indicator (option B).
-
-### Codex native viewport detection
-
-Codex has a native viewport rule set (`AgentDetectionRuleSet.codex`) alongside
-Claude Code's. Its `esc to interrupt` / `ctrl+c to interrupt` affordance and
-`Running tools` status identify live execution; Codex has no documented
-OSC-title state, so its title is deliberately ignored (its
-`titleWorkingScalars` is empty) and it publishes no OSC 9;4 progress, so the
-viewport is its only source.
-
-**Whether those affordances still exist is unverified** — see the open question
-below. They are what the rule set was written against; nothing has confirmed
-them against a current Codex build.
-
-**It is reachable at runtime.** `runAgentDetectionTick` applies every rule set
-in `AgentDetectionRuleSet.all` to the same snapshot and aggregates the
-signals, so the `Running tools` needle now contributes. Selecting *one* rule
-set per surface would need a way to know which agent runs there, which
-detection does not have; the union sidesteps that, at the price of every
-agent's needles being live on every terminal. The same union is what makes
-opencode's `esc interrupt` footer and `Permission required` prompt reachable.
-Explicit `working`, `idle`, and `unknown` updates remain observable by the
-terminal detector. This prevents a
-`UserPromptSubmit` hook from leaving a workspace stuck in `working` if its
-separate `Stop` hook is not available. Explicit `blocked`, `done`, and `error`
-remain authoritative because terminal text cannot safely clear those attention
-states.
 
 ## Open questions
 

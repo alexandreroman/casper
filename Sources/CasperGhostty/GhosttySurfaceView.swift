@@ -15,27 +15,29 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // it hands over rather than consuming it per creation attempt.
     private var configuration: GhosttySurfaceConfiguration
     private let surfaceID: UUID
-    let onFocus: (UUID) -> Void
+    private let onFocus: (UUID) -> Void
     // Fired once this view is live in a window (see `viewDidMoveToWindow`). Lets
     // the host claim AppKit first responder for the surface it already considers
     // focused, which a SwiftUI `.onAppear` cannot do because the view may not yet
     // be attached to a window when `.onAppear` runs.
+    // Internal (not private): a test calls it directly to simulate a first window
+    // attachment without a real window (see `AppModelTests`).
     let onAttach: (UUID) -> Void
     // Fired when this surface should be torn down (child exit or a close request).
-    let onClose: (UUID) -> Void
+    private let onClose: (UUID) -> Void
     // Builds the pane context menu for a right-click AppKit is allowed to handle
     // (i.e. the terminal is not capturing the mouse). Returns nil to decline, in
     // which case the right-click is forwarded to libghostty as usual.
-    let onContextMenu: ((NSEvent) -> NSMenu?)?
+    private let onContextMenu: ((NSEvent) -> NSMenu?)?
     // Fired after a font-size keybinding (⌘+/⌘-/⌘0, resolved inside libghostty)
     // changes this surface's live font size, reading back via
     // `GhosttySurface.currentFontSize()` — libghostty exposes no getter to read a
     // size change any other way.
-    let onFontSizeChange: (UUID, Float) -> Void
+    private let onFontSizeChange: (UUID, Float) -> Void
     // Fired when this surface's child process exits, carrying its status. Distinct
     // from `onClose` (which is a pane-teardown request); a lifecycle-hook surface
     // uses this to decide what to do about the exit.
-    let onChildExit: (UUID, Int32) -> Void
+    private let onChildExit: (UUID, Int32) -> Void
     // The last font size reported to `onFontSizeChange`, so a font-size action
     // that libghostty clamped to a no-op (e.g. reset when already at default,
     // or increase past its max) does not re-report the same value.
@@ -83,24 +85,17 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // one, its glyph set having already moved between releases.
     private var latestProgressReport: AgentProgressState?
 
-    // The occlusion observer for the current window, and the last value pushed to
-    // libghostty (so a repeat state is not re-pushed). `lastOcclusion` starts nil:
-    // libghostty defaults a new surface to visible, so the first push always lands.
-    // `nonisolated(unsafe)` on `occlusionObserver` is safe here: it's only ever
+    // Every notification observer registered on the current window (occlusion, key
+    // status, screen change). They are all registered and torn down together in
+    // `updateWindowObservers()`, so one array keeps that teardown to a single loop.
+    // `nonisolated(unsafe)` on `windowObservers` is safe here: it's only ever
     // mutated from `updateWindowObservers()` on the main actor, and by the time
     // `deinit` runs no other reference to the object exists, so there's no
     // concurrent access to race with (and `NotificationCenter.removeObserver` is
     // itself thread-safe). This lets `deinit` read it without a main-actor hop —
     // avoiding the `isolated deinit` back-deployment shim that SIGABRTs on the CI
     // runner (see the isolated-deinit-ci-sigabrt project memory note).
-    nonisolated(unsafe) private var occlusionObserver: NSObjectProtocol?
-    // The screen-change observer for the current window, registered and torn down
-    // alongside `occlusionObserver` and `nonisolated(unsafe)` for the same reason.
-    // A window dragged to another screen keeps its backing properties when both
-    // screens share a scale factor, so `viewDidChangeBackingProperties` never fires
-    // and libghostty would keep driving its display link at the old screen's
-    // refresh rate.
-    nonisolated(unsafe) private var screenChangeObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var windowObservers: [NSObjectProtocol] = []
     // AppKit never routes the `keyUp` of a ⌘ combo through the responder chain, so the
     // press `performKeyEquivalent` sends libghostty would never get its matching
     // release. Upstream Ghostty answers this with a process-local `.keyUp` monitor that
@@ -108,10 +103,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // reference). Held for the view's whole lifetime and `nonisolated(unsafe)` for the
     // same reason as the observers above, so `deinit` can drop it without a hop.
     nonisolated(unsafe) private var commandKeyUpMonitor: Any?
-    // The key/resign-key observers for the current window, registered and torn down
-    // alongside `occlusionObserver` and `nonisolated(unsafe)` for the same reason.
-    nonisolated(unsafe) private var becomeKeyObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var resignKeyObserver: NSObjectProtocol?
+    // The last occlusion value pushed to libghostty, so a repeat state is not
+    // re-pushed. Starts nil: libghostty defaults a new surface to visible, so the
+    // first push always lands.
     private var lastOcclusion: Bool?
     // The two inputs `refreshFocus()` ANDs into the focus state libghostty is given:
     // whether this view is AppKit's first responder, and whether its window is key.
@@ -176,17 +170,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     required init?(coder: NSCoder) { fatalError("not supported") }
 
     deinit {
-        if let occlusionObserver {
-            NotificationCenter.default.removeObserver(occlusionObserver)
-        }
-        if let screenChangeObserver {
-            NotificationCenter.default.removeObserver(screenChangeObserver)
-        }
-        if let becomeKeyObserver {
-            NotificationCenter.default.removeObserver(becomeKeyObserver)
-        }
-        if let resignKeyObserver {
-            NotificationCenter.default.removeObserver(resignKeyObserver)
+        for observer in windowObservers {
+            NotificationCenter.default.removeObserver(observer)
         }
         if let commandKeyUpMonitor {
             NSEvent.removeMonitor(commandKeyUpMonitor)
@@ -211,6 +196,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             refreshOcclusion()
             return
         }
+        // `invalidate()` is final, so an invalidated view entering a window must not
+        // restore the retry budget, clear the overlay, or ask the host to move keyboard
+        // focus onto a surface that no longer has a PTY.
+        guard !invalidated else { return }
         // Re-parenting into a window while the surface never came up (all prior
         // attempts failed) begins a fresh creation cycle: restore the retry budget
         // and clear the error overlay so this attachment gets a clean chance instead
@@ -224,17 +213,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
         createSurfaceIfNeeded()
         // On re-parent the surface already exists and `viewDidChangeBackingProperties`
-        // may not fire, so reconcile the Metal layer scale here too: a re-parent into a
-        // different-DPI window must always re-sync (see ghostty-layer-contents-scale).
-        syncLayerContentsScale()
-        // Same reasoning for everything else the new window governs: a re-parent leaves
-        // libghostty holding the previous window's content scale, pixel size and display
-        // id, and `createSurfaceIfNeeded()` is a no-op once the surface exists. All three
-        // are guarded on a live surface and idempotent, so the first-creation path (which
-        // already pushed them) pays nothing.
-        pushContentScale()
-        pushSize()
-        pushDisplayID()
+        // may not fire, so reconcile everything the new window governs here too: the
+        // re-parent leaves libghostty holding the previous window's Metal layer scale,
+        // content scale, pixel size and display id (see ghostty-layer-contents-scale),
+        // and `createSurfaceIfNeeded()` is a no-op once the surface exists. The pushes
+        // are idempotent, so the first-creation path (which already made them) pays
+        // nothing.
+        pushWindowGeometry()
         // Now that the view is live in a window, let the host claim first responder
         // for it if the model already considers this surface focused. Runs on every
         // attach (not just the first), so a workspace switch that re-mounts this view
@@ -280,10 +265,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             cancelPendingSurfaceRetry()
             surfaceCreationAttempts = 0
             removeErrorOverlay()
-            syncLayerContentsScale()
-            pushContentScale()
-            pushSize()
-            pushDisplayID()
+            pushWindowGeometry()
             // A freshly created surface defaults to visible in libghostty; the
             // dedup cache may still read from the pre-creation (nil-surface) push,
             // so reset it before reconciling occlusion for the real surface.
@@ -440,7 +422,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // path. Each character is sent as its physical key with the right modifiers,
     // reproducing real keyboard typing. Unsupported characters are skipped.
     public func debugSendKeys(_ text: String) {
-        guard let surface else { return }
+        guard surface != nil else { return }
         for character in text {
             guard let key = ghosttyInjectedKey(for: character) else {
                 CasperLog.debug.debug(
@@ -450,23 +432,14 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             let mods = key.needsShift
                 ? ghostty_input_mods_e(GHOSTTY_MODS_SHIFT.rawValue)
                 : ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
-            // The press carries the committed text; the release carries none, as a
-            // real key-up does.
-            let press = ghosttyKeyEvent(
-                keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
-                unshiftedCodepoint: key.unshiftedCodepoint)
-            surface.sendKey(press, text: String(character))
-            let release = ghosttyKeyEvent(
-                keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
-                unshiftedCodepoint: key.unshiftedCodepoint)
-            surface.sendKey(release)
+            sendInjectedKey(key, mods: mods, text: String(character))
         }
     }
 
     // Inject `character` as a real key event (press + release) with the given
     // modifier names, through the bare-event path `performKeyEquivalent` uses.
     public func debugSendKey(_ character: String, mods names: [String]) {
-        guard let surface, let ch = character.first else { return }
+        guard surface != nil, let ch = character.first else { return }
         guard let key = ghosttyInjectedKey(for: ch) else {
             CasperLog.debug.debug(
                 "send-key: skipping unmapped character \(character, privacy: .public)")
@@ -477,18 +450,27 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // is what makes it type the requested letter — as in `debugSendKeys`. Without
         // it, `send-key A` sends a lowercase keycode carrying "A".
         if key.needsShift { rawMods |= GHOSTTY_MODS_SHIFT.rawValue }
-        let mods = ghostty_input_mods_e(rawMods)
-        // Decide from the computed bitmask, not the raw name strings: `mods`
+        // Decide from the computed bitmask, not the raw name strings: `ghosttyModsFromNames`
         // already lowercases names, so checking the strings here could disagree
         // with it (e.g. "CTRL" would set the CTRL bit but slip past a case-
         // sensitive string check). Control/command combos must not carry text.
         let carriesControl = (rawMods & (GHOSTTY_MODS_CTRL.rawValue | GHOSTTY_MODS_SUPER.rawValue)) != 0
-        let press = ghosttyKeyEvent(
-            keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
-            unshiftedCodepoint: key.unshiftedCodepoint)
         // The text is the one character the keycode stands for, not the whole
         // argument: `send-key ab` presses the `a` key, so it must not carry "ab".
-        surface.sendKey(press, text: carriesControl ? nil : String(ch))
+        sendInjectedKey(
+            key, mods: ghostty_input_mods_e(rawMods), text: carriesControl ? nil : String(ch))
+    }
+
+    // Inject one key as a real press/release pair. The press carries `text` (nil for a
+    // combo that must commit none, e.g. Ctrl/⌘); the release carries none, as a real
+    // key-up does. `unshiftedCodepoint` is what lets libghostty encode a control combo.
+    private func sendInjectedKey(_ key: GhosttyInjectedKey, mods: ghostty_input_mods_e, text: String?) {
+        guard let surface else { return }
+        surface.sendKey(
+            ghosttyKeyEvent(
+                keycode: key.keycode, action: GHOSTTY_ACTION_PRESS, mods: mods,
+                unshiftedCodepoint: key.unshiftedCodepoint),
+            text: text)
         surface.sendKey(ghosttyKeyEvent(
             keycode: key.keycode, action: GHOSTTY_ACTION_RELEASE, mods: mods,
             unshiftedCodepoint: key.unshiftedCodepoint))
@@ -533,6 +515,13 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
+        pushWindowGeometry()
+    }
+
+    // Push everything the hosting window governs: the Metal layer's backing scale, and
+    // libghostty's content scale, pixel size and display id. Each push is guarded on a
+    // live surface (or window) and idempotent, so a redundant call is free.
+    private func pushWindowGeometry() {
         syncLayerContentsScale()
         pushContentScale()
         pushSize()
@@ -659,51 +648,39 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // notifications; unsubscribe when leaving a window. Called from
     // `viewDidMoveToWindow`.
     private func updateWindowObservers() {
-        if let occlusionObserver {
-            NotificationCenter.default.removeObserver(occlusionObserver)
-            self.occlusionObserver = nil
+        for observer in windowObservers {
+            NotificationCenter.default.removeObserver(observer)
         }
-        if let screenChangeObserver {
-            NotificationCenter.default.removeObserver(screenChangeObserver)
-            self.screenChangeObserver = nil
-        }
-        if let becomeKeyObserver {
-            NotificationCenter.default.removeObserver(becomeKeyObserver)
-            self.becomeKeyObserver = nil
-        }
-        if let resignKeyObserver {
-            NotificationCenter.default.removeObserver(resignKeyObserver)
-            self.resignKeyObserver = nil
-        }
+        windowObservers.removeAll()
         // Entering or leaving a window changes key status wholesale and fires no
         // notification, so reconcile it here. No window ⇒ a detached cached surface,
         // which is never focused (it is marked occluded for the same reason).
         windowIsKey = window?.isKeyWindow ?? false
         refreshFocus()
         guard let window else { return }
-        occlusionObserver = NotificationCenter.default.addObserver(
+        windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshOcclusion() }
-        }
+        })
         // A window losing key status leaves this view its first responder, so these two
         // are the only signals that the caret must go hollow and solid again.
-        becomeKeyObserver = NotificationCenter.default.addObserver(
+        windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.setWindowIsKey(true) }
-        }
-        resignKeyObserver = NotificationCenter.default.addObserver(
+        })
+        windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.setWindowIsKey(false) }
-        }
+        })
         // Dragging the window onto another screen can change its backing scale, its
         // refresh rate, or both. Two screens sharing a scale factor change no backing
         // property, so this is the only notification that reports the move: re-sync the
         // Metal layer's scale and re-push the display id, or libghostty keeps rendering
         // for the screen the window just left.
-        screenChangeObserver = NotificationCenter.default.addObserver(
+        windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification, object: window, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -711,7 +688,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
                 self?.pushContentScale()
                 self?.pushDisplayID()
             }
-        }
+        })
     }
 
     /// Ask the host to close this surface. Invoked by libghostty's
@@ -785,29 +762,23 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             ? ghostty_input_mods_e(GHOSTTY_MODS_ALT.rawValue)
             : ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
 
-        guard let committed = keyTextAccumulator, !committed.isEmpty else {
-            // No committed text. This is the bare-key path for arrows, Return, Backspace
-            // and Ctrl-combos — including the Control-letter shortcuts (Ctrl-A/E/K/L…)
-            // that Cocoa's key-binding table resolves to a text-editing selector, which
-            // `doCommand(by:)` swallows without executing. We forward the raw keystroke
-            // and let the keycode drive libghostty's own
-            // encoding, so the shell's line editor (zle/readline) handles those combos
-            // itself — matching Ghostty's reference handler, which likewise replays the
-            // original key rather than running the Cocoa command. Omit `consumedMods`
-            // (defaults to NONE) so Option+arrows/Delete keep their Alt/Meta encoding.
-            _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
-            return
-        }
         // `interpretKeyEvents` can call `insertText` several times for one physical
         // key (dictation, some input sources), so join the chunks and emit exactly ONE
         // press: `keyUp` always sends a single release, and a press per chunk would
         // leave libghostty's press/release bookkeeping unbalanced for that keystroke.
-        let text = committed.joined()
+        let text = keyTextAccumulator?.joined() ?? ""
         guard ghosttyTextRidesOnKeyEvent(text) else {
-            // A bare control character (Ctrl-C, Ctrl-D): send the bare key event
-            // and let the keycode drive libghostty's own control-char encoding,
-            // exactly as the empty-accumulator fallback above does — same reason
-            // `consumedMods` is omitted here.
+            // Nothing that can ride on the key event: either no text was committed, or
+            // what was committed is a bare control character (Ctrl-C, Ctrl-D). This is
+            // the bare-key path for arrows, Return, Backspace and Ctrl-combos —
+            // including the Control-letter shortcuts (Ctrl-A/E/K/L…) that Cocoa's
+            // key-binding table resolves to a text-editing selector, which
+            // `doCommand(by:)` swallows without executing. We forward the raw keystroke
+            // and let the keycode drive libghostty's own encoding, so the shell's line
+            // editor (zle/readline) handles those combos itself — matching Ghostty's
+            // reference handler, which likewise replays the original key rather than
+            // running the Cocoa command. Omit `consumedMods` (defaults to NONE) so
+            // Option+arrows/Delete keep their Alt/Meta encoding.
             _ = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
             return
         }

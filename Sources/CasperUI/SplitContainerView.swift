@@ -53,9 +53,6 @@ enum SeparatorMetrics {
 struct SplitContainerView: View {
     let model: AppModel
     let workspaceID: UUID
-    /// Whether the workspace holds more than one pane — always true for a split,
-    /// carried only so the panes below can read it (see `LayoutNodeView`).
-    let canDragPanes: Bool
     /// Child-index path from the workspace's root layout to this split node
     /// (root = `[]`), used to address it in `AppModel.setSplitRatios`.
     let path: [Int]
@@ -106,7 +103,7 @@ struct SplitContainerView: View {
             if let only = children.first {
                 LayoutNodeView(
                     model: model, workspaceID: workspaceID, node: only,
-                    canDragPanes: canDragPanes, path: path + [0])
+                    canDragPanes: true, path: path + [0])
             }
         } else {
             let fracs = displayFractions()
@@ -153,9 +150,12 @@ struct SplitContainerView: View {
         axisLength: CGFloat, crossLength: CGFloat
     ) -> some View {
         let frame = paneAxisFrame(index: index, boundaries: boundaries, axisLength: axisLength)
+        // `canDragPanes: true` unconditionally: this view exists only for a
+        // `.split` node, and a split always holds at least two panes, so every pane
+        // under it is draggable and a drop target by construction.
         let view = LayoutNodeView(
             model: model, workspaceID: workspaceID, node: node,
-            canDragPanes: canDragPanes, path: path + [index])
+            canDragPanes: true, path: path + [index])
         switch orientation {
         case .horizontal:
             view

@@ -32,7 +32,8 @@ Casper ships `clipboard-write = ask` in `GhosttyDefaultConfig.text`, which loads
 before the user's own Ghostty config so a user can still opt back into upstream
 behaviour. Unit tests cannot catch that line going missing — they drive the
 `approveUntrusted` seam directly and never observe how libghostty is configured
-— so `GhosttyClipboardTests.testDefaultConfigMakesLibghosttyAskBeforeAnUntrustedWrite`
+— so
+`GhosttyClipboardTests.testDefaultConfigMakesLibghosttyAskBeforeAnUntrustedWrite`
 pins the config text itself.
 
 **Scope:** reads have a gate of their own, of the same shape —
@@ -40,7 +41,7 @@ pins the config text itself.
 
 **Which deferral mechanism.** The confirmation hops to the next main-queue turn
 with `DispatchQueue.main.async`, deliberately not the `CFRunLoopPerformBlock`
-route that [[main-queue-starved-by-modal-loops]] prescribes. The general rule
+route that [[main-run-loop-hop]] prescribes. The general rule
 for a libghostty callback: when the hazard is re-entering libghostty mid-tick,
 use the main queue, because it *guarantees* the block cannot run inside the
 current tick — the same guarantee `casperGhosttyCloseSurface` rests on — whereas

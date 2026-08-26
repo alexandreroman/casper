@@ -107,13 +107,13 @@ public enum AgentIntegrationStatus: Equatable, Sendable {
 
 /// Namespace for the integration constants and the pure parsers behind
 /// `AgentIntegrationStatus`.
-public enum AgentIntegration {
+enum AgentIntegration {
 
     // MARK: - Constants
 
     /// The identifier Claude Code and Codex register the Casper plugin under, as
     /// declared by the plugin's manifest in the `casper-skills` repository.
-    public static let pluginID = "casper@casper"
+    static let pluginID = "casper@casper"
 
     /// The identifier the plugin was registered under before its marketplace was
     /// renamed, still present in every pre-rename user's Claude Code registry.
@@ -138,7 +138,7 @@ public enum AgentIntegration {
     /// `lowercased()`, a case-folding dictionary) would silently collapse the two ids
     /// into one, and with them the only signal that tells a pre-rename install apart
     /// from a current one. A unit test pins that they stay distinct-but-case-equal.
-    public static let legacyPluginID = "casper@Casper"
+    static let legacyPluginID = "casper@Casper"
 
     /// The plugin version Casper requires — the single place to change it.
     ///
@@ -147,26 +147,26 @@ public enum AgentIntegration {
     /// `!=`: a user whose plugin is *ahead* of this Casper build is simply current,
     /// so shipping a plugin release never forces a Casper release just to stop
     /// Casper nagging everyone who upgraded promptly.
-    public static let requiredPluginVersion = "0.2.0"
+    static let requiredPluginVersion = "0.2.0"
 
     /// Base of the integration documentation; `CodingAgent` appends its own anchor.
-    public static let documentationBaseURL = "https://github.com/alexandreroman/casper-skills"
+    static let documentationBaseURL = "https://github.com/alexandreroman/casper-skills"
 
     /// The opencode plugin's package *and* repository name — the token every form
     /// of a top-level `plugin` entry ends in. A bare entry spells it directly, a Git
     /// spec spells it as its last path component (`github:owner/casper-skills`,
     /// `…/casper-skills.git`), and a local checkout spells it as its directory name.
-    public static let opencodePackageName = "casper-skills"
+    static let opencodePackageName = "casper-skills"
 
     /// File name of an opencode plugin installed locally. The plugin is plain
     /// JavaScript with no build step, so this is the file as shipped.
-    public static let opencodePluginFileName = "casper.js"
+    static let opencodePluginFileName = "casper.js"
 
     /// Directories, relative to the user's home, where an installed opencode plugin
     /// file can live. opencode's loader globs `{plugin,plugins}/*.{ts,js}`, so both
     /// spellings are valid and both occur in the wild — the I/O layer must look in
     /// each. Paths are relative because resolving the home directory is I/O.
-    public static let opencodePluginDirectories = [
+    static let opencodePluginDirectories = [
         ".config/opencode/plugin",
         ".config/opencode/plugins",
     ]
@@ -185,7 +185,7 @@ public enum AgentIntegration {
     /// covers pre-release suffixes and outright garbage. A version Casper cannot
     /// understand is not evidence of a stale install, and a false "update your
     /// plugin" nag costs more trust than a missed one.
-    public static func isOutdated(installed: String, required: String) -> Bool {
+    static func isOutdated(installed: String, required: String) -> Bool {
         guard let installedComponents = versionComponents(installed),
               let requiredComponents = versionComponents(required)
         else {
@@ -248,13 +248,13 @@ public enum AgentIntegration {
     /// to different advice: a legacy registration has to move to the new
     /// marketplace whatever version it holds, while a current one is judged on its
     /// version alone.
-    public struct ClaudePluginRegistration: Equatable, Sendable {
+    struct ClaudePluginRegistration: Equatable, Sendable {
         /// The highest version recorded across the matched id's install records.
-        public let version: String
+        let version: String
         /// Whether the match came from `legacyPluginID` rather than `pluginID`.
-        public let usesLegacyPluginID: Bool
+        let usesLegacyPluginID: Bool
 
-        public init(version: String, usesLegacyPluginID: Bool) {
+        init(version: String, usesLegacyPluginID: Bool) {
             self.version = version
             self.usesLegacyPluginID = usesLegacyPluginID
         }
@@ -288,7 +288,7 @@ public enum AgentIntegration {
     /// `JSONSerialization` rather than `Codable` on purpose: the schema is loose,
     /// partly untyped and owned by another project, so every unexpected shape has to
     /// degrade to nil rather than throw.
-    public static func parseClaudeRegistry(
+    static func parseClaudeRegistry(
         _ data: Data,
         pluginID: String = AgentIntegration.pluginID,
         legacyPluginID: String = AgentIntegration.legacyPluginID
@@ -344,7 +344,7 @@ public enum AgentIntegration {
     /// is: someone who types `0` there means false. A *quoted* `"false"` is not a
     /// boolean and reads as enabled — the safe direction for a value nobody meant as
     /// a flag.
-    public static func parseClaudeEnabled(
+    static func parseClaudeEnabled(
         _ data: Data,
         pluginID: String = AgentIntegration.pluginID,
         legacyPluginID: String = AgentIntegration.legacyPluginID
@@ -387,7 +387,7 @@ public enum AgentIntegration {
     /// no reason to tell the user their plugin is missing. The fallback scans the
     /// *stripped* text, not the raw text, so a commented-out entry does not count as
     /// an install on this path either.
-    public static func parseOpencodeConfig(_ text: String) -> Bool {
+    static func parseOpencodeConfig(_ text: String) -> Bool {
         let stripped = stripJSONComments(text)
         guard let root = (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) as? [String: Any] else {
             return quotedStrings(in: stripped).contains(where: isOpencodePluginEntry)
@@ -415,7 +415,7 @@ public enum AgentIntegration {
     /// real declaration. That check is a line-level heuristic (`//`, `/*` and `*`
     /// prefixes), not a JavaScript parser — enough for a file Casper's own installer
     /// writes, and cheap.
-    public static func parseOpencodeVersion(_ source: String) -> String? {
+    static func parseOpencodeVersion(_ source: String) -> String? {
         // Both edges of the identifier are anchored: `\b` alone rejects a suffixed
         // namesake (`CASPER_PLUGIN_VERSION_LEGACY`) but happily matches inside a
         // prefixed one (`PREV_CASPER_PLUGIN_VERSION`), reading a neighbouring
@@ -592,7 +592,7 @@ public enum AgentIntegration {
     /// is merely unparseable still counts as installed — Claude Code's registry
     /// records real install paths ending in `/unknown`, so an unrecognised shape is
     /// a normal install, while a hidden file is never one.
-    public static func parseCodexCacheEntries(_ directoryNames: [String]) -> String? {
+    static func parseCodexCacheEntries(_ directoryNames: [String]) -> String? {
         highestVersion(among: directoryNames.filter { !$0.hasPrefix(".") })
     }
 
@@ -606,7 +606,10 @@ public enum AgentIntegration {
     /// ```
     ///
     /// An absent section means enabled, so the scan is targeted: find that section
-    /// header, then look for `enabled = false` before the next `[` header.
+    /// header, then look for `enabled = false` before the next table header. Headers
+    /// are recognised by `tomlTableKey`, the same definition `parseCodexHooksTrusted`
+    /// uses, so a trailing `#` comment on the header still matches and a multi-line
+    /// array inside the section does not end the scan early.
     ///
     /// This is deliberately not a TOML parser. The project's dependency policy is
     /// strict (see CLAUDE.md) and a TOML library to read one boolean does not earn
@@ -616,19 +619,13 @@ public enum AgentIntegration {
     ///
     /// - an inline table
     ///   (`plugins = { "casper@casper" = { enabled = false } }`);
-    /// - any value that is not a bare `false`;
-    /// - a multi-line array inside the section, whose continuation lines start with
-    ///   `[` and are taken for a section header, ending the scan early.
+    /// - any value that is not a bare `false`.
     ///
-    /// None of these is the form Codex writes.
-    public static func parseCodexDisabled(
+    /// Neither is the form Codex writes.
+    static func parseCodexDisabled(
         _ configTOML: String,
         pluginID: String = AgentIntegration.pluginID
     ) -> Bool {
-        // Both spellings of the header: Codex quotes the id (it contains a `@`), but
-        // a hand-edited config may not.
-        let headers = [#"[plugins."\#(pluginID)"]"#, "[plugins.\(pluginID)]"]
-
         var insideSection = false
         // Split on any newline, never on the literal "\n": Swift's `Character` is a
         // grapheme cluster, so a CRLF "\r\n" is *one* Character and unequal to "\n" —
@@ -637,8 +634,10 @@ public enum AgentIntegration {
         // excludes `\r`, which would otherwise cling to a lone-CR file's values.
         for line in configTOML.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix("[") {
-                insideSection = headers.contains(trimmed)
+            if let tableKey = tomlTableKey(trimmed) {
+                // Both spellings: Codex quotes the id (it contains a `@`), but a
+                // hand-edited config may not.
+                insideSection = tableKey == "plugins.\"\(pluginID)\"" || tableKey == "plugins.\(pluginID)"
                 continue
             }
             if insideSection, isEnabledFalse(trimmed) { return true }
@@ -693,7 +692,7 @@ public enum AgentIntegration {
     /// - a lone `["Bash"]` line — a whole array on one line inside a table — which is
     ///   indistinguishable from a table header and discards its table's verdict;
     /// - a `#` inside a quoted key, which the comment stripping cuts the line at.
-    public static func parseCodexHooksTrusted(
+    static func parseCodexHooksTrusted(
         _ configTOML: String,
         pluginID: String = AgentIntegration.pluginID
     ) -> Bool {

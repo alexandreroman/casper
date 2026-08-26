@@ -23,9 +23,10 @@ other TCC services in a bare SwiftPM binary — changed nothing either. System
 Settings → Privacy & Security → Screen & System Audio Recording listed only real
 bundles throughout.
 
-**How to apply:** this is why `make build` assembles and signs
-`Packaging/Casper-dev.app` around the debug binary rather than signing the
-binary in place, and why the identity must be **stable** across rebuilds — TCC
+**How to apply:** this is why `make build` assembles and signs `Casper-dev.app`
+at the repo root (through `Scripts/assemble-bundle.sh debug`, with
+`Packaging/Info-dev.plist` substituted in) rather than signing the binary in
+place, and why the identity must be **stable** across rebuilds — TCC
 keys the grant to it, so an ad-hoc identity (which changes every build) makes
 the user re-grant permission after every rebuild. `Makefile` explains the
 `CODESIGN_IDENTITY` setup at its two mentions of the grant. The consumer is the

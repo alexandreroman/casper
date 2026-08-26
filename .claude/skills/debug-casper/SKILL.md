@@ -10,8 +10,11 @@ description: >-
 # Debugging the Casper app
 
 This channel exists **only in debug builds** (`#if DEBUG`). `make release` does
-not include it. Everything below assumes a debug build (`make build`, which maps
-to `swift build`).
+not include it. Everything below assumes a debug build. `make build` is more
+than `swift build`: it also stages and signs `Casper-dev.app` around the binary
+(`Scripts/assemble-bundle.sh debug`, an `install_name_tool -add_rpath`, the
+`Packaging/Info-dev.plist` substitution, then `codesign`). That bundle is what
+makes screenshots work — a bare binary never registers with TCC.
 
 ## 1. Build, seed, launch
 
@@ -161,18 +164,21 @@ Then re-read to verify:
 
 ## What the harness can (and cannot) see
 
-The debug bridge (`DebugSurfaceBridge.debugSurfaces()`) exposes **exactly one
-surface**: the *first* `GhosttySurfaceView` found in the key window's content
+The debug bridge — `AppModel`'s `DebugSurfaceProvider` conformance, in
+`Sources/CasperUI/DebugSurfaceBridge.swift` — exposes **at most one surface**:
+the *first* `GhosttySurfaceView` found in the key window's content
 hierarchy — i.e. the selected workspace's focused/first pane. Its reported `id`
 is the **selected workspace's UUID in Casper's canonical lowercase form**
 (`selectedWorkspaceID.casperID`, i.e. `uuidString.lowercased()` — Foundation's
 plain `uuidString` is uppercase and is never what the harness prints), not a
-per-pane id and not a numeric index. So `dump-state` always returns a
-single-element `surfaces` array. Consequently the harness **cannot reach** other
-panes in a split, or any unselected workspace's surface (including a
+per-pane id and not a numeric index. So `dump-state` returns a `surfaces` array
+of **at most one element** — it is empty when no key window, no surface view, or
+no selected workspace can be resolved. Consequently the harness **cannot reach**
+other panes in a split, or any unselected workspace's surface (including a
 background/off-screen one).
 
-Because there is only ever one surface, `--target` is essentially redundant —
+Because there is never more than one surface, `--target` is essentially
+redundant —
 just omit it and verbs act on that surface. If you do pass it, `--target` /
 `focus` match the id **exactly** (`surfaces.first(where: { $0.id == target })`,
 in `DebugServer.resolve`); there is **no** numeric-index form, so `--target 0` /

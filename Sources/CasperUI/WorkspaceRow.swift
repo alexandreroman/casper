@@ -40,8 +40,8 @@ struct WorkspaceRow: View {
                     if showShortcutHints, let shortcutNumber {
                         WorkspaceShortcutHint(number: shortcutNumber, isSelected: isSelected)
                             .transition(.opacity)
-                    } else {
-                        NotificationBubble(on: workspace.pendingNotification, isSelected: isSelected)
+                    } else if workspace.pendingNotification {
+                        NotificationBubble(isSelected: isSelected)
                             .transition(.opacity)
                     }
                 }
@@ -176,31 +176,33 @@ private struct WorkspaceShortcutHint: View {
     }
 }
 
-/// Trailing notification indicator: a filled dot when pending, otherwise hidden.
-/// The call site reserves the trailing space so the row's edge stays anchored even
-/// when nothing renders. Selection-aware so it reads on the accent selection background.
-/// While pending, the dot pulses continuously (a breathing fade-and-scale) to draw the
-/// eye, unless reduce-motion is on.
+/// Trailing notification indicator: a filled dot, pulsing continuously (a
+/// breathing fade-and-scale) to draw the eye unless reduce-motion is on.
+/// Selection-aware so it reads on the accent selection background. The call site
+/// reserves the trailing space so the row's edge stays anchored even when nothing
+/// renders.
+///
+/// Mounted only while a notification is pending, and that gate belongs to the call
+/// site rather than to a `hidden` branch in here: the pulse is driven by `@State`
+/// flipped once from `onAppear`, so an instance that survives the pending flag
+/// going false and true again would find it already set, schedule no animation,
+/// and leave the dot frozen mid-pulse. `SpinningIcon` below is mounted the same
+/// way for the same reason.
 private struct NotificationBubble: View {
-    let on: Bool
     let isSelected: Bool
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if on {
-            let breathing: Animation? =
-                reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-            Circle()
-                .fill(isSelected ? Color.white : Color.blue)
-                .frame(width: 9, height: 9)
-                .opacity(pulse ? 0.5 : 1.0)
-                .scaleEffect(pulse ? 1.3 : 1.0)
-                .animation(breathing, value: pulse)
-                .onAppear { pulse = true }
-        } else {
-            EmptyView()
-        }
+        let breathing: Animation? =
+            reduceMotion ? nil : .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+        Circle()
+            .fill(isSelected ? Color.white : Color.blue)
+            .frame(width: 9, height: 9)
+            .opacity(pulse ? 0.5 : 1.0)
+            .scaleEffect(pulse ? 1.3 : 1.0)
+            .animation(breathing, value: pulse)
+            .onAppear { pulse = true }
     }
 }
 

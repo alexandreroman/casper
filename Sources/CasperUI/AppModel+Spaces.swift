@@ -85,8 +85,9 @@ extension AppModel {
         mutateSpaces { $0 = Self.sortedByName(updated) }
         // `reunify` may have dropped a workspace that still carried an unread.
         refreshDockAttention()
+        // The new Space's primary is freshly minted, so the selection always changes
+        // and `selectWorkspace` is also the save.
         selectWorkspace(space.workspaces.first?.id)
-        persist()
         return .added
     }
 
@@ -164,30 +165,30 @@ extension AppModel {
             CasperLog.app.failure("cannot adopt worktree: no free port block", error)
             return .failed(reason: .noFreePortBlock)
         }
-        // Read before the selection moves below, exactly as `adoptWorktree` does.
-        let inheritedEditor = selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
         var space = WorkspaceFactory.makeSpace(
             folderURL: mainURL, info: mainInfo, portBase: portBase)
         let branch = info.branch
-        let baseBranch = space.workspaces.first(where: { $0.kind == .primary })?.branch ?? ""
+        let baseBranch = space.primaryWorkspace?.branch ?? ""
         var adopted = WorkspaceFactory.makeLinkedWorkspace(
             name: branch.isEmpty ? folderURL.lastPathComponent : branch,
             worktreePath: info.canonicalPath, branch: branch,
             baseBranch: baseBranch, portBase: worktreePortBase)
+        // Read before the selection moves below, exactly as `adoptWorktree` does.
         adopted.lastUsedEditor = inheritedEditor
         space.workspaces.append(adopted)
         var updated = spaces
         updated.append(space)
         mutateSpaces { $0 = Self.sortedByName(updated) }
         // The folder the user picked is the worktree, not the repository pulled in
-        // behind it, so that is what the selection lands on.
+        // behind it, so that is what the selection lands on. The selection always
+        // changes here, so `selectWorkspace` is also the save.
         selectWorkspace(adopted.id)
-        persist()
         return .added
     }
 
+    // Reached from AppModel+Control.swift.
     /// True when `path` is an existing directory (a plain file at that path is not one).
-    private static func directoryExists(atPath path: String) -> Bool {
+    static func directoryExists(atPath path: String) -> Bool {
         var isDirectory: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
         return exists && isDirectory.boolValue
@@ -273,11 +274,7 @@ extension AppModel {
     /// absorbed Spaces themselves are dropped by the caller, in the same write that
     /// installs `space`.
     private func reunify(_ absorbed: [Space], into space: inout Space) {
-        // Resolve the primary by kind, not position: absorbed workspaces fork off the
-        // absorbing Space's own branch, so reading a linked workspace here would base
-        // them on the wrong branch.
-        guard !absorbed.isEmpty,
-              let primary = space.workspaces.first(where: { $0.kind == .primary }) else { return }
+        guard !absorbed.isEmpty, let primary = space.primaryWorkspace else { return }
         space.workspaces.append(contentsOf: Self.linkedWorkspaces(
             absorbing: absorbed, baseBranch: primary.branch,
             excluding: Self.canonicalPath(primary.worktreePath)))
@@ -326,8 +323,6 @@ extension AppModel {
     private func adoptWorktree(
         at folderURL: URL, info: WorkspaceFactory.GitInfo, into si: Int
     ) -> AddSpaceOutcome {
-        // Read before the selection moves below, exactly as `createLinkedWorkspace` does.
-        let inheritedEditor = selectedWorkspaceID.flatMap { workspace(id: $0) }?.lastUsedEditor
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
             CasperLog.app.failure("cannot adopt worktree: no free port block", error)
@@ -337,15 +332,16 @@ extension AppModel {
         // with the Space's primary branch as the base it merges back into. A worktree
         // with no branch name of its own falls back to its folder name.
         let branch = info.branch
-        let baseBranch = spaces[si].workspaces.first(where: { $0.kind == .primary })?.branch ?? ""
+        let baseBranch = spaces[si].primaryWorkspace?.branch ?? ""
         var ws = WorkspaceFactory.makeLinkedWorkspace(
             name: branch.isEmpty ? folderURL.lastPathComponent : branch,
             worktreePath: info.canonicalPath, branch: branch,
             baseBranch: baseBranch, portBase: portBase)
+        // Read before the selection moves below, exactly as `createLinkedWorkspace` does.
         ws.lastUsedEditor = inheritedEditor
         mutateSpaces { $0[si].workspaces.append(ws) }
+        // The selection always changes here, so `selectWorkspace` is also the save.
         selectWorkspace(ws.id)
-        persist()
         return .added
     }
 

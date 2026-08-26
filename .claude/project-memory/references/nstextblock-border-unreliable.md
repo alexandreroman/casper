@@ -52,7 +52,10 @@ trust it renders, and don't try to headlessly pixel-prove one either way.
   rewritten to a private 1x1 `NSTextTable` cell (reusing the same
   `NSTextTableBlock` the GFM table's cells use) with no margin set, on the
   reasoning that this narrows the exposure to the known bug even though it can't
-  be headlessly proven.
+  be headlessly proven. One consequence to preserve: two `> ` quotes separated
+  by a blank line are two distinct blocks, each with its own fresh
+  `NSTextTable`, so they draw two independent bars — the standard block gap
+  between them is what stops those bars reading as one continuous rule.
 - Either way, final confirmation that the pixels actually appear is a human's,
   via `make dev` — an attribute (`textBlocks`, `.underlineStyle`, a border
   color) is not a pixel.

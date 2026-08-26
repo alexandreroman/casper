@@ -61,11 +61,6 @@ extension Surface {
     public static func terminal(cwd: String) -> Surface {
         Surface(kind: .terminal(cwd: cwd))
     }
-
-    /// A browser surface showing the blank start page.
-    public static func blankBrowser() -> Surface {
-        Surface(kind: .browser(url: .aboutBlank))
-    }
 }
 
 extension URL {
@@ -198,7 +193,7 @@ public struct InspectorState: Codable, Equatable, Sendable {
     public init(
         collapsed: Bool = true,
         tab: InspectorTab = .diff,
-        browser: Surface = Surface.blankBrowser(),
+        browser: Surface = Surface(kind: .browser(url: .aboutBlank)),
         width: Double = InspectorState.defaultWidth
     ) {
         self.collapsed = collapsed
@@ -327,15 +322,13 @@ public struct Workspace: Codable, Equatable, Identifiable, Sendable {
         self.lastUsedScript = lastUsedScript
     }
 
-    // Full case set required now that both `init(from:)` and `encode(to:)` are
-    // hand-rolled; case names match the property names so the on-disk keys stay
-    // stable. The six transient cases (agentState, todos, pendingNotification,
-    // pendingNotificationMessage, infoMarkdown, infoUnread) remain listed but
-    // are neither read nor written — see the coders below.
+    // Only the persisted fields need a case; case names match the property
+    // names so the on-disk keys stay stable. The six transient runtime fields
+    // (agentState, todos, pendingNotification, pendingNotificationMessage,
+    // infoMarkdown, infoUnread) are neither read nor written — see the coders
+    // below.
     private enum CodingKeys: String, CodingKey {
-        case id, name, worktreePath, branch, agentState, todos
-        case pendingNotification, pendingNotificationMessage
-        case infoMarkdown, infoUnread
+        case id, name, worktreePath, branch
         case portBase, layout, kind, baseBranch, inspector, lastUsedEditor, lastUsedScript
     }
 
@@ -394,6 +387,15 @@ public extension Workspace {
     /// The Git branch to show for this workspace, falling back to the workspace
     /// name when there is no branch (e.g. a non-Git space).
     var branchLabel: String { branch.isEmpty ? name : branch }
+
+    /// Whether this workspace can be merged into its recorded base branch: only a
+    /// linked worktree that records one has anywhere to merge to.
+    ///
+    /// Lives on the model, not on each view that asks: this gate decides whether a
+    /// destructive action is offered at all, and the sidebar's context menu and the
+    /// title bar's Merge chip and `⋯` menu must all offer it on exactly the same
+    /// terms.
+    var canMerge: Bool { kind == .linked && !(baseBranch?.isEmpty ?? true) }
 }
 
 public struct Space: Codable, Equatable, Identifiable, Sendable {
@@ -420,9 +422,9 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
         self.workspaces = workspaces
     }
 
-    // Full case set is required once `init(from:)` is hand-rolled; case names
-    // match the property names so the synthesized `encode(to:)` keeps the same
-    // on-disk keys.
+    // Case names match the property names so the synthesized `encode(to:)`
+    // keeps the same on-disk keys; `isGitRepo` is deliberately absent (see
+    // below).
     private enum CodingKeys: String, CodingKey {
         case id, name, folderPath, isCollapsed, workspaces
     }
@@ -457,6 +459,14 @@ public struct Space: Codable, Equatable, Identifiable, Sendable {
     public var firstOrderedWorkspaceID: UUID? {
         workspaces.min(by: Space.precedesInDisplayOrder)?.id
     }
+
+    /// The Space's primary workspace — the one rooted at `folderPath`. Resolved by
+    /// `kind`, never by position, so reordering a Space's workspaces cannot silently
+    /// pick a linked one.
+    public var primaryWorkspace: Workspace? { workspaces.first { $0.kind == .primary } }
+
+    /// The index of `primaryWorkspace` in `workspaces`, for in-place mutation.
+    public var primaryWorkspaceIndex: Int? { workspaces.firstIndex { $0.kind == .primary } }
 
     /// Display-order comparator, shared by `orderedWorkspaces` and
     /// `firstOrderedWorkspaceID` so the two can never disagree.

@@ -14,15 +14,6 @@ TOOL="${1:?usage: sparkle-tool.sh <sign_update|generate_keys|generate_appcast|Bi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# SwiftPM unpacks the whole Sparkle-for-Swift-Package-Manager.zip — which ships
-# bin/ alongside the xcframework — so a completed build usually already has the
-# tools on disk. Reuse them and skip the download entirely.
-CACHED="$(find "$ROOT/.build/artifacts" -type f -perm -100 -path "*/bin/$TOOL" -print -quit 2>/dev/null || true)"
-if [ -n "$CACHED" ]; then
-    echo "$CACHED"
-    exit 0
-fi
-
 VERSION="$(python3 - "$ROOT/Package.resolved" <<'PY'
 import json, sys
 try:
@@ -45,15 +36,36 @@ else:
 PY
 )"
 
+# SwiftPM unpacks the whole Sparkle-for-Swift-Package-Manager.zip — which ships
+# bin/ alongside the xcframework — so a completed build usually already has the
+# tools on disk. Reuse them and skip the download, but only once the extracted
+# artifact is confirmed to hold the pinned version: nothing in its path says
+# which release it is, and a .build left behind by an older pin would otherwise
+# sign with a tool the shipped Sparkle no longer matches.
+CACHED="$(find "$ROOT/.build/artifacts" -type f -perm -100 -path "*/bin/$TOOL" -print -quit 2>/dev/null || true)"
+if [ -n "$CACHED" ]; then
+    ARTIFACT="${CACHED%/bin/$TOOL}"
+    # The version is only recorded inside the framework the same zip ships.
+    for plist in "$ARTIFACT"/Sparkle.xcframework/macos-*/Sparkle.framework/Resources/Info.plist; do
+        [ -f "$plist" ] || continue
+        if [ "$(plutil -extract CFBundleShortVersionString raw -o - "$plist" 2>/dev/null)" = "$VERSION" ]; then
+            echo "$CACHED"
+            exit 0
+        fi
+    done
+fi
+
 DEST="$ROOT/.build/sparkle-tools/$VERSION"
 if [ ! -x "$DEST/bin/$TOOL" ]; then
     mkdir -p "$DEST"
     TARBALL="$DEST/Sparkle-$VERSION.tar.xz"
+    # A failed curl or tar would otherwise leave a partial ~5 MB archive behind,
+    # which the guard above never cleans up on the next run.
+    trap 'rm -f "$TARBALL"' EXIT
     echo "==> downloading Sparkle $VERSION command-line tools" >&2
     curl -fsSL --retry 3 --retry-connrefused -o "$TARBALL" \
         "https://github.com/sparkle-project/Sparkle/releases/download/$VERSION/Sparkle-$VERSION.tar.xz"
     tar -xJf "$TARBALL" -C "$DEST" ./bin
-    rm -f "$TARBALL"
 fi
 
 if [ ! -x "$DEST/bin/$TOOL" ]; then

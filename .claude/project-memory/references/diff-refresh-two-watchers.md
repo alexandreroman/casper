@@ -6,33 +6,26 @@ type: reference
 
 # Diff refresh uses two FSEvents watchers
 
-`AppModel.armWorktreeWatcher()` arms **two** independent FSEvents watchers for
-the selected workspace, and both funnel through the same `diffDebouncer` →
-`handleSelectedWorktreeChange()` → `diffRevision += 1`, which is the *only*
-trigger that invalidates the memoized diff (cache key
-`(workspaceID, diffRevision)`):
-
-- **`worktreeWatcher`** — watches the worktree root, **excluding `.git`** (and
-  gitignored top-level dirs). The `.git` exclusion is load-bearing: it stops
-  git's high-frequency internal writes (index, lockfiles on every status/add)
-  from waking the watcher. See [[fsevents-directory-watcher]].
-- **`gitMetaWatcher`** — watches `<gitDirPath>logs` (the resolved gitdir's
-  reflog dir; `Repository.gitDirPath` carries a trailing slash and, for a linked
-  worktree, resolves to `<maindir>/.git/worktrees/<name>/`). No exclusions.
+`AppModel.armWorktreeWatcher` arms two independent FSEvents watchers per
+selected workspace — the worktree root with `.git` excluded, and the resolved
+gitdir's reflog directory — both funnelling through the same debounced hop.
 
 **Why the second watcher exists:** a `git commit` writes *only* inside `.git`
 (index, HEAD, refs, logs) and leaves every working-tree file byte-for-byte
-identical. With just the `.git`-excluded worktree watcher, a commit fired no
-event, `diffRevision` never bumped, and the diff stayed stale (still showing the
-just- committed files). `logs/HEAD` is appended on every HEAD-moving op (commit,
-checkout, reset, merge, rebase) but is **never** written by
+identical. A `.git`-excluded worktree watcher therefore sees nothing at all when
+a commit lands, so `diffRevision` never bumps and the diff keeps showing the
+files that were just committed. `logs/HEAD` is appended on every HEAD-moving op
+(commit, checkout, reset, merge, rebase) but is **never** written by
 `git status`/`add`/`diff`, so watching `<gitdir>/logs` catches commits with zero
 event-storm risk. Verified end-to-end: committing a file live clears it from the
 diff and drops the badge count.
 
-**How to apply:** keep both watchers. Do not "simplify" by dropping
-`gitMetaWatcher` (reintroduces the stale-diff-after-commit bug) or by
-un-excluding `.git` on the worktree watcher (reintroduces status/add event
-storms). Tear both down symmetrically (they are stopped/niled together in
-`deinit` and at the top of `armWorktreeWatcher`). Both go through the injectable
-`makeWorktreeWatcher` seam so tests can stub them.
+**Why the `.git` exclusion on the first watcher:** git's internal writes (index,
+lockfiles on every status/add) are high-frequency enough to keep the watcher
+awake continuously. See [[fsevents-directory-watcher]].
+
+**How to apply:** both watchers are load-bearing, and each guards a distinct
+failure. Dropping `gitMetaWatcher` leaves the diff stale after a commit;
+un-excluding `.git` on the worktree watcher opens the status/add event storm.
+Tear them down symmetrically — they are stopped and niled together — and route
+both through the injectable `makeWorktreeWatcher` seam so tests can stub them.

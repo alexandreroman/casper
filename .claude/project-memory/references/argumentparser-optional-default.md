@@ -49,6 +49,7 @@ tests that use direct construction pass and hide it, because they never call
    directly, keeping the `ParsableCommand` a thin shell.
 
 This applies to `WorkspaceTargetOption`
-(`Sources/CasperCLI/ControlClient.swift`) and every domain command
-(`Status`/`Progress`/`Notify`/`Terminal`/`Browser`/`Diff`/ `Workspace`). See
+(`Sources/CasperCLI/ControlClient.swift`) and every domain command listed by
+`CasperCommand`: `Status`, `Progress`, `Notify`, `Info`, `Terminal`, `Browser`,
+`Diff`, `Workspace` and `Run`. See
 [[domain-cli-control-channel]].

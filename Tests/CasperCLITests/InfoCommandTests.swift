@@ -65,6 +65,14 @@ final class InfoCommandTests: XCTestCase {
         XCTAssertThrowsError(try set.resolveMarkdown(readStdin: { "" }))
     }
 
+    func testSetRejectsMessageAndExplicitStdinTogether() throws {
+        let set = try InfoCommand.Set.parse(["--message", "x", "-", "--workspace", "feature"])
+        // Non-empty, well-formed stdin: the '-' must be rejected as a second source
+        // rather than silently dropped in favour of --message.
+        XCTAssertThrowsError(
+            try set.resolveMarkdown(readStdin: { "## Ready" }, isStandardInputATTY: { false }))
+    }
+
     func testSetRejectsUnreadableFile() throws {
         let set = try InfoCommand.Set.parse(
             ["--file", "/nonexistent/\(UUID().uuidString).md", "--workspace", "feature"])

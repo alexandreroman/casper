@@ -97,7 +97,7 @@ final class DiffGutterRuler: NSRulerView {
     /// With no document there is nothing to size for — `DiffSurfaceView` shows an
     /// empty state instead of the surface — so the column collapses to its stripe
     /// plus the gap.
-    func reflowWidth() {
+    private func reflowWidth() {
         let widestGutter = document?.files.map(\.gutterWidth).max() ?? 0
         ruleThickness = Self.stripeWidth + widestGutter + Self.cueColumnWidth + codeLeadingGap
     }
@@ -198,8 +198,8 @@ final class DiffGutterRuler: NSRulerView {
             if let number = line.number {
                 draw(number: number, in: band, kind: kind)
             }
-            if let cue = DiffLineStyle.cue(for: kind) {
-                draw(cue: cue, in: band, kind: kind)
+            if let cue = Self.cueLabel(for: kind) {
+                draw(cue: cue, in: band)
             }
         }
     }
@@ -294,11 +294,38 @@ final class DiffGutterRuler: NSRulerView {
     /// Left-aligned in the code face, so the glyph sits against the code column's
     /// leading edge and every changed row's cue lands on the same `x` — the code
     /// face being monospaced, `+` and `-` occupy the same advance.
-    private func draw(cue: String, in band: NSRect, kind: GitDiffLine.Kind) {
+    private func draw(cue: NSAttributedString, in band: NSRect) {
         let column = NSRect(
             x: max(band.maxX - codeLeadingGap - Self.cueWidth, band.minX), y: band.minY,
             width: Self.cueWidth, height: band.height)
-        (cue as NSString).draw(in: column, withAttributes: Self.cueAttributes(for: kind))
+        cue.draw(in: column)
+    }
+
+    /// One row kind's cue as the attributed string it is drawn from, or `nil` for a
+    /// context row, which has none.
+    ///
+    /// The strings carry their attributes rather than taking them at draw time, for
+    /// the same reason the numbers are cached: `NSString.draw(in:withAttributes:)`
+    /// builds a throwaway attributed string on every call, and this runs for every
+    /// changed row on screen on every scroll frame. There are only ever two of them,
+    /// so they are simply built once rather than cached.
+    ///
+    /// Seeded from `DiffLineStyle.cue(for:)` rather than from `"+"`/`"-"` literals,
+    /// so the glyph the gutter draws cannot fork from the one that rule names.
+    private static func cueLabel(for kind: GitDiffLine.Kind) -> NSAttributedString? {
+        switch kind {
+        case .addition: additionCueLabel
+        case .deletion: deletionCueLabel
+        case .context: nil
+        }
+    }
+
+    private static let additionCueLabel = makeCueLabel(for: .addition)
+    private static let deletionCueLabel = makeCueLabel(for: .deletion)
+
+    private static func makeCueLabel(for kind: GitDiffLine.Kind) -> NSAttributedString? {
+        guard let cue = DiffLineStyle.cue(for: kind) else { return nil }
+        return NSAttributedString(string: cue, attributes: cueAttributes(for: kind))
     }
 
     /// The attributes one row's number is drawn with: context rows keep the

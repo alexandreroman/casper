@@ -14,8 +14,9 @@ carries one space fewer than a `◐` cell of the same visual width.
 holding a wide character.
 
 - **markdownlint `MD060` (`table-column-style: aligned`)** measures display
-  columns. It runs as editor diagnostics on this repo and is the rule that
-  matches what a Markdown viewer actually renders.
+  columns, and is the rule that matches what a Markdown viewer actually
+  renders. This repo carries no `.markdownlint*` config of its own, so it
+  applies only where an editor supplies markdownlint diagnostics.
 - **`check_tables.py`**, shipped under `scripts/` in the skillbox
   `general-rules` skill, compares character counts and reports an emoji row as
   one column short of its header.
@@ -25,8 +26,9 @@ Display width wins: a reader sees rendered columns, not code points. A
 an emoji row is therefore the expected output, not a defect — the script exits
 0 and only prints.
 
-`.superpowers/status.md` § At a glance is the one table in the repo with emoji
-cells, so no other document establishes a precedent either way.
+Two documents set the precedent: `.superpowers/status.md` § At a glance, and
+the signal table in `.superpowers/themes/agent-state-detection.md`, whose cells
+carry the spinner glyphs `◐◑` and `✳`. Both pad by display width.
 
 **How to apply:** measure with `unicodedata.east_asian_width`, counting `W` and
 `F` as 2:

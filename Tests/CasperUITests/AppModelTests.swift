@@ -584,6 +584,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 2)
     }
 
+    /// Every "Add folder" path ends by selecting the workspace it just created, and the
+    /// selection provably changes there — so `selectWorkspace`'s own save is the save.
+    /// A second one would encode and write the identical session twice.
+    func testEachAddFolderPathSavesExactlyOnce() throws {
+        let repo = try makeTempGitRepo()
+        let adopted = try makeWorktree(of: repo, named: "adopted")
+        let solo = try makeTempGitRepo()
+        let soloWorktree = try makeWorktree(of: solo, named: "solo")
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)         // new Space
+        XCTAssertEqual(saves, 1)
+
+        model.addSpace(folderURL: adopted, probe: AppModel.gitProbe)      // adoptWorktree
+        XCTAssertEqual(saves, 2)
+
+        // addSpacePullingInRepository: a worktree whose repository is not open yet.
+        model.addSpace(folderURL: soloWorktree, probe: AppModel.gitProbe)
+        XCTAssertEqual(saves, 3)
+    }
+
     func testAddFolderAdoptsWorktreeIntoCollapsedSpaceAndExpandsIt() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "adopted")

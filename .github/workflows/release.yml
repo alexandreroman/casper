@@ -111,7 +111,6 @@ jobs:
           BUNDLE: ${{ steps.version.outputs.bundle }}
           TAG: ${{ steps.version.outputs.tag }}
           SIGNATURE: ${{ steps.sign.outputs.signature }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           ZIP="dist/Casper-${SHORT}-arm64.zip"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Casper-${SHORT}-arm64.zip"

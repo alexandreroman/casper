@@ -24,6 +24,11 @@ static void casper_sigbus_handler(int signal_number) {
 
 static pthread_once_t casper_install_once = PTHREAD_ONCE_INIT;
 
+// Two known limitations, both acceptable for the one guarded region this serves
+// (libgit2 diff): the previous disposition is discarded rather than chained, so a
+// SIGBUS handler another library installed first stops running; and sa_flags omits
+// SA_ONSTACK, so a SIGBUS raised on an exhausted stack has no alternate stack to
+// run the handler on.
 static void casper_install_handler(void) {
     struct sigaction action;
     action.sa_handler = casper_sigbus_handler;

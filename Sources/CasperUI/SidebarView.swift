@@ -60,11 +60,10 @@ struct SidebarView: View {
     @ViewBuilder
     private func contextMenu(for workspace: Workspace) -> some View {
         let isLinked = workspace.kind == .linked
-        let canMerge = isLinked && !(workspace.baseBranch?.isEmpty ?? true)
         let groups = WorkspaceMenuItem.groups(model: model, workspaceID: workspace.id) { command in
             switch command {
             case .openInFinder, .copyWorkspacePath, .copyBranchName: return true
-            case .mergeAndClose: return canMerge
+            case .mergeAndClose: return workspace.canMerge
             case .delete: return isLinked
             }
         }

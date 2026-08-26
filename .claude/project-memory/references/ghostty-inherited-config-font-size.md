@@ -8,7 +8,7 @@ type: reference
 
 `ghostty_surface_inherited_config` reports a surface's **current** font size,
 including runtime adjustments made through Cmd+/Cmd-/Cmd0 — not merely the size
-the surface was created with. `GhosttySurfaceConfiguration.currentFontSize()`
+the surface was created with. `GhosttySurface.currentFontSize()`
 reads it right after each font-size binding action, and the value is what
 `Surface.fontSize` persists and replays on restore.
 

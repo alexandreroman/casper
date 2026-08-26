@@ -20,7 +20,7 @@ typealiases of:
 - Mark the class `final class X: @unchecked Sendable` when it must keep a
   synchronous public interface (`start()` / `stop()` etc.).
 - Justify the `@unchecked` inline: correctness relies on discipline the compiler
-  cannot verify — set closure properties (e.g. `onMessage`, `onFailure`) before
+  cannot verify — set closure properties (e.g. `onCommand`, `onFailure`) before
   `start()`, and perform all I/O on the owned serial `DispatchQueue`.
 - Do not capture a mutable local `var buffer` across nested receive callbacks.
   Accumulate into a small queue-confined reference box instead (`ReadBuffer`,

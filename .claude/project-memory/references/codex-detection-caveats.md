@@ -6,7 +6,7 @@ type: reference
 
 # Codex detection caveats
 
-Four facts about detecting the Casper integration for OpenAI Codex CLI, none of
+Five facts about detecting the Casper integration for OpenAI Codex CLI, none of
 them discoverable from this repository alone.
 
 **The install layout is confirmed.** Codex installs land in
@@ -37,31 +37,20 @@ Nor does it hold a Casper marker to look for: the `casper-skills` plugin never
 writes to it. Anyone reaching for this file as a Codex-presence or integration
 signal gets a confident false positive.
 
-## Hook trust is readable from `config.toml`
+**Two plugin ids are in the wild.** The marketplace was renamed after the
+plugin's first local installs, so every pre-rename registry still carries
+`casper@Casper` where a current one carries `casper@casper` —
+`AgentIntegration.legacyPluginID` and `AgentIntegration.pluginID`. The two
+differ by case alone, and both sides of every lookup (JSON object keys, Swift
+`==` on `String`) are case-sensitive, so any move to case-insensitive matching
+would collapse them and lose the only signal distinguishing the two.
 
-Codex hashes non-managed command hooks and refuses to run them until the user
-approves them through `/hooks` in its TUI, so an install can be complete on disk
-and still do nothing. That approval is **recorded on disk**, in
-`~/.codex/config.toml` under `[hooks.state]`, one table per hook:
-
-```toml
-[hooks.state."casper@casper:hooks/hooks.json:session_start:0:0"]
-trusted_hash = "sha256:63ef580c6830…"
-enabled = true
-```
-
-The key is `"<pluginId>:<hooks file>:<event>:<index>:<index>"`, so Casper's
-entries are the ones prefixed `casper@casper:` — matching
-`AgentIntegration.pluginID`. `enabled` is present only on some entries; its
-absence means enabled. Non-plugin hooks use an absolute path in place of the
-plugin id (`"/Users/alex/.codex/hooks.json:stop:0:0"`).
-
-Presence of a `trusted_hash` for `casper@casper:` means the user has been
-through `/hooks`. Casper does **not** recompute the hash — that would require
-reproducing Codex's hashing scheme — so a plugin update that invalidates a
-stored hash reads as trusted while Codex re-prompts. That false negative is
-deliberate: it is quieter than the alternative of asserting a trust problem that
-usually does not exist.
+**Hook trust is readable from `config.toml`.** Codex hashes non-managed command
+hooks and refuses to run them until the user approves them through `/hooks` in
+its TUI, so an install can be complete on disk and still do nothing. That
+approval is recorded on disk under `[hooks.state]` in `~/.codex/config.toml`;
+`AgentIntegration`'s parser for it documents the key format, the `enabled`
+convention, and why Casper does not recompute the hash.
 
 **Why:** an unverified path silently reporting "missing" for users who do have
 the integration is one failure mode; the other is a permanent, unresolvable

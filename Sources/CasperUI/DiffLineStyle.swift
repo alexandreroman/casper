@@ -11,9 +11,11 @@ enum DiffLineStyle {
     static let insertionTint = Color(red: 0.529, green: 0.757, blue: 0.388)
     static let deletionTint = Color(red: 0.725, green: 0.416, blue: 0.369)
 
-    /// Concrete gutter line-number color for context lines. A plain `Color`
-    /// rather than the hierarchical `.tertiary` style, so a row can pick one
-    /// concrete color per line kind without erasing to `AnyShapeStyle`.
+    /// Concrete gutter line-number color for context lines, sitting beside
+    /// `accent(for:)` so all three number tints are named in one place. A plain
+    /// `Color` rather than the hierarchical `.tertiary` style: `DiffGutterRuler`
+    /// draws the numbers itself and converts this to an `NSColor` once, which a
+    /// style that only resolves against a rendering context could not supply.
     static let contextNumberTint = Color(nsColor: .tertiaryLabelColor)
 
     /// Caps a single diff line's length in characters, complementing
@@ -72,6 +74,34 @@ enum DiffLineStyle {
         case .addition: return insertionTint
         case .deletion: return deletionTint
         case .context: return Color.clear
+        }
+    }
+
+    /// How a file's status word is set in the diff file header.
+    ///
+    /// Most statuses are chrome: `modified` beside a file's name asks nothing of the
+    /// reader. Two are not, which is the whole reason this is a mapping and not one
+    /// flat style.
+    enum StatusEmphasis: Equatable {
+        /// Secondary label at the chrome size — what every ordinary status gets.
+        case chrome
+        /// Tinted and bold. `conflicted` only: the file holds conflict markers rather
+        /// than an author's changes, which is the most consequential thing a diff
+        /// header can say, and the header is the only place the diff says it.
+        case warning(Color)
+        /// Tinted down. `unreadable` only: libgit2 could not open the file at all, a
+        /// non-answer rather than something to act on.
+        case muted(Color)
+    }
+
+    /// How the file header sets `status`. The warning tint is the deletion tint the
+    /// removed rows already carry rather than a colour of its own, so the diff view
+    /// keeps a single palette.
+    static func statusEmphasis(for status: GitDiffFile.Status) -> StatusEmphasis {
+        switch status {
+        case .conflicted: return .warning(deletionTint)
+        case .unreadable: return .muted(Color(nsColor: .tertiaryLabelColor))
+        case .added, .deleted, .modified, .renamed, .copied, .typechange, .unmodified: return .chrome
         }
     }
 

@@ -4,7 +4,7 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build dev test release clean vendor help bundle dist icon
+.PHONY: all build dev test release clean vendor help bundle dist icon memory
 
 # Version metadata for packaging (overridable by CI). SHORT_VERSION is the
 # marketing version; BUNDLE_VERSION is a monotonic build number.
@@ -86,7 +86,9 @@ bundle: release
 # megabytes of debug symbols for nothing, while crash reports coming back from
 # a release still symbolicate against the matching published dSYM.
 dist: bundle
-	mkdir -p dist
+# Start from an empty dist/: a local run after a version bump would otherwise
+# leave the previous version's archives sitting next to the new ones.
+	rm -rf dist && mkdir -p dist
 	ditto -c -k --sequesterRsrc --keepParent Casper.app dist/Casper-$(SHORT_VERSION)-arm64.zip
 	cd dist && shasum -a 256 Casper-$(SHORT_VERSION)-arm64.zip > Casper-$(SHORT_VERSION)-arm64.zip.sha256
 	ditto -c -k --sequesterRsrc --keepParent Casper.dSYM dist/Casper-$(SHORT_VERSION)-arm64.dSYM.zip
@@ -102,6 +104,14 @@ vendor:
 ## icon: regenerate both .icns files (AppIcon + AppIconDev) from their SVG masters (needs resvg)
 icon:
 	Scripts/make-icon.sh
+
+## memory: DEBUG only — watch a running dev instance for memory growth
+# Drives `casper debug memory`, which exists only in debug builds, so start the
+# app with `make dev` first. Pick the subcommand and its options with
+# MEMORY_ARGS, e.g. `make memory MEMORY_ARGS="churn --cycles 20"`.
+MEMORY_ARGS ?= sample
+memory:
+	Scripts/memory-watch.sh $(MEMORY_ARGS)
 
 ## help: list available targets
 help:

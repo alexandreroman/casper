@@ -68,5 +68,3 @@ captured in the [[libgit2-swift-interop]] project-memory note.
   one production caller deletes the branch on the next line, so recreating a
   same-named workspace works; a second caller that forgets would meet an opaque
   `.gitFailure`.
-- **libgit2 is unpinned** in Homebrew and in CI, so a brew bump can change diff
-  or status behaviour underfoot.

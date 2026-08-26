@@ -1,14 +1,11 @@
 import ArgumentParser
-import CasperAgents
+import CasperCore
 import Foundation
 
-/// The version `casper --version` reports. A packaged `Casper.app` carries the
-/// real one in `CFBundleShortVersionString` (substituted by
-/// `Scripts/bundle-app.sh` at packaging time); an unbundled binary — `swift run`,
-/// or the executable invoked outside the app — has no Info.plist to read, so it
-/// falls back to the compiled-in module version.
+/// The version `casper --version` reports: the packaged app's real version when
+/// there is a bundle to read it from, else the compiled-in fallback.
 private let casperVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-    ?? casperAgentsVersion
+    ?? casperFallbackVersion
 
 /// The root `casper` command. Ships the domain commands (`status`, `progress`,
 /// `notify`, `info`, `terminal`, `browser`, `diff`, `workspace`, `run`); `casper debug`

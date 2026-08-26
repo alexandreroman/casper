@@ -21,17 +21,8 @@ in a 500 pt-wide scroll view:
   `textContainerInset`.
 - `wantsDefaultClipping` is `true` throughout and does not confine any of it.
 
-Three distinct paints escape as a result: a background fill of the passed rect
-covers the code column the clip view already drew; per-row chrome placed from
-scroll-relative geometry rides above the ruler's top edge, because rows above
-the viewport still fall inside the passed rect; and `NSRulerView`'s own chrome —
-a hairline down the ruler's trailing edge — runs the full height of the infinite
-clip.
-
-**Why:** the third one is drawn by no method of the subclass, so confining
-paints one at a time inside `drawHashMarksAndLabels(in:)` cannot reach it. Only
-a clip that wraps `super` covers all three, and it holds for chrome added later
-without anyone remembering the rule.
+`DiffGutterRuler.draw(_:)` carries the three symptoms that produced and the
+reason the clip wraps `super` rather than each paint.
 
 **How to apply:** in any `NSRulerView` subclass, override `draw(_:)` to
 `saveGraphicsState()`, `bounds.clip()`, call `super.draw(_:)`, then restore.

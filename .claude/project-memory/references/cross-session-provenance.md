@@ -29,4 +29,4 @@ independently.
 
 **How to apply:** quote the sender when relaying a peer's claim. Ask "which
 worktree?" before acting on state. Re-read the file when a claim decides an
-identifier, a path, or a comparison. See [[agent-integration-policy]].
+identifier, a path, or a comparison.

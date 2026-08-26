@@ -71,8 +71,12 @@ cp "$ROOT/Packaging/AppIcon/$ICNS" "$APP/Contents/Resources/$ICNS"
 
 # HighlightSwift's generated Bundle.module ships as an ordinary sealed resource;
 # DiffHighlighter mirrors it to the app root at runtime (where Bundle.module looks).
-cp -R "$BIN_DIR/HighlightSwift_HighlightSwift.bundle" \
-    "$APP/Contents/Resources/HighlightSwift_HighlightSwift.bundle"
+HIGHLIGHT_BUNDLE="$BIN_DIR/HighlightSwift_HighlightSwift.bundle"
+if [ ! -d "$HIGHLIGHT_BUNDLE" ]; then
+    echo "error: $HIGHLIGHT_BUNDLE not found (run '$BUILD_HINT' first)" >&2
+    exit 1
+fi
+cp -R "$HIGHLIGHT_BUNDLE" "$APP/Contents/Resources/HighlightSwift_HighlightSwift.bundle"
 
 # Sparkle: embed the auto-update framework the binary links against. It stays
 # inert in dev builds (Info-dev.plist carries no SUFeedURL/SUPublicEDKey), but dyld

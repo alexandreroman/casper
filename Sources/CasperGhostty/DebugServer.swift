@@ -188,19 +188,19 @@ public final class DebugServer {
 
         switch command.verb {
         case .dumpState:
-            let entries = surfaces.map { handle -> DebugState.Surface in
-                let g = handle.geometry()
+            let entries = surfaces.map { surface -> DebugState.Surface in
+                let g = surface.geometry()
                 return DebugState.Surface(
-                    id: handle.id, title: handle.title, workingDirectory: handle.workingDirectory,
-                    columns: g.columns, rows: g.rows, focused: handle.focused,
+                    id: surface.id, title: surface.title, workingDirectory: surface.workingDirectory,
+                    columns: g.columns, rows: g.rows, focused: surface.focused,
                     widthPixels: g.widthPixels, heightPixels: g.heightPixels,
                     cellWidthPixels: g.cellWidthPixels, cellHeightPixels: g.cellHeightPixels,
                     boundsWidth: g.boundsWidth, boundsHeight: g.boundsHeight,
                     backingWidth: g.backingWidth, backingHeight: g.backingHeight,
                     contentScaleX: g.contentScaleX, contentScaleY: g.contentScaleY,
                     backingScaleFactor: g.backingScaleFactor,
-                    agentState: handle.agentState, oscTitle: handle.oscTitle(),
-                    progressReport: handle.progressReport())
+                    agentState: surface.agentState, oscTitle: surface.oscTitle(),
+                    progressReport: surface.progressReport())
             }
             return .success(state: DebugState(surfaces: entries))
 

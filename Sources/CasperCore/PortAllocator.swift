@@ -14,13 +14,13 @@ public struct PortAllocator: Equatable, Sendable {
     public static let defaultBlockSize = 10
 
     /// Lowest allowed block base.
-    public let rangeStart: Int
+    private let rangeStart: Int
     /// Highest allowed block *base* — not the highest allocatable port. Each
     /// block occupies the `blockSize` ports `[base, base + blockSize - 1]`, so a
     /// block anchored at `rangeEnd` can extend up to `blockSize - 1` ports past
     /// `rangeEnd`. Size the range so that tail fits within the intended ceiling.
-    public let rangeEnd: Int
-    public let blockSize: Int
+    private let rangeEnd: Int
+    private let blockSize: Int
     /// First block base `allocate()` scans; it wraps around from here. Defaults
     /// to `rangeStart` (historical sequential behavior). The app seeds it with a
     /// random value (`randomStartBase`) so two concurrent instances statistically
@@ -66,6 +66,11 @@ public struct PortAllocator: Equatable, Sendable {
         return rangeStart + Int.random(in: 0..<blockCount) * blockSize
     }
 
+    /// Marks `base` as taken, returning whether this call is what took it.
+    ///
+    /// A `false` return means the base was rejected — out of range, misaligned, or
+    /// already reserved — and the caller must not assume the block is held: a
+    /// later `allocate()` is free to hand the same block to someone else.
     @discardableResult
     public mutating func reserve(_ base: Int) -> Bool {
         guard base >= rangeStart, base <= rangeEnd,

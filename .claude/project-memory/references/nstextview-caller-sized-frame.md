@@ -31,7 +31,8 @@ either way, confirmed by `usageBoundsForTextContainer` still reporting the full
 extent with the view non-resizable. Only `widthTracksTextView` matters for
 wrapping.
 
-Pinned by `WorkspaceInfoPanelTests.testTallMessageKeepsTheFullMeasuredHeightInTheTextView`,
+Pinned by
+`WorkspaceInfoPanelTests.testTallMessageKeepsTheFullMeasuredHeightInTheTextView`,
 which compares the hosted text view's `frame.height` against
 `height(for:width:)` for a **table-free** message — the case where the
 measurement and the live view's own layout are the same number. Such a test

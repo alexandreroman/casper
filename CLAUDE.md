@@ -18,7 +18,7 @@ out of Git.
   `UserNotifications`. IPC: `Network.framework`.
 - The only sanctioned external dependencies are **GhosttyKit** (libghostty),
   **swift-argument-parser**, **libgit2**, **HighlightSwift** (syntax
-  highlighting for the diff view), and **Sparkle** (auto-update — see the plan
+  highlighting for the diff view), and **Sparkle** (auto-update — see the note
   [`sparkle-eddsa-key.md`](.claude/project-memory/references/sparkle-eddsa-key.md)).
   Everything else uses built-in macOS frameworks. (`swiftui-introspect` was
   tried for the diff view's frozen file header but dropped — its
@@ -28,37 +28,22 @@ out of Git.
 
 ## Build & run
 
-Requires `brew install libgit2 pkgconf` (CasperGit links libgit2 via
-pkg-config). The first build downloads the ~53 MB `GhosttyKit.xcframework` from
-the pinned `libghostty-spm` release; later builds reuse the extracted
-artifact.
+Full prerequisites, the Make-target reference, the `make vendor` and
+`dylibbundler` caveats, the dSYM story and the debug code-signing setup are all
+in [README.md](README.md) § Building from source. The targets in daily use:
 
 ```bash
-make build   # compile
+make build   # compile, then assemble + sign Casper-dev.app (assemble-bundle.sh
+             #   debug, install_name_tool rpath, Info-dev.plist, codesign)
 make dev     # rebuild + launch Casper-dev.app under a per-branch dev session
 make test    # run the test suite
 make release # size-optimized release build (arm64)
-make bundle  # assemble a self-contained Casper.app (release binary + bundled dylibs)
-make dist    # package Casper.app into a .zip + .sha256 + dSYM.zip (release artifacts)
+make bundle  # assemble a self-contained Casper.app (release binary + dylibs)
+make dist    # package Casper.app into a .zip + .sha256 + dSYM.zip
 make vendor  # re-sync Vendor/ghostty/ghostty.h (contributor-only; run AFTER a build)
+make memory  # DEBUG only — watch a running dev instance for memory growth
 casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
-
-`make vendor` is not part of building. It needs `brew install vendir` and
-re-syncs the reference-only `Vendor/ghostty/ghostty.h` **out of the
-already-extracted** `GhosttyKit.xcframework`, so it only works once a build has
-downloaded that artifact, and is only worth running when the GhosttyKit pin
-moves. No target compiles against the vendored header.
-
-`make bundle`/`make dist` need `brew install dylibbundler` (embeds the libgit2
-dylib chain into the bundle so the app runs on a clean Mac). The
-`.github/workflows/release.yml` workflow runs `make dist` on every `v*` tag and
-publishes the `.app` as a GitHub Release.
-
-The release build compiles with `-Osize`, and `make bundle` extracts the debug
-symbols to `Casper.dSYM` (kept **outside** `Casper.app`) before stripping the
-shipped executable. `make dist` publishes that dSYM as a separate `.dSYM.zip`
-asset so release crash reports stay symbolicatable.
 
 The app icon ships in two forms: the legacy `Packaging/AppIcon/AppIcon.icns`
 (fallback for macOS 15–25, regenerated from `icon.svg` via `make icon` — which
@@ -68,21 +53,13 @@ also rebuilds `AppIconDev.icns` from `icon-dev.svg` — and needs
 by `actool` during `make bundle`). Both `CFBundleIconName` and
 `CFBundleIconFile` are set. Compiling the `.icon` requires **Xcode 26** selected
 (`sudo xcode-select -s /Applications/Xcode.app`). To re-author the layered icon:
-edit the layer sources `Packaging/AppIcon/layers/*.svg`, re-import them into
-Icon Composer, and commit the updated `AppIcon.icon`.
+edit the layer sources in `Packaging/AppIcon/AppIcon.icon/Assets/`, re-import
+them into Icon Composer, and commit the updated `AppIcon.icon`.
 
 ## Modules
 
-- **CasperCore** — models, session store, worktree manager, port allocator,
-  control-channel protocol + socket (pure Swift).
-- **CasperGit** — in-house libgit2 wrapper (worktrees, diff, status).
-- **CasperGhostty** — embeds GhosttyKit; owns terminal surfaces and layout.
-- **CasperAgents** — per-surface environment injection for Casper terminals.
-- **CasperUI** — SwiftUI sidebar, chrome, diff, browser views.
-- **CasperCLI** — `casper` subcommands. The app and CLI ship as one binary.
-
-Two C shim targets sit under CasperGit: **Clibgit2** (the system-library module
-map for libgit2) and **CSigbusGuard** (the SIGBUS guard around libgit2 diff).
+`.superpowers/architecture.md` § Modules is the authoritative table — module
+boundaries, what each owns, and the theme doc that details it.
 
 ## Agents
 

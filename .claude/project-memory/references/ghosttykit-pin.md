@@ -19,8 +19,7 @@ release ships `GhosttyKit.xcframework` built from upstream Ghostty **`v1.3.1`**
   `MSDisplayLink` dependency. `MSDisplayLink` appears in `Package.resolved`
   (full manifest graph) but is **not linked** into Casper, so the
   five-external-deps policy holds (see [[dependency-policy]]).
-- Required linker settings on the CasperGhostty target: `.linkedLibrary("c++")`
-  and `.linkedFramework("Carbon", .when(platforms: [.macOS]))`.
+- Required linker settings on the CasperGhostty target: `.linkedLibrary("c++")`.
 - The API source of truth is the vendored header `Vendor/ghostty/ghostty.h`
   (sha256 `145d9e9f733c5c22615b80f17397b9640860448fd45394bc5fb1807fb4a33db7`,
   1196 lines), synced by Carvel `vendir` (`vendir.yml` / `vendir.lock.yml`,

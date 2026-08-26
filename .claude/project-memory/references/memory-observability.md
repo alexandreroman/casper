@@ -41,7 +41,8 @@ context:
 
 - `GhosttySurface` has a **nonisolated** `init` (the class is main-thread affine
   by contract only), so Swift 6 rejects passing `self` to the census from there.
-  It is tracked from `GhosttySurfaceView.createSurface` instead — the only
+  It is tracked from `GhosttySurfaceView.createSurfaceIfNeeded()` instead — the
+  only
   place that constructs one.
 - `DirectoryWatcher` is `@unchecked Sendable` with a genuinely off-main design,
   so it is not tracked at all rather than asserting an isolation it does not
