@@ -20,8 +20,7 @@ final class WorkspaceTitleLabelTests: XCTestCase {
     private static let generousWidth: CGFloat = 600
 
     /// Widths from "the real ~900pt-window case" down to absurd. The label must
-    /// hold at one line throughout; which `ViewThatFits` candidate wins on the
-    /// way down is deliberately not asserted, only that none of them wraps.
+    /// hold at one line throughout, in both of the forms the row asks it for.
     private static let narrowWidths: [CGFloat] = [220, 140, 100, 70, 40]
 
     /// The reported case: a short Space name and a short branch still wrapped,
@@ -30,9 +29,9 @@ final class WorkspaceTitleLabelTests: XCTestCase {
         assertStaysOnOneLine(isGitRepo: true, spaceName: "casper", branchLabel: "docs")
     }
 
-    /// A branch name several times wider than the group will ever be: the Space
-    /// name drops out and the branch middle-truncates, and neither step is
-    /// allowed to cost a second line.
+    /// A branch name several times wider than the group will ever be, so the
+    /// branch middle-truncates in either form — which is not allowed to cost a
+    /// second line.
     func testLongBranchNameNeverWraps() {
         assertStaysOnOneLine(
             isGitRepo: true,
@@ -40,9 +39,9 @@ final class WorkspaceTitleLabelTests: XCTestCase {
             branchLabel: "feature/fix-workspace-title-wrapping")
     }
 
-    /// The non-Git Space takes the other branch of the body — one glyph and the
-    /// folder name, with no `ViewThatFits` fallback to lean on — so it needs its
-    /// own coverage of the same contract.
+    /// A non-Git Space takes the other branch of the body — one glyph and the
+    /// folder name, identical in both forms because there is no Space/branch split
+    /// to collapse — so it needs its own coverage of the same contract.
     func testNonGitSpaceNameNeverWraps() {
         assertStaysOnOneLine(
             isGitRepo: false,
@@ -61,14 +60,18 @@ final class WorkspaceTitleLabelTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let label = WorkspaceTitleLabel(isGitRepo: isGitRepo, spaceName: spaceName, branchLabel: branchLabel)
-        let baseline = height(of: label, width: Self.generousWidth)
-        XCTAssertGreaterThan(baseline, 0, "the label must actually lay out", file: file, line: line)
+        for form in [WorkspaceTitleLabel.Form.spaceAndBranch, .branchOnly] {
+            let label = WorkspaceTitleLabel(
+                isGitRepo: isGitRepo, spaceName: spaceName, branchLabel: branchLabel, form: form)
+            let baseline = height(of: label, width: Self.generousWidth)
+            XCTAssertGreaterThan(
+                baseline, 0, "the label must actually lay out", file: file, line: line)
 
-        for width in Self.narrowWidths {
-            XCTAssertEqual(
-                height(of: label, width: width), baseline, accuracy: 0.5,
-                "the label wrapped instead of truncating at \(width)pt", file: file, line: line)
+            for width in Self.narrowWidths {
+                XCTAssertEqual(
+                    height(of: label, width: width), baseline, accuracy: 0.5,
+                    "\(form) wrapped instead of truncating at \(width)pt", file: file, line: line)
+            }
         }
     }
 

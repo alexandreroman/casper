@@ -132,17 +132,87 @@ notes, § Design describes the app that exists.
   collapse the panel only when that tab is the one showing. There is **no
   separate panel toggle** — no `sidebar.right` button and no
   `toggleInspectorCollapsed` on `AppModel`.
-- **Title bar** — the workspace toolbar, in order: one item holding the title
-  capsule, the info button and the diff badge; a flexible spacer on macOS 26+;
-  then the Merge chip (only for a linked workspace with a base branch), the Run
-  Script chip (only with named commands in `.casper.json`), the Editor chip
-  (only with a detected editor) and the `InspectorTabSelector` (always).
+- **Window floor** — the terminal region (the pane splits, not the sidebar and
+  not the inspector) has a calibrated minimum of **200 × 200 pt**, and the
+  window's own floor follows from it: `WindowFloor` pushes an
+  `NSWindow.contentMinSize` computed from the sidebar's width plus the
+  inspector's, plus that minimum. It also grows a window already below the
+  floor, because `contentMinSize` constrains a drag but never grows a window
+  that is already under it — otherwise revealing the inspector on a small window
+  would leave the terminal squeezed instead of widening it.
 
-  The three leading pieces share **one** toolbar item because AppKit inserts its
-  own spacing between separate items, which left the glyph-only info chip adrift
-  from its neighbours; each chip's own interior padding is what separates them
-  now. Every item opts out of the macOS 26 shared "Liquid Glass" background so
-  it can draw its own capsule instead of merging into the title's.
+  A SwiftUI content minimum does **not** reach `NSWindow`, not even declared on
+  the sidebar column, so the floor cannot be expressed in the view tree. And
+  `WindowGroup` writes its own minimums (228 × 142, crediting the sidebar 28 pt
+  where it is 300), so ours holds only by being written last. The authoritative
+  mechanism is `NSWindowDelegate.windowWillResize(_:to:)`, deliberately **not**
+  taken because it means taking the window's delegate away from SwiftUI: the
+  accepted consequence is that the floor holds from normal states but not from a
+  window already collapsed below it, which normal use does not reach.
+
+- **Title bar** — the workspace toolbar is **one** `ToolbarItem`, holding the
+  whole row: the title capsule, the info chip, the diff badge, the Merge chip
+  (only for a linked workspace with a base branch), the Run Script chip (only
+  with named commands in `.casper.json`), the Editor chip (only with a detected
+  editor) and the `InspectorTabSelector`.
+
+  One item is not a grouping preference, it is the only structure that cannot
+  reach AppKit's overflow chevron — where these custom chips render without
+  their capsule chrome and the segmented control clips to a lone glyph. AppKit
+  sizes a toolbar item to its content's **ideal** width and will not propose it
+  less: too little room and it overflows the item **whole**, the truncatable
+  ones included (measured: a leading group of `Text` under `.lineLimit(1)`
+  reporting 293 pt went into the chevron with its title still on one line). Any
+  item AppKit can single out is an item it can overflow, so the row hands it a
+  single item that is never wider than the bar and does the degrading itself
+  ([[toolbar-overflows-before-squeezing]]).
+
+  That width is the one measured number in the row. It comes from the detail
+  area's `GeometryReader` — never from content that can overflow its column,
+  which reports a width the column never had
+  ([[measure-the-geometryreader-not-its-content]]) — minus the window chrome
+  when the detail starts at the window's leading edge
+  (traffic lights and sidebar toggle share the row only when the sidebar is
+  collapsed, which the frame's origin is what reveals), minus a safety margin.
+  It **undershoots on purpose**: a row narrower than the bar leaves a few
+  invisible points at the right, a row wider than it empties the entire title
+  bar. Below a floor the item leaves the toolbar rather than overflowing it.
+
+  **The row degrades along ONE ordered ladder**, widest first, and everything
+  that yields is a rung of that same list:
+
+  | rung | title | badge | actions |
+  |---|---|---|---|
+  | 1 | Space / branch | yes | `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )` |
+  | 2 | Space / branch | — | as above |
+  | 3 | branch | — | as above |
+  | 4 | branch | — | `( ⤭ )( ⋯ )( ± │ 🌐 )` |
+  | 5 | branch | — | `( ⋯ )( ± │ 🌐 )` |
+  | 6 | branch | — | `( ⋯ )` |
+
+  The order encodes what each element is worth: the diff badge is
+  **informational** and goes first, the Space name is **context**, the chip
+  labels are **actions**, and the branch is **identity** and never drops. One
+  list rather than one ladder per element, because **a second decision-maker
+  makes the degradation non-monotone** — measured three times over: a badge on
+  its own layout priority vanished at 500 pt and came back at 260 pt, and a
+  title running its own `ViewThatFits` handed ~90 pt back and brought the
+  selector back as the window got *narrower*. Elements cannot be ranked against
+  each other except by being rungs of the same list. Within a rung the branch
+  still middle-truncates — that is `Text` under a proposal, not a second ladder.
+
+  Run and Editor have **no glyph-only form**: they go from full text straight
+  into the `⋯` menu. Only Merge and the selector have a glyph form on the bar.
+
+  The **`⋯` menu** lists exactly what is not on the bar, so its contents vary by
+  rung and never duplicate a visible chip — except `Sidebar`, which stays at
+  every rung that shows `⋯`. Its order mirrors the chips' order on the bar
+  (Merge/Delete, `Run Script` ▸, `Open in Editor` ▸, `Sidebar` ▸) so the folded
+  menu reads like the row it replaces; the two orders are coupled and change
+  together. `Sidebar` names the **inspector panel on the right**, not the left
+  workspace column. Its items route through the same `toggleInspectorTab`
+  mutator as the segments, checkmarked against the tab showing, so bar and menu
+  cannot disagree.
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
   and a hairline border, plus a hover highlight for the interactive ones. Glass
@@ -155,11 +225,20 @@ notes, § Design describes the app that exists.
   ([[title-capsule-hit-area]]); `Label`s pin `.titleAndIcon` because the toolbar
   environment otherwise resolves them icon-only and drops the title
   ([[toolbar-label-style]]). The title capsule itself is chrome-less: it is not
-  a control, so it takes the shared metrics without the pill — and it is pinned
-  to one line, because a toolbar group with no line limit **wraps** mid-word
-  once the toolbar proposes it less than its ideal width, pushing the title bar
-  open instead of shortening ([[toolbar-group-truncation]]). It degrades widest
-  first, dropping the Space name whole so the branch survives.
+  a control, so it takes the shared metrics without the pill — and every label
+  in the row is pinned to one line, because a group with no line limit **wraps**
+  mid-word once it is proposed less than its ideal width, and inside a
+  fixed-height capsule a second line has nowhere to go
+  ([[toolbar-group-truncation]]).
+
+  **Every glyph-only chip measures exactly the same**, the `⋯` chip being the
+  reference: one shared slot on `TitleCapsuleMetrics`, wide enough for the
+  widest glyph any of them draws, so they are identical by construction rather
+  than by symbols happening to agree. That is also what keeps the Merge chip
+  from changing width the moment Option swaps it to Delete — `trash` and
+  `arrow.triangle.merge` do not measure alike, and a chip that jumps under a
+  stationary pointer breaks the same intent the shared-identity `Button` exists
+  to protect. The editor's app icon renders into that slot too.
 
   The **diff badge** renders only for a non-zero summary, and clicking it
   toggles the panel on the Diff tab — the same mutator as the segments, not an

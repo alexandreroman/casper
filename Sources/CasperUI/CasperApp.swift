@@ -6,18 +6,25 @@ struct CasperApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // No minimum window size is declared on purpose: the floor is whatever
-            // AppKit enforces for a titled window, measured at 298 x 141 pt. Nothing in
-            // the view tree adds one either — GhosttySurfaceView is an
-            // NSViewRepresentable with no intrinsic size and collapses to 0 pt wide,
-            // NavigationSplitView's `.navigationSplitViewColumnWidth(min: 220, ...)`
-            // constrains the sidebar column and not the window, the toolbar is a real
-            // NSToolbar whose items overflow into the chevron menu rather than imposing
-            // a width, and Text truncates. So at the floor the terminal surface really
-            // does render at 0 px / 1 column x 3 rows. That is accepted: the window must
-            // shrink freely, with no minimum imposed on the terminal surface either.
-            // (The former `.frame(minWidth: 900, minHeight: 560)` dated back to the
-            // initial scene commit and was never calibrated.)
+            // No minimum window size is declared HERE on purpose: the window's floor
+            // is not a number picked for the window, it is whatever the content
+            // requires. `WorkspaceDetailView.terminalMinimumSize` is the one
+            // calibrated floor — 200 x 200 pt for the terminal region — and the
+            // window can be dragged down to whatever that implies once the sidebar
+            // and the inspector are added beside it.
+            //
+            // Nothing else in the tree adds a minimum: `NavigationSplitView`'s
+            // `.navigationSplitViewColumnWidth(min: 220, ...)` constrains the sidebar
+            // column and not the window, the toolbar is a real `NSToolbar` whose
+            // items overflow into the chevron menu rather than imposing a width, and
+            // Text truncates. AppKit's own floor for a titled window measures
+            // 298 x 141 pt, which is what the window shrank to when the terminal
+            // region had no floor of its own — a surface rendering 1 column x 3 rows.
+            //
+            // A window minimum re-declared here would be a second, uncalibrated
+            // number competing with the content's: the reason the original
+            // `.frame(minWidth: 900, minHeight: 560)` was removed was that it was
+            // never calibrated against anything.
             RootView(model: model)
         }
         // Casper owns its entire menu bar through SwiftUI `.commands` (see
