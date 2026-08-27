@@ -93,6 +93,24 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertFalse(try repo.branchExists("feature"))
     }
 
+    func testCreateOnARepositoryWithoutCommitsSaysSoInCaspersWords() throws {
+        // `git init` and nothing else: HEAD is unborn, so there is no commit for a
+        // worktree to be checked out at. The user must not read libgit2's
+        // "revspec 'HEAD' not found" for that.
+        let unbornDir = root.appendingPathComponent("unborn")
+        try FileManager.default.createDirectory(at: unbornDir, withIntermediateDirectories: true)
+        _ = try Repository.initialize(atPath: unbornDir.path)
+        let wtPath = root.appendingPathComponent("feature").path
+
+        XCTAssertThrowsError(
+            try WorktreeManager.create(
+                repoPath: unbornDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        ) { error in
+            XCTAssertEqual((error as? WorktreeError)?.reason, .repositoryHasNoCommits)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+    }
+
     func testCreateRejectsCheckedOutBranch() throws {
         let repo = try Repository.open(atPath: repoDir.path)
         let head = try repo.headBranchName()

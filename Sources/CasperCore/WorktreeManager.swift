@@ -6,6 +6,7 @@ import Foundation
 struct WorktreeError: Error, Equatable, Sendable {
     enum Reason: Equatable, Sendable {
         case repositoryNotFound
+        case repositoryHasNoCommits
         case branchAlreadyCheckedOut
         case worktreePathExists
         case mergeConflict
@@ -23,6 +24,8 @@ extension WorktreeError: LocalizedError {
         switch reason {
         case .repositoryNotFound:
             return "Repository not found."
+        case .repositoryHasNoCommits:
+            return "This repository has no commits yet. Make a first commit before creating a workspace."
         case .branchAlreadyCheckedOut:
             return "That branch is already checked out in another worktree."
         case .worktreePathExists:
@@ -71,6 +74,8 @@ public enum WorktreeManager {
 
     /// Create a worktree named `name` (on a new branch of the same name, based
     /// on `base` or HEAD) at `worktreePath` for the repository at `repoPath`.
+    /// Throws `WorktreeError(.repositoryHasNoCommits)` when the repository has none:
+    /// there is no commit to check the worktree out at.
     /// Before any Git mutation, loads `<repoPath>/.casper.json`; a malformed or
     /// unreadable file throws `WorktreeError(.configInvalid)` so nothing is created. After the
     /// git-level worktree is created, copies files matching the config's
@@ -87,6 +92,15 @@ public enum WorktreeManager {
     ) throws -> CreatedWorktree {
         let repo = try openRepo(repoPath)
 
+        // A worktree is checked out at a commit, and `addWorktree` resolves one through
+        // HEAD — which an unborn HEAD answers with a raw "revspec 'HEAD' not found".
+        // Refused here, before anything is created, so the user reads why instead of
+        // reading libgit2. A `git checkout --orphan` repository is refused the same
+        // way, even though its other branches do carry commits: rare enough that
+        // telling the two apart would buy nothing.
+        if repo.isHeadUnborn {
+            throw WorktreeError(.repositoryHasNoCommits)
+        }
         if (try? repo.isBranchCheckedOut(name)) == true {
             throw WorktreeError(.branchAlreadyCheckedOut)
         }

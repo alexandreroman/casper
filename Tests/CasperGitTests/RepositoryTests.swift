@@ -52,6 +52,70 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(branch.isEmpty)
     }
 
+    /// Record a committer in the repository's **local** config, so
+    /// `git_signature_default` resolves whatever the machine running the suite has (or
+    /// does not have) configured globally.
+    private func configureIdentity(in repo: Repository) throws {
+        var config: OpaquePointer?
+        defer { git_config_free(config) }  // before the call: free on the throw path too
+        try gitCheck(git_repository_config(&config, repo.pointer))
+        try gitCheck(git_config_set_string(config, "user.name", "Casper Test"))
+        try gitCheck(git_config_set_string(config, "user.email", "test@casper.local"))
+    }
+
+    func testCreateInitialCommitWritesAnEmptyRootCommit() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try configureIdentity(in: repo)
+
+        XCTAssertTrue(try repo.createInitialCommit())
+
+        XCTAssertFalse(repo.isHeadUnborn)
+        var head: OpaquePointer?
+        defer { git_reference_free(head) }
+        try gitCheck(git_repository_head(&head, repo.pointer))
+        var commit: OpaquePointer?
+        defer { git_commit_free(commit) }
+        try gitCheck(git_reference_peel(&commit, head, GIT_OBJECT_COMMIT))
+
+        XCTAssertEqual(String(cString: git_commit_message(commit)), "Init repository")
+        XCTAssertEqual(git_commit_parentcount(commit), 0)
+        var tree: OpaquePointer?
+        defer { git_tree_free(tree) }
+        try gitCheck(git_commit_tree(&tree, commit))
+        XCTAssertEqual(git_tree_entrycount(tree), 0)
+    }
+
+    /// The commit is parentless, so writing it onto a branch that already points
+    /// somewhere would move that branch to a second root commit and orphan every
+    /// commit behind it. The method is public, so the refusal has to be its own.
+    func testCreateInitialCommitRefusesARepositoryThatAlreadyHasHistory() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try configureIdentity(in: repo)
+        XCTAssertTrue(try repo.createInitialCommit())
+        let head = try headCommitID(of: repo)
+
+        XCTAssertFalse(try repo.createInitialCommit())
+
+        XCTAssertEqual(try headCommitID(of: repo), head, "history was rewritten onto a new root commit")
+    }
+
+    /// The commit HEAD resolves to, as a hex id.
+    private func headCommitID(of repo: Repository) throws -> String {
+        var oid = git_oid()
+        try gitCheck(git_reference_name_to_id(&oid, repo.pointer, "HEAD"))
+        // `git_oid_tostr_s` answers a buffer it reuses, so copy before the next call.
+        return String(cString: git_oid_tostr_s(&oid))
+    }
+
+    func testInitializedRepositoryHasAnUnbornHeadUntilItIsCommittedInto() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try configureIdentity(in: repo)
+
+        XCTAssertTrue(repo.isHeadUnborn)
+        XCTAssertTrue(try repo.createInitialCommit())
+        XCTAssertFalse(repo.isHeadUnborn)
+    }
+
     func testBranchExists() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
         let head = try repo.headBranchName()

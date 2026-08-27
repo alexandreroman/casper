@@ -45,11 +45,14 @@ exists; the behaviour is in the area's theme doc.
 per repository enforced in every direction — adoption, reunification, and
 pulling in the repository of a worktree opened on its own (rooted at its main
 working tree, refusing a bare repository or an unresolvable one outright rather
-than falling back). Linked worktrees are created as visible siblings of the
-repo, under a collapsible Space-grouped sidebar
-with agent state, todo progress and a notification bubble, non-destructive
-removal, and live Git promotion/demotion. Session persistence with
-legacy-decode self-healing.
+than falling back). A Space is also created from scratch — one save panel for
+the name and the location, a `git init` repository carrying one empty initial
+commit so it can host a workspace at once, then the same adoption path —
+refusing any path that is already taken and reopening at the location last used.
+Linked worktrees are created as visible siblings of the repo, under a
+collapsible Space-grouped sidebar with agent state, todo progress and a
+notification bubble, non-destructive removal, and live Git promotion/demotion.
+Session persistence with legacy-decode self-healing.
 
 **Terminal & layout.** libghostty embedding end-to-end — keyboard, clipboard
 (including untrusted-write confirmation), mouse and cmd+click URL opening,
@@ -167,8 +170,9 @@ the Space `+/−` divergence badge, is retained for the record in
 - **Tabs → tmux panes.** UI-3's tabbed surface model, its tab bar and
   `insertTab` are gone; `LayoutNode` is `split | leaf`, every pane holds one
   surface, and `tabGroup` survives only as a legacy decoding key. The two
-  follow-ups the tab bar carried — terminal-derived tab shades and per-tab ⌘N —
-  went with it; ⌘N shipped instead as ⌘1–⌘9 over **workspaces**.
+  follow-ups the tab bar carried — terminal-derived tab shades and a per-tab ⌘N
+  — went with it; moving between the things a tab used to hold is ⌘1–⌘9 over
+  **workspaces**, and ⌘N opens "New Space…".
 - **`.diff` and `.browser` layout leaves → the inspector panel.** The `.diff`
   surface kind was removed outright and `.browser` is reachable only through
   `Workspace.inspector.browser`; splits always create a terminal. Browser panes

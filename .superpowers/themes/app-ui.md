@@ -36,6 +36,61 @@ longer does are recorded in `../status.md` § Superseded designs.
   accent pill. The `AgentStatusIcon` glyphs and the caption stay monochrome
   throughout — but the row is not: the notification dot is blue (white while
   selected), and the `ProgressBar` turns green once every todo is complete.
+- **Ways into a Space** — two of them, offered in the same order wherever they
+  appear: **New Space…** (⌘N) creates a project from nothing, **Add Folder…**
+  (⌘O) adopts one that already exists. They open the **Space** menu; they are
+  the empty state's two buttons, create prominent and adopt merely bordered,
+  since a user with nothing open is likelier to be starting something than to be
+  hunting for a repo they forgot to add; and they are the two rows pinned below
+  the sidebar's scrolling list, create above adopt.
+
+  **New Space…** asks for a name *and* a location in **one** `NSSavePanel`
+  (`AppModel.presentCreateSpacePanel`), rather than a name prompt followed by a
+  folder picker: a save panel is the native shape of "name this and say where it
+  goes", and its standard **New Folder** button comes with it for free. The
+  panel reopens at the location last used — the *parent* folder, not the Space
+  itself — carried in `Session.lastNewSpaceLocation` and written to
+  `session.json`, because Casper reads no `UserDefaults` anywhere and the
+  session file is where a preference of its own belongs. An absent key decodes
+  to nil, and a remembered folder no longer on disk is ignored rather than
+  aiming the panel at nothing.
+
+  `AppModel.createSpace(at:probe:)` then does the work: create the directory,
+  `git init` it through `CasperGit`'s `Repository.initialize`, give it one
+  **empty initial commit** (`Repository.createInitialCommit`), and hand it to
+  `addSpace(folderURL:probe:)` — so what comes out is an ordinary Space with one
+  primary workspace, indistinguishable from an adopted one. That commit carries
+  no files at all: what a project starts with is still the user's call, no
+  README and no `.gitignore`. It exists so the Space can host a workspace from
+  its first frame — `git worktree add` checks the new worktree out at a commit
+  resolved through HEAD, and `git init` alone leaves HEAD unborn, resolving to
+  nothing (`space-project.md`). Casper never invents a committer to get it: on a
+  machine with no `user.name`/`user.email` configured the commit is skipped, the
+  Space is created anyway, and creating a workspace in it is what says so.
+
+  **Casper never deletes or overwrites what it did not create.** A directory
+  already at the chosen path is accepted only when it holds nothing but a
+  `.DS_Store` — which is exactly what the panel's own **New Folder** button
+  hands over — and anything else is refused with
+  `CreateSpaceOutcome.Failure.pathOccupied` and an alert that says why. That
+  covers the one panel behaviour deliberately not honoured: `NSSavePanel` runs
+  its own "…already exists. Replace?" sheet and, on Replace, simply returns the
+  URL, expecting the caller to overwrite. Casper refuses instead, so confirming
+  Replace costs the user nothing. Rollback is scoped the same way — a failed
+  `git init` or adoption removes a directory *this call* created, and leaves an
+  empty one the user handed over alone.
+
+  Like `addSpace`, `createSpace` runs no modal of its own (it is also driven
+  headlessly, by the tests), so every failure — `pathOccupied`,
+  `directoryNotCreated`, `repositoryNotInitialized`, `notAdopted` — is put on
+  screen by the presentation layer. `notAdopted` carries the adoption failure
+  verbatim, so the two entry points never word one problem two different ways.
+
+  One structural consequence: `AppDelegate.renameFileMenu(in:)` recognizes the
+  standard File menu by its submenu's **first item title**, in order to retitle
+  it **Space**. That marker is `CasperCommands.newSpaceTitle` — whichever
+  command leads the `.newItem` group is the first item, so putting one ahead of
+  "Add Folder…" moves the marker onto it.
 - **Dock attention** — the sidebar dot's out-of-app counterpart, owned by
   `DockAttention` (a `DockAttentionPresenting` seam on `AppModel`, over a
   `DockAttentionBackend` seam on `NSApp`, so both the wiring and the latch are

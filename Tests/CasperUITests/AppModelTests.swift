@@ -1995,6 +1995,309 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.scriptsRevision, revisionBefore + 1)
     }
 
+    // MARK: - Creating a Space from scratch
+
+    /// A throwaway parent directory for the creation tests — the "location" half of
+    /// what the save panel hands `createSpace`. Not `makeTemporaryDirectory`, which
+    /// creates the leaf too: these tests need the leaf to be missing, or to be seeded
+    /// by hand.
+    private func makeCreationParent() throws -> URL {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-createspace-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        return parent
+    }
+
+    /// A probe reporting a worktree of a bare repository: the one adoption failure
+    /// `createSpace` reaches without touching the port allocator or the filesystem.
+    /// `@MainActor` (hence implicitly `@Sendable`) to match `createSpace`'s probe.
+    private func bareWorktreeProbe() -> @MainActor (URL) -> WorkspaceFactory.GitInfo? {
+        { url in
+            WorkspaceFactory.GitInfo(
+                canonicalPath: url.path, branch: "main", remoteURL: nil,
+                commonDirPath: "/nonexistent/.git", isLinkedWorktree: true, isBareRepository: true)
+        }
+    }
+
+    func testCreateSpaceMakesAGitFolderAndOpensIt() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let folder = parent.appendingPathComponent("brand-new")
+
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+
+        XCTAssertTrue(AppModel.directoryExists(atPath: folder.path))
+        let probed = AppModel.gitProbe(folder)
+        XCTAssertEqual(probed?.canonicalPath, folder.standardizedFileURL.path)
+        // An unborn HEAD still names the branch it will be born on — whichever name
+        // `init.defaultBranch` picks.
+        XCTAssertFalse(try XCTUnwrap(probed).branch.isEmpty)
+        XCTAssertEqual(model.spaces.count, 1)
+        XCTAssertEqual(resolved(model.spaces[0].folderPath), resolved(folder.path))
+        XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces[0].id)
+    }
+
+    func testCreateSpaceGivesTheRepositoryOneEmptyInitialCommit() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let folder = parent.appendingPathComponent("committed-repo")
+
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+
+        let repo = try Repository.open(atPath: folder.path)
+        // Casper never invents a committer, so a machine with no Git identity configured
+        // gets a Space on an unborn HEAD instead — a documented outcome, not a failure.
+        try XCTSkipIf(repo.isHeadUnborn, "no git user identity is configured on this machine")
+
+        var head: OpaquePointer?
+        defer { git_reference_free(head) }
+        try gitCheck(git_repository_head(&head, repo.pointer))
+        var commit: OpaquePointer?
+        defer { git_commit_free(commit) }
+        try gitCheck(git_reference_peel(&commit, head, GIT_OBJECT_COMMIT))
+
+        XCTAssertEqual(String(cString: git_commit_message(commit)), "Init repository")
+        // Empty: what the project starts with is still the user's call, so the commit
+        // carries no files at all — it exists only so a workspace can be created.
+        XCTAssertEqual(git_commit_parentcount(commit), 0)
+        var tree: OpaquePointer?
+        defer { git_tree_free(tree) }
+        try gitCheck(git_commit_tree(&tree, commit))
+        XCTAssertEqual(git_tree_entrycount(tree), 0)
+    }
+
+    func testCreateSpaceNamesItsWorkspaceAfterTheRepositoryBranch() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let folder = parent.appendingPathComponent("branch-named")
+
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+
+        // Whatever `init.defaultBranch` resolves to — the expectation is read back from
+        // the repository, since the name is the user's configuration, not Casper's.
+        let branch = try Repository.open(atPath: folder.path).headBranchName()
+        XCTAssertFalse(branch.isEmpty)
+        XCTAssertEqual(AppModel.gitProbe(folder)?.branch, branch)
+        XCTAssertEqual(model.spaces[0].primaryWorkspace?.branch, branch)
+    }
+
+    func testCreateSpaceAcceptsAnExistingEmptyDirectory() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        // The shape the save panel's "New Folder" button leaves behind.
+        let folder = parent.appendingPathComponent("made-by-the-panel")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+
+        XCTAssertNotNil(AppModel.gitProbe(folder))
+        XCTAssertEqual(model.spaces.count, 1)
+    }
+
+    func testCreateSpaceAcceptsADirectoryHoldingOnlyADSStore() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let folder = parent.appendingPathComponent("shown-in-the-finder")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        // The Finder drops this in merely by displaying the folder, so it must not count
+        // as the folder being used.
+        try Data("finder state".utf8).write(to: folder.appendingPathComponent(".DS_Store"))
+
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+
+        XCTAssertNotNil(AppModel.gitProbe(folder))
+        XCTAssertEqual(model.spaces.count, 1)
+    }
+
+    func testCreateSpaceRefusesASymlinkAndLeavesItsTargetAlone() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        // An empty directory every other check would accept, reached through a link.
+        // Following it would root the Space somewhere other than the path the user named.
+        let target = parent.appendingPathComponent("elsewhere")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+        let link = parent.appendingPathComponent("shortcut")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+
+        XCTAssertEqual(model.createSpace(at: link), .failed(reason: .pathOccupied))
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: target.path), [])
+        XCTAssertTrue(model.spaces.isEmpty)
+    }
+
+    func testCreateSpaceRefusesAPathHeldByAFileAndLeavesItAlone() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let target = parent.appendingPathComponent("notes.txt")
+        let bytes = Data("keep me".utf8)
+        try bytes.write(to: target)
+
+        XCTAssertEqual(model.createSpace(at: target), .failed(reason: .pathOccupied))
+
+        XCTAssertEqual(try Data(contentsOf: target), bytes)
+        XCTAssertTrue(model.spaces.isEmpty)
+    }
+
+    func testCreateSpaceRefusesANonEmptyDirectoryAndLeavesItAlone() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let target = parent.appendingPathComponent("has-stuff-in-it")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        try Data("keep me".utf8).write(to: target.appendingPathComponent("keep.txt"))
+
+        XCTAssertEqual(model.createSpace(at: target), .failed(reason: .pathOccupied))
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: target.path), ["keep.txt"])
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: target.appendingPathComponent(".git").path))
+        XCTAssertTrue(model.spaces.isEmpty)
+    }
+
+    func testCreateSpaceRemovesTheFolderItMadeWhenAdoptionFails() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let folder = parent.appendingPathComponent("rolled-back")
+
+        XCTAssertEqual(
+            model.createSpace(at: folder, probe: bareWorktreeProbe()),
+            .failed(reason: .notAdopted(reason: .bareRepository)))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+        XCTAssertTrue(model.spaces.isEmpty)
+    }
+
+    func testCreateSpaceKeepsAnExistingEmptyFolderWhenAdoptionFails() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        // The other half of the rollback rule: this folder is the user's, so the failure
+        // must leave it standing — and must take the `.git` Casper put in it away again,
+        // or `isVacant` would refuse this same path forever on a folder the Finder still
+        // shows as empty.
+        let folder = parent.appendingPathComponent("handed-over")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+
+        XCTAssertEqual(
+            model.createSpace(at: folder, probe: bareWorktreeProbe()),
+            .failed(reason: .notAdopted(reason: .bareRepository)))
+
+        XCTAssertTrue(AppModel.directoryExists(atPath: folder.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
+        XCTAssertTrue(model.spaces.isEmpty)
+    }
+
+    /// The one thing a new Space exists to make possible: the initial commit is what
+    /// lets `git worktree add` resolve a base through HEAD, so a Space created from
+    /// nothing must accept a workspace immediately, with no commit of the user's in
+    /// between. `WorktreeManagerTests` pins the negative — an unborn repository is
+    /// refused — and this is the positive.
+    func testASpaceCreatedFromScratchHostsAWorkspaceRightAway() async throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        // Casper never invents a committer, so a machine with no Git identity configured
+        // gets a Space on an unborn HEAD instead — a documented outcome, not a failure.
+        // Established on a repository of its own rather than on the Space below: reading
+        // the skip off the Space's own HEAD would turn a broken initial commit into a
+        // skip instead of the failure it is.
+        let identityProbe = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: identityProbe) }
+        try XCTSkipIf(
+            try !Repository.initialize(atPath: identityProbe.path).createInitialCommit(),
+            "no git user identity is configured on this machine")
+        let folder = parent.appendingPathComponent("hosts-a-workspace")
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+        XCTAssertFalse(try Repository.open(atPath: folder.path).isHeadUnborn)
+
+        let created = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "First Feature")
+
+        XCTAssertTrue(created)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
+        let linked = try XCTUnwrap(model.spaces[0].workspaces.last)
+        XCTAssertEqual(linked.kind, .linked)
+        // A sibling of the Space's folder, so the parent's cleanup takes it with it.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: linked.worktreePath))
+    }
+
+    /// The remembered location must reach disk on the success path too, and the
+    /// adoption that follows creation cannot be relied on to carry it: a Space still
+    /// tracked at a path whose folder was deleted outside Casper is *re-selected*
+    /// rather than added, and re-selecting the workspace that is already selected
+    /// encodes nothing.
+    func testCreatingASpaceSavesTheLocationEvenWhenAdoptionOnlyReselects() throws {
+        let parent = try makeCreationParent()
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        let folder = parent.appendingPathComponent("deleted-behind-our-back")
+        XCTAssertEqual(model.createSpace(at: folder), .created)
+        XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces.first?.id)
+        // Gone from disk, still tracked: creating it again rebuilds the repository, and
+        // adoption answers `.selected` on the very workspace that is already selected.
+        // The Space is already Git-backed, so nothing else along that path writes either.
+        try FileManager.default.removeItem(at: folder)
+
+        let original = AppModel.chooseNewSpaceLocation
+        defer { AppModel.chooseNewSpaceLocation = original }
+        AppModel.chooseNewSpaceLocation = { _ in folder }
+        model.presentCreateSpacePanel()
+
+        XCTAssertEqual(model.spaces.count, 1)
+        XCTAssertEqual(model.lastNewSpaceLocation, parent.path)
+        XCTAssertEqual(persistedLastNewSpaceLocation(from: store), parent.path)
+    }
+
+    /// What the session file on disk carries, polled until the backgrounded write
+    /// lands. Deliberately not `flushPendingSave()`: that persists unconditionally, so
+    /// it would write the very value the test is asking the production path to write.
+    private func persistedLastNewSpaceLocation(
+        from store: SessionStore, timeout: TimeInterval = 2
+    ) -> String? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let location = (try? store.load())?.lastNewSpaceLocation { return location }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        return (try? store.load())?.lastNewSpaceLocation
+    }
+
+    /// Pins the `lastNewSpaceLocation` codec: that the key survives an encode through
+    /// `SessionStore` and comes back on the model built from the decoded session.
+    /// Which production paths write it is pinned by the creation tests above.
+    func testLastNewSpaceLocationSurvivesTheSessionStoreCodec() throws {
+        let (store, url) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        XCTAssertNil(model.lastNewSpaceLocation)
+
+        model.lastNewSpaceLocation = "/tmp/projects"
+        // The disk write is backgrounded; flush so the reload below sees it.
+        model.flushPendingSave()
+        let reloadedStore = SessionStore(fileURL: url)
+        let reloadedModel = makeModel(store: reloadedStore, session: try reloadedStore.load())
+
+        XCTAssertEqual(reloadedModel.lastNewSpaceLocation, "/tmp/projects")
+    }
+
     // Helpers: walk the layout to find a surface by id and inspect its kind.
     private func surface(_ node: LayoutNode, _ id: UUID) -> Surface? {
         switch node {

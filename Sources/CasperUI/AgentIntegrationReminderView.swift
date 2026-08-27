@@ -115,6 +115,7 @@ private struct AgentIntegrationReminderRow: View {
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: AgentIntegrationReminderView.symbolName(for: reminder.kind))
+                        .frame(width: SidebarActionButtonStyle.iconSlotWidth, alignment: .center)
                     Text(AgentIntegrationReminderView.message(for: reminder))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)

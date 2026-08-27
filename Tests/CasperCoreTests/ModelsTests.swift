@@ -526,6 +526,29 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(decoded.spaces.first?.name, "app")  // other fields decode normally
     }
 
+    func testSessionLegacyDecodeWithoutLastNewSpaceLocationDecodesToNil() throws {
+        // A `session.json` written before the creation panel existed has no
+        // `lastNewSpaceLocation` key; decoding must yield nil rather than throw on
+        // the missing key.
+        let json = """
+        { "spaces": [ { "id": "\(UUID().uuidString)", "name": "app",
+            "folderPath": "/r", "isCollapsed": false, "workspaces": [] } ] }
+        """
+        let decoded = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.lastNewSpaceLocation)
+        XCTAssertEqual(decoded.spaces.first?.name, "app")  // other fields decode normally
+    }
+
+    func testLastNewSpaceLocationIsOmittedWhenNil() throws {
+        // `encodeIfPresent`, not `encode`: no remembered location must leave the key
+        // out rather than write `null`. Pinned because both coders are hand-rolled and
+        // "simplifying" this to `encode` would change the on-disk shape.
+        let data = try JSONEncoder().encode(Session())
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["lastNewSpaceLocation"])
+        XCTAssertNotNil(object["spaces"])
+    }
+
     func testSelectedWorkspaceIDIsOmittedWhenNil() throws {
         // `encodeIfPresent`, not `encode`: a nil selection must leave the key out
         // rather than write `null`. Pinned because both coders are hand-rolled and

@@ -16,6 +16,7 @@
 
 - [Dependency policy](references/dependency-policy.md) — prefer native macOS APIs; five sanctioned externals, listed
 - [libgit2 Swift interop](references/libgit2-swift-interop.md) — Clibgit2 gotchas: no variadic `_v`, pkg-config linking, pointer lifecycle
+- [libgit2 misses Apple git's system config](references/libgit2-system-config-search-path.md) — the developer dir answers only as a fallback
 - [libgit2 untracked diff content flag](references/libgit2-untracked-content.md) — without the untracked-content flag, text misflags as binary
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
@@ -38,6 +39,7 @@
 - [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync contentsScale to the backing scale or it upscales ×2
 - [libghostty Control-combo key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint + a QWERTY-normalized keycode
 - [Command key-ups need a local monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
+- [libghostty keybinds shadow the main menu](references/ghostty-keybinds-shadow-the-main-menu.md) — a bound ⌘ combo never reaches the menu item
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null; wake the display and poll
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
@@ -62,6 +64,7 @@
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
 - [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
+- [A MainActor member as a default argument](references/mainactor-default-argument-isolation.md) — @MainActor on the parameter; the body drops it
 - [The working signal is the OSC 9;4 progress report](references/agent-state-working-signal.md) — title spinner secondary; version-coupled detection
 - [Measuring a TUI viewport affordance](references/viewport-affordance-measurement.md) — replay the PTY into a grid; raw greps miss split writes
 - [libghostty config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — a bundle misses the user's config
@@ -95,6 +98,7 @@
 - [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — drive `handleScriptSurfaceExit` for the child exit in XCTest
 - [Headless SwiftUI layout smoke tests](references/headless-swiftui-layout-tests.md) — NSHostingView + fittingSize geometry-tests views
 - [Testing a guarded no-write](references/observation-tracking-guard-tests.md) — pins that a guarded mutation writes nothing
+- [Asserting the session was saved](references/session-save-assertions.md) — flushPendingSave() persists on its own, so it proves only the codec
 - [Worktree deletion deletes the directory first](references/worktree-deletion-directory-first.md) — delete the directory, then prune metadata only
 - [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — nothing clips its draw rects; clip in `draw(_:)`
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — spacing lives inside layoutFragmentFrame; probes cost more
@@ -136,3 +140,4 @@
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
 - [Repeating animations are gated at the call site](references/repeating-animation-state-gating.md) — a one-shot @State flag must die with the view
 - [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag
+- [SF Symbols need a shared width slot](references/sf-symbol-widths-need-a-slot.md) — no common intrinsic width; one measured slot per icon column

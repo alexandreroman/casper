@@ -30,7 +30,7 @@ struct CasperCommands: Commands {
     /// `AppDelegate.renameFileMenu(in:)` matches that menu on — it is Casper's own
     /// string, so unlike the standard File items macOS does not localize it. Keep
     /// this item first in the `.newItem` group below.
-    static let addFolderTitle = "Add Folder…"
+    static let newSpaceTitle = "New Space…"
 
     let model: AppModel
 
@@ -51,8 +51,12 @@ struct CasperCommands: Commands {
         // Space menu (the standard File slot, retitled in AppDelegate).
         Group {
             CommandGroup(replacing: .newItem) {
+                Button { model.presentCreateSpacePanel() } label: {
+                    Label(Self.newSpaceTitle, systemImage: "folder.badge.plus")
+                }
+                .keyboardShortcut("n", modifiers: .command)
                 Button { model.presentAddFolderPanel() } label: {
-                    Label(Self.addFolderTitle, systemImage: "plus")
+                    Label("Add Folder…", systemImage: "plus")
                 }
                 .keyboardShortcut("o", modifiers: .command)
                 Button {

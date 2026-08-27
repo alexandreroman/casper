@@ -22,6 +22,59 @@ public final class Repository {
         return Repository(pointer: try requireNonNull(repo, "repository"))
     }
 
+    /// The message `createInitialCommit()` writes. Deliberately not configurable: it
+    /// is Casper's own commit, in a repository that has no history to match yet.
+    private static let initialCommitMessage = "Init repository"
+
+    /// Write an **empty** initial commit — the empty tree, no parents, no files — onto
+    /// HEAD, and report whether it was written.
+    ///
+    /// A repository fresh out of `initialize(atPath:)` has an unborn HEAD, and
+    /// `addWorktree` resolves its base through `HEAD`, which then resolves to nothing:
+    /// one commit is what makes a brand-new repository able to host a worktree.
+    ///
+    /// For **a repository that has never been committed into** only. Returns false,
+    /// having written nothing, when HEAD is already born: the commit this writes has no
+    /// parents, so on a repository with history it would move the branch to a second
+    /// root commit and orphan everything behind it — and it commits the repository
+    /// index, which on such a repository need not be the empty tree this promises.
+    ///
+    /// Returns **false**, having written nothing, when libgit2 cannot derive a
+    /// committer from the user's configuration (no `user.name` / `user.email`). Casper
+    /// does not invent an identity to commit under: a name the user never chose would
+    /// be in their history forever, which is worse than the unborn HEAD it avoids. The
+    /// caller decides what to say about it.
+    @discardableResult
+    public func createInitialCommit() throws -> Bool {
+        guard isHeadUnborn else { return false }
+
+        var signature: UnsafeMutablePointer<git_signature>?
+        defer { git_signature_free(signature) }  // before the call: free on the throw path too
+        // The one deliberately non-fatal libgit2 failure here, hence no `gitCheck`.
+        guard git_signature_default(&signature, pointer) == 0,
+              let author = signature else { return false }
+
+        // The empty tree, written from the index of a repository with nothing staged.
+        var index: OpaquePointer?
+        defer { git_index_free(index) }
+        try gitCheck(git_repository_index(&index, pointer))
+        var treeOid = git_oid()
+        try gitCheck(git_index_write_tree(&treeOid, index))
+
+        var tree: OpaquePointer?
+        defer { git_tree_free(tree) }
+        try gitCheck(git_tree_lookup(&tree, pointer, &treeOid))
+        let treeHandle = try requireNonNull(tree, "tree")
+
+        // Swift cannot import the variadic `git_commit_create_v`, so this is the
+        // array-based `git_commit_create` with a parent count of 0 — a root commit.
+        var commitOid = git_oid()
+        try gitCheck(git_commit_create(
+            &commitOid, pointer, "HEAD", author, author, nil,
+            Self.initialCommitMessage, treeHandle, 0, nil))
+        return true
+    }
+
     /// Open the repository at `path` (either a working directory or a `.git`
     /// directory). Does not search parent directories.
     public static func open(atPath path: String) throws -> Repository {
@@ -62,6 +115,14 @@ public final class Repository {
     /// repository (`git init --bare`, `git clone --bare`).
     public var isBare: Bool {
         git_repository_is_bare(pointer) == 1
+    }
+
+    /// True when HEAD names a branch that does not exist yet, so there is no commit to
+    /// resolve it to. That is where `git init` leaves a repository until its first
+    /// commit — and also where `git checkout --orphan` puts one that does have history
+    /// on other branches.
+    public var isHeadUnborn: Bool {
+        git_repository_head_unborn(pointer) == 1
     }
 
     /// What the repository behind a working tree — the one its common `.git`

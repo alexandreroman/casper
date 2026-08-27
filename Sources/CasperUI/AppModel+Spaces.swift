@@ -1,10 +1,11 @@
 import CasperCore
+import CasperGit
 import Foundation
 
-/// Space adoption and reunification: how a folder being opened becomes a Space,
-/// joins the Space of a repository already open, or absorbs the Spaces rooted at
-/// its own worktrees — plus the teardown shared by every path that drops a
-/// workspace. Part of `AppModel`.
+/// Space adoption, creation and reunification: how a folder being opened becomes a
+/// Space, joins the Space of a repository already open, or absorbs the Spaces rooted
+/// at its own worktrees; how a Space is made from nothing at all — plus the teardown
+/// shared by every path that drops a workspace. Part of `AppModel`.
 extension AppModel {
     /// What `addSpace(folderURL:probe:)` did, so the caller — and only the caller —
     /// decides whether to put an alert on screen. `addSpace` never runs a modal
@@ -30,6 +31,42 @@ extension AppModel {
             case mainWorkingTreeUnresolved
             /// No free port block is left for the workspaces the folder needs.
             case noFreePortBlock
+        }
+    }
+
+    /// The outcome of creating a Space from scratch, in the same shape as
+    /// `AddSpaceOutcome`: `createSpace` never puts an alert on screen — it is also
+    /// driven headlessly, by the tests — so the caller decides what the user sees.
+    enum CreateSpaceOutcome: Equatable {
+        /// The folder was created, initialized as a Git repository, and is now open.
+        ///
+        /// Also reported when adoption *selected* an existing workspace rather than
+        /// adding one — reachable when a Space is still tracked at a path whose folder
+        /// was deleted outside Casper. The two are deliberately not told apart: every
+        /// caller treats any non-failure identically, so a case of its own would only
+        /// be a distinction nobody acts on.
+        case created
+        /// Nothing that was on disk *before this call* was removed or overwritten: a
+        /// directory this call made is rolled back, as is a `.git` it initialized inside
+        /// a directory the user handed over, and anything else stays exactly as found.
+        case failed(reason: Failure)
+
+        /// Why a Space could not be created.
+        enum Failure: Equatable {
+            /// A file, or a folder holding something, already sits at the chosen path.
+            /// Casper never deletes or overwrites what it did not create, so the user has
+            /// to pick another name or another location.
+            case pathOccupied
+            /// The folder itself could not be created, `message` being what the filesystem
+            /// said about it (no write permission, read-only volume, name too long…).
+            case directoryNotCreated(message: String)
+            /// The folder was created but `git init` failed in it, `message` being what
+            /// libgit2 said about it.
+            case repositoryNotInitialized(message: String)
+            /// The repository was created but could not be opened as a Space. Carries the
+            /// adoption failure verbatim so the caller reuses the wording it already has
+            /// for "Add Folder…".
+            case notAdopted(reason: AddSpaceOutcome.Failure)
         }
     }
 
@@ -186,7 +223,177 @@ extension AppModel {
         return .added
     }
 
-    // Reached from AppModel+Control.swift.
+    /// Create a Space from nothing: make the directory at `folderURL`, turn it into a
+    /// Git repository, and open it — the counterpart of `addSpace`, which adopts a
+    /// folder that already exists.
+    ///
+    /// The repository gets **one empty initial commit** and nothing else: no README, no
+    /// `.gitignore`. What a project starts with is the user's call (and their
+    /// `init.templateDir`'s), not Casper's — but a repository with no commit at all
+    /// cannot host a workspace, since `git worktree add` bases the new worktree on a
+    /// commit resolved through HEAD, and `git init` leaves HEAD unborn. One empty
+    /// commit is the smallest thing that makes "New Space…" followed by "Create
+    /// Workspace…" work.
+    ///
+    /// That commit is **not** part of the rollback: it can be skipped (see
+    /// `Repository.createInitialCommit`, which writes nothing when the machine
+    /// configures no committer identity) or fail outright, and either way the
+    /// repository on disk is a valid one that is still worth adopting. Only
+    /// `Repository.initialize` failing and the adoption failing roll anything back.
+    ///
+    /// A path that is already taken is refused rather than reused: Casper never
+    /// deletes or overwrites anything it did not create. The one exception is an
+    /// **empty** directory, which is what both of the save panel's own paths hand over
+    /// — its "New Folder" button, and confirming "Replace" on a folder it just made.
+    ///
+    /// Rollback is scoped to what *this call* created: when `git init` or the adoption
+    /// fails, a directory Casper made is removed again, and a `.git` Casper initialized
+    /// inside a directory the user handed over is removed on its own. So a failed
+    /// creation leaves neither a half-initialized folder behind nor — just as important
+    /// — a leftover `.git` that would make the very same path un-creatable on a second
+    /// attempt, `isVacant` seeing a folder the Finder still shows as empty. The empty
+    /// directory itself survives: it is the user's, and they may well have meant to
+    /// keep it.
+    ///
+    /// `git init` and the rollback both run synchronously on the main actor, which on a
+    /// slow or network volume can block it long enough to trip the debug hang watchdog.
+    /// That is a deliberate cost, consistent with `gitProbe`: creation is a one-shot,
+    /// user-initiated action whose result the very next line of UI depends on, and
+    /// hopping off the actor would buy nothing but a race with the model it writes to.
+    ///
+    /// The probe is `@MainActor` where `addSpace`'s is not, only so that
+    /// `AppModel.gitProbe` — a static member of a `@MainActor` type, hence isolated to
+    /// it — can be spelled as the default. Handing it on to `addSpace` drops the
+    /// isolation again, which this main-actor body is allowed to do.
+    @discardableResult
+    func createSpace(
+        at folderURL: URL, probe: @MainActor (URL) -> WorkspaceFactory.GitInfo? = AppModel.gitProbe
+    ) -> CreateSpaceOutcome {
+        guard Self.isVacant(atPath: folderURL.path) else {
+            CasperLog.app.error(
+                "cannot create space: \(folderURL.path, privacy: .public) is already taken")
+            return .failed(reason: .pathOccupied)
+        }
+        // The create itself decides whether Casper owns this directory: `mkdir(2)` either
+        // makes it or reports that something is already there, so the rollback below acts
+        // on what *this call* did rather than on what a separate stat saw a moment
+        // earlier — a stat whose answer another process could invalidate in between,
+        // turning the recursive removal loose on a directory that is not Casper's.
+        // Without intermediate directories, both because the save panel always hands over
+        // an existing parent and because a parent created here would be a second thing to
+        // roll back. `mkdir(2)` never *follows* a final symlink — but it does report one
+        // as `EEXIST`, indistinguishable from the empty directory this call is willing to
+        // build in, which is why that branch checks the path again instead of assuming.
+        let didCreateDirectory: Bool
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: false)
+            didCreateDirectory = true
+        } catch let error as CocoaError where error.code == .fileWriteFileExists {
+            // Something was already there. The `isVacant` above cleared it as an empty
+            // directory of the user's — build in it, but do not claim it — except that
+            // its answer is now stale by one syscall: a symlink to a directory planted in
+            // between lands here too, and following it would `git init` in the link's
+            // target and root the Space somewhere other than the path the user named.
+            // Re-checking narrows that to the window `mkdir(2)` itself cannot close.
+            guard Self.isVacant(atPath: folderURL.path) else {
+                CasperLog.app.error(
+                    "cannot create space: \(folderURL.path, privacy: .public) is already taken")
+                return .failed(reason: .pathOccupied)
+            }
+            didCreateDirectory = false
+        } catch {
+            CasperLog.app.failure("cannot create space: folder not created", error)
+            return .failed(reason: .directoryNotCreated(message: error.localizedDescription))
+        }
+
+        // Undo what this call put on disk, and only that: the whole directory when Casper
+        // made it, otherwise the `.git` Casper initialized inside the user's directory —
+        // that `.git` is Casper's, and leaving it behind would lock the path out of any
+        // retry. Best-effort: the creation has failed either way, and something that
+        // resists removal is better reported as the original failure than as a second,
+        // more confusing one.
+        func rollBackWhatThisCallCreated() {
+            if didCreateDirectory {
+                try? FileManager.default.removeItem(at: folderURL)
+            } else {
+                try? FileManager.default.removeItem(at: folderURL.appendingPathComponent(".git"))
+            }
+        }
+
+        // The handle is held only long enough for the initial commit: the repository
+        // lives on disk from here on, and every later read (`gitProbe`, the worktree
+        // manager) reopens it.
+        let repository: Repository
+        do {
+            repository = try Repository.initialize(atPath: folderURL.path)
+        } catch {
+            CasperLog.app.failure("cannot create space: git init failed", error)
+            rollBackWhatThisCallCreated()
+            return .failed(reason: .repositoryNotInitialized(message: error.localizedDescription))
+        }
+        writeInitialCommit(in: repository, at: folderURL)
+
+        switch addSpace(folderURL: folderURL, probe: probe) {
+        case .added, .selected:
+            return .created
+        case .failed(let reason):
+            CasperLog.app.error(
+                "cannot create space: \(folderURL.path, privacy: .public) was not adopted")
+            rollBackWhatThisCallCreated()
+            return .failed(reason: .notAdopted(reason: reason))
+        }
+    }
+
+    /// Give a just-initialized repository its first commit, so the Space about to be
+    /// built on it can host a workspace right away.
+    ///
+    /// Reports only to the log, deliberately: every outcome — the commit written, the
+    /// commit skipped for want of a configured Git identity, or libgit2 refusing it —
+    /// leaves a valid repository behind, so none of them is a reason to refuse the
+    /// Space or to undo what is already on disk. A Space left on an unborn HEAD is
+    /// still a Space; creating a workspace in it is what then says so, in Casper's own
+    /// words (`WorktreeError.Reason.repositoryHasNoCommits`).
+    private func writeInitialCommit(in repository: Repository, at folderURL: URL) {
+        do {
+            guard try repository.createInitialCommit() else {
+                // A documented outcome, not a failure: the Space is still built, and the
+                // level says so.
+                CasperLog.app.notice(
+                    "new space has no initial commit: no git user identity, at \(folderURL.path, privacy: .public)")
+                return
+            }
+        } catch {
+            CasperLog.app.failure("new space has no initial commit", error)
+        }
+    }
+
+    /// True when a Space may be created at `path`: either nothing is there, or a
+    /// directory that holds nothing but a `.DS_Store` — the file the Finder drops into
+    /// a folder merely by showing it, which says nothing about the folder being used.
+    ///
+    /// A symlink counts as taken whatever it points at, empty target included: every
+    /// other check here resolves it, so `git init` would run in the target and the Space
+    /// would root somewhere other than the path the user named.
+    ///
+    /// An unreadable directory counts as taken too: what it holds cannot be checked, and
+    /// the safe reading of "cannot tell" is "do not touch".
+    private static func isVacant(atPath path: String) -> Bool {
+        // `attributesOfItem` describes the link rather than its target, so a dangling
+        // symlink — which `fileExists` reports as nothing at all — is caught as well.
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+           attributes[.type] as? FileAttributeType == .typeSymbolicLink {
+            return false
+        }
+        guard FileManager.default.fileExists(atPath: path) else { return true }
+        guard directoryExists(atPath: path),
+              let contents = try? FileManager.default.contentsOfDirectory(atPath: path) else {
+            return false
+        }
+        return contents.allSatisfy { $0 == ".DS_Store" }
+    }
+
+    // Reached from AppModel+Control.swift and from the panel presenters in
+    // AppModel+Presentation.swift.
     /// True when `path` is an existing directory (a plain file at that path is not one).
     static func directoryExists(atPath path: String) -> Bool {
         var isDirectory: ObjCBool = false

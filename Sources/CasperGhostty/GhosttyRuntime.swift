@@ -29,8 +29,8 @@ public final class GhosttyRuntime {
     /// Routes app-level actions (new tab/window/split, close) before `onAction`
     /// sees them; a handler that claims an action (returns `true`) suppresses the
     /// existing `onAction` fallback for it. The app injects `LayoutActionHandler`
-    /// here (`CasperUI.AppDelegate`), which claims `.newTab`, `.newSplit` and
-    /// `.closeTab`. The default `LoggingActionHandler` claims nothing, which is what
+    /// here (`CasperUI.AppDelegate`), which claims `.newTab`, `.newSplit`,
+    /// `.newWindow` and `.closeTab`. The default `LoggingActionHandler` claims nothing, which is what
     /// tests and the window between runtime creation and that injection see.
     public var actionHandler: GhosttyActionHandler = LoggingActionHandler()
 
