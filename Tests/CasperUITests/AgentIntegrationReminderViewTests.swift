@@ -125,7 +125,8 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
 
     /// Every reminder at once, in the narrowest sidebar: the rows must wrap or
     /// truncate inside 220 pt instead of forcing the column wider, and the two-line
-    /// cap must keep the block short enough to leave the footer visible.
+    /// cap must keep the block short enough to leave the pinned footer visible — two
+    /// rows, "New Space…" over "Add Folder…", measuring 64 pt below this block.
     func testAllRemindersFitTheNarrowestSidebar() async {
         let model = makeModel()
         await probe(model, [
@@ -141,7 +142,11 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         // width here and drag the whole sidebar column open with it.
         XCTAssertEqual(size.width, Self.narrowestSidebarWidth, accuracy: 0.5)
         // Every reminder at once measures 131 pt; the cap is slack around that, aimed
-        // at the block growing tall enough to crowd the "Add Folder…" footer out.
+        // at the block growing tall enough to crowd the footer out. At the cap the two
+        // together pin 224 pt of the sidebar, which the shortest window this app allows
+        // still leaves room under (the floor comes from the terminal's own 200 pt
+        // minimum plus the detail chrome), and the workspace list scrolls inside what
+        // is left.
         XCTAssertGreaterThan(size.height, 0)
         XCTAssertLessThan(size.height, 160)
     }
