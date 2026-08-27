@@ -19,6 +19,40 @@ extension AppModel {
         }
     }
 
+    /// Where a new Space goes — a name and a parent folder — or nil when the user
+    /// cancels. Production runs the save panel; tests substitute a closure.
+    ///
+    /// The seam exists for the reason `GhosttyClipboardRead.approveUntrusted` exists:
+    /// a modal panel cannot run under XCTest, and what the ⌘N path rests on is the
+    /// decision the panel returns, not its presentation.
+    static var chooseNewSpaceLocation: @MainActor (_ startingAt: String?) -> URL? =
+        WorkspaceAlerts.chooseNewSpaceLocation(startingAt:)
+
+    /// Ask for a name and a location, then create the Space there: a new folder, an
+    /// empty Git repository in it, and a Space opened on it. No-op on cancel.
+    ///
+    /// The counterpart of `presentAddFolderPanel()` for a project that does not exist
+    /// yet, and it reports failures the same way: `createSpace` runs no modal of its
+    /// own — it is also driven headlessly — so the alert belongs here.
+    func presentCreateSpacePanel() {
+        guard let url = Self.chooseNewSpaceLocation(lastNewSpaceLocation) else { return }
+        // Remember the location whether or not the creation below succeeds: the user
+        // navigated there deliberately, and a failure they are about to retry is
+        // exactly when re-opening the same folder helps most.
+        lastNewSpaceLocation = url.deletingLastPathComponent().path
+        // Saved here, on every path, and deliberately not folded into the failure
+        // branch: a successful creation persists the session only as a side effect of
+        // adopting the new Space, and that adoption can answer `.selected` — for a
+        // Space still tracked at a path whose folder was deleted outside Casper —
+        // in which case `selectWorkspace` sees no change of selection and encodes
+        // nothing. The common path pays for a second save; the location always
+        // reaching disk is worth it.
+        persist()
+        if case .failed(let reason) = createSpace(at: url) {
+            WorkspaceAlerts.reportCreateSpaceFailure(name: url.lastPathComponent, reason: reason)
+        }
+    }
+
     /// Prompt for a linked-workspace name and create it. AppKit alert with a text
     /// field; no-op on cancel or empty input.
     ///
@@ -174,6 +208,37 @@ private enum WorkspaceAlerts {
         return url
     }
 
+    /// Name-and-location picker for a Space created from scratch. Nil on cancel.
+    /// `directory` is the location last used, re-opened so a user who keeps their
+    /// projects in one folder never has to navigate there twice.
+    ///
+    /// An `NSSavePanel` deliberately, where adoption uses an `NSOpenPanel`: it asks
+    /// for a name and a location in a single native panel, and the standard "New
+    /// Folder" button comes with it.
+    ///
+    /// One panel behaviour is deliberately not honoured. When the typed name matches
+    /// something already at that location, `NSSavePanel` runs its own "…already
+    /// exists. Do you want to replace it?" sheet and, on Replace, simply returns that
+    /// URL — it expects the caller to do the overwriting. Casper does not:
+    /// `createSpace` rejects an occupied path with `.pathOccupied`, so a user who
+    /// confirms Replace gets an explanatory alert and loses nothing.
+    static func chooseNewSpaceLocation(startingAt directory: String?) -> URL? {
+        let panel = NSSavePanel()
+        panel.prompt = "Create"
+        panel.nameFieldLabel = "Name:"
+        panel.message = "Choose a name and location for the new Space."
+        panel.canCreateDirectories = true
+        panel.showsTagField = false
+        // Only re-open a remembered folder that is still there: it can have been
+        // deleted, or sit on an unmounted volume, and a dead `directoryURL` leaves the
+        // panel somewhere arbitrary — worse than AppKit's own default.
+        if let directory, AppModel.directoryExists(atPath: directory) {
+            panel.directoryURL = URL(fileURLWithPath: directory, isDirectory: true)
+        }
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+
     /// Name prompt for a new linked workspace. Nil on cancel or empty input.
     static func askWorkspaceName() -> String? {
         let alert = NSAlert()
@@ -193,20 +258,47 @@ private enum WorkspaceAlerts {
     static func reportAddFolderFailure(
         folder: String, reason: AppModel.AddSpaceOutcome.Failure
     ) {
-        let message: String
+        reportFailure(title: "Could not add \u{201c}\(folder)\u{201d}", message: message(for: reason))
+    }
+
+    /// Report a Space the user asked for that Casper could not create.
+    static func reportCreateSpaceFailure(
+        name: String, reason: AppModel.CreateSpaceOutcome.Failure
+    ) {
+        let text: String
+        switch reason {
+        case .pathOccupied:
+            text = "There is already something with that name in that location. Casper "
+                + "creates a Space in a folder of its own and never replaces anything it "
+                + "did not create, so choose another name or another location."
+        case .directoryNotCreated(let details):
+            text = "The folder could not be created. \(details)"
+        case .repositoryNotInitialized(let details):
+            text = "The folder was created, but Casper could not make a Git repository in "
+                + "it. \(details)"
+        case .notAdopted(let adoptionReason):
+            text = "The folder was created, but Casper could not open it as a Space. "
+                + message(for: adoptionReason)
+        }
+        reportFailure(title: "Could not create \u{201c}\(name)\u{201d}", message: text)
+    }
+
+    /// Why a folder could not be adopted as a Space, in one sentence. Shared by the
+    /// two reporters above so "Add Folder…" and "New Space…" never describe the same
+    /// failure in two different ways.
+    private static func message(for reason: AppModel.AddSpaceOutcome.Failure) -> String {
         switch reason {
         case .bareRepository:
-            message = "This folder is a worktree of a bare repository. Casper opens a "
+            return "This folder is a worktree of a bare repository. Casper opens a "
                 + "repository at its main working tree, which a bare repository does not "
                 + "have, so it does not support this layout."
         case .mainWorkingTreeUnresolved:
-            message = "This folder is a Git worktree, but Casper could not resolve its "
+            return "This folder is a Git worktree, but Casper could not resolve its "
                 + "repository\u{2019}s main working tree, so it has no folder to open the "
                 + "repository at."
         case .noFreePortBlock:
-            message = "Casper has no free port block left to give a new workspace."
+            return "Casper has no free port block left to give a new workspace."
         }
-        reportFailure(title: "Could not add \u{201c}\(folder)\u{201d}", message: message)
     }
 
     static func reportCreationFailure(name: String) {

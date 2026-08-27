@@ -251,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     ///
     /// The menu is matched structurally, never by title — macOS localizes "File", and
     /// from the second pass on the title is Casper's own anyway. The marker is
-    /// `CasperCommands.addFolderTitle`, an unlocalized string of Casper's own: the
+    /// `CasperCommands.newSpaceTitle`, an unlocalized string of Casper's own: the
     /// `.newItem` group is the only one Casper leaves populated in that menu, so its
     /// first button is the submenu's first item.
     ///
@@ -260,7 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private func renameFileMenu(in mainMenu: NSMenu) {
         for index in 0..<mainMenu.numberOfItems {
             guard let item = mainMenu.item(at: index), let submenu = item.submenu,
-                  submenu.item(at: 0)?.title == CasperCommands.addFolderTitle
+                  submenu.item(at: 0)?.title == CasperCommands.newSpaceTitle
             else { continue }
             // AppKit draws the *submenu's* title in the bar, not the item's, so both
             // are set — and only when one of them actually differs, since this runs on

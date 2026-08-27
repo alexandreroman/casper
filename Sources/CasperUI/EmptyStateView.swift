@@ -4,7 +4,13 @@ import SwiftUI
 /// Shown full-window whenever the session has no Spaces (`RootView` gates on
 /// `spaces.isEmpty`): first launch, or after the user has removed every Space.
 /// Copy stays evergreen/instructional — a returning user hits the same screen.
+///
+/// It offers the same two ways in as the Space menu and the sidebar footer, in the
+/// same order: create a Space from scratch, or adopt a folder that already exists.
+/// Creating is the prominent one — a user with nothing open is likelier to be
+/// starting something than to be looking for a repo they forgot to add.
 struct EmptyStateView: View {
+    var onNewSpace: () -> Void
     var onAddFolder: () -> Void
 
     var body: some View {
@@ -28,18 +34,30 @@ struct EmptyStateView: View {
             }
 
             VStack(spacing: 10) {
-                Button("Add Folder…", action: onAddFolder)
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
-                Text("or press ⌘O")
+                HStack(spacing: 12) {
+                    Button("New Space…", action: onNewSpace)
+                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
+                    Button("Add Folder…", action: onAddFolder)
+                        .controlSize(.large)
+                        .buttonStyle(.bordered)
+                }
+                // `fixedSize` keeps the hint on one line: it is a shortcut legend, and
+                // wrapped over two lines it reads as prose. It stays far narrower than
+                // the onboarding strip below, so it never widens the screen.
+                Text("⌘N to create a Space · ⌘O to add a folder")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
+                    .fixedSize()
+                    // VoiceOver reads the ⌘ glyph itself, which announces as nothing
+                    // useful, so the shortcuts are spelled out for it.
+                    .accessibilityLabel("Command N to create a Space, Command O to add a folder")
             }
 
             HStack(alignment: .top, spacing: 20) {
                 OnboardingStep(
-                    index: 1, systemImage: "folder.badge.plus", title: "Add a folder",
-                    detail: "Adopt any repo — Casper groups it as a Space.")
+                    index: 1, systemImage: "folder.badge.plus", title: "Start a Space",
+                    detail: "Create a new repo, or adopt one you have.")
                 OnboardingStep(
                     index: 2, systemImage: "arrow.triangle.branch", title: "Branch a worktree",
                     detail: "Each gets its own isolated terminal workspace.")

@@ -31,7 +31,9 @@ struct SidebarView: View {
             }
             AgentIntegrationReminderView(model: model)
             Divider()
-            AddFolderFooter(onAdd: { model.presentAddFolderPanel() })
+            SidebarFooter(
+                onNewSpace: { model.presentCreateSpacePanel() },
+                onAdd: { model.presentAddFolderPanel() })
         }
         .navigationTitle("Casper")
     }
@@ -96,18 +98,41 @@ struct SidebarView: View {
     }
 }
 
-/// The pinned "Add Folder…" button below the scrolling list, always reachable
-/// (unlike the empty-state affordance) and never scrolling away.
-private struct AddFolderFooter: View {
+/// The two pinned buttons below the scrolling list — the same two ways into a Space
+/// the Space menu opens with, in the same order — always reachable (unlike the
+/// empty-state affordances) and never scrolling away.
+private struct SidebarFooter: View {
+    let onNewSpace: () -> Void
     let onAdd: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SidebarFooterButton(
+                title: "New Space…", systemImage: "folder.badge.plus", action: onNewSpace)
+            SidebarFooterButton(title: "Add Folder…", systemImage: "plus", action: onAdd)
+        }
+    }
+}
+
+/// One footer button. A view of its own rather than a helper method on
+/// `SidebarFooter` so that each button owns its hover state: a single flag held by
+/// the footer would highlight both rows whenever the pointer entered either one.
+///
+/// Internal, not private like its `SidebarFooter` parent, so `SidebarIconSlotTests`
+/// can host one row per glyph and measure that they line up.
+struct SidebarFooterButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: onAdd) {
+        Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: "plus")
-                Text("Add Folder…")
+                Image(systemName: systemImage)
+                    .frame(width: SidebarActionButtonStyle.iconSlotWidth, alignment: .center)
+                Text(title)
                 Spacer(minLength: 0)
             }
         }
@@ -121,10 +146,20 @@ private struct AddFolderFooter: View {
 /// sidebar-footer click reads unmistakably through color — `.borderless` alone
 /// never surfaces `configuration.isPressed`.
 ///
-/// Shared by the "Add Folder…" footer and the agent-integration reminder rows
-/// above it, which is what keeps the two reading as one family of affordances;
+/// Shared by the pinned footer buttons and the agent-integration reminder rows
+/// above them, which is what keeps the two reading as one family of affordances;
 /// the paddings default to the footer's and the denser reminder rows override them.
 struct SidebarActionButtonStyle: ButtonStyle {
+    /// Width of the leading glyph slot every row in this family shares.
+    ///
+    /// SF Symbols have no common width — at the sidebar's body font `folder.badge.plus`
+    /// measures 18 pt against `plus`'s 15 pt — so laying each glyph out at its intrinsic
+    /// size starts every title at a different x and the column reads ragged-left. Giving
+    /// the glyphs one slot wide enough for the widest of them (`folder.badge.plus`) puts
+    /// all the titles on a single edge. Sized from measurement, not by eye: the symbols
+    /// in this column measure 18/15 pt at `.body` and 13/12/11 pt at `.footnote`.
+    static let iconSlotWidth: CGFloat = 18
+
     let isHovered: Bool
     var verticalPadding: CGFloat = 8
     var horizontalPadding: CGFloat = 14

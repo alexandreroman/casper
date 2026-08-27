@@ -93,7 +93,7 @@ Both `NSMenuItem.title` and `submenu.title` are set (AppKit draws the
 *submenu's* title in the bar), and only when one of them differs. The menu is
 matched **structurally**, never by title (macOS localizes "File", and after the
 first pass the title is Casper's own): the marker is
-`CasperCommands.addFolderTitle` — `"Add Folder…"`, an unlocalized Casper string
+`CasperCommands.newSpaceTitle` — `"New Space…"`, an unlocalized Casper string
 — compared against the submenu's **first** item, which holds because
 `.newItem` is the only group Casper leaves populated there. That string is
 load-bearing for the rename; the shared `static let` is what keeps the two

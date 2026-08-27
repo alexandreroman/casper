@@ -12,7 +12,9 @@ struct RootView: View {
                 // No space configured: show only the empty state — no
                 // NavigationSplitView, so there is no sidebar and no sidebar
                 // toggle in the toolbar at all.
-                EmptyStateView(onAddFolder: { model.presentAddFolderPanel() })
+                EmptyStateView(
+                    onNewSpace: { model.presentCreateSpacePanel() },
+                    onAddFolder: { model.presentAddFolderPanel() })
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView(model: model)
