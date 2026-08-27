@@ -268,6 +268,26 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
             "the chips gave up their text before the badge gave up its counters")
     }
 
+    /// The double-click action covers every value System Settings can store, plus the
+    /// two it cannot: no value at all (an untouched setting writes no key) and a value
+    /// this build does not know. Both of those must read as zoom, which is what macOS
+    /// itself does — falling through to Minimize, or to doing nothing, would leave the
+    /// title bar silently inert on a machine that never touched the setting.
+    func testTheDoubleClickActionMapsEveryDefaultsValue() {
+        XCTAssertEqual(
+            TitleBarDoubleClickAction.action(for: nil), .zoom,
+            "an untouched setting writes no key, and its default is zoom")
+        XCTAssertEqual(
+            TitleBarDoubleClickAction.action(for: "Maximize"), .zoom,
+            "Zoom is stored as Maximize")
+        XCTAssertEqual(TitleBarDoubleClickAction.action(for: "Minimize"), .minimize)
+        XCTAssertEqual(TitleBarDoubleClickAction.action(for: "Fill"), .fill)
+        XCTAssertEqual(TitleBarDoubleClickAction.action(for: "None"), .none)
+        XCTAssertEqual(
+            TitleBarDoubleClickAction.action(for: "Teleport"), .zoom,
+            "an unrecognised value must fall back to zoom, not to doing nothing")
+    }
+
     // MARK: - Helpers
 
     /// A row over a linked workspace that records a base branch (so the Merge chip
