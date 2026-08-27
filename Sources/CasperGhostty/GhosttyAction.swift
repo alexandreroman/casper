@@ -7,10 +7,9 @@ public enum GhosttySplitDirection: Equatable, Sendable {
 
 /// A libghostty runtime action, decoded from the C `action_cb` callback into a
 /// Swift-native value. This enum carries the app- and window-scoped actions only:
-/// layout actions (splits, tabs, close) dispatched by the runtime's layout
-/// handler, plus `.openURL`, `.quit` and `.closeWindow` handled by the
-/// AppDelegate's `onAction`. `.render` and `.newWindow` are decoded but not acted
-/// on.
+/// layout actions (splits, tabs, new window, close) dispatched by the runtime's
+/// layout handler, plus `.openURL`, `.quit` and `.closeWindow` handled by the
+/// AppDelegate's `onAction`. `.render` is decoded but not acted on.
 ///
 /// Surface-scoped actions never reach here: the OSC title, the child exit status,
 /// and mouse shape/visibility are intercepted by `casperGhosttyAction` and
