@@ -18,6 +18,18 @@ final class JSONOutputTests: XCTestCase {
             #"{"progress":{"current":1,"label":"wire","total":3},"workspace":"W"}"#)
     }
 
+    /// `progress get` prints an explicit `null` for "no bar up" rather than
+    /// dropping the key: absence is the answer, not a missing field.
+    func testProgressGet() {
+        XCTAssertEqual(
+            jsonLine(ProgressGetOut(
+                progress: ProgressBody(total: 3, current: 2, label: "wire"), workspace: "W")),
+            #"{"progress":{"current":2,"label":"wire","total":3},"workspace":"W"}"#)
+        XCTAssertEqual(
+            jsonLine(ProgressGetOut(progress: nil, workspace: "W")),
+            #"{"progress":null,"workspace":"W"}"#)
+    }
+
     func testWorkspaceRef() {
         XCTAssertEqual(jsonLine(WorkspaceRefOut(workspace: "W")), #"{"workspace":"W"}"#)
     }

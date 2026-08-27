@@ -4,9 +4,10 @@ import CasperCore
 
 @MainActor
 final class AgentDetectionTests: XCTestCase {
-    /// The authority latch protects terminal-independent attention states only;
-    /// a hook-reported working state stays under native terminal observation.
-    func testTerminalIndependentExplicitStateLatchesAuthorityWhileWorkingDoesNot() {
+    /// Every asserted state latches authority — `working` included, since it is a
+    /// claim about work the terminal cannot see — and only `idle`/`unknown` hand
+    /// the workspace back to the scraper.
+    func testAssertedStatesLatchAuthorityWhileIdleReleasesIt() {
         let (model, workspace) = makeSeededModel(portBase: 42000)
         let id = workspace.id
         XCTAssertFalse(model.isUnderExplicitAuthority(id), "authority starts released")
@@ -17,11 +18,19 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertFalse(model.isUnderExplicitAuthority(id), "detection must not latch authority")
 
         XCTAssertTrue(model.controlSetAgentState(.working, for: id))
-        XCTAssertFalse(model.isUnderExplicitAuthority(id), "working remains natively observable")
+        XCTAssertTrue(model.isUnderExplicitAuthority(id), "working outranks the scraper")
 
         XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
         XCTAssertTrue(model.isUnderExplicitAuthority(id), "blocked state latches authority")
         XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
+
+        // The session boundary is what a stale `working` now self-heals through:
+        // SessionStart reports `idle`, which is the release.
+        XCTAssertTrue(model.controlSetAgentState(.idle, for: id))
+        XCTAssertFalse(model.isUnderExplicitAuthority(id), "idle releases the latch")
+
+        XCTAssertTrue(model.controlSetAgentState(.unknown, for: id))
+        XCTAssertFalse(model.isUnderExplicitAuthority(id), "unknown releases the latch")
     }
 
     /// Removing a workspace prunes its entry from the transient authority map, so

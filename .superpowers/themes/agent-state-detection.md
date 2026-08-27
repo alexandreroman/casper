@@ -280,17 +280,31 @@ There is no `AgentAuthority` enum: the latch as built is a set of workspace ids,
 authority; absence means detection owns it.
 
 - Default (not a member) — the scraper drives `agentState`.
-- `working`, `idle`, and `unknown` **never** grant authority: they describe
-  conditions the terminal itself can continuously observe, so an explicit report
-  of one leaves detection in charge. That is what lets the viewport correct a
-  stale hook-reported `working` — a `UserPromptSubmit` hook whose matching
-  `Stop` hook never fires (Codex today) cannot strand a workspace.
-- Only `blocked`, `done`, and `error` grant explicit authority, because a
-  terminal scrape cannot safely *clear* an attention state. The `Stop` hook
-  still reports `done` precisely; selecting that workspace then collapses the
-  explicit `done` back to `idle` (next section).
+- `working`, `blocked`, `done`, and `error` all grant authority. For the
+  attention states the reason is that a terminal scrape cannot safely *clear*
+  them. For `working` it is that the claim is about work the terminal cannot
+  see: an agent that dispatches background subagents and ends its turn to let
+  them run leaves a viewport at rest — no interrupt affordance, OSC 9;4;0 —
+  which the resolver reads as `idle` and then `done` within a couple of ticks.
+  While `working` was released, an explicit one survived under a second, and no
+  agent could report "still busy, look elsewhere for why".
+- `idle` and `unknown` **release** it: both mean "nothing to say about this
+  workspace", so the scraper takes back over.
+- The `Stop` hook still reports `done` precisely; selecting that workspace then
+  collapses the explicit `done` back to `idle` (next section).
 - The latch is **not persisted** — it resets to `detection` on load, like the
   agent state it guards.
+
+**What a latched `working` costs.** Detection is suppressed for as long as it
+holds, so a `blocked` the viewport *could* have matched (a permission prompt) is
+not detected there — a hook-driven session reports blocked through its
+notification hook instead, which is the path that already carries it. And a
+stale `working` no longer self-heals from the terminal: an agent killed between
+its `UserPromptSubmit` hook and the matching `Stop` leaves the workspace
+`working`. What ends it is the session boundary — the plugin's SessionEnd hook
+reports `done`, its SessionStart reports `idle` (a release), and the latch never
+survives an app reload — plus the plugin's own rule that a turn ending with no
+progress bar up reports `done`.
 
 ### Explicit-authority `done` → `idle` collapse (on selection)
 
@@ -338,8 +352,9 @@ Given the shell-hosted reality:
   `AppModel.reportSetupFailure` → `setDetectedAgentState(.error, …)`).
   Acceptable until there's a real scraped signal for it.
 - **Authority release** for terminal-observable states is immediate: the CLI
-  removes their latch. `blocked`, `done`, and `error` remain authoritative until
-  their state is explicitly changed or the app reloads.
+  removes their latch — `idle` and `unknown` only, since `working` joined the
+  latching states. `working`, `blocked`, `done`, and `error` remain
+  authoritative until their state is explicitly changed or the app reloads.
 
 ## Aggregation (per-workspace)
 
@@ -386,8 +401,8 @@ state lives only at the workspace level.
   across the rule sets, since nothing there knows which agent runs in the
   surface), aggregates all the signals, runs the resolver, and writes
   `agentState` via `setDetectedAgentState` unless the workspace is under
-  explicit authority. `controlSetAgentState` latches only `blocked`, `done`, and
-  `error`; it releases terminal-observable states immediately. The sidebar
+  explicit authority. `controlSetAgentState` latches `working`, `blocked`,
+  `done`, and `error`; only `idle` and `unknown` release the latch. The sidebar
   status icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the
   chevron column, animated `working`).
 

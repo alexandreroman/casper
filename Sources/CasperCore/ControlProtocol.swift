@@ -5,8 +5,10 @@
 public struct ControlCommand: Codable, Equatable, Sendable {
     public enum Verb: String, Codable, Sendable {
         case statusSet
+        case statusGet
         case progressSet
         case progressClear
+        case progressGet
         case notify
         case infoSet
         case infoClear
@@ -187,6 +189,21 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
     }
 }
 
+/// The progress bar a workspace is currently showing, returned by
+/// `progressGet`. Absent from the response when no bar is up — the distinction
+/// callers actually ask this for.
+public struct ControlProgressInfo: Codable, Equatable, Sendable {
+    public var total: Int
+    public var current: Int
+    public var label: String
+
+    public init(total: Int, current: Int, label: String) {
+        self.total = total
+        self.current = current
+        self.label = label
+    }
+}
+
 /// A terminal surface summary returned by `terminalNew`/`terminalList`.
 public struct ControlTerminalInfo: Codable, Equatable, Sendable {
     public var id: String
@@ -209,28 +226,32 @@ public struct ControlResponse: Codable, Equatable, Sendable {
     public var workspace: String?
     public var workspaces: [ControlWorkspaceInfo]?
     public var terminals: [ControlTerminalInfo]?
+    /// `progressGet`: the bar on screen, or nil for "no bar up".
+    public var progress: ControlProgressInfo?
     public var error: String?
 
     public init(
         ok: Bool, text: String? = nil, workspace: String? = nil,
         workspaces: [ControlWorkspaceInfo]? = nil, terminals: [ControlTerminalInfo]? = nil,
-        error: String? = nil
+        progress: ControlProgressInfo? = nil, error: String? = nil
     ) {
         self.ok = ok
         self.text = text
         self.workspace = workspace
         self.workspaces = workspaces
         self.terminals = terminals
+        self.progress = progress
         self.error = error
     }
 
     public static func success(
         text: String? = nil, workspace: String? = nil,
-        workspaces: [ControlWorkspaceInfo]? = nil, terminals: [ControlTerminalInfo]? = nil
+        workspaces: [ControlWorkspaceInfo]? = nil, terminals: [ControlTerminalInfo]? = nil,
+        progress: ControlProgressInfo? = nil
     ) -> ControlResponse {
         ControlResponse(
             ok: true, text: text, workspace: workspace, workspaces: workspaces,
-            terminals: terminals)
+            terminals: terminals, progress: progress)
     }
 
     public static func failure(_ message: String) -> ControlResponse {

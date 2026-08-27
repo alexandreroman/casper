@@ -1,12 +1,13 @@
 import ArgumentParser
 import CasperCore
 
-/// `casper progress set …` / `casper progress clear` — report task progress.
+/// `casper progress set …` / `casper progress get` / `casper progress clear` —
+/// report and read back task progress.
 struct ProgressCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "progress",
         abstract: "Report task progress of a workspace.",
-        subcommands: [Set.self, Clear.self])
+        subcommands: [Set.self, Get.self, Clear.self])
 
     struct Set: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -39,6 +40,30 @@ struct ProgressCommand: ParsableCommand {
             let response = try sendControl(makeCommand(), retriable: false)
             emit(ProgressOut(
                 progress: ProgressBody(total: total, current: current, label: label),
+                workspace: response.workspaceRef))
+        }
+    }
+
+    /// The one read on this surface: whether a bar is up, and at which step.
+    /// Exists for the agent plugin's `Stop` hook, which has to tell a turn that
+    /// ends with work still in flight from one that ends with the work over, and
+    /// cannot see a bar the agent set by hand rather than through a todo tool.
+    struct Get: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Read the progress bar a workspace is showing.")
+
+        @OptionGroup var target: WorkspaceTargetOption
+
+        func makeCommand() throws -> ControlCommand {
+            ControlCommand(verb: .progressGet, workspace: try requireSelector(target))
+        }
+
+        func run() throws {
+            let response = try sendControl(makeCommand(), retriable: true)
+            emit(ProgressGetOut(
+                progress: response.progress.map {
+                    ProgressBody(total: $0.total, current: $0.current, label: $0.label)
+                },
                 workspace: response.workspaceRef))
         }
     }

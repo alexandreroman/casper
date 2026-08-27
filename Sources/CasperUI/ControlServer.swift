@@ -65,6 +65,9 @@ final class ControlServer {
                 reply(.failure("invalid state: \(command.state ?? "nil")")); return
             }
             reply(Self.ack(model.controlSetAgentState(state, for: id), workspace: id)); return
+        case .statusGet:
+            reply(.success(text: model.controlGetAgentState(for: id)?.rawValue,
+                           workspace: id.casperID)); return
         case .progressSet:
             guard let total = command.total, let current = command.current,
                   let label = command.label else { reply(.failure("missing progress fields")); return }
@@ -73,6 +76,10 @@ final class ControlServer {
                 workspace: id, failure: "invalid progress \(current)/\(total)")); return
         case .progressClear:
             reply(Self.ack(model.controlClearProgress(for: id), workspace: id)); return
+        case .progressGet:
+            // No bar is not an error: `progress` simply comes back absent, which
+            // is the answer the caller asked for.
+            reply(.success(workspace: id.casperID, progress: model.controlGetProgress(for: id))); return
         case .notify:
             reply(Self.ack(model.controlRaiseNotification(message: command.message, for: id),
                            workspace: id)); return

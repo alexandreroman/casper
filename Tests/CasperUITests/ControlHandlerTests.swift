@@ -613,6 +613,35 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.todos.count, 0)
     }
 
+    /// `status get` reads back whatever the sidebar is showing, explicit or
+    /// detected — the read the turn-end hook needs to leave a `blocked` alone.
+    func testGetAgentStateReadsTheStateBack() {
+        let (model, id) = seededModel()
+        model.isWindowKey = { false }
+        XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
+        XCTAssertEqual(model.controlGetAgentState(for: id), .blocked)
+
+        model.setDetectedAgentState(.working, for: id)
+        XCTAssertEqual(model.controlGetAgentState(for: id), .working,
+                       "a detected state reads back the same way")
+
+        XCTAssertNil(model.controlGetAgentState(for: UUID()), "unknown workspace")
+    }
+
+    /// `progress get` answers one question — is a bar up, at which step — and
+    /// answers it the same whether `progress set` or a todo tool filled `todos`.
+    func testGetProgressReadsTheBarBack() throws {
+        let (model, id) = seededModel()
+        XCTAssertNil(model.controlGetProgress(for: id), "no bar up yet")
+
+        XCTAssertTrue(model.controlSetProgress(total: 4, current: 2, label: "step", for: id))
+        let report = try XCTUnwrap(model.controlGetProgress(for: id))
+        XCTAssertEqual(report, ControlProgressInfo(total: 4, current: 2, label: "step"))
+
+        XCTAssertTrue(model.controlClearProgress(for: id))
+        XCTAssertNil(model.controlGetProgress(for: id), "a cleared bar reads back as none")
+    }
+
     func testRaiseNotificationOnSelectedButBackgroundedSetsBubble() {
         let (model, id) = seededModel()
         model.isWindowKey = { false }  // selected, but app not frontmost

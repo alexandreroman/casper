@@ -18,4 +18,18 @@ public enum ProgressSynthesis {
         todos.append(contentsOf: Array(repeating: Todo(content: "", status: .pending), count: total - current))
         return todos
     }
+
+    /// A progress report read back out of a `[Todo]`, or nil when the list is
+    /// empty — the one state that means "no bar on screen".
+    ///
+    /// The inverse of `todos(total:current:label:)` for a list this type
+    /// synthesized, and a best-effort summary for one an agent's own todo tool
+    /// produced: `current` is the first step that is not yet completed (the whole
+    /// list when every step is), which is the step the sidebar draws as the live
+    /// one. Round-tripping a synthesized list returns exactly what built it.
+    public static func report(from todos: [Todo]) -> (total: Int, current: Int, label: String)? {
+        guard !todos.isEmpty else { return nil }
+        let index = todos.firstIndex { $0.status != .completed } ?? (todos.count - 1)
+        return (total: todos.count, current: index + 1, label: todos[index].content)
+    }
 }

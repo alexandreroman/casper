@@ -84,6 +84,24 @@ struct ProgressOut: Encodable {
     let workspace: String
 }
 
+/// `{"progress":{…}|null,"workspace":"<id>"}` — the bar `progress get` read back.
+/// `progress` is emitted as an explicit `null` when no bar is up, rather than
+/// omitted: "there is no bar" is the answer this command exists to give, and a
+/// missing key reads as a truncated response instead of an answer.
+struct ProgressGetOut: Encodable {
+    let progress: ProgressBody?
+    let workspace: String
+
+    enum CodingKeys: String, CodingKey { case progress, workspace }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        // `encode` (not `encodeIfPresent`) is what writes the null.
+        try c.encode(progress, forKey: .progress)
+        try c.encode(workspace, forKey: .workspace)
+    }
+}
+
 /// `{"workspace":"<id>"}` — the sole "affected workspace" shape, shared by every
 /// command whose only meaningful output is which workspace it acted on
 /// (`progress clear`, `notify`, `browser open`, `diff open`).

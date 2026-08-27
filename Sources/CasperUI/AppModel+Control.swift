@@ -19,13 +19,29 @@ extension AppModel {
         let previous = workspace(at: at).agentState
         updateWorkspace(at: at) { $0.agentState = state }
         clearNotificationOnResume(from: previous, to: state, at: at)
-        // Terminal-observable states remain under native detection, allowing the
-        // viewport to correct a stale hook-reported state. Attention states stay
-        // authoritative because terminal scraping cannot safely clear them.
+        // Every state a caller asserts takes authority; only `idle` and `unknown`
+        // hand the workspace back to the scraper, because both mean "nothing to
+        // say about this one, go read the terminal".
+        //
+        // `working` latches alongside the attention states rather than staying
+        // under native detection: it is a claim about work the terminal cannot
+        // see. An agent that dispatches background subagents and ends its turn to
+        // let them run leaves a viewport at rest — no interrupt affordance, OSC
+        // 9;4;0 — which detection resolves to `idle` and then `done` within a
+        // couple of ticks, so an explicit `working` used to survive under a
+        // second. Whoever asserts it is the only one who knows the work is still
+        // in flight.
+        //
+        // Releasing it used to be what made a stale `working` self-heal: an agent
+        // killed between its `UserPromptSubmit` hook and the matching `Stop` could
+        // not strand the workspace. That guarantee now comes from the session
+        // boundary instead — the plugin's SessionEnd hook reports `done` and its
+        // SessionStart reports `idle`, which releases the latch outright — plus
+        // the app reload the latch never survives.
         switch state {
-        case .blocked, .done, .error:
+        case .working, .blocked, .done, .error:
             explicitAuthority.insert(workspaceID)
-        case .working, .idle, .unknown:
+        case .idle, .unknown:
             explicitAuthority.remove(workspaceID)
         }
         // `done` is the one explicit state detection can never produce for a
@@ -48,6 +64,20 @@ extension AppModel {
         // one write worth a save — expanding a collapsed Space — is
         // `controlRaiseNotification`'s, and it persists that itself.
         return true
+    }
+
+    /// The state the sidebar is showing for `workspaceID`, whoever put it there
+    /// — an explicit report or detection. nil only when there is no such
+    /// workspace.
+    ///
+    /// Read back for the same reason `controlGetProgress` is: the plugin's
+    /// `Stop` hook has to decide what a turn ending means, and `blocked` or
+    /// `error` is a verdict only the agent could reach. Without this read the
+    /// hook overwrote it a moment later with a state it inferred from the turn
+    /// boundary alone.
+    func controlGetAgentState(for workspaceID: UUID) -> AgentState? {
+        guard let at = locate(workspaceID) else { return nil }
+        return workspace(at: at).agentState
     }
 
     /// Test seam: whether `workspaceID` is under explicit (CLI) authority, which
@@ -80,6 +110,22 @@ extension AppModel {
         if workspace(at: at).todos.isEmpty { return true }
         updateWorkspace(at: at) { $0.todos = [] }
         return true
+    }
+
+    /// The bar this workspace is showing, or nil when there is none.
+    ///
+    /// `todos` is the whole of it: the sidebar draws the bar from that one field
+    /// whether a todo tool filled it or `progress set` synthesized it, so a
+    /// read-back cannot tell — and must not try to tell — the two apart. What a
+    /// caller gets out of this is the question the field answers on its own: is
+    /// there a bar up, and at which step. The plugin's `Stop` hook asks exactly
+    /// that, to decide whether a turn ending means the work is over.
+    func controlGetProgress(for workspaceID: UUID) -> ControlProgressInfo? {
+        guard let at = locate(workspaceID),
+              let report = ProgressSynthesis.report(from: workspace(at: at).todos)
+        else { return nil }
+        return ControlProgressInfo(
+            total: report.total, current: report.current, label: report.label)
     }
 
     // Reached from AppModel.swift and AppModel+Spaces.swift.

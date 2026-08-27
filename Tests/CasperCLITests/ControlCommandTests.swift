@@ -51,6 +51,20 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(try set.makeCommand().total, ProgressSynthesis.maxSynthesizedTotal)
     }
 
+    func testStatusGetBuildsCommand() throws {
+        let get = try StatusCommand.Get.parse(["--workspace", "feature"])
+        let command = try get.makeCommand()
+        XCTAssertEqual(command.verb, .statusGet)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testProgressGetBuildsCommand() throws {
+        let get = try ProgressCommand.Get.parse(["--workspace", "feature"])
+        let command = try get.makeCommand()
+        XCTAssertEqual(command.verb, .progressGet)
+        XCTAssertEqual(command.workspace, "feature")
+    }
+
     func testProgressClearBuildsCommand() throws {
         let clear = try ProgressCommand.Clear.parse(["--workspace", "feature"])
         let command = try clear.makeCommand()

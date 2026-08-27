@@ -19,7 +19,9 @@ per workspace, and bundles a native browser and diff viewer.
   filled to the completed fraction, surfaced in the sidebar with
   pending-notification dots. Every state but `error` is inferred from terminal
   output by built-in detection (no hooks); all six can also be set explicitly
-  via the `casper` CLI (see below).
+  via the `casper` CLI (see below), and an explicitly set state outranks
+  detection until the next one — a workspace can therefore stay `working` while
+  its terminal sits at rest, which is what background work looks like.
 - **Agent integrations** — works with Claude Code, OpenAI Codex CLI, and
   opencode, and launches none of them. A dedicated integration plugin covers
   all three agents and wires their lifecycle to Casper. See
@@ -381,7 +383,9 @@ targeting the workspace behind the current terminal by default:
 
 ```bash
 casper status set working                    # set the agent state (working|blocked|idle|done|unknown|error)
+casper status get                            # read the agent state back
 casper progress set --total 5 --current 2 --label "run tests"
+casper progress get                          # read the bar back ({"progress":null} when none)
 casper progress clear
 casper notify --message "needs review"       # raise the attention flag + notify
 casper info set --message "## App ready
