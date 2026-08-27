@@ -1,3 +1,4 @@
+import AppKit
 import CasperCore
 import CasperGhostty
 import SwiftUI
@@ -508,6 +509,78 @@ struct WorkspaceTitleBarRow: View {
         // Giving the row a definite width is also what drives the ladder: it hands it
         // a real proposal, which a toolbar item on its own never does.
         .frame(width: width, alignment: .leading)
+        // That definite width is also what makes this row the whole title bar right of
+        // the sidebar toggle, so nothing USABLE is left of `NSThemeFrame` to grab
+        // there — and dragging the window and double-clicking it are the theme frame's
+        // behaviours, which die the moment one toolbar item spans the bar. What the
+        // theme frame keeps is the bar LEFT of the row (traffic lights, sidebar
+        // toggle, the flexible space between them) and the few points `safetyMargin`
+        // leaves at the trailing edge; neither is anywhere a hand reaches for. So the
+        // row hands both behaviours back to itself, in the three modifiers below.
+        //
+        // Measured on the running app, the row claims the hosted view's rect and NOT
+        // the toolbar item's full height: the item's `NSToolbarItemViewer` is
+        // `f=(232,0,492,52)`, the bar's full height, while the SwiftUI hosting view
+        // inside it is `f=(4,8,484,36)`. The 8 pt strips above and below therefore
+        // stay with the theme frame, which is what keeps the top-edge resize band
+        // alive — a shape spanning the item's whole height would take the drag and
+        // give up resizing the window from its top edge.
+        //
+        // The `contentShape` first, because a `Spacer` claims no hits of its own — and
+        // the spacer between the diff badge and the trailing chips is an inert stretch
+        // wide enough to be somewhere people aim. Without a shape over the row's whole
+        // rect, SwiftUI finds nothing under the pointer there and the gesture never
+        // starts.
+        //
+        // Plain `.gesture` and a plain `.onTapGesture`, neither of them high-priority
+        // nor simultaneous: a container's plain gesture yields to a child's own, so the
+        // info chip, the Merge / Run / Editor chips and the inspector selector keep
+        // clicking normally, and only the inert parts of the row — the title text, the
+        // space between the groups — drag the window. Simultaneous is the actively
+        // wrong choice for the double-click: it would also fire on a double-click
+        // landing on a chip, zooming the window out from under whoever hit it.
+        //
+        // The double-click action is run by hand because `WindowDragGesture` carries
+        // the drag and nothing else, and it goes through `TitleBarDoubleClickAction`
+        // rather than calling `performZoom` unconditionally: the theme frame honours
+        // the choice made in System Settings, where Fill, Zoom, Minimize and Do
+        // Nothing are all real options and only the unset default means zoom.
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { performTitleBarDoubleClickAction() }
+        .gesture(WindowDragGesture())
+    }
+
+    /// Run the title bar's configured double-click action on the key window.
+    ///
+    /// The key window is this row's window: Casper has no New Window command
+    /// (`MenuCommands` replaces `.newItem` with Space), and both auxiliary
+    /// `NSWindow`s are borderless and never ordered on-screen. A sheet is the one
+    /// other thing that takes key, which the guard below turns away.
+    private func performTitleBarDoubleClickAction() {
+        guard let window = NSApp.keyWindow else { return }
+        // `performZoom` and `performMiniaturize` BEEP at a window that cannot honour
+        // them, where the theme frame is silent. Two windows here cannot: one showing
+        // or belonging to a sheet (the close-progress sheet in `RootView` makes the
+        // sheet key), and a full-screen one.
+        guard window.sheetParent == nil, window.attachedSheet == nil,
+            !window.styleMask.contains(.fullScreen)
+        else { return }
+
+        let setting = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick")
+        switch TitleBarDoubleClickAction.action(for: setting) {
+        case .zoom:
+            window.performZoom(nil)
+        case .minimize:
+            window.performMiniaturize(nil)
+        case .fill:
+            // Fill has no `NSWindow` verb of its own: it is the window taking the
+            // screen's whole visible frame, which zoom does not guarantee.
+            if let screen = window.screen {
+                window.setFrame(screen.visibleFrame, display: true)
+            }
+        case .none:
+            break
+        }
     }
 
     /// One rung, laid out left to right: title, badge, then the chips at the trailing
@@ -608,6 +681,34 @@ struct WorkspaceTitleBarRow: View {
     }
 }
 
+
+/// What double-clicking the title bar does, as System Settings > Desktop & Dock >
+/// "Double-click a window's title bar to" offers it: Fill, Zoom, Minimize or Do
+/// Nothing. The choice is stored under `AppleActionOnDoubleClick`, where Zoom is
+/// written as `Maximize` and an untouched setting writes no key at all.
+///
+/// Split out from `WorkspaceTitleBarRow` so the mapping can be tested. Reading the
+/// domain and calling the `NSWindow` verbs both need a real window and a real user,
+/// so they stay at the call site where nothing could test them anyway; what is worth
+/// pinning is this decision, which has an unset default and an unknown-value case to
+/// get wrong, and both must land on zoom.
+enum TitleBarDoubleClickAction {
+    case zoom
+    case minimize
+    case fill
+    case none
+
+    /// The stored value read as an action. Anything unrecognised — a value from a
+    /// later macOS, or no value at all — is zoom, which is what macOS itself does.
+    static func action(for value: String?) -> Self {
+        switch value {
+        case "Minimize": .minimize
+        case "Fill": .fill
+        case "None": .none
+        default: .zoom
+        }
+    }
+}
 
 /// Every trailing title-bar chip, in one row that gives way as the window narrows:
 /// Merge, Run Script, Editor and the Diff / Browser selector.
