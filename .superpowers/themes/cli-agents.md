@@ -549,7 +549,7 @@ and the task is cancelled on teardown — `Task.detached` neither inherits nor
 forwards cancellation, so a cancelled probe still runs to completion and the
 `Task.isCancelled` check on the way back is what stops it publishing.
 
-The rows sit between the scrolling workspace list and the "Add Folder…" footer,
+The rows sit between the scrolling workspace list and the pinned footer buttons,
 and render **nothing at all** — no divider, no padding, no container — when
 there is nothing to say, which is most of the time. They stay advisory in tone
 (no destructive red) because Casper nudges and never repairs. The row button and

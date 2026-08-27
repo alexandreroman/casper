@@ -79,6 +79,7 @@ environment.
 Session
  ├─ selectedWorkspaceID: UUID?
  ├─ dismissedAgentReminders: Set<String>  // encoded sorted, so an idle session is byte-stable
+ ├─ lastNewSpaceLocation: String?         // parent folder the "New Space…" panel reopens at
  └─ [Space]                          // a folder, Git or not (see themes/space-project.md)
      ├─ id, name, folderPath
      ├─ isGitRepo: Bool                   // runtime-only, never persisted

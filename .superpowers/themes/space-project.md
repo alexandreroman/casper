@@ -40,13 +40,32 @@ repository, always ≥ 1 workspace.*
 - **Naming** — default from the `origin` remote's last path segment without
   `.git` (fallback: the root folder name). Renamable; a renamed Space stops
   tracking the folder/remote.
-- **Lifecycle** — open a folder; a folder that is not a repository opens as a
-  degenerate Space rather than prompting for anything, and
-  `AppModel.promoteSpaceIfGitInitialized` promotes it once a `.git` appears
-  (`Repository.initialize` has no production caller). Add a workspace via
-  `git worktree add`; **remove is non-destructive**
-  (drops the Space from `session.json` and releases ports; leaves the repo,
-  worktrees, and branches on disk).
+- **Lifecycle** — a Space begins one of two ways. **Adoption** opens a folder
+  that already exists; **creation** (`AppModel.createSpace(at:probe:)`) makes
+  the folder, runs `Repository.initialize` in it, and then hands it to adoption,
+  so the two paths converge and only one of them assembles a Space. A folder
+  that is not a repository opens as a degenerate Space rather than prompting for
+  anything, and `AppModel.promoteSpaceIfGitInitialized` promotes it once a
+  `.git` appears. Add a workspace via `git worktree add`; **remove is
+  non-destructive** (drops the Space from `session.json` and releases ports;
+  leaves the repo, worktrees, and branches on disk).
+
+A created Space is an ordinary one from the first frame — a full Git Space with
+a single primary workspace — and its repository holds exactly one commit: an
+**empty initial commit** (`Repository.createInitialCommit`), no files in it.
+That commit is what lets a workspace be created in the Space straight away,
+since `git worktree add` checks the new worktree out at a commit resolved
+through HEAD, and a repository with no commits leaves HEAD unborn — resolving
+to nothing, which `WorktreeError.Reason.repositoryHasNoCommits` reports in
+Casper's own words. A Space can still be rooted at a repository whose HEAD is
+unborn: one adopted before its first commit, or one whose initial commit was
+skipped because the machine configures no committer identity (Casper never
+invents one). `Repository.headBranchName()` reads the branch from HEAD's
+symbolic target when there is no commit to resolve, so the primary workspace is
+named after the real branch (`main`, or whatever `init.defaultBranch` says)
+instead of falling back to the folder name. Creation refuses any path that is
+already taken — Casper never deletes or overwrites what it did not create; see
+`app-ui.md` § Design → "Ways into a Space" for the panel and the refusal rules.
 
 ### Space identity — one Space per repository
 
@@ -114,7 +133,8 @@ assembly, the collapsible Space-grouped sidebar, `CasperGit`
 `Repository.remoteURL`, and repo-name derivation from `origin`. Persistence uses
 a clean break (the existing `SessionStore` self-heal discards incompatible
 legacy files), not the migration the original plan described. The three identity
-rules above and their two refusals are built (`AppModel+Spaces.swift`).
+rules above and their two refusals are built (`AppModel+Spaces.swift`), as is
+creation from scratch (`AppModel.createSpace`, same file).
 
 Remaining for this theme: **Space rename** only. The per-workspace `+/−` diff
 summary is **dropped** (see the top note), so the divergence stats it needed —
