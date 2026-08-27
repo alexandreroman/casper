@@ -491,18 +491,25 @@ public struct Session: Codable, Equatable, Sendable {
     /// renamed, or dropped — an id matching no known agent is simply ignored instead
     /// of failing the whole session decode.
     public var dismissedAgentReminders: Set<String>
+    /// The **parent** directory the user last created a Space in — the folder that
+    /// holds the new Space, not the Space itself — so the creation panel reopens
+    /// where the previous one was made. Optional like `selectedWorkspaceID`: an
+    /// absent key means "no location remembered yet", a state of its own, and the
+    /// panel then falls back to its own default rather than to a path Casper made up.
+    public var lastNewSpaceLocation: String?
 
     public init(spaces: [Space] = [], selectedWorkspaceID: UUID? = nil,
-                dismissedAgentReminders: Set<String> = []) {
+                dismissedAgentReminders: Set<String> = [], lastNewSpaceLocation: String? = nil) {
         self.spaces = spaces
         self.selectedWorkspaceID = selectedWorkspaceID
         self.dismissedAgentReminders = dismissedAgentReminders
+        self.lastNewSpaceLocation = lastNewSpaceLocation
     }
 
     // Full case set is required now that both coders are hand-rolled; case names
     // match the property names so the on-disk keys stay stable.
     private enum CodingKeys: String, CodingKey {
-        case spaces, selectedWorkspaceID, dismissedAgentReminders
+        case spaces, selectedWorkspaceID, dismissedAgentReminders, lastNewSpaceLocation
     }
 
     /// Encodes `dismissedAgentReminders` as a **sorted** array. `SessionStore`
@@ -517,6 +524,7 @@ public struct Session: Codable, Equatable, Sendable {
         try container.encode(spaces, forKey: .spaces)
         try container.encodeIfPresent(selectedWorkspaceID, forKey: .selectedWorkspaceID)
         try container.encode(dismissedAgentReminders.sorted(), forKey: .dismissedAgentReminders)
+        try container.encodeIfPresent(lastNewSpaceLocation, forKey: .lastNewSpaceLocation)
     }
 
     /// Decodes `dismissedAgentReminders` to an empty set when the key is absent, so
@@ -531,5 +539,6 @@ public struct Session: Codable, Equatable, Sendable {
         self.selectedWorkspaceID = try container.decodeIfPresent(UUID.self, forKey: .selectedWorkspaceID)
         self.dismissedAgentReminders =
             try container.decodeIfPresent(Set<String>.self, forKey: .dismissedAgentReminders) ?? []
+        self.lastNewSpaceLocation = try container.decodeIfPresent(String.self, forKey: .lastNewSpaceLocation)
     }
 }

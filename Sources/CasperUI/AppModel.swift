@@ -24,6 +24,23 @@ final class AppModel {
     /// `body` returns, exactly as it does for a direct mutation.
     func mutateSpaces(_ body: (inout [Space]) -> Void) { body(&spaces) }
 
+    /// The parent directory the user last created a Space in, restored from the
+    /// session so the creation panel reopens there; nil until a first Space is
+    /// created that way.
+    ///
+    /// Plain stored state with no save trigger of its own: it reaches disk only
+    /// because some later `persist()` picks it up. Whoever assigns it therefore owns
+    /// the ordering — assign before creating, then make sure a save follows on every
+    /// path, so the location survives a creation that fails. A creation that succeeds
+    /// needs no save of its own: adopting the new Space persists the session and
+    /// carries this along with it.
+    ///
+    /// Observed on purpose: it is written once per creation and read only when the
+    /// panel is presented, so observation costs nothing here, while
+    /// `@ObservationIgnored` would silently strand a view that samples it before the
+    /// restore lands.
+    var lastNewSpaceLocation: String?
+
     /// Observable revision token bumped when the selected workspace's folder
     /// changes on disk. The diff badge and diff surface re-pull on its change,
     /// giving them a live refresh without knowing about the filesystem watcher.
@@ -520,6 +537,7 @@ final class AppModel {
         self.sessionStore = sessionStore
         self.portAllocator = portAllocator
         self.sessionIdentity = sessionIdentity
+        self.lastNewSpaceLocation = session.lastNewSpaceLocation
         // Seeded before anything else can `persist()`: a save that ran with the set
         // still empty would wipe every dismissal the user has ever made.
         self.restoredAgentReminderDismissals = session.dismissedAgentReminders
@@ -1878,7 +1896,8 @@ final class AppModel {
         do {
             let data = try sessionStore.encode(
                 Session(spaces: spaces, selectedWorkspaceID: selectedWorkspaceID,
-                        dismissedAgentReminders: agentReminders.dismissed))
+                        dismissedAgentReminders: agentReminders.dismissed,
+                        lastNewSpaceLocation: lastNewSpaceLocation))
             saveQueue.async { [sessionStore] in
                 do {
                     try sessionStore.write(data)
