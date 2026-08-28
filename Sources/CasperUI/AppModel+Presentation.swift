@@ -224,6 +224,7 @@ private enum WorkspaceAlerts {
     /// confirms Replace gets an explanatory alert and loses nothing.
     static func chooseNewSpaceLocation(startingAt directory: String?) -> URL? {
         let panel = NSSavePanel()
+        panel.title = "New Space"
         panel.prompt = "Create"
         panel.nameFieldLabel = "Name:"
         panel.message = "Choose a name and location for the new Space."
