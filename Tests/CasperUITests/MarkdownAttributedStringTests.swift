@@ -411,15 +411,16 @@ final class MarkdownAttributedStringTests: XCTestCase {
         let bottom: CGFloat
     }
 
-    /// Lays `result` out on a real TextKit 2 stack — the engine
-    /// `MarkdownTextView` both renders and measures with — so a test can read
-    /// the gaps a reader actually sees.
+    /// Lays `result` out on a real TextKit 2 stack, so a test can read the gaps
+    /// a reader actually sees.
     ///
     /// Hand-assembled rather than read off a hosted `NSTextView`, which keeps
-    /// this suite off `@MainActor` and needs no `NSHostingView`. The two lay
-    /// this content out to identical geometry: `MarkdownTextView.height` is
-    /// built on exactly that equivalence, and `MarkdownTextViewTests`
-    /// `testReportedHeightMatchesTheHostedViewForATable` is what pins it.
+    /// this suite off `@MainActor` and needs no `NSHostingView`. A hand-built
+    /// stack and a hosted view lay the same content out to identical geometry
+    /// as long as both run the same engine — the equivalence
+    /// `MarkdownTextView`'s own measurement rests on, and
+    /// `WorkspaceInfoPanelTests.testTallMessageKeepsTheFullMeasuredHeightInTheTextView`
+    /// is what pins it for TextKit 2, on a table-free message that stays there.
     private func layOut(_ result: NSAttributedString) -> NSTextLayoutManager {
         let contentStorage = NSTextContentStorage()
         let layoutManager = NSTextLayoutManager()

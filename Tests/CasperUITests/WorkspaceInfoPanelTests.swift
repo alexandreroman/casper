@@ -200,6 +200,11 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         let host: NSHostingView<WorkspaceInfoPanel>
         let textView: NSTextView
         let scrollView: NSScrollView
+        /// The size the panel asked for at its very first layout pass, before
+        /// any height the live text view reports has had its main-queue hop to
+        /// arrive. An `NSPopover` takes its content size from exactly that
+        /// pass, so this is the size a reader ends up looking through.
+        let firstPassFittingSize: CGSize
 
         var clipView: NSClipView { scrollView.contentView }
         var documentHeight: CGFloat { scrollView.documentView?.frame.height ?? 0 }
@@ -227,7 +232,11 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         let panel = HostedPanel(
             window: window, host: host,
             textView: try XCTUnwrap(Self.firstTextView(in: host)),
-            scrollView: try XCTUnwrap(Self.firstScrollView(in: host)))
+            scrollView: try XCTUnwrap(Self.firstScrollView(in: host)),
+            // Read before `settleLayout` below, which is what gives the
+            // reported height its hop: this has to be the size the panel asks
+            // for knowing nothing but its own measurement.
+            firstPassFittingSize: host.fittingSize)
         settleLayout(panel)
         return panel
     }
@@ -359,12 +368,22 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// The hosted text view must be tall enough for what the engine that is
     /// really laying it out produced — whichever engine that turned out to be.
     ///
-    /// The panel used to size the view from `MarkdownTextView.height(for:width:)`
-    /// alone, which measures on a throwaway TextKit 2 stack. A view holding an
-    /// `NSTextTable` does not stay on TextKit 2, and the TextKit 1 layout that
-    /// replaces it is taller, so the last lines of such a message fell below the
-    /// frame's bottom edge and were clipped by the view's own bounds — never
-    /// drawn, at any scroll offset.
+    /// A view holding an `NSTextTable` does not stay on TextKit 2, and the
+    /// TextKit 1 layout that replaces it is taller for cells that wrap. A frame
+    /// sized from a TextKit 2 measurement alone leaves the last lines of such a
+    /// message below its bottom edge, clipped by the view's own bounds and so
+    /// never drawn, at any scroll offset. The frame therefore comes from
+    /// `max(measured, reported)`, and what this pins is that combined frame: the
+    /// height the panel assigns covers what the live engine laid out, whichever
+    /// of the two numbers supplied it.
+    ///
+    /// It does not isolate the report half. For this fixture the opening
+    /// measurement predicts TextKit 1 and lands on the very height the live view
+    /// reports, so `max` is a no-op here and the measurement alone satisfies the
+    /// assertion. Isolating the reporter would mean handing the panel a
+    /// measurement known to be wrong, which no production API offers;
+    /// `MarkdownTextViewTests.testReportedHeightMatchesTheHostedViewForATable`
+    /// is what pins the reporter itself.
     ///
     /// The migration is forced here rather than waited for. AppKit usually gets
     /// there first — it migrates the view on its own during the panel's first
@@ -411,6 +430,160 @@ final class WorkspaceInfoPanelTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(
             panel.textView.frame.height, layoutManager.usageBoundsForTextContainer.height - 0.5)
+    }
+
+    // MARK: - The height the popover freezes at the first layout pass
+
+    /// A table message short enough to keep the panel hugging its content.
+    ///
+    /// Modelled on a reported message: a `#` title, a two-column GFM table
+    /// whose second column holds a URL long enough to wrap at the panel's
+    /// content width, and a heading line after it — the line a reader finds cut
+    /// in half by the popover's bottom edge.
+    ///
+    /// Wrapping cells are the point, as in `tableMarkdown()`: they are where
+    /// TextKit 1 lays a table out TALLER than TextKit 2, and only a taller
+    /// layout can fall outside a popover already sized from the shorter one. A
+    /// table of short cells goes the other way and hides the bug.
+    private static func shortTableMarkdown() -> String {
+        """
+        # Preview deployment is live
+
+        | Environment | URL |
+        | --- | --- |
+        | Preview | <http://preview.casper.internal:8080/deployments/1f4c9ab/preview?token=demo&trace=on> |
+        | Staging | <http://staging.casper.internal:8080/deployments/1f4c9ab/staging?token=demo&trace=on> |
+
+        ## Next steps
+        """
+    }
+
+    /// The height `content` lays out to at `width` on a throwaway stack of each
+    /// TextKit engine, assembled the way `MarkdownTextView` assembles its own.
+    ///
+    /// Here to pin which regime a fixture is in, never to reproduce the panel's
+    /// own answer: the two numbers are only ever compared with each other.
+    private static func engineHeights(
+        of content: NSAttributedString, width: CGFloat
+    ) -> (textKit1: CGFloat, textKit2: CGFloat) {
+        let storage = NSTextStorage(attributedString: content)
+        let layoutManager = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        storage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(container)
+        layoutManager.ensureLayout(for: container)
+
+        let contentStorage = NSTextContentStorage()
+        let textLayoutManager = NSTextLayoutManager()
+        let textContainer = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        textContainer.lineFragmentPadding = 0
+        contentStorage.addTextLayoutManager(textLayoutManager)
+        textLayoutManager.textContainer = textContainer
+        contentStorage.textStorage?.setAttributedString(content)
+        textLayoutManager.ensureLayout(for: contentStorage.documentRange)
+
+        return (
+            textKit1: ceil(layoutManager.usedRect(for: container).height),
+            textKit2: ceil(textLayoutManager.usageBoundsForTextContainer.height))
+    }
+
+    /// The height the live engine has laid the hosted message out to.
+    ///
+    /// `textLayoutManager` is tested first because merely reading
+    /// `layoutManager` is itself what migrates the view off TextKit 2 (see the
+    /// `textkit2-layout-geometry` project memory note) — the same order
+    /// `LinkCursorTextView.reportLaidOutHeight()` uses, so this reads back the
+    /// number the panel was handed rather than manufacturing a second opinion.
+    private static func liveLaidOutHeight(of textView: NSTextView) -> CGFloat {
+        guard let container = textView.textContainer else { return 0 }
+        if let layoutManager = textView.textLayoutManager {
+            guard let documentRange = layoutManager.textContentManager?.documentRange else { return 0 }
+            // TextKit 2 lays out viewport-first, so the whole extent is only
+            // known once layout has been forced over the whole document.
+            layoutManager.ensureLayout(for: documentRange)
+            return ceil(layoutManager.usageBoundsForTextContainer.height)
+        }
+        guard let layoutManager = textView.layoutManager else { return 0 }
+        layoutManager.ensureLayout(for: container)
+        return ceil(layoutManager.usedRect(for: container).height)
+    }
+
+    /// The height the panel asks for at its FIRST layout pass must already cover
+    /// the height it settles at, because an `NSPopover` takes its content size
+    /// from that first pass and never grows it afterwards. Whatever the panel
+    /// gains later goes into the scrolled document while the viewport stays
+    /// where it was — the message's last line then sits below the popover's
+    /// bottom edge, reachable only by scrolling.
+    ///
+    /// What this discriminates that its neighbours do not:
+    ///
+    /// - `testATableMessageIsSizedByTheEngineThatLaysItOut` settles the panel
+    ///   first and then reads the frame, so a correction that lands a
+    ///   main-queue hop late satisfies it. Here the first pass is the deadline.
+    /// - `testShortHostStillReachesTheEndOfTheMessage` is about a host with less
+    ///   room to offer. The host below is far taller than the panel could ever
+    ///   ask for, so the only number under test is the panel's own.
+    /// - `testLongMessageNeitherWidensNorExceedsTheHeightCap` covers the capped
+    ///   regime. The fixture here stays well under `maxHeight`, which the first
+    ///   precondition pins so it cannot drift into the cap and go vacuous.
+    ///
+    /// Two more preconditions guard the regime the fixture has to be in for the
+    /// final assertion to mean anything: TextKit 1 has to be the TALLER engine
+    /// for this content — cells that stopped wrapping would flip the sign, and
+    /// then the first pass would cover the settled height whether or not the
+    /// engine was predicted — and AppKit has to have migrated the hosted view,
+    /// since a view still on TextKit 2 never exercises the prediction at all.
+    ///
+    /// The asked-for height is read as `NSHostingView.fittingSize`, the number
+    /// the rest of this file measures the panel by. It is also what decides a
+    /// popover's size: `NSPopover` sizes itself from its content view
+    /// controller, and an `NSHostingController` answers `sizeThatFits(in:)` from
+    /// the very same SwiftUI layout pass.
+    func testTheOpeningHeightAlreadyCoversWhatTheLiveEngineLaysOut() throws {
+        let markdown = Self.shortTableMarkdown()
+        let contentWidth = WorkspaceInfoPanel.width - 24
+        let measuredHeight = MarkdownTextView.height(for: markdown, width: contentWidth)
+        XCTAssertLessThan(
+            measuredHeight, WorkspaceInfoPanel.maxHeight - 100,
+            "the fixture must stay in the panel's hug-the-content regime: at \(measuredHeight) pt the cap "
+                + "would decide the height and the first pass would already ask for the maximum")
+
+        // Several times what the panel could ask for, so the host constrains nothing.
+        let panel = try hostPanel(markdown, hostHeight: 4 * WorkspaceInfoPanel.maxHeight)
+
+        // FIRST touch of this view's engines, before `textStorage` or anything
+        // else: merely reading `layoutManager` performs the very migration this
+        // asserts AppKit performed by itself (see the `textkit2-layout-geometry`
+        // project memory note), so asked any later the question answers itself.
+        XCTAssertNil(
+            panel.textView.textLayoutManager,
+            "AppKit must have migrated the hosted view off TextKit 2 on its own, or the prediction this "
+                + "test exists for is never exercised")
+
+        let engines = Self.engineHeights(of: try XCTUnwrap(panel.textView.textStorage), width: contentWidth)
+        XCTAssertGreaterThan(
+            engines.textKit1, engines.textKit2,
+            "this fixture must be one TextKit 1 lays out TALLER, and it lays out at \(engines.textKit1) pt "
+                + "against TextKit 2's \(engines.textKit2) pt: only a taller live layout can fall outside a "
+                + "popover already sized from the shorter measurement, so with the sign the other way the "
+                + "assertion below holds whether or not the engine is predicted")
+
+        panel.host.layoutSubtreeIfNeeded()
+        let settledHeight = panel.host.fittingSize.height
+        XCTAssertLessThan(
+            settledHeight, WorkspaceInfoPanel.maxHeight,
+            "the settled panel must still be hugging its content, not sitting on the cap")
+
+        let firstPassHeight = panel.firstPassFittingSize.height
+        XCTAssertGreaterThanOrEqual(
+            firstPassHeight, settledHeight - 0.5,
+            "the popover is sized from the first layout pass, where the panel asks for \(firstPassHeight) pt, "
+                + "but the panel settles at \(settledHeight) pt: the last \(settledHeight - firstPassHeight) pt "
+                + "of the message fall outside the popover. The opening measurement is \(measuredHeight) pt "
+                + "(TextKit 1 lays this content out at \(engines.textKit1) pt, TextKit 2 at "
+                + "\(engines.textKit2) pt); the live engine laid it out at "
+                + "\(Self.liveLaidOutHeight(of: panel.textView)) pt")
     }
 
     // MARK: - Link routing

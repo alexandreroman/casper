@@ -52,25 +52,28 @@ struct WorkspaceInfoPanel: View {
         // Two answers to "how tall is this message", and the panel must not
         // assume they agree.
         //
-        // `MarkdownTextView.height(for:width:)` measures on a throwaway TextKit 2
-        // stack. It is available before any view exists, so it is what keeps the
-        // first layout pass from being a zero-height one and lets a short message
-        // hug its text on first appearance. But the hosted view does not stay on
-        // TextKit 2 — AppKit migrates it to TextKit 1 on a display pass once the
-        // message contains a GFM table, and TextKit 1 lays the same string out to
-        // a different height (see the `textkit1-fallback-on-nstexttable` project
-        // memory note). Sizing the view from the measurement alone left the tail
-        // of such a message below the frame's bottom edge, clipped by the view's
-        // own bounds and therefore undrawn at every scroll offset.
+        // `MarkdownTextView.height(for:width:)` measures on a throwaway stack,
+        // built on whichever engine AppKit will end up laying the hosted view
+        // out with: TextKit 1 for a message holding a text block — a GFM table
+        // or a block quote — TextKit 2 for every other one, since a view whose
+        // storage holds a text block migrates itself off TextKit 2 on a display
+        // pass and the two engines lay the same string out to different heights
+        // (see the `textkit1-fallback-on-nstexttable` project memory note). This
+        // number is available before any view exists, which is what keeps the
+        // first layout pass from being a zero-height one and lets a short
+        // message hug its text on first appearance. It also has to be right on
+        // that first pass: an `NSPopover` freezes its content size there, so a
+        // height gained afterwards grows the scrolled document while the
+        // viewport stays put, leaving the tail of the message below the
+        // popover's bottom edge.
         //
-        // So the live view reports what it really laid out, and that supersedes
-        // the measurement. The larger of the two rather than "the report wins":
-        // both numbers are lower bounds on what has to be drawn, and the two
-        // failure modes are not symmetric — a frame taller than the text buys a
-        // few points of invisible scroll slack, while a frame shorter than it
-        // silently eats lines. `max` also makes this a pure widening of what the
-        // panel did before: the frame can never come out shorter than the
-        // measurement it used to be pinned to.
+        // The live view reports what it really laid out, and that supersedes the
+        // measurement whenever the prediction falls short. The larger of the two
+        // rather than "the report wins": both numbers are lower bounds on what
+        // has to be drawn, and the two failure modes are not symmetric — a frame
+        // taller than the text buys a few points of invisible scroll slack,
+        // while a frame shorter than it silently eats lines, clipped by the
+        // view's own bounds and therefore undrawn at every scroll offset.
         //
         // Bound once and read by both frames below: measuring renders the whole
         // message and lays it out, which is not work to do twice for one pass.

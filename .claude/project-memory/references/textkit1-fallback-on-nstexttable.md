@@ -27,6 +27,17 @@ other. Measured at a 496 pt content width on macOS 26, TextKit 2 first:
 - a table of short cells: 2179 → 1603 pt, and 1980 → 780 pt for five narrow
   columns.
 
+**The height gap is a table-cell phenomenon; the migration is not.** A block
+quote carries an `NSTextBlock` too — `blockQuoteRule()` renders it as a 1x1
+`NSTextTable` cell — and it migrates the view exactly like a table does, yet
+both engines lay it out to the *same* height: measured identical across seven
+quote shapes (one wrapping line, two paragraphs, quote + list, nested quote,
+quote after a heading, quote then paragraph, quote + code — 136/136, 125/125,
+108/108, 82/82, 76/76, 60/60 pt). So a test that means to discriminate the two
+engines needs a table of **wrapping** cells; a quote fixture asserts nothing
+about height, and what it can pin instead is the migration itself plus the
+`textBlocks` attribute the engine prediction keys on.
+
 **So a caller must not measure a message on one stack and pin a frame from it.**
 An `NSTextView` whose frame falls short of what its live engine laid out clips
 the overflowing lines against its own bounds — they are drawn at no scroll
@@ -37,6 +48,25 @@ from `max(measured, reported)`: both numbers are lower bounds on what has to be
 drawn, and a frame that is too tall costs only invisible scroll slack while one
 that is too short eats lines. `height(for:width:)` remains the opening height,
 so the first pass is not a zero-height one.
+
+**The opening measurement predicts the engine rather than assuming one.** An
+`NSPopover` freezes its content size at the panel's first layout pass, so a
+height the live view reports one main-queue hop later grows the scrolled
+document while the viewport stays put — the tail of the message then sits
+outside the popover, reachable only by scrolling.
+`MarkdownTextView.measuredHeight(of:width:)` therefore scans the rendered
+string for a paragraph style carrying `textBlocks` — the measured migration
+trigger, covering both a GFM table's cells and the block quote's rule — and
+measures such content on a throwaway TextKit 1 stack (`NSTextStorage` →
+`NSLayoutManager` → `NSTextContainer`, `ensureLayout(for:)` then
+`usedRect(for:)`, the very pair `reportLaidOutHeight()` uses) and everything
+else on TextKit 2. The scan sits beside the render, in the cache keyed by
+`(markdown, width, appearance)`, so it costs one pass per message rather than
+one per SwiftUI `body`. Deliberately not `max(textKit1, textKit2)`: the sign
+of the gap depends on the content, so the larger of the two opens the popover
+with a wide empty band under a short-celled table. `max(measured, reported)`
+is the safety net that keeps the scrolled document complete when a prediction
+is wrong.
 
 **Reading the live engine has to branch on `textLayoutManager != nil` first.**
 Merely reading `NSTextView.layoutManager` performs the very migration in
