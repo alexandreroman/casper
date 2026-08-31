@@ -36,13 +36,20 @@ final class MarkdownTextViewTests: XCTestCase {
         XCTAssertEqual(first, second)
     }
 
-    /// The reported height must come from the very engine the hosted view renders
-    /// with. A plain `NSTextView` is TextKit 2 backed, and TextKit 1 answers a
-    /// different height for the same string — worst for the `NSTextTable` a GFM
-    /// table renders as, so a table is what this measures. The hosted side reads
-    /// the layout manager's laid-out extent, never the view's `frame.height`:
-    /// that frame is the one `NSHostingView` proposed, so it would only echo the
-    /// question back.
+    /// The reported height must come from the very engine the hosted view is
+    /// laid out by. For a GFM table that engine is TextKit 1: the view is built
+    /// on the TextKit 2 stack but does not stay there, because its storage holds
+    /// the `NSTextTable` such a table renders as (see the
+    /// `textkit1-fallback-on-nstexttable` project memory note), and the two
+    /// engines answer different heights for this same string — 88 vs 92 pt,
+    /// measured on macOS 26. The hosted side reads the layout manager's laid-out
+    /// extent, never the view's `frame.height`: that frame is the one
+    /// `NSHostingView` proposed, so it would only echo the question back.
+    ///
+    /// The migration is forced rather than waited for: reading
+    /// `NSTextView.layoutManager` performs it synchronously (see the
+    /// `textkit2-layout-geometry` project memory note), where a display pass
+    /// would be a race.
     func testReportedHeightMatchesTheHostedViewForATable() throws {
         let markdown = """
             Ports in use:
@@ -52,20 +59,76 @@ final class MarkdownTextViewTests: XCTestCase {
             | 1 | 2 |
             """
         let textView = try hostedTextView(markdown: markdown)
-        let layoutManager = try XCTUnwrap(textView.textLayoutManager)
-        let documentRange = try XCTUnwrap(layoutManager.textContentManager?.documentRange)
-        layoutManager.ensureLayout(for: documentRange)
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        let container = try XCTUnwrap(textView.textContainer)
+        XCTAssertNil(
+            textView.textLayoutManager,
+            "reading `layoutManager` must have migrated the view off TextKit 2, or this test proves nothing")
+        layoutManager.ensureLayout(for: container)
 
-        let hosted = ceil(layoutManager.usageBoundsForTextContainer.height)
+        let hosted = ceil(layoutManager.usedRect(for: container).height)
         let reported = MarkdownTextView.height(for: markdown, width: Self.width)
 
         XCTAssertGreaterThan(hosted, 0)
-        // Both sides measure the same content through the same TextKit 2 method
-        // (`usageBoundsForTextContainer`), so they land on the same value however
-        // `MarkdownAttributedString`'s own spacing constants are tuned — a point of
-        // slack covers no more than the `ceil` on either side, and still rejects
-        // the TextKit 1 engine gap (a measurably different height for this same
-        // table) by a wide margin.
+        // Both sides reach the height through the same TextKit 1 pair of calls
+        // (`ensureLayout(for:)` then `usedRect(for:)`), so they land on the same
+        // value however `MarkdownAttributedString`'s own spacing constants are
+        // tuned — a point of slack covers no more than the `ceil` on either side,
+        // and still rejects a TextKit 2 measurement of this same table.
+        XCTAssertEqual(reported, hosted, accuracy: 1)
+    }
+
+    /// The block-quote half of `MarkdownTextView.holdsTextBlock`'s contract,
+    /// which every other TextKit 1 fixture in the suite leaves untouched by
+    /// being a GFM table.
+    ///
+    /// Two facts hold this up. The rendered quote carries the very paragraph
+    /// attribute the prediction keys on — `MarkdownAttributedString` draws a
+    /// quote's leading bar with an `NSTextBlock` — and a view holding one leaves
+    /// TextKit 2, so the height that decides whether a line is drawn comes from
+    /// TextKit 1.
+    ///
+    /// The height match corroborates rather than discriminates: measured on
+    /// macOS 26 the two engines lay every block-quote shape tried out to the
+    /// same height, 76 pt for this one, where a table of wrapping cells has them
+    /// disagreeing. So the attribute and the migration are what give this test
+    /// its teeth, and the match is what pins the measurement to the live layout.
+    ///
+    /// The migration is forced rather than waited for, for the reason
+    /// `testReportedHeightMatchesTheHostedViewForATable` gives.
+    func testReportedHeightMatchesTheHostedViewForABlockQuote() throws {
+        let markdown = """
+            Heads up:
+
+            > The staging deployment finished, but the smoke suite is still running \
+            and will report separately once it settles.
+            """
+        let textView = try hostedTextView(markdown: markdown)
+
+        // Read before `layoutManager` below, which is what migrates the view: the
+        // attribute has to be observed on the storage the prediction reads.
+        let storage = try XCTUnwrap(textView.textStorage)
+        var carriesTextBlock = false
+        let wholeString = NSRange(location: 0, length: storage.length)
+        storage.enumerateAttribute(.paragraphStyle, in: wholeString) { value, _, _ in
+            if let style = value as? NSParagraphStyle, !style.textBlocks.isEmpty { carriesTextBlock = true }
+        }
+        XCTAssertTrue(
+            carriesTextBlock,
+            "a block quote must render with an `NSTextBlock` on its paragraph style, or it is not the "
+                + "second producer `MarkdownTextView.holdsTextBlock` claims to cover")
+
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        let container = try XCTUnwrap(textView.textContainer)
+        XCTAssertNil(
+            textView.textLayoutManager,
+            "a view holding a block quote must leave TextKit 2, or this test proves nothing")
+        layoutManager.ensureLayout(for: container)
+
+        let hosted = ceil(layoutManager.usedRect(for: container).height)
+        let reported = MarkdownTextView.height(for: markdown, width: Self.width)
+
+        XCTAssertGreaterThan(hosted, 0)
         XCTAssertEqual(reported, hosted, accuracy: 1)
     }
 

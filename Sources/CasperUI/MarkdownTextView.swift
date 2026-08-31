@@ -68,9 +68,9 @@ final class LinkCursorTextView: NSTextView {
     ///
     /// **Which engine that is cannot be assumed.** This view is built on the
     /// TextKit 2 stack, but AppKit migrates it to TextKit 1 behind our back on a
-    /// display pass once its storage holds an `NSTextTable` — which is exactly
-    /// how `MarkdownAttributedString` renders a GFM table — and the two engines
-    /// lay the same string out to different heights (see the
+    /// display pass once its storage holds a text block — a GFM table or a block
+    /// quote, the two shapes `MarkdownAttributedString` renders one for — and the
+    /// two engines lay the same string out to different heights (see the
     /// `textkit1-fallback-on-nstexttable` project memory note). So the *live*
     /// stack is asked, and `textLayoutManager` is tested FIRST: merely reading
     /// `layoutManager` is itself what performs that migration, so a fallback
@@ -206,17 +206,19 @@ struct MarkdownTextView: NSViewRepresentable {
         self.onLaidOutHeight = onLaidOutHeight
     }
 
-    /// The height `markdown` lays out to at `width` on a **TextKit 2** stack, as
-    /// an opening height for the caller's frame.
+    /// The height `markdown` lays out to at `width`, as an opening height for
+    /// the caller's frame.
     ///
-    /// An opening height, not the final word. This measurement is available
-    /// before any view exists, so it keeps the first layout pass from being a
-    /// zero-height one and lets a short message hug its text the moment it
-    /// appears — but the height that decides whether a line is drawn is the one
-    /// the *live* view lays out, which is why `onLaidOutHeight` exists and why
-    /// the caller must take the larger of the two. The two disagree whenever the
-    /// live view is no longer on TextKit 2, and it stops being on TextKit 2 on
-    /// its own (see `LinkCursorTextView.reportLaidOutHeight()`).
+    /// An opening height, and one that has to be right the first time: it is
+    /// available before any view exists, so it keeps the first layout pass from
+    /// being a zero-height one, and an `NSPopover` freezes its content size from
+    /// exactly that pass. `measuredHeight(of:width:)` therefore measures on the
+    /// engine the live view will end up being laid out with — TextKit 1 for a
+    /// message holding a text block, TextKit 2 for every other one. The height
+    /// that decides whether a line is *drawn* is still the one the live view
+    /// reports, which is why `onLaidOutHeight` exists and why the caller must
+    /// take the larger of the two (see
+    /// `LinkCursorTextView.reportLaidOutHeight()`).
     ///
     /// Measured through a throwaway TextKit stack rather than off a live view —
     /// see `measuredHeight(of:width:)` — and measured once per message, not once
@@ -231,17 +233,63 @@ struct MarkdownTextView: NSViewRepresentable {
         rendered(for: markdown, width: width, appearance: NSApp.effectiveAppearance.name).height
     }
 
-    /// The height `content` lays out to at `width` on a throwaway TextKit 2
-    /// stack, rather than off a live view: a view's own frame height is whatever
-    /// was proposed to it, which would make the answer echo the question. The
-    /// stack is assembled by hand as `NSTextContentStorage` →
-    /// `NSTextLayoutManager` → `NSTextContainer` so it is the TextKit 2 engine —
-    /// the one `makeNSView` builds and starts out rendering with — and its
-    /// container matches the real view's `lineFragmentPadding = 0` so both wrap
-    /// at exactly the same width.
+    /// The height `content` lays out to at `width` on the TextKit engine that
+    /// will really lay the hosted view out, measured through a throwaway stack
+    /// rather than off a live view: a view's own frame height is whatever was
+    /// proposed to it, which would make the answer echo the question.
+    ///
+    /// The engine has to be predicted, not assumed. A view whose storage holds a
+    /// text block migrates itself from TextKit 2 to TextKit 1 on its first
+    /// display pass (see the `textkit1-fallback-on-nstexttable` project memory
+    /// note), and the two engines lay the same string out to different heights.
+    ///
+    /// Deliberately the predicted engine's answer rather than the larger of the
+    /// two: the sign of the gap depends on the content — TextKit 1 lays a table
+    /// of wrapping cells out taller, and a table of short cells far shorter — so
+    /// taking the larger would open the panel with a wide empty band under a
+    /// short-celled table. The prediction has to be accurate in both directions;
+    /// `WorkspaceInfoPanel`'s `max(measured, reported)` is what keeps the
+    /// scrolled document complete if it is ever wrong.
+    ///
+    /// The prediction is per *message*; the migration is per *view* and one-way.
+    /// `updateNSView` reuses a single `LinkCursorTextView` across messages, so
+    /// once a message holding a text block has been shown in it, a later message
+    /// with none is still laid out by TextKit 1 while this predicts TextKit 2.
+    /// Every case measured errs on the over-measuring side — 46 pt predicted
+    /// against 33 pt laid out for a thematic break, exact agreement for
+    /// spacing-heavy plain paragraphs — so it buys invisible scroll slack
+    /// rather than costing a line, and it is reachable only by a message
+    /// swapped inside an already-open popover.
     private static func measuredHeight(of content: NSAttributedString, width: CGFloat) -> CGFloat {
         guard content.length > 0 else { return 0 }
+        return holdsTextBlock(content)
+            ? textKit1Height(of: content, width: width)
+            : textKit2Height(of: content, width: width)
+    }
 
+    /// Whether `content` carries a text block on any of its paragraph styles,
+    /// which is the measured trigger for AppKit migrating a view to TextKit 1.
+    ///
+    /// Both shapes `MarkdownAttributedString` produces one with are covered: a
+    /// GFM table's cells (`renderTableCell`) and a block quote's leading rule
+    /// (`blockQuoteRule`).
+    private static func holdsTextBlock(_ content: NSAttributedString) -> Bool {
+        var found = false
+        let wholeString = NSRange(location: 0, length: content.length)
+        content.enumerateAttribute(.paragraphStyle, in: wholeString) { value, _, stop in
+            guard let style = value as? NSParagraphStyle, !style.textBlocks.isEmpty else { return }
+            found = true
+            stop.pointee = true
+        }
+        return found
+    }
+
+    /// The height `content` lays out to at `width` on a throwaway TextKit 2
+    /// stack, assembled by hand as `NSTextContentStorage` → `NSTextLayoutManager`
+    /// → `NSTextContainer` so it is the TextKit 2 engine — the one `makeNSView`
+    /// builds — with its container matching the real view's
+    /// `lineFragmentPadding = 0` so both wrap at exactly the same width.
+    private static func textKit2Height(of content: NSAttributedString, width: CGFloat) -> CGFloat {
         let contentStorage = NSTextContentStorage()
         let layoutManager = NSTextLayoutManager()
         let textContainer = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
@@ -254,6 +302,25 @@ struct MarkdownTextView: NSViewRepresentable {
         // TextKit 2's answer to `NSLayoutManager.usedRect(for:)`: the extent the
         // laid-out text actually occupies in the container.
         return ceil(layoutManager.usageBoundsForTextContainer.height)
+    }
+
+    /// The height `content` lays out to at `width` on a throwaway TextKit 1
+    /// stack: `NSTextStorage` → `NSLayoutManager` → `NSTextContainer`, again at
+    /// the real view's `lineFragmentPadding = 0`.
+    ///
+    /// `ensureLayout(for:)` then `usedRect(for:)` is the very pair of calls
+    /// `LinkCursorTextView.reportLaidOutHeight()` makes on the live view's
+    /// TextKit 1 branch, so the measurement and the report agree by construction.
+    private static func textKit1Height(of content: NSAttributedString, width: CGFloat) -> CGFloat {
+        let textStorage = NSTextStorage(attributedString: content)
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        textContainer.lineFragmentPadding = 0
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.addTextContainer(textContainer)
+
+        layoutManager.ensureLayout(for: textContainer)
+        return ceil(layoutManager.usedRect(for: textContainer).height)
     }
 
     /// One message as both halves the view needs it in: the rendered Markdown,
@@ -324,11 +391,11 @@ struct MarkdownTextView: NSViewRepresentable {
         //
         // What this does NOT buy is TextKit 2 as an invariant: AppKit migrates the
         // view to TextKit 1 by itself, on a display pass, whenever the storage
-        // holds an `NSTextTable` (see the `textkit1-fallback-on-nstexttable`
-        // project memory note), and nothing here can hold it back. That is why the
-        // height this view is given comes from `reportLaidOutHeight()` — which
-        // asks whichever engine is live — rather than from `height(for:width:)`
-        // alone.
+        // holds a text block — a GFM table or a block quote (see the
+        // `textkit1-fallback-on-nstexttable` project memory note) — and nothing
+        // here can hold it back. That is why the height this view is given comes
+        // from `reportLaidOutHeight()`, which asks whichever engine is live,
+        // rather than from `height(for:width:)` alone.
         let contentStorage = NSTextContentStorage()
         let layoutManager = NSTextLayoutManager()
         let textContainer = NSTextContainer(size: CGSize(width: width, height: 0))

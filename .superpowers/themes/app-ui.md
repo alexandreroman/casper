@@ -346,15 +346,22 @@ longer does are recorded in `../status.md` § Superseded designs.
   [[nstextview-link-cursor-and-selection]] and
   [[nstextblock-border-unreliable]].
 
-  Sizing takes the **maximum** of two independent measurements — a throwaway
-  TextKit 2 measurement made before any view exists, and the height the hosted
-  view reports after laying out — because AppKit silently migrates the view to
-  TextKit 1 once the message contains a table, and the two engines lay the same
-  string out differently ([[textkit1-fallback-on-nstexttable]]). Both are lower
-  bounds and the failure modes are asymmetric: too tall costs a little invisible
-  scroll slack, too short silently eats lines. The result is applied as a **cap,
-  not a pinned height**, so the panel yields to a host with less room instead of
-  hanging its tail somewhere unreachable ([[scrollview-viewport-vs-document]],
+  Sizing measures the message on the engine the live view will really be laid
+  out with — **TextKit 1** when the rendered string holds a text block (a GFM
+  table or a block quote), **TextKit 2** otherwise — because AppKit migrates
+  such a view off TextKit 2 on a display pass and the two engines lay the same
+  string out differently ([[textkit1-fallback-on-nstexttable]]). The engine is
+  predicted rather than corrected for: a popover fixes its content size at the
+  first layout pass, so height gained after that pass grows the scrolled
+  document while the viewport stays where it is, leaving the tail of the
+  message below the popover's bottom edge. The hosted view still reports what
+  it laid out, and the frame takes the **maximum** of measurement and report as
+  the safety net that keeps the scrolled document complete should the
+  prediction ever be wrong: both are lower bounds and the failure modes are
+  asymmetric — too tall costs a little invisible scroll slack, too short
+  silently eats lines. The result is applied as a **cap, not a pinned height**,
+  so the panel yields to a host with less room instead of hanging its tail
+  somewhere unreachable ([[scrollview-viewport-vs-document]],
   [[nstextview-caller-sized-frame]]).
 - **Open in Editor** — a split button launching the worktree in VS Code,
   IntelliJ IDEA or Xcode. Detection resolves **app bundles only** and runs
