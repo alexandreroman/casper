@@ -303,8 +303,10 @@ fileprivate extension LayoutNode {
     var paneDiffKey: [UUID] { LayoutTree.surfaceIDs(self) }
 }
 
-/// SwiftUI wrapper hosting one divider's AppKit `SplitterHandleView`.
-private struct SplitterHandle: NSViewRepresentable {
+/// SwiftUI wrapper hosting one divider's AppKit `SplitterHandleView`. Shared by
+/// the terminal splits (`SplitContainerView`) and the inspector divider
+/// (`WorkspaceDetailView`), so both dividers grab, drag and cursor alike.
+struct SplitterHandle: NSViewRepresentable {
     let orientation: LayoutNode.Orientation
     let boundary: CGFloat
     let onResize: (CGFloat) -> Void

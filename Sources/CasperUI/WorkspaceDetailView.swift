@@ -103,11 +103,6 @@ struct WorkspaceDetailView: View {
     /// overflowed row does not always come back on its own.
     static let unmeasuredRowWidth: CGFloat = 240
 
-    /// Stable coordinate space for the inspector divider drag, anchored to the
-    /// full-width detail container so the pointer's absolute location is read
-    /// against a fixed origin (the divider itself moves as the panel resizes).
-    private static let inspectorDragSpace = "inspectorDrag"
-
     var body: some View {
         GeometryReader { proxy in
             let range = inspectorRange(container: proxy.size.width)
@@ -130,11 +125,12 @@ struct WorkspaceDetailView: View {
                 // coordinates (content pinned to the trailing edge, which is the
                 // window's fixed right edge) so nothing translates, mirroring
                 // `SplitContainerView`'s always-mounted, frame-animated
-                // approach. The divider lives inside the same clipped container
-                // so it reveals with the panel rather than popping in as a
-                // separate mount.
+                // approach. The divider's visible line lives inside the same
+                // clipped container so it reveals with the panel rather than
+                // popping in as a separate mount; only its grab strip sits
+                // outside (see `inspectorGrabStrip`).
                 HStack(spacing: 0) {
-                    inspectorDivider(total: proxy.size.width, range: range)
+                    inspectorDividerLine
                     InspectorPanel(model: model, workspace: workspace)
                         .frame(width: width)
                 }
@@ -142,7 +138,9 @@ struct WorkspaceDetailView: View {
                        alignment: .trailing)
                 .clipped()
             }
-            .coordinateSpace(.named(Self.inspectorDragSpace))
+            .overlay(alignment: .trailing) {
+                inspectorGrabStrip(total: proxy.size.width, panelWidth: width, range: range)
+            }
             .animation(.easeInOut(duration: 0.18), value: workspace.inspector.collapsed)
         }
         // Measured on the `GeometryReader` ITSELF, not on the content inside it. A
@@ -274,44 +272,66 @@ struct WorkspaceDetailView: View {
         return InspectorState.minWidth...upper
     }
 
-    /// A self-drawn vertical divider (mirrors `SplitContainerView`'s splitter): the
-    /// shared `SeparatorMetrics` line for layout, with the equally shared transparent
-    /// grab strip overlaid on top — straddling the line and carrying the
-    /// column-resize pointer — so the hit area never reserves visible layout width.
-    /// Dragging it resizes the inspector; the model is persisted only on drag-end.
-    private func inspectorDivider(total: Double, range: ClosedRange<Double>) -> some View {
+    /// The inspector divider's visible line: the shared `SeparatorMetrics` hairline,
+    /// and nothing else.
+    ///
+    /// It stays inside the clipped inspector container so it is revealed and hidden
+    /// with the panel. What resizes the inspector is a separate grab strip layered
+    /// OUTSIDE that container — see `inspectorGrabStrip`.
+    private var inspectorDividerLine: some View {
         Rectangle()
             .fill(SeparatorMetrics.fill)
             .frame(width: SeparatorMetrics.visibleWidth)
             .frame(maxHeight: .infinity)
-            .overlay {
-                Color.clear
-                    .frame(width: SeparatorMetrics.grabWidth)
-                    .contentShape(Rectangle())
-                    .pointerStyle(.columnResize)
-                    .gesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.inspectorDragSpace))
-                            .onChanged { value in
-                                isDraggingInspector = true
-                                // Track the pointer's ABSOLUTE x in the stable container space:
-                                // the inspector's left edge sits at value.location.x, so its
-                                // width is the space remaining to the right. Using the absolute
-                                // location (not accumulated translation) keeps the divider
-                                // locked to the pointer even as the panel — and this divider —
-                                // shift during the drag, eliminating the resize lag.
-                                inspectorWidth = (total - value.location.x).clamped(to: range)
-                            }
-                            .onEnded { _ in
-                                isDraggingInspector = false
-                                if let width = inspectorWidth {
-                                    model.setInspectorWidth(width, for: workspace.id)
-                                }
-                                // `terminalHostMetrics` settled while the publish was
-                                // suspended, so `.onChange` has already fired for the
-                                // final width and will not fire again.
-                                publish(terminalHostMetrics)
-                            })
-            }
+    }
+
+    /// The inspector divider's grab strip: the same AppKit `SplitterHandle` the
+    /// terminal splits use, so both dividers are equally easy to catch.
+    ///
+    /// Layered on the full-width container rather than beside the line, because the
+    /// inspector container is `.clipped()` and `.clipped()` clips HIT-TESTING as well
+    /// as drawing: mounted in there, the half of the strip that straddles the
+    /// terminal would be dead and only the panel-side half would answer. Out here the
+    /// whole `SeparatorMetrics.grabWidth` is live, half over each side.
+    ///
+    /// A concrete `NSView` — not a SwiftUI `.pointerStyle` plus a `DragGesture` — is
+    /// what makes the resize cursor win over the terminal surface's own
+    /// `cursorUpdate` (see the terminal-overlay-cursor note). `SplitterHandleView`
+    /// owns the cursor and the drag, tracking the pointer by absolute window movement
+    /// from the boundary it snapshots at mouse-down.
+    @ViewBuilder
+    private func inspectorGrabStrip(
+        total: Double, panelWidth: Double, range: ClosedRange<Double>
+    ) -> some View {
+        if !workspace.inspector.collapsed {
+            SplitterHandle(
+                orientation: .horizontal,
+                // The boundary the drag reports back against: the panel's left edge,
+                // matching the width formula below.
+                boundary: total - panelWidth,
+                onResize: { target in
+                    isDraggingInspector = true
+                    inspectorWidth = (total - target).clamped(to: range)
+                },
+                onCommit: {
+                    isDraggingInspector = false
+                    if let width = inspectorWidth {
+                        model.setInspectorWidth(width, for: workspace.id)
+                    }
+                    // `terminalHostMetrics` settled while the publish was suspended,
+                    // so `.onChange` has already fired for the final width and will
+                    // not fire again.
+                    publish(terminalHostMetrics)
+                },
+                // The terminal splits equalize on double-click; the inspector has no
+                // equivalent, so a double-click does nothing.
+                onEqualize: {})
+                .frame(width: SeparatorMetrics.grabWidth)
+                .frame(maxHeight: .infinity)
+                // Centred on the line, whose own centre sits half a hairline to the
+                // left of the panel's edge.
+                .offset(x: -(panelWidth + SeparatorMetrics.visibleWidth / 2 - SeparatorMetrics.grabWidth / 2))
+        }
     }
 
     /// Gets the row back out of AppKit's overflow chevron, and keeps checking until

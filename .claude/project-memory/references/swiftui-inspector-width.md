@@ -47,18 +47,29 @@ alignment is load-bearing: the detail area is `maxWidth: .infinity`, so the
 inspector's *right* edge is fixed and its *left* edge moves — leading alignment
 translates the tabs and brings the lag back.
 
-**Divider drag — track the pointer by ABSOLUTE location** (the same principle as
-`SplitContainerView`'s splitter, which maps absolute movement rather than
-accumulated translation, driven from AppKit): the inspector's `DragGesture`
-reads `value.location.x` in a stable **named coordinate space** anchored to the
-full-width container (`.coordinateSpace(.named(...))` on the `HStack`), and sets
-`inspectorWidth = total - location.x`. Using accumulated `translation.width`
-instead **lags/jitters**, because the divider is an `HStack` child that shifts
-as the panel resizes, so the gesture's local origin moves under the cursor.
+**Divider drag — the shared AppKit `SplitterHandle`** (`SplitContainerView`),
+the same grab strip the terminal splits use. It snapshots the boundary at
+`mouseDown` and maps absolute window movement onto it, so the inspector's width
+is `total - target`. Two of its properties are load-bearing. Tracking the
+pointer by **absolute** location, rather than by accumulated translation, is
+what keeps the divider locked to it: the divider shifts as the panel resizes, so
+a translation-based drag **lags/jitters**. And a concrete `NSView`, rather than
+a SwiftUI `.pointerStyle` plus a `DragGesture`, is what wins the resize cursor
+over the terminal surface's own `cursorUpdate` — see
+[[terminal-overlay-cursor]].
 
-**Why:** both facts are non-obvious and were each paid for with a live debug
-session — the crash is a silent framework limitation, and the translation-based
-drag looks correct but feels laggy.
+**The grab strip lives OUTSIDE the clipped container.** `.clipped()` clips
+hit-testing as well as drawing, so a `SeparatorMetrics.grabWidth` strip mounted
+beside the line — inside the clip that reveals the panel — answers only on its
+panel-side half, and the half straddling the terminal is dead. The strip is
+therefore an overlay on the full-width container, offset to stay centred on the
+line for every panel width, while the visible 1 pt hairline stays inside the
+clip so it reveals with the panel.
+
+**Why:** every one of these is non-obvious and each was paid for with a live
+debug session — the crash is a silent framework limitation, a translation-based
+drag looks correct but feels laggy, and a grab strip inside the clip looks the
+right width while answering on only half of it.
 
 **How to access:** the inspector's own width bounds are
 `InspectorState.minWidth` / `defaultWidth` / `maxWidth`; the floor reserved for
