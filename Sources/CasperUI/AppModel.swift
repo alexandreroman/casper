@@ -24,6 +24,26 @@ final class AppModel {
     /// `body` returns, exactly as it does for a direct mutation.
     func mutateSpaces(_ body: (inout [Space]) -> Void) { body(&spaces) }
 
+    // Reached from AppModel+Control.swift.
+    /// Expand the Space at `si` so the sidebar draws its workspace rows again, and
+    /// report whether it had to. `spacesWithVisibleWorkspaces()` hides the rows of a
+    /// collapsed Space, so every path that has to put a row in front of the user goes
+    /// through here. Mutating only when the Space is actually collapsed keeps an
+    /// already-expanded one from running a redundant no-op animation.
+    ///
+    /// - Parameter animated: pass `false` from `init`, which runs before any view
+    ///   exists and so has nothing to animate.
+    @discardableResult
+    func revealSpace(at si: Int, animated: Bool = true) -> Bool {
+        guard spaces[si].isCollapsed else { return false }
+        if animated {
+            withAnimation(.snappy) { mutateSpaces { $0[si].isCollapsed = false } }
+        } else {
+            mutateSpaces { $0[si].isCollapsed = false }
+        }
+        return true
+    }
+
     /// The parent directory the user last created a Space in, restored from the
     /// session so the creation panel reopens there; nil until a first Space is
     /// created that way.
@@ -555,8 +575,7 @@ final class AppModel {
            let ws = spaces[si].workspaces.first(where: { $0.id == selected }) {
             self.focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
             // The restored selection must be visible: expand its owning Space.
-            // `init` runs before the view exists, so mutate directly (no animation).
-            spaces[si].isCollapsed = false
+            revealSpace(at: si, animated: false)
         }
         // Reserve restored port blocks so a later allocate() never collides. A base
         // the allocator refuses — out of its range, misaligned, or already held by
@@ -582,10 +601,10 @@ final class AppModel {
         // `selectWorkspace`, so warm its named commands here — otherwise the launch
         // selection would reach the first `body` with a cold cache.
         if let selected { refreshNamedCommands(for: selected) }
-        // `spaces.didSet` has already fired for the write above that follows the
-        // initializing assignment (the `isCollapsed` expansion), but a session with no
-        // Space at all reaches here having never fired it, so seed the flags explicitly
-        // now that all three raw inputs are assigned.
+        // `spaces.didSet` may never have fired: the only write following the initializing
+        // assignment is the `isCollapsed` expansion above, and a session with no Space at
+        // all — or one whose selected Space is already expanded — skips it. So seed the
+        // flags explicitly now that all three raw inputs are assigned.
         refreshMenuFlags()
     }
 
@@ -931,6 +950,10 @@ final class AppModel {
             pendingInitialInput[terminalID] = command
         }
         spaces[si].workspaces.append(ws)
+        // A new workspace must be visible, whichever path added it: reveal the owning
+        // Space here rather than leaning on `selectWorkspace` below, which the silent
+        // (control-channel) path never calls — so the selection cannot be what reveals it.
+        revealSpace(at: si)
         // Only steal focus for UI-initiated creation. A workspace created from the
         // CLI (control channel) is added silently, without changing the user's
         // current selection.
@@ -993,12 +1016,9 @@ final class AppModel {
         reconfigureWorktreeWatcher()
         guard let id, let ws = workspace(id: id) else { return }
         if changed { refreshNamedCommands(for: id) }
-        // A selected workspace must be visible: expand its owning Space if it was
-        // collapsed. Only mutate when actually collapsed, so an already-expanded
-        // Space doesn't run a redundant no-op animation.
-        if let si = spaces.firstIndex(where: { $0.workspaces.contains { $0.id == id } }),
-           spaces[si].isCollapsed {
-            withAnimation(.snappy) { spaces[si].isCollapsed = false }
+        // A selected workspace must be visible: reveal its owning Space.
+        if let si = spaces.firstIndex(where: { $0.workspaces.contains { $0.id == id } }) {
+            revealSpace(at: si)
         }
         focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
         focusActiveSurfaceView()
