@@ -410,6 +410,28 @@ final class ControlHandlerTests: XCTestCase {
         }
     }
 
+    /// A workspace created through the control channel never takes the selection, so the
+    /// selection cannot be what reveals it: creating one into a collapsed Space has to
+    /// expand that Space, and still leave the user's selection where it was.
+    func testCreateWorkspaceExpandsACollapsedSpaceWithoutTakingTheSelection() async throws {
+        let (model, primaryID, _) = try seededGitModel()
+        model.toggleSpaceCollapsed(id: model.spaces[0].id)
+        XCTAssertTrue(model.spaces[0].isCollapsed)
+
+        switch await model.controlCreateWorkspace(inSpaceOf: primaryID, branch: "feature-reveal", base: nil) {
+        case .success(let info):
+            let createdID = try XCTUnwrap(UUID(uuidString: info.id))
+            XCTAssertFalse(model.spaces[0].isCollapsed)
+            // `spacesWithVisibleWorkspaces()` is the single function the sidebar derives its
+            // rows from, so it — not the `isCollapsed` flag behind it — is what "visible" means.
+            let visibleIDs = model.spacesWithVisibleWorkspaces().flatMap { $0.workspaces.map(\.id) }
+            XCTAssertTrue(visibleIDs.contains(createdID), "the new workspace must be a visible sidebar row")
+            XCTAssertEqual(model.selectedWorkspaceID, primaryID)
+        case .failure(let error):
+            XCTFail("expected success, got \(error.message)")
+        }
+    }
+
     func testCreateWorkspaceHonorsCommand() async throws {
         let (model, primaryID, _) = try seededGitModel()
         switch await model.controlCreateWorkspace(

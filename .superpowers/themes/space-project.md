@@ -111,6 +111,12 @@ Each Space is a **collapsible group header** (repo name + chevron), **no state
 aggregation** — agent state stays on the workspace rows; the primary is listed
 first.
 
+A collapsed Space hides its workspace rows, so whenever a row has to be
+revealed the owning Space expands: the selection restored at launch, a
+selection, an agent notification, and a newly created workspace (whichever path
+created it). Publishing info (`casper info set`) deliberately does not expand
+anything — it is a passive act with no claim on the user's attention.
+
 ### Workspace diff summary — dropped
 
 *Design retained for the record; not a work item (see the note at the top).* The

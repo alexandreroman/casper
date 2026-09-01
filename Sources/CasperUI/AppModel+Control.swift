@@ -173,12 +173,6 @@ extension AppModel {
         // workspace you are NOT looking at. If the target is already focused
         // (selected AND the window is key), raising either is noise, so skip both.
         let focused = (workspaceID == selectedWorkspaceID) && isWindowKey()
-        // Whether the ONE persisted thing this can change — a Space expanding — actually
-        // changed. The bubble write just below is transient (`Workspace.encode(to:)`
-        // omits `pendingNotification*`), and this runs on every detected `blocked`/`done`
-        // edge and every `casper notify`, so it must not encode the whole session and
-        // queue a disk write for state the store does not hold.
-        var expandedSpace = false
         if !focused {
             updateWorkspace(at: at) {
                 $0.pendingNotification = true
@@ -192,14 +186,15 @@ extension AppModel {
             refreshDockAttention()
         }
         // A notification means "look at this workspace". If its owning Space is
-        // collapsed, the workspace row (and any attention bubble) is hidden, so expand
-        // the Space to surface it — regardless of focus, since the user may have
-        // collapsed a Space that still contains the selection. Guard on isCollapsed to
-        // avoid a redundant no-op animation.
-        if spaces[at.space].isCollapsed {
-            withAnimation(.snappy) { mutateSpaces { $0[at.space].isCollapsed = false } }
-            expandedSpace = true
-        }
+        // collapsed, the workspace row (and any attention bubble) is hidden, so reveal
+        // the Space — regardless of focus, since the user may have collapsed a Space
+        // that still contains the selection. That expansion is also the ONE persisted
+        // thing this can change, which is why its answer is kept: the bubble write above
+        // is transient (`Workspace.encode(to:)` omits `pendingNotification*`), and this
+        // runs on every detected `blocked`/`done` edge and every `casper notify`, so it
+        // must not encode the whole session and queue a disk write for state the store
+        // does not hold.
+        let expandedSpace = revealSpace(at: at.space)
         if let message, !focused, !isWithinNotificationCooldown(workspaceID) {
             // The interruption level follows the workspace's current agent state: the
             // detection path sets it just before calling here, and the explicit CLI
