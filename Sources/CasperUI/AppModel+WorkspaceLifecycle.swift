@@ -94,15 +94,31 @@ extension AppModel {
 
     /// The control channel's delete verb. Keeps a completion-based shape because
     /// `ControlServer` replies from a synchronous `handle`; the work itself is the
-    /// shared async core. Deliberately silent — no progress sheet, no teardown-hook
-    /// notification: this path is driven remotely and already reports back as JSON.
+    /// shared async core.
+    ///
+    /// Reports exactly like the GUI delete, JSON reply notwithstanding: the reply only
+    /// reaches the CLI caller, while the person watching the app would otherwise see the
+    /// workspace linger for the whole teardown-hook timeout and then vanish with no
+    /// explanation — hence the sheet. And the hook's outcome is not part of the reply at
+    /// all, so without the notification a broken teardown would only ever reach the log.
     func controlDeleteWorkspace(
         id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void
     ) {
         Task { @MainActor in
-            completion(await self.deleteLinkedWorkspace(id: workspaceID, reportsProgress: false) {
-                await self.pruneWorkspaceFromDisk(id: workspaceID)   // precise error, no teardown
-            })
+            // Read up front: by the time the hook's status comes back the workspace is
+            // gone from the model. A workspace that never existed cannot reach the
+            // closure at all — `deleteLinkedWorkspace` routes that to `nonLinkedFallback`.
+            let name = self.workspace(id: workspaceID)?.name ?? ""
+            let result = await self.deleteLinkedWorkspace(
+                id: workspaceID,
+                onTeardownHook: { status in
+                    self.reportTeardownHookFailure(
+                        status, workspace: name, id: workspaceID, verb: "deleted")
+                },
+                nonLinkedFallback: {
+                    await self.pruneWorkspaceFromDisk(id: workspaceID)   // precise error, no teardown
+                })
+            completion(result)
         }
     }
 
@@ -111,14 +127,11 @@ extension AppModel {
     /// caller supplies its own `nonLinkedFallback` and keeps its exact error and
     /// return behavior.
     ///
-    /// `reportsProgress` is what keeps the control channel silent while the GUI gets its
-    /// modal sheet. `onTeardownHook` receives the hook's outcome — always, including
-    /// `.none` and `.succeeded` — so the caller decides whether it is worth reporting;
-    /// it never affects the returned result, because a broken teardown must not block
-    /// the delete.
+    /// `onTeardownHook` receives the hook's outcome — always, including `.none` and
+    /// `.succeeded` — so the caller decides whether it is worth reporting; it never
+    /// affects the returned result, because a broken teardown must not block the delete.
     private func deleteLinkedWorkspace(
         id workspaceID: UUID,
-        reportsProgress: Bool,
         onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in },
         nonLinkedFallback: () async -> Result<Void, WorkspaceDeleteError>
     ) async -> Result<Void, WorkspaceDeleteError> {
@@ -134,21 +147,19 @@ extension AppModel {
         // Resolved once, up front: it decides the step count AND is what `runTeardown`
         // runs, so the config file is never read twice.
         let teardown = teardownCommand(for: ws)
-        let progress = reportsProgress
-            ? makeCloseProgressReporter(
-                id: workspaceID, title: "Deleting \u{201c}\(ws.name)\u{201d}",
-                stepCount: teardown == nil ? 1 : 2)
-            : nil
-        progress?.start()
-        defer { progress?.finish() }
+        let progress = makeCloseProgressReporter(
+            id: workspaceID, title: "Deleting \u{201c}\(ws.name)\u{201d}",
+            stepCount: teardown == nil ? 1 : 2)
+        progress.start()
+        defer { progress.finish() }
 
         if teardown != nil {
-            progress?.step(
+            progress.step(
                 "Running teardown hook\u{2026}",
                 deadline: Date().addingTimeInterval(ScriptHookRunner.teardownTimeout))
         }
         onTeardownHook(await runTeardown(id: workspaceID, command: teardown))
-        progress?.step("Removing the worktree\u{2026}")
+        progress.step("Removing the worktree\u{2026}")
         return await pruneWorkspaceFromDisk(id: workspaceID)
     }
 
@@ -267,9 +278,7 @@ extension AppModel {
         id workspaceID: UUID,
         onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in }
     ) async -> Result<Void, WorkspaceDeleteError> {
-        await deleteLinkedWorkspace(
-            id: workspaceID, reportsProgress: true, onTeardownHook: onTeardownHook
-        ) {
+        await deleteLinkedWorkspace(id: workspaceID, onTeardownHook: onTeardownHook) {
             .failure(WorkspaceDeleteError(message: "workspace not found"))
         }
     }

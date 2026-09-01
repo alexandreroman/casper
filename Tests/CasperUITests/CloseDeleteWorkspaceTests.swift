@@ -92,6 +92,16 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         return (makeModel(spaces: [space], selecting: ws.id), ws.id, repoPath)
     }
 
+    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
+    /// `ControlServer` even though the work behind it is async.
+    private func deleteViaControl(
+        _ model: AppModel, id: UUID
+    ) async -> Result<Void, AppModel.WorkspaceDeleteError> {
+        await withCheckedContinuation { continuation in
+            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
+        }
+    }
+
     func testCloseWorkspaceMergesThenDeletesFromDisk() async throws {
         let (model, primaryID, repoPath) = try seededGitModel()
         guard case .success(let created) = await model.createLinkedWorkspace(
@@ -344,6 +354,32 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertTrue(steps.allSatisfy { $0.deadline == nil })
     }
 
+    /// The control channel reports its progress exactly like the sidebar action does: the
+    /// JSON reply only ever reaches the CLI caller, so the sheet is all the person
+    /// watching the app gets.
+    func testControlDeleteWorkspaceReportsOneStepWhenThereIsNoTeardownHook() async throws {
+        let (model, primaryID, _) = try seededGitModel()
+        guard case .success(let created) = await model.createLinkedWorkspace(
+            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
+            name: "feature", base: nil)
+        else { return XCTFail("setup failed") }
+        XCTAssertNil(model.teardownCommand(for: created), "the fixture repo has no .casper.json")
+
+        var steps: [WorkspaceCloseProgress] = []
+        model.onCloseProgressForTest = { steps.append($0) }
+
+        guard case .success = await deleteViaControl(model, id: created.id) else {
+            return XCTFail("expected delete to succeed")
+        }
+
+        XCTAssertEqual(steps.map(\.label), ["Removing the worktree\u{2026}"])
+        XCTAssertEqual(steps.map(\.stepIndex), [1])
+        XCTAssertEqual(steps.map(\.stepCount), [1])
+        XCTAssertEqual(steps.first?.id, created.id)
+        XCTAssertEqual(steps.first?.title, "Deleting \u{201c}\(created.name)\u{201d}")
+        XCTAssertTrue(steps.allSatisfy { $0.deadline == nil })
+    }
+
     func testCloseWorkspaceReportsFiveStepsWithATeardownHook() async throws {
         let (model, primaryID, repoPath) = try seededGitModel()
         let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
@@ -503,8 +539,8 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
 
     /// The presenters (`presentCloseWorkspaceConfirmation` /
     /// `presentDeleteWorkspaceConfirmation`) cannot run headlessly — they open an
-    /// `NSAlert` with `runModal()` — so these two tests drive the same close/delete call
-    /// with the same `onTeardownHook` closure the presenters install, which is what
+    /// `NSAlert` with `runModal()` — so the two tests below drive the same close/delete
+    /// call with the same `onTeardownHook` closure the presenters install, which is what
     /// actually turns a hook status into a notification.
     func testFailingTeardownHookStillClosesAndNotifiesOnce() async throws {
         let (model, primaryID, repoPath) = try seededGitModel()
@@ -566,5 +602,36 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
 
         XCTAssertNil(model.workspace(id: created.id))
         XCTAssertEqual(notifications, 0, "a hook that exited cleanly has nothing to report")
+    }
+
+    /// The control channel installs that closure itself, so unlike the two tests above
+    /// this one exercises the real call path rather than standing in for a presenter.
+    func testFailingTeardownHookOnControlDeleteStillDeletesAndNotifiesOnce() async throws {
+        let (model, primaryID, repoPath) = try seededGitModel()
+        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
+        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 2"))
+        guard case .success(let created) = await model.createLinkedWorkspace(
+            spaceID: spaceID, name: "feature", base: nil)
+        else { return XCTFail("setup failed") }
+
+        var notifications: [(title: String, body: String, id: UUID, level: UNNotificationInterruptionLevel)] = []
+        model.deliverNotification = { notifications.append((title: $0, body: $1, id: $2, level: $3)) }
+
+        let surfacesBefore = Set(LayoutTree.surfaceIDs(created.layout))
+        let delete = Task { @MainActor in await self.deleteViaControl(model, id: created.id) }
+        await completeTeardownSplit(
+            in: model, workspace: created.id, surfacesBefore: surfacesBefore, exitCode: 2)
+        guard case .success = await delete.value else { return XCTFail("expected delete to succeed") }
+
+        XCTAssertNil(model.workspace(id: created.id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: created.worktreePath))
+
+        XCTAssertEqual(notifications.count, 1)
+        let notification = try XCTUnwrap(notifications.first)
+        XCTAssertEqual(notification.title, "Teardown hook failed")
+        XCTAssertTrue(notification.body.contains(created.name), notification.body)
+        XCTAssertTrue(notification.body.contains("exit 2"), notification.body)
+        XCTAssertEqual(notification.id, created.id, "the workspace id routes a tap back")
+        XCTAssertEqual(notification.level, .active, "a passive notification would never be seen")
     }
 }
