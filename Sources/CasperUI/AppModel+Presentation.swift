@@ -137,9 +137,10 @@ extension AppModel {
     /// Casper failed to create the teardown split — an internal failure, not the user's
     /// script failing — so there is nothing actionable to report.
     ///
-    /// Internal rather than private only so tests can exercise it: its two callers are
-    /// the confirmation presenters above, which run an `NSAlert` modally and therefore
-    /// cannot be driven headlessly.
+    /// Internal rather than private only so tests can call it directly: two of its three
+    /// callers are the confirmation presenters above, which run an `NSAlert` modally and
+    /// therefore cannot be driven headlessly. The third, `controlDeleteWorkspace`, opens
+    /// no alert, so that one is covered through the call path itself.
     func reportTeardownHookFailure(
         _ status: TeardownHookStatus, workspace name: String, id workspaceID: UUID, verb: String
     ) {
