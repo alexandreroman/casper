@@ -595,4 +595,11 @@ final class ControlCommandTests: XCTestCase {
         let command = try run.makeCommand()
         XCTAssertEqual(command.name, "test")
     }
+
+    func testRunRejectsEmptyName() throws {
+        // Rejected CLI-side, so the caller reads "missing command name" instead of
+        // the app's "unknown command".
+        let run = try RunCommand.parse(["", "--workspace", "feature"])
+        XCTAssertThrowsError(try run.makeCommand())
+    }
 }
