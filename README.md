@@ -495,8 +495,9 @@ treats its workspaces. Every key lives under `workspace`:
 
 - `copyFiles` — patterns for untracked files seeded from the source worktree
   into a new workspace. It replaces the built-in `.env`/`.env.local` default;
-  `[]` copies nothing. An invalid entry fails workspace creation before any Git
-  mutation.
+  `[]` copies nothing. A malformed `.casper.json` fails workspace creation
+  before any Git mutation; a pattern that matches nothing is not an error, and a
+  copy that fails once the worktree exists rolls it back.
 - `scripts` — shell commands bound to a workspace, each run in a visible
   terminal split. Two reserved keys are lifecycle hooks, run automatically and
   never invocable by hand:
