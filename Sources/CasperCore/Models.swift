@@ -81,7 +81,7 @@ extension LayoutNode: Codable {
     private enum CodingKeys: String, CodingKey { case split, leaf, tabGroup }
     private enum SplitKeys: String, CodingKey { case orientation, children, ratios }
     private enum LeafKeys: String, CodingKey { case _0 }
-    private enum TabGroupKeys: String, CodingKey { case surfaces, activeIndex }
+    private enum TabGroupKeys: String, CodingKey { case surfaces }
 
     /// Decodes the current `split`/`leaf` shapes, and migrates the legacy
     /// `tabGroup` shape (from older `session.json`) by folding each surface into
