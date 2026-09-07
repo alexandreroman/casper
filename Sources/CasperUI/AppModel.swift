@@ -2289,8 +2289,7 @@ final class AppModel {
         // Hook splits are plain terminal splits stacked below the anchor; the hook
         // policy stays in the runner, which owns the surface's identity.
         insertSurface: { [weak self] workspaceID, surface, command in
-            self?.insertTerminal(surface, in: workspaceID, command: command, orientation: .vertical)
-                ?? false
+            self?.insertTerminal(surface, in: workspaceID, command: command) ?? false
         },
         worktreePath: { [weak self] id in self?.workspace(id: id)?.worktreePath },
         reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) })
