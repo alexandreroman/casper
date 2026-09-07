@@ -127,8 +127,8 @@ final class ModelsTests: XCTestCase {
         let s2 = UUID()
         let json = """
         { "tabGroup": { "surfaces": [
-            { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } },
-            { "id": "\(s2.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } }
+            { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w" } } },
+            { "id": "\(s2.uuidString)", "kind": { "terminal": { "cwd": "/w" } } }
         ], "activeIndex": 0 } }
         """
         let node = try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8))
@@ -147,7 +147,7 @@ final class ModelsTests: XCTestCase {
         let sid = UUID()
         let json = """
         { "tabGroup": { "surfaces": [
-            { "id": "\(sid.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } }
+            { "id": "\(sid.uuidString)", "kind": { "terminal": { "cwd": "/w" } } }
         ], "activeIndex": 0 } }
         """
         let node = try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8))
@@ -163,8 +163,8 @@ final class ModelsTests: XCTestCase {
         let s2 = UUID()
         let json = """
         { "split": { "orientation": "horizontal", "children": [
-            { "leaf": { "_0": { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } } } },
-            { "leaf": { "_0": { "id": "\(s2.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } } } }
+            { "leaf": { "_0": { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w" } } } } },
+            { "leaf": { "_0": { "id": "\(s2.uuidString)", "kind": { "terminal": { "cwd": "/w" } } } } }
         ], "ratios": [1.0] } }
         """
         XCTAssertThrowsError(try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8)))
@@ -175,7 +175,7 @@ final class ModelsTests: XCTestCase {
         let s1 = UUID()
         let json = """
         { "split": { "orientation": "horizontal", "children": [
-            { "leaf": { "_0": { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } } } }
+            { "leaf": { "_0": { "id": "\(s1.uuidString)", "kind": { "terminal": { "cwd": "/w" } } } } }
         ], "ratios": [1.0] } }
         """
         XCTAssertThrowsError(try JSONDecoder().decode(LayoutNode.self, from: Data(json.utf8)))
@@ -205,7 +205,7 @@ final class ModelsTests: XCTestCase {
         // default), matching today's unpersisted behavior.
         let sid = UUID()
         let json = """
-        { "id": "\(sid.uuidString)", "kind": { "terminal": { "cwd": "/w", "command": null } } }
+        { "id": "\(sid.uuidString)", "kind": { "terminal": { "cwd": "/w" } } }
         """
         let decoded = try JSONDecoder().decode(Surface.self, from: Data(json.utf8))
         XCTAssertNil(decoded.fontSize)
@@ -394,7 +394,7 @@ final class ModelsTests: XCTestCase {
           "todos": [ { "content": "x", "status": "in_progress" } ],
           "pendingNotification": true, "portBase": 40000,
           "layout": { "leaf": { "_0": { "id": "\(UUID().uuidString)",
-            "kind": { "terminal": { "cwd": "/r", "command": null } } } } },
+            "kind": { "terminal": { "cwd": "/r" } } } } },
           "kind": "primary", "infoMarkdown": "## Stale", "infoUnread": true }
         """
         let decoded = try JSONDecoder().decode(Workspace.self, from: Data(json.utf8))
