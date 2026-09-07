@@ -21,10 +21,6 @@ import CasperCore
 /// absolute width.
 @MainActor
 final class WorkspaceToolbarActionsTests: XCTestCase {
-    /// A branch name long enough that the title group cannot fit beside a full row
-    /// of chips at the widths tested below.
-    private static let branch = "feature/replay-to-repair"
-
     /// Each tier must be strictly narrower than the one above it. A body that
     /// merely reorders the chips, or forgets to pin `.iconOnly` at `.mergeGlyph` (the
     /// toolbar environment's default is not to be trusted — see the
@@ -114,8 +110,8 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// happens under a stationary pointer, and a chip that resizes there reads as a
     /// different control appearing rather than the same one relabelled.
     func testMergeAndDeleteChipsMeasureTheSame() {
-        let (model, workspace) = makeModelAndWorkspace()
-        let merge = width(mergeRow(model: model, workspace: workspace))
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
+        let merge = layoutWidth(of: mergeRow(model: model, workspace: workspace))
         model.optionKeyHeld = true
         let delete = width(mergeRow(model: model, workspace: workspace))
 
@@ -306,26 +302,18 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeActions() -> WorkspaceToolbarActions {
-        let (model, workspace) = makeModelAndWorkspace()
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
         return WorkspaceToolbarActions(model: model, workspace: workspace, density: .full)
     }
 
-    /// Hosts the production row at `rowWidth` and reports what it measured, plus
-    /// the width the badge slot took (0 when the badge was dropped whole).
+    /// The shared row layout under this suite's defaults — a diff summary present
+    /// unless a test says otherwise, since the badge is one of the elements whose
+    /// order of sacrifice is measured here.
     private func layoutRow(
         width rowWidth: CGFloat, diff: (insertions: Int, deletions: Int)? = (12, 3),
         inspector: InspectorState = InspectorState()
-    ) -> (reported: CGFloat, badge: CGFloat, ladder: CGFloat) {
-        let (model, workspace) = makeModelAndWorkspace(inspector: inspector)
-        var badge: CGFloat = -1
-        var ladder: CGFloat = -1
-        let row = WorkspaceTitleBarRow(
-            model: model, workspace: workspace, diff: diff, width: rowWidth,
-            onBadgeWidth: { badge = $0 }, onChipsWidth: { ladder = $0 })
-        let host = NSHostingView(rootView: row)
-        host.frame = NSRect(x: 0, y: 0, width: rowWidth, height: TitleCapsuleMetrics.height)
-        host.layoutSubtreeIfNeeded()
-        return (host.fittingSize.width, badge, ladder)
+    ) -> TitleBarRowLayout {
+        hostTitleBarRow(width: rowWidth, diff: diff, inspector: inspector)
     }
 
     /// The chips' own full-width tier, for the ordering assertion below.
@@ -333,9 +321,9 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
 
     /// The title group's ideal width, measured from the same label the row renders.
     private var titleIdealWidth: CGFloat {
-        width(
-            WorkspaceTitleLabel(
-                isGitRepo: true, spaceName: "casper", branchLabel: Self.branch,
+        layoutWidth(
+            of: WorkspaceTitleLabel(
+                isGitRepo: true, spaceName: "casper", branchLabel: Self.titleBarBranch,
                 form: .spaceAndBranch)
                 .padding(.leading, 10)
                 .padding(.trailing, 6)
@@ -346,7 +334,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// The width the chips laid out to inside a row of `rowWidth`, which is what
     /// says which tier they settled on.
     private func chipsWidth(inRowOf rowWidth: CGFloat) -> CGFloat {
-        let (model, workspace) = makeModelAndWorkspace()
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
         var chips = CGRect.zero
         let row = HStack(spacing: 0) {
             Color.clear.frame(width: titleIdealWidth).layoutPriority(2)

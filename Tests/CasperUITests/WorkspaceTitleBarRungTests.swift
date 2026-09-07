@@ -21,10 +21,6 @@ import CasperCore
 /// next, and the reported rung against the badge the same layout drew.
 @MainActor
 final class WorkspaceTitleBarRungTests: XCTestCase {
-    /// A branch name long enough that the title group cannot fit beside a full row of
-    /// chips at the widths swept below.
-    private static let branch = "feature/replay-to-repair"
-
     /// Wide enough for every rung to fit, so the ladder must select its first.
     private static let roomyWidth: CGFloat = 2000
 
@@ -204,51 +200,21 @@ final class WorkspaceTitleBarRungTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// A row over a linked workspace that records a base branch (so the Merge chip
-    /// shows) and carries two named commands (so the Run Script chip shows) — the same
-    /// fixture `WorkspaceToolbarActionsTests` measures the ladder with.
-    private func makeModelAndWorkspace() -> (AppModel, Workspace) {
-        let workspace = Workspace(
-            name: "feature", worktreePath: "/wt", branch: Self.branch,
-            portBase: 40000, layout: .leaf(Surface.terminal(cwd: "/wt")),
-            kind: .linked, baseBranch: "main")
-        let space = Space(
-            name: "casper", folderPath: "/repo", isGitRepo: true, workspaces: [workspace])
-        let model = makeModel(spaces: [space], selecting: workspace.id)
-        model.namedCommandsCache[workspace.id] = [
-            RepoNamedCommand(name: "build", command: "make build"),
-            RepoNamedCommand(name: "test", command: "make test"),
-        ]
-        return (model, workspace)
-    }
-
     /// The production row at `width`, reporting its rungs to `report`.
     private func row(
         width: CGFloat, diff: (insertions: Int, deletions: Int)? = (12, 3),
         report: ((TitleBarRung) -> Void)?
     ) -> some View {
-        let (model, workspace) = makeModelAndWorkspace()
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
         return WorkspaceTitleBarRow(
             model: model, workspace: workspace, diff: diff, width: width)
             .reportingRung(report)
     }
 
-    /// Hosts the row at `width` and reports every rung it named plus the width the badge
-    /// slot took (0 when the rung dropped the badge).
-    private func layout(
-        width: CGFloat, observed: Bool = true
-    ) -> (rungs: [TitleBarRung], badge: CGFloat) {
-        let (model, workspace) = makeModelAndWorkspace()
-        var rungs: [TitleBarRung] = []
-        var badge: CGFloat = -1
-        let row = WorkspaceTitleBarRow(
-            model: model, workspace: workspace, diff: (12, 3), width: width,
-            onBadgeWidth: { badge = $0 })
-            .reportingRung(observed ? { rungs.append($0) } : nil)
-        let host = NSHostingView(rootView: row)
-        host.frame = NSRect(x: 0, y: 0, width: width, height: TitleCapsuleMetrics.height)
-        host.layoutSubtreeIfNeeded()
-        return (rungs, badge)
+    /// The shared row layout at `width`, with the rung reporter armed unless a test
+    /// asks for the row as an unarmed session lays it out.
+    private func layout(width: CGFloat, observed: Bool = true) -> TitleBarRowLayout {
+        hostTitleBarRow(width: width, reportingRung: observed)
     }
 
     /// The widest width at which the row drops the diff badge, to the point.
