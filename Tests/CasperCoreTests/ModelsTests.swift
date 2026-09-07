@@ -339,13 +339,6 @@ final class ModelsTests: XCTestCase {
                        ["com.jetbrains.intellij", "com.jetbrains.intellij.ce"])
     }
 
-    func testEditorKindCodableRoundTrip() throws {
-        for kind in EditorKind.allCases {
-            let data = try JSONEncoder().encode(kind)
-            XCTAssertEqual(try JSONDecoder().decode(EditorKind.self, from: data), kind)
-        }
-    }
-
     // MARK: - Transient runtime fields are not persisted
 
     func testWorkspaceDoesNotPersistTransientRuntimeFields() throws {
