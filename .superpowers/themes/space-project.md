@@ -63,11 +63,16 @@ Casper's own words. A Space can still be rooted at a repository whose HEAD is
 unborn: one adopted before its first commit, or one whose initial commit was
 skipped because the machine configures no committer identity (Casper never
 invents one). `Repository.headBranchName()` reads the branch from HEAD's
-symbolic target when there is no commit to resolve, so the primary workspace is
-named after the real branch (`main`, or whatever `init.defaultBranch` says)
-instead of falling back to the folder name. Creation refuses any path that is
-already taken — Casper never deletes or overwrites what it did not create; see
-`app-ui.md` § Design → "Ways into a Space" for the panel and the refusal rules.
+symbolic target when there is no commit to resolve, so the primary workspace's
+row still shows the real branch (`main`, or whatever `init.defaultBranch` says)
+instead of falling back to a name. A row renders `Workspace.branchLabel`, which
+is the branch when there is one and the workspace's `name` only when there is
+not — and a primary workspace's `name` is the Space's own name, never its
+branch. Creation refuses any path that is already taken — Casper never deletes
+or overwrites what it did not create — the one exception being a directory
+holding nothing but a `.DS_Store`, which is exactly what the save panel's own
+**New Folder** button hands over; see `app-ui.md` § Design → "Ways into a Space"
+for the panel and the refusal rules.
 
 ### Space identity — one Space per repository
 
@@ -85,10 +90,17 @@ a repository is never represented twice:
   workspace named after its branch, with the primary's branch as its
   `baseBranch` — and it is the one selected, being what the user chose. The
   main working tree is resolved through `CasperGit`'s `mainWorkingTree()`.
+  Should that main working tree already be tracked by an open Space — which
+  happens when the Space's runtime-only `isGitRepo` flag was never resolved —
+  the picked folder is **adopted** into it by the rule above, rather than
+  rooting a second Space at the same folder.
 - **Reunification.** Opening a repository whose worktrees are *already open as
   Spaces* folds them into the Space it creates, moving those workspaces whole —
   ids, ports, layouts and live terminals unchanged — with each ex-primary
-  becoming a linked workspace named after its branch.
+  becoming a linked workspace named after its branch. The one exception is a
+  workspace rooted at the absorbing Space's own working tree: it is **retired**
+  rather than moved, since it would otherwise become a linked workspace whose
+  deletion takes the repository itself with it.
 
 Two layouts are **refused outright**, with an alert and nothing added: a
 worktree of a **bare** repository, which has no main working tree and never
@@ -111,7 +123,10 @@ Re-adding a folder Casper already tracks only selects it.
 
 Each Space is a **collapsible group header** (repo name + chevron), **no state
 aggregation** — agent state stays on the workspace rows; the primary is listed
-first.
+first, then the linked workspaces by name. The Spaces themselves are ordered
+alphabetically, `AppModel.spaces` being kept sorted so every reader inherits
+that order for free. An expanded Git Space's header carries a trailing **"+"**
+button that creates a linked workspace.
 
 A collapsed Space hides its workspace rows, so whenever a row has to be
 revealed the owning Space expands: the selection restored at launch, a
@@ -134,7 +149,11 @@ it is **not** a work item.
 
 Ports remain **per workspace** (`CASPER_PORT`, injected in `linked` workspaces
 only), not per Space. No `CASPER_PROJECT` env in v1. `SessionStore` serializes
-the full `Session → Space → Workspace` tree.
+the `Session → Space → Workspace` tree bar its runtime-only fields, which are
+re-derived on load rather than read back: `Space.isGitRepo` (re-probed from the
+folder) and a `Workspace`'s six transient ones (`agentState`, `todos`,
+`pendingNotification`, `pendingNotificationMessage`, `infoMarkdown`,
+`infoUnread`).
 
 ## Implementation
 
