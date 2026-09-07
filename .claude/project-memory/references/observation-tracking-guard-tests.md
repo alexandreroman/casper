@@ -18,7 +18,7 @@ value.
 `ControlHandlerTests.testMarkInfoSeenSkipsTheWriteWhenAlreadyRead` uses this to
 pin `AppModel.markInfoSeen`'s already-read guard: the first call writes `spaces`
 (through `updateWorkspace`'s subscript mutation, which fires `spaces`'s own
-willSet/didSet), the test then wraps `withObservationTracking` around a read of
+`didSet`), the test then wraps `withObservationTracking` around a read of
 `model.spaces` and asserts its `onChange` closure never runs on the second call.
 `onChange` is `@Sendable` even though the test only ever touches the model on
 the main actor it also runs on, so the captured flag needs `nonisolated(unsafe)`
