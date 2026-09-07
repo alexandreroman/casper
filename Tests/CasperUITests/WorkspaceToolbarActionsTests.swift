@@ -182,30 +182,45 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         for rowWidth in [900, 600, 460, 380, 300, 200, 120, 60] as [CGFloat] {
             for (label, diff) in [("badge", (12, 3) as (Int, Int)?), ("no badge", nil)] {
                 for (state, inspector) in [("shut", InspectorState()), ("open", openOnDiff)] {
-                    let reported = layoutRow(
-                        width: rowWidth, diff: diff.map { ($0.0, $0.1) }, inspector: inspector
-                    ).reported
+                    let context = "\(rowWidth) pt, \(label), inspector \(state)"
+                    let layout = layoutRow(
+                        width: rowWidth, diff: diff.map { ($0.0, $0.1) }, inspector: inspector)
+                    // The chips are drawn at every rung, so a row that reported nothing
+                    // here never laid out and the sum below would pass on a sentinel.
+                    XCTAssertGreaterThan(layout.ladder, 0, "the chips did not lay out: \(context)")
                     XCTAssertLessThanOrEqual(
-                        reported, rowWidth + 0.5, "\(rowWidth) pt, \(label), inspector \(state)")
+                        layout.badge + WorkspaceDetailView.chipGap + layout.ladder, rowWidth + 0.5,
+                        "the row's fixed content overflows the bar: \(context)")
                 }
             }
         }
     }
 
-    /// Opening the inspector must not change what the row reports. The regression:
+    /// Opening the inspector must not change what the row lays out. The regression:
     /// toggling the diff panel at a narrow window changed the row's CONTENT while
     /// `rowWidth` stood still, so nothing re-measured and the row went into the
     /// chevron for good.
-    func testTogglingTheInspectorDoesNotChangeTheReportedWidth() {
+    ///
+    /// The selector is the one element the inspector's state reaches, and it is
+    /// exempt from the ladder — it never collapses and never folds, so both of the
+    /// row's own channels must read identically in all three states. Comparing the
+    /// reported width instead would compare `rowWidth` with itself (see the note on
+    /// the test above).
+    func testTogglingTheInspectorDoesNotChangeWhatTheRowLaysOut() {
         for rowWidth in [600, 380, 300, 200] as [CGFloat] {
-            let shut = layoutRow(width: rowWidth, inspector: InspectorState()).reported
+            let shut = layoutRow(width: rowWidth, inspector: InspectorState())
             let onDiff = layoutRow(
-                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .diff)).reported
+                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .diff))
             let onBrowser = layoutRow(
-                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .browser)).reported
+                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .browser))
 
-            XCTAssertEqual(onDiff, shut, accuracy: 0.5, "diff panel, \(rowWidth) pt")
-            XCTAssertEqual(onBrowser, shut, accuracy: 0.5, "browser panel, \(rowWidth) pt")
+            XCTAssertGreaterThan(shut.ladder, 0, "the chips did not lay out at \(rowWidth) pt")
+            XCTAssertEqual(onDiff.ladder, shut.ladder, accuracy: 0.5, "diff chips, \(rowWidth) pt")
+            XCTAssertEqual(
+                onBrowser.ladder, shut.ladder, accuracy: 0.5, "browser chips, \(rowWidth) pt")
+            XCTAssertEqual(onDiff.badge, shut.badge, accuracy: 0.5, "diff badge, \(rowWidth) pt")
+            XCTAssertEqual(
+                onBrowser.badge, shut.badge, accuracy: 0.5, "browser badge, \(rowWidth) pt")
         }
     }
 
@@ -289,25 +304,6 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    /// A row over a linked workspace that records a base branch (so the Merge chip
-    /// shows) and carries two named commands (so the Run Script chip shows).
-    private func makeModelAndWorkspace(
-        inspector: InspectorState = InspectorState()
-    ) -> (AppModel, Workspace) {
-        let workspace = Workspace(
-            name: "feature", worktreePath: "/wt", branch: Self.branch,
-            portBase: 40000, layout: .leaf(Surface.terminal(cwd: "/wt")),
-            kind: .linked, baseBranch: "main", inspector: inspector)
-        let space = Space(
-            name: "casper", folderPath: "/repo", isGitRepo: true, workspaces: [workspace])
-        let model = makeModel(spaces: [space], selecting: workspace.id)
-        model.namedCommandsCache[workspace.id] = [
-            RepoNamedCommand(name: "build", command: "make build"),
-            RepoNamedCommand(name: "test", command: "make test"),
-        ]
-        return (model, workspace)
-    }
 
     private func makeActions() -> WorkspaceToolbarActions {
         let (model, workspace) = makeModelAndWorkspace()
