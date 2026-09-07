@@ -221,10 +221,18 @@ let ghosttyReturnKeyCode: UInt32 = 36
 
 /// Build a libghostty key event not backed by an NSEvent (e.g. debug-channel
 /// injection). `mods` defaults to none.
+///
+/// `unshiftedCodepoint` (the base key's codepoint) is what makes libghostty emit
+/// the character through its key path, so injection that must look like genuine
+/// keyboard typing (`send-keys`) passes it; it defaults to 0, meaning "none", for
+/// the synthesized keys that carry no character. The text a press commits is
+/// attached separately by `GhosttySurface.sendKey(_:text:)`, which owns the C
+/// buffer's lifetime.
 func ghosttyKeyEvent(
     keycode: UInt32,
     action: ghostty_input_action_e,
-    mods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
+    mods: ghostty_input_mods_e = ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue),
+    unshiftedCodepoint: UInt32 = 0
 ) -> ghostty_input_key_s {
     var key = ghostty_input_key_s()
     key.action = action
@@ -233,22 +241,6 @@ func ghosttyKeyEvent(
     key.keycode = keycode
     key.composing = false
     key.text = nil
-    key.unshifted_codepoint = 0
-    return key
-}
-
-/// Build a libghostty key event for a known physical key, for debug-channel
-/// injection that must look like genuine keyboard typing (`send-keys`). It carries
-/// `unshifted_codepoint` (the base key's codepoint) so libghostty emits the
-/// character through its key path; the text a press commits is attached separately
-/// by `GhosttySurface.sendKey(_:text:)`, which owns the C buffer's lifetime.
-func ghosttyKeyEvent(
-    keycode: UInt32,
-    action: ghostty_input_action_e,
-    mods: ghostty_input_mods_e,
-    unshiftedCodepoint: UInt32
-) -> ghostty_input_key_s {
-    var key = ghosttyKeyEvent(keycode: keycode, action: action, mods: mods)
     key.unshifted_codepoint = unshiftedCodepoint
     return key
 }

@@ -413,8 +413,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     public func debugSendText(_ text: String, submit: Bool) {
         if !text.isEmpty { surface?.sendText(text) }
         guard submit, let surface else { return }
-        _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_PRESS))
-        _ = surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_RELEASE))
+        surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_PRESS))
+        surface.sendKey(ghosttyKeyEvent(keycode: ghosttyReturnKeyCode, action: GHOSTTY_ACTION_RELEASE))
     }
 
     // Inject `text` as genuine per-character key events (press + release) through
