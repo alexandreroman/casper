@@ -153,6 +153,36 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertNil(key.text)
         XCTAssertEqual(key.mods.rawValue, GHOSTTY_MODS_NONE.rawValue)
     }
+
+    #if DEBUG
+    /// The debug `send-keys` resolver is fed arbitrary CLI text, so an unsupported character must
+    /// come back as nil. Guards the fix where the base key was derived by rebuilding a `Character`
+    /// from `String.lowercased()`, which is a precondition failure — a crash, not a nil — as soon
+    /// as the fold is not exactly one grapheme cluster.
+    func testInjectedKeyRejectsUnsupportedCharacters() {
+        // "\u{0130}" (capital I with dot above) is the uppercase character whose lowercase fold is
+        // two scalars; the decomposed accent, the emoji and the flag are multi-scalar clusters to
+        // begin with.
+        let unsupported: [Character] = ["\u{0130}", "É", "e\u{0301}", "é", "€", "👍", "🇫🇷"]
+        for character in unsupported {
+            XCTAssertNil(ghosttyInjectedKey(for: character), "'\(character)' must not resolve to a key")
+        }
+    }
+
+    /// The supported set still resolves the same way, including the uppercase→lowercase-key-plus-
+    /// Shift folding: 'A' is the 'a' key (kVK_ANSI_A) plus Shift, carrying 'a' as its codepoint.
+    func testInjectedKeyResolvesSupportedCharacters() {
+        XCTAssertEqual(
+            ghosttyInjectedKey(for: "a"),
+            GhosttyInjectedKey(keycode: 0, unshiftedCodepoint: 0x61, needsShift: false))
+        XCTAssertEqual(
+            ghosttyInjectedKey(for: "A"),
+            GhosttyInjectedKey(keycode: 0, unshiftedCodepoint: 0x61, needsShift: true))
+        XCTAssertEqual(
+            ghosttyInjectedKey(for: " "),  // kVK_Space
+            GhosttyInjectedKey(keycode: 49, unshiftedCodepoint: 0x20, needsShift: false))
+    }
+    #endif
 }
 
 /// Build a synthetic Ctrl-C keyDown. A real Control press remaps `characters` to the control

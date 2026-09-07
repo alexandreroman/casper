@@ -295,12 +295,18 @@ private let unshiftedKeyCodes: [Character: UInt32] = qwertyLetterKeyCodes.mergin
 /// Resolve a `Character` to the physical key a real keyboard would press to type
 /// it, or nil when the character is outside the supported set (letters, digits,
 /// space). Uppercase letters map to the lowercase key plus Shift.
+///
+/// The base key is derived from the character's single Unicode scalar, folded with
+/// `asciiLowercased`, rather than from `String.lowercased()`: `character` comes from
+/// arbitrary CLI text (`casper debug send-keys <text>`), and rebuilding a `Character`
+/// out of a folded String is a precondition failure whenever the fold is not exactly
+/// one grapheme cluster. Every mapped key is a single ASCII scalar, so a character
+/// made of several scalars is unsupported and resolves to nil.
 func ghosttyInjectedKey(for character: Character) -> GhosttyInjectedKey? {
+    guard character.unicodeScalars.count == 1, let scalar = character.unicodeScalars.first else { return nil }
     let needsShift = character.isUppercase
-    let base: Character = needsShift ? Character(character.lowercased()) : character
-    guard let keycode = unshiftedKeyCodes[base] else { return nil }
-    // The base key is a single ASCII scalar for every mapped entry.
-    guard base.unicodeScalars.count == 1, let scalar = base.unicodeScalars.first else { return nil }
-    return GhosttyInjectedKey(keycode: keycode, unshiftedCodepoint: scalar.value, needsShift: needsShift)
+    let base = needsShift ? asciiLowercased(scalar) : scalar
+    guard let keycode = unshiftedKeyCodes[Character(base)] else { return nil }
+    return GhosttyInjectedKey(keycode: keycode, unshiftedCodepoint: base.value, needsShift: needsShift)
 }
 #endif
