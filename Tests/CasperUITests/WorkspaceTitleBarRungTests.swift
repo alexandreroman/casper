@@ -263,6 +263,17 @@ final class WorkspaceTitleBarRungTests: XCTestCase {
     /// probe: it is then the row's own, and a reporter that moved it by even a point
     /// shows up as a badge drawn on one side of the comparison and not the other.
     private func widestWidthWithoutTheBadge() -> CGFloat {
+        // Both ends of the range, before the search that assumes them. A bisection over
+        // a predicate that never flips returns an endpoint whatever the row does, so a
+        // badge that stopped rendering everywhere would hand both callers the cramped
+        // width and they would measure the wrong row without failing.
+        XCTAssertGreaterThan(
+            layout(width: Self.sweepWidth, observed: false).badge, 0.5,
+            "no badge at \(Self.sweepWidth) pt, so there is no boundary below it")
+        XCTAssertLessThan(
+            layout(width: Self.crampedWidth, observed: false).badge, 0.5,
+            "a badge at \(Self.crampedWidth) pt, so there is no boundary above it")
+
         var withBadge = Self.sweepWidth
         var without = Self.crampedWidth
         while withBadge - without > 1 {
