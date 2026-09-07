@@ -348,8 +348,9 @@ Given the shell-hosted reality:
   `done`). No process-exit hook needed.
 - **`error`** has no *terminal-scraping* producer for now; a crashed agent reads
   as `idle` from its at-rest shell. It is still produced outside detection, by a
-  `.casper.json` `setup` hook that exits non-zero (`ScriptHookRunner` →
-  `AppModel.reportSetupFailure` → `setDetectedAgentState(.error, …)`).
+  `.casper.json` `setup` hook that exits non-zero (`ScriptHookRunner` → its
+  injected `reportSetupFailure` closure →
+  `AppModel.setDetectedAgentState(.error, …)`).
   Acceptable until there's a real scraped signal for it.
 - **Authority release** for terminal-observable states is immediate: the CLI
   removes their latch — `idle` and `unknown` only, since `working` joined the
