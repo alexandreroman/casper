@@ -5,11 +5,9 @@ Workspace`; `repoPath` up on `Space.folderPath`; `Workspace.kind`/`baseBranch`);
 only **Space rename remains** (see `../status.md` and `app-ui.md`) · **Extends**
 `../architecture.md` (data model, sidebar, worktrees, persistence).
 
-> **The per-workspace `+/−` diff summary is dropped** (decision, 2026-07-06) —
-> it is no longer planned. The branch-vs-merge-base divergence badge on each
-> workspace row will not be built; the title-bar working-tree-vs-HEAD summary
-> already covers the practical need. The design text below is retained for the
-> record but is **not** a work item.
+> **The per-workspace `+/−` diff summary is dropped** — the decision and its
+> rationale are in § Workspace diff summary — dropped. The design text below is
+> retained for the record but is **not** a work item.
 
 Promotes the sidebar's implicit "group by repository" into a first-class
 **Space**. The Space grouping shipped with the CasperUI sidebar in UI-2
@@ -123,11 +121,14 @@ anything — it is a passive act with no claim on the user's attention.
 
 ### Workspace diff summary — dropped
 
-*Design retained for the record; not a work item (see the note at the top).* The
-original intent was a per-row **branch-vs-merge-base** divergence badge
-(`+<insertions>` green / `−<deletions>` red, line counts only, hidden when
-empty). It is superseded by the title-bar working-tree-vs-HEAD summary, which
-already ships.
+**Dropped by decision on 2026-07-06, and no longer planned.** The original
+intent was a per-row **branch-vs-merge-base** divergence badge (`+<insertions>`
+green / `−<deletions>` red, line counts only, hidden when empty). The title-bar
+working-tree-vs-HEAD summary, which already ships, covers the practical need
+instead — so the row badge will not be built, and the divergence stats it would
+have needed (a `diffStat` on `Workspace`, branch-vs-merge-base line counts in
+`CasperGit`) were never built either. The design is kept here for the record;
+it is **not** a work item.
 
 ## Unchanged from the base design
 
@@ -150,7 +151,4 @@ rules above and their two refusals are built (`AppModel+Spaces.swift`), as is
 creation from scratch (`AppModel.createSpace`, same file).
 
 Remaining for this theme: **Space rename** only. The per-workspace `+/−` diff
-summary is **dropped** (see the top note), so the divergence stats it needed —
-a `diffStat` on `Workspace`, branch-vs-merge-base line counts in `CasperGit` —
-were never built and are not planned. See [[space-diff-summary-dropped]] for the
-rationale.
+summary is **dropped** — see § Workspace diff summary — dropped.
