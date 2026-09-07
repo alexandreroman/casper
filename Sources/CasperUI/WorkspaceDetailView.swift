@@ -225,7 +225,6 @@ struct WorkspaceDetailView: View {
         // the inspector moves as well as when the detail area does — the panes' share
         // is what is left after the panel takes its slice.
         .onChange(of: terminalHostMetrics) { _, metrics in publish(metrics) }
-        .onAppear { publish(terminalHostMetrics) }
         .onDisappear {
             // Gated on "nothing is selected any more", not on this instance going
             // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
