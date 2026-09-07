@@ -132,12 +132,13 @@ non-selected workspaces.
    and repaints every carried file, not only those whose text moved. The
    ordering fix that ended the observed freeze is in and covered by a test, but
    has **not** been confirmed live on an actively-edited worktree, which is the
-   only setup that produced the freeze; the DEBUG-only
-   `MainThreadHangWatchdog` stays wired until it has. See
-   [[nstextstorage-attribute-run-order]].
+   only setup that produced the freeze; the main-thread hang watchdog filed in
+   [`architecture.md`](architecture.md) § Risks & mitigations stays wired until
+   it has. See [[nstextstorage-attribute-run-order]].
 4. **Standing limitations** — `WorktreeManager.remove` prunes a worktree without
    deleting its branch; its one production caller deletes the branch on the next
-   line, so this only bites a second caller. libgit2 is unpinned in brew and CI.
+   line, so this only bites a second caller. The unpinned libgit2 is filed as a
+   risk in [`architecture.md`](architecture.md) § Risks & mitigations.
 
 Two visual passes still need a human, since agents cannot screenshot the SwiftUI
 chrome: the `.casper.json` setup/teardown split lifecycle, and the info panel's
