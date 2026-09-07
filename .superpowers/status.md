@@ -2,11 +2,10 @@
 
 The progress ledger: what is built, what is left, and what was decided against.
 
-**The design and the as-built behaviour live elsewhere.**
-[`architecture.md`](architecture.md) carries the foundation and `themes/` owns
-one area each — how a thing works is described there, once, and when this file
-disagrees with a theme the theme wins. One-off technical findings live in
-`.claude/project-memory/`; the map is [`INDEX.md`](INDEX.md).
+**The design and the as-built behaviour live elsewhere.** The ownership rule —
+which doc wins, and where a thing's behaviour is described — is stated once in
+[`INDEX.md`](INDEX.md) § Ownership, which also maps every theme. One-off
+technical findings live in `.claude/project-memory/`.
 
 Status legend: ✅ built · ◐ partial · ❌ not started.
 
