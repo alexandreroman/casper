@@ -15,9 +15,11 @@ memory back?" without a profiler:
   alive. Both `track(_:)` and `snapshot()` compact the dead slots, so storage
   stays bounded by the live population whether or not anything ever samples:
   `track` re-compacts once the slots grow past twice the live count it last
-  measured, which is what stops an unsampled session from accumulating one slot
-  per object ever tracked. A label whose population has fallen to zero is still
-  reported — that zero is the signal.
+  measured plus a `compactionFloor` of 64 — the doubling makes the scan
+  amortized O(1), the floor keeps a small or empty population from compacting on
+  almost every append — which is what stops an unsampled session from
+  accumulating one slot per object ever tracked. A label whose population has
+  fallen to zero is still reported — that zero is the signal.
 - `CasperCore/ProcessMemory.sample()` reads `task_vm_info`'s `phys_footprint`
   (the number Activity Monitor shows), `resident_size` and
   `ledger_phys_footprint_peak`. A failed `task_info` returns `nil` — never a
