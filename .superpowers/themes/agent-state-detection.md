@@ -259,7 +259,11 @@ only place with policy, and the only state machine involved: the model's
 2. **Debounce transitions.** Require the `working` affordance to be **absent for
    N consecutive reads** before `working → idle`, so a gap between two tool
    calls does not flicker to idle. Never let a late or stale read revive `idle`
-   once a terminal state has been set.
+   once a terminal state has been set. N is **2** — the default of
+   `AgentStateResolver.resolve(signal:seen:debounce:)` — and it counts *ticks*,
+   not seconds: against the fixed 250 ms visible / 1 s hidden cadence (see
+   Wiring) that is ~0.5 s on screen and ~2 s behind a hidden window. All three
+   numbers are compiled-in constants; there is no tuning seam.
 3. **Priority (multi-signal / aggregation):** `AgentSignal` has four cases and
    ranks them `blocked` > `working` > `idle` > `absent`, so rolling several
    surfaces up is a `max`. `done` is not in that order: it is a *state*, derived
@@ -475,5 +479,4 @@ rules live in `app-ui.md` § Design → "Dock attention".
   with `casper debug read-text`, and check the viewport mid-turn.
 - Which surfaces feed the workspace rollup when more than one agent runs in a
   workspace.
-- Exact debounce count N and throttle interval — tuned live.
 - Whether the rule set ships as an in-repo resource or is fetched/updatable.
