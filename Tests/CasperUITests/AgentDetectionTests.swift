@@ -10,27 +10,27 @@ final class AgentDetectionTests: XCTestCase {
     func testAssertedStatesLatchAuthorityWhileIdleReleasesIt() {
         let (model, workspace) = makeSeededModel(portBase: 42000)
         let id = workspace.id
-        XCTAssertFalse(model.isUnderExplicitAuthority(id), "authority starts released")
+        XCTAssertFalse(model.explicitAuthority.contains(id), "authority starts released")
 
         // A detection pass must never latch authority (with no live surface views
         // it is a no-op here, but the point is it never grants authority).
         model.runAgentDetectionTick()
-        XCTAssertFalse(model.isUnderExplicitAuthority(id), "detection must not latch authority")
+        XCTAssertFalse(model.explicitAuthority.contains(id), "detection must not latch authority")
 
         XCTAssertTrue(model.controlSetAgentState(.working, for: id))
-        XCTAssertTrue(model.isUnderExplicitAuthority(id), "working outranks the scraper")
+        XCTAssertTrue(model.explicitAuthority.contains(id), "working outranks the scraper")
 
         XCTAssertTrue(model.controlSetAgentState(.blocked, for: id))
-        XCTAssertTrue(model.isUnderExplicitAuthority(id), "blocked state latches authority")
+        XCTAssertTrue(model.explicitAuthority.contains(id), "blocked state latches authority")
         XCTAssertEqual(model.workspace(id: id)?.agentState, .blocked)
 
         // The session boundary is what a stale `working` now self-heals through:
         // SessionStart reports `idle`, which is the release.
         XCTAssertTrue(model.controlSetAgentState(.idle, for: id))
-        XCTAssertFalse(model.isUnderExplicitAuthority(id), "idle releases the latch")
+        XCTAssertFalse(model.explicitAuthority.contains(id), "idle releases the latch")
 
         XCTAssertTrue(model.controlSetAgentState(.unknown, for: id))
-        XCTAssertFalse(model.isUnderExplicitAuthority(id), "unknown releases the latch")
+        XCTAssertFalse(model.explicitAuthority.contains(id), "unknown releases the latch")
     }
 
     /// Removing a workspace prunes its entry from the transient authority map, so
@@ -48,12 +48,12 @@ final class AgentDetectionTests: XCTestCase {
         model.deliverNotification = { _, _, _, _ in }
 
         XCTAssertTrue(model.controlSetAgentState(.done, for: linked.id))
-        XCTAssertTrue(model.isUnderExplicitAuthority(linked.id))
+        XCTAssertTrue(model.explicitAuthority.contains(linked.id))
 
         model.removeWorkspace(id: linked.id)
 
         XCTAssertNil(model.workspace(id: linked.id), "workspace is gone")
-        XCTAssertFalse(model.isUnderExplicitAuthority(linked.id), "authority pruned on removal")
+        XCTAssertFalse(model.explicitAuthority.contains(linked.id), "authority pruned on removal")
     }
 
     /// A detected transition into `blocked` fires a real macOS notification (via

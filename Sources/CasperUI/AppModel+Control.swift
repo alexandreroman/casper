@@ -80,13 +80,6 @@ extension AppModel {
         return workspace(at: at).agentState
     }
 
-    /// Test seam: whether `workspaceID` is under explicit (CLI) authority, which
-    /// suppresses terminal-scraping detection for it. Production code reads
-    /// `explicitAuthority` directly; only `AgentDetectionTests` calls this.
-    func isUnderExplicitAuthority(_ workspaceID: UUID) -> Bool {
-        explicitAuthority.contains(workspaceID)
-    }
-
     @discardableResult
     func controlSetProgress(total: Int, current: Int, label: String, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID),
