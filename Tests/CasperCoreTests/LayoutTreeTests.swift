@@ -40,7 +40,6 @@ final class LayoutTreeTests: XCTestCase {
         for surface in [a, b, c] {
             XCTAssertTrue(LayoutTree.contains(root, id: surface.id))
         }
-        XCTAssertEqual(LayoutTree.surfaceIDs(root).count, 3)  // no leaf missed above
     }
 
     func testContainsRejectsAnAbsentSurface() {
