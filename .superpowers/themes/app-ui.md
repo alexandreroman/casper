@@ -604,14 +604,19 @@ longer does are recorded in `../status.md` § Superseded designs.
   `diffWorkdirToHead()`: per-file sections (path + status, binary files noted),
   hunk headers, and monospaced line rows colored by kind (green addition / red
   deletion / neutral context) with old/new line-number gutters and a
-  `+`/`-`/space prefix cue. Computed on open and **live-refreshed**: a native
-  FSEvents watcher on the selected workspace's folder (debounced ~200 ms, `.git`
-  + Git-ignored top-level dirs excluded) bumps an observable revision that both
-  the diff surface and the title-bar `+/−` badge react to. Originally rendered
-  as a `.diff` layout leaf (created via the tab-bar "+" menu); that surface kind
-  was later **removed** — the diff view now lives **only** in the right
-  inspector panel (`Workspace.inspector`). The rendering above is unchanged,
-  just hosted by the inspector instead of a layout leaf.
+  `+`/`-`/space prefix cue. Computed on open and **live-refreshed** by **two**
+  native FSEvents watchers on the selected workspace, both funnelling through
+  one ~200 ms debounce that bumps an observable revision the diff surface and
+  the title-bar `+/−` badge react to: one on the worktree folder (`.git` +
+  Git-ignored top-level dirs excluded), and one on the resolved gitdir's `logs`
+  reflog directory. The second is what catches a commit, which writes only
+  inside `.git` and leaves every working-tree file byte-for-byte identical, so
+  the first sees nothing at all. Both are stopped while the window is hidden and
+  re-armed when it comes back ([[diff-refresh-two-watchers]]). Originally
+  rendered as a `.diff` layout leaf (created via the tab-bar "+" menu); that
+  surface kind was later **removed** — the diff view now lives **only** in the
+  right inspector panel (`Workspace.inspector`). The rendering above is
+  unchanged, just hosted by the inspector instead of a layout leaf.
 
 ## Next action
 
