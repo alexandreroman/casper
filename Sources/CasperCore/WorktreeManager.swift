@@ -176,7 +176,7 @@ public enum WorktreeManager {
     /// the root and every directory beneath it (and write on regular files) before
     /// `FileManager.removeItem` runs. A non-existent path is a no-op success
     /// (idempotent). Uses `Foundation` only.
-    public static func forceRemoveDirectory(at path: String) throws {
+    static func forceRemoveDirectory(at path: String) throws {
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: path) else { return }
 
