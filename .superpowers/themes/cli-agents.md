@@ -79,9 +79,11 @@ them bind every new verb:
   instruction.
 - **A command in error never exits 0.** It prints `{"error":"<msg>"}` to stderr
   and exits non-zero; validate CLI-side in `makeCommand()` wherever the check is
-  possible without the app. The one exception is ArgumentParser's own output
-  (`--help`, a missing option, an unknown flag), which stays native and exits
-  64.
+  possible without the app. The exception is ArgumentParser's own output, which
+  stays native plain text and carries its own two exit codes: a **usage error**
+  (a missing option, an unknown flag or subcommand) exits **64**, while
+  **`--help` and `--version`** are successful requests and exit **0** — neither
+  is a failure, so neither may look like one to a script.
 
 Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_ID`
 — is **lowercase**, its canonical external form (`UUID.casperID`); `--workspace`
