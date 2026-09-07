@@ -223,17 +223,6 @@ struct WorkspaceDetailView: View {
         // the inspector moves as well as when the detail area does — the panes' share
         // is what is left after the panel takes its slice.
         .onChange(of: terminalHostMetrics) { _, metrics in publish(metrics) }
-        .onDisappear {
-            // Gated on "nothing is selected any more", not on this instance going
-            // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
-            // so switching workspaces tears one instance down while the incoming
-            // one publishes its own geometry, and SwiftUI does not promise the
-            // teardown runs first. A `nil` landing last would leave
-            // `WindowConfigurator`'s window observer re-applying a zero floor to
-            // every window until the next geometry change. Losing the last
-            // workspace still clears the metrics, which is the case this is for.
-            if model.selectedWorkspaceID == nil { publish(nil) }
-        }
         .toolbar {
             // EVERY title-bar control lives in this ONE item: title, info chip, diff
             // badge, Merge, Run Script, Editor and the inspector selector.
@@ -309,6 +298,15 @@ struct WorkspaceDetailView: View {
             // has.
             undershootReleaseTask?.cancel()
         }
+            // Gated on "nothing is selected any more", not on this instance going
+            // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
+            // so switching workspaces tears one instance down while the incoming
+            // one publishes its own geometry, and SwiftUI does not promise the
+            // teardown runs first. A `nil` landing last would leave
+            // `WindowConfigurator`'s window observer re-applying a zero floor to
+            // every window until the next geometry change. Losing the last
+            // workspace still clears the metrics, which is the case this is for.
+            if model.selectedWorkspaceID == nil { publish(nil) }
     }
 
     /// Recompute the diff summary, cancelling any refresh still in flight. Every
