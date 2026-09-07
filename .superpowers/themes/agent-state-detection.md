@@ -275,9 +275,10 @@ Explicit reporting and detection must not fight. A per-workspace, **transient**
 latch decides who owns the state:
 
 There is no `AgentAuthority` enum: the latch as built is a set of workspace ids,
-`explicitAuthority: Set<UUID>` on `AppModel`, read through
-`isUnderExplicitAuthority(_:)`. Membership means the workspace is under explicit
-authority; absence means detection owns it.
+`explicitAuthority: Set<UUID>` on `AppModel`, read directly — the detection tick
+tests `explicitAuthority.contains(id)`, with no accessor in between. Membership
+means the workspace is under explicit authority; absence means detection owns
+it.
 
 - Default (not a member) — the scraper drives `agentState`.
 - `working`, `blocked`, `done`, and `error` all grant authority. For the
