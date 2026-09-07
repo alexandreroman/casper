@@ -156,9 +156,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   normalization, back/forward/reload), aimed at previewing a `localhost:PORT`
   app started by the agent. No Chromium.
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
-  view with two tabs (Browser | Diff), per workspace and persisted
-  (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
-  replacing them.
+  view with two tabs (Diff | Browser, in that order), per workspace and
+  persisted (`Workspace.inspector`). It reuses the browser and diff surfaces
+  rather than replacing them.
 
   **The inspector is the only home for both.** The `.diff` layout-leaf surface
   kind was removed outright, and `Surface.Kind.browser` is now reached only
