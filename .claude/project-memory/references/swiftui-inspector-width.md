@@ -17,11 +17,12 @@ divider is dragged**. The AppKit-hosted `SplitViewChildController` reports a
 changed hosted-content min/max mid-pass and re-invalidates the window's
 constraints, looping until AppKit exceeds its budget (`NSException`: "more
 Update Constraints in Window passes than there are views in the window", thrown
-from `-[NSSplitView mouseDown:]`). This is a pre-existing framework bug; the
-native inspector resize had never been exercised interactively on macOS 26. The
-native inspector also never reported the user-resized width back (no `Binding`
-overload of `inspectorColumnWidth`; feeding a live-measured width into
-`.inspectorColumnWidth(ideal:)` was itself reentrant and fragile). Moving the
+from `-[NSSplitView mouseDown:]`). This is a framework bug that lives in the
+interactive drag path alone, so a native inspector that is only ever laid out
+compiles and renders fine and gives no signal until someone drags it. The
+native inspector also reports no user-resized width back: there is no `Binding`
+overload of `inspectorColumnWidth`, and feeding a live-measured width into
+`.inspectorColumnWidth(ideal:)` is itself reentrant and fragile. Moving the
 inspector out of the `NavigationSplitView`'s `NSSplitView` into a pure SwiftUI
 `HStack` removes the `SplitViewChildController` from the path entirely, so the
 divider is a normal SwiftUI gesture that cannot trigger the loop.
@@ -33,19 +34,19 @@ divider is a normal SwiftUI gesture that cannot trigger the loop.
 not translated. A `.transition(.move(edge: .trailing))` looks right on paper
 but breaks any AppKit-hosted view inside the panel: a freshly inserted `NSView`
 is laid out straight at its final frame and never follows a SwiftUI
-transition's per-frame offset, so it lags the sliding chrome. The rule was paid
-for by an `NSSegmentedControl` behind an early segmented-`Picker` tab strip; the
-tab strip is hand-rolled SwiftUI (`InspectorTabSelector` in
-`WorkspaceDetailView.swift`), and the constraint survives it because the panel
-still hosts AppKit content — the terminal's Metal layer and `WKWebView`. This
-mirrors `SplitContainerView`, which animates hosted Metal views by frame/offset
-on always-mounted views for the same reason. Since
-the panel stays mounted while collapsed, `InspectorPanel` **gates its heavy
-`content`** (the diff / browser views) on the expanded state, so no diff
-computation or `WKWebView` runs while collapsed. Trailing (not leading)
-alignment is load-bearing: the detail area is `maxWidth: .infinity`, so the
-inspector's *right* edge is fixed and its *left* edge moves — leading alignment
-translates the tabs and brings the lag back.
+transition's per-frame offset, so it lags the sliding chrome. The clearest way
+to see it is a SwiftUI `Picker` with `.segmented`, which is an
+`NSSegmentedControl` underneath and lags exactly this way. The tab strip is
+hand-rolled SwiftUI (`InspectorTabSelector` in `WorkspaceDetailView.swift`), and
+the constraint holds regardless because the panel still hosts AppKit content —
+the terminal's Metal layer and `WKWebView`. This mirrors `SplitContainerView`,
+which animates hosted Metal views by frame/offset on always-mounted views for
+the same reason. Since the panel stays mounted while collapsed, `InspectorPanel`
+**gates its heavy `content`** (the diff / browser views) on the expanded state,
+so no diff computation or `WKWebView` runs while collapsed. Trailing (not
+leading) alignment is load-bearing: the detail area is `maxWidth: .infinity`, so
+the inspector's *right* edge is fixed and its *left* edge moves — leading
+alignment translates the tabs and brings the lag back.
 
 **Divider drag — the shared AppKit `SplitterHandle`** (`SplitContainerView`),
 the same grab strip the terminal splits use. It snapshots the boundary at
