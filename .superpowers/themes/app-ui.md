@@ -502,10 +502,13 @@ longer does are recorded in `../status.md` § Superseded designs.
 ## Sub-projects
 
 - **UI-1 — ✅ built.** App shell (SwiftUI `App` scene +
-  `NSApplicationDelegateAdaptor`; Casper owns its **entire** menu bar through
-  SwiftUI `.commands` — the only `NSMenu` built in AppKit is the pane context
-  menu, see `terminal.md` § Design → "Main menu"),
-  `@MainActor @Observable AppModel` as the single state owner/bridge,
+  `NSApplicationDelegateAdaptor`; Casper owns the menu bar through SwiftUI
+  `.commands`, **replacing** the standard command groups — with one *additive*
+  group, "Check for Updates…" (see § Design → "Software update"), and the
+  Window menu plus the rest of the App menu left to SwiftUI's defaults; the only
+  `NSMenu` built in AppKit is the pane context menu, see `terminal.md` § Design
+  → "Main menu"), `@MainActor @Observable AppModel` as the single state
+  owner/bridge,
   `NavigationSplitView` with empty state, "Add folder…" (adopt any folder — Git
   or not, multiple allowed), one live terminal per workspace, and all startup
   wiring (the release control server, per-surface env, session persistence,
@@ -514,6 +517,16 @@ longer does are recorded in `../status.md` § Superseded designs.
 - **UI-2 — ✅ built.** The `Space` level (`Session → Space → Workspace`;
   `repoPath` moved up to `Space.folderPath`; `Workspace` gained
   `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
+- **Software update** — `SoftwareUpdater` wraps **Sparkle**, and is the one
+  thing that *adds* to the menu bar: a "Check for Updates…" group after
+  `.appInfo` in the App menu. It stays inert unless the running bundle declares
+  both an appcast feed URL and the EdDSA public key that authenticates it —
+  Casper ships ad-hoc-signed, so that key, not code-signing continuity, is the
+  whole of the trust chain — and the menu item is offered only when it does, a
+  dead entry being worse than none. Only the release bundle carries the pair, so
+  a dev build and an unbundled binary are quiet by construction. The
+  operational side (the feed, the release job, key custody) belongs to
+  `README.md` and [[sparkle-eddsa-key]].
   or not — non-Git folders are degenerate Spaces with one primary workspace and
   no worktree creation), with **one Space per Git repository** — identity being
   the common `.git` directory every working tree of a repository shares. A
