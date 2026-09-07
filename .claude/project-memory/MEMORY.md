@@ -138,6 +138,5 @@
 - [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
 - [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — the row carries both gestures
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
-- [Repeating animations are gated at the call site](references/repeating-animation-state-gating.md) — a one-shot @State flag must die with the view
 - [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag
 - [SF Symbols need a shared width slot](references/sf-symbol-widths-need-a-slot.md) — no common intrinsic width; one measured slot per icon column
