@@ -82,9 +82,11 @@ floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
 - **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot`/`memory` are
   retriable (up to 4 attempts); every injecting verb and `focus` are **not**
   (they mutate).
-- Logging emits `debug server listening`, `debug command: <verb>`,
-  `debug command failed: …`; read via the absolute `/usr/bin/log` (a zsh builtin
-  shadows `log`).
+- Logging emits `debug server listening`, `debug command: <verb>` and
+  `debug command failed: <verb> — <reason>`, where `<verb>` is the wire
+  `DebugCommand.Verb` rawValue — camelCase (`dumpState`), not the CLI's
+  kebab-case subcommand name; read via the absolute `/usr/bin/log` (a zsh
+  builtin shadows `log`).
 
 ## Out of scope
 
