@@ -733,32 +733,32 @@ final class DiffTextSurfaceTests: XCTestCase {
 
     /// What the overlay actually painted, read back row by row.
     ///
-    /// `cacheDisplay(in:to:)` renders a view through its real `draw(_:)` path into
-    /// an offscreen bitmap, with no window, no screen and no screen-recording
-    /// permission involved — the technique `DiffChromeTests.ChromeProbe` documents
-    /// at length. The overlay paints opaque bars and leaves the rest of itself
-    /// untouched so the text scrolls through, so alpha is what tells a bar from
-    /// the gap below it.
+    /// The pixels come from the shared `BitmapCanvas`, which documents how a view is
+    /// repainted without a window, a screen or a screen-recording permission, and how
+    /// its points map onto the bitmap's pixels. What this adds is the overlay's own
+    /// reading of them: it paints opaque bars and leaves the rest of itself untouched
+    /// so the text scrolls through, so alpha is what tells a bar from the gap below
+    /// it.
     ///
     /// `@MainActor` explicitly: a nested type does not inherit the enclosing one's
     /// isolation, and every AppKit call below needs it.
     @MainActor
     private struct HeaderProbe {
-        private let bitmap: NSBitmapImageRep
-        private let bounds: NSRect
+        private let canvas: BitmapCanvas
 
         init(_ header: DiffStickyHeader) throws {
-            bounds = header.bounds
-            bitmap = try XCTUnwrap(header.bitmapImageRepForCachingDisplay(in: bounds))
-            header.cacheDisplay(in: bounds, to: bitmap)
+            canvas = try BitmapCanvas(of: header)
         }
 
         /// The overlay's painted vertical spans, in its own points, top-down.
+        ///
+        /// Scanned by pixel row rather than by point, so no band boundary can be
+        /// rounded onto a row the overlay did not paint.
         var paintedBands: [ClosedRange<CGFloat>] {
             var bands: [ClosedRange<CGFloat>] = []
             var start: Int?
-            for row in 0..<bitmap.pixelsHigh {
-                let isPainted = (color(atRow: row).alphaComponent) > 0.5
+            for row in canvas.pixelRows {
+                let isPainted = canvas.color(atPixelRow: row).alphaComponent > 0.5
                 switch (isPainted, start) {
                 case (true, nil): start = row
                 case (false, let first?):
@@ -767,7 +767,7 @@ final class DiffTextSurfaceTests: XCTestCase {
                 default: break
                 }
             }
-            if let start { bands.append(points(start)...points(bitmap.pixelsHigh)) }
+            if let start { bands.append(points(start)...points(canvas.pixelRows.upperBound)) }
             return bands
         }
 
@@ -775,17 +775,9 @@ final class DiffTextSurfaceTests: XCTestCase {
         /// horizontal middle — clear of the title's glyphs on the left and of the
         /// `+N`/`−N` counts on the right.
         func color(atY y: CGFloat) -> NSColor {
-            color(atRow: Int(y * scale))
+            canvas.color(x: canvas.rect.midX, y: y)
         }
 
-        /// The bitmap comes back at the display's backing scale, so its rows are
-        /// pixels and not points (2× on a Retina Mac).
-        private var scale: CGFloat { CGFloat(bitmap.pixelsHigh) / bounds.height }
-
-        private func points(_ row: Int) -> CGFloat { CGFloat(row) / scale }
-
-        private func color(atRow row: Int) -> NSColor {
-            bitmap.colorAt(x: bitmap.pixelsWide / 2, y: row) ?? .clear
-        }
+        private func points(_ row: Int) -> CGFloat { canvas.points(pixelRow: row) }
     }
 }

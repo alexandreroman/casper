@@ -437,7 +437,7 @@ final class DiffChromeTests: XCTestCase {
         layoutManager.ensureLayout(for: layoutManager.documentRange)
         let geometry = DiffFragmentGeometry(layoutManager: layoutManager, document: document)
 
-        let canvas = try canvas(of: scrollView, repaintingFrom: 0)
+        let canvas = try BitmapCanvas(of: scrollView)
 
         let rows = geometry.fragments(
             in: CGRect(x: 0, y: 0, width: surface.textView.bounds.width, height: 10_000))
@@ -453,7 +453,7 @@ final class DiffChromeTests: XCTestCase {
         // Past the row's last glyph, where only the tint can be — and where a fill
         // that covered the code column would leave the plain background.
         assertSameColor(
-            ChromeProbe.color(in: canvas, x: codeX, y: rowY),
+            canvas.color(x: codeX, y: rowY),
             NSColor(DiffLineStyle.background(for: .addition)),
             "the added row's tint, \(codeX - surface.ruler.ruleThickness) pt into the code column")
 
@@ -463,7 +463,7 @@ final class DiffChromeTests: XCTestCase {
         let tint = NSColor(DiffLineStyle.background(for: .addition))
         let inked = stride(from: surface.ruler.ruleThickness, to: codeX, by: 0.5).contains { x in
             stride(from: rowY - addition.rect.height / 2, to: rowY + addition.rect.height / 2, by: 0.5)
-                .contains { y in channelDistance(ChromeProbe.color(in: canvas, x: x, y: y), tint) > 0.02 }
+                .contains { y in channelDistance(canvas.color(x: x, y: y), tint) > 0.02 }
         }
         XCTAssertTrue(inked, "the added row's glyphs are painted in the code column")
     }
@@ -491,7 +491,7 @@ final class DiffChromeTests: XCTestCase {
         // looks like untouched. Read back from a bitmap rather than compared to the
         // color the strip fills with: `NSBitmapImageRep` hands colors back in its own
         // space, and a literal put through that conversion no longer matches itself.
-        let untouched = try canvas(of: chrome, repaintingFrom: 0)
+        let untouched = try BitmapCanvas(of: chrome)
 
         chrome.addSubview(scrollView)
         scrollView.frame = NSRect(x: 0, y: strip, width: Self.scrollViewWidth, height: 300)
@@ -501,13 +501,13 @@ final class DiffChromeTests: XCTestCase {
         clipView.scroll(to: CGPoint(x: clipView.bounds.origin.x, y: 120))
         scrollView.reflectScrolledClipView(clipView)
 
-        let painted = try canvas(of: chrome, repaintingFrom: 0)
+        let painted = try BitmapCanvas(of: chrome)
 
         for x in stride(from: 0, to: Self.scrollViewWidth, by: 1) {
             for y in stride(from: 0, to: strip, by: 1) {
                 assertSameColor(
-                    ChromeProbe.color(in: painted, x: x, y: y),
-                    ChromeProbe.color(in: untouched, x: x, y: y),
+                    painted.color(x: x, y: y),
+                    untouched.color(x: x, y: y),
                     "the strip above the surface, at (\(x), \(y))")
             }
         }
@@ -625,60 +625,36 @@ final class DiffChromeTests: XCTestCase {
 
         return ChromeProbe(
             document: document, geometry: geometry, textView: textView, ruler: ruler,
-            code: try canvas(of: textView, repaintingFrom: top),
-            gutter: try canvas(of: ruler, repaintingFrom: top))
-    }
-
-    private func canvas(of view: NSView, repaintingFrom top: CGFloat) throws -> ChromeProbe.Canvas {
-        let rect = NSRect(x: view.bounds.minX, y: top,
-                          width: view.bounds.width, height: view.bounds.maxY - top).integral
-        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: rect))
-        view.cacheDisplay(in: rect, to: bitmap)
-        return ChromeProbe.Canvas(bitmap: bitmap, rect: rect)
+            code: try BitmapCanvas(of: textView, repaintingFrom: top),
+            gutter: try BitmapCanvas(of: ruler, repaintingFrom: top))
     }
 
     /// Reads back what the two chrome views actually painted.
     ///
-    /// `cacheDisplay(in:to:)` renders a view through its real `draw(_:)` path into
-    /// an offscreen bitmap. **No window, no screen and no screen-recording
-    /// permission are involved**, which is what makes pixel assertions possible here
-    /// at all — a reader who assumes otherwise will leave visual equivalence, the
-    /// one hard requirement of this rewrite, entirely unasserted.
+    /// The pixels themselves come from `BitmapCanvas`, which documents how a view is
+    /// repainted without a screen and how points map onto its pixels; read that
+    /// first. What this adds is the diff's own vocabulary on top of two such
+    /// canvases — rows, kinds, expected backgrounds, and the gutter's two columns.
     ///
-    /// Three things to respect when extending this:
-    ///
-    /// - **The bitmap comes back at the display's backing scale, so its pixel
-    ///   coordinates are not points** (2× on a Retina Mac). Every accessor below
-    ///   takes points and converts with a scale measured off the rep, so the same
-    ///   assertions hold at 1×.
-    /// - **Row positions come from `DiffFragmentGeometry`, never from literals.** A
-    ///   font-metric change across a macOS release moves every row in the document;
-    ///   a hardcoded `y` would then fail for a reason that has nothing to do with the
-    ///   chrome.
-    /// - **A canvas may cover only part of its view**, when the probe was asked to
-    ///   repaint a strip. Sampling outside it fails rather than silently reading the
-    ///   nearest edge pixel, which would pass for the wrong reason.
+    /// One thing to respect when extending it: **row positions come from
+    /// `DiffFragmentGeometry`, never from literals.** A font-metric change across a
+    /// macOS release moves every row in the document; a hardcoded `y` would then fail
+    /// for a reason that has nothing to do with the chrome.
     ///
     /// `@MainActor` because `DiffFragmentGeometry` is: live TextKit layout is
     /// main-thread-only.
     @MainActor
     private struct ChromeProbe {
-        /// One view's pixels, plus the rect of that view they cover.
-        struct Canvas {
-            let bitmap: NSBitmapImageRep
-            let rect: NSRect
-        }
-
         let document: DiffDocument
         let geometry: DiffFragmentGeometry
         let textView: DiffTextView
         let ruler: DiffGutterRuler
-        private let code: Canvas
-        private let gutter: Canvas
+        private let code: BitmapCanvas
+        private let gutter: BitmapCanvas
 
         init(
             document: DiffDocument, geometry: DiffFragmentGeometry, textView: DiffTextView,
-            ruler: DiffGutterRuler, code: Canvas, gutter: Canvas
+            ruler: DiffGutterRuler, code: BitmapCanvas, gutter: BitmapCanvas
         ) {
             self.document = document
             self.geometry = geometry
@@ -731,14 +707,14 @@ final class DiffChromeTests: XCTestCase {
 
         /// What the text view painted at a point in its own coordinates.
         func codeColor(x: CGFloat, y: CGFloat) -> NSColor {
-            Self.color(in: code, x: x, y: y)
+            code.color(x: x, y: y)
         }
 
         /// What the ruler painted at `x` in its own coordinates and `y` in the *text
         /// view's*. The two vertical spaces coincide unscrolled, and holding the
         /// gutter to the text view's `y` is exactly what the alignment test checks.
         func gutterColor(x: CGFloat, y: CGFloat) -> NSColor {
-            Self.color(in: gutter, x: x, y: y)
+            gutter.color(x: x, y: y)
         }
 
         /// The pixel of the row's number column that differs most from the row's own
@@ -779,23 +755,6 @@ final class DiffChromeTests: XCTestCase {
                 }
             }
             return (ink, deviation)
-        }
-
-        /// Points → pixels, with the scale measured off the rep rather than assumed,
-        /// and relative to the rect the canvas covers rather than to the whole view.
-        /// `static` so a test can sample a canvas it composed itself, not only the
-        /// probe's own two.
-        static func color(in canvas: Canvas, x: CGFloat, y: CGFloat) -> NSColor {
-            let scale = CGFloat(canvas.bitmap.pixelsWide) / canvas.rect.width
-            let pixelX = Int((x - canvas.rect.minX) * scale)
-            let pixelY = Int((y - canvas.rect.minY) * scale)
-            guard (0..<canvas.bitmap.pixelsWide).contains(pixelX),
-                  (0..<canvas.bitmap.pixelsHigh).contains(pixelY)
-            else {
-                XCTFail("(\(x), \(y)) falls outside the repainted \(canvas.rect)")
-                return .clear
-            }
-            return canvas.bitmap.colorAt(x: pixelX, y: pixelY) ?? .clear
         }
     }
 }
