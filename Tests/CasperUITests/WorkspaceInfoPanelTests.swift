@@ -114,7 +114,12 @@ final class WorkspaceInfoPanelTests: XCTestCase {
             heightAtCorrectWidth, heightAtFullWidth,
             "could not find content that wraps differently at the panel's content width vs. its full width")
 
-        let expectedPanelHeight = min(max(heightAtCorrectWidth, WorkspaceInfoPanel.minHeight), WorkspaceInfoPanel.maxHeight) + 24
+        let scrollHeight = min(
+            max(heightAtCorrectWidth, WorkspaceInfoPanel.minHeight), WorkspaceInfoPanel.maxHeight)
+        // The panel's padding lands above and below the scrollable content, so it
+        // counts twice — derived from the shipped constant rather than spelled out,
+        // which is the drift `contentWidth`'s own comment warns about.
+        let expectedPanelHeight = scrollHeight + 2 * WorkspaceInfoPanel.padding
         let size = layoutSize(for: longLine)
 
         XCTAssertEqual(size.height, expectedPanelHeight, accuracy: 1)

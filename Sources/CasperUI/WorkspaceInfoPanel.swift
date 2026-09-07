@@ -23,7 +23,10 @@ struct WorkspaceInfoPanel: View {
     /// The panel's own padding on each side of the scrollable content, kept as
     /// a named constant so the width handed to `MarkdownTextView` is
     /// derived from it rather than a second, easily-drifting magic number.
-    private static let padding: CGFloat = 12
+    /// Module-visible for the same reason `contentBottomInset` is: so
+    /// `WorkspaceInfoPanelTests` derives the panel's outer geometry from this
+    /// constant instead of carrying a second copy of the number.
+    static let padding: CGFloat = 12
     /// The width `MarkdownTextView` actually wraps at once the panel's own
     /// padding is subtracted, fed to both the view and its height measurement
     /// so neither can disagree with the other about where a line wraps.
