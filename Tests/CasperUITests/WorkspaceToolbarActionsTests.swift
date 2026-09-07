@@ -29,10 +29,10 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     func testEachTierIsStrictlyNarrowerThanTheOneAboveIt() {
         let actions = makeActions()
 
-        let full = width(actions.row(.full))
-        let mergeGlyph = width(actions.row(.mergeGlyph))
-        let folded = width(actions.row(.folded))
-        let minimal = width(actions.row(.minimal))
+        let full = layoutWidth(of: actions.row(.full))
+        let mergeGlyph = layoutWidth(of: actions.row(.mergeGlyph))
+        let folded = layoutWidth(of: actions.row(.folded))
+        let minimal = layoutWidth(of: actions.row(.minimal))
 
         XCTAssertGreaterThan(
             full, mergeGlyph, "moving Run and Editor into the menu freed no width")
@@ -50,11 +50,11 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// the shared predicate is what keeps the two from drifting apart.
     func testTheSelectorIsOnTheBarExactlyWhereTheMenuDoesNotCarryIt() {
         let actions = makeActions()
-        let ellipsisChip = width(actions.row(.minimal))
+        let ellipsisChip = layoutWidth(of: actions.row(.minimal))
 
         for density in WorkspaceToolbarActions.Density.allCases {
             let onBar = WorkspaceToolbarActions.showsInspectorSelector(at: density)
-            let rendered = width(actions.row(density))
+            let rendered = layoutWidth(of: actions.row(density))
             if onBar {
                 XCTAssertGreaterThanOrEqual(
                     rendered, InspectorTabSelector.intrinsicWidth + ellipsisChip,
@@ -83,7 +83,8 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
 
         for density in WorkspaceToolbarActions.Density.allCases {
             XCTAssertEqual(
-                size(actions.row(density)).height, TitleCapsuleMetrics.height, accuracy: 0.5,
+                layoutSize(for: actions.row(density)).height, TitleCapsuleMetrics.height,
+                accuracy: 0.5,
                 "density \(density)")
         }
     }
@@ -96,13 +97,14 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         let actions = makeActions()
 
         XCTAssertEqual(
-            width(actions.row(.minimal)), TitleCapsuleMetrics.glyphChipWidth, accuracy: 0.5,
+            layoutWidth(of: actions.row(.minimal)), TitleCapsuleMetrics.glyphChipWidth,
+            accuracy: 0.5,
             "the reference chip is not one glyph chip wide")
 
         let expected = 2 * (TitleCapsuleMetrics.glyphChipWidth + WorkspaceDetailView.chipGap)
             + InspectorTabSelector.intrinsicWidth
         XCTAssertEqual(
-            width(actions.row(.mergeGlyph)), expected, accuracy: 0.5,
+            layoutWidth(of: actions.row(.mergeGlyph)), expected, accuracy: 0.5,
             "a glyph chip is not the reference width")
     }
 
@@ -113,7 +115,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         let (model, workspace) = makeTitleBarModelAndWorkspace()
         let merge = layoutWidth(of: mergeRow(model: model, workspace: workspace))
         model.optionKeyHeld = true
-        let delete = width(mergeRow(model: model, workspace: workspace))
+        let delete = layoutWidth(of: mergeRow(model: model, workspace: workspace))
 
         XCTAssertEqual(merge, delete, accuracy: 0.5)
         XCTAssertEqual(merge, TitleCapsuleMetrics.glyphChipWidth, accuracy: 0.5)
@@ -164,16 +166,26 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
             previousLadder = layout.ladder
         }
 
-        XCTAssertLessThan(previousLadder, width(makeActions().row(.full)),
+        XCTAssertLessThan(previousLadder, layoutWidth(of: makeActions().row(.full)),
                           "the row never degraded at all, so this proves nothing")
     }
 
-    /// The row never reports more than the width it was given — at any width, with
-    /// or without a badge, inspector open or shut. This is the invariant the whole
-    /// single-item design rests on: AppKit reads that reported width, and anything
-    /// larger than the bar is overflowed WHOLE, emptying the title bar. A content
-    /// state that cannot compress must clip, never report its way out.
-    func testTheRowNeverReportsMoreThanTheWidthItIsGiven() {
+    /// Everything the row cannot compress fits inside the width it was given — at any
+    /// width, with or without a badge, inspector open or shut. This is the invariant
+    /// the whole single-item design rests on: AppKit reads the width the row declares,
+    /// and anything larger than the bar is overflowed WHOLE, emptying the title bar.
+    /// A content state that does not fit must give way, never grow the row.
+    ///
+    /// Measured through the badge and the chips rather than through the row's own
+    /// reported width: the body ends in `.frame(width:)`, which reports the width it
+    /// was handed whatever nests inside it (see the
+    /// `fixed-frame-swallows-inner-padding` note), so that number equals `rowWidth` at
+    /// every width and would compare the fixture with itself. The badge and the chips
+    /// are the parts pinned at their ideal width inside a rung — `.fixedSize`, so they
+    /// cannot squeeze — which makes them exactly the content that has to fit. The
+    /// title is left out on purpose: truncating the branch is what a rung is allowed
+    /// to do internally.
+    func testTheRowsIncompressibleContentFitsTheWidthItIsGiven() {
         let openOnDiff = InspectorState(collapsed: false, tab: .diff)
         for rowWidth in [900, 600, 460, 380, 300, 200, 120, 60] as [CGFloat] {
             for (label, diff) in [("badge", (12, 3) as (Int, Int)?), ("no badge", nil)] {
@@ -317,7 +329,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     }
 
     /// The chips' own full-width tier, for the ordering assertion below.
-    private var fullChipsWidth: CGFloat { width(makeActions().row(.full)) }
+    private var fullChipsWidth: CGFloat { layoutWidth(of: makeActions().row(.full)) }
 
     /// The title group's ideal width, measured from the same label the row renders.
     private var titleIdealWidth: CGFloat {
@@ -352,17 +364,5 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// The Merge chip alone, as the row draws it at `.mergeGlyph`.
     private func mergeRow(model: AppModel, workspace: Workspace) -> some View {
         MergeToolbarButton(model: model, workspace: workspace, density: .mergeGlyph)
-    }
-
-    private func symbolWidth(_ systemImage: String) -> CGFloat {
-        width(Image(systemName: systemImage))
-    }
-
-    private func width<V: View>(_ view: V) -> CGFloat { size(view).width }
-
-    private func size<V: View>(_ view: V) -> CGSize {
-        let host = NSHostingView(rootView: view)
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
     }
 }

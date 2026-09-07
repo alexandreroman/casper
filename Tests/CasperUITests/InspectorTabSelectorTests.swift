@@ -69,14 +69,6 @@ final class InspectorTabSelectorTests: XCTestCase {
             XCTFail("seeded workspace disappeared")
             return 0
         }
-        let host = NSHostingView(rootView: InspectorTabSelector(model: model, workspace: workspace))
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize.width
-    }
-
-    private func symbolWidth(_ systemImage: String) -> CGFloat {
-        let host = NSHostingView(rootView: Image(systemName: systemImage))
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize.width
+        return layoutWidth(of: InspectorTabSelector(model: model, workspace: workspace))
     }
 }

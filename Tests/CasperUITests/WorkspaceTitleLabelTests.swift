@@ -75,11 +75,8 @@ final class WorkspaceTitleLabelTests: XCTestCase {
         }
     }
 
-    /// Host the real view in AppKit at the given proposed width and return the
-    /// height it lays out to.
+    /// The height the label lays out to when it is proposed exactly `width`.
     private func height(of label: WorkspaceTitleLabel, width: CGFloat) -> CGFloat {
-        let host = NSHostingView(rootView: label.frame(width: width))
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize.height
+        layoutSize(for: label, proposedWidth: width).height
     }
 }

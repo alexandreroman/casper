@@ -95,11 +95,11 @@ final class SidebarIconSlotTests: XCTestCase {
     /// fit separately, against each glyph's intrinsic width at the font its row uses.
     func testTheSlotFitsEveryGlyphItHolds() {
         for symbol in Self.footerSymbols {
-            assertFits(symbol, layoutSize(for: Image(systemName: symbol)).width)
+            assertFits(symbol, symbolWidth(symbol))
         }
         for kind in Self.reminderKinds {
             let symbol = AgentIntegrationReminderView.symbolName(for: kind)
-            assertFits(symbol, layoutSize(for: Image(systemName: symbol).font(.footnote)).width)
+            assertFits(symbol, symbolWidth(symbol, font: .footnote))
         }
     }
 
@@ -139,11 +139,5 @@ final class SidebarIconSlotTests: XCTestCase {
     private func layoutSize(forFooterRowWith symbol: String) -> NSSize {
         let row = SidebarFooterButton(title: Self.sharedTitle, systemImage: symbol, action: {})
         return layoutSize(for: row)
-    }
-
-    private func layoutSize(for view: some View) -> NSSize {
-        let host = NSHostingView(rootView: VStack(spacing: 0) { view })
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
     }
 }
