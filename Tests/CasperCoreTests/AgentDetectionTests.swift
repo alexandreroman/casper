@@ -13,11 +13,6 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(rules.signal(fromViewport: "ctrl+c to interrupt"), .working)
     }
 
-    func testWorkingMatchesRunningToolsViewport() {
-        let viewport = "Running tools…\n(esc to interrupt)"
-        XCTAssertEqual(rules.signal(fromViewport: viewport), .working)
-    }
-
     func testCodexWorkingMatchesItsInterruptAffordance() {
         XCTAssertEqual(
             AgentDetectionRuleSet.codex.signal(fromViewport: "Running tools…\n(esc to interrupt)"),
