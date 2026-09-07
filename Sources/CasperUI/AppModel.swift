@@ -321,7 +321,9 @@ final class AppModel {
     @ObservationIgnored var portAllocator: PortAllocator
     @ObservationIgnored let sessionIdentity: SessionIdentity
 
-    @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
+    /// Coalesces the high-frequency edits that persist through `scheduleSave()` into a
+    /// single session write.
+    @ObservationIgnored private let saveDebouncer = Debouncer(delay: 0.5)
 
     /// Serial background queue for `persist()`'s atomic disk write. Encoding stays
     /// on the main actor (it needs the live state); only the blocking write is
@@ -1934,15 +1936,16 @@ final class AppModel {
     // Reached from AppModel+Control.swift.
     /// Debounced persistence for high-frequency agent-state changes.
     func scheduleSave() {
-        saveWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.persist() }
-        saveWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+        // Weakly, because this model owns the debouncer: a strong capture would let the
+        // pending work item hold the model alive until it fires.
+        saveDebouncer.schedule { [weak self] in self?.persist() }
     }
 
+    /// Persist the current state at once, whether or not a debounced save is pending.
+    /// The pending one is cancelled rather than fired: `persist()` below already writes
+    /// the current state, so letting it fire would only repeat the write.
     func flushPendingSave() {
-        saveWorkItem?.cancel()
-        saveWorkItem = nil
+        saveDebouncer.cancel()
         persist()
         // Drain the serial save queue so the just-enqueued write (and any prior
         // ones) have hit disk before returning. This preserves
