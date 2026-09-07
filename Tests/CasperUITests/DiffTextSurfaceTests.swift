@@ -148,7 +148,11 @@ final class DiffTextSurfaceTests: XCTestCase {
         let document = makeDocument(fileCount: 14, linesPerFile: 2)
         let purpleLines = (1...2).map { index -> AttributedString in
             var line = AttributedString("line \(index)")
-            line.foregroundColor = .purple
+            // The AppKit scope, explicitly: `DiffHighlighter` bridges its runs with
+            // `including: \.appKit`, so a SwiftUI-scope color would pin a scope the
+            // highlighter never emits and exercise a path the app never takes. See the
+            // `attributedstring-interop-limits` memory note.
+            line.appKit.foregroundColor = NSColor(Color.purple)
             return line
         }
         let highlights = Dictionary(
@@ -264,7 +268,7 @@ final class DiffTextSurfaceTests: XCTestCase {
         let coordinator = try XCTUnwrap(controller.coordinator)
         let highlighted = (1...3).map { index -> AttributedString in
             var line = AttributedString("line \(index)")
-            line.foregroundColor = .purple
+            line.appKit.foregroundColor = NSColor(Color.purple)
             return line
         }
 
@@ -658,7 +662,7 @@ final class DiffTextSurfaceTests: XCTestCase {
         let lines = (1...linesPerFile).map { lineNumber -> AttributedString in
             var line = AttributedString(
                 "line \(lineNumber) " + String(repeating: "wrapping content ", count: 12))
-            line.foregroundColor = .purple
+            line.appKit.foregroundColor = NSColor(Color.purple)
             return line
         }
         return Dictionary(

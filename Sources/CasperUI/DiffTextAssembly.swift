@@ -1,6 +1,5 @@
 import AppKit
 import CasperGit
-import SwiftUI
 
 /// Syntax-highlighted lines for one diff file, indexed by 1-based source line
 /// number. `new` covers the working-tree side (additions and context lines),
@@ -225,18 +224,11 @@ enum DiffTextAssembly {
     /// producer, HighlightSwift, ends its conversion with
     /// `AttributedString(_:including: \.appKit)`, so a run's color is an `NSColor`
     /// there and `run.attributes.swiftUI.foregroundColor` is `nil` for every run
-    /// of every highlighted line. Reading only the SwiftUI scope applies no color
-    /// at all, and does so silently — every range check still agrees, so the diff
-    /// renders exactly as it would for an unknown language. The SwiftUI read stays
-    /// as a fallback so either producer works, with AppKit taking precedence.
+    /// of every highlighted line. Reading the SwiftUI scope instead applies no
+    /// color at all, and does so silently — every range check still agrees, so the
+    /// diff renders exactly as it would for an unknown language.
     private static func foregroundColor(in attributes: AttributeContainer) -> NSColor? {
-        if let appKitColor = attributes.appKit.foregroundColor {
-            return appKitColor
-        }
-        if let swiftUIColor = attributes.swiftUI.foregroundColor {
-            return NSColor(swiftUIColor)
-        }
-        return nil
+        attributes.appKit.foregroundColor
     }
 
     /// What every paragraph starts from, set over the whole document in a single
