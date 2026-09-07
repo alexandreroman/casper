@@ -64,6 +64,7 @@ struct WorkspaceTitleLabel: View {
             Text("/").foregroundStyle(.secondary)
             Text(branchLabel)
                 .fontWeight(.bold)
+                .truncationMode(.middle)
         }
     }
 
