@@ -40,12 +40,6 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), session)
     }
 
-    func testDefaultURLIsUnderApplicationSupportCasper() throws {
-        let url = try SessionStore.defaultURL()
-        XCTAssertEqual(url.lastPathComponent, "session.json")
-        XCTAssertTrue(url.deletingLastPathComponent().lastPathComponent == "Casper")
-    }
-
     func testLoadCorruptFileSelfHealsAndBacksItUp() throws {
         let url = tempFileURL()
         try FileManager.default.createDirectory(
@@ -118,5 +112,6 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(base.lastPathComponent, "session-dev.json")
         let dflt = try SessionStore.defaultURL()
         XCTAssertEqual(dflt.lastPathComponent, "session.json") // backward-compatible
+        XCTAssertEqual(dflt.deletingLastPathComponent().lastPathComponent, "Casper")
     }
 }
