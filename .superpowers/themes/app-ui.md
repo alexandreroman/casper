@@ -79,8 +79,11 @@ longer does are recorded in `../status.md` § Superseded designs.
   its own "…already exists. Replace?" sheet and, on Replace, simply returns the
   URL, expecting the caller to overwrite. Casper refuses instead, so confirming
   Replace costs the user nothing. Rollback is scoped the same way — a failed
-  `git init` or adoption removes a directory *this call* created, and leaves an
-  empty one the user handed over alone.
+  `git init` or adoption removes a directory *this call* created, and inside a
+  directory the user handed over it removes only the `.git` Casper initialized,
+  leaving the directory itself. That `.git` has to go too: left behind it makes
+  the very same path un-creatable on a second attempt, `isVacant` refusing a
+  folder the Finder still shows as empty.
 
   Like `addSpace`, `createSpace` runs no modal of its own (it is also driven
   headlessly, by the tests), so every failure — `pathOccupied`,
@@ -220,9 +223,6 @@ longer does are recorded in `../status.md` § Superseded designs.
   single item that is never wider than the bar and does the degrading itself
   ([[toolbar-overflows-before-squeezing]]).
 
-  That width is the one measured number in the row. It comes from the detail
-  area's `GeometryReader` — never from content that can overflow its column,
-  which reports a width the column never had — minus the window chrome
   Spanning the bar costs the row two `NSThemeFrame` behaviours, so the row hands
   both back to itself. **Dragging the window** is a `WindowDragGesture` over a
   `.contentShape(Rectangle())` — a `Spacer` claims no hits of its own, so
@@ -236,6 +236,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   rather than the toolbar item's full height, which is what leaves the window's
   top-edge resize band with the theme frame ([[titlebar-row-window-drag]]).
 
+  That width is the one measured number in the row. It comes from the detail
+  area's `GeometryReader` — never from content that can overflow its column,
+  which reports a width the column never had — minus the window chrome
   when the detail starts at the window's leading edge
   (traffic lights and sidebar toggle share the row only when the sidebar is
   collapsed, which the frame's origin is what reveals), minus a safety margin.
@@ -511,6 +514,16 @@ longer does are recorded in `../status.md` § Superseded designs.
 - **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
   injects the bundle exec dir + per-surface env into each terminal, and runs the
   `#if DEBUG` debug bridge (all detailed in `cli-agents.md`).
+- **Software update** — `SoftwareUpdater` wraps **Sparkle**, and is the one
+  thing that *adds* to the menu bar: a "Check for Updates…" group after
+  `.appInfo` in the App menu. It stays inert unless the running bundle declares
+  both an appcast feed URL and the EdDSA public key that authenticates it —
+  Casper ships ad-hoc-signed, so that key, not code-signing continuity, is the
+  whole of the trust chain — and the menu item is offered only when it does, a
+  dead entry being worse than none. Only the release bundle carries the pair, so
+  a dev build and an unbundled binary are quiet by construction. The
+  operational side (the feed, the release job, key custody) belongs to
+  `README.md` and [[sparkle-eddsa-key]].
 
 ## Sub-projects
 
@@ -530,16 +543,6 @@ longer does are recorded in `../status.md` § Superseded designs.
 - **UI-2 — ✅ built.** The `Space` level (`Session → Space → Workspace`;
   `repoPath` moved up to `Space.folderPath`; `Workspace` gained
   `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
-- **Software update** — `SoftwareUpdater` wraps **Sparkle**, and is the one
-  thing that *adds* to the menu bar: a "Check for Updates…" group after
-  `.appInfo` in the App menu. It stays inert unless the running bundle declares
-  both an appcast feed URL and the EdDSA public key that authenticates it —
-  Casper ships ad-hoc-signed, so that key, not code-signing continuity, is the
-  whole of the trust chain — and the menu item is offered only when it does, a
-  dead entry being worse than none. Only the release bundle carries the pair, so
-  a dev build and an unbundled binary are quiet by construction. The
-  operational side (the feed, the release job, key custody) belongs to
-  `README.md` and [[sparkle-eddsa-key]].
   or not — non-Git folders are degenerate Spaces with one primary workspace and
   no worktree creation), with **one Space per Git repository** — identity being
   the common `.git` directory every working tree of a repository shares. A
