@@ -223,6 +223,19 @@ longer does are recorded in `../status.md` § Superseded designs.
   That width is the one measured number in the row. It comes from the detail
   area's `GeometryReader` — never from content that can overflow its column,
   which reports a width the column never had — minus the window chrome
+  Spanning the bar costs the row two `NSThemeFrame` behaviours, so the row hands
+  both back to itself. **Dragging the window** is a `WindowDragGesture` over a
+  `.contentShape(Rectangle())` — a `Spacer` claims no hits of its own, so
+  without a shape the inert stretch between the badge and the chips drags
+  nothing. **Double-clicking the title bar** is an `.onTapGesture(count: 2)`
+  running `TitleBarDoubleClickAction`, which honours the choice made in System
+  Settings (Fill, Zoom, Minimize and Do Nothing are all real answers) instead of
+  zooming unconditionally, and turns away a window that would only beep. Both
+  gestures stay **plain** — never high-priority, never simultaneous — so a
+  chip's own click still wins, and the shape covers the hosted view's rect
+  rather than the toolbar item's full height, which is what leaves the window's
+  top-edge resize band with the theme frame ([[titlebar-row-window-drag]]).
+
   when the detail starts at the window's leading edge
   (traffic lights and sidebar toggle share the row only when the sidebar is
   collapsed, which the frame's origin is what reveals), minus a safety margin.
