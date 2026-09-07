@@ -442,7 +442,10 @@ workspace-scoped: `workspace list` enumerates all of them, and
 `workspace current` reports the terminal's own workspace from
 `$CASPER_WORKSPACE_ID`. Commands talk to the running app over a Unix domain
 socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal alongside
-`$CASPER_WORKSPACE_ID` — and, in worktree workspaces only, `$CASPER_PORT`.
+`$CASPER_WORKSPACE_ID`, a UTF-8 `$LANG`, and a `$PATH` prefixed with Casper's
+own binary directory — which is what makes `casper` resolve at all. Two more
+are conditional: `$CASPER_PORT` in worktree workspaces, and `$CASPER_SESSION` in
+a debug build launched with `--session <name>`.
 
 Every command is machine-readable: on success it prints a JSON object — or, for
 the `list` verbs, an array — to stdout describing the workspace and any
