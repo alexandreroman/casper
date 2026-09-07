@@ -156,7 +156,10 @@ extension LayoutNode: Codable {
 }
 
 public enum WorkspaceKind: String, Codable, Sendable {
-    case primary, linked
+    // Raw values are spelled out: they are the on-disk spelling in
+    // `session.json`, so renaming a case must not silently rewrite the file.
+    case primary = "primary"
+    case linked = "linked"
 }
 
 public enum InspectorTab: String, Codable, Sendable {
