@@ -90,7 +90,7 @@ struct BrowserCommand: ParsableCommand {
             if let width, width <= 0 { throw exitWithError("--width must be a positive number of pixels") }
             if let height, height <= 0 { throw exitWithError("--height must be a positive number of pixels") }
             if let url { try requireAbsoluteURL(url) }
-            let path = out.map(absolutePath) ?? Self.temporaryScreenshotPath()
+            let path = nonEmpty(out).map(absolutePath) ?? Self.temporaryScreenshotPath()
             return ControlCommand(
                 verb: .browserScreenshot, workspace: try requireSelector(target), url: url, path: path,
                 width: width, height: height)
