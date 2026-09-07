@@ -136,9 +136,12 @@ the full `Session → Space → Workspace` tree.
 **Partly built by CasperUI UI-2.** Done: the model refactor (`repoPath` up to
 `Space.folderPath`, `Workspace.kind`/`baseBranch`, `Session.spaces`), Space
 assembly, the collapsible Space-grouped sidebar, `CasperGit`
-`Repository.remoteURL`, and repo-name derivation from `origin`. Persistence uses
-a clean break (the existing `SessionStore` self-heal discards incompatible
-legacy files), not the migration the original plan described. The three identity
+`Repository.remoteURL`, and repo-name derivation from `origin`. Persistence
+needed no wholesale migration: `SessionStore` self-heals a `session.json` it
+cannot decode by moving it aside to a sibling `session.json.corrupt` — preserved
+for diagnostics, not discarded — and starting from an empty `Session`, while
+`Models.swift` carries per-field legacy decoding throughout, defaulting absent
+keys and migrating the legacy `tabGroup` layout node. The three identity
 rules above and their two refusals are built (`AppModel+Spaces.swift`), as is
 creation from scratch (`AppModel.createSpace`, same file).
 
