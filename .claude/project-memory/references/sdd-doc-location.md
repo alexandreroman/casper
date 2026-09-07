@@ -12,12 +12,13 @@ skill's default location of `docs/superpowers/specs/`.
 
 **Why:** `.superpowers/sdd/` is the active scratch directory where every recent
 design/plan pair lives (e.g. `native-sidebar`, `sidebar-ui-rework`,
-`casper-ui-1..5`, `casper-git-diff`, `keyboard-shortcuts`). It is gitignored
-(`.gitignore` line 17 plus `.superpowers/sdd/.gitignore`), so these docs are
-never committed and need no commit authorization. The repo has no
-`docs/superpowers/` tree (the `brainstorming` skill's default location); the
-specs that once lived there are recoverable only from Git history, distilled
-into `.superpowers/architecture.md` + `.superpowers/themes/`. Do not create it.
+`casper-ui-1..5`, `casper-git-diff`, `keyboard-shortcuts`). The repository's own
+`.gitignore` ignores `.superpowers/sdd/`, so these docs are never committed and
+need no commit authorization. The repo has no `docs/superpowers/` tree (the
+`brainstorming` skill's default location): the authoritative distilled design
+lives in `.superpowers/architecture.md` + `.superpowers/themes/`, and anything
+a spec under `docs/superpowers/specs/` would hold belongs there or in the sdd
+scratch. Do not create it.
 
 **How to apply:** write brainstorm outputs to
 `.superpowers/sdd/YYYY-MM-DD-<topic>-design.md` and plans to
