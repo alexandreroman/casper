@@ -477,8 +477,9 @@ public enum SocketClientEngine<
                 }
             }
         }
-        // Only reached when every attempt threw a transport `TransportError`.
-        throw lastError ?? TransportError(reason: "no response from \(socketPath)")
+        // `maxAttempts >= 1`, so the loop always ran, and it falls through only when
+        // every attempt threw a transport `TransportError` — `lastError` is set.
+        throw lastError!
     }
 
     /// One request/response exchange over a single fresh connection. Throws a
