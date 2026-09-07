@@ -128,6 +128,7 @@
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
 - [AppModel encapsulation across extension files](references/appmodel-extension-encapsulation.md) — `private(set)` survives the split via mutators
 - [UUID fixtures must carry hex letters](references/uuid-fixture-case-vacuity.md) — a digit-only id makes a case assertion vacuous
+- [An empty array casts to any array type](references/empty-array-casts-to-anything.md) — so a `Mirror` absence assertion goes vacuous
 - [ScrollView padding and height](references/scrollview-viewport-vs-document.md) — outer padding pads the viewport; pinned height overflows the host
 - [An NSTextTable drops a view back to TextKit 1](references/textkit1-fallback-on-nstexttable.md) — the two engines size the same string differently
 - [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick
