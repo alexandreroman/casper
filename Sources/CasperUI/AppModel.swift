@@ -1330,16 +1330,12 @@ final class AppModel {
         indexPair { LayoutTree.surfaceIDs($0.layout).contains(surfaceID) }
     }
 
-    /// Whether `focusedSurfaceID` currently points at a TERMINAL pane in some
-    /// workspace's layout tree. Non-layout surfaces (the Inspector browser), layout
-    /// browser/diff surfaces, and "nothing focused" all return false. Gates
-    /// `applyNewSplit` — Split only makes sense on a focused terminal.
-    func focusedSurfaceIsTerminal() -> Bool { locateFocusedTerminal() != nil }
-
-    /// Where the focused surface lives, but only when it is a TERMINAL pane; nil for
-    /// every case `focusedSurfaceIsTerminal` rejects. One walk answers both questions
-    /// the Split action asks — is a terminal focused, and which workspace owns it — so
-    /// a split does not scan every Space's layout twice.
+    /// Where the focused surface lives, but only when it is a TERMINAL pane: nil for a
+    /// focused non-layout surface (the Inspector browser), for a layout browser/diff
+    /// surface, and for "nothing focused". One walk answers both questions the Split
+    /// action asks — is a terminal focused, and which workspace owns it — so a split
+    /// does not scan every Space's layout twice. Gates `applyNewSplit`: Split only makes
+    /// sense on a focused terminal.
     private func locateFocusedTerminal() -> WorkspaceIndex? {
         guard let id = focusedSurfaceID else { return nil }
         for (si, space) in spaces.enumerated() {
