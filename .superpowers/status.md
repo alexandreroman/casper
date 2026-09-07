@@ -149,7 +149,7 @@ hover, pulse, link-cursor and link-routing behaviour. See
 - **The per-workspace `+/−` diff summary** — the branch-vs-merge-base divergence
   badge designed for the Space sidebar row (decision 2026-07-06). The title
   bar's working-tree-vs-HEAD summary covers the need, so this is the intended
-  behaviour rather than a stopgap. See [[space-diff-summary-dropped]].
+  behaviour rather than a stopgap.
 - **A process-exit (`childExited`) `done`/`error` producer** and the authority
   release built on it. `onChildExit` is wired, but only to the script-hook
   runner, so `error` has no terminal-scraping producer — it is raised by a
