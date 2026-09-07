@@ -41,3 +41,24 @@ with `make vendor`. On any version bump: re-verify the xcframework checksum,
 re-vendor the matching-tag header, diff the xcframework's bundled `ghostty.h`
 against upstream, and update every affected `ghostty_*` call — all confined to
 the `CasperGhostty` module. See [[dependency-policy]].
+
+## The upstream `1.2.8` tag and the pinned revision differ
+
+`Package.resolved` pins revision `839f269bcd5193d03293cb6717ed2582dde265ef` for
+version `1.2.8`, while the fork's `refs/tags/1.2.8` resolves to
+`2ef85df0292dc864a857d30963b943e5d5b8dc87` — the tag is mutable upstream and has
+been moved. SwiftPM checks the pin against the tag it fetches, so **dependency
+resolution fails before anything compiles** in any checkout without a populated
+`.build`: a fresh clone, a fresh worktree, CI, or anything that clears
+`.build/{repositories,checkouts,artifacts}`.
+
+The pin is the thing to keep, not the tag: the checksum and the vendored header
+above both describe `839f269…`, and accepting the re-tagged commit would swap
+the binary out from under them.
+
+**How to access:** seed the worktree's `.build/{repositories,checkouts,artifacts}`
+from a checkout that already resolved (another worktree of the same repo), then
+`swift package resolve --skip-update`, which resolves from the local repository
+cache and leaves `Package.resolved` untouched. Verify with
+`git ls-remote --tags https://github.com/Lakr233/libghostty-spm.git` before
+concluding anything about which revision a tag names today.
