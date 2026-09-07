@@ -422,43 +422,39 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // path. Each character is sent as its physical key with the right modifiers,
     // reproducing real keyboard typing. Unsupported characters are skipped.
     public func debugSendKeys(_ text: String) {
-        guard surface != nil else { return }
-        for character in text {
-            guard let key = ghosttyInjectedKey(for: character) else {
-                CasperLog.debug.debug(
-                    "send-keys: skipping unmapped character \(String(character), privacy: .public)")
-                continue
-            }
-            let mods = key.needsShift
-                ? ghostty_input_mods_e(GHOSTTY_MODS_SHIFT.rawValue)
-                : ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue)
-            sendInjectedKey(key, mods: mods, text: String(character))
-        }
+        for character in text { inject(character, rawMods: GHOSTTY_MODS_NONE.rawValue) }
     }
 
     // Inject `character` as a real key event (press + release) with the given
     // modifier names, through the bare-event path `performKeyEquivalent` uses.
     public func debugSendKey(_ character: String, mods names: [String]) {
-        guard surface != nil, let ch = character.first else { return }
-        guard let key = ghosttyInjectedKey(for: ch) else {
+        // Only the one character the keycode stands for is injected, not the whole
+        // argument: `send-key ab` presses the `a` key.
+        guard let ch = character.first else { return }
+        inject(ch, rawMods: ghosttyModsFromNames(names).rawValue)
+    }
+
+    // Inject one character as a real key event (press + release) carrying `rawMods`
+    // plus whatever the character itself requires. Shared by `debugSendKeys` and
+    // `debugSendKey`, which differ only in where `rawMods` comes from.
+    private func inject(_ character: Character, rawMods: UInt32) {
+        guard let key = ghosttyInjectedKey(for: character) else {
             CasperLog.debug.debug(
-                "send-key: skipping unmapped character \(character, privacy: .public)")
+                "key injection: skipping unmapped character \(String(character), privacy: .public)")
             return
         }
-        var rawMods = ghosttyModsFromNames(names).rawValue
+        var mods = rawMods
         // An uppercase letter resolves to its lowercase physical key, so the SHIFT bit
-        // is what makes it type the requested letter — as in `debugSendKeys`. Without
-        // it, `send-key A` sends a lowercase keycode carrying "A".
-        if key.needsShift { rawMods |= GHOSTTY_MODS_SHIFT.rawValue }
+        // is what makes it type the requested letter. Without it, `send-key A` sends a
+        // lowercase keycode carrying "A".
+        if key.needsShift { mods |= GHOSTTY_MODS_SHIFT.rawValue }
         // Decide from the computed bitmask, not the raw name strings: `ghosttyModsFromNames`
         // already lowercases names, so checking the strings here could disagree
         // with it (e.g. "CTRL" would set the CTRL bit but slip past a case-
         // sensitive string check). Control/command combos must not carry text.
-        let carriesControl = (rawMods & (GHOSTTY_MODS_CTRL.rawValue | GHOSTTY_MODS_SUPER.rawValue)) != 0
-        // The text is the one character the keycode stands for, not the whole
-        // argument: `send-key ab` presses the `a` key, so it must not carry "ab".
+        let carriesControl = (mods & (GHOSTTY_MODS_CTRL.rawValue | GHOSTTY_MODS_SUPER.rawValue)) != 0
         sendInjectedKey(
-            key, mods: ghostty_input_mods_e(rawMods), text: carriesControl ? nil : String(ch))
+            key, mods: ghostty_input_mods_e(mods), text: carriesControl ? nil : String(character))
     }
 
     // Inject one key as a real press/release pair. The press carries `text` (nil for a
