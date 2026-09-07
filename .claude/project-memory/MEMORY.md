@@ -27,7 +27,6 @@
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — a worktree watcher plus a reflog one, so a commit refreshes
-- [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the branch-vs-merge-base row badge is not built, and why
 - [Domain CLI and control channel](references/domain-cli-control-channel.md) — JSON shapes and key conventions; non-zero error exits; no hooks
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning wrapped values crashes `.parse()`
 - [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
