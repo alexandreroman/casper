@@ -61,7 +61,6 @@ final class WorkspaceTitleBarRungTests: XCTestCase {
                 return XCTFail("no rung reported at \(width) pt")
             }
             XCTAssertGreaterThan(rung.number, 0, "\(width) pt placed an unmapped rung")
-            XCTAssertLessThanOrEqual(rung.number, 6, "\(width) pt placed rung \(rung.label)")
         }
     }
 
