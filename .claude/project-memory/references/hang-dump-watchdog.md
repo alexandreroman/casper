@@ -39,10 +39,21 @@ the main dispatch queue, or every modal alert reads as a hang — see
 
 - **Manual capture, works on any build including the distributed one:** from an
   **external** terminal — Casper's own embedded terminals freeze with the app —
-  run `sample $(pgrep -x casper) 10 -file /tmp/casper-hang.txt`, or the fuller
-  `/tmp/casper-hang-dump.sh` recipe (sample + `lldb bt all` + spindump + log).
-  This works without root because the release build is ad-hoc signed with **no
-  hardened runtime**. The archived diff-hang dumps
+  run `sample $(pgrep -x casper) 10 -file /tmp/casper-hang.txt`. The fuller
+  four-part capture, when one sample is not conclusive:
+
+  ```bash
+  pid=$(pgrep -x casper)
+  sample "$pid" 10 -file /tmp/casper-hang-sample.txt
+  lldb -p "$pid" --batch -o 'bt all' -o detach > /tmp/casper-hang-bt.txt
+  spindump "$pid" 5 -file /tmp/casper-hang-spindump.txt
+  log show --predicate 'subsystem == "com.github.alexandreroman.casper"' \
+    --last 30m --info --debug > /tmp/casper-hang-log.txt
+  ```
+
+  `spindump` needs `sudo`; the other three do not. `sample` works without root
+  because the release build is ad-hoc signed with **no hardened runtime**. The
+  archived diff-hang dumps
   `~/Library/Logs/Casper/hang-20260730-manual-{A,B}.txt` come from exactly this
   recipe — `sample $(pgrep -x casper) 3 -file …` against a **release** build,
   which auto-captures nothing since the watchdog is DEBUG-only. A 3 s sample is
