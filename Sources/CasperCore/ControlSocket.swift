@@ -1,5 +1,3 @@
-import Foundation
-
 /// A transport failure on the control channel.
 public struct ControlSocketError: Error, Equatable {
     public let reason: String
