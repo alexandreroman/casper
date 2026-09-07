@@ -23,10 +23,16 @@ surfaces and PTYs (same model as the Ghostty app).
 - **`GhosttyDefaultConfig`** — the baked-in default terminal theme, loaded
   before the user's own Ghostty config so user settings still win (see
   [[ghostty-config-dir-bundle-id]]).
-- **`GhosttyActionDispatcher`** — the extensible seam (`GhosttyActionHandler`)
-  for libghostty app-level actions (`newTab`/`newSplit`/`newWindow`/`closeTab`/
-  `closeWindow`, plus `openURL` for a cmd+clicked link and `quit`); the default
-  `LoggingActionHandler` logs unbuilt actions as no-ops.
+- **`GhosttyActionDispatcher.swift`** — the extensible seam: the
+  `GhosttyActionHandler` protocol plus the default `LoggingActionHandler`, which
+  claims nothing and logs whatever it is handed as an explicit no-op. (There is
+  no type named `GhosttyActionDispatcher`; the file is named for the role.)
+  `GhosttyRuntime.handleAction` offers the seam exactly five app-level actions —
+  `newSplit`, `newTab`, `newWindow`, `closeTab`, `closeWindow` — and falls
+  through to `onAction` for anything a handler leaves unclaimed. `openURL` (a
+  cmd+clicked link) and `quit` never reach the seam at all: they are handled
+  straight off `onAction` in CasperUI's `AppDelegate`, alongside the
+  `closeWindow` fallback.
 - **Rendering is libghostty's**, not Casper's: it owns the Metal layer and
   drives it from its own render thread. `GHOSTTY_ACTION_RENDER` is decoded like
   any other action but needs no `draw()` wiring on the AppKit side — the view's
