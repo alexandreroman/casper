@@ -95,7 +95,9 @@ extension LayoutNode: Codable {
             let ratios = try c.decode([Double].self, forKey: .ratios)
             // Reject inconsistent splits so a corrupt `session.json` self-heals via
             // SessionStore rather than decoding into a node that later traps in
-            // `LayoutTree.closeSurface` (`ratios.remove(at:)` index-out-of-range).
+            // `LayoutTree.closeSurface`: dropping the only child of a 1-child split
+            // empties `children`, so the `children.count == 1` collapse never fires
+            // and `children[min(i, children.count - 1)]` then indexes -1.
             guard children.count >= 2 else {
                 throw DecodingError.dataCorrupted(.init(
                     codingPath: decoder.codingPath,
