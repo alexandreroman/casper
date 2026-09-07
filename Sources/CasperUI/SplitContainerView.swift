@@ -403,13 +403,18 @@ final class SplitterHandleView: NSView {
     override func mouseDown(with event: NSEvent) {
         // No `super`: this whole view is the grab strip, so any press begins a
         // resize (or, on a double-click, equalizes the split).
+        //
+        // The drag anchor is snapshotted before the double-click branch, because the
+        // button can be held down and dragged out of that click: `mouseDragged` maps
+        // absolute pointer movement from this anchor, so leaving the previous click's
+        // anchor in place would make the divider jump away from the pointer.
+        didDrag = false
+        dragStartBoundary = boundary
+        dragStartWindowLocation = event.locationInWindow
         if event.clickCount == 2 {
             onEqualize()
             return
         }
-        didDrag = false
-        dragStartBoundary = boundary
-        dragStartWindowLocation = event.locationInWindow
         resizeCursor.set()
     }
 
