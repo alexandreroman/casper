@@ -182,21 +182,26 @@ longer does are recorded in `../status.md` § Superseded designs.
   `toggleInspectorCollapsed` on `AppModel`.
 - **Window floor** — the terminal region (the pane splits, not the sidebar and
   not the inspector) has a calibrated minimum of **200 × 200 pt**, and the
-  window's own floor follows from it: `WindowFloor` pushes an
-  `NSWindow.contentMinSize` computed from the sidebar's width plus the
-  inspector's, plus that minimum. It also grows a window already below the
+  window's own floor follows from it: `WindowFloor` computes it from the
+  sidebar's width plus the inspector's, plus that minimum, and pushes it to
+  **both** of the window's minimums — `contentMinSize`, and the frame-based
+  `NSWindow.minSize` derived from it. It also grows a window already below the
   floor, because `contentMinSize` constrains a drag but never grows a window
   that is already under it — otherwise revealing the inspector on a small window
   would leave the terminal squeezed instead of widening it.
 
   A SwiftUI content minimum does **not** reach `NSWindow`, not even declared on
   the sidebar column, so the floor cannot be expressed in the view tree. And
-  `WindowGroup` writes its own minimums (228 × 142, crediting the sidebar 28 pt
-  where it is 300), so ours holds only by being written last. The authoritative
-  mechanism is `NSWindowDelegate.windowWillResize(_:to:)`, deliberately **not**
-  taken because it means taking the window's delegate away from SwiftUI: the
-  accepted consequence is that the floor holds from normal states but not from a
-  window already collapsed below it, which normal use does not reach.
+  `WindowGroup` recomputes `contentMinSize` from its content on every view
+  update and writes it back (228 × 142, crediting the sidebar 28 pt where it is
+  300), clobbering a value written only there within the frame. So the
+  **frame-based `minSize` is what holds** — it is the one SwiftUI does not
+  manage — and the floor is re-applied on every window update besides. The
+  authoritative mechanism is `NSWindowDelegate.windowWillResize(_:to:)`,
+  deliberately **not** taken because it means taking the window's delegate away
+  from SwiftUI: the accepted consequence is that the floor holds from normal
+  states but not from a window already collapsed below it, which normal use does
+  not reach.
 
 - **Title bar** — the workspace toolbar is **one** `ToolbarItem`, holding the
   whole row: the title capsule, the info chip, the diff badge, the Merge chip
