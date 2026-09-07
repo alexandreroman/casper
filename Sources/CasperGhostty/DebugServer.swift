@@ -179,7 +179,7 @@ public final class DebugServer {
 
     private func resolve(_ command: DebugCommand) async -> DebugResponse {
         let surfaces = provider?.debugSurfaces() ?? []
-        // Every verb but `dumpState` and `focus` acts on a single surface, resolved
+        // Every verb but `dumpState` and `memory` acts on a single surface, resolved
         // the same way. `target(in:matching:)` is pure, so resolving it up front
         // costs nothing for the two verbs that ignore it. Each verb still rejects an
         // unresolved target itself, which keeps `screenshot`'s error precedence
@@ -251,10 +251,10 @@ public final class DebugServer {
             return memoryResponse()
 
         case .focus:
-            guard let id = command.target else { return .failure("missing target id") }
-            guard let handle = Self.surface(withID: id, in: surfaces) else {
-                return .failure("no surface with id \(id)")
-            }
+            // The only verb that refuses the focused-surface fallback: focusing
+            // whatever is already focused is never what the caller meant.
+            guard command.target != nil else { return .failure("missing target id") }
+            guard let handle else { return targetFailure(command.target) }
             handle.focus()
             return .success()
         }
