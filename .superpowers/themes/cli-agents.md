@@ -109,8 +109,13 @@ never a silent fallback to defaults: a typo in the config must be visible.
 **`copyFiles` distinguishes absent from empty.** `nil` means "unspecified" and
 the caller's built-in defaults apply (`.env`, `.env.local`); an explicit `[]`
 means "copy nothing". Patterns are matched with `fnmatch(3)`
-(`WorkspaceFileCopier`). An invalid entry fails workspace creation **before any
-Git mutation**, so a bad config never leaves a half-made worktree behind.
+(`WorkspaceFileCopier`), which never rejects a pattern: a glob that matches
+nothing simply copies nothing. What is validated is the **file**, and it is
+validated **before any Git mutation** — `WorktreeManager` loads `.casper.json`
+ahead of `addWorktree`, so a malformed one aborts with nothing half-created and
+nothing to roll back. A *copy* failure is the later case: it happens after the
+worktree exists, and is rolled back by removing the worktree and deleting its
+branch.
 
 **`scripts` holds two different kinds of thing.** The reserved names `setup` and
 `teardown` (`RepoScripts.reservedNames`) are *lifecycle hooks*: run
