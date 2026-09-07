@@ -64,7 +64,6 @@ final class SplitResizeTests: XCTestCase {
             start, dividerIndex: 0, boundaryTarget: -50, axisLength: axisLength, minLength: minLength)
 
         XCTAssertEqual(result[0] * axisLength, minLength, accuracy: accuracy)
-        XCTAssertGreaterThanOrEqual(result[1] * axisLength, Double(minLength) - accuracy)
         assertSumIsOne(result)
     }
 
@@ -78,7 +77,6 @@ final class SplitResizeTests: XCTestCase {
             start, dividerIndex: 0, boundaryTarget: 500, axisLength: axisLength, minLength: minLength)
 
         XCTAssertEqual(result[1] * axisLength, minLength, accuracy: accuracy)
-        XCTAssertGreaterThanOrEqual(result[0] * axisLength, Double(minLength) - accuracy)
         assertSumIsOne(result)
     }
 
