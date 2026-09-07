@@ -16,9 +16,10 @@ header (`Vendor/ghostty/ghostty.h`), but its real layout is a packed i32: bit 0
 bits 1–3 (`mods |= Int32(momentum.rawValue) << 1`).
 
 **Why:** without the precision bit, libghostty interprets precise pixel deltas
-as line counts, so trackpad scrolling runs far too fast — this was the "terminal
-scroll too fast" bug. The header documents none of this layout, so it must be
-reconstructed from Ghostty's Swift source (see [[ghostty-is-the-reference]]).
+as line counts, so trackpad scrolling runs far too fast — the symptom to
+recognize is a terminal that scrolls wildly out of proportion to the gesture.
+The header documents none of this layout, so it must be reconstructed from
+Ghostty's Swift source (see [[ghostty-is-the-reference]]).
 
 **How to apply:** when touching scroll forwarding, build a `var mods: Int32`, OR
 in the precision bit inside the `hasPreciseScrollingDeltas` block, and OR in the
