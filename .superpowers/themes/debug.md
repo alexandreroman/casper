@@ -59,8 +59,13 @@ floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
   surface **without** moving focus, and an unmatched target fails cleanly (no
   silent fallback). Seven of the ten verbs take `--target`: `focus` addresses
   by positional id instead, and `dump-state` and `memory` take none at all —
-  `dump-state` enumerates every surface and `memory` describes the process, so
-  neither has anything to target.
+  `dump-state` returns the whole set and `memory` describes the process, so
+  neither has anything to target. **As built, that set holds at most one
+  surface:** `DebugSurfaceBridge` reports only the selected workspace's live
+  terminal, located in the key window's view hierarchy, and keys it by the
+  *workspace* id. `dump-state` therefore returns zero or one entry, and both
+  `--target` and `focus` can only ever resolve to that same surface — the
+  addressing machinery is in place, with nothing else to choose from yet.
 - **`debug-casper` skill** — the observe-act-verify runbook (build debug,
   launch, wait for the socket, drive, teardown).
 
