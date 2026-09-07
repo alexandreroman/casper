@@ -158,13 +158,18 @@ final class WorkspaceTitleBarWidthTests: XCTestCase {
             let chrome = minX < 1 ? WorkspaceDetailView.windowChromeReserve : 0
             // The detail width whose settled row is exactly `minimumRowWidth` wide.
             let floor = WorkspaceDetailView.minimumRowWidth + WorkspaceDetailView.safetyMargin + chrome
+            // Guards the fixture, not the code, and once rather than per width: the
+            // band starts exactly ON the threshold, and `settledWidth` subtracts the
+            // same two constants `floor` is built from, so every wider width in the
+            // sweep clears the threshold precisely because this one meets it.
+            XCTAssertEqual(
+                settledWidth(floor, minX: minX), WorkspaceDetailView.minimumRowWidth,
+                accuracy: 0.001,
+                "the sweep does not start at the mount threshold: minX=\(minX)")
 
             for width in stride(from: floor, through: floor + 200, by: 1) {
                 for step in Self.shrinkSteps {
                     let context = "minX=\(minX) step=\(step) width=\(width)"
-                    XCTAssertGreaterThanOrEqual(
-                        settledWidth(width, minX: minX), WorkspaceDetailView.minimumRowWidth,
-                        "fixture below the threshold, so it pins nothing: \(context)")
                     XCTAssertGreaterThanOrEqual(
                         declaredWidth(previousWidth: width + step, newWidth: width, minX: minX),
                         WorkspaceDetailView.minimumRowWidth,
