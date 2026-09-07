@@ -195,11 +195,6 @@ injected socket path already points at the right instance). See
 The control socket class uses `@unchecked Sendable` + serial-queue discipline
 under Swift 6 — see [[swift6-network-concurrency]].
 
-### Agent integration detection
-
-Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI** and
-**opencode** — and each reaches the CLI above through a plugin the user installs
-into the agent itself. **Casper never writes another tool's configuration**:
 ### Terminal locale
 
 A macOS GUI app launched from the Dock, the Finder or Xcode inherits no `LANG`
@@ -216,6 +211,11 @@ both components resolve **and** the C library recognizes the result
 back to `en_US.UTF-8`, which macOS always has. The probe is injectable and the
 resolution is pure, so the whole chain is testable without a terminal.
 
+### Agent integration detection
+
+Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI** and
+**opencode** — and each reaches the CLI above through a plugin the user installs
+into the agent itself. **Casper never writes another tool's configuration**:
 every agent ships its own installer, so all Casper does is *detect* what an
 installer left behind and remind the user when something is missing or stale.
 There is deliberately no install, repair or enable action anywhere in the app —
@@ -593,8 +593,9 @@ wrong diagnosable from a screenshot. The version is whatever another tool wrote
 down — a Codex cache *directory name*, or a Claude registry field that is
 legitimately the literal `"unknown"` — so nothing guarantees it is short or
 sane: whitespace runs collapse to single spaces (a newline mid-message would
-burn a whole row line on a hard break) and the result is capped at
-`maxDisplayedVersionLength`, after which the row drops the parenthesis entirely
+burn a whole row line on a hard break) and anything longer than
+`maxDisplayedVersionLength` is **truncated to an ellipsis** at that length. Only
+a version left with nothing printable at all drops the parenthesis entirely,
 rather than showing an empty one. The other two lines carry
 no version: `<agent> integration not installed` and, for Codex,
 `Codex integration needs approval`.
