@@ -350,7 +350,6 @@ flowchart TD
     UI --> HL[HighlightSwift]
     UI --> SP[Sparkle]
     CLI --> Core
-    CLI --> Agents
     CLI --> AP[swift-argument-parser]
     Agents --> Core
     Ghostty --> Core
