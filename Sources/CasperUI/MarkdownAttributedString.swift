@@ -270,7 +270,22 @@ private extension Block {
 
     var isBlockQuote: Bool { hasComponent { if case .blockQuote = $0 { return true }; return false } }
 
-    var isOrderedList: Bool { hasComponent { if case .orderedList = $0 { return true }; return false } }
+    /// Whether the *innermost* enclosing list is ordered, or `nil` for a block
+    /// that no list encloses. Resolved innermost-first like `listItemOrdinal`,
+    /// because a chain nests every ancestor list too: for `1. one` /
+    /// `   - sub`, the sub-item's chain is
+    /// `paragraph | listItem | unorderedList | listItem | orderedList`, and
+    /// reading it as "does an ordered list appear anywhere" would give the
+    /// bullet the outer list's numeric marker.
+    var isOrderedList: Bool? {
+        firstPayload { component in
+            switch component.kind {
+            case .orderedList: return true
+            case .unorderedList: return false
+            default: return nil
+            }
+        }
+    }
 
     var listItemOrdinal: Int? {
         firstPayload { if case .listItem(let ordinal) = $0.kind { return ordinal }; return nil }
@@ -635,7 +650,10 @@ private struct Builder {
 
     private func renderListItem(_ block: Block, ordinal: Int, isFirstBlock: Bool) -> NSAttributedString {
         let text = inlineAttributedText(block, baseFont: font)
-        let marker = taskMarker(strippingFrom: text) ?? (block.isOrderedList ? "\(ordinal)." : Layout.bulletGlyph)
+        // A block carrying a `listItem` intent is always inside a list, so the
+        // fallback only covers the impossible case.
+        let isOrdered = block.isOrderedList ?? false
+        let marker = taskMarker(strippingFrom: text) ?? (isOrdered ? "\(ordinal)." : Layout.bulletGlyph)
 
         let paragraph = NSMutableAttributedString(
             string: marker + "\t", attributes: [.font: font, .foregroundColor: textColor])
