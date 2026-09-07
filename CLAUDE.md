@@ -33,15 +33,9 @@ Full prerequisites, the Make-target reference, the `make vendor` and
 in [README.md](README.md) § Building from source. The targets in daily use:
 
 ```bash
-make build   # compile, then assemble + sign Casper-dev.app (assemble-bundle.sh
-             #   debug, install_name_tool rpath, Info-dev.plist, codesign)
+make build   # compile, then assemble + sign Casper-dev.app
 make dev     # rebuild + launch Casper-dev.app under a per-branch dev session
 make test    # run the test suite
-make release # size-optimized release build (arm64)
-make bundle  # assemble a self-contained Casper.app (release binary + dylibs)
-make dist    # package Casper.app into a .zip + .sha256 + dSYM.zip
-make vendor  # re-sync Vendor/ghostty/ghostty.h (contributor-only; run AFTER a build)
-make memory  # DEBUG only — watch a running dev instance for memory growth
 casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
 
@@ -58,8 +52,8 @@ them into Icon Composer, and commit the updated `AppIcon.icon`.
 
 ## Modules
 
-`.superpowers/architecture.md` § Modules is the authoritative table — module
-boundaries, what each owns, and the theme doc that details it.
+`.superpowers/architecture.md` § Module boundaries is the authoritative table —
+what each module owns, and the theme doc that details it.
 
 ## Agents
 
