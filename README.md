@@ -395,7 +395,7 @@ printf '## App ready\n' | casper info set -  # same, with an explicit '-' marker
 casper info clear                            # empty the panel and hide its button
 casper terminal new                          # open a terminal (split below)
 casper terminal list                         # list the workspace's terminals
-casper terminal close <id>                   # close a terminal by id
+casper terminal close 3f2a9c14-8b7e-4d51-9a0c-2e6f1b48d7aa   # close a terminal by id
 casper browser open https://example.com      # load a URL in the inspector browser
 casper browser close                         # collapse the inspector if the browser is showing
 casper diff open Sources/App/Main.swift      # open the diff, scroll to a file
@@ -405,7 +405,7 @@ casper workspace current                     # print the current workspace + pat
 casper workspace new feature/x               # create a Git worktree workspace
 casper workspace new feature/x --base main --command "claude"
 casper workspace delete                      # destroy a workspace (worktree + branch)
-casper run [name]                            # run a named .casper.json command in a split (defaults to 'run')
+casper run test                              # run a named .casper.json command in a split (omit the name for 'run')
 ```
 
 `casper workspace new <branch>` takes the branch name as a positional argument
@@ -428,11 +428,11 @@ casper browser url                           # print the page's current URL
 casper browser eval "document.title"         # evaluate JavaScript in the page
 casper browser click "button.submit"         # click the first matching element
 casper browser type "input[name=q]" casper   # type into the first matching element
-casper browser key Enter                     # dispatch a keydown/keyup to the page
-casper browser console                       # captured console output + uncaught errors (--level)
+casper browser key Enter                     # dispatch a keydown/keyup to the page (--selector)
+casper browser console                       # captured console output + uncaught errors (--level, --clear)
 casper browser wait ".ready"                 # block until a selector holds (or --js <expr>)
                                              # --visible/--gone, --timeout <ms> (default 5000)
-casper browser reload                        # reload the page
+casper browser reload                        # reload the page (--wait until it finishes loading)
 casper browser scroll-down                   # also scroll-up / scroll-top / scroll-bottom
 ```
 
