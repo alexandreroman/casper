@@ -22,13 +22,16 @@ release ships `GhosttyKit.xcframework` built from upstream Ghostty **`v1.3.1`**
 - Required linker settings on the CasperGhostty target: `.linkedLibrary("c++")`.
 - The API source of truth is the vendored header `Vendor/ghostty/ghostty.h`
   (sha256 `145d9e9f733c5c22615b80f17397b9640860448fd45394bc5fb1807fb4a33db7`,
-  1196 lines), synced by Carvel `vendir` (`vendir.yml` / `vendir.lock.yml`,
-  `make vendor`). It is copied out of the **extracted xcframework's own Headers
-  directory**, so it mirrors the fork Casper actually links — not upstream
-  Ghostty, whose struct layout differs. `make vendor` therefore requires a build
-  to have downloaded and extracted the artifact first. Upstream `main` is doubly
-  wrong as a reference: it also inserts `GHOSTTY_ACTION_SELECTION_CHANGED`
-  mid-enum, renumbering every later action tag.
+  1196 lines), synced by Carvel `vendir` (`vendir.yml`, `make vendor`). It is
+  copied out of the **extracted xcframework's own Headers directory**, so it
+  mirrors the fork Casper actually links — not upstream Ghostty, whose struct
+  layout differs. `make vendor` therefore requires a build to have downloaded
+  and extracted the artifact first. Upstream `main` is doubly wrong as a
+  reference: it also inserts `GHOSTTY_ACTION_SELECTION_CHANGED` mid-enum,
+  renumbering every later action tag.
+- `vendir.lock.yml` is gitignored and pins nothing: its `directory:` content
+  type records no revision, digest or version. `vendir.yml` and
+  `Package.resolved` carry the whole pin.
 
 **Why:** the libghostty embedding API is unstable and changes between versions;
 every `ghostty_*` symbol must be written against the exact pinned header, and
@@ -56,9 +59,16 @@ The pin is the thing to keep, not the tag: the checksum and the vendored header
 above both describe `839f269…`, and accepting the re-tagged commit would swap
 the binary out from under them.
 
-**How to access:** seed the worktree's `.build/{repositories,checkouts,artifacts}`
-from a checkout that already resolved (another worktree of the same repo), then
-`swift package resolve --skip-update`, which resolves from the local repository
-cache and leaves `Package.resolved` untouched. Verify with
-`git ls-remote --tags https://github.com/Lakr233/libghostty-spm.git` before
-concluding anything about which revision a tag names today.
+**How to access:** copy **four** things out of a checkout that already resolved
+(another worktree of the same repo) into the fresh one's `.build/`:
+`repositories/`, `checkouts/`, `artifacts/`, **and `workspace-state.json`**.
+The three directories alone are not enough: the seeded repository mirror still
+reports the moved `1.2.8` tag, so any re-resolution — including
+`swift package resolve --skip-update` — fails on the pin exactly as a clean
+checkout does. `workspace-state.json` is the record that the graph is *already*
+resolved, and with it in place `swift build` proceeds without re-resolving and
+without touching `Package.resolved`. The copied file names absolute artifact
+paths inside the donor checkout, so the donor must still exist on disk.
+
+Verify with `git ls-remote --tags https://github.com/Lakr233/libghostty-spm.git`
+before concluding anything about which revision a tag names today.
