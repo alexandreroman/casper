@@ -478,9 +478,10 @@ final class AppModel {
 
     // Reached from AppModel+Spaces.swift and AppModel+Control.swift.
     /// Workspaces whose terminal-independent, explicit state took over: native
-    /// terminal detection is suppressed only for `blocked`, `done`, and `error`.
-    /// Transient — an in-memory set, never persisted, so it naturally resets to
-    /// "detection" on relaunch.
+    /// terminal detection is suppressed for `working`, `blocked`, `done` and `error`,
+    /// and only `idle`/`unknown` hand the workspace back to the scraper (see
+    /// `controlSetAgentState`). Transient — an in-memory set, never persisted, so it
+    /// naturally resets to "detection" on relaunch.
     @ObservationIgnored var explicitAuthority: Set<UUID> = []
 
     /// When each workspace last delivered a macOS notification. Drives a short
