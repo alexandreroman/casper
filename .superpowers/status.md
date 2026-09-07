@@ -16,21 +16,22 @@ Every module is built, and Casper is a working product: a Space-grouped
 sidebar over linked Git worktrees, tmux-style terminal panes, a right inspector
 panel carrying the browser and the diff view, per-repository `.casper.json`
 scripts, agent-state detection for three coding agents, and in-app auto-update.
-`make build` and `make test` are green — last measured 2026-08-26. The suite's
-test count is deliberately not recorded here: it moves with every commit, and a
-stale number reads as a regression. Run `make test` for the current figure.
+`make build` and `make test` are expected green on every commit. Neither the
+suite's test count nor the date it last ran is recorded here: both move with
+every commit, and a stale figure reads as a regression. Run `make test` for the
+current answer.
 
-| Area                                 | Status | Design & as-built                                                    |
-| ------------------------------------ | ------ | -------------------------------------------------------------------- |
-| CasperCore                           | ✅     | [`themes/core.md`](themes/core.md)                                   |
-| CasperGit (+ Clibgit2, CSigbusGuard) | ✅     | [`themes/git-worktrees.md`](themes/git-worktrees.md)                 |
-| CasperCLI + CasperAgents             | ✅     | [`themes/cli-agents.md`](themes/cli-agents.md)                       |
-| CasperGhostty                        | ✅     | [`themes/terminal.md`](themes/terminal.md)                           |
-| CasperUI (UI-1…UI-5)                 | ✅     | [`themes/app-ui.md`](themes/app-ui.md)                               |
-| Space (project)                      | ◐      | [`themes/space-project.md`](themes/space-project.md)                 |
-| Agent-state detection                | ◐      | [`themes/agent-state-detection.md`](themes/agent-state-detection.md) |
-| Agent integration detection          | ✅     | `themes/cli-agents.md` § Agent integration detection                 |
-| Debug & observability (`#if DEBUG`)  | ✅     | [`themes/debug.md`](themes/debug.md)                                 |
+| Area                                 | Status |
+| ------------------------------------ | ------ |
+| CasperCore                           | ✅     |
+| CasperGit (+ Clibgit2, CSigbusGuard) | ✅     |
+| CasperCLI + CasperAgents             | ✅     |
+| CasperGhostty                        | ✅     |
+| CasperUI (UI-1…UI-5)                 | ✅     |
+| Space (project)                      | ◐      |
+| Agent-state detection                | ◐      |
+| Agent integration detection          | ✅     |
+| Debug & observability (`#if DEBUG`)  | ✅     |
 
 The ◐ rows are the areas whose *design* is unfinished; open items sit under ✅
 rows too. Everything outstanding is listed under [Remaining
