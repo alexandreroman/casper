@@ -987,7 +987,7 @@ struct WorkspaceTitleBarRow: View {
         // while the trailing edge is tuned so the title-to-glyph gap (this
         // inset + the info button's own 2 pt inner padding) matches the
         // glyph-to-badge gap on the other side of the info chip.
-        .padding(.leading, 10)
+        .padding(.leading, TitleCapsuleMetrics.horizontalInset)
         .padding(.trailing, 6)
         .titleCapsuleShell(filled: false)
     }
@@ -1419,7 +1419,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
         HStack(spacing: 0) {
             Button(action: action) {
                 primaryLabel()
-                    .padding(.leading, 10)
+                    .padding(.leading, TitleCapsuleMetrics.horizontalInset)
                     .padding(.trailing, 4)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
@@ -1435,7 +1435,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             // Fill the capsule's right inset so its trailing edge isn't a dead zone.
-            .padding(.trailing, 10)
+            .padding(.trailing, TitleCapsuleMetrics.horizontalInset)
         }
         .titleCapsuleShell(interactive: true)
     }
