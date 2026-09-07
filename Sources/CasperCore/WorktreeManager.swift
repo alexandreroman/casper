@@ -42,19 +42,6 @@ extension WorktreeError: LocalizedError {
     }
 }
 
-/// The result of creating a worktree: enough to build a `Workspace`.
-public struct CreatedWorktree: Equatable, Sendable {
-    public let name: String
-    public let path: String
-    public let branch: String
-
-    public init(name: String, path: String, branch: String) {
-        self.name = name
-        self.path = path
-        self.branch = branch
-    }
-}
-
 /// Orchestrates `CasperGit` primitives into workspace-creation operations,
 /// enforcing Casper's rules and never crashing on git failure.
 public enum WorktreeManager {
@@ -83,13 +70,9 @@ public enum WorktreeManager {
     /// file is absent or does not specify them) from `repoPath` into
     /// `worktreePath`; a copy failure rolls back the worktree and branch so
     /// nothing is left half-created on disk.
-    ///
-    /// The returned `CreatedWorktree` is discardable: callers that already know the
-    /// name, path and branch they asked for have nothing to read from it.
-    @discardableResult
     public static func create(
         repoPath: String, name: String, worktreePath: String, base: String?
-    ) throws -> CreatedWorktree {
+    ) throws {
         let repo = try openRepo(repoPath)
 
         // A worktree is checked out at a commit, and `addWorktree` resolves one through
@@ -120,8 +103,8 @@ public enum WorktreeManager {
         // so an empty config resolves the default in one place.
         let patterns = (config ?? RepoConfig()).copyFiles(default: WorkspaceFileCopier.defaultPatterns)
 
-        let info = try mapGitError {
-            try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
+        try mapGitError {
+            _ = try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
         }
 
         // Same Git-ignore source `DirectoryWatcher` prunes with: walking `.build` or
@@ -141,12 +124,10 @@ public enum WorktreeManager {
             try? deleteBranch(repoPath: repoPath, name: name)
             throw WorktreeError(.fileCopyFailed("\(error)"))
         }
-
-        return CreatedWorktree(name: info.name, path: info.path, branch: name)
     }
 
     /// List worktrees of the repository at `repoPath`.
-    public static func list(repoPath: String) throws -> [WorktreeInfo] {
+    static func list(repoPath: String) throws -> [WorktreeInfo] {
         let repo = try openRepo(repoPath)
         return try mapGitError {
             try repo.worktreeNames().map { try repo.worktreeInfo(name: $0) }

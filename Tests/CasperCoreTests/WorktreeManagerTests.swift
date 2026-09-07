@@ -38,15 +38,18 @@ final class WorktreeManagerTests: XCTestCase {
 
     func testCreateProducesWorktreeAndBranch() throws {
         let wtPath = root.appendingPathComponent("feature").path
-        let created = try WorktreeManager.create(
+        try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature",
             worktreePath: wtPath, base: nil)
 
-        XCTAssertEqual(created.name, "feature")
-        XCTAssertEqual(created.branch, "feature")
         XCTAssertTrue(FileManager.default.fileExists(atPath: wtPath))
+        let repo = try Repository.open(atPath: repoDir.path)
+        XCTAssertTrue(try repo.branchExists("feature"))
+        // The admin entry git registered has to point at the path that was asked for.
+        let registered = try XCTUnwrap(
+            WorktreeManager.list(repoPath: repoDir.path).first { $0.name == "feature" })
         XCTAssertEqual(
-            URL(fileURLWithPath: created.path).standardizedFileURL.path,
+            URL(fileURLWithPath: registered.path).standardizedFileURL.path,
             URL(fileURLWithPath: wtPath).standardizedFileURL.path)
     }
 
