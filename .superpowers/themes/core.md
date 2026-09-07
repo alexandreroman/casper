@@ -38,20 +38,32 @@ The pure-Swift, UI-free core. Fully unit-tested.
   instances (e.g. a `--session` test build alongside the real one) statistically
   hand out different blocks to their first workspaces — a mitigation, not strict
   isolation.
-- **`SessionStore`** — `Codable` + `FileManager` persistence, debounced on each
-  mutation; self-heals a corrupt layout file. The layout file is `session.json`
-  by default, or `session-<name>.json` when the app is launched with
-  `--session <name>` (see [[app-sessions]]), so a named session never clobbers
-  the default instance's layout. The transient agent state (`agentState`,
-  `todos`, `pendingNotification`) is intentionally **not** persisted — it resets
-  on load.
-- **Control channel** — `ControlProtocol` (`ControlCommand`/`ControlResponse`
-  wire types) + `ControlSocket` (the release Unix-domain server/client) over the
-  shared `SocketTransport` (symmetric 4-byte big-endian length-prefixed framing
-  with an 8 MB per-frame guard, applied in both directions so a malformed peer
-  cannot force an unbounded allocation), plus the pure CLI helpers
-  `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`. Concurrency
-  discipline for the socket classes is in [[swift6-network-concurrency]].
+- **`SessionStore`** — `Codable` + `FileManager` persistence; self-heals a
+  corrupt layout file. It carries **no debounce of its own** — every call
+  writes. The coalescing lives one layer up, in CasperUI's `AppModel`, whose
+  `scheduleSave()` re-arms a 0.5 s `Debouncer` around `persist()`. Only the few
+  high-frequency edits take that path (a committed browser URL, an inspector
+  width or split ratio being dragged, a font-size change); the great majority of
+  save sites call `persist()` directly, and `flushPendingSave()` cancels the
+  pending timer and writes at once for quit-safety. The layout file is
+  `session.json` by default, or `session-<name>.json` when the app is launched
+  with `--session <name>` — a **DEBUG-only** flag, since `SessionIdentity.parse`
+  ignores the argument outright in a release build (see [[app-sessions]]) — so a
+  named session never clobbers the default instance's layout. The **six**
+  transient runtime fields (`agentState`, `todos`, `pendingNotification`,
+  `pendingNotificationMessage`, `infoMarkdown`, `infoUnread`) are intentionally
+  **not** persisted: `Workspace`'s hand-rolled coders neither write nor read
+  them, so they reset on load.
+- **Control channel** — `ControlProtocol.swift` (the `ControlCommand` /
+  `ControlResponse` wire types) + `ControlSocket.swift` (the release Unix-domain
+  server/client, declared as the `ControlSocketServer` / `ControlSocketClient`
+  typealiases over the engine, plus `ControlSocketError`; neither file declares
+  a type of its own name) over the shared `SocketTransport` (symmetric 4-byte
+  big-endian length-prefixed framing with an 8 MB per-frame guard, applied in
+  both directions so a malformed peer cannot force an unbounded allocation),
+  plus the pure CLI helpers `ProgressSynthesis`, `ControlTargeting`, and
+  `GitBranchName`. Concurrency discipline for the socket classes is in
+  [[swift6-network-concurrency]].
 - **`SessionIdentity`** — the name that suffixes a session's layout file and
   socket paths so a dev/test instance runs beside the user's real one. A `nil`
   name is the default session, whose paths stay byte-for-byte the historical
@@ -69,8 +81,8 @@ The pure-Swift, UI-free core. Fully unit-tested.
     to the main actor is the caller's job. It knows nothing of `Workspace`,
     `Repository` or SwiftUI. Gotchas in [[fsevents-directory-watcher]].
   - **`Debouncer`** — a main-actor coalescing timer: each `schedule` cancels the
-    pending work and re-arms, so a burst fires once. The `SessionStore` save
-    idiom, extracted.
+    pending work and re-arms, so a burst fires once. It is what CasperUI's
+    `AppModel` drives its session-save and diff-refresh debounces with.
   - **`LoginShellPath`** — probes the user's shell for its `PATH` once per
     process, then resolves command names against it in Swift. Casper's own
     environment lacks that `PATH` because it is launched from Finder/Dock, and
