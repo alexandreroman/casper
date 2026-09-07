@@ -514,16 +514,12 @@ struct WorkspaceDetailView: View {
         // (see `TerminalHostMetrics.sidebarWidth`).
         let sidebarWidth = detailFrame.minX < 1
             ? 0
-            : max(detailFrame.minX, Self.sidebarColumnMinimum)
+            : max(detailFrame.minX, TerminalHostMetrics.sidebarColumnMinimum)
         return TerminalHostMetrics(
             sidebarWidth: sidebarWidth,
             inspectorSlice: inspectorSlice(container: detailFrame.width),
             detailChromeHeight: Self.paneDividerHeight)
     }
-
-    /// The sidebar column's own minimum, mirroring `RootView`'s
-    /// `.navigationSplitViewColumnWidth(min: 220, ...)`.
-    private static let sidebarColumnMinimum: CGFloat = 220
 
     /// The `Divider()` above the pane tree, which is part of the detail area's height
     /// but not part of the terminal.
