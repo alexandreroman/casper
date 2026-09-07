@@ -1013,13 +1013,13 @@ final class AppModel {
         selectedWorkspaceID = id
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
-        guard let id, let ws = workspace(id: id) else { return }
+        // Resolved once for the whole body: nothing below inserts or removes a Space or a
+        // workspace (`revealSpace` only flips `isCollapsed`), so the index stays valid.
+        guard let id, let at = locate(id) else { return }
         if changed { refreshNamedCommands(for: id) }
         // A selected workspace must be visible: reveal its owning Space.
-        if let si = spaces.firstIndex(where: { $0.workspaces.contains { $0.id == id } }) {
-            revealSpace(at: si)
-        }
-        focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
+        revealSpace(at: at.space)
+        focusedSurfaceID = LayoutTree.surfaceIDs(workspace(at: at).layout).first
         focusActiveSurfaceView()
         clearNotificationForFocusedWorkspace()
         // A `done` workspace is "finished, not yet seen"; selecting it is
@@ -1031,7 +1031,7 @@ final class AppModel {
         // gated on `isWindowKey()`, unlike the bubble clear above: the
         // resolver's own "seen" test is selection alone. `blocked`/`error`
         // are untouched — selection has no power over them.
-        if let at = locate(id), workspace(at: at).agentState == .done {
+        if workspace(at: at).agentState == .done {
             updateWorkspace(at: at) { $0.agentState = .idle }
         }
         if changed { persist() }
