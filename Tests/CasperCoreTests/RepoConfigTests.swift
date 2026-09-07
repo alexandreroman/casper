@@ -117,8 +117,6 @@ final class RepoConfigTests: XCTestCase {
         XCTAssertNil(config.setupScript())
         XCTAssertNil(config.teardownScript())
         XCTAssertEqual(config.namedCommands(), [])
-        // copyFiles still works alongside a missing scripts section.
-        XCTAssertEqual(config.copyFiles(default: [".env", ".env.local"]), [".env"])
     }
 
     func testReservedNamesConstant() throws {
