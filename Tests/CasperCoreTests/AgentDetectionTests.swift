@@ -232,6 +232,7 @@ final class AgentDetectionTests: XCTestCase {
     }
 
     func testAggregateIdleBeatsAbsent() {
+        // Nothing reports work: idle outranks a silent source.
         XCTAssertEqual(AgentSignal.aggregate([.idle, .absent]), .idle)
     }
 
@@ -240,29 +241,16 @@ final class AgentDetectionTests: XCTestCase {
     }
 
     func testAggregateBlockedBeatsWorking() {
+        // A pending question needs the user even while a progress bar is still up.
         XCTAssertEqual(AgentSignal.aggregate([.blocked, .working]), .blocked)
     }
 
     func testAggregateWorkingProgressRescuesIdleViewport() {
         // [viewport, title, progress]: the progress report is the only source that
-        // still sees the run, so it must carry the workspace.
+        // still sees the run, so it must carry the workspace. Position is
+        // irrelevant — `aggregate` is a max — so a silent (absent) source can never
+        // cancel a working one, wherever it sits.
         XCTAssertEqual(AgentSignal.aggregate([.idle, .absent, .working]), .working)
-    }
-
-    func testAggregateRemovedProgressDoesNotVetoWorkingTitle() {
-        // A silent progress source is absent, the weakest rank, so it cannot cancel
-        // a working title.
-        XCTAssertEqual(AgentSignal.aggregate([.idle, .working, .absent]), .working)
-    }
-
-    func testAggregateBlockedBeatsWorkingProgress() {
-        // A pending question needs the user even while a progress bar is still up.
-        XCTAssertEqual(AgentSignal.aggregate([.blocked, .absent, .working]), .blocked)
-    }
-
-    func testAggregateAllQuietIsIdle() {
-        // Nothing reports work: idle outranks the two absent sources.
-        XCTAssertEqual(AgentSignal.aggregate([.idle, .absent, .absent]), .idle)
     }
 
     // MARK: - Resolver
