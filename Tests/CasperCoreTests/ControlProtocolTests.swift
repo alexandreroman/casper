@@ -2,26 +2,24 @@ import XCTest
 @testable import CasperCore
 
 final class ControlProtocolTests: XCTestCase {
-    func testCommandRoundTripsThroughJSON() throws {
+    /// `ControlCommand` is a flat struct with a fully synthesized `Codable`, so a
+    /// single round trip over a fixture that populates *every* field covers all
+    /// verbs. `Equatable` compares every field, so the one assertion pins them all
+    /// — a newly added field is only covered once it is set here too.
+    func testCommandRoundTripsEveryField() throws {
         let command = ControlCommand(
-            verb: .progressSet, workspace: "feature-x",
-            total: 5, current: 3, label: "wiring up")
+            verb: .progressSet, workspace: "feature-x", state: "working",
+            total: 5, current: 3, label: "wiring up",
+            message: "## Ready\n- <http://localhost:8080>\n",
+            url: "http://localhost:5173", target: "Sources/App.swift",
+            branch: "feature-x", base: "main", command: "npm run dev",
+            cwd: "/w", name: "test", script: "document.title", selector: "#submit",
+            value: "hello", key: "Enter", path: "/tmp/shot.png", level: "warn",
+            predicate: "document.readyState === 'complete'", waitTimeout: 2_000,
+            clear: true, visible: true, gone: false, waitReady: true,
+            width: 1280, height: 800)
         let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.verb, .progressSet)
-    }
-
-    func testWorkspaceNewRoundTripsBranchBaseAndCommand() throws {
-        let command = ControlCommand(
-            verb: .workspaceNew, workspace: "primary",
-            branch: "feature-x", base: "main", command: "npm run dev")
-        let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.branch, "feature-x")
-        XCTAssertEqual(decoded.base, "main")
-        XCTAssertEqual(decoded.command, "npm run dev")
+        XCTAssertEqual(try JSONDecoder().decode(ControlCommand.self, from: data), command)
     }
 
     func testVerbRawValuesAreStable() {
@@ -45,26 +43,8 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.workspaces, [info])
     }
 
-    func testRunVerbRoundTripsName() throws {
-        let command = ControlCommand(verb: .run, workspace: "feature", name: "test")
-        let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.verb, .run)
-        XCTAssertEqual(decoded.name, "test")
-    }
-
     func testRunVerbRawValueIsStable() {
         XCTAssertEqual(ControlCommand.Verb.run.rawValue, "run")
-    }
-
-    func testInfoSetRoundTripsMarkdownInMessage() throws {
-        let command = ControlCommand(
-            verb: .infoSet, workspace: "feature-x", message: "## Ready\n- <http://localhost:8080>\n")
-        let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(ControlCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.message, "## Ready\n- <http://localhost:8080>\n")
     }
 
     func testInfoVerbRawValuesAreStable() {

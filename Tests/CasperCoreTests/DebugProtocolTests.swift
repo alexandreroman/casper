@@ -4,11 +4,16 @@ import XCTest
 @testable import CasperCore
 
 final class DebugProtocolTests: XCTestCase {
-    func testCommandRoundTrip() throws {
-        let command = DebugCommand(verb: .sendText, text: "ls", enter: true)
+    /// `DebugCommand` is a flat struct with a fully synthesized `Codable`, so a
+    /// single round trip over a fixture that populates *every* field covers all
+    /// verbs. `Equatable` compares every field, so the one assertion pins them all
+    /// — a newly added field is only covered once it is set here too.
+    func testCommandRoundTripsEveryField() throws {
+        let command = DebugCommand(
+            verb: .sendText, text: "ls", enter: true, mods: ["control", "shift"],
+            scrollback: true, path: "/tmp/shot.png", target: "0", x: 12.5, y: 34.75)
         let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(DebugCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
+        XCTAssertEqual(try JSONDecoder().decode(DebugCommand.self, from: data), command)
     }
 
     func testResponseWithStateRoundTrip() throws {
@@ -75,25 +80,6 @@ final class DebugProtocolTests: XCTestCase {
         let response = DebugResponse.failure("no surface")
         XCTAssertFalse(response.ok)
         XCTAssertEqual(response.error, "no surface")
-    }
-
-    func testCommandRoundTripWithTargetAndFocusVerb() throws {
-        let command = DebugCommand(verb: .focus, target: "0")
-        let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(DebugCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.verb, .focus)
-        XCTAssertEqual(decoded.target, "0")
-    }
-
-    func testCommandRoundTripWithMouseMoveVerb() throws {
-        let command = DebugCommand(verb: .mouseMove, target: "0", x: 12.5, y: 34.75)
-        let data = try JSONEncoder().encode(command)
-        let decoded = try JSONDecoder().decode(DebugCommand.self, from: data)
-        XCTAssertEqual(decoded, command)
-        XCTAssertEqual(decoded.verb, .mouseMove)
-        XCTAssertEqual(decoded.x, 12.5)
-        XCTAssertEqual(decoded.y, 34.75)
     }
 }
 #endif
