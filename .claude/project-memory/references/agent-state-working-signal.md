@@ -20,9 +20,11 @@ Casper's detection treats it as the **primary** `working` signal;
 `AgentSignal(progress:)` in `AgentDetection.swift` carries the mapping and the
 reasoning behind each `absent` case.
 
-Two **secondary** signals back it up, both version-coupled to Claude Code's UI
-and both expressed in `AgentDetectionRuleSet.claudeCode`. What that declaration
-cannot record is where the values come from:
+Two **secondary** signals back it up, both version-coupled to Claude Code's UI.
+`AgentDetectionRuleSet.claudeCode` declares only the viewport substrings; the
+title scalar ranges are **default arguments** on `AgentDetectionRuleSet.init`,
+so every rule set shares them until one overrides them. What neither
+declaration can record is where the values come from:
 
 - **The OSC title.** Claude Code's spinner glyph set has already moved once —
   quadrant circles `◐◑◒◓` (U+25D0–U+25D3) in 2.1.239, Braille (U+2800–U+28FF)
@@ -53,6 +55,7 @@ viewport. Together they diagnose a detection failure against the live app
 with no temporary logging. To capture what Claude Code actually emits
 outside Casper, run it under `script` with `TERM_PROGRAM=ghostty` and
 `TERM_PROGRAM_VERSION=1.3.1` and grep the raw file for `ESC]9;4;` and
-`ESC]0;`. Update the ranges/substrings in `AgentDetectionRuleSet.claudeCode`
+`ESC]0;`. Update the viewport substrings in `AgentDetectionRuleSet.claudeCode`
+and the title scalar ranges in `AgentDetectionRuleSet.init`'s defaults
 accordingly. Live-verify the GUI under a dev session (see [[app-sessions]]
 and the `debug-casper` skill).
