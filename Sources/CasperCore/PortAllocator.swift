@@ -4,7 +4,7 @@ public struct PortAllocationError: Error, Equatable {
     public let reason: String
 }
 
-public struct PortAllocator: Equatable, Sendable {
+public struct PortAllocator: Sendable {
     /// Default block geometry, shared by `init` and `randomStartBase` so the two
     /// can never disagree: a one-sided edit would make `randomStartBase` return a
     /// base outside a default-constructed allocator's range, which `init` rejects
