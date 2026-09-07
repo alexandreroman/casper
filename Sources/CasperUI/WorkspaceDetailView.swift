@@ -168,8 +168,7 @@ struct WorkspaceDetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let range = inspectorRange(container: proxy.size.width)
-            let width = (inspectorWidth ?? workspace.inspector.width)
-                .clamped(to: range)
+            let width = inspectorPanelWidth(container: proxy.size.width)
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Divider()
@@ -196,8 +195,7 @@ struct WorkspaceDetailView: View {
                     InspectorPanel(model: model, workspace: workspace)
                         .frame(width: width)
                 }
-                .frame(width: workspace.inspector.collapsed ? 0 : SeparatorMetrics.visibleWidth + width,
-                       alignment: .trailing)
+                .frame(width: inspectorSlice(container: proxy.size.width), alignment: .trailing)
                 .clipped()
             }
             .overlay(alignment: .trailing) {
@@ -333,6 +331,25 @@ struct WorkspaceDetailView: View {
         if case .split = layout { return true }
         return false
     }
+    /// The inspector panel's own width for the given container width: the live
+    /// drag's width if there is one, else the persisted one, clamped to
+    /// `inspectorRange(container:)`.
+    private func inspectorPanelWidth(container: Double) -> Double {
+        (inspectorWidth ?? workspace.inspector.width).clamped(to: inspectorRange(container: container))
+    }
+
+    /// The width the whole inspector region — divider line plus panel — occupies, and
+    /// 0 while the panel is collapsed.
+    ///
+    /// One function for both of its readers on purpose: this is the layout's clip
+    /// width AND the slice the window's floor reserves (see `terminalHostMetrics`).
+    /// Let the two drift apart and `WindowFloor.apply` grows the window against a
+    /// slice the layout is not using.
+    private func inspectorSlice(container: Double) -> CGFloat {
+        guard !workspace.inspector.collapsed else { return 0 }
+        return SeparatorMetrics.visibleWidth + inspectorPanelWidth(container: container)
+    }
+
 
     /// Allowed inspector-width range for the given container width: never below
     /// `InspectorState.minWidth`, never above `InspectorState.maxWidth`, and
@@ -493,10 +510,6 @@ struct WorkspaceDetailView: View {
     /// clip's width is the honest number and it is zero while collapsed.
     private var terminalHostMetrics: TerminalHostMetrics? {
         guard let detailFrame else { return nil }
-        let inspectorSlice = workspace.inspector.collapsed
-            ? 0
-            : SeparatorMetrics.visibleWidth + (inspectorWidth ?? workspace.inspector.width)
-                .clamped(to: inspectorRange(container: detailFrame.width))
         // Collapsed reads as a true zero; open never reads below the column minimum
         // (see `TerminalHostMetrics.sidebarWidth`).
         let sidebarWidth = detailFrame.minX < 1
@@ -504,7 +517,7 @@ struct WorkspaceDetailView: View {
             : max(detailFrame.minX, Self.sidebarColumnMinimum)
         return TerminalHostMetrics(
             sidebarWidth: sidebarWidth,
-            inspectorSlice: inspectorSlice,
+            inspectorSlice: inspectorSlice(container: detailFrame.width),
             detailChromeHeight: Self.paneDividerHeight)
     }
 
