@@ -9,12 +9,21 @@ two design increments (observability channel, then surface addressing).
 
 ## Hard constraint
 
-**Never ships in a release.** The entire channel — protocol, transport, CLI, and
-GUI wiring — is gated at **compile time** by `#if DEBUG`, physically absent from
-`make release` (`-c release`, `DEBUG` undefined). No runtime flag enables it;
-`CASPER_DEBUG_SOCKET` only selects the socket *path* (else `CASPER_SESSION`
-derives it, else the default). Logging keeps a floor: `.error`/`.fault` always
-compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
+**Never ships in a release.** Every file the channel owns is gated at **compile
+time** by `#if DEBUG`, physically absent from `make release` (`-c release`,
+`DEBUG` undefined): `DebugProtocol`, `DebugSocket`, `LiveObjectCensus` and
+`ProcessMemory` (CasperCore), `DebugServer` (CasperGhostty),
+`DebugSurfaceBridge` (CasperUI) and `DebugCLICommand` (CasperCLI). The generic
+transport engine in `SocketTransport.swift` is the one piece that compiles
+unconditionally — it carries no `#if DEBUG` at all — because the
+always-shipping control channel (`ControlSocket.swift`) is built on the same
+`SocketServerEngine`/`SocketClientEngine`. No runtime flag enables the channel;
+`CASPER_DEBUG_SOCKET` only selects the socket *path*, and only on the **dial**
+side (else `CASPER_SESSION` derives it, else the default) — a listener always
+binds the session-derived path (`DebugSocketPath.listenPath(for:)`), ignoring
+the env override outright, see [[socket-listen-vs-dial-path]]. Logging keeps a
+floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
+[[debug-channel-gating]].
 
 ## Design
 
@@ -54,8 +63,11 @@ compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 
 ## As-built notes (refine the design; code is the source of truth)
 
-- The CasperCore transport/protocol are themselves `#if DEBUG` (verified with
-  `nm`/`strings` on the release binary) — not merely their callers.
+- The debug protocol and socket types in CasperCore are themselves `#if DEBUG`,
+  not merely their callers: `nm`/`strings` on the release binary find no
+  `DebugCommand`/`DebugResponse`/`DebugServer` symbol at all. That check says
+  nothing about the shared transport engine, which does ship — the control
+  channel needs it.
 - Transport uses symmetric **4-byte big-endian length-prefixed framing in both
   directions** (a plain half-close intermittently failed with `ENETDOWN`); an 8
   MB length guard bounds each read.
