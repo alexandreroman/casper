@@ -666,10 +666,7 @@ final class AppModel {
 
     /// Look up a workspace by id across all Spaces.
     func workspace(id: UUID) -> Workspace? {
-        for space in spaces {
-            if let ws = space.workspaces.first(where: { $0.id == id }) { return ws }
-        }
-        return nil
+        locate(id).map(workspace(at:))
     }
 
     /// The Space that owns `workspace`, if any. A workspace has no back-pointer
