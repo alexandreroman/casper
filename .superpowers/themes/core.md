@@ -11,8 +11,11 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `Space`, `Workspace` (with `WorkspaceKind`, `InspectorState`/`InspectorTab`
   and `EditorKind`), `LayoutNode`, `Surface`, `Todo`/`TodoStatus`, `AgentState`.
 - **`LayoutTree`** — the pure engine behind the tmux-style pane layout:
-  `split`, `closeSurface`, `move`, `dropZone`, `updateRatios`, `contains`, and
-  the `forEachSurface`/`surfaceIDs` walks the detection tick runs on every pass.
+  `split`, `closeSurface`, `move`, `dropZone`, `updateRatios`, `contains`, plus
+  the read-only walks `forEachSurface`, `surfaceIDs` and `surfaces`. The
+  detection tick runs on **`forEachSurface`** every pass, deliberately not on
+  `surfaces(_:)`: the latter materializes a throwaway array of full `Surface`
+  values — browser URLs and all — for every workspace, four times a second.
   Heavily tested, and the reason pane restructuring needs no UI state (see
   `app-ui.md` § Design → "Layout composition").
 - **Agent state** — `Workspace.agentState` (an `AgentState` enum) and its
@@ -23,7 +26,9 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `observedWorking` / `idleStreak` / `doneLatched` behind a
   `mutating func resolve(...)`, so it is a small state machine — and lands the
   result through `setDetectedAgentState`, which never grants authority to a
-  detected value. See `agent-state-detection.md`.
+  detected value. Only the resolver is in this module: the tick itself and
+  `setDetectedAgentState` live on CasperUI's `AppModel`, since landing a result
+  means mutating the observable model. See `agent-state-detection.md`.
 - **`WorktreeManager`** — create/list/remove/deleteBranch/isClean/`merge` over
   `CasperGit`, plus `registeredName` (a worktree's admin entry resolved by path,
   since an adopted worktree can carry any name), `resyncWorkingTree` and
@@ -31,7 +36,9 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `git-worktrees.md`). Its entry points are static and not actor-isolated, so
   the close/delete paths can offload them to a detached task.
 - **`PortAllocator`** — assigns the first free contiguous **10-port block** from
-  a configurable range (default `40000–49990` → ~1000 workspaces), persisted as
+  a configurable range. The default `40000–49990` bounds the block **base**, not
+  the highest allocatable port: a block spans `base ... base + 9`, so the last
+  block is 49990–49999 and there are ~1000 of them. The base is persisted as
   `portBase`, released on workspace removal. **Logical only** — blocks never
   overlap, but ports are not OS-bound. The scan starts at a **randomized** block
   base per app instance (`randomStartBase`) and wraps around, so two concurrent
@@ -72,7 +79,9 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `WorkspaceFileCopier` seeding its `copyFiles` patterns into a new worktree.
   The design decisions live in `cli-agents.md` § Design → "Per-repository
   config".
-- **Agent detection** — `AgentDetection` (the pure matcher/resolver) and
+- **Agent detection** — `AgentDetection.swift` (the pure matcher/resolver, whose
+  types are `AgentSignal`, `AgentProgressState`, `AgentDetectionRuleSet` and
+  `AgentStateResolver` — there is no `AgentDetection` type) and
   `AgentIntegration`/`AgentIntegrationProbe` (is each agent's Casper plugin
   installed). Design in `agent-state-detection.md` and `cli-agents.md`.
 - **Filesystem & timing utilities**, all deliberately model-free:
