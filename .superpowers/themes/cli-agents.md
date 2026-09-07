@@ -68,8 +68,11 @@ present in a release build. See [[debug-channel-gating]].
 
 ### JSON output
 
-`README.md` § CLI records the per-verb success shapes. Two contracts behind
-them bind every new verb:
+`README.md` § CLI records the generic contract only — a JSON object on stdout,
+an array for the `list` verbs. The **per-verb shapes** are the 16 `Encodable`
+payload types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its
+literal shape in the type's own doc comment; that file is the reference. Two
+contracts behind them bind every new verb:
 
 - **A success payload always carries the affected `workspace` id**, even when
   the verb has no state of its own to report (`progress clear`, `notify`,
