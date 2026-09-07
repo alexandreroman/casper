@@ -63,10 +63,6 @@ private func readChunk(
     _ count: Int, on connection: NWConnection, into buffer: ReadBuffer,
     completion: @escaping @Sendable (Data?) -> Void
 ) {
-    if buffer.data.count >= count {
-        completion(buffer.data)
-        return
-    }
     connection.receive(
         minimumIncompleteLength: 1, maximumLength: count - buffer.data.count
     ) { data, _, isComplete, error in
