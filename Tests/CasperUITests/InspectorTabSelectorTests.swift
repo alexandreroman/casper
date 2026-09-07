@@ -44,10 +44,14 @@ final class InspectorTabSelectorTests: XCTestCase {
 
     /// The chip row's width budget subtracts `intrinsicWidth` because this control
     /// is exempt from the degradation ladder — it never collapses and never folds.
-    /// Pinning the constant against the hosted control is what keeps the budget's
-    /// arithmetic honest if the segment metrics ever move.
-    func testIntrinsicWidthMatchesTheHostedControl() {
-        XCTAssertEqual(InspectorTabSelector.intrinsicWidth, selectorWidth(selecting: nil), accuracy: 0.5)
+    ///
+    /// The other side of the definition the test above measures: that one pins the
+    /// hosted control against the shared segment metric, this one pins the constant
+    /// the budget reads against that same metric. Together they say the number the
+    /// budget subtracts is the number the control lays out to — which a constant
+    /// respelled as a literal, or widened for one caller, would break silently.
+    func testIntrinsicWidthIsTwoSegmentsOfTheSharedMetric() {
+        XCTAssertEqual(InspectorTabSelector.intrinsicWidth, 2 * Self.expectedSegmentWidth)
     }
 
     // MARK: - Helpers

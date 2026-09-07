@@ -26,7 +26,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     private static let branch = "feature/replay-to-repair"
 
     /// Each tier must be strictly narrower than the one above it. A body that
-    /// merely reorders the chips, or forgets to pin `.iconOnly` at `.compact` (the
+    /// merely reorders the chips, or forgets to pin `.iconOnly` at `.mergeGlyph` (the
     /// toolbar environment's default is not to be trusted — see the
     /// `toolbar-label-style` note), flunks this: the tiers would measure alike and
     /// the ladder would be cosmetic.
@@ -365,7 +365,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         return chips.width
     }
 
-    /// The Merge chip alone, as the row draws it at `.compact`.
+    /// The Merge chip alone, as the row draws it at `.mergeGlyph`.
     private func mergeRow(model: AppModel, workspace: Workspace) -> some View {
         MergeToolbarButton(model: model, workspace: workspace, density: .mergeGlyph)
     }
