@@ -50,10 +50,12 @@ longer does are recorded in `../status.md` § Superseded designs.
   goes", and its standard **New Folder** button comes with it for free. The
   panel reopens at the location last used — the *parent* folder, not the Space
   itself — carried in `Session.lastNewSpaceLocation` and written to
-  `session.json`, because Casper reads no `UserDefaults` anywhere and the
-  session file is where a preference of its own belongs. An absent key decodes
-  to nil, and a remembered folder no longer on disk is ignored rather than
-  aiming the panel at nothing.
+  `session.json`, because Casper stores no preference of its own in
+  `UserDefaults` — the single key it reads there is a *system* setting,
+  `AppleActionOnDoubleClick` (see "Title bar") — and the session file is where
+  a preference of Casper's own belongs. An absent key decodes to nil, and a
+  remembered folder no longer on disk is ignored rather than aiming the panel at
+  nothing.
 
   `AppModel.createSpace(at:probe:)` then does the work: create the directory,
   `git init` it through `CasperGit`'s `Repository.initialize`, give it one
