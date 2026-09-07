@@ -38,8 +38,9 @@ promoted the moment its folder gains a `.git`. *Invariant: one Space per
 repository, always ≥ 1 workspace.*
 
 - **Naming** — default from the `origin` remote's last path segment without
-  `.git` (fallback: the root folder name). Renamable; a renamed Space stops
-  tracking the folder/remote.
+  `.git` (fallback: the root folder name). Renaming is **intended, not built**
+  — it is the one item this theme has left: a renamed Space is to stop tracking
+  the folder/remote.
 - **Lifecycle** — a Space begins one of two ways. **Adoption** opens a folder
   that already exists; **creation** (`AppModel.createSpace(at:probe:)`) makes
   the folder, runs `Repository.initialize` in it, and then hands it to adoption,
