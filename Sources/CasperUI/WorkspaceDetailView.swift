@@ -174,7 +174,8 @@ struct WorkspaceDetailView: View {
                     Divider()
                     LayoutNodeView(
                         model: model, workspaceID: workspace.id, node: workspace.layout,
-                        canDragPanes: Self.hasMultiplePanes(in: workspace.layout))
+                        // The root is read only when it renders as a lone leaf.
+                        canDragPanes: false)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(minWidth: Self.terminalMinimumSize, minHeight: Self.terminalMinimumSize)
@@ -297,7 +298,6 @@ struct WorkspaceDetailView: View {
             // Same reason: its only job is to write `@State` this instance no longer
             // has.
             undershootReleaseTask?.cancel()
-        }
             // Gated on "nothing is selected any more", not on this instance going
             // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
             // so switching workspaces tears one instance down while the incoming
@@ -307,6 +307,7 @@ struct WorkspaceDetailView: View {
             // every window until the next geometry change. Losing the last
             // workspace still clears the metrics, which is the case this is for.
             if model.selectedWorkspaceID == nil { publish(nil) }
+        }
     }
 
     /// Recompute the diff summary, cancelling any refresh still in flight. Every
@@ -321,14 +322,15 @@ struct WorkspaceDetailView: View {
         }
     }
 
-    /// Whether the workspace shows more than one pane. True exactly when its root
-    /// layout is a split: `LayoutTree` never builds a split with fewer than two
-    /// children (it collapses a split down to its survivor when one is closed), so
-    /// this needs no tree walk.
-    static func hasMultiplePanes(in layout: LayoutNode) -> Bool {
-        if case .split = layout { return true }
-        return false
+    /// Allowed inspector-width range for the given container width: never below
+    /// `InspectorState.minWidth`, never above `InspectorState.maxWidth`, and
+    /// always leaving at least `minDetailWidth` for the detail area.
+    private func inspectorRange(container: Double) -> ClosedRange<Double> {
+        let upper = max(InspectorState.minWidth,
+                        min(InspectorState.maxWidth, container - Self.minDetailWidth))
+        return InspectorState.minWidth...upper
     }
+
     /// The inspector panel's own width for the given container width: the live
     /// drag's width if there is one, else the persisted one, clamped to
     /// `inspectorRange(container:)`.
@@ -346,16 +348,6 @@ struct WorkspaceDetailView: View {
     private func inspectorSlice(container: Double) -> CGFloat {
         guard !workspace.inspector.collapsed else { return 0 }
         return SeparatorMetrics.visibleWidth + inspectorPanelWidth(container: container)
-    }
-
-
-    /// Allowed inspector-width range for the given container width: never below
-    /// `InspectorState.minWidth`, never above `InspectorState.maxWidth`, and
-    /// always leaving at least `minDetailWidth` for the detail area.
-    private func inspectorRange(container: Double) -> ClosedRange<Double> {
-        let upper = max(InspectorState.minWidth,
-                        min(InspectorState.maxWidth, container - Self.minDetailWidth))
-        return InspectorState.minWidth...upper
     }
 
     /// The inspector divider's visible line: the shared `SeparatorMetrics` hairline,
@@ -981,7 +973,7 @@ struct WorkspaceTitleBarRow: View {
         // Chrome-less on purpose: the title is not a control, so it keeps the
         // shared capsule metrics (alignment with the chips) without the pill.
         // Asymmetric interior padding (not the shared `titleCapsule`'s symmetric
-        // 10 pt): the leading edge still owes its distance to the window edge,
+        // inset): the leading edge still owes its distance to the window edge,
         // while the trailing edge is tuned so the title-to-glyph gap (this
         // inset + the info button's own 2 pt inner padding) matches the
         // glyph-to-badge gap on the other side of the info chip.
