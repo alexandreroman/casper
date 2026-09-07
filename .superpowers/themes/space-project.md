@@ -47,9 +47,12 @@ repository, always ≥ 1 workspace.*
   so the two paths converge and only one of them assembles a Space. A folder
   that is not a repository opens as a degenerate Space rather than prompting for
   anything, and `AppModel.promoteSpaceIfGitInitialized` promotes it once a
-  `.git` appears. Add a workspace via `git worktree add`; **remove is
-  non-destructive** (drops the Space from `session.json` and releases ports;
-  leaves the repo, worktrees, and branches on disk).
+  `.git` appears. A **workspace** is added with `git worktree add` and removed
+  destructively: closing or deleting one prunes its worktree — the folder and
+  all — and then deletes its branch. Removing a **Space** is the
+  non-destructive operation, and the only one: it drops the Space from
+  `session.json` and releases its ports, leaving the repo, its worktrees and
+  its branches on disk.
 
 A created Space is an ordinary one from the first frame — a full Git Space with
 a single primary workspace — and its repository holds exactly one commit: an
