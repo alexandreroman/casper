@@ -359,16 +359,16 @@ flowchart TD
     Git --> Shims[Clibgit2 / CSigbusGuard]
 ```
 
-- **`CasperCore`** — models, session store, worktree manager, port allocator,
-  control-channel protocol + socket.
-- **`CasperGit`** — in-house wrapper over libgit2 (worktrees, diff, status),
-  with the `Clibgit2` module map and the `CSigbusGuard` shim around libgit2's
-  diff.
-- **`CasperGhostty`** — embeds GhosttyKit; owns terminal surfaces and layout.
-- **`CasperAgents`** — per-surface environment injection
-  (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …).
+- **`CasperCore`** — models, session store, worktree manager, control channel.
+- **`CasperGit`** — libgit2 wrapper, plus the `Clibgit2`/`CSigbusGuard` shims.
+- **`CasperGhostty`** — embeds GhosttyKit; owns terminal surfaces.
+- **`CasperAgents`** — the environment injected into a Casper terminal.
 - **`CasperUI`** — SwiftUI sidebar, chrome, diff, and browser views.
 - **`CasperCLI`** — domain subcommands, sharing the single app binary.
+
+[`.superpowers/architecture.md`](./.superpowers/architecture.md) § Module
+boundaries is the authoritative table: what each module owns, and the theme doc
+that details it.
 
 The app and CLI ship as one binary, routed on the *shape* of the first argument
 rather than a list of known verbs — so `casper` opens the GUI and `casper
