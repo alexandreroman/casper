@@ -74,7 +74,7 @@ final class AppModel {
     private(set) var scriptsRevision = 0
 
     /// Editors detected as launchable at startup (CLI shim on `PATH` and app
-    /// bundle resolvable), in `EditorKind.priorityOrder`. Never re-detected
+    /// bundle resolvable), in `EditorKind.allCases`. Never re-detected
     /// while the app is running.
     private(set) var availableEditors: [EditorKind] = []
 

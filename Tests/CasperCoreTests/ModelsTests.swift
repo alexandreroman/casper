@@ -323,7 +323,7 @@ final class ModelsTests: XCTestCase {
     // MARK: - EditorKind
 
     func testEditorKindPriorityOrderIsVSCodeThenIntelliJThenXcode() {
-        XCTAssertEqual(EditorKind.priorityOrder, [.vscode, .intellijIdea, .xcode])
+        XCTAssertEqual(EditorKind.allCases, [.vscode, .intellijIdea, .xcode])
     }
 
     func testEditorKindMetadataIsDistinctPerCase() {

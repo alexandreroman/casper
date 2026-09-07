@@ -224,14 +224,14 @@ public struct InspectorState: Codable, Equatable, Sendable {
     }
 }
 
+/// Declaration order is priority order: `allCases` drives the editor dropdown's
+/// display order and picks the fallback when a workspace has no `lastUsedEditor`
+/// yet. Stated once here so a new case cannot join `allCases` while staying
+/// invisible to the launcher.
 public enum EditorKind: String, Codable, CaseIterable, Sendable {
     case vscode
     case intellijIdea
     case xcode
-
-    /// Priority order used both as the dropdown's display order and as the
-    /// fallback when a workspace has no `lastUsedEditor` yet.
-    public static let priorityOrder: [EditorKind] = [.vscode, .intellijIdea, .xcode]
 
     public var cliCommand: String {
         switch self {
