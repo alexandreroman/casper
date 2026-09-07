@@ -39,17 +39,20 @@ floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
   `/tmp/casper-debug-<name>.sock`, and an external driver targets a session by
   exporting `CASPER_SESSION=<name>` (the CLI derives the same path). See
   [[app-sessions]].
-- **Verbs** — ten, in three groups:
-  - *Observe* — `dump-state` (windows/surfaces/cwd/title/cols/rows/focus),
+- **Verbs** — ten, in three groups. All ten also take `--socket <path>`, which
+  overrides the resolution above, so it is not repeated per verb below:
+  - *Observe* — `dump-state` (per surface: id, title, cwd, cols/rows, focus,
+    the raw geometry readback and the agent-detection fields),
     `read-text [--scrollback]`, `screenshot <path>`, and `memory` (process
     footprint, the live-object census, and the app's collection sizes).
   - *Inject* — `send-text <str> [--enter]` (writes the text straight into the
     surface), `send-keys <str>` (the same text as real per-character press +
     release key events), `send-key <key> [--mods …]` (one key with modifiers as
-    a real key event, so modifier and special keys are reachable),
+    a real key event; the character-to-keycode table covers letters, digits and
+    space only, and any other character resolves to nothing and is skipped),
     `send-action <name>` (trigger a libghostty keybinding action such as
-    `copy_to_clipboard`), and `mouse-move --x --y` (a mouse position in
-    libghostty top-left coordinates).
+    `copy_to_clipboard`), and `mouse-move <x> <y>` (a mouse position in
+    libghostty top-left coordinates, as two positional arguments).
   - *Address* — `focus <id>`.
 - **Surface addressing** — each surface has a stable string `id`; `dump-state`
   reports it. `focus <id>` moves UI focus; `--target <id>` acts on a specific
