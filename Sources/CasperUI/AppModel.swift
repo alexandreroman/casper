@@ -1079,8 +1079,11 @@ final class AppModel {
     /// `handleSelectedWorktreeChange`. Pure wiring: no promotion/demotion here. A
     /// nil selection leaves the watcher stopped.
     private func armWorktreeWatcher() {
-        // Never leave watchers armed while the window is hidden: the visibility
-        // path (`applyWatcherVisibility`) is the only thing that starts them.
+        // Never leave watchers armed while the window is hidden. Every path that arms
+        // them — `selectWorkspace`, `completeLaunchSetup`, a live promote/demote — can
+        // run while the window is occluded or minimized, so this guard is what keeps an
+        // FSEvents stream off a window nobody is looking at; `applyWatcherVisibility`
+        // re-arms on the transition back to visible.
         guard isWindowVisible else { stopWorktreeWatchers(); return }
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
