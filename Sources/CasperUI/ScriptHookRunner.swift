@@ -12,11 +12,13 @@ import Foundation
 /// the correlated pane close. Nothing is ever closed or pruned eagerly inside a
 /// child-exit callback (see `finishTeardown`).
 ///
-/// The enforcement boundary moved with the split-out: `runSetupHook` and `runTeardown`
-/// are module-internal, so what keeps a lifecycle hook from being started by hand is no
-/// longer their access level but the fact that the only instance of this runner is
-/// `AppModel`'s `private` `scriptHooks` property. (Before the split-out, `private` on
-/// `spawnScriptSurface` enforced that mechanically.)
+/// `runSetupHook` and `runTeardown` are module-internal, and so is the only instance of
+/// this runner: `AppModel.scriptHooks` cannot be `private`, because `AppModel`'s
+/// extension files reach it and Swift's `private` is file-scoped (see the
+/// `appmodel-extension-encapsulation` note). Nothing mechanical therefore stops a file
+/// in `CasperUI` from starting a hook by hand — that it must not is convention.
+/// `private(set)` would buy nothing: the runner is a reference type, so a read-only
+/// binding would still expose every method on it.
 ///
 /// What deliberately does NOT live here is `AppModel.closingWorkspaces`, the claim that
 /// rejects a re-entrant destroy: it covers the whole close/delete operation —
