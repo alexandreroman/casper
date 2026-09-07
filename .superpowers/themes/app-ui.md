@@ -223,6 +223,58 @@ longer does are recorded in `../status.md` § Superseded designs.
   invisible points at the right, a row wider than it empties the entire title
   bar. Below a floor the item leaves the toolbar rather than overflowing it.
 
+  That standing margin covers a **still** window only. AppKit's item viewer
+  starts 8 pt inside the detail area, so two thirds of the 24 pt is real slack
+  — measured: detail area at `minX = 228`, the item's hosted view at
+  `minX = 236`, a 1148 pt row in a 1400 pt window content, which leaves 16 pt
+  at the trailing edge — and a drag that narrows the window by more than that
+  slack per layout pass eats it whole. The declared width is derived from
+  `@State`, so it is always one pass behind the window, and the stale value is
+  the one AppKit judges. A moving window therefore buys a **second** term: the
+  shrink measured on the previous pass, subtracted from the width the row
+  declares, so that the stale value already fits the bar of the pass that
+  follows. It is **clamped at the mount floor** — an item that unmounts and
+  remounts once per frame is a worse artifact than the overflow it prevents.
+
+  Three properties keep that second term safe on a drag done with the pointer,
+  and the first two rest on facts only a real drag shows. SwiftUI **coalesces
+  layout passes**, so a measured delta is a distance, not a rate: it is the
+  whole distance travelled since the last pass and it is unbounded (a traced
+  990 → 428 pt drag arrived as **one** pass of 562 pt). So the term is
+  **capped** at 40 pt — twice the fastest ordinary pass, and just under one `⋯`
+  chip plus its gap — because past that bound the right answer to a jump
+  nothing could anticipate is the single frame of chevron the heal already
+  recovers, not a row collapsed onto the ladder's floor. It is **ratcheted**
+  while the window is in a live resize, growing only, because the declared
+  width must be **monotone while the window narrows**: the ladder below is
+  chosen from it, so a width that falls and rises again brings the badge, the
+  Space name and the chip labels back mid-drag — the non-monotone degradation
+  the single ordered ladder exists to prevent, arriving through its one input.
+  And it is **given back only once the drag has ended** — a hand-driven drag is
+  bursts of passes separated by pauses longer than the settle delay, so the
+  debounce waits again while the resize is still live rather than releasing
+  into a pause for the next burst to take away. A jump outside a live resize (a
+  zoom, a programmatic resize) has no drag to stay monotone across, so the
+  capped shrink applies as-is and is anticipated once.
+
+  Measured with the `CASPER_RESIZESTEP` probe over a shrink phase (chevron up
+  at the instant AppKit lays out): without the second term, 18 of 19 steps at
+  40 pt per step, 6 of 8 at 16 pt and 1 of 14 at 8 pt. With it, the rule is the
+  cap: at or below 40 pt per step the chevron comes up on the drag's **first**
+  step only (1 of 19 at 40 pt per step), because no shrink has been measured
+  yet on that pass, while **above** the cap it comes up on every step — a
+  120 pt step declares `settled − 40` against a bar that fell 120. The probe
+  drives `setFrame`, so `inLiveResize` is false and the ratchet never applies:
+  each step stands alone. A growing window raised the chevron at no step size
+  either way: the lag leaves the row too narrow there, which nothing can see.
+
+  That residual is what the cap buys, and it was chosen deliberately over a row
+  that folds for the whole drag. A hand-driven drag traced over 485 samples
+  shows it in proportion: 8 chevron frames, every one of them on a coalesced
+  pass of 97–558 pt, against 0 releases while the drag was live, a peak
+  undershoot of 40 pt, a narrowest declared row of 136 pt, and no rung climbing
+  back up the ladder while the window narrowed.
+
   **The row degrades along ONE ordered ladder**, widest first, and everything
   that yields is a rung of that same list:
 

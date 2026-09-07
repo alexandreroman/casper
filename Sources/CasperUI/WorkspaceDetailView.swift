@@ -39,6 +39,28 @@ struct WorkspaceDetailView: View {
     /// later would flicker on every workspace switch.
     @State private var detailFrame: CGRect?
 
+    /// Extra undershoot on the row's width while the window is being dragged
+    /// narrower, decided pass by pass by `nextUndershoot(current:shrink:isLiveResize:)`.
+    ///
+    /// It costs the settled row nothing only once it has been released, which is later
+    /// than a single pass: the ratchet holds it through the growing half of a reversed
+    /// drag, and the re-arming debounce holds it while the pointer is kept still
+    /// mid-drag. See `rowWidth(detailFrame:undershoot:)` for what it buys and
+    /// `scheduleUndershootRelease` for how it is given back.
+    @State private var resizeUndershoot: CGFloat = 0
+
+    /// The pending release of `resizeUndershoot`, and `nil` when none is pending. At
+    /// most one exists at a time, so only one release can fire per drag — see
+    /// `scheduleUndershootRelease`.
+    @State private var undershootReleaseTask: Task<Void, Never>?
+
+    #if DEBUG
+    /// The ladder rung the row last reported, for the passive resize trace and for
+    /// nothing else. `nil` until the row has laid out once, and left `nil` for the
+    /// whole session unless the trace was armed — see `traceRungHook`.
+    @State private var tracedRung: TitleBarRung?
+    #endif
+
     /// Floor for the TERMINAL region — the pane tree, not the inspector panel and
     /// not the sidebar. Calibrated so a surface stays usable: `GhosttySurfaceView`
     /// has no intrinsic size of its own and collapses to nothing given the chance,
@@ -77,13 +99,23 @@ struct WorkspaceDetailView: View {
     /// x = 92, and that item's viewer measures 48 pt. 92 + 48 = 140.
     static let windowChromeReserve: CGFloat = 140
 
-    /// Deliberate undershoot on the row's width.
+    /// Standing undershoot on the row's width, applied at every width including a
+    /// settled one.
     ///
     /// The two failures are wildly asymmetric. A row a few points narrower than the
     /// bar leaves a sliver of empty space at the trailing edge that nobody will ever
     /// notice. A row a few points wider overflows the ONE item that now holds every
     /// title-bar control, emptying the whole title bar into AppKit's chevron — so
     /// this is sized to lose that race on purpose, not calibrated to fit exactly.
+    ///
+    /// It covers a still window, not a moving one: AppKit's item viewer starts a few
+    /// points inside the detail area, so part of this is spent before the row even
+    /// begins. Measured on the running app — detail area at `minX = 228`, the item's
+    /// hosted view at `minX = 236`, a declared row of 1148 pt in a 1400 pt window
+    /// content — the inset is 8 pt and the row's trailing edge stops 16 pt short of the
+    /// window edge, so two thirds of this is real slack. A drag that narrows the window
+    /// by MORE than that slack per layout pass eats it whole, and that case is what
+    /// `resizeUndershoot` is for, on top of this.
     static let safetyMargin: CGFloat = 24
 
     /// Narrowest row worth mounting. The `⋯` chip alone measures 34 pt, so below
@@ -94,6 +126,36 @@ struct WorkspaceDetailView: View {
     /// points wide, because AppKit cannot fit ANY item into a bar that narrow and
     /// would answer with the overflow chevron. No item, nothing to overflow.
     static let minimumRowWidth: CGFloat = 40
+
+    /// Ceiling on the resize undershoot, whatever the pass measured.
+    ///
+    /// SwiftUI coalesces layout passes during a fast drag, so the measured shrink is
+    /// not a per-frame increment but the whole distance travelled since the last pass,
+    /// and it is unbounded: a traced hand-drag from 990 pt to 428 pt arrived as ONE
+    /// pass of 562 pt, which subtracted whole drove the row to `minimumRowWidth`.
+    ///
+    /// 40 pt is twice the fastest ordinary pass (measured: 5–20 pt) and just under one
+    /// `⋯` chip plus its gap (34 + `chipGap` = 42), so it absorbs every pass the
+    /// anticipation is meant for while never withholding more than about one chip's
+    /// worth of width. Past that the cure is worse than the disease: for a jump too
+    /// large to anticipate the right outcome is the single frame of chevron
+    /// `healToolbarOverflow` already recovers, not a collapsed row.
+    static let maximumResizeUndershoot: CGFloat = 40
+
+    /// How long the window must stand still before the row gives its resize
+    /// undershoot back and unfolds to its exact width.
+    ///
+    /// A drag emits a geometry pass every frame (~16 ms at 60 Hz), so while the
+    /// pointer keeps moving this is restarted long before it fires. A hand-driven drag
+    /// is bursts of passes separated by pauses that outlast this delay, though, so
+    /// firing is not on its own enough to conclude the drag is over — see
+    /// `scheduleUndershootRelease`, which waits again while the resize is still live.
+    ///
+    /// The upper bound is perception: until it fires the row is narrower than the bar by
+    /// the undershoot in force — at most `maximumResizeUndershoot`, whatever the drag
+    /// was doing when it stopped — and that sliver of unused title bar must not be
+    /// sitting there long enough to read as a misaligned row.
+    private static let undershootSettleDelay: Duration = .milliseconds(150)
 
     /// Width the row takes while the detail area has not been measured yet.
     ///
@@ -158,7 +220,7 @@ struct WorkspaceDetailView: View {
         // body is what SwiftUI warns about. The whole frame, not just the size — the
         // origin is what tells `rowWidth` whether the window's own chrome shares this
         // row.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { detailFrame = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { recordDetailFrame($0) }
         // The window's floor is rebuilt from this, so it has to be republished when
         // the inspector moves as well as when the detail area does — the panes' share
         // is what is left after the panel takes its slice.
@@ -193,6 +255,13 @@ struct WorkspaceDetailView: View {
                 ToolbarItem(placement: .navigation) {
                     WorkspaceTitleBarRow(
                         model: model, workspace: workspace, diff: diff, width: rowWidth)
+                        #if DEBUG
+                        // Passive observation, and only when it was asked for: with
+                        // `CASPER_RESIZETRACE` unset the hook is nil, and the row then
+                        // installs no reporter at all — it does not even name the rung
+                        // it would have reported.
+                        .reportingRung(traceRungHook)
+                        #endif
                 }
                 .flatToolbarItem()
             }
@@ -227,7 +296,7 @@ struct WorkspaceDetailView: View {
             refreshDiffSummary()
             #if DEBUG
             // Layout harness — see `WorkspaceDetailView+ToolbarProbe.swift`. Inert
-            // unless `CASPER_TIERPROBE_WIDTHS` names the widths to sweep.
+            // unless `CASPER_TIERPROBE_WIDTHS` or `CASPER_RESIZESTEP` asks for a sweep.
             startToolbarProbe { ToolbarProbeSample(detailFrame: detailFrame, rowWidth: rowWidth) }
             #endif
         }
@@ -239,6 +308,9 @@ struct WorkspaceDetailView: View {
             // without this the git diff behind the last refresh would keep running,
             // holding `model`, to produce a summary nothing can display any more.
             diffSummaryTask?.cancel()
+            // Same reason: its only job is to write `@State` this instance no longer
+            // has.
+            undershootReleaseTask?.cancel()
         }
     }
 
@@ -360,11 +432,35 @@ struct WorkspaceDetailView: View {
     ///
     /// The row's width is always one pass behind the window: AppKit lays the toolbar
     /// out during the resize, while this row only learns its new width afterwards,
-    /// from the detail area's geometry. When a shrink is large enough, AppKit
-    /// therefore runs its fit check against the STALE, wider row, pushes the item
-    /// into the overflow chevron — and never re-runs that check on its own, so the
-    /// row stays in the chevron long after it has narrowed. That is not cosmetic:
+    /// from the detail area's geometry. AppKit therefore runs its fit check against
+    /// the STALE row and never re-runs that check on its own, so a row judged too
+    /// wide stays in the chevron long after it has narrowed. That is not cosmetic:
     /// inside the chevron the chips lose their capsule chrome entirely.
+    ///
+    /// What the lag itself costs is handled upstream, in
+    /// `rowWidth(detailFrame:undershoot:)`: the stale value is deliberately narrowed by
+    /// the shrink just observed, capped and ratcheted (see `maximumResizeUndershoot`).
+    /// That covers every pass no wider than the cap — but a pass wider than it declares
+    /// a row the bar of the next pass cannot hold, and a hand-drag coalesces into passes
+    /// of hundreds of points, so those passes DO raise the chevron and this is what
+    /// takes them back (measured over one real drag: 8 chevron frames, all on passes of
+    /// 97–558 pt). It covers the same jumps from the other direction too — the ones no
+    /// previous pass could have anticipated at all: collapsing the sidebar, a zoom, a
+    /// display change, or the content growing while the window stands still.
+    ///
+    /// The sidebar toggle is the same one-pass staleness wearing a different hat.
+    /// `windowChromeReserve` is charged discontinuously, on `detailFrame.minX < 1`,
+    /// so collapsing the sidebar drops the declared width by ~140 pt while the
+    /// measured width barely moves — by width that pass is a GROW, so the shrink term
+    /// computes 0, and AppKit judges the previous, much wider value against a bar that
+    /// has just lost its leading 140 pt. Expanding is the mirror image and is safe:
+    /// the flip happens on the first pass and only makes the row wider.
+    ///
+    /// The undershoot is deliberately NOT generalised to
+    /// `settled(previous) − settled(current)`, which would subsume that chrome flip:
+    /// it would also hold ~140 pt of undershoot for the whole settle delay, visibly
+    /// folding the chip row on every sidebar collapse — a worse artifact than one
+    /// frame of chevron that already heals itself.
     ///
     /// Measured on the running app at a 400 pt shrink jump: `validateVisibleItems()`
     /// changes nothing and neither does forcing the titlebar to lay out again;
@@ -421,17 +517,202 @@ struct WorkspaceDetailView: View {
     /// but not part of the terminal.
     static let paneDividerHeight: CGFloat = 1
 
-    /// The width the title bar has for this row.
+    /// Records the frame this layout pass measured, along with the shrink it
+    /// represents.
+    ///
+    /// `detailFrame` still holds the PREVIOUS pass's frame when this runs, which is
+    /// the only reason the delta is available at all.
+    private func recordDetailFrame(_ frame: CGRect) {
+        let shrink = Self.shrink(previousWidth: detailFrame?.width, newWidth: frame.width)
+        resizeUndershoot = Self.nextUndershoot(
+            current: resizeUndershoot, shrink: shrink, isLiveResize: Self.isWindowInLiveResize)
+        detailFrame = frame
+        scheduleUndershootRelease()
+        #if DEBUG
+        // The trace's main sample: one line per pass that moved the detail area, which
+        // during a drag is one line per frame. `delta=` is what the pass measured and
+        // `undershoot=` what survived the cap and the ratchet, so the two differ on
+        // exactly the passes worth reading. Inert unless armed.
+        TitleBarResizeTrace.record(
+            .geometry, detailFrame: frame, delta: shrink, undershoot: resizeUndershoot,
+            rung: tracedRung)
+        #endif
+    }
+
+    /// Gives the resize undershoot back once the window has stood still, so the row
+    /// unfolds to its exact width.
+    ///
+    /// Debounced rather than driven by an end-of-resize event, because there is no
+    /// such event to observe: a drag that stops simply produces no further geometry
+    /// callback, and taking the window's `NSWindowDelegate` to hear about it is off
+    /// the table (see `WindowFloor`). So the end of a resize is inferred from the
+    /// absence of a pass, which is what restarting the wait on a measurement outside a
+    /// live resize expresses.
+    ///
+    /// Absence of a pass is necessary but not sufficient, which is why the wait
+    /// repeats: a hand-driven drag is bursts of passes separated by pauses longer than
+    /// the settle delay, so a release that fired into one of those pauses would hand
+    /// the width back and the next burst would take it straight off again — the row
+    /// springing open and shut once per burst. Waiting again while the window is still
+    /// in its live resize gives the undershoot back exactly once, after the drag has
+    /// actually ended.
+    private func scheduleUndershootRelease() {
+        guard resizeUndershoot > 0 else {
+            undershootReleaseTask?.cancel()
+            undershootReleaseTask = nil
+            return
+        }
+        // Restarting the wait is only load-bearing OUTSIDE a live resize, where the one
+        // sleep below IS the debounce. Inside one, the `while` already keeps the task
+        // alive to the true end of the drag, so cancelling and recreating it would cost
+        // a `Task` per layout pass — 60–120 a second — on the hot path of the very drag
+        // this smoothing exists for. Skipping that is semantically free: the undershoot
+        // only ever grows while live (see `nextUndershoot`), so a later pass cannot
+        // change what the running task has left to do, which is to release once.
+        if Self.isWindowInLiveResize, undershootReleaseTask != nil { return }
+        undershootReleaseTask?.cancel()
+        undershootReleaseTask = Task { @MainActor in
+            repeat {
+                try? await Task.sleep(for: Self.undershootSettleDelay)
+                guard !Task.isCancelled else { return }
+            } while Self.isWindowInLiveResize
+            resizeUndershoot = 0
+            // Cleared so the NEXT drag's first pass starts a fresh wait rather than
+            // finding this finished one and skipping it.
+            undershootReleaseTask = nil
+            #if DEBUG
+            // The declared width changing without a layout pass behind it — the other
+            // half of what the trace has to show. No pass measured a shrink here, so
+            // the sample carries no delta.
+            TitleBarResizeTrace.record(
+                .release, detailFrame: detailFrame, delta: nil, undershoot: 0, rung: tracedRung)
+            #endif
+        }
+    }
+
+    #if DEBUG
+    /// The hook the row reports its ladder rung through, or `nil` when no trace was
+    /// armed — and a `nil` hook is what keeps the reporter out of the row's view tree
+    /// entirely, so an unarmed session pays nothing.
+    ///
+    /// A report arrives whenever the rung's geometry changes and on the first layout of
+    /// a newly selected candidate (see `TitleBarRungReporter`), so during a drag it
+    /// arrives every pass — hence the filter: only a CHANGE of rung is worth a state
+    /// write and a line of its own, since a pass that moved the geometry has already
+    /// logged one.
+    private var traceRungHook: ((TitleBarRung) -> Void)? {
+        guard TitleBarResizeTrace.isEnabled else { return nil }
+        return { rung in
+            guard rung != tracedRung else { return }
+            tracedRung = rung
+            TitleBarResizeTrace.record(
+                .rung, detailFrame: detailFrame, delta: nil, undershoot: resizeUndershoot,
+                rung: rung)
+        }
+    }
+    #endif
+
+    /// The width the title bar has for this row, carrying whatever extra undershoot
+    /// the resize in progress calls for.
     ///
     /// The detail area is ordinary in-window content, so it measures reliably —
     /// unlike anything read back from the toolbar itself. Everything else about the
     /// row's layout is then decided by the `HStack` from this one number.
     private var rowWidth: CGFloat {
-        guard let detailFrame else { return Self.unmeasuredRowWidth }
-        let windowChrome = detailFrame.minX < 1 ? Self.windowChromeReserve : 0
+        Self.rowWidth(detailFrame: detailFrame, undershoot: resizeUndershoot)
+    }
+
+    /// Whether the workspace window is in the middle of a pointer-driven resize.
+    ///
+    /// Read off the WINDOW rather than off a view: `NSView.inLiveResize` is true only
+    /// for the views AppKit happens to resize inside its drag-tracking loop, which is
+    /// an optimisation detail, whereas "this pass belongs to a user drag" is a
+    /// property of the window. No `NSWindowDelegate` is taken for it (see
+    /// `WindowFloor`) — a re-arming debounce needs no observer, just this flag.
+    private static var isWindowInLiveResize: Bool {
+        workspaceWindow()?.inLiveResize == true
+    }
+
+    /// The first visible toolbar-bearing window, which is the only one Casper has: there
+    /// is no New Window command (`MenuCommands` replaces `.newItem` with Space) and both
+    /// auxiliary `NSWindow`s are borderless and never ordered on-screen — the same
+    /// argument `performTitleBarDoubleClickAction` is written out against. `NSApp.windows`
+    /// is documented unordered, so "first" is how the one match is found, not a ranking
+    /// between candidates.
+    ///
+    /// Shared with the debug measurement harness, so the trace's `live=` field reports
+    /// the very flag the row acts on.
+    static func workspaceWindow() -> NSWindow? {
+        NSApp.windows.first { $0.toolbar != nil && $0.isVisible }
+    }
+
+    /// Returns the width the detail area lost between the previous measurement and
+    /// this one, which is the extra undershoot the row owes for this pass.
+    ///
+    /// Zero on a grow, zero when nothing moved, and zero for the very first
+    /// measurement — all three are the cases where the row's one-pass lag leaves it
+    /// narrower than the bar rather than wider, and so costs nothing.
+    static func shrink(previousWidth: CGFloat?, newWidth: CGFloat) -> CGFloat {
+        guard let previousWidth else { return 0 }
+        return max(0, previousWidth - newWidth)
+    }
+
+    /// The undershoot to carry into this layout pass, from the one in force, the
+    /// shrink the pass measured, and whether the window is being dragged right now.
+    ///
+    /// Pure, so the whole decision is pinned by `WorkspaceTitleBarWidthTests`. What is
+    /// left untested is only what surrounds it in the view: the `@State` it is
+    /// threaded through, the live-resize read, and the re-arming release debounce —
+    /// none of which can be driven without a real window in a real drag.
+    ///
+    /// Two rules, and the second is the load-bearing one:
+    ///
+    /// - **Capped** at `maximumResizeUndershoot`, because a coalesced pass reports the
+    ///   whole distance travelled since the last one and subtracting that whole would
+    ///   collapse the row (see that constant).
+    /// - **Ratcheted** while the drag is live: within one drag the undershoot may only
+    ///   grow. The declared width has to be MONOTONE while the window is dragged
+    ///   narrower, because the row's `ViewThatFits` ladder is chosen from it (see
+    ///   `WorkspaceTitleBarRow`) — a width that falls and rises again brings the diff
+    ///   badge, the Space name and the chip labels back mid-drag, and non-monotone
+    ///   degradation is the exact failure the single ordered ladder exists to prevent.
+    ///   A real drag's per-pass deltas fluctuate freely, so without this the width
+    ///   fluctuates with them.
+    ///
+    /// Outside a live resize there is no drag to be monotone across — a zoom or a
+    /// programmatic `setFrame` is one isolated jump — so the capped shrink applies
+    /// as-is and is anticipated once rather than held.
+    static func nextUndershoot(current: CGFloat, shrink: CGFloat, isLiveResize: Bool) -> CGFloat {
+        let capped = min(shrink, maximumResizeUndershoot)
+        return isLiveResize ? max(current, capped) : capped
+    }
+
+    /// The width the row declares for a measured detail frame, given the shrink that
+    /// frame represents.
+    ///
+    /// Pure, and kept that way: this is the decision the flicker turns on, and it is
+    /// pinned by `WorkspaceTitleBarWidthTests` without a window in sight. The view
+    /// owns only the `@State` behind the two arguments.
+    ///
+    /// `undershoot` makes the declared width fall at least as fast as the bar for as
+    /// long as the bar falls by no more than `maximumResizeUndershoot` per pass: within
+    /// that bound the value AppKit judges — which is always the PREVIOUS pass's, see
+    /// `invalidateToolbarItemSizes` — is already narrow enough for the bar of the pass
+    /// that follows. Past the cap it is not, and the frame of chevron that follows is
+    /// what `healToolbarOverflow` takes back.
+    static func rowWidth(detailFrame: CGRect?, undershoot: CGFloat) -> CGFloat {
+        guard let detailFrame else { return unmeasuredRowWidth }
+        let windowChrome = detailFrame.minX < 1 ? windowChromeReserve : 0
         // Never negative: at a window narrower than the sidebar the detail area is a
         // few points wide, and a row wider than that would overflow.
-        return max(0, detailFrame.width - windowChrome - Self.safetyMargin)
+        let settled = max(0, detailFrame.width - windowChrome - safetyMargin)
+        // The undershoot must not carry the row across the mount threshold. Below it
+        // the item is dropped from the toolbar entirely (see the `.toolbar` builder),
+        // and an item that unmounts and remounts once per frame of a drag is a worse
+        // flicker than the overflow the undershoot exists to prevent. A row that does
+        // not fit even settled is left to unmount as it would have.
+        guard settled >= minimumRowWidth else { return settled }
+        return max(minimumRowWidth, settled - undershoot)
     }
 }
 
@@ -488,6 +769,16 @@ struct WorkspaceTitleBarRow: View {
     /// monotonicity — is precisely what needs pinning. Unused by the app.
     var onBadgeWidth: ((CGFloat) -> Void)?
     var onChipsWidth: ((CGFloat) -> Void)?
+
+    #if DEBUG
+    /// Report which rung of the ladder below actually laid out — the one thing the two
+    /// widths above cannot say, since a density's width depends on which chips the
+    /// workspace even offers and the title's form is not a function of width at all.
+    /// Set only while a resize trace is armed (see `TitleBarResizeTrace`), and nil
+    /// otherwise, which is what keeps the reporter — and the `TitleBarRung` it would
+    /// name — out of the view tree.
+    var onRung: ((TitleBarRung) -> Void)?
+    #endif
 
     var body: some View {
         // ONE ordered list for everything that yields. Every element that can give
@@ -648,6 +939,27 @@ struct WorkspaceTitleBarRow: View {
                     onChipsWidth?($0)
                 }
         }
+        #if DEBUG
+        // Reported from INSIDE the rung, because that is what makes the report
+        // trustworthy: `ViewThatFits` places only the candidate it chose, so only the
+        // chosen rung's background is ever laid out. A background is proposed the
+        // primary view's size and answers with it, so this cannot change the width
+        // `ViewThatFits` measured — the row has to observe itself without disturbing
+        // what it observes.
+        //
+        // The `if` is OUTSIDE the reporter, not a check inside it: a `background`
+        // closure is evaluated while the body is being built, so a reporter built
+        // unconditionally would construct one `TitleBarRung` per candidate — six per
+        // body pass — in every DEBUG session, armed or not. This way an unarmed session
+        // builds nothing here at all.
+        .background {
+            if let onRung {
+                TitleBarRungReporter(
+                    rung: TitleBarRung(title: titleForm, badge: badge, chips: chips),
+                    report: onRung)
+            }
+        }
+        #endif
     }
 
     private func title(_ form: WorkspaceTitleLabel.Form) -> some View {

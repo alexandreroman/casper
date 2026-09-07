@@ -135,7 +135,7 @@
 - [DEBUG memory observability](references/memory-observability.md) — weak-ref live-object census + `casper debug memory` + the churn script
 - [Only the layout may create a surface view](references/surface-view-layout-membership.md) — a stale `Surface` value must not refill the view cache
 - [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH and search it in Swift; never ask it to resolve a command
-- [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — one item, one measured width
+- [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
 - [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — the row carries both gestures
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
 - [Repeating animations are gated at the call site](references/repeating-animation-state-gating.md) — a one-shot @State flag must die with the view
