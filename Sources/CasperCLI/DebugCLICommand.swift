@@ -55,10 +55,15 @@ extension DebugCLICommand {
         func run() throws {
             let response = try CasperCLI.run(
                 DebugCommand(verb: .dumpState), socket: socket.path, retriable: true)
+            // An `ok` reply without a payload can only be a protocol mismatch;
+            // an empty surface list is a legitimate state, so printing one would
+            // make the mismatch indistinguishable from "no surfaces".
+            guard let state = response.state else {
+                throw exitWithError("state reply carried no payload")
+            }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(response.state ?? DebugState(surfaces: []))
-            print(String(decoding: data, as: UTF8.self))
+            print(String(decoding: try encoder.encode(state), as: UTF8.self))
         }
     }
 
