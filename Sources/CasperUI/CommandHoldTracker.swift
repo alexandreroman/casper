@@ -38,7 +38,7 @@ final class CommandHoldTracker {
     private nonisolated(unsafe) var state: State = .idle
 
     init(
-        holdDuration: TimeInterval = 1.0,
+        holdDuration: TimeInterval,
         scheduleTimer: @escaping (TimeInterval, @escaping @Sendable () -> Void) -> HoldTimerToken = { interval, fire in
             let timer = Timer(timeInterval: interval, repeats: false) { _ in fire() }
             // `.common` so the timer still fires while the run loop is in
