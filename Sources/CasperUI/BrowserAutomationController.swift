@@ -58,11 +58,22 @@ final class BrowserAutomationController {
     private func withBrowserCoordinator<T>(
         _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> T
     ) async -> Result<T, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(Self.workspaceNotFound)
+        await mapped {
+            guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
+                throw Self.workspaceNotFound
+            }
+            return try await body(coordinator)
         }
+    }
+
+    /// Run `body` and map its outcome to a `Result`, turning any thrown error into a
+    /// `BrowserOpError` — passing one straight through, and stringifying anything
+    /// else so the reason still reaches the CLI. Every op's error mapping goes
+    /// through here, including the sized capture that deliberately drives
+    /// `BrowserCapture` instead of a coordinator.
+    private func mapped<T>(_ body: () async throws -> T) async -> Result<T, BrowserOpError> {
         do {
-            return .success(try await body(coordinator))
+            return .success(try await body())
         } catch {
             return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
         }
@@ -87,16 +98,12 @@ final class BrowserAutomationController {
                 return path
             }
         }
-        guard let ws = resolveWorkspace(workspaceID) else {
-            return .failure(Self.workspaceNotFound)
-        }
-        do {
+        return await mapped {
+            guard let ws = resolveWorkspace(workspaceID) else { throw Self.workspaceNotFound }
             let target = try resolveScreenshotURL(for: ws, override: url)
             let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
             try await Self.writeScreenshot(png, to: path)
-            return .success(path)
-        } catch {
-            return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
+            return path
         }
     }
 
