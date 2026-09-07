@@ -30,23 +30,31 @@ live.
 
 Split buttons (primary `Button` + borderless `Menu` sharing one capsule) CANNOT
 put `.titleCapsule()` inside a single label — there are two controls, and
-`titleCapsule()` on the enclosing `HStack` puts its `.padding(.horizontal,
-10)` and `.frame(height: 36)` OUTSIDE both controls, so only the primary
-`Label`'s glyph/text is clickable (the exact "Run Script only clickable on the
-icon" bug). No child can reach into the capsule's outer padding.
+`titleCapsule()` on the enclosing `HStack` puts its
+`.padding(.horizontal, TitleCapsuleMetrics.horizontalInset)` and
+`.frame(height: TitleCapsuleMetrics.height)` OUTSIDE both controls, so only the
+primary `Label`'s glyph/text is clickable (the exact "Run Script only clickable
+on the icon" bug). No child can reach into the capsule's outer padding.
 
 Fix: split the helper. `titleCapsuleShell(filled:interactive:)` applies
-everything except the horizontal padding (`.frame(height: 36)`, background,
-border overlay, `.contentShape(Capsule())`); `titleCapsule(filled:interactive:)`
-= `.padding(.horizontal, 10)` + `titleCapsuleShell`. (`interactive: true` adds
-the hover highlight for chips that are buttons.) Split buttons finish the
-`HStack` with `.titleCapsuleShell()` and move the interior geometry INSIDE each
-control's label: on the primary button's label add `.padding(.leading, 10)`,
+everything except the horizontal padding (the height frame, background, border
+overlay, `.contentShape(Capsule())`); `titleCapsule(filled:interactive:)` =
+`.padding(.horizontal, TitleCapsuleMetrics.horizontalInset)` +
+`titleCapsuleShell`. (`interactive: true` adds the hover highlight for chips
+that are buttons.) Split buttons finish the `HStack` with
+`.titleCapsuleShell()` and move the interior geometry INSIDE each control's
+label: on the primary button's label add
+`.padding(.leading, TitleCapsuleMetrics.horizontalInset)`,
 `.padding(.trailing, 4)`, `.frame(maxHeight: .infinity)`,
 `.contentShape(Rectangle())` (never `maxWidth: .infinity` — the button must stay
 content-sized or it stretches the toolbar); on the `Menu` add
-`.padding(.trailing, 10)`. Visible result is pixel-identical, and the full pill
-height plus its leading padding all fire the primary action.
+`.padding(.trailing, TitleCapsuleMetrics.horizontalInset)`. Visible result is
+pixel-identical, and the full pill height plus its leading padding all fire the
+primary action.
+
+`TitleCapsuleMetrics` (same file) is where those numbers live —
+`horizontalInset` is 10 and `height` is 36 — so a chip quotes the constant
+rather than the literal and the whole row moves together.
 
 **How to access:** the pattern lives in
 `Sources/CasperUI/WorkspaceDetailView.swift`; see `diffBadge` for the
