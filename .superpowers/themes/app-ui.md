@@ -543,8 +543,12 @@ longer does are recorded in `../status.md` § Superseded designs.
   the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so naturally
   untracked — no in-repo `.casper/worktrees/` and no `.git/info/exclude` entry;
   a `-2`/`-3`… suffix is used if the sibling name is taken). The sidebar is
-  grouped by Space in collapsible sections; removal is non-destructive (drop a
-  linked workspace, or a whole Space, leaving worktrees/branches on disk); a
+  grouped by Space in collapsible sections. **"Remove Space" is the only
+  non-destructive removal**: it drops the Space from `session.json` and releases
+  its ports, leaving the repository, its worktrees and its branches on disk. A
+  workspace's own two actions both destroy — "Merge and Close Workspace…" and
+  "Delete Workspace…" route to the same `AppModel+WorkspaceLifecycle` teardown,
+  which prunes the worktree (deleting its folder) and then deletes its branch. A
   degenerate Space is promoted to Git when its folder gains a `.git` (detected
   live by the filesystem watcher, and once per Space at launch), and demoted
   back if the `.git` is removed. The per-workspace `+/−` diff summary is
