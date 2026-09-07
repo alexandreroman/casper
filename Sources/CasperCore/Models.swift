@@ -170,8 +170,10 @@ public enum InspectorTab: String, Codable, Sendable {
 /// stable `Surface.id` that survives workspace switches and collapse/expand.
 public struct InspectorState: Codable, Equatable, Sendable {
     /// Bounds for the user-resizable panel width, in points. Single source of
-    /// truth shared by the SwiftUI `.inspectorColumnWidth(...)` call and the
-    /// model's clamping, so the two never drift apart.
+    /// truth shared by `WorkspaceDetailView`'s divider-drag clamp (which narrows
+    /// them further to reserve `minDetailWidth` for the detail area beside the
+    /// panel) and `AppModel.setInspectorWidth(_:for:)`, so the two never drift
+    /// apart.
     ///
     /// `defaultWidth` is sized so the diff view (`DiffTextSurface` in CasperUI) can show ~80 columns of
     /// code content without wrapping. Budget, in points, of one diff line at its 14pt monospaced font
