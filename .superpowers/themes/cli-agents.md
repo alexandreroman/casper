@@ -158,15 +158,20 @@ Casper terminal calls itself (`casper status set …`, `casper progress set …`
 own terminal scraping (see `agent-state-detection.md`). Casper **never launches
 an agent**; the user runs their agent manually.
 
-The only agent-facing runtime coupling is the per-surface environment
-`AgentEnvironment.surfaceEnvironment` injects into every Casper terminal:
-`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in `linked`
-workspaces only (a `primary` workspace gets none, so its dev servers keep the
-project's default ports), and — when a debug build runs under `--session <name>`
-(a `#if DEBUG`-only flag) — `CASPER_SESSION`. A CLI command reads
-`CASPER_WORKSPACE_ID` for its default target and `CASPER_CONTROL_SOCKET` to
-reach the app; state changes flow straight into the sidebar (badge, progress,
-notification dot) and, for `notify`, `UserNotifications`.
+The only agent-facing runtime coupling is the per-surface environment injected
+into every Casper terminal. `AgentEnvironment.surfaceEnvironment` contributes
+five variables: `CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in
+`linked` workspaces only (a `primary` workspace gets none, so its dev servers
+keep the project's default ports), `CASPER_SESSION` when a debug build runs
+under `--session <name>` (a `#if DEBUG`-only flag), and **`PATH`** — the
+bundle's executable directory prepended to the inherited one, which is the whole
+reason a `casper` call resolves at all, since the CLI is deliberately never
+installed globally ([[cli-availability]]). `TerminalLocale` then merges in
+**`LANG`** (see "Terminal locale" below), Casper's own values winning any
+collision. A CLI command reads `CASPER_WORKSPACE_ID` for its default target and
+`CASPER_CONTROL_SOCKET` to reach the app; state changes flow straight into the
+sidebar (badge, progress, notification dot) and, for `notify`,
+`UserNotifications`.
 
 `notify` is suppressed **entirely** for a focused target, not merely muted: the
 `!focused` guard in `controlRaiseNotification` wraps both the
@@ -190,6 +195,22 @@ under Swift 6 — see [[swift6-network-concurrency]].
 Casper supports three coding agents — **Claude Code**, **OpenAI Codex CLI** and
 **opencode** — and each reaches the CLI above through a plugin the user installs
 into the agent itself. **Casper never writes another tool's configuration**:
+### Terminal locale
+
+A macOS GUI app launched from the Dock, the Finder or Xcode inherits no `LANG`
+and no `LC_*`, so a shell it spawns — and everything that shell runs, an agent
+included — falls back to the `C`/`POSIX` locale and reads correct UTF-8 bytes as
+Latin-1, turning `dépôt` into `dÃ©pÃ´t`. Terminal.app and standalone Ghostty
+export a UTF-8 `LANG` to avoid exactly that, and `TerminalLocale` (CasperAgents)
+does the same for every Casper terminal.
+
+The value comes from a short fallback chain, and never from the environment:
+build `<language>_<REGION>.UTF-8` from the current `Locale`, keep it only if
+both components resolve **and** the C library recognizes the result
+(`newlocale`, probed without touching the process's global locale), else fall
+back to `en_US.UTF-8`, which macOS always has. The probe is injectable and the
+resolution is pure, so the whole chain is testable without a terminal.
+
 every agent ships its own installer, so all Casper does is *detect* what an
 installer left behind and remind the user when something is missing or stale.
 There is deliberately no install, repair or enable action anywhere in the app —
