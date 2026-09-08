@@ -276,9 +276,8 @@ extension WorkspaceDetailView {
     ) {
         guard let toolbar = window.toolbar else { return }
         let visible = Set(toolbar.visibleItems?.map(\.itemIdentifier.rawValue) ?? [])
-        // SwiftUI names its own items; ours are the ones identified by a UUID.
         let ours = toolbar.items
-            .filter { UUID(uuidString: $0.itemIdentifier.rawValue) != nil }
+            .filter(Self.isOurItem)
             .map { item in
                 let width = item.view.map { "\($0.frame.width)" } ?? "-"
                 return "\(visible.contains(item.itemIdentifier.rawValue) ? "V" : "OVF"):\(width)"
@@ -326,11 +325,16 @@ extension WorkspaceDetailView {
             """)
     }
 
+    /// Whether the item is one of ours: SwiftUI names its own items, while ours are
+    /// identified by a UUID.
+    private static func isOurItem(_ item: NSToolbarItem) -> Bool {
+        UUID(uuidString: item.itemIdentifier.rawValue) != nil
+    }
+
     /// Our own toolbar item's view, in the window's coordinate space, so its trailing
-    /// edge can be compared against the window's content width. Ours is the item whose
-    /// identifier parses as a UUID — the same test `logToolbarState` uses.
+    /// edge can be compared against the window's content width.
     private static func probeItemFrameInWindow(_ window: NSWindow) -> CGRect? {
-        let ours = window.toolbar?.items.first { UUID(uuidString: $0.itemIdentifier.rawValue) != nil }
+        let ours = window.toolbar?.items.first(where: isOurItem)
         guard let view = ours?.view else { return nil }
         return view.convert(view.bounds, to: nil)
     }

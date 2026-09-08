@@ -51,11 +51,13 @@ outside the App Store, and Casper is distributed as a direct download. Sparkle
 is the de facto standard and the only realistic option; writing an updater
 in-house means re-implementing signature verification and atomic bundle
 replacement, which is exactly the kind of security-critical code not worth
-owning. It ships a universal `Sparkle.framework` (~10 MB in the bundle) — the
-one place where the smallest-binary rule is knowingly traded away. Casper stays
-ad-hoc signed, so the EdDSA appcast signature is the only trust anchor: see the
-plan
-[[sparkle-eddsa-key]].
+owning. It ships a universal `Sparkle.framework` (~3 MB of real content in the
+bundle; `du -L` reports ~10 MB only because it follows the framework's version
+symlinks and counts the payload several times) — the one place where the
+smallest-binary rule is knowingly traded away, and thinning it to arm64 would
+reclaim 1.2 MB of that (see [[binary-size-budget]] for why it is not thinned).
+Casper stays ad-hoc signed, so the EdDSA appcast signature is the only trust
+anchor: see the plan [[sparkle-eddsa-key]].
 
 **Workspace info panel rendering:** the panel renders Markdown supplied by the
 `casper info` CLI without any external package. macOS parses Markdown natively

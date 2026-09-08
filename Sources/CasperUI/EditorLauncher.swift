@@ -27,9 +27,9 @@ enum EditorLauncher {
     /// though the editor itself is installed. `launch(_:at:)` falls back to
     /// opening the bundle directly when the shim is absent, so bundle
     /// resolution alone is enough to guarantee a working launch.
-    /// Preserves `EditorKind.priorityOrder`.
+    /// Preserves `EditorKind`'s declaration order, which is priority order.
     static func detectInstalled() -> [EditorKind] {
-        EditorKind.priorityOrder.filter { kind in
+        EditorKind.allCases.filter { kind in
             resolveBundleURL(kind) != nil
         }
     }

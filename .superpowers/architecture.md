@@ -55,17 +55,17 @@ bundle identifier — a bare executable cannot post a notification at all (see
 
 ## Module boundaries
 
-| Module            | Responsibility                                                                                                   | Theme                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                        | `themes/git-worktrees.md` |
+| Module            | Responsibility                                                                                                                                                     | Theme                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                                                                          | `themes/git-worktrees.md` |
 | **CasperCore**    | Models + `LayoutTree`, `SessionStore`, `WorktreeManager`, `PortAllocator`, `RepoConfig`, agent detection + integration probing, control channel. Pure Swift, no UI | `themes/core.md`          |
-| **CasperGhostty** | `GhosttyRuntime`: wraps GhosttyKit, owns surface lifecycle + splits. The only module touching the unstable API   | `themes/terminal.md`      |
-| **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, ports) for Casper terminals   | `themes/cli-agents.md`    |
-| **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                             | `themes/cli-agents.md`    |
-| **CasperUI**      | SwiftUI sidebar, chrome and browser, the AppKit diff renderer and Ghostty bridges; owns the window, the app lifecycle and all startup wiring | `themes/app-ui.md`        |
-| **Clibgit2**      | `.systemLibrary` target binding libgit2 via Homebrew + pkg-config; no Swift code of its own                       | `themes/git-worktrees.md` |
-| **CSigbusGuard**  | A C shim installing a `SIGBUS` handler around libgit2 diff, turning an mmap-truncation fault into a thrown error  | `themes/git-worktrees.md` |
-| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is a handful of lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()` | all                       |
+| **CasperGhostty** | `GhosttyRuntime` + surface views: wraps GhosttyKit, owns surface lifecycle (splits are `CasperCore.LayoutTree`). The only module touching the unstable API         | `themes/terminal.md`      |
+| **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT`, `CASPER_SESSION`, `PATH`, `LANG`) for Casper terminals           | `themes/cli-agents.md`    |
+| **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                                                                               | `themes/cli-agents.md`    |
+| **CasperUI**      | SwiftUI sidebar, chrome and browser, the AppKit diff renderer and Ghostty bridges; owns the window, the app lifecycle and all startup wiring                       | `themes/app-ui.md`        |
+| **Clibgit2**      | `.systemLibrary` target binding libgit2 via Homebrew + pkg-config; no Swift code of its own                                                                        | `themes/git-worktrees.md` |
+| **CSigbusGuard**  | A C shim installing a `SIGBUS` handler around libgit2 diff, turning an mmap-truncation fault into a thrown error                                                   | `themes/git-worktrees.md` |
+| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is a handful of lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()`                          | all                       |
 
 Rationale: instability (libghostty) and Git specifics (libgit2) are each
 confined to one module, so churn stays local. Agent specifics are split on
@@ -117,18 +117,18 @@ restored as-is.
 
 ## Risks & mitigations
 
-| Risk                                          | Mitigation                                                       |
-| --------------------------------------------- | ---------------------------------------------------------------- |
-| libghostty API instability                    | All access behind `GhosttyRuntime`; pinned version               |
-| Worktree op fails (branch checked out, dirty) | Clear UI error, never crash                                      |
-| PTY dies                                      | Surface marked closed, restartable                               |
-| App crash                                     | Agents lost (accepted); relaunch restores layout cold            |
-| Agent never calls the CLI                     | State inferred from the terminal; `unknown` only when unreadable |
-| Binary size creep                             | Five justified externals only; arm64-only; `-Osize` + strip      |
-| libgit2 diff faults on a truncated mmap       | `CSigbusGuard` turns the `SIGBUS` into a thrown error            |
-| Main thread blocked long enough to freeze the UI | DEBUG-only `MainThreadHangWatchdog` samples and reports it    |
-| Corrupt or incompatible `session.json`        | `SessionStore` self-heals by discarding it rather than failing   |
-| libgit2 unpinned in brew and CI               | Unmitigated — a brew bump can change diff behaviour underfoot    |
+| Risk                                             | Mitigation                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------- |
+| libghostty API instability                       | All access behind `GhosttyRuntime`; pinned version               |
+| Worktree op fails (branch checked out, dirty)    | Clear UI error, never crash                                      |
+| PTY dies                                         | Surface marked closed, restartable                               |
+| App crash                                        | Agents lost (accepted); relaunch restores layout cold            |
+| Agent never calls the CLI                        | State inferred from the terminal; `unknown` only when unreadable |
+| Binary size creep                                | Five justified externals only; arm64-only; `-Osize` + strip      |
+| libgit2 diff faults on a truncated mmap          | `CSigbusGuard` turns the `SIGBUS` into a thrown error            |
+| Main thread blocked long enough to freeze the UI | DEBUG-only `MainThreadHangWatchdog` samples and reports it       |
+| Corrupt or incompatible `session.json`           | Moved aside to `session.json.corrupt`; an empty session starts   |
+| libgit2 unpinned in brew and CI                  | Unmitigated — a brew bump can change diff behaviour underfoot    |
 
 ## Testing strategy
 

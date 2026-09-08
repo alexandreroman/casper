@@ -7,19 +7,25 @@ type: feedback
 # App sessions (--session) and isolated live verification
 
 When live-verifying the Casper GUI during development (the `debug-casper` skill,
-or any manual run of `.build/debug/casper`), **always launch under a dedicated
-session**: `.build/debug/casper --session dev` and `export CASPER_SESSION=dev`.
-This isolates the debug socket (`/tmp/casper-debug-dev.sock`), control socket
+or any manual launch), **always run under a dedicated session**:
+`Casper-dev.app/Contents/MacOS/casper --session dev`, with
+`export CASPER_SESSION=dev` for the debug CLI that talks to it. Launch the
+bundle's executable rather than `.build/debug/casper` directly — the app bundle
+is what carries the code signature the Screen Recording grant is attached to
+(see [[tcc-screen-recording-needs-a-bundle]]). A session isolates the debug
+socket (`/tmp/casper-debug-dev.sock`), control socket
 (`$TMPDIR/casper-control-dev.sock`), and layout file (`session-dev.json`) from
 the user's real instance, so verification never clobbers their saved layout or
 hijacks their sockets.
 
-**Why:** `make dev`/`.build/debug/casper` and a dogfooded real instance both
-otherwise bind the same fixed paths (`casper-control.sock`,
-`/tmp/casper-debug.sock`, `session.json`); a second unnamed instance rewrites
-the real `session.json` on quit and unlinks the live socket. A named session
-removes that collision. Confirmed by live test: a `--session dev` run left the
-real 7 KB `session.json` untouched.
+**Why:** an unnamed instance and a dogfooded real one both bind the same fixed
+paths (`casper-control.sock`, `/tmp/casper-debug.sock`, `session.json`); the
+second one rewrites the real `session.json` on quit and unlinks the live socket.
+A named session removes that collision — a `--session dev` run leaves the real
+7 KB `session.json` untouched. `make dev` needs no argument of its own: it
+derives `DEV_SESSION` from the current branch name, sanitized to
+`SessionIdentity`'s charset, so two worktrees on different branches already get
+independent sessions. A hand-rolled launch is the case that has to name one.
 
 **How to apply:**
 
@@ -39,5 +45,4 @@ real 7 KB `session.json` untouched.
   CLI flag.
 - Ports: `PortAllocator` uses a randomized scan start (`randomStartBase`) to
   reduce — not eliminate — cross-instance port-block collisions.
-- See [[domain-cli-control-channel]] and the design spec
-  `.superpowers/sdd/2026-07-06-app-session-{design,plan}.md`.
+- See [[domain-cli-control-channel]].

@@ -81,7 +81,7 @@ extension LayoutNode: Codable {
     private enum CodingKeys: String, CodingKey { case split, leaf, tabGroup }
     private enum SplitKeys: String, CodingKey { case orientation, children, ratios }
     private enum LeafKeys: String, CodingKey { case _0 }
-    private enum TabGroupKeys: String, CodingKey { case surfaces, activeIndex }
+    private enum TabGroupKeys: String, CodingKey { case surfaces }
 
     /// Decodes the current `split`/`leaf` shapes, and migrates the legacy
     /// `tabGroup` shape (from older `session.json`) by folding each surface into
@@ -95,7 +95,9 @@ extension LayoutNode: Codable {
             let ratios = try c.decode([Double].self, forKey: .ratios)
             // Reject inconsistent splits so a corrupt `session.json` self-heals via
             // SessionStore rather than decoding into a node that later traps in
-            // `LayoutTree.closeSurface` (`ratios.remove(at:)` index-out-of-range).
+            // `LayoutTree.closeSurface`: dropping the only child of a 1-child split
+            // empties `children`, so the `children.count == 1` collapse never fires
+            // and `children[min(i, children.count - 1)]` then indexes -1.
             guard children.count >= 2 else {
                 throw DecodingError.dataCorrupted(.init(
                     codingPath: decoder.codingPath,
@@ -156,7 +158,10 @@ extension LayoutNode: Codable {
 }
 
 public enum WorkspaceKind: String, Codable, Sendable {
-    case primary, linked
+    // Raw values are spelled out: they are the on-disk spelling in
+    // `session.json`, so renaming a case must not silently rewrite the file.
+    case primary = "primary"
+    case linked = "linked"
 }
 
 public enum InspectorTab: String, Codable, Sendable {
@@ -170,8 +175,10 @@ public enum InspectorTab: String, Codable, Sendable {
 /// stable `Surface.id` that survives workspace switches and collapse/expand.
 public struct InspectorState: Codable, Equatable, Sendable {
     /// Bounds for the user-resizable panel width, in points. Single source of
-    /// truth shared by the SwiftUI `.inspectorColumnWidth(...)` call and the
-    /// model's clamping, so the two never drift apart.
+    /// truth shared by `WorkspaceDetailView`'s divider-drag clamp (which narrows
+    /// them further to reserve `minDetailWidth` for the detail area beside the
+    /// panel) and `AppModel.setInspectorWidth(_:for:)`, so the two never drift
+    /// apart.
     ///
     /// `defaultWidth` is sized so the diff view (`DiffTextSurface` in CasperUI) can show ~80 columns of
     /// code content without wrapping. Budget, in points, of one diff line at its 14pt monospaced font
@@ -224,14 +231,14 @@ public struct InspectorState: Codable, Equatable, Sendable {
     }
 }
 
+/// Declaration order is priority order: `allCases` drives the editor dropdown's
+/// display order and picks the fallback when a workspace has no `lastUsedEditor`
+/// yet. Stated once here so a new case cannot join `allCases` while staying
+/// invisible to the launcher.
 public enum EditorKind: String, Codable, CaseIterable, Sendable {
     case vscode
     case intellijIdea
     case xcode
-
-    /// Priority order used both as the dropdown's display order and as the
-    /// fallback when a workspace has no `lastUsedEditor` yet.
-    public static let priorityOrder: [EditorKind] = [.vscode, .intellijIdea, .xcode]
 
     public var cliCommand: String {
         switch self {

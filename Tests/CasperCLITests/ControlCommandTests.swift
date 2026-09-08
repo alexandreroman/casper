@@ -116,6 +116,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertNil(try new.makeCommand().command)
     }
 
+    func testTerminalNewTreatsEmptyWorkingDirAsNil() throws {
+        // An empty `--working-dir` must not absolutize to the CLI's own directory:
+        // an absent cwd is what lets the app default to the workspace's worktree.
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", ""])
+        XCTAssertNil(try new.makeCommand().cwd)
+    }
+
     func testTerminalListBuildsCommand() throws {
         let list = try TerminalCommand.List.parse(["--workspace", "feature"])
         let command = try list.makeCommand()
@@ -195,6 +202,15 @@ final class ControlCommandTests: XCTestCase {
     func testBrowserScreenshotCarriesOutPath() throws {
         let shot = try BrowserCommand.Screenshot.parse(["--out", "/tmp/x.png", "--workspace", "feature"])
         XCTAssertEqual(try shot.makeCommand().path, "/tmp/x.png")
+    }
+
+    func testBrowserScreenshotTreatsEmptyOutAsAbsent() throws {
+        // An empty `--out` would otherwise absolutize to the CLI's own directory,
+        // handing the app a directory as the PNG target.
+        let shot = try BrowserCommand.Screenshot.parse(["--out", "", "--workspace", "feature"])
+        let path = try XCTUnwrap(shot.makeCommand().path)
+        XCTAssertTrue(path.hasPrefix(NSTemporaryDirectory()))
+        XCTAssertTrue(path.hasSuffix(".png"))
     }
 
     func testBrowserScreenshotAbsolutizesRelativeOutPath() throws {
@@ -543,7 +559,8 @@ final class ControlCommandTests: XCTestCase {
 
     func testNonEmpty() {
         // Shared by every optional value whose empty string means "absent":
-        // `--command`, `notify --message`, and `diff open <file>`.
+        // `--command`, `--working-dir`, `notify --message`, `browser screenshot
+        // --out`, and `diff open <file>`.
         XCTAssertNil(nonEmpty(nil))
         XCTAssertNil(nonEmpty(""))
         XCTAssertEqual(nonEmpty("npm test"), "npm test")
@@ -577,5 +594,12 @@ final class ControlCommandTests: XCTestCase {
         let run = try RunCommand.parse(["test", "--workspace", "feature"])
         let command = try run.makeCommand()
         XCTAssertEqual(command.name, "test")
+    }
+
+    func testRunRejectsEmptyName() throws {
+        // Rejected CLI-side, so the caller reads "missing command name" instead of
+        // the app's "unknown command".
+        let run = try RunCommand.parse(["", "--workspace", "feature"])
+        XCTAssertThrowsError(try run.makeCommand())
     }
 }

@@ -213,7 +213,14 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         while true {
             if await evaluatePredicate(predicate) { return true }
             if Date() >= deadline { return false }
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            } catch {
+                // Cancellation: the sleep returns instantly, so swallowing it would
+                // turn the poll into a main-actor busy loop of `evaluateJavaScript`
+                // round-trips until the deadline. End the wait instead.
+                return false
+            }
         }
     }
 

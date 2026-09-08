@@ -259,7 +259,11 @@ only place with policy, and the only state machine involved: the model's
 2. **Debounce transitions.** Require the `working` affordance to be **absent for
    N consecutive reads** before `working → idle`, so a gap between two tool
    calls does not flicker to idle. Never let a late or stale read revive `idle`
-   once a terminal state has been set.
+   once a terminal state has been set. N is **2** — the default of
+   `AgentStateResolver.resolve(signal:seen:debounce:)` — and it counts *ticks*,
+   not seconds: against the fixed 250 ms visible / 1 s hidden cadence (see
+   Wiring) that is ~0.5 s on screen and ~2 s behind a hidden window. All three
+   numbers are compiled-in constants; there is no tuning seam.
 3. **Priority (multi-signal / aggregation):** `AgentSignal` has four cases and
    ranks them `blocked` > `working` > `idle` > `absent`, so rolling several
    surfaces up is a `max`. `done` is not in that order: it is a *state*, derived
@@ -275,9 +279,10 @@ Explicit reporting and detection must not fight. A per-workspace, **transient**
 latch decides who owns the state:
 
 There is no `AgentAuthority` enum: the latch as built is a set of workspace ids,
-`explicitAuthority: Set<UUID>` on `AppModel`, read through
-`isUnderExplicitAuthority(_:)`. Membership means the workspace is under explicit
-authority; absence means detection owns it.
+`explicitAuthority: Set<UUID>` on `AppModel`, read directly — the detection tick
+tests `explicitAuthority.contains(id)`, with no accessor in between. Membership
+means the workspace is under explicit authority; absence means detection owns
+it.
 
 - Default (not a member) — the scraper drives `agentState`.
 - `working`, `blocked`, `done`, and `error` all grant authority. For the
@@ -348,8 +353,9 @@ Given the shell-hosted reality:
   `done`). No process-exit hook needed.
 - **`error`** has no *terminal-scraping* producer for now; a crashed agent reads
   as `idle` from its at-rest shell. It is still produced outside detection, by a
-  `.casper.json` `setup` hook that exits non-zero (`ScriptHookRunner` →
-  `AppModel.reportSetupFailure` → `setDetectedAgentState(.error, …)`).
+  `.casper.json` `setup` hook that exits non-zero (`ScriptHookRunner` → its
+  injected `reportSetupFailure` closure →
+  `AppModel.setDetectedAgentState(.error, …)`).
   Acceptable until there's a real scraped signal for it.
 - **Authority release** for terminal-observable states is immediate: the CLI
   removes their latch — `idle` and `unknown` only, since `working` joined the
@@ -473,5 +479,4 @@ rules live in `app-ui.md` § Design → "Dock attention".
   with `casper debug read-text`, and check the viewport mid-turn.
 - Which surfaces feed the workspace rollup when more than one agent runs in a
   workspace.
-- Exact debounce count N and throttle interval — tuned live.
 - Whether the rule set ships as an in-repo resource or is fetched/updatable.

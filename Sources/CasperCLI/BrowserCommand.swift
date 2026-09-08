@@ -90,7 +90,7 @@ struct BrowserCommand: ParsableCommand {
             if let width, width <= 0 { throw exitWithError("--width must be a positive number of pixels") }
             if let height, height <= 0 { throw exitWithError("--height must be a positive number of pixels") }
             if let url { try requireAbsoluteURL(url) }
-            let path = out.map(absolutePath) ?? Self.temporaryScreenshotPath()
+            let path = nonEmpty(out).map(absolutePath) ?? Self.temporaryScreenshotPath()
             return ControlCommand(
                 verb: .browserScreenshot, workspace: try requireSelector(target), url: url, path: path,
                 width: width, height: height)
@@ -323,8 +323,8 @@ struct BrowserCommand: ParsableCommand {
     }
 
     // The four scroll verbs stay separate subcommands (rather than one
-    // `scroll <direction>`) because `.superpowers/themes/cli-agents.md` and the
-    // external `casper` plugin skill are written against these exact command names.
+    // `scroll <direction>`) because README.md's command reference and the external
+    // `casper` plugin skill are written against these exact command names.
 
     struct ScrollUp: BrowserAutomationRefCommand {
         static let configuration = CommandConfiguration(

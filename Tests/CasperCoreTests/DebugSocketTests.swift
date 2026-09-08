@@ -32,7 +32,6 @@ final class DebugSocketTests: XCTestCase {
         // directions, so the exchange exercises the accumulating read helper
         // rather than a single-receive fast path.
         let largeText = String(repeating: "casper-debug-payload ", count: 10_000)
-        XCTAssertGreaterThan(largeText.utf8.count, 200_000)
 
         let server = DebugSocketServer(socketPath: path)
         server.onCommand = { command, reply in

@@ -24,6 +24,8 @@ heuristic keeps flagging binary correctly and must stay in place.
 **How to access:** the flag lives in `options.flags` in `diffWorkdirToHead()`.
 Regression coverage is in `Tests/CasperGitTests/DiffTests.swift`:
 `testUntrackedFileIsAddedWithAdditions` asserts an untracked text file is not
-binary and carries real content lines (a vacuous `allSatisfy` on an empty array
-hid this before), and `testBinaryFileHasNoHunks` guards that untracked binary
-stays flagged. See also [[libgit2-swift-interop]].
+binary **and** carries real content lines. Both halves are load-bearing: an
+`allSatisfy` over the hunks alone is vacuous when the file diffs to zero of
+them, which is exactly the state a missing flag produces.
+`testBinaryFileHasNoHunks` guards that untracked binary stays flagged. See also
+[[libgit2-swift-interop]].

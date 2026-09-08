@@ -24,7 +24,7 @@ public struct SessionIdentity: Sendable, Equatable {
     private static let allowedNameCharacters = CharacterSet(
         charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
 
-    public static func isValid(_ name: String) -> Bool {
+    static func isValid(_ name: String) -> Bool {
         guard (1...32).contains(name.count) else { return false }
         return name.unicodeScalars.allSatisfy { allowedNameCharacters.contains($0) }
     }

@@ -132,7 +132,7 @@ extension AppModel {
     /// affects the returned result, because a broken teardown must not block the delete.
     private func deleteLinkedWorkspace(
         id workspaceID: UUID,
-        onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in },
+        onTeardownHook: @MainActor (TeardownHookStatus) -> Void,
         nonLinkedFallback: () async -> Result<Void, WorkspaceDeleteError>
     ) async -> Result<Void, WorkspaceDeleteError> {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked else {

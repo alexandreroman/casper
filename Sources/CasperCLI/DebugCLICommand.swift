@@ -47,6 +47,15 @@ private func run(_ command: DebugCommand, socket: String, retriable: Bool) throw
     return response
 }
 
+/// Encoder for the debug verbs that dump a whole payload for a human to read.
+/// Unlike `cliJSONEncoder`, which emits one compact line per reply, these dumps
+/// are pretty-printed; `sortedKeys` keeps them diff-friendly across runs.
+private let debugJSONEncoder: JSONEncoder = {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    return encoder
+}()
+
 extension DebugCLICommand {
     struct DumpState: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Print app state as JSON.")
@@ -55,10 +64,13 @@ extension DebugCLICommand {
         func run() throws {
             let response = try CasperCLI.run(
                 DebugCommand(verb: .dumpState), socket: socket.path, retriable: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(response.state ?? DebugState(surfaces: []))
-            print(String(decoding: data, as: UTF8.self))
+            // An `ok` reply without a payload can only be a protocol mismatch;
+            // an empty surface list is a legitimate state, so printing one would
+            // make the mismatch indistinguishable from "no surfaces".
+            guard let state = response.state else {
+                throw exitWithError("state reply carried no payload")
+            }
+            print(String(decoding: try debugJSONEncoder.encode(state), as: UTF8.self))
         }
     }
 
@@ -75,9 +87,7 @@ extension DebugCLICommand {
             guard let memory = response.memory else {
                 throw exitWithError("memory reply carried no snapshot")
             }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            print(String(decoding: try encoder.encode(memory), as: UTF8.self))
+            print(String(decoding: try debugJSONEncoder.encode(memory), as: UTF8.self))
         }
     }
 

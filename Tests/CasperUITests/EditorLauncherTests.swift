@@ -9,14 +9,14 @@ final class EditorLauncherTests: XCTestCase {
     /// `detectInstalled()` depends on what's actually installed on the machine
     /// running the test, so this only checks the invariant that holds
     /// regardless of environment: the result is a duplicate-free subsequence
-    /// of `EditorKind.priorityOrder`, in the same relative order.
-    func testDetectInstalledIsOrderedSubsequenceOfPriorityOrder() {
+    /// of `EditorKind.allCases`, in the same relative order.
+    func testDetectInstalledIsOrderedSubsequenceOfAllCases() {
         let detected = EditorLauncher.detectInstalled()
         XCTAssertEqual(detected, Set(detected).sorted { l, r in
-            EditorKind.priorityOrder.firstIndex(of: l)! < EditorKind.priorityOrder.firstIndex(of: r)!
+            EditorKind.allCases.firstIndex(of: l)! < EditorKind.allCases.firstIndex(of: r)!
         })
         for kind in detected {
-            XCTAssertTrue(EditorKind.priorityOrder.contains(kind))
+            XCTAssertTrue(EditorKind.allCases.contains(kind))
         }
     }
 

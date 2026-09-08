@@ -5,11 +5,9 @@ Workspace`; `repoPath` up on `Space.folderPath`; `Workspace.kind`/`baseBranch`);
 only **Space rename remains** (see `../status.md` and `app-ui.md`) · **Extends**
 `../architecture.md` (data model, sidebar, worktrees, persistence).
 
-> **The per-workspace `+/−` diff summary is dropped** (decision, 2026-07-06) —
-> it is no longer planned. The branch-vs-merge-base divergence badge on each
-> workspace row will not be built; the title-bar working-tree-vs-HEAD summary
-> already covers the practical need. The design text below is retained for the
-> record but is **not** a work item.
+> **The per-workspace `+/−` diff summary is dropped** — the decision and its
+> rationale are in § Workspace diff summary — dropped. The design text below is
+> retained for the record but is **not** a work item.
 
 Promotes the sidebar's implicit "group by repository" into a first-class
 **Space**. The Space grouping shipped with the CasperUI sidebar in UI-2
@@ -38,17 +36,21 @@ promoted the moment its folder gains a `.git`. *Invariant: one Space per
 repository, always ≥ 1 workspace.*
 
 - **Naming** — default from the `origin` remote's last path segment without
-  `.git` (fallback: the root folder name). Renamable; a renamed Space stops
-  tracking the folder/remote.
+  `.git` (fallback: the root folder name). Renaming is **intended, not built**
+  — it is the one item this theme has left: a renamed Space is to stop tracking
+  the folder/remote.
 - **Lifecycle** — a Space begins one of two ways. **Adoption** opens a folder
   that already exists; **creation** (`AppModel.createSpace(at:probe:)`) makes
   the folder, runs `Repository.initialize` in it, and then hands it to adoption,
   so the two paths converge and only one of them assembles a Space. A folder
   that is not a repository opens as a degenerate Space rather than prompting for
   anything, and `AppModel.promoteSpaceIfGitInitialized` promotes it once a
-  `.git` appears. Add a workspace via `git worktree add`; **remove is
-  non-destructive** (drops the Space from `session.json` and releases ports;
-  leaves the repo, worktrees, and branches on disk).
+  `.git` appears. A **workspace** is added with `git worktree add` and removed
+  destructively: closing or deleting one prunes its worktree — the folder and
+  all — and then deletes its branch. Removing a **Space** is the
+  non-destructive operation, and the only one: it drops the Space from
+  `session.json` and releases its ports, leaving the repo, its worktrees and
+  its branches on disk.
 
 A created Space is an ordinary one from the first frame — a full Git Space with
 a single primary workspace — and its repository holds exactly one commit: an
@@ -61,11 +63,16 @@ Casper's own words. A Space can still be rooted at a repository whose HEAD is
 unborn: one adopted before its first commit, or one whose initial commit was
 skipped because the machine configures no committer identity (Casper never
 invents one). `Repository.headBranchName()` reads the branch from HEAD's
-symbolic target when there is no commit to resolve, so the primary workspace is
-named after the real branch (`main`, or whatever `init.defaultBranch` says)
-instead of falling back to the folder name. Creation refuses any path that is
-already taken — Casper never deletes or overwrites what it did not create; see
-`app-ui.md` § Design → "Ways into a Space" for the panel and the refusal rules.
+symbolic target when there is no commit to resolve, so the primary workspace's
+row still shows the real branch (`main`, or whatever `init.defaultBranch` says)
+instead of falling back to a name. A row renders `Workspace.branchLabel`, which
+is the branch when there is one and the workspace's `name` only when there is
+not — and a primary workspace's `name` is the Space's own name, never its
+branch. Creation refuses any path that is already taken — Casper never deletes
+or overwrites what it did not create — the one exception being a directory
+holding nothing but a `.DS_Store`, which is exactly what the save panel's own
+**New Folder** button hands over; see `app-ui.md` § Design → "Ways into a Space"
+for the panel and the refusal rules.
 
 ### Space identity — one Space per repository
 
@@ -83,10 +90,17 @@ a repository is never represented twice:
   workspace named after its branch, with the primary's branch as its
   `baseBranch` — and it is the one selected, being what the user chose. The
   main working tree is resolved through `CasperGit`'s `mainWorkingTree()`.
+  Should that main working tree already be tracked by an open Space — which
+  happens when the Space's runtime-only `isGitRepo` flag was never resolved —
+  the picked folder is **adopted** into it by the rule above, rather than
+  rooting a second Space at the same folder.
 - **Reunification.** Opening a repository whose worktrees are *already open as
   Spaces* folds them into the Space it creates, moving those workspaces whole —
   ids, ports, layouts and live terminals unchanged — with each ex-primary
-  becoming a linked workspace named after its branch.
+  becoming a linked workspace named after its branch. The one exception is a
+  workspace rooted at the absorbing Space's own working tree: it is **retired**
+  rather than moved, since it would otherwise become a linked workspace whose
+  deletion takes the repository itself with it.
 
 Two layouts are **refused outright**, with an alert and nothing added: a
 worktree of a **bare** repository, which has no main working tree and never
@@ -109,7 +123,10 @@ Re-adding a folder Casper already tracks only selects it.
 
 Each Space is a **collapsible group header** (repo name + chevron), **no state
 aggregation** — agent state stays on the workspace rows; the primary is listed
-first.
+first, then the linked workspaces by name. The Spaces themselves are ordered
+alphabetically, `AppModel.spaces` being kept sorted so every reader inherits
+that order for free. An expanded Git Space's header carries a trailing **"+"**
+button that creates a linked workspace.
 
 A collapsed Space hides its workspace rows, so whenever a row has to be
 revealed the owning Space expands: the selection restored at launch, a
@@ -119,31 +136,38 @@ anything — it is a passive act with no claim on the user's attention.
 
 ### Workspace diff summary — dropped
 
-*Design retained for the record; not a work item (see the note at the top).* The
-original intent was a per-row **branch-vs-merge-base** divergence badge
-(`+<insertions>` green / `−<deletions>` red, line counts only, hidden when
-empty). It is superseded by the title-bar working-tree-vs-HEAD summary, which
-already ships.
+**Dropped by decision on 2026-07-06, and no longer planned.** The original
+intent was a per-row **branch-vs-merge-base** divergence badge (`+<insertions>`
+green / `−<deletions>` red, line counts only, hidden when empty). The title-bar
+working-tree-vs-HEAD summary, which already ships, covers the practical need
+instead — so the row badge will not be built, and the divergence stats it would
+have needed (a `diffStat` on `Workspace`, branch-vs-merge-base line counts in
+`CasperGit`) were never built either. The design is kept here for the record;
+it is **not** a work item.
 
 ## Unchanged from the base design
 
 Ports remain **per workspace** (`CASPER_PORT`, injected in `linked` workspaces
 only), not per Space. No `CASPER_PROJECT` env in v1. `SessionStore` serializes
-the full `Session → Space → Workspace` tree.
+the `Session → Space → Workspace` tree bar its runtime-only fields, which are
+re-derived on load rather than read back: `Space.isGitRepo` (re-probed from the
+folder) and a `Workspace`'s six transient ones (`agentState`, `todos`,
+`pendingNotification`, `pendingNotificationMessage`, `infoMarkdown`,
+`infoUnread`).
 
 ## Implementation
 
 **Partly built by CasperUI UI-2.** Done: the model refactor (`repoPath` up to
 `Space.folderPath`, `Workspace.kind`/`baseBranch`, `Session.spaces`), Space
 assembly, the collapsible Space-grouped sidebar, `CasperGit`
-`Repository.remoteURL`, and repo-name derivation from `origin`. Persistence uses
-a clean break (the existing `SessionStore` self-heal discards incompatible
-legacy files), not the migration the original plan described. The three identity
+`Repository.remoteURL`, and repo-name derivation from `origin`. Persistence
+needed no wholesale migration: `SessionStore` self-heals a `session.json` it
+cannot decode by moving it aside to a sibling `session.json.corrupt` — preserved
+for diagnostics, not discarded — and starting from an empty `Session`, while
+`Models.swift` carries per-field legacy decoding throughout, defaulting absent
+keys and migrating the legacy `tabGroup` layout node. The three identity
 rules above and their two refusals are built (`AppModel+Spaces.swift`), as is
 creation from scratch (`AppModel.createSpace`, same file).
 
 Remaining for this theme: **Space rename** only. The per-workspace `+/−` diff
-summary is **dropped** (see the top note), so the divergence stats it needed —
-a `diffStat` on `Workspace`, branch-vs-merge-base line counts in `CasperGit` —
-were never built and are not planned. See [[space-diff-summary-dropped]] for the
-rationale.
+summary is **dropped** — see § Workspace diff summary — dropped.

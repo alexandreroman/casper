@@ -36,6 +36,13 @@ final class MarkdownAttributedStringTests: XCTestCase {
         return string.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle
     }
 
+    /// The rendered line that holds `text`. A marker assertion needs the line
+    /// of one specific item, because a nested list's markers ("1." outside,
+    /// "•" inside) both appear somewhere in the whole document.
+    private func line(containing text: String, in string: String) -> String? {
+        string.components(separatedBy: "\n").first { $0.contains(text) }
+    }
+
     func testEmptyStringYieldsEmptyResult() {
         let result = make("")
         XCTAssertEqual(result.length, 0)
@@ -132,6 +139,26 @@ final class MarkdownAttributedStringTests: XCTestCase {
         XCTAssertNotNil(string.range(of: "6."))
         XCTAssertNotNil(string.range(of: "7."))
         XCTAssertNil(string.range(of: "1."))
+    }
+
+    /// A presentation-intent chain names every *ancestor* list as well as the
+    /// item's own, so a marker can only be read from the innermost list intent
+    /// — for `1. Outer` / `   - Inner` the inner item's chain is
+    /// `paragraph | listItem | unorderedList | listItem | orderedList`. Both
+    /// nesting directions are pinned: an ancestor's kind must not decide a
+    /// nested item's marker either way round.
+    func testNestedListMarkerFollowsTheInnermostListKind() {
+        let bulletInsideOrdered = make("1. Outer\n   - Inner")
+        guard let bulletLine = line(containing: "Inner", in: bulletInsideOrdered.string) else {
+            return XCTFail("the bullet nested in an ordered list has no line of its own")
+        }
+        XCTAssertTrue(bulletLine.hasPrefix("•"), "expected a bullet marker, got \"\(bulletLine)\"")
+
+        let orderedInsideBullet = make("- Outer\n  1. Inner")
+        guard let orderedLine = line(containing: "Inner", in: orderedInsideBullet.string) else {
+            return XCTFail("the ordered item nested in a bullet list has no line of its own")
+        }
+        XCTAssertTrue(orderedLine.hasPrefix("1."), "expected a numeric marker, got \"\(orderedLine)\"")
     }
 
     func testTaskListRendersDistinctCheckedAndUncheckedMarkers() {
@@ -636,6 +663,71 @@ final class MarkdownAttributedStringTests: XCTestCase {
             return XCTFail("a list item has no paragraph style")
         }
         XCTAssertGreaterThan(firstItemStyle.paragraphSpacingBefore, secondItemStyle.paragraphSpacingBefore)
+    }
+
+    /// "First item" is a position in the list, not the value of its marker.
+    /// Foundation reports the ordinal written in the *source*, so the list
+    /// below opens on ordinal 5 — an input this renderer explicitly supports
+    /// (`testOrderedListHonorsNonSequentialStartingOrdinal`) — and a renderer
+    /// deciding first-ness from that number gives it the tight between-items
+    /// gap instead of the block gap that separates it from the paragraph above.
+    func testListStartingAtANonOneOrdinalOpensTheSameLeadingGap() {
+        let fromOne = make("Paragraph.\n\n1. First\n2. Second")
+        let fromFive = make("Paragraph.\n\n5. First\n6. Second")
+
+        let fromOneStart = (fromOne.string as NSString).range(of: "First").location
+        let fromFiveStart = (fromFive.string as NSString).range(of: "First").location
+        let secondItemStart = (fromFive.string as NSString).range(of: "Second").location
+        guard let fromOneStyle = paragraphStyle(in: fromOne, at: fromOneStart),
+              let fromFiveStyle = paragraphStyle(in: fromFive, at: fromFiveStart),
+              let secondItemStyle = paragraphStyle(in: fromFive, at: secondItemStart) else {
+            return XCTFail("a list item has no paragraph style")
+        }
+
+        XCTAssertEqual(fromFiveStyle.paragraphSpacingBefore, fromOneStyle.paragraphSpacingBefore)
+        // Not just equal to each other — both must be the wider block gap, or
+        // a renderer that gave every item the tight gap would also pass.
+        XCTAssertGreaterThan(fromFiveStyle.paragraphSpacingBefore, secondItemStyle.paragraphSpacingBefore)
+    }
+
+    /// A nested list is a list in its own right: nothing above the sub-item
+    /// belongs to it, so its first item opens it and takes the wide block gap,
+    /// exactly as a top-level list does under the paragraph before it.
+    func testNestedListFirstItemOpensItsOwnList() {
+        let result = make("1. one\n   - sub alpha\n   - sub beta")
+        let firstSubStart = (result.string as NSString).range(of: "sub alpha").location
+        let secondSubStart = (result.string as NSString).range(of: "sub beta").location
+        guard let firstSubStyle = paragraphStyle(in: result, at: firstSubStart),
+              let secondSubStyle = paragraphStyle(in: result, at: secondSubStart) else {
+            return XCTFail("a nested list item has no paragraph style")
+        }
+
+        XCTAssertGreaterThan(firstSubStyle.paragraphSpacingBefore, secondSubStyle.paragraphSpacingBefore)
+    }
+
+    /// An item that resumes a list already in progress stays tight to it even
+    /// when a nested sub-list sits between it and the item before it. The block
+    /// ahead of `2.` is `sub alpha`, whose *innermost* list is the inner bullet
+    /// one — but the outer ordered list encloses that sub-list too, so nothing
+    /// has opened in between and a block gap here would split one list in two.
+    func testItemResumingAnOuterListAfterANestedListStaysTight() {
+        let nested = make("1. one\n   - sub alpha\n2. two")
+        let flat = make("1. one\n2. two")
+
+        let nestedTwoStart = (nested.string as NSString).range(of: "two").location
+        let subAlphaStart = (nested.string as NSString).range(of: "sub alpha").location
+        let flatTwoStart = (flat.string as NSString).range(of: "two").location
+        guard let nestedTwoStyle = paragraphStyle(in: nested, at: nestedTwoStart),
+              let subAlphaStyle = paragraphStyle(in: nested, at: subAlphaStart),
+              let flatTwoStyle = paragraphStyle(in: flat, at: flatTwoStart) else {
+            return XCTFail("a list item has no paragraph style")
+        }
+
+        // `two` resumes the same outer list in both documents, so the sub-list
+        // in between must make no difference to the gap ahead of it.
+        XCTAssertEqual(nestedTwoStyle.paragraphSpacingBefore, flatTwoStyle.paragraphSpacingBefore)
+        // And that gap is the tight one, not the wide gap the sub-list opened.
+        XCTAssertLessThan(nestedTwoStyle.paragraphSpacingBefore, subAlphaStyle.paragraphSpacingBefore)
     }
 
     /// Only the leading side carries a value; trailing ("after") is always 0

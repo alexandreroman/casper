@@ -50,10 +50,12 @@ longer does are recorded in `../status.md` § Superseded designs.
   goes", and its standard **New Folder** button comes with it for free. The
   panel reopens at the location last used — the *parent* folder, not the Space
   itself — carried in `Session.lastNewSpaceLocation` and written to
-  `session.json`, because Casper reads no `UserDefaults` anywhere and the
-  session file is where a preference of its own belongs. An absent key decodes
-  to nil, and a remembered folder no longer on disk is ignored rather than
-  aiming the panel at nothing.
+  `session.json`, because Casper stores no preference of its own in
+  `UserDefaults` — the single key it reads there is a *system* setting,
+  `AppleActionOnDoubleClick` (see "Title bar") — and the session file is where
+  a preference of Casper's own belongs. An absent key decodes to nil, and a
+  remembered folder no longer on disk is ignored rather than aiming the panel at
+  nothing.
 
   `AppModel.createSpace(at:probe:)` then does the work: create the directory,
   `git init` it through `CasperGit`'s `Repository.initialize`, give it one
@@ -77,8 +79,11 @@ longer does are recorded in `../status.md` § Superseded designs.
   its own "…already exists. Replace?" sheet and, on Replace, simply returns the
   URL, expecting the caller to overwrite. Casper refuses instead, so confirming
   Replace costs the user nothing. Rollback is scoped the same way — a failed
-  `git init` or adoption removes a directory *this call* created, and leaves an
-  empty one the user handed over alone.
+  `git init` or adoption removes a directory *this call* created, and inside a
+  directory the user handed over it removes only the `.git` Casper initialized,
+  leaving the directory itself. That `.git` has to go too: left behind it makes
+  the very same path un-creatable on a second attempt, `isVacant` refusing a
+  folder the Finder still shows as empty.
 
   Like `addSpace`, `createSpace` runs no modal of its own (it is also driven
   headlessly, by the tests), so every failure — `pathOccupied`,
@@ -154,9 +159,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   normalization, back/forward/reload), aimed at previewing a `localhost:PORT`
   app started by the agent. No Chromium.
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
-  view with two tabs (Browser | Diff), per workspace and persisted
-  (`Workspace.inspector`). It reuses the browser and diff surfaces rather than
-  replacing them.
+  view with two tabs (Diff | Browser, in that order), per workspace and
+  persisted (`Workspace.inspector`). It reuses the browser and diff surfaces
+  rather than replacing them.
 
   **The inspector is the only home for both.** The `.diff` layout-leaf surface
   kind was removed outright, and `Surface.Kind.browser` is now reached only
@@ -180,21 +185,26 @@ longer does are recorded in `../status.md` § Superseded designs.
   `toggleInspectorCollapsed` on `AppModel`.
 - **Window floor** — the terminal region (the pane splits, not the sidebar and
   not the inspector) has a calibrated minimum of **200 × 200 pt**, and the
-  window's own floor follows from it: `WindowFloor` pushes an
-  `NSWindow.contentMinSize` computed from the sidebar's width plus the
-  inspector's, plus that minimum. It also grows a window already below the
+  window's own floor follows from it: `WindowFloor` computes it from the
+  sidebar's width plus the inspector's, plus that minimum, and pushes it to
+  **both** of the window's minimums — `contentMinSize`, and the frame-based
+  `NSWindow.minSize` derived from it. It also grows a window already below the
   floor, because `contentMinSize` constrains a drag but never grows a window
   that is already under it — otherwise revealing the inspector on a small window
   would leave the terminal squeezed instead of widening it.
 
   A SwiftUI content minimum does **not** reach `NSWindow`, not even declared on
   the sidebar column, so the floor cannot be expressed in the view tree. And
-  `WindowGroup` writes its own minimums (228 × 142, crediting the sidebar 28 pt
-  where it is 300), so ours holds only by being written last. The authoritative
-  mechanism is `NSWindowDelegate.windowWillResize(_:to:)`, deliberately **not**
-  taken because it means taking the window's delegate away from SwiftUI: the
-  accepted consequence is that the floor holds from normal states but not from a
-  window already collapsed below it, which normal use does not reach.
+  `WindowGroup` recomputes `contentMinSize` from its content on every view
+  update and writes it back (228 × 142, crediting the sidebar 28 pt where it is
+  300), clobbering a value written only there within the frame. So the
+  **frame-based `minSize` is what holds** — it is the one SwiftUI does not
+  manage — and the floor is re-applied on every window update besides. The
+  authoritative mechanism is `NSWindowDelegate.windowWillResize(_:to:)`,
+  deliberately **not** taken because it means taking the window's delegate away
+  from SwiftUI: the accepted consequence is that the floor holds from normal
+  states but not from a window already collapsed below it, which normal use does
+  not reach.
 
 - **Title bar** — the workspace toolbar is **one** `ToolbarItem`, holding the
   whole row: the title capsule, the info chip, the diff badge, the Merge chip
@@ -212,6 +222,19 @@ longer does are recorded in `../status.md` § Superseded designs.
   item AppKit can single out is an item it can overflow, so the row hands it a
   single item that is never wider than the bar and does the degrading itself
   ([[toolbar-overflows-before-squeezing]]).
+
+  Spanning the bar costs the row two `NSThemeFrame` behaviours, so the row hands
+  both back to itself. **Dragging the window** is a `WindowDragGesture` over a
+  `.contentShape(Rectangle())` — a `Spacer` claims no hits of its own, so
+  without a shape the inert stretch between the badge and the chips drags
+  nothing. **Double-clicking the title bar** is an `.onTapGesture(count: 2)`
+  running `TitleBarDoubleClickAction`, which honours the choice made in System
+  Settings (Fill, Zoom, Minimize and Do Nothing are all real answers) instead of
+  zooming unconditionally, and turns away a window that would only beep. Both
+  gestures stay **plain** — never high-priority, never simultaneous — so a
+  chip's own click still wins, and the shape covers the hosted view's rect
+  rather than the toolbar item's full height, which is what leaves the window's
+  top-edge resize band with the theme frame ([[titlebar-row-window-drag]]).
 
   That width is the one measured number in the row. It comes from the detail
   area's `GeometryReader` — never from content that can overflow its column,
@@ -491,14 +514,27 @@ longer does are recorded in `../status.md` § Superseded designs.
 - **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
   injects the bundle exec dir + per-surface env into each terminal, and runs the
   `#if DEBUG` debug bridge (all detailed in `cli-agents.md`).
+- **Software update** — `SoftwareUpdater` wraps **Sparkle**, and is the one
+  thing that *adds* to the menu bar: a "Check for Updates…" group after
+  `.appInfo` in the App menu. It stays inert unless the running bundle declares
+  both an appcast feed URL and the EdDSA public key that authenticates it —
+  Casper ships ad-hoc-signed, so that key, not code-signing continuity, is the
+  whole of the trust chain — and the menu item is offered only when it does, a
+  dead entry being worse than none. Only the release bundle carries the pair, so
+  a dev build and an unbundled binary are quiet by construction. The
+  operational side (the feed, the release job, key custody) belongs to
+  `README.md` and [[sparkle-eddsa-key]].
 
 ## Sub-projects
 
 - **UI-1 — ✅ built.** App shell (SwiftUI `App` scene +
-  `NSApplicationDelegateAdaptor`; Casper owns its **entire** menu bar through
-  SwiftUI `.commands` — the only `NSMenu` built in AppKit is the pane context
-  menu, see `terminal.md` § Design → "Main menu"),
-  `@MainActor @Observable AppModel` as the single state owner/bridge,
+  `NSApplicationDelegateAdaptor`; Casper owns the menu bar through SwiftUI
+  `.commands`, **replacing** the standard command groups — with one *additive*
+  group, "Check for Updates…" (see § Design → "Software update"), and the
+  Window menu plus the rest of the App menu left to SwiftUI's defaults; the only
+  `NSMenu` built in AppKit is the pane context menu, see `terminal.md` § Design
+  → "Main menu"), `@MainActor @Observable AppModel` as the single state
+  owner/bridge,
   `NavigationSplitView` with empty state, "Add folder…" (adopt any folder — Git
   or not, multiple allowed), one live terminal per workspace, and all startup
   wiring (the release control server, per-surface env, session persistence,
@@ -543,8 +579,12 @@ longer does are recorded in `../status.md` § Superseded designs.
   the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so naturally
   untracked — no in-repo `.casper/worktrees/` and no `.git/info/exclude` entry;
   a `-2`/`-3`… suffix is used if the sibling name is taken). The sidebar is
-  grouped by Space in collapsible sections; removal is non-destructive (drop a
-  linked workspace, or a whole Space, leaving worktrees/branches on disk); a
+  grouped by Space in collapsible sections. **"Remove Space" is the only
+  non-destructive removal**: it drops the Space from `session.json` and releases
+  its ports, leaving the repository, its worktrees and its branches on disk. A
+  workspace's own two actions both destroy — "Merge and Close Workspace…" and
+  "Delete Workspace…" route to the same `AppModel+WorkspaceLifecycle` teardown,
+  which prunes the worktree (deleting its folder) and then deletes its branch. A
   degenerate Space is promoted to Git when its folder gains a `.git` (detected
   live by the filesystem watcher, and once per Space at launch), and demoted
   back if the `.git` is removed. The per-workspace `+/−` diff summary is
@@ -598,14 +638,19 @@ longer does are recorded in `../status.md` § Superseded designs.
   `diffWorkdirToHead()`: per-file sections (path + status, binary files noted),
   hunk headers, and monospaced line rows colored by kind (green addition / red
   deletion / neutral context) with old/new line-number gutters and a
-  `+`/`-`/space prefix cue. Computed on open and **live-refreshed**: a native
-  FSEvents watcher on the selected workspace's folder (debounced ~200 ms, `.git`
-  + Git-ignored top-level dirs excluded) bumps an observable revision that both
-  the diff surface and the title-bar `+/−` badge react to. Originally rendered
-  as a `.diff` layout leaf (created via the tab-bar "+" menu); that surface kind
-  was later **removed** — the diff view now lives **only** in the right
-  inspector panel (`Workspace.inspector`). The rendering above is unchanged,
-  just hosted by the inspector instead of a layout leaf.
+  `+`/`-`/space prefix cue. Computed on open and **live-refreshed** by **two**
+  native FSEvents watchers on the selected workspace, both funnelling through
+  one ~200 ms debounce that bumps an observable revision the diff surface and
+  the title-bar `+/−` badge react to: one on the worktree folder (`.git` +
+  Git-ignored top-level dirs excluded), and one on the resolved gitdir's `logs`
+  reflog directory. The second is what catches a commit, which writes only
+  inside `.git` and leaves every working-tree file byte-for-byte identical, so
+  the first sees nothing at all. Both are stopped while the window is hidden and
+  re-armed when it comes back ([[diff-refresh-two-watchers]]). Originally
+  rendered as a `.diff` layout leaf (created via the tab-bar "+" menu); that
+  surface kind was later **removed** — the diff view now lives **only** in the
+  right inspector panel (`Workspace.inspector`). The rendering above is
+  unchanged, just hosted by the inspector instead of a layout leaf.
 
 ## Next action
 

@@ -20,6 +20,12 @@ every path there, via `absolutePath(_:)` in
 echoed JSON report the path the file actually landed at.
 
 Any new verb carrying a filesystem path routes it through `absolutePath` in its
-`makeCommand()`. Tests pin this through `.parse([...])` + `makeCommand()` — see
+`makeCommand()`. An **optional** path option passes through `nonEmpty` first —
+`nonEmpty(out).map(absolutePath)`, `nonEmpty(workingDir).map(absolutePath)` —
+so an explicitly empty value stays absent and the verb falls back to its
+default. Absolutizing `""` would instead answer the CLI's own working
+directory, turning a caller's "no path" into a real and wrong one.
+
+Tests pin this through `.parse([...])` + `makeCommand()` — see
 [[argumentparser-optional-default]] for why direct construction is not an
 option.

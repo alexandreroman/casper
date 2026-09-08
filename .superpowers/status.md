@@ -2,11 +2,10 @@
 
 The progress ledger: what is built, what is left, and what was decided against.
 
-**The design and the as-built behaviour live elsewhere.**
-[`architecture.md`](architecture.md) carries the foundation and `themes/` owns
-one area each — how a thing works is described there, once, and when this file
-disagrees with a theme the theme wins. One-off technical findings live in
-`.claude/project-memory/`; the map is [`INDEX.md`](INDEX.md).
+**The design and the as-built behaviour live elsewhere.** The ownership rule —
+which doc wins, and where a thing's behaviour is described — is stated once in
+[`INDEX.md`](INDEX.md) § Ownership, which also maps every theme. One-off
+technical findings live in `.claude/project-memory/`.
 
 Status legend: ✅ built · ◐ partial · ❌ not started.
 
@@ -16,21 +15,22 @@ Every module is built, and Casper is a working product: a Space-grouped
 sidebar over linked Git worktrees, tmux-style terminal panes, a right inspector
 panel carrying the browser and the diff view, per-repository `.casper.json`
 scripts, agent-state detection for three coding agents, and in-app auto-update.
-`make build` and `make test` are green — last measured 2026-08-26. The suite's
-test count is deliberately not recorded here: it moves with every commit, and a
-stale number reads as a regression. Run `make test` for the current figure.
+`make build` and `make test` are expected green on every commit. Neither the
+suite's test count nor the date it last ran is recorded here: both move with
+every commit, and a stale figure reads as a regression. Run `make test` for the
+current answer.
 
-| Area                                 | Status | Design & as-built                                                    |
-| ------------------------------------ | ------ | -------------------------------------------------------------------- |
-| CasperCore                           | ✅     | [`themes/core.md`](themes/core.md)                                   |
-| CasperGit (+ Clibgit2, CSigbusGuard) | ✅     | [`themes/git-worktrees.md`](themes/git-worktrees.md)                 |
-| CasperCLI + CasperAgents             | ✅     | [`themes/cli-agents.md`](themes/cli-agents.md)                       |
-| CasperGhostty                        | ✅     | [`themes/terminal.md`](themes/terminal.md)                           |
-| CasperUI (UI-1…UI-5)                 | ✅     | [`themes/app-ui.md`](themes/app-ui.md)                               |
-| Space (project)                      | ◐      | [`themes/space-project.md`](themes/space-project.md)                 |
-| Agent-state detection                | ◐      | [`themes/agent-state-detection.md`](themes/agent-state-detection.md) |
-| Agent integration detection          | ✅     | `themes/cli-agents.md` § Agent integration detection                 |
-| Debug & observability (`#if DEBUG`)  | ✅     | [`themes/debug.md`](themes/debug.md)                                 |
+| Area                                 | Status |
+| ------------------------------------ | ------ |
+| CasperCore                           | ✅     |
+| CasperGit (+ Clibgit2, CSigbusGuard) | ✅     |
+| CasperCLI + CasperAgents             | ✅     |
+| CasperGhostty                        | ✅     |
+| CasperUI (UI-1…UI-5)                 | ✅     |
+| Space (project)                      | ◐      |
+| Agent-state detection                | ◐      |
+| Agent integration detection          | ✅     |
+| Debug & observability (`#if DEBUG`)  | ✅     |
 
 The ◐ rows are the areas whose *design* is unfinished; open items sit under ✅
 rows too. Everything outstanding is listed under [Remaining
@@ -132,12 +132,13 @@ non-selected workspaces.
    and repaints every carried file, not only those whose text moved. The
    ordering fix that ended the observed freeze is in and covered by a test, but
    has **not** been confirmed live on an actively-edited worktree, which is the
-   only setup that produced the freeze; the DEBUG-only
-   `MainThreadHangWatchdog` stays wired until it has. See
-   [[nstextstorage-attribute-run-order]].
+   only setup that produced the freeze; the main-thread hang watchdog filed in
+   [`architecture.md`](architecture.md) § Risks & mitigations stays wired until
+   it has. See [[nstextstorage-attribute-run-order]].
 4. **Standing limitations** — `WorktreeManager.remove` prunes a worktree without
    deleting its branch; its one production caller deletes the branch on the next
-   line, so this only bites a second caller. libgit2 is unpinned in brew and CI.
+   line, so this only bites a second caller. The unpinned libgit2 is filed as a
+   risk in [`architecture.md`](architecture.md) § Risks & mitigations.
 
 Two visual passes still need a human, since agents cannot screenshot the SwiftUI
 chrome: the `.casper.json` setup/teardown split lifecycle, and the info panel's
@@ -149,7 +150,7 @@ hover, pulse, link-cursor and link-routing behaviour. See
 - **The per-workspace `+/−` diff summary** — the branch-vs-merge-base divergence
   badge designed for the Space sidebar row (decision 2026-07-06). The title
   bar's working-tree-vs-HEAD summary covers the need, so this is the intended
-  behaviour rather than a stopgap. See [[space-diff-summary-dropped]].
+  behaviour rather than a stopgap.
 - **A process-exit (`childExited`) `done`/`error` producer** and the authority
   release built on it. `onChildExit` is wired, but only to the script-hook
   runner, so `error` has no terminal-scraping producer — it is raised by a

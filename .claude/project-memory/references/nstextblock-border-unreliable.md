@@ -1,17 +1,18 @@
 ---
 name: "NSTextBlock/NSTextTable borders are unreliable"
-description: "A bare NSTextBlock border with both width and color set drew nothing in the info panel; the fix avoids that whole AppKit feature family rather than trusting it"
+description: "A bare NSTextBlock border with both width and color set draws nothing in the info panel; the Markdown renderer avoids that whole AppKit feature family rather than trusting it"
 type: feedback
 ---
 
 # NSTextBlock/NSTextTable borders are unreliable
 
-`MarkdownAttributedString`'s block quote rule and thematic-break rule both used
-a bare `NSTextBlock` with a border width and color set on one edge
+A bare `NSTextBlock` with a border width and color set on one edge
 (`setWidth(_:type:for:edge:)` + `setBorderColor(_:for:)`) — the configuration
-Apple's own docs say is required. Both drew nothing in the running app: the
-block quote showed no leading bar, the thematic break showed only its reserved
-vertical spacing with no line in it.
+Apple's own docs say is required — draws nothing in the running app. Both of
+`MarkdownAttributedString`'s rules land in that trap when written that way: the
+block quote shows no leading bar, and the thematic break shows only its
+reserved vertical spacing with no line in it. Neither is built from a bare
+block.
 
 **Why:** `NSTextBlock`/`NSTextTable` border rendering has multiple open,
 Apple-acknowledged AppKit bugs independent of this app's code — e.g. FB16391696
@@ -38,24 +39,23 @@ trust it renders, and don't try to headlessly pixel-prove one either way.
   a rule), prefer a technique from a different, well-supported drawing path —
   `renderThematicBreak` rasterizes the rule into an `NSImage` and embeds it via
   an `NSTextAttachment`, which composites like any inline image instead of
-  relying on block/table border compositing. A second path was also tried and is
-  equally dead: a `.thick` `.underlineStyle` on a tab run stretched by a far-out
-  tab stop drew nothing either, leaving only the reserved line height as a tall
-  blank gap — underlining a tab's whitespace advance is evidently not a drawn
-  glyph the way underlining actual text is. Both the bare-border and the
-  underline-on-a-tab-run path are dead ends; the attachment technique above is
-  the one that works.
+  relying on block/table border compositing. One neighbouring technique is
+  equally dead and worth not re-deriving: a `.thick` `.underlineStyle` on a tab
+  run stretched by a far-out tab stop draws nothing either, leaving only the
+  reserved line height as a tall blank gap — underlining a tab's whitespace
+  advance is evidently not a drawn glyph the way underlining actual text is.
+  The attachment technique is the one that works.
 - Where a border is unavoidable (the GFM table itself has no substitute), keep
   it working by following the one finding with a concrete trigger: avoid setting
   a *margin* on the block/cell (FB16391696's traced cause). `renderTableCell`'s
-  un-nested case already does this by construction; `blockQuoteRule` was
-  rewritten to a private 1x1 `NSTextTable` cell (reusing the same
-  `NSTextTableBlock` the GFM table's cells use) with no margin set, on the
-  reasoning that this narrows the exposure to the known bug even though it can't
-  be headlessly proven. One consequence to preserve: two `> ` quotes separated
-  by a blank line are two distinct blocks, each with its own fresh
-  `NSTextTable`, so they draw two independent bars — the standard block gap
-  between them is what stops those bars reading as one continuous rule.
+  un-nested case does this by construction, and `blockQuoteRule` returns a
+  private 1x1 `NSTextTable` cell (the same `NSTextTableBlock` type the GFM
+  table's cells use) with no margin set, on the reasoning that this narrows the
+  exposure to the known bug even though it cannot be headlessly proven. One
+  consequence to preserve: two `> ` quotes separated by a blank line are two
+  distinct blocks, each with its own fresh `NSTextTable`, so they draw two
+  independent bars — the standard block gap between them is what stops those
+  bars reading as one continuous rule.
 - Either way, final confirmation that the pixels actually appear is a human's,
   via `make dev` — an attribute (`textBlocks`, `.underlineStyle`, a border
   color) is not a pixel.

@@ -67,18 +67,12 @@ struct SplitContainerView: View {
     /// when it matches and is usable, else an even split.
     @State private var fractions: [Double] = []
 
-    /// Precomputed per-child surface-id identities (each child's `paneDiffKey`),
-    /// refreshed only when `children` changes. Keeping them out of `content` avoids
-    /// re-walking every subtree on each `GeometryReader` frame during a drag/resize.
-    @State private var paneKeys: [[UUID]] = []
-
     var body: some View {
         GeometryReader { geometry in
             content(geometry: geometry)
         }
         .onAppear {
             if fractions.isEmpty { fractions = seededFractions() }
-            if paneKeys.isEmpty { paneKeys = children.map(\.paneDiffKey) }
         }
         .onChange(of: ratios) {
             // Keyed on the model's `ratios`, never on the local `fractions`: a live
@@ -88,11 +82,6 @@ struct SplitContainerView: View {
             // (`LayoutTree` re-evens the ratios whenever it adds or drops a child),
             // and a reused view instance landing on a differently-proportioned split.
             fractions = seededFractions()
-        }
-        .onChange(of: children) {
-            // Keyed on `children`, not `children.count`: a same-count reorder must
-            // still refresh the identities so panes track their content.
-            paneKeys = children.map(\.paneDiffKey)
         }
     }
 
@@ -107,14 +96,19 @@ struct SplitContainerView: View {
             }
         } else {
             let fracs = displayFractions()
-            let paneIdentities = displayPaneKeys()
+            let paneIdentities = children.map(\.paneDiffKey)
             let axisLength = orientation == .horizontal ? geometry.size.width : geometry.size.height
             let crossLength = orientation == .horizontal ? geometry.size.height : geometry.size.width
             let boundaries = boundaries(fractions: fracs, axisLength: axisLength)
             ZStack(alignment: .topLeading) {
                 // Panes first (below), dividers last so they hit-test on top. Keyed by
-                // the precomputed surface-id array (not the index) so each pane's
-                // view/host tracks its content across a drag-relocate reorder.
+                // each child's surface-id array (not the index) so each pane's view/host
+                // tracks its content across a drag-relocate reorder. Derived from
+                // `children` on every pass, never cached in `@State`: a cache refreshed
+                // from `.onChange` lags the body that reads it, so a same-count reorder
+                // (`LayoutTree.move` removes then reinserts, leaving the ratios even and
+                // unchanged) would render one pass of panes against the previous order's
+                // identities — re-parenting each shared surface `NSView` twice.
                 ForEach(Array(paneIdentities.enumerated()), id: \.element) { index, _ in
                     pane(children[index], index: index, boundaries: boundaries,
                          axisLength: axisLength, crossLength: crossLength)
@@ -274,13 +268,6 @@ struct SplitContainerView: View {
         fractions.count == children.count ? fractions : evenFractions()
     }
 
-    /// Precomputed per-child surface-id identities, falling back to a fresh
-    /// computation until `@State` is seeded or when a child change momentarily
-    /// leaves them out of sync (mirrors `displayFractions`).
-    private func displayPaneKeys() -> [[UUID]] {
-        paneKeys.count == children.count ? paneKeys : children.map(\.paneDiffKey)
-    }
-
     private func seededFractions() -> [Double] {
         guard !children.isEmpty else { return [] }
         let sum = ratios.reduce(0, +)
@@ -416,13 +403,18 @@ final class SplitterHandleView: NSView {
     override func mouseDown(with event: NSEvent) {
         // No `super`: this whole view is the grab strip, so any press begins a
         // resize (or, on a double-click, equalizes the split).
+        //
+        // The drag anchor is snapshotted before the double-click branch, because the
+        // button can be held down and dragged out of that click: `mouseDragged` maps
+        // absolute pointer movement from this anchor, so leaving the previous click's
+        // anchor in place would make the divider jump away from the pointer.
+        didDrag = false
+        dragStartBoundary = boundary
+        dragStartWindowLocation = event.locationInWindow
         if event.clickCount == 2 {
             onEqualize()
             return
         }
-        didDrag = false
-        dragStartBoundary = boundary
-        dragStartWindowLocation = event.locationInWindow
         resizeCursor.set()
     }
 

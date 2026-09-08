@@ -15,7 +15,8 @@ surfaces and PTYs (same model as the Ghostty app).
 - **`GhosttySurface`** (+ `GhosttySurfaceConfiguration`) — the surface handle
   and config marshaling.
 - **`GhosttySurfaceView`** — the AppKit `NSView` host; **`GhosttyInput`** maps
-  keyboard/scroll input.
+  keyboard input only. Pointer input (`scrollWheel` and the mouse events) is
+  mapped by the view itself.
 - **`PersistentNSViewHost`** — the SwiftUI bridge. It re-parents an *existing*
   `NSView` into a fresh container on each rebuild instead of creating a new one,
   so a surface's PTY survives layout restructuring; ownership is driven by
@@ -23,10 +24,16 @@ surfaces and PTYs (same model as the Ghostty app).
 - **`GhosttyDefaultConfig`** — the baked-in default terminal theme, loaded
   before the user's own Ghostty config so user settings still win (see
   [[ghostty-config-dir-bundle-id]]).
-- **`GhosttyActionDispatcher`** — the extensible seam (`GhosttyActionHandler`)
-  for libghostty app-level actions (`newTab`/`newSplit`/`newWindow`/`closeTab`/
-  `closeWindow`, plus `openURL` for a cmd+clicked link and `quit`); the default
-  `LoggingActionHandler` logs unbuilt actions as no-ops.
+- **`GhosttyActionDispatcher.swift`** — the extensible seam: the
+  `GhosttyActionHandler` protocol plus the default `LoggingActionHandler`, which
+  claims nothing and logs whatever it is handed as an explicit no-op. (There is
+  no type named `GhosttyActionDispatcher`; the file is named for the role.)
+  `GhosttyRuntime.handleAction` offers the seam exactly five app-level actions —
+  `newSplit`, `newTab`, `newWindow`, `closeTab`, `closeWindow` — and falls
+  through to `onAction` for anything a handler leaves unclaimed. `openURL` (a
+  cmd+clicked link) and `quit` never reach the seam at all: they are handled
+  straight off `onAction` in CasperUI's `AppDelegate`, alongside the
+  `closeWindow` fallback.
 - **Rendering is libghostty's**, not Casper's: it owns the Metal layer and
   drives it from its own render thread. `GHOSTTY_ACTION_RENDER` is decoded like
   any other action but needs no `draw()` wiring on the AppKit side — the view's
@@ -47,12 +54,15 @@ surfaces and PTYs (same model as the Ghostty app).
   [[ghostty-clipboard-callbacks]].
 - **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
   in CasperUI (`MenuCommands.swift`), not an AppKit menu built here. Its Edit
-  items reach the focused surface through the responder chain, where
-  `GhosttySurfaceView` turns them into libghostty binding actions
-  (`copy_to_clipboard`, `paste_from_clipboard`, `select_all`). The View group
-  holds the four pane splits and nothing else: font size is changed by
-  libghostty's own keybindings inside the surface and reported back to the model
-  through `onFontSizeChange`, so no menu item drives it. See
+  group's Copy/Paste/Select All reach the focused surface through the responder
+  chain, where `GhosttySurfaceView` turns them into libghostty binding actions
+  (`copy_to_clipboard`, `paste_from_clipboard`, `select_all`). The same group
+  also holds two items that are **workspace**-scoped rather than
+  surface-scoped — Copy Workspace Path and Copy Branch Name — which act on the
+  selected workspace and never touch a surface. The View group holds the four
+  pane splits and nothing else: font size is changed by libghostty's own
+  keybindings inside the surface and reported back to the model through
+  `onFontSizeChange`, so no menu item drives it. See
   [[swiftui-mainmenu-miniaturize-resync]].
 - **`macos-option-as-alt`** is wired via `ghostty_surface_key_translation_mods`;
   the observable effect is inert in the current pinned binary (revisit on pin
@@ -65,13 +75,17 @@ Metal layer's `contentsScale` to the window backing scale — see
 
 ## Composition by CasperUI
 
-The decoded `newSplit`/`newTab`/`closeTab` actions are composed into a recursive
-`LayoutNode` tree by CasperUI's `LayoutActionHandler`, installed on
-`GhosttyRuntime.actionHandler`. **Tabs are gone**: `LayoutNode` is
-`split | leaf`, rendered by CasperUI's own `SplitContainerView`, and `newTab`
-maps to a right split. `close_surface_cb` is wired, so Ctrl-D or `exit` closes
-the pane via `GhosttySurfaceView.onClose`. See `app-ui.md` § Design → "Layout
-composition".
+CasperUI's `LayoutActionHandler`, installed on `GhosttyRuntime.actionHandler`,
+claims four of the seam's five actions. Three of them — `newSplit`, `newTab`,
+`closeTab` — are composed into a recursive `LayoutNode` tree. The fourth,
+`newWindow`, has no layout meaning in a single-window app, so it is remapped
+onto the nearest honest equivalent and opens the New Space panel; it is the one
+case deferred to the next main-loop turn rather than run inline, because its
+modal `NSSavePanel` must not hold libghostty's tick open. **Tabs are gone**:
+`LayoutNode` is `split | leaf`, rendered by CasperUI's own `SplitContainerView`,
+and `newTab` maps to a right split. `close_surface_cb` is wired, so Ctrl-D or
+`exit` closes the pane via `GhosttySurfaceView.onClose`. See `app-ui.md`
+§ Design → "Layout composition".
 
 ## Standing caveat
 

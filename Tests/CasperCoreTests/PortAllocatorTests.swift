@@ -68,10 +68,4 @@ final class PortAllocatorTests: XCTestCase {
             XCTAssertEqual((base - 40000) % 10, 0)
         }
     }
-
-    func testDifferentStartsDoNotCollideOnFirstAllocation() throws {
-        var a = PortAllocator(startBase: 40000)
-        var b = PortAllocator(startBase: 40500)
-        XCTAssertNotEqual(try a.allocate(), try b.allocate())
-    }
 }

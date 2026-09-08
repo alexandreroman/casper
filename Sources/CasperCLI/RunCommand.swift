@@ -12,7 +12,9 @@ struct RunCommand: ParsableCommand {
     @OptionGroup var target: WorkspaceTargetOption
 
     func makeCommand() throws -> ControlCommand {
-        ControlCommand(verb: .run, workspace: try requireSelector(target), name: name)
+        ControlCommand(
+            verb: .run, workspace: try requireSelector(target),
+            name: try requireNonEmpty(name, "command name"))
     }
 
     func run() throws {

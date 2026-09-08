@@ -80,13 +80,6 @@ extension AppModel {
         return workspace(at: at).agentState
     }
 
-    /// Test seam: whether `workspaceID` is under explicit (CLI) authority, which
-    /// suppresses terminal-scraping detection for it. Production code reads
-    /// `explicitAuthority` directly; only `AgentDetectionTests` calls this.
-    func isUnderExplicitAuthority(_ workspaceID: UUID) -> Bool {
-        explicitAuthority.contains(workspaceID)
-    }
-
     @discardableResult
     func controlSetProgress(total: Int, current: Int, label: String, for workspaceID: UUID) -> Bool {
         guard let at = locate(workspaceID),
@@ -314,24 +307,21 @@ extension AppModel {
     /// Open a new terminal in `workspaceID` by splitting its top-left surface.
     /// Mirrors the toolbar's "new terminal" action, but targeted at an arbitrary
     /// (non-selected) workspace, and allows overriding the working directory
-    /// (defaults to the workspace's worktree) and running a command. The caller
-    /// chooses the split `orientation`, defaulting to `.vertical` (split-down).
+    /// (defaults to the workspace's worktree) and running a command.
     @discardableResult
     func controlOpenTerminal(
-        in workspaceID: UUID, command: String? = nil, cwd: String? = nil,
-        orientation: LayoutNode.Orientation = .vertical
+        in workspaceID: UUID, command: String? = nil, cwd: String? = nil
     ) -> ControlTerminalInfo? {
         guard let resolvedCwd = cwd ?? workspace(id: workspaceID)?.worktreePath else { return nil }
         let surface = Surface.terminal(cwd: resolvedCwd)
-        guard insertTerminal(surface, in: workspaceID, command: command, orientation: orientation)
-        else { return nil }
+        guard insertTerminal(surface, in: workspaceID, command: command) else { return nil }
         return ControlTerminalInfo(id: surface.id.casperID, cwd: resolvedCwd)
     }
 
     // Reached from AppModel.swift.
-    /// Insert `surface` into `workspaceID` by splitting its top-left surface along
-    /// `orientation`, with `command` queued as the surface's initial input. Returns
-    /// false when the workspace or its split anchor can't be resolved.
+    /// Insert `surface` into `workspaceID` by splitting its top-left surface, stacked
+    /// below it, with `command` queued as the surface's initial input. Returns false
+    /// when the workspace or its split anchor can't be resolved.
     ///
     /// The surface comes from the caller because `ScriptHookRunner` mints and tags its
     /// hook splits by id *before* the split runs, which is what lets it correlate their
@@ -343,16 +333,13 @@ extension AppModel {
     /// every delete of an unselected workspace. Bring the pending surfaces up off-screen
     /// here, once, for both callers. The workspace is re-fetched because the one resolved
     /// above predates the split and does not carry the new surface.
-    func insertTerminal(
-        _ surface: Surface, in workspaceID: UUID, command: String?,
-        orientation: LayoutNode.Orientation
-    ) -> Bool {
+    func insertTerminal(_ surface: Surface, in workspaceID: UUID, command: String?) -> Bool {
         guard let ws = workspace(id: workspaceID),
               let anchor = LayoutTree.surfaceIDs(ws.layout).first,
               let at = locateSurface(anchor) else { return false }
         if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: orientation, side: .after, surface: surface)
+            at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
         if command != nil, selectedWorkspaceID != workspaceID, let refreshed = workspace(id: workspaceID) {
             materializePendingSurfacesOffscreen(in: refreshed)
         }
@@ -411,10 +398,8 @@ extension AppModel {
         case .denied(let message):
             return .failure(ControlRunError(message: message))
         case .command(let command):
-            guard let info = controlOpenTerminal(
-                in: workspaceID, command: ScriptHookRunner.subshellWrappedScriptCommand(command), cwd: nil,
-                orientation: .vertical)
-            else {
+            let wrappedCommand = ScriptHookRunner.subshellWrappedScriptCommand(command)
+            guard let info = controlOpenTerminal(in: workspaceID, command: wrappedCommand) else {
                 return .failure(ControlRunError(message: "cannot open terminal"))
             }
             return .success(info)

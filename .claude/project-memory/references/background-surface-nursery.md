@@ -11,8 +11,9 @@ surfaces (and their PTYs) are created lazily in `GhosttySurfaceView`, gated on
 `viewDidMoveToWindow` / `createSurfaceIfNeeded` requiring `window != nil`, and
 only the *selected* workspace's views are ever mounted (`RootView` builds only
 the selected workspace's detail). So a workspace created silently via the
-control channel (`casper workspace new --command`, `select: false`) had its
-command sit unconsumed in `pendingInitialInput` until the user selected it.
+control channel (`casper workspace new --command`, `select: false`) has nothing
+to run its command on: without a host, the command sits unconsumed in
+`pendingInitialInput` until the user selects the workspace.
 
 To run such commands in the background **without stealing the selection**,
 `AppModel` hosts the new workspace's pending-input surfaces in an off-screen

@@ -18,7 +18,7 @@ holding a wide character.
   renders. This repo carries no `.markdownlint*` config of its own, so it
   applies only where an editor supplies markdownlint diagnostics.
 - **`check_tables.py`**, shipped under `scripts/` in the skillbox
-  `general-rules` skill, compares character counts and reports an emoji row as
+  `project-rules` skill, compares character counts and reports an emoji row as
   one column short of its header.
 
 Display width wins: a reader sees rendered columns, not code points. A

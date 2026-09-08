@@ -201,24 +201,6 @@ final class DiffTextAssemblyTests: XCTestCase {
                        NSColor.systemPink)
     }
 
-    /// A SwiftUI-scope color is not what the highlighter emits, but reading that
-    /// scope too costs nothing and keeps the function usable by either producer.
-    func testASwiftUIScopeColorIsStillHonoured() {
-        let doc = document([GitDiffLine(kind: .addition, content: "abc",
-                                        oldLineNumber: nil, newLineNumber: 1)])
-        let storage = DiffTextAssembly.makeAttributedText(for: doc)
-        var highlighted = AttributedString("abc")
-        highlighted.foregroundColor = .purple
-
-        DiffTextAssembly.applyHighlight(
-            DiffFileHighlight(new: [highlighted], old: nil),
-            forFileAt: 0, in: storage, document: doc)
-
-        XCTAssertEqual(
-            attribute(.foregroundColor, at: doc.lines[1].contentRange.location, in: storage) as? NSColor,
-            NSColor(Color.purple))
-    }
-
     /// Every run lands on its own characters and only those, so a mis-measured run
     /// length cannot shift the colors that follow it.
     func testEachRunLandsOnItsOwnCharacters() throws {

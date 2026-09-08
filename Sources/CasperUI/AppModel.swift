@@ -74,7 +74,7 @@ final class AppModel {
     private(set) var scriptsRevision = 0
 
     /// Editors detected as launchable at startup (CLI shim on `PATH` and app
-    /// bundle resolvable), in `EditorKind.priorityOrder`. Never re-detected
+    /// bundle resolvable), in `EditorKind.allCases`. Never re-detected
     /// while the app is running.
     private(set) var availableEditors: [EditorKind] = []
 
@@ -321,7 +321,9 @@ final class AppModel {
     @ObservationIgnored var portAllocator: PortAllocator
     @ObservationIgnored let sessionIdentity: SessionIdentity
 
-    @ObservationIgnored private var saveWorkItem: DispatchWorkItem?
+    /// Coalesces the high-frequency edits that persist through `scheduleSave()` into a
+    /// single session write.
+    @ObservationIgnored private let saveDebouncer = Debouncer(delay: 0.5)
 
     /// Serial background queue for `persist()`'s atomic disk write. Encoding stays
     /// on the main actor (it needs the live state); only the blocking write is
@@ -476,9 +478,10 @@ final class AppModel {
 
     // Reached from AppModel+Spaces.swift and AppModel+Control.swift.
     /// Workspaces whose terminal-independent, explicit state took over: native
-    /// terminal detection is suppressed only for `blocked`, `done`, and `error`.
-    /// Transient — an in-memory set, never persisted, so it naturally resets to
-    /// "detection" on relaunch.
+    /// terminal detection is suppressed for `working`, `blocked`, `done` and `error`,
+    /// and only `idle`/`unknown` hand the workspace back to the scraper (see
+    /// `controlSetAgentState`). Transient — an in-memory set, never persisted, so it
+    /// naturally resets to "detection" on relaunch.
     @ObservationIgnored var explicitAuthority: Set<UUID> = []
 
     /// When each workspace last delivered a macOS notification. Drives a short
@@ -664,10 +667,7 @@ final class AppModel {
 
     /// Look up a workspace by id across all Spaces.
     func workspace(id: UUID) -> Workspace? {
-        for space in spaces {
-            if let ws = space.workspaces.first(where: { $0.id == id }) { return ws }
-        }
-        return nil
+        locate(id).map(workspace(at:))
     }
 
     /// The Space that owns `workspace`, if any. A workspace has no back-pointer
@@ -1014,13 +1014,13 @@ final class AppModel {
         selectedWorkspaceID = id
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
-        guard let id, let ws = workspace(id: id) else { return }
+        // Resolved once for the whole body: nothing below inserts or removes a Space or a
+        // workspace (`revealSpace` only flips `isCollapsed`), so the index stays valid.
+        guard let id, let at = locate(id) else { return }
         if changed { refreshNamedCommands(for: id) }
         // A selected workspace must be visible: reveal its owning Space.
-        if let si = spaces.firstIndex(where: { $0.workspaces.contains { $0.id == id } }) {
-            revealSpace(at: si)
-        }
-        focusedSurfaceID = LayoutTree.surfaceIDs(ws.layout).first
+        revealSpace(at: at.space)
+        focusedSurfaceID = LayoutTree.surfaceIDs(workspace(at: at).layout).first
         focusActiveSurfaceView()
         clearNotificationForFocusedWorkspace()
         // A `done` workspace is "finished, not yet seen"; selecting it is
@@ -1032,7 +1032,7 @@ final class AppModel {
         // gated on `isWindowKey()`, unlike the bubble clear above: the
         // resolver's own "seen" test is selection alone. `blocked`/`error`
         // are untouched — selection has no power over them.
-        if let at = locate(id), workspace(at: at).agentState == .done {
+        if workspace(at: at).agentState == .done {
             updateWorkspace(at: at) { $0.agentState = .idle }
         }
         if changed { persist() }
@@ -1080,8 +1080,11 @@ final class AppModel {
     /// `handleSelectedWorktreeChange`. Pure wiring: no promotion/demotion here. A
     /// nil selection leaves the watcher stopped.
     private func armWorktreeWatcher() {
-        // Never leave watchers armed while the window is hidden: the visibility
-        // path (`applyWatcherVisibility`) is the only thing that starts them.
+        // Never leave watchers armed while the window is hidden. Every path that arms
+        // them — `selectWorkspace`, `completeLaunchSetup`, a live promote/demote — can
+        // run while the window is occluded or minimized, so this guard is what keeps an
+        // FSEvents stream off a window nobody is looking at; `applyWatcherVisibility`
+        // re-arms on the transition back to visible.
         guard isWindowVisible else { stopWorktreeWatchers(); return }
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
@@ -1328,16 +1331,12 @@ final class AppModel {
         indexPair { LayoutTree.surfaceIDs($0.layout).contains(surfaceID) }
     }
 
-    /// Whether `focusedSurfaceID` currently points at a TERMINAL pane in some
-    /// workspace's layout tree. Non-layout surfaces (the Inspector browser), layout
-    /// browser/diff surfaces, and "nothing focused" all return false. Gates
-    /// `applyNewSplit` — Split only makes sense on a focused terminal.
-    func focusedSurfaceIsTerminal() -> Bool { locateFocusedTerminal() != nil }
-
-    /// Where the focused surface lives, but only when it is a TERMINAL pane; nil for
-    /// every case `focusedSurfaceIsTerminal` rejects. One walk answers both questions
-    /// the Split action asks — is a terminal focused, and which workspace owns it — so
-    /// a split does not scan every Space's layout twice.
+    /// Where the focused surface lives, but only when it is a TERMINAL pane: nil for a
+    /// focused non-layout surface (the Inspector browser), for a layout browser/diff
+    /// surface, and for "nothing focused". One walk answers both questions the Split
+    /// action asks — is a terminal focused, and which workspace owns it — so a split
+    /// does not scan every Space's layout twice. Gates `applyNewSplit`: Split only makes
+    /// sense on a focused terminal.
     private func locateFocusedTerminal() -> WorkspaceIndex? {
         guard let id = focusedSurfaceID else { return nil }
         for (si, space) in spaces.enumerated() {
@@ -1934,15 +1933,16 @@ final class AppModel {
     // Reached from AppModel+Control.swift.
     /// Debounced persistence for high-frequency agent-state changes.
     func scheduleSave() {
-        saveWorkItem?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.persist() }
-        saveWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+        // Weakly, because this model owns the debouncer: a strong capture would let the
+        // pending work item hold the model alive until it fires.
+        saveDebouncer.schedule { [weak self] in self?.persist() }
     }
 
+    /// Persist the current state at once, whether or not a debounced save is pending.
+    /// The pending one is cancelled rather than fired: `persist()` below already writes
+    /// the current state, so letting it fire would only repeat the write.
     func flushPendingSave() {
-        saveWorkItem?.cancel()
-        saveWorkItem = nil
+        saveDebouncer.cancel()
         persist()
         // Drain the serial save queue so the just-enqueued write (and any prior
         // ones) have hit disk before returning. This preserves
@@ -2289,8 +2289,7 @@ final class AppModel {
         // Hook splits are plain terminal splits stacked below the anchor; the hook
         // policy stays in the runner, which owns the surface's identity.
         insertSurface: { [weak self] workspaceID, surface, command in
-            self?.insertTerminal(surface, in: workspaceID, command: command, orientation: .vertical)
-                ?? false
+            self?.insertTerminal(surface, in: workspaceID, command: command) ?? false
         },
         worktreePath: { [weak self] id in self?.workspace(id: id)?.worktreePath },
         reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) })

@@ -168,14 +168,14 @@ struct WorkspaceDetailView: View {
     var body: some View {
         GeometryReader { proxy in
             let range = inspectorRange(container: proxy.size.width)
-            let width = (inspectorWidth ?? workspace.inspector.width)
-                .clamped(to: range)
+            let width = inspectorPanelWidth(container: proxy.size.width)
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Divider()
                     LayoutNodeView(
                         model: model, workspaceID: workspace.id, node: workspace.layout,
-                        canDragPanes: Self.hasMultiplePanes(in: workspace.layout))
+                        // The root is read only when it renders as a lone leaf.
+                        canDragPanes: false)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(minWidth: Self.terminalMinimumSize, minHeight: Self.terminalMinimumSize)
@@ -196,8 +196,7 @@ struct WorkspaceDetailView: View {
                     InspectorPanel(model: model, workspace: workspace)
                         .frame(width: width)
                 }
-                .frame(width: workspace.inspector.collapsed ? 0 : SeparatorMetrics.visibleWidth + width,
-                       alignment: .trailing)
+                .frame(width: inspectorSlice(container: proxy.size.width), alignment: .trailing)
                 .clipped()
             }
             .overlay(alignment: .trailing) {
@@ -225,18 +224,6 @@ struct WorkspaceDetailView: View {
         // the inspector moves as well as when the detail area does — the panes' share
         // is what is left after the panel takes its slice.
         .onChange(of: terminalHostMetrics) { _, metrics in publish(metrics) }
-        .onAppear { publish(terminalHostMetrics) }
-        .onDisappear {
-            // Gated on "nothing is selected any more", not on this instance going
-            // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
-            // so switching workspaces tears one instance down while the incoming
-            // one publishes its own geometry, and SwiftUI does not promise the
-            // teardown runs first. A `nil` landing last would leave
-            // `WindowConfigurator`'s window observer re-applying a zero floor to
-            // every window until the next geometry change. Losing the last
-            // workspace still clears the metrics, which is the case this is for.
-            if model.selectedWorkspaceID == nil { publish(nil) }
-        }
         .toolbar {
             // EVERY title-bar control lives in this ONE item: title, info chip, diff
             // badge, Merge, Run Script, Editor and the inspector selector.
@@ -311,6 +298,15 @@ struct WorkspaceDetailView: View {
             // Same reason: its only job is to write `@State` this instance no longer
             // has.
             undershootReleaseTask?.cancel()
+            // Gated on "nothing is selected any more", not on this instance going
+            // away. The detail view is keyed `.id(workspace.id)` (see `RootView`),
+            // so switching workspaces tears one instance down while the incoming
+            // one publishes its own geometry, and SwiftUI does not promise the
+            // teardown runs first. A `nil` landing last would leave
+            // `WindowConfigurator`'s window observer re-applying a zero floor to
+            // every window until the next geometry change. Losing the last
+            // workspace still clears the metrics, which is the case this is for.
+            if model.selectedWorkspaceID == nil { publish(nil) }
         }
     }
 
@@ -326,15 +322,6 @@ struct WorkspaceDetailView: View {
         }
     }
 
-    /// Whether the workspace shows more than one pane. True exactly when its root
-    /// layout is a split: `LayoutTree` never builds a split with fewer than two
-    /// children (it collapses a split down to its survivor when one is closed), so
-    /// this needs no tree walk.
-    static func hasMultiplePanes(in layout: LayoutNode) -> Bool {
-        if case .split = layout { return true }
-        return false
-    }
-
     /// Allowed inspector-width range for the given container width: never below
     /// `InspectorState.minWidth`, never above `InspectorState.maxWidth`, and
     /// always leaving at least `minDetailWidth` for the detail area.
@@ -342,6 +329,25 @@ struct WorkspaceDetailView: View {
         let upper = max(InspectorState.minWidth,
                         min(InspectorState.maxWidth, container - Self.minDetailWidth))
         return InspectorState.minWidth...upper
+    }
+
+    /// The inspector panel's own width for the given container width: the live
+    /// drag's width if there is one, else the persisted one, clamped to
+    /// `inspectorRange(container:)`.
+    private func inspectorPanelWidth(container: Double) -> Double {
+        (inspectorWidth ?? workspace.inspector.width).clamped(to: inspectorRange(container: container))
+    }
+
+    /// The width the whole inspector region — divider line plus panel — occupies, and
+    /// 0 while the panel is collapsed.
+    ///
+    /// One function for both of its readers on purpose: this is the layout's clip
+    /// width AND the slice the window's floor reserves (see `terminalHostMetrics`).
+    /// Let the two drift apart and `WindowFloor.apply` grows the window against a
+    /// slice the layout is not using.
+    private func inspectorSlice(container: Double) -> CGFloat {
+        guard !workspace.inspector.collapsed else { return 0 }
+        return SeparatorMetrics.visibleWidth + inspectorPanelWidth(container: container)
     }
 
     /// The inspector divider's visible line: the shared `SeparatorMetrics` hairline,
@@ -494,24 +500,16 @@ struct WorkspaceDetailView: View {
     /// clip's width is the honest number and it is zero while collapsed.
     private var terminalHostMetrics: TerminalHostMetrics? {
         guard let detailFrame else { return nil }
-        let inspectorSlice = workspace.inspector.collapsed
-            ? 0
-            : SeparatorMetrics.visibleWidth + (inspectorWidth ?? workspace.inspector.width)
-                .clamped(to: inspectorRange(container: detailFrame.width))
         // Collapsed reads as a true zero; open never reads below the column minimum
         // (see `TerminalHostMetrics.sidebarWidth`).
         let sidebarWidth = detailFrame.minX < 1
             ? 0
-            : max(detailFrame.minX, Self.sidebarColumnMinimum)
+            : max(detailFrame.minX, TerminalHostMetrics.sidebarColumnMinimum)
         return TerminalHostMetrics(
             sidebarWidth: sidebarWidth,
-            inspectorSlice: inspectorSlice,
+            inspectorSlice: inspectorSlice(container: detailFrame.width),
             detailChromeHeight: Self.paneDividerHeight)
     }
-
-    /// The sidebar column's own minimum, mirroring `RootView`'s
-    /// `.navigationSplitViewColumnWidth(min: 220, ...)`.
-    private static let sidebarColumnMinimum: CGFloat = 220
 
     /// The `Divider()` above the pane tree, which is part of the detail area's height
     /// but not part of the terminal.
@@ -975,11 +973,11 @@ struct WorkspaceTitleBarRow: View {
         // Chrome-less on purpose: the title is not a control, so it keeps the
         // shared capsule metrics (alignment with the chips) without the pill.
         // Asymmetric interior padding (not the shared `titleCapsule`'s symmetric
-        // 10 pt): the leading edge still owes its distance to the window edge,
+        // inset): the leading edge still owes its distance to the window edge,
         // while the trailing edge is tuned so the title-to-glyph gap (this
         // inset + the info button's own 2 pt inner padding) matches the
         // glyph-to-badge gap on the other side of the info chip.
-        .padding(.leading, 10)
+        .padding(.leading, TitleCapsuleMetrics.horizontalInset)
         .padding(.trailing, 6)
         .titleCapsuleShell(filled: false)
     }
@@ -1411,7 +1409,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
         HStack(spacing: 0) {
             Button(action: action) {
                 primaryLabel()
-                    .padding(.leading, 10)
+                    .padding(.leading, TitleCapsuleMetrics.horizontalInset)
                     .padding(.trailing, 4)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
@@ -1427,7 +1425,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             // Fill the capsule's right inset so its trailing edge isn't a dead zone.
-            .padding(.trailing, 10)
+            .padding(.trailing, TitleCapsuleMetrics.horizontalInset)
         }
         .titleCapsuleShell(interactive: true)
     }

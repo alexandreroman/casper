@@ -2,8 +2,8 @@ import Foundation
 
 /// A generic main-actor coalescing timer. Each `schedule` cancels the pending
 /// work and arms a new one `delay` in the future, so a burst of calls fires the
-/// action once. Mirrors `AppModel.scheduleSave`'s debounce idiom, extracted as a
-/// reusable, model-free utility.
+/// action once. A reusable, model-free utility: it holds nothing but the pending
+/// work item, so one instance serves one coalesced concern.
 @MainActor
 public final class Debouncer {
     private let delay: TimeInterval
@@ -26,9 +26,17 @@ public final class Debouncer {
         pending?.cancel()
     }
 
+    /// Cancel any pending action without firing it. What a caller that has to act
+    /// *now* needs: cancel first, then do the work itself, so the coalesced fire
+    /// cannot repeat it a moment later.
+    public func cancel() {
+        pending?.cancel()
+        pending = nil
+    }
+
     /// Cancel any pending action and arm `action` to fire `delay` from now.
     public func schedule(_ action: @escaping @MainActor () -> Void) {
-        pending?.cancel()
+        cancel()
         let item = DispatchWorkItem {
             MainActor.assumeIsolated { action() }
         }

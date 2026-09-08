@@ -76,20 +76,14 @@ final class RepoConfigTests: XCTestCase {
         try writeConfig(#"{"workspace":{"scripts":{"setup":"npm i","run":"npm run dev"}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
         XCTAssertEqual(config.setupScript(), "npm i")
-        XCTAssertEqual(config.namedCommand("run"), "npm run dev")
+        XCTAssertEqual(
+            config.namedCommands(), [RepoNamedCommand(name: "run", command: "npm run dev")])
     }
 
     func testTeardownScriptLookup() throws {
         try writeConfig(#"{"workspace":{"scripts":{"teardown":"docker compose down"}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
         XCTAssertEqual(config.teardownScript(), "docker compose down")
-    }
-
-    func testNamedCommandRejectsReservedNames() throws {
-        try writeConfig(#"{"workspace":{"scripts":{"setup":"npm i","teardown":"x"}}}"#)
-        let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
-        XCTAssertNil(config.namedCommand("setup"))
-        XCTAssertNil(config.namedCommand("teardown"))
     }
 
     func testNamedCommandsExcludeReservedAndSortByName() throws {
@@ -114,7 +108,6 @@ final class RepoConfigTests: XCTestCase {
         try writeConfig(#"{"workspace":{"scripts":{"setup":"","run":""}}}"#)
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
         XCTAssertNil(config.setupScript())
-        XCTAssertNil(config.namedCommand("run"))
         XCTAssertEqual(config.namedCommands(), [])
     }
 
@@ -123,10 +116,7 @@ final class RepoConfigTests: XCTestCase {
         let config = try XCTUnwrap(try RepoConfig.load(fromRepoRoot: root.path))
         XCTAssertNil(config.setupScript())
         XCTAssertNil(config.teardownScript())
-        XCTAssertNil(config.namedCommand("run"))
         XCTAssertEqual(config.namedCommands(), [])
-        // copyFiles still works alongside a missing scripts section.
-        XCTAssertEqual(config.copyFiles(default: [".env", ".env.local"]), [".env"])
     }
 
     func testReservedNamesConstant() throws {

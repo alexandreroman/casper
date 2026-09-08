@@ -58,11 +58,22 @@ final class BrowserAutomationController {
     private func withBrowserCoordinator<T>(
         _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> T
     ) async -> Result<T, BrowserOpError> {
-        guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
-            return .failure(Self.workspaceNotFound)
+        await mapped {
+            guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
+                throw Self.workspaceNotFound
+            }
+            return try await body(coordinator)
         }
+    }
+
+    /// Run `body` and map its outcome to a `Result`, turning any thrown error into a
+    /// `BrowserOpError` — passing one straight through, and stringifying anything
+    /// else so the reason still reaches the CLI. Every op's error mapping goes
+    /// through here, including the sized capture that deliberately drives
+    /// `BrowserCapture` instead of a coordinator.
+    private func mapped<T>(_ body: () async throws -> T) async -> Result<T, BrowserOpError> {
         do {
-            return .success(try await body(coordinator))
+            return .success(try await body())
         } catch {
             return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
         }
@@ -74,8 +85,9 @@ final class BrowserAutomationController {
     /// exactly as before (panel size when mounted, the 1280x800 fallback when
     /// detached). Any override switches to the dedicated off-screen `BrowserCapture`,
     /// which renders the target URL at the requested viewport (default 1280x800)
-    /// independent of the panel: the `url` override if given, else the live browser's
-    /// committed URL, else the surface's persisted URL — failing when none resolves.
+    /// independent of the panel: the `url` override if given — honoured or the capture
+    /// fails, never silently substituted — else the live browser's committed URL, else
+    /// the surface's persisted URL, failing when none resolves.
     func controlBrowserScreenshot(
         in workspaceID: UUID, to path: String, width: Int? = nil, height: Int? = nil, url: String? = nil
     ) async -> Result<String, BrowserOpError> {
@@ -86,29 +98,33 @@ final class BrowserAutomationController {
                 return path
             }
         }
-        guard let ws = resolveWorkspace(workspaceID) else {
-            return .failure(Self.workspaceNotFound)
-        }
-        guard let target = resolveScreenshotURL(for: ws, override: url) else {
-            return .failure(BrowserOpError(message: "no page to capture; open a page or pass --url"))
-        }
-        do {
+        return await mapped {
+            guard let ws = resolveWorkspace(workspaceID) else { throw Self.workspaceNotFound }
+            let target = try resolveScreenshotURL(for: ws, override: url)
             let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
             try await Self.writeScreenshot(png, to: path)
-            return .success(path)
-        } catch {
-            return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
+            return path
         }
     }
 
     /// Resolve the page for an off-screen sized capture: the explicit `--url`
     /// override (must be absolute), else the live browser's committed URL, else the
-    /// surface's persisted URL. Returns nil when nothing usable resolves (a browser
-    /// that never navigated / sits on about:blank, with no override).
-    private func resolveScreenshotURL(for ws: Workspace, override: String?) -> URL? {
-        // A scheme is enough here (the CLI enforces scheme+host for user URLs); this
-        // also admits the schemed-but-hostless `data:` URLs automation relies on.
-        if let override, let parsed = URL(string: override), parsed.scheme != nil, parsed != .aboutBlank {
+    /// surface's persisted URL.
+    ///
+    /// An explicit override is honoured or nothing: one that does not parse to an
+    /// absolute page throws rather than falling back to the browser's own URL, which
+    /// would report success for a PNG of a different page than the one asked for. The
+    /// two fallbacks apply only when no override was given, and throw when neither
+    /// resolves (a browser that never navigated / sits on about:blank).
+    private func resolveScreenshotURL(for ws: Workspace, override: String?) throws -> URL {
+        if let override {
+            // A scheme is enough here (the CLI enforces scheme+host for user URLs);
+            // this also admits the schemed-but-hostless `data:` URLs automation
+            // relies on.
+            guard let parsed = URL(string: override), parsed.scheme != nil, parsed != .aboutBlank else {
+                throw BrowserOpError(
+                    message: "cannot capture '\(override)' (expected an absolute URL like https://example.com)")
+            }
             return parsed
         }
         if let coordinator = coordinator(ws.inspector.browser),
@@ -118,8 +134,13 @@ final class BrowserAutomationController {
         if case .browser(let stored) = ws.inspector.browser.kind, stored != .aboutBlank {
             return stored
         }
-        return nil
+        throw Self.noPageToCapture
     }
+
+    /// The failure for a sized capture with no override and no page to fall back on;
+    /// its text is part of the CLI's contract.
+    private static let noPageToCapture = BrowserOpError(
+        message: "no page to capture; open a page or pass --url")
 
     /// Write a screenshot PNG to `path`, mapping a filesystem error to a concise
     /// message — the raw NSError renders a verbose "Error Domain=NSCocoaErrorDomain…"

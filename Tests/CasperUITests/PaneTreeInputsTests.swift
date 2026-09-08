@@ -91,11 +91,6 @@ final class PaneTreeInputsTests: XCTestCase {
         let workspace: Workspace
     }
 
-    func testHasMultiplePanesIsTrueExactlyForASplitRoot() {
-        XCTAssertFalse(WorkspaceDetailView.hasMultiplePanes(in: .leaf(Surface.terminal(cwd: "/tmp"))))
-        XCTAssertTrue(WorkspaceDetailView.hasMultiplePanes(in: Self.twoPaneLayout))
-    }
-
     // MARK: - Helpers
 
     /// The three views exactly as `WorkspaceDetailView` and its children build them.
@@ -103,7 +98,7 @@ final class PaneTreeInputsTests: XCTestCase {
     private func node(for workspace: Workspace, model: AppModel) -> LayoutNodeView {
         LayoutNodeView(
             model: model, workspaceID: workspace.id, node: workspace.layout,
-            canDragPanes: WorkspaceDetailView.hasMultiplePanes(in: workspace.layout))
+            canDragPanes: false)
     }
 
     private func split(for workspace: Workspace, model: AppModel) -> SplitContainerView? {
@@ -117,7 +112,7 @@ final class PaneTreeInputsTests: XCTestCase {
         guard let surface = LayoutTree.surfaces(workspace.layout).first else { return nil }
         return SurfaceHostView(
             model: model, workspaceID: workspace.id, surface: surface,
-            canDrag: WorkspaceDetailView.hasMultiplePanes(in: workspace.layout))
+            canDrag: true)
     }
 
     private func assertStoredPropertiesEqual<V>(

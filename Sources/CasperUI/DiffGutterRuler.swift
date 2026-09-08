@@ -323,9 +323,11 @@ final class DiffGutterRuler: NSRulerView {
     private static let additionCueLabel = makeCueLabel(for: .addition)
     private static let deletionCueLabel = makeCueLabel(for: .deletion)
 
-    private static func makeCueLabel(for kind: GitDiffLine.Kind) -> NSAttributedString? {
-        guard let cue = DiffLineStyle.cue(for: kind) else { return nil }
-        return NSAttributedString(string: cue, attributes: cueAttributes(for: kind))
+    /// Both call sites above pass a changed-row kind, and `DiffLineStyle.cue` is
+    /// `nil` only for `.context` — which `cueLabel(for:)` answers with its own
+    /// `nil` without ever coming here.
+    private static func makeCueLabel(for kind: GitDiffLine.Kind) -> NSAttributedString {
+        NSAttributedString(string: DiffLineStyle.cue(for: kind)!, attributes: cueAttributes(for: kind))
     }
 
     /// The attributes one row's number is drawn with: context rows keep the

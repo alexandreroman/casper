@@ -23,7 +23,7 @@ struct TerminalCommand: ParsableCommand {
         func makeCommand() throws -> ControlCommand {
             ControlCommand(
                 verb: .terminalNew, workspace: try requireSelector(target),
-                command: nonEmpty(command), cwd: workingDir.map(absolutePath))
+                command: nonEmpty(command), cwd: nonEmpty(workingDir).map(absolutePath))
         }
 
         func run() throws {

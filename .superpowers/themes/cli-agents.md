@@ -68,8 +68,11 @@ present in a release build. See [[debug-channel-gating]].
 
 ### JSON output
 
-`README.md` § CLI records the per-verb success shapes. Two contracts behind
-them bind every new verb:
+`README.md` § CLI records the generic contract only — a JSON object on stdout,
+an array for the `list` verbs. The **per-verb shapes** are the 16 `Encodable`
+payload types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its
+literal shape in the type's own doc comment; that file is the reference. Two
+contracts behind them bind every new verb:
 
 - **A success payload always carries the affected `workspace` id**, even when
   the verb has no state of its own to report (`progress clear`, `notify`,
@@ -79,9 +82,11 @@ them bind every new verb:
   instruction.
 - **A command in error never exits 0.** It prints `{"error":"<msg>"}` to stderr
   and exits non-zero; validate CLI-side in `makeCommand()` wherever the check is
-  possible without the app. The one exception is ArgumentParser's own output
-  (`--help`, a missing option, an unknown flag), which stays native and exits
-  64.
+  possible without the app. The exception is ArgumentParser's own output, which
+  stays native plain text and carries its own two exit codes: a **usage error**
+  (a missing option, an unknown flag or subcommand) exits **64**, while
+  **`--help` and `--version`** are successful requests and exit **0** — neither
+  is a failure, so neither may look like one to a script.
 
 Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_ID`
 — is **lowercase**, its canonical external form (`UUID.casperID`); `--workspace`
@@ -104,8 +109,13 @@ never a silent fallback to defaults: a typo in the config must be visible.
 **`copyFiles` distinguishes absent from empty.** `nil` means "unspecified" and
 the caller's built-in defaults apply (`.env`, `.env.local`); an explicit `[]`
 means "copy nothing". Patterns are matched with `fnmatch(3)`
-(`WorkspaceFileCopier`). An invalid entry fails workspace creation **before any
-Git mutation**, so a bad config never leaves a half-made worktree behind.
+(`WorkspaceFileCopier`), which never rejects a pattern: a glob that matches
+nothing simply copies nothing. What is validated is the **file**, and it is
+validated **before any Git mutation** — `WorktreeManager` loads `.casper.json`
+ahead of `addWorktree`, so a malformed one aborts with nothing half-created and
+nothing to roll back. A *copy* failure is the later case: it happens after the
+worktree exists, and is rolled back by removing the worktree and deleting its
+branch.
 
 **`scripts` holds two different kinds of thing.** The reserved names `setup` and
 `teardown` (`RepoScripts.reservedNames`) are *lifecycle hooks*: run
@@ -153,15 +163,20 @@ Casper terminal calls itself (`casper status set …`, `casper progress set …`
 own terminal scraping (see `agent-state-detection.md`). Casper **never launches
 an agent**; the user runs their agent manually.
 
-The only agent-facing runtime coupling is the per-surface environment
-`AgentEnvironment.surfaceEnvironment` injects into every Casper terminal:
-`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in `linked`
-workspaces only (a `primary` workspace gets none, so its dev servers keep the
-project's default ports), and — when a debug build runs under `--session <name>`
-(a `#if DEBUG`-only flag) — `CASPER_SESSION`. A CLI command reads
-`CASPER_WORKSPACE_ID` for its default target and `CASPER_CONTROL_SOCKET` to
-reach the app; state changes flow straight into the sidebar (badge, progress,
-notification dot) and, for `notify`, `UserNotifications`.
+The only agent-facing runtime coupling is the per-surface environment injected
+into every Casper terminal. `AgentEnvironment.surfaceEnvironment` contributes
+five variables: `CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT` in
+`linked` workspaces only (a `primary` workspace gets none, so its dev servers
+keep the project's default ports), `CASPER_SESSION` when a debug build runs
+under `--session <name>` (a `#if DEBUG`-only flag), and **`PATH`** — the
+bundle's executable directory prepended to the inherited one, which is the whole
+reason a `casper` call resolves at all, since the CLI is deliberately never
+installed globally ([[cli-availability]]). `TerminalLocale` then merges in
+**`LANG`** (see "Terminal locale" below), Casper's own values winning any
+collision. A CLI command reads `CASPER_WORKSPACE_ID` for its default target and
+`CASPER_CONTROL_SOCKET` to reach the app; state changes flow straight into the
+sidebar (badge, progress, notification dot) and, for `notify`,
+`UserNotifications`.
 
 `notify` is suppressed **entirely** for a focused target, not merely muted: the
 `!focused` guard in `controlRaiseNotification` wraps both the
@@ -179,6 +194,22 @@ injected socket path already points at the right instance). See
 
 The control socket class uses `@unchecked Sendable` + serial-queue discipline
 under Swift 6 — see [[swift6-network-concurrency]].
+
+### Terminal locale
+
+A macOS GUI app launched from the Dock, the Finder or Xcode inherits no `LANG`
+and no `LC_*`, so a shell it spawns — and everything that shell runs, an agent
+included — falls back to the `C`/`POSIX` locale and reads correct UTF-8 bytes as
+Latin-1, turning `dépôt` into `dÃ©pÃ´t`. Terminal.app and standalone Ghostty
+export a UTF-8 `LANG` to avoid exactly that, and `TerminalLocale` (CasperAgents)
+does the same for every Casper terminal.
+
+The value comes from a short fallback chain, and never from the environment:
+build `<language>_<REGION>.UTF-8` from the current `Locale`, keep it only if
+both components resolve **and** the C library recognizes the result
+(`newlocale`, probed without touching the process's global locale), else fall
+back to `en_US.UTF-8`, which macOS always has. The probe is injectable and the
+resolution is pure, so the whole chain is testable without a terminal.
 
 ### Agent integration detection
 
@@ -562,8 +593,9 @@ wrong diagnosable from a screenshot. The version is whatever another tool wrote
 down — a Codex cache *directory name*, or a Claude registry field that is
 legitimately the literal `"unknown"` — so nothing guarantees it is short or
 sane: whitespace runs collapse to single spaces (a newline mid-message would
-burn a whole row line on a hard break) and the result is capped at
-`maxDisplayedVersionLength`, after which the row drops the parenthesis entirely
+burn a whole row line on a hard break) and anything longer than
+`maxDisplayedVersionLength` is **truncated to an ellipsis** at that length. Only
+a version left with nothing printable at all drops the parenthesis entirely,
 rather than showing an empty one. The other two lines carry
 no version: `<agent> integration not installed` and, for Codex,
 `Codex integration needs approval`.

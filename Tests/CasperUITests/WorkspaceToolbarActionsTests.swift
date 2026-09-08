@@ -21,22 +21,18 @@ import CasperCore
 /// absolute width.
 @MainActor
 final class WorkspaceToolbarActionsTests: XCTestCase {
-    /// A branch name long enough that the title group cannot fit beside a full row
-    /// of chips at the widths tested below.
-    private static let branch = "feature/replay-to-repair"
-
     /// Each tier must be strictly narrower than the one above it. A body that
-    /// merely reorders the chips, or forgets to pin `.iconOnly` at `.compact` (the
+    /// merely reorders the chips, or forgets to pin `.iconOnly` at `.mergeGlyph` (the
     /// toolbar environment's default is not to be trusted — see the
     /// `toolbar-label-style` note), flunks this: the tiers would measure alike and
     /// the ladder would be cosmetic.
     func testEachTierIsStrictlyNarrowerThanTheOneAboveIt() {
         let actions = makeActions()
 
-        let full = width(actions.row(.full))
-        let mergeGlyph = width(actions.row(.mergeGlyph))
-        let folded = width(actions.row(.folded))
-        let minimal = width(actions.row(.minimal))
+        let full = layoutWidth(of: actions.row(.full))
+        let mergeGlyph = layoutWidth(of: actions.row(.mergeGlyph))
+        let folded = layoutWidth(of: actions.row(.folded))
+        let minimal = layoutWidth(of: actions.row(.minimal))
 
         XCTAssertGreaterThan(
             full, mergeGlyph, "moving Run and Editor into the menu freed no width")
@@ -54,11 +50,11 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// the shared predicate is what keeps the two from drifting apart.
     func testTheSelectorIsOnTheBarExactlyWhereTheMenuDoesNotCarryIt() {
         let actions = makeActions()
-        let ellipsisChip = width(actions.row(.minimal))
+        let ellipsisChip = layoutWidth(of: actions.row(.minimal))
 
         for density in WorkspaceToolbarActions.Density.allCases {
             let onBar = WorkspaceToolbarActions.showsInspectorSelector(at: density)
-            let rendered = width(actions.row(density))
+            let rendered = layoutWidth(of: actions.row(density))
             if onBar {
                 XCTAssertGreaterThanOrEqual(
                     rendered, InspectorTabSelector.intrinsicWidth + ellipsisChip,
@@ -87,7 +83,8 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
 
         for density in WorkspaceToolbarActions.Density.allCases {
             XCTAssertEqual(
-                size(actions.row(density)).height, TitleCapsuleMetrics.height, accuracy: 0.5,
+                layoutSize(for: actions.row(density)).height, TitleCapsuleMetrics.height,
+                accuracy: 0.5,
                 "density \(density)")
         }
     }
@@ -100,13 +97,14 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         let actions = makeActions()
 
         XCTAssertEqual(
-            width(actions.row(.minimal)), TitleCapsuleMetrics.glyphChipWidth, accuracy: 0.5,
+            layoutWidth(of: actions.row(.minimal)), TitleCapsuleMetrics.glyphChipWidth,
+            accuracy: 0.5,
             "the reference chip is not one glyph chip wide")
 
         let expected = 2 * (TitleCapsuleMetrics.glyphChipWidth + WorkspaceDetailView.chipGap)
             + InspectorTabSelector.intrinsicWidth
         XCTAssertEqual(
-            width(actions.row(.mergeGlyph)), expected, accuracy: 0.5,
+            layoutWidth(of: actions.row(.mergeGlyph)), expected, accuracy: 0.5,
             "a glyph chip is not the reference width")
     }
 
@@ -114,10 +112,10 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// happens under a stationary pointer, and a chip that resizes there reads as a
     /// different control appearing rather than the same one relabelled.
     func testMergeAndDeleteChipsMeasureTheSame() {
-        let (model, workspace) = makeModelAndWorkspace()
-        let merge = width(mergeRow(model: model, workspace: workspace))
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
+        let merge = layoutWidth(of: mergeRow(model: model, workspace: workspace))
         model.optionKeyHeld = true
-        let delete = width(mergeRow(model: model, workspace: workspace))
+        let delete = layoutWidth(of: mergeRow(model: model, workspace: workspace))
 
         XCTAssertEqual(merge, delete, accuracy: 0.5)
         XCTAssertEqual(merge, TitleCapsuleMetrics.glyphChipWidth, accuracy: 0.5)
@@ -168,44 +166,69 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
             previousLadder = layout.ladder
         }
 
-        XCTAssertLessThan(previousLadder, width(makeActions().row(.full)),
+        XCTAssertLessThan(previousLadder, layoutWidth(of: makeActions().row(.full)),
                           "the row never degraded at all, so this proves nothing")
     }
 
-    /// The row never reports more than the width it was given — at any width, with
-    /// or without a badge, inspector open or shut. This is the invariant the whole
-    /// single-item design rests on: AppKit reads that reported width, and anything
-    /// larger than the bar is overflowed WHOLE, emptying the title bar. A content
-    /// state that cannot compress must clip, never report its way out.
-    func testTheRowNeverReportsMoreThanTheWidthItIsGiven() {
+    /// Everything the row cannot compress fits inside the width it was given — at any
+    /// width, with or without a badge, inspector open or shut. This is the invariant
+    /// the whole single-item design rests on: AppKit reads the width the row declares,
+    /// and anything larger than the bar is overflowed WHOLE, emptying the title bar.
+    /// A content state that does not fit must give way, never grow the row.
+    ///
+    /// Measured through the badge and the chips rather than through the row's own
+    /// reported width: the body ends in `.frame(width:)`, which reports the width it
+    /// was handed whatever nests inside it (see the
+    /// `fixed-frame-swallows-inner-padding` note), so that number equals `rowWidth` at
+    /// every width and would compare the fixture with itself. The badge and the chips
+    /// are the parts pinned at their ideal width inside a rung — `.fixedSize`, so they
+    /// cannot squeeze — which makes them exactly the content that has to fit. The
+    /// title is left out on purpose: truncating the branch is what a rung is allowed
+    /// to do internally.
+    func testTheRowsIncompressibleContentFitsTheWidthItIsGiven() {
         let openOnDiff = InspectorState(collapsed: false, tab: .diff)
         for rowWidth in [900, 600, 460, 380, 300, 200, 120, 60] as [CGFloat] {
             for (label, diff) in [("badge", (12, 3) as (Int, Int)?), ("no badge", nil)] {
                 for (state, inspector) in [("shut", InspectorState()), ("open", openOnDiff)] {
-                    let reported = layoutRow(
-                        width: rowWidth, diff: diff.map { ($0.0, $0.1) }, inspector: inspector
-                    ).reported
+                    let context = "\(rowWidth) pt, \(label), inspector \(state)"
+                    let layout = layoutRow(
+                        width: rowWidth, diff: diff.map { ($0.0, $0.1) }, inspector: inspector)
+                    // The chips are drawn at every rung, so a row that reported nothing
+                    // here never laid out and the sum below would pass on a sentinel.
+                    XCTAssertGreaterThan(layout.ladder, 0, "the chips did not lay out: \(context)")
                     XCTAssertLessThanOrEqual(
-                        reported, rowWidth + 0.5, "\(rowWidth) pt, \(label), inspector \(state)")
+                        layout.badge + WorkspaceDetailView.chipGap + layout.ladder, rowWidth + 0.5,
+                        "the row's fixed content overflows the bar: \(context)")
                 }
             }
         }
     }
 
-    /// Opening the inspector must not change what the row reports. The regression:
+    /// Opening the inspector must not change what the row lays out. The regression:
     /// toggling the diff panel at a narrow window changed the row's CONTENT while
     /// `rowWidth` stood still, so nothing re-measured and the row went into the
     /// chevron for good.
-    func testTogglingTheInspectorDoesNotChangeTheReportedWidth() {
+    ///
+    /// The selector is the one element the inspector's state reaches, and it is
+    /// exempt from the ladder — it never collapses and never folds, so both of the
+    /// row's own channels must read identically in all three states. Comparing the
+    /// reported width instead would compare `rowWidth` with itself (see the note on
+    /// the test above).
+    func testTogglingTheInspectorDoesNotChangeWhatTheRowLaysOut() {
         for rowWidth in [600, 380, 300, 200] as [CGFloat] {
-            let shut = layoutRow(width: rowWidth, inspector: InspectorState()).reported
+            let shut = layoutRow(width: rowWidth, inspector: InspectorState())
             let onDiff = layoutRow(
-                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .diff)).reported
+                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .diff))
             let onBrowser = layoutRow(
-                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .browser)).reported
+                width: rowWidth, inspector: InspectorState(collapsed: false, tab: .browser))
 
-            XCTAssertEqual(onDiff, shut, accuracy: 0.5, "diff panel, \(rowWidth) pt")
-            XCTAssertEqual(onBrowser, shut, accuracy: 0.5, "browser panel, \(rowWidth) pt")
+            XCTAssertGreaterThan(shut.ladder, 0, "the chips did not lay out at \(rowWidth) pt")
+            XCTAssertEqual(onDiff.ladder, shut.ladder, accuracy: 0.5, "diff chips, \(rowWidth) pt")
+            XCTAssertEqual(
+                onBrowser.ladder, shut.ladder, accuracy: 0.5, "browser chips, \(rowWidth) pt")
+            XCTAssertEqual(onDiff.badge, shut.badge, accuracy: 0.5, "diff badge, \(rowWidth) pt")
+            XCTAssertEqual(
+                onBrowser.badge, shut.badge, accuracy: 0.5, "browser badge, \(rowWidth) pt")
         }
     }
 
@@ -290,56 +313,29 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// A row over a linked workspace that records a base branch (so the Merge chip
-    /// shows) and carries two named commands (so the Run Script chip shows).
-    private func makeModelAndWorkspace(
-        inspector: InspectorState = InspectorState()
-    ) -> (AppModel, Workspace) {
-        let workspace = Workspace(
-            name: "feature", worktreePath: "/wt", branch: Self.branch,
-            portBase: 40000, layout: .leaf(Surface.terminal(cwd: "/wt")),
-            kind: .linked, baseBranch: "main", inspector: inspector)
-        let space = Space(
-            name: "casper", folderPath: "/repo", isGitRepo: true, workspaces: [workspace])
-        let model = makeModel(spaces: [space], selecting: workspace.id)
-        model.namedCommandsCache[workspace.id] = [
-            RepoNamedCommand(name: "build", command: "make build"),
-            RepoNamedCommand(name: "test", command: "make test"),
-        ]
-        return (model, workspace)
-    }
-
     private func makeActions() -> WorkspaceToolbarActions {
-        let (model, workspace) = makeModelAndWorkspace()
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
         return WorkspaceToolbarActions(model: model, workspace: workspace, density: .full)
     }
 
-    /// Hosts the production row at `rowWidth` and reports what it measured, plus
-    /// the width the badge slot took (0 when the badge was dropped whole).
+    /// The shared row layout under this suite's defaults — a diff summary present
+    /// unless a test says otherwise, since the badge is one of the elements whose
+    /// order of sacrifice is measured here.
     private func layoutRow(
         width rowWidth: CGFloat, diff: (insertions: Int, deletions: Int)? = (12, 3),
         inspector: InspectorState = InspectorState()
-    ) -> (reported: CGFloat, badge: CGFloat, ladder: CGFloat) {
-        let (model, workspace) = makeModelAndWorkspace(inspector: inspector)
-        var badge: CGFloat = -1
-        var ladder: CGFloat = -1
-        let row = WorkspaceTitleBarRow(
-            model: model, workspace: workspace, diff: diff, width: rowWidth,
-            onBadgeWidth: { badge = $0 }, onChipsWidth: { ladder = $0 })
-        let host = NSHostingView(rootView: row)
-        host.frame = NSRect(x: 0, y: 0, width: rowWidth, height: TitleCapsuleMetrics.height)
-        host.layoutSubtreeIfNeeded()
-        return (host.fittingSize.width, badge, ladder)
+    ) -> TitleBarRowLayout {
+        hostTitleBarRow(width: rowWidth, diff: diff, inspector: inspector)
     }
 
     /// The chips' own full-width tier, for the ordering assertion below.
-    private var fullChipsWidth: CGFloat { width(makeActions().row(.full)) }
+    private var fullChipsWidth: CGFloat { layoutWidth(of: makeActions().row(.full)) }
 
     /// The title group's ideal width, measured from the same label the row renders.
     private var titleIdealWidth: CGFloat {
-        width(
-            WorkspaceTitleLabel(
-                isGitRepo: true, spaceName: "casper", branchLabel: Self.branch,
+        layoutWidth(
+            of: WorkspaceTitleLabel(
+                isGitRepo: true, spaceName: "casper", branchLabel: Self.titleBarBranch,
                 form: .spaceAndBranch)
                 .padding(.leading, 10)
                 .padding(.trailing, 6)
@@ -350,7 +346,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// The width the chips laid out to inside a row of `rowWidth`, which is what
     /// says which tier they settled on.
     private func chipsWidth(inRowOf rowWidth: CGFloat) -> CGFloat {
-        let (model, workspace) = makeModelAndWorkspace()
+        let (model, workspace) = makeTitleBarModelAndWorkspace()
         var chips = CGRect.zero
         let row = HStack(spacing: 0) {
             Color.clear.frame(width: titleIdealWidth).layoutPriority(2)
@@ -365,20 +361,8 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         return chips.width
     }
 
-    /// The Merge chip alone, as the row draws it at `.compact`.
+    /// The Merge chip alone, as the row draws it at `.mergeGlyph`.
     private func mergeRow(model: AppModel, workspace: Workspace) -> some View {
         MergeToolbarButton(model: model, workspace: workspace, density: .mergeGlyph)
-    }
-
-    private func symbolWidth(_ systemImage: String) -> CGFloat {
-        width(Image(systemName: systemImage))
-    }
-
-    private func width<V: View>(_ view: V) -> CGFloat { size(view).width }
-
-    private func size<V: View>(_ view: V) -> CGSize {
-        let host = NSHostingView(rootView: view)
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
     }
 }

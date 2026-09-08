@@ -28,7 +28,8 @@ even when unchanged). It is driven by `didSet` on `spaces` and
 `selectedWorkspaceID` **only**. `focusedSurfaceID` deliberately has **no**
 `didSet`: the menu must not react to focus changes. The View menu's **Split**
 items are **always enabled** (no focus-dependent `.disabled`); `applyNewSplit`
-gates itself with `focusedSurfaceIsTerminal()`. Covered by
+gates itself on `locateFocusedTerminal()`, one walk that answers both questions
+the action asks — is a terminal focused, and which workspace owns it. Covered by
 `Tests/CasperUITests/MenuStateTests.swift`.
 
 **Why:** building the whole bar imperatively in AppKit
@@ -184,7 +185,7 @@ observe the enable-state, and any change re-asserts the menu → recreates the
 stubs → one flicker. So on a focus change that legitimately flips Split's
 enabled-state (terminal↔browser), greying and zero-flash are mutually exclusive
 under SwiftUI. Casper takes **zero-flash**: Split stays always-enabled and
-`applyNewSplit` no-ops when `focusedSurfaceIsTerminal()` is false.
+`applyNewSplit` no-ops when `locateFocusedTerminal()` returns nil.
 `focusedSurfaceID` does not change when focus moves to the browser's **address
 bar** (a non-surface first responder), so a `focusedSurfaceID`-based
 *enable-state* could never be fully generic anyway — another reason the

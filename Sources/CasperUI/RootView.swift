@@ -20,7 +20,8 @@ struct RootView: View {
                     SidebarView(model: model)
                         // `ideal` is the width the sidebar opens at: enough room for a typical
                         // branch label beside the row's leading glyphs and trailing 20pt slot.
-                        .navigationSplitViewColumnWidth(min: 220, ideal: 290, max: 400)
+                        .navigationSplitViewColumnWidth(
+                            min: TerminalHostMetrics.sidebarColumnMinimum, ideal: 290, max: 400)
                 } detail: {
                     if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
                         // Give the detail a per-workspace identity so its `@State
@@ -213,6 +214,12 @@ private struct WindowConfigurator: NSViewRepresentable {
 /// detail column absorbs the whole shrink — so a floor built on the 220 pt minimum
 /// would still let the terminal be squeezed whenever the sidebar is wider.
 struct TerminalHostMetrics: Equatable {
+    /// The sidebar column's own minimum, declared on the column by `RootView` and the
+    /// value `sidebarWidth` is never read below. One constant for both, because a
+    /// floor built on a minimum the column does not really have would ratify a
+    /// squeezed sidebar instead of climbing out of it (see `sidebarWidth`).
+    static let sidebarColumnMinimum: CGFloat = 220
+
     /// The sidebar's width, and 0 while it is collapsed.
     ///
     /// Never read below the column's own minimum while the sidebar is open: at a

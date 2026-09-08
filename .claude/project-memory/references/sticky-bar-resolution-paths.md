@@ -62,4 +62,4 @@ The two reasons the container path is exempt sit in the comment on
 non-forcing variant on this path a 600 pt viewport carries a single bar instead
 of more than three, and the first barless file's top measures 74 pt. The forcing
 variant keeps `DiffChromeTests`, `DiffTextSurfaceTests` and
-`DiffFragmentGeometryTests` green (52 tests).
+`DiffFragmentGeometryTests` green.

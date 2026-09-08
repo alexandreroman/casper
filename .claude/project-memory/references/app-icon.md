@@ -63,11 +63,11 @@ used (Apple dropped support for it in Xcode 26.1).
   The step no-ops (icns-only) when `AppIcon.icon` is absent.
 - Dev build stays `.icns`-only (no `.icon`).
 
-**Why:** the app had no icon; this gives it a native macOS one whose form
-encodes Casper's essence — the split = per-worktree terminal workspaces, the
-sparkle = the agent — with a Ghostty family resemblance (Casper embeds
-libghostty). The Liquid Glass variant keeps the icon current on macOS 26 without
-dropping older-OS support.
+**Why:** the icon is a native macOS one whose form encodes Casper's essence —
+the split = per-worktree terminal workspaces, the sparkle = the agent — with a
+Ghostty family resemblance (Casper embeds libghostty). The Liquid Glass variant
+carries that form on macOS 26 while the `.icns` fallback covers every older
+release, so a single design serves both.
 
 **Authoring the Liquid Glass icon** is a manual, one-time step Icon Composer
 owns and nothing automates: create the icon, set the background to the dark

@@ -1,13 +1,14 @@
 ---
-name: window-floor-resizes-the-window
-description: WindowFloor.apply can setFrame the window, so a per-frame metrics publish makes the window chase the drag
-metadata:
-  type: project
+name: "WindowFloor resizes the window"
+description: "WindowFloor.apply can setFrame the window, so a per-frame metrics publish makes the window chase the drag"
+type: project
 ---
 
+# WindowFloor resizes the window
+
 `WindowFloor.apply` does more than write `minSize`/`contentMinSize`: it calls
-`grow(window:toAtLeast:)`, which ends in `window.setFrame(_:display:)` whenever
-the content is narrower than the floor. The floor's width is
+`grow(_:toAtLeast:)`, which ends in `window.setFrame(_:display:)` whenever the
+content is narrower than the floor. The floor's width is
 `sidebarWidth + inspectorSlice + terminalMinimumSize`, and `inspectorSlice`
 comes straight from the inspector's live width.
 
@@ -22,8 +23,8 @@ setter is what makes the window move on its own.
 
 **How to apply:** a per-frame geometry source must defer its publish to the end
 of the interaction — `WorkspaceDetailView` gates `publish(_:)` on an
-`isDraggingInspector` flag and publishes once in the gesture's `onEnded`. The
-floor is never dropped meanwhile: `WindowConfigurator`'s `didUpdateNotification`
-observer keeps re-applying the last published value. Genuine geometry changes
-(window resize, workspace switch, inspector collapse) publish immediately as
-before. See [[swiftui-inspector-width]].
+`isDraggingInspector` flag and publishes once in `SplitterHandle`'s `onCommit`.
+The floor is never dropped meanwhile: `WindowConfigurator`'s
+`didUpdateNotification` observer keeps re-applying the last published value.
+Genuine geometry changes (window resize, workspace switch, inspector collapse)
+publish immediately. See [[swiftui-inspector-width]].

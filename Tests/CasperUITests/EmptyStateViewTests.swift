@@ -33,11 +33,4 @@ final class EmptyStateViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(size.width, Self.onboardingStripWidth + 0.5)
         XCTAssertGreaterThan(size.height, 0)
     }
-
-    /// Host the real view in AppKit and return the size it lays out to.
-    private func layoutSize(for view: EmptyStateView) -> NSSize {
-        let host = NSHostingView(rootView: view)
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
-    }
 }

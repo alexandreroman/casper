@@ -350,7 +350,6 @@ flowchart TD
     UI --> HL[HighlightSwift]
     UI --> SP[Sparkle]
     CLI --> Core
-    CLI --> Agents
     CLI --> AP[swift-argument-parser]
     Agents --> Core
     Ghostty --> Core
@@ -360,16 +359,16 @@ flowchart TD
     Git --> Shims[Clibgit2 / CSigbusGuard]
 ```
 
-- **`CasperCore`** — models, session store, worktree manager, port allocator,
-  control-channel protocol + socket.
-- **`CasperGit`** — in-house wrapper over libgit2 (worktrees, diff, status),
-  with the `Clibgit2` module map and the `CSigbusGuard` shim around libgit2's
-  diff.
-- **`CasperGhostty`** — embeds GhosttyKit; owns terminal surfaces and layout.
-- **`CasperAgents`** — per-surface environment injection
-  (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, …).
+- **`CasperCore`** — models, session store, worktree manager, control channel.
+- **`CasperGit`** — libgit2 wrapper, plus the `Clibgit2`/`CSigbusGuard` shims.
+- **`CasperGhostty`** — embeds GhosttyKit; owns terminal surfaces.
+- **`CasperAgents`** — the environment injected into a Casper terminal.
 - **`CasperUI`** — SwiftUI sidebar, chrome, diff, and browser views.
 - **`CasperCLI`** — domain subcommands, sharing the single app binary.
+
+[`.superpowers/architecture.md`](./.superpowers/architecture.md) § Module
+boundaries is the authoritative table: what each module owns, and the theme doc
+that details it.
 
 The app and CLI ship as one binary, routed on the *shape* of the first argument
 rather than a list of known verbs — so `casper` opens the GUI and `casper
@@ -396,7 +395,7 @@ printf '## App ready\n' | casper info set -  # same, with an explicit '-' marker
 casper info clear                            # empty the panel and hide its button
 casper terminal new                          # open a terminal (split below)
 casper terminal list                         # list the workspace's terminals
-casper terminal close <id>                   # close a terminal by id
+casper terminal close 3f2a9c14-8b7e-4d51-9a0c-2e6f1b48d7aa   # close a terminal by id
 casper browser open https://example.com      # load a URL in the inspector browser
 casper browser close                         # collapse the inspector if the browser is showing
 casper diff open Sources/App/Main.swift      # open the diff, scroll to a file
@@ -406,7 +405,7 @@ casper workspace current                     # print the current workspace + pat
 casper workspace new feature/x               # create a Git worktree workspace
 casper workspace new feature/x --base main --command "claude"
 casper workspace delete                      # destroy a workspace (worktree + branch)
-casper run [name]                            # run a named .casper.json command in a split (defaults to 'run')
+casper run test                              # run a named .casper.json command in a split (omit the name for 'run')
 ```
 
 `casper workspace new <branch>` takes the branch name as a positional argument
@@ -429,11 +428,11 @@ casper browser url                           # print the page's current URL
 casper browser eval "document.title"         # evaluate JavaScript in the page
 casper browser click "button.submit"         # click the first matching element
 casper browser type "input[name=q]" casper   # type into the first matching element
-casper browser key Enter                     # dispatch a keydown/keyup to the page
-casper browser console                       # captured console output + uncaught errors (--level)
+casper browser key Enter                     # dispatch a keydown/keyup to the page (--selector)
+casper browser console                       # captured console output + uncaught errors (--level, --clear)
 casper browser wait ".ready"                 # block until a selector holds (or --js <expr>)
                                              # --visible/--gone, --timeout <ms> (default 5000)
-casper browser reload                        # reload the page
+casper browser reload                        # reload the page (--wait until it finishes loading)
 casper browser scroll-down                   # also scroll-up / scroll-top / scroll-bottom
 ```
 
@@ -443,7 +442,10 @@ workspace-scoped: `workspace list` enumerates all of them, and
 `workspace current` reports the terminal's own workspace from
 `$CASPER_WORKSPACE_ID`. Commands talk to the running app over a Unix domain
 socket named by `$CASPER_CONTROL_SOCKET`, injected per terminal alongside
-`$CASPER_WORKSPACE_ID` — and, in worktree workspaces only, `$CASPER_PORT`.
+`$CASPER_WORKSPACE_ID`, a UTF-8 `$LANG`, and a `$PATH` prefixed with Casper's
+own binary directory — which is what makes `casper` resolve at all. Two more
+are conditional: `$CASPER_PORT` in worktree workspaces, and `$CASPER_SESSION` in
+a debug build launched with `--session <name>`.
 
 Every command is machine-readable: on success it prints a JSON object — or, for
 the `list` verbs, an array — to stdout describing the workspace and any
@@ -493,8 +495,9 @@ treats its workspaces. Every key lives under `workspace`:
 
 - `copyFiles` — patterns for untracked files seeded from the source worktree
   into a new workspace. It replaces the built-in `.env`/`.env.local` default;
-  `[]` copies nothing. An invalid entry fails workspace creation before any Git
-  mutation.
+  `[]` copies nothing. A malformed `.casper.json` fails workspace creation
+  before any Git mutation; a pattern that matches nothing is not an error, and a
+  copy that fails once the worktree exists rolls it back.
 - `scripts` — shell commands bound to a workspace, each run in a visible
   terminal split. Two reserved keys are lifecycle hooks, run automatically and
   never invocable by hand:

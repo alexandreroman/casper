@@ -270,7 +270,54 @@ private extension Block {
 
     var isBlockQuote: Bool { hasComponent { if case .blockQuote = $0 { return true }; return false } }
 
-    var isOrderedList: Bool { hasComponent { if case .orderedList = $0 { return true }; return false } }
+    /// Whether the *innermost* enclosing list is ordered, or `nil` for a block
+    /// that no list encloses. Resolved innermost-first like `listItemOrdinal`,
+    /// because a chain nests every ancestor list too: for `1. one` /
+    /// `   - sub`, the sub-item's chain is
+    /// `paragraph | listItem | unorderedList | listItem | orderedList`, and
+    /// reading it as "does an ordered list appear anywhere" would give the
+    /// bullet the outer list's numeric marker.
+    var isOrderedList: Bool? {
+        firstPayload { component in
+            switch component.kind {
+            case .orderedList: return true
+            case .unorderedList: return false
+            default: return nil
+            }
+        }
+    }
+
+    /// `component`'s stable `identity` if it is a list, `nil` for any other
+    /// intent — the single definition of what counts as a list, so
+    /// `listIdentity` and `listIdentities` cannot drift apart.
+    func identityIfList(_ component: PresentationIntent.IntentType) -> Int? {
+        switch component.kind {
+        case .orderedList, .unorderedList: return component.identity
+        default: return nil
+        }
+    }
+
+    /// The identity of the *innermost* enclosing list, or `nil` for a block no
+    /// list encloses. This is the list a list item belongs to — resolved
+    /// innermost-first for the same reason as `isOrderedList`.
+    ///
+    /// `listItemOrdinal == 1` cannot stand in for "first item of this list":
+    /// Foundation reports the ordinal written in the *source*, not a position,
+    /// so a list written `5.` / `6.` opens on ordinal 5 (a supported input —
+    /// see `testOrderedListHonorsNonSequentialStartingOrdinal`). See
+    /// `opensList(after:)` for how first-ness is decided instead.
+    var listIdentity: Int? {
+        firstPayload(identityIfList)
+    }
+
+    /// The identity of **every** list enclosing this block, innermost first —
+    /// its whole list ancestry, not just the list it sits in directly. A
+    /// nested item's chain names its sub-list *and* every list above it, which
+    /// is what lets `opensList(after:)` recognise an outer list that is still
+    /// in progress across a nested one.
+    var listIdentities: [Int] {
+        components.compactMap(identityIfList)
+    }
 
     var listItemOrdinal: Int? {
         firstPayload { if case .listItem(let ordinal) = $0.kind { return ordinal }; return nil }
@@ -313,10 +360,9 @@ private extension Block {
 
     /// The single ranking of the intents a block can carry at once (e.g.
     /// `> - item` is both a block quote and a list item, `> | A | B |` is both a
-    /// block quote and a table cell), read by both
-    /// `Builder.render(_:tables:isFirstBlock:)` and `Builder.borderedLeadingGap`
-    /// — so a bordered block's leading gap cannot drift away from the branch
-    /// that draws the border.
+    /// block quote and a table cell), read by both `Builder.render` and
+    /// `Builder.borderedLeadingGap` — so a bordered block's leading gap cannot
+    /// drift away from the branch that draws the border.
     ///
     /// Foundation nests all of thematic break, table cell, and header under a
     /// list/quote just as readily as it nests a paragraph or a code block —
@@ -351,6 +397,31 @@ private extension Block {
     func opensTableBorder(after previous: Block) -> Bool {
         guard isTableHeaderRow, let table else { return false }
         return previous.table?.identity != table.identity
+    }
+
+    /// True when this block's own list is not one `previous` already belongs
+    /// to — that is, for the item that opens a list, which is the only one to
+    /// pay the full block-level gap ahead of it (see `Builder.renderListItem`).
+    ///
+    /// `previous`'s **whole** list ancestry is what decides this, not just the
+    /// list it sits in directly. In
+    ///
+    ///     1. one
+    ///        - sub alpha
+    ///     2. two
+    ///
+    /// the block before `2.` is `sub alpha`, whose innermost list is the inner
+    /// bullet list — but the outer ordered list encloses it too, so `2.`
+    /// resumes a list already in progress and must stay tight to it. Comparing
+    /// innermost lists alone would read that as a new list opening and push a
+    /// full block gap into the middle of one.
+    ///
+    /// `sub alpha` itself does open — the inner list is nowhere in `1. one`'s
+    /// ancestry — so a nested list is separated from its parent item like the
+    /// block it is.
+    func opensList(after previous: Block?) -> Bool {
+        guard let identity = listIdentity else { return false }
+        return previous?.listIdentities.contains(identity) != true
     }
 
     /// True when any component's kind satisfies `matches`.
@@ -393,16 +464,24 @@ private struct Builder {
         let blocks = groupIntoBlocks(text)
 
         for (index, block) in blocks.enumerated() {
+            let previous: Block? = index > 0 ? blocks[index - 1] : nil
+            // Resolved once here, so the renderer and the separator ahead of
+            // the block cannot disagree about which item opens its list —
+            // `Block.opensList(after:)` is the rule, and `Block.listIdentity`
+            // says why the item's own ordinal cannot decide it.
+            let isFirstListItem = block.opensList(after: previous)
+
             // The separator joining this block to the previous one, not a
             // trailing one after it: appending "before" means the document's
             // last block leaves no spurious separator to trim afterwards. Its
             // absence ahead of block 0 is also what exempts a leading bordered
             // block from the gap, the way `isFirstBlock` does for every other
             // block kind.
-            if index > 0 {
-                result.append(separator(before: block, after: blocks[index - 1]))
+            if let previous {
+                result.append(separator(before: block, after: previous, isFirstListItem: isFirstListItem))
             }
-            result.append(render(block, tables: &tables, isFirstBlock: index == 0))
+            result.append(render(
+                block, tables: &tables, isFirstBlock: index == 0, isFirstListItem: isFirstListItem))
         }
         return result
     }
@@ -435,8 +514,10 @@ private struct Builder {
     /// following block's border box — which is the whole point. Do not
     /// "simplify" this back into a spacing attribute on either neighboring
     /// paragraph; that is the shape that collapses.
-    private func separator(before block: Block, after previous: Block) -> NSAttributedString {
-        guard let gap = borderedLeadingGap(before: block, after: previous) else {
+    private func separator(
+        before block: Block, after previous: Block, isFirstListItem: Bool
+    ) -> NSAttributedString {
+        guard let gap = borderedLeadingGap(before: block, after: previous, isFirstListItem: isFirstListItem) else {
             return NSAttributedString(string: "\n")
         }
         let style = NSMutableParagraphStyle()
@@ -463,11 +544,13 @@ private struct Builder {
     /// The bar is drawn by exactly two branches — `renderBlockQuote`, and the
     /// quoted half of `renderListItem` — so this asks `Block.blockKind` which
     /// branch the block resolves to instead of restating that ranking here.
-    private func borderedLeadingGap(before block: Block, after previous: Block) -> CGFloat? {
+    private func borderedLeadingGap(
+        before block: Block, after previous: Block, isFirstListItem: Bool
+    ) -> CGFloat? {
         switch block.blockKind {
-        case .listItem(let ordinal) where block.isBlockQuote:
+        case .listItem where block.isBlockQuote:
             // Mirrors `renderListItem`'s own before/after-first rule.
-            return ordinal == 1 ? Layout.blockSpacingBefore : Layout.listItemSpacingBefore
+            return isFirstListItem ? Layout.blockSpacingBefore : Layout.listItemSpacingBefore
         case .blockQuote:
             return Layout.blockSpacingBefore
         case .thematicBreak, .tableCell, .heading, .codeBlock, .listItem, .paragraph:
@@ -504,7 +587,7 @@ private struct Builder {
     /// between the intents a block carries at once, and why each branch still
     /// keeps its ancestors' chrome — is `Block.blockKind`.
     private func render(
-        _ block: Block, tables: inout [Int: NSTextTable], isFirstBlock: Bool
+        _ block: Block, tables: inout [Int: NSTextTable], isFirstBlock: Bool, isFirstListItem: Bool
     ) -> NSAttributedString {
         switch block.blockKind {
         case .thematicBreak:
@@ -516,7 +599,8 @@ private struct Builder {
         case .codeBlock:
             return renderCodeBlock(block, isFirstBlock: isFirstBlock)
         case .listItem(let ordinal):
-            return renderListItem(block, ordinal: ordinal, isFirstBlock: isFirstBlock)
+            return renderListItem(
+                block, ordinal: ordinal, isFirstBlock: isFirstBlock, isFirstListItem: isFirstListItem)
         case .blockQuote:
             return renderBlockQuote(block)
         case .paragraph:
@@ -633,9 +717,14 @@ private struct Builder {
             spacingBefore: spacingBefore(Layout.headingSpacingBefore, isFirstBlock: isFirstBlock))
     }
 
-    private func renderListItem(_ block: Block, ordinal: Int, isFirstBlock: Bool) -> NSAttributedString {
+    private func renderListItem(
+        _ block: Block, ordinal: Int, isFirstBlock: Bool, isFirstListItem: Bool
+    ) -> NSAttributedString {
         let text = inlineAttributedText(block, baseFont: font)
-        let marker = taskMarker(strippingFrom: text) ?? (block.isOrderedList ? "\(ordinal)." : Layout.bulletGlyph)
+        // A block carrying a `listItem` intent is always inside a list, so the
+        // fallback only covers the impossible case.
+        let isOrdered = block.isOrderedList ?? false
+        let marker = taskMarker(strippingFrom: text) ?? (isOrdered ? "\(ordinal)." : Layout.bulletGlyph)
 
         let paragraph = NSMutableAttributedString(
             string: marker + "\t", attributes: [.font: font, .foregroundColor: textColor])
@@ -645,7 +734,7 @@ private struct Builder {
         // whose item itself starts with `> ...`) keeps the quote's indent and
         // leading rule on top of its own marker and hanging indent, instead
         // of the quote's chrome being dropped because this branch runs first
-        // in `render(_:tables:isFirstBlock:)`.
+        // in `render`.
         let indent = block.ambientIndent
 
         // Its own style rather than `styled(_:indent:spacingBefore:)`: an item's
@@ -665,7 +754,7 @@ private struct Builder {
             // the list from whatever precedes it; every later item stays tight
             // to the one before it so the list reads as one block, not a chain
             // of blocks.
-            style.paragraphSpacingBefore = ordinal == 1
+            style.paragraphSpacingBefore = isFirstListItem
                 ? spacingBefore(Layout.blockSpacingBefore, isFirstBlock: isFirstBlock)
                 : Layout.listItemSpacingBefore
         }

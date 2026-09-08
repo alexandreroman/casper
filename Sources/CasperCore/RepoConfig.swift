@@ -131,13 +131,6 @@ extension RepoConfig {
     /// The `teardown` lifecycle hook command, or nil when absent or empty.
     public func teardownScript() -> String? { nonEmptyScript(named: "teardown") }
 
-    /// A user-invocable named command by name, or nil when the name is reserved,
-    /// absent, or maps to an empty command.
-    public func namedCommand(_ name: String) -> String? {
-        guard !RepoScripts.reservedNames.contains(name) else { return nil }
-        return nonEmptyScript(named: name)
-    }
-
     /// All user-invocable named commands (non-reserved, non-empty), sorted by name.
     public func namedCommands() -> [RepoNamedCommand] {
         (workspace?.scripts ?? [:])
@@ -153,8 +146,7 @@ extension RepoConfig {
         if RepoScripts.reservedNames.contains(name) {
             return .denied("'\(name)' is a reserved lifecycle hook, not a runnable command")
         }
-        // The reserved-name guard above already ran, so this skips `namedCommand`
-        // (which would only re-apply it) and looks the script up directly.
+        // The reserved-name guard above already ran, so look the script up directly.
         if let command = nonEmptyScript(named: name) { return .command(command) }
         let available = namedCommands().map(\.name)
         let hint = available.isEmpty

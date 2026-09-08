@@ -334,8 +334,8 @@ struct DiffTextSurface: NSViewRepresentable {
         ///
         /// `MainRunLoop.perform` rather than `DispatchQueue.main.async`: a main queue
         /// block does not run while a modal session or a menu is tracking (see the
-        /// `main-queue-starved-by-modal-loops` memory note), which would leave the
-        /// bars stale for as long as one of those is up.
+        /// `main-run-loop-hop` memory note), which would leave the bars stale
+        /// for as long as one of those is up.
         ///
         /// The cost of coalescing is that the bars can be one run-loop turn behind
         /// the layout that moved them — the same tolerance `DiffStickyHeader`'s own

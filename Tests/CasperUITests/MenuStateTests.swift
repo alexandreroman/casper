@@ -42,40 +42,23 @@ final class MenuStateTests: XCTestCase {
         XCTAssertFalse(model.hasSelectedWorkspace)
     }
 
-    /// `focusedSurfaceIsTerminal()` gates `applyNewSplit` (the always-enabled Split
-    /// menu items no-op when it is false): true for a focused terminal layout pane,
-    /// false for a focused non-layout surface (the Inspector browser), false when
-    /// nothing is focused.
-    func testFocusedSurfaceIsTerminalReflectsFocus() {
-        let model = makeModel(selecting: .linked)
-        let workspace = model.spaces[0].workspaces[0]
-
-        // Nothing focused: not a terminal.
-        model.focusedSurfaceID = nil
-        XCTAssertFalse(model.focusedSurfaceIsTerminal())
-
-        // A real terminal layout pane.
-        let layoutSurfaceID = LayoutTree.surfaceIDs(workspace.layout).first!
-        model.focusedSurfaceID = layoutSurfaceID
-        XCTAssertTrue(model.focusedSurfaceIsTerminal())
-
-        // The Inspector browser lives outside the layout tree: not a terminal.
-        model.focusedSurfaceID = workspace.inspector.browser.id
-        XCTAssertFalse(model.focusedSurfaceIsTerminal())
-    }
-
     /// The always-enabled Split menu items delegate to `applyNewSplit`, which must
-    /// no-op unless a terminal is focused. Focusing a non-layout surface (the
-    /// Inspector browser) must leave the layout unchanged.
+    /// no-op unless a terminal is focused: with nothing focused at all, and with a
+    /// focused non-layout surface (the Inspector browser, which lives outside the
+    /// layout tree), the layout stays exactly as it was.
     func testApplyNewSplitNoOpsWhenNoTerminalFocused() {
         let model = makeModel(selecting: .linked)
         let workspace = model.spaces[0].workspaces[0]
         let layoutBefore = workspace.layout
 
+        model.focusedSurfaceID = nil
+        model.applyNewSplit(.right)
+        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore, "nothing focused")
+
         model.focusedSurfaceID = workspace.inspector.browser.id
         model.applyNewSplit(.right)
-
-        XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
+        XCTAssertEqual(
+            model.spaces[0].workspaces[0].layout, layoutBefore, "Inspector browser focused")
     }
 
     /// A focused terminal pane splits: `applyNewSplit` adds a surface to the layout.

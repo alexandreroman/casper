@@ -27,7 +27,6 @@
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — a worktree watcher plus a reflog one, so a commit refreshes
-- [Per-workspace diff summary is dropped](references/space-diff-summary-dropped.md) — the branch-vs-merge-base row badge is not built, and why
 - [Domain CLI and control channel](references/domain-cli-control-channel.md) — JSON shapes and key conventions; non-zero error exits; no hooks
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning wrapped values crashes `.parse()`
 - [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
@@ -129,6 +128,7 @@
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
 - [AppModel encapsulation across extension files](references/appmodel-extension-encapsulation.md) — `private(set)` survives the split via mutators
 - [UUID fixtures must carry hex letters](references/uuid-fixture-case-vacuity.md) — a digit-only id makes a case assertion vacuous
+- [An empty array casts to any array type](references/empty-array-casts-to-anything.md) — so a `Mirror` absence assertion goes vacuous
 - [ScrollView padding and height](references/scrollview-viewport-vs-document.md) — outer padding pads the viewport; pinned height overflows the host
 - [An NSTextTable drops a view back to TextKit 1](references/textkit1-fallback-on-nstexttable.md) — the two engines size the same string differently
 - [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick
@@ -138,6 +138,5 @@
 - [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
 - [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — the row carries both gestures
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
-- [Repeating animations are gated at the call site](references/repeating-animation-state-gating.md) — a one-shot @State flag must die with the view
 - [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag
 - [SF Symbols need a shared width slot](references/sf-symbol-widths-need-a-slot.md) — no common intrinsic width; one measured slot per icon column

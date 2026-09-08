@@ -61,8 +61,9 @@ best-effort for the same reason: resolving configuration better must not give
 initialization a new way to fail.
 
 `Libgit2Tests` pins the search-path *string*. The user-visible effect is pinned
-separately, by `testAFreshRepositoryIsBornOnTheSystemConfigDefaultBranch`: it
-reads `init.defaultBranch` out of the resolved system `gitconfig` and asserts a
+separately, by
+`testAFreshRepositoryIsBornOnTheAppleSystemConfigDefaultBranch`: it reads
+`init.defaultBranch` out of the resolved system `gitconfig` and asserts a
 `Repository.initialize` lands on that branch, skipping when the resolved file is
 not the Apple one — precisely the machines where the augmentation is inert.
 

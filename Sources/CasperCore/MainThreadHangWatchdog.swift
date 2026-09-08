@@ -35,10 +35,10 @@ import os
 public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Environment override for the hang threshold, in seconds. Ignored unless it
     /// parses to a value greater than zero.
-    static let thresholdEnvKey = "CASPER_HANG_THRESHOLD"
+    private static let thresholdEnvKey = "CASPER_HANG_THRESHOLD"
     /// Environment kill switch. Set to `0`/`false` to make `start()` a no-op — a
     /// safety valve so the diagnostic can be disabled without a rebuild.
-    static let enabledEnvKey = "CASPER_HANG_WATCHDOG"
+    private static let enabledEnvKey = "CASPER_HANG_WATCHDOG"
 
     /// How often the background timer fires. Well below the threshold so a stall
     /// is noticed promptly.
@@ -51,7 +51,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// CasperCore deliberately does not link AppKit. The raw values are part of
     /// AppKit's public API and have been stable since NeXTSTEP.
     static let modalPanelRunLoopMode = "NSModalPanelRunLoopMode"
-    static let eventTrackingRunLoopMode = "NSEventTrackingRunLoopMode"
+    private static let eventTrackingRunLoopMode = "NSEventTrackingRunLoopMode"
 
     /// Run loop modes the acknowledgement block is enqueued for: the common modes
     /// (normal event processing) plus the two nested-loop modes above. See

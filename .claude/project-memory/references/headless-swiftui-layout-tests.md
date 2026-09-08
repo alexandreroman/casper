@@ -42,6 +42,22 @@ When a view's fixed dimension is a bare literal, exposing it as a `static let`
 on the view and asserting against that is preferred over duplicating the number
 in the test.
 
+**Where the recipe lives.** `Tests/CasperUITests/HostingLayout.swift` holds it
+as an `XCTestCase` extension every geometry suite in the target shares:
+`layoutSize(for:)` (hosted inside a `VStack(spacing: 0)`, for the flattening
+reason below), `layoutSize(for:proposedWidth:)` for the hostile-width shape,
+`layoutWidth(of:)`, and `symbolWidth(_:font:)` — which measures the SwiftUI
+`Image` rather than the `NSImage`, since the two disagree at the same point
+size (see [[sf-symbol-widths-need-a-slot]]). A new measurement belongs there
+rather than re-hosted inline in a suite. The title-bar row is the one subject
+with its own fixture file, `Tests/CasperUITests/TitleBarFixtures.swift`:
+`makeTitleBarModelAndWorkspace(...)` builds the model and workspace, and
+`hostTitleBarRow(width:...)` hosts the production row at a given width and
+returns a `TitleBarRowLayout` carrying the badge width, the chip-ladder width
+and the rungs — the channels that say which tier the row settled on, since the
+row's own reported width is just the width it was handed (see
+[[fixed-frame-swallows-inner-padding]]).
+
 **Host the view inside the container it ships in.** A body that is a `TupleView`
 of several elements — a `Divider` plus a `VStack`, say — is flattened by
 whatever stack the production parent provides. Hosted bare, `NSHostingView`

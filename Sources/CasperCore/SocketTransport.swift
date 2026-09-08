@@ -63,10 +63,6 @@ private func readChunk(
     _ count: Int, on connection: NWConnection, into buffer: ReadBuffer,
     completion: @escaping @Sendable (Data?) -> Void
 ) {
-    if buffer.data.count >= count {
-        completion(buffer.data)
-        return
-    }
     connection.receive(
         minimumIncompleteLength: 1, maximumLength: count - buffer.data.count
     ) { data, _, isComplete, error in
@@ -481,8 +477,9 @@ public enum SocketClientEngine<
                 }
             }
         }
-        // Only reached when every attempt threw a transport `TransportError`.
-        throw lastError ?? TransportError(reason: "no response from \(socketPath)")
+        // `maxAttempts >= 1`, so the loop always ran, and it falls through only when
+        // every attempt threw a transport `TransportError` — `lastError` is set.
+        throw lastError!
     }
 
     /// One request/response exchange over a single fresh connection. Throws a
