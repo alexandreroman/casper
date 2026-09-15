@@ -13,11 +13,12 @@
 /// keeping the default self-contained.
 ///
 /// `clipboard-write` is set to `ask` because libghostty's own default is `allow`,
-/// which lets anything a terminal prints — a `cat`ed file, an agent's output, a
-/// build log — silently replace the user's clipboard with an OSC 52 escape. `ask`
-/// makes libghostty raise the `confirm` flag on its write-clipboard callback, so
-/// the write goes through `GhosttyClipboardWrite`'s confirmation prompt. A user who
-/// prefers the upstream behaviour can override it with `clipboard-write = allow`.
+/// under which `write_clipboard_cb` is always flagged trusted and
+/// `GhosttyClipboardWrite.apply`'s untrusted branch is unreachable. `ask` makes
+/// libghostty raise the `confirm` flag instead, which keeps
+/// `GhosttyClipboardWrite.approveUntrusted` the single place the write policy is
+/// decided rather than dead code. A user who prefers the upstream behaviour can
+/// override it with `clipboard-write = allow`.
 enum GhosttyDefaultConfig {
     static let text = """
         # Casper's built-in libghostty defaults: the Arthur theme and the
@@ -45,9 +46,9 @@ enum GhosttyDefaultConfig {
         cursor-text = #000000
         selection-background = #4d4d4d
         selection-foreground = #ffffff
-        # libghostty defaults this to `allow`, which lets any terminal output
-        # replace the clipboard via OSC 52; `ask` routes the write through
-        # Casper's confirmation prompt.
+        # libghostty defaults this to `allow`, under which the write callback is
+        # always trusted; `ask` keeps GhosttyClipboardWrite.approveUntrusted the
+        # one place the write policy is decided.
         clipboard-write = ask
         """
 }

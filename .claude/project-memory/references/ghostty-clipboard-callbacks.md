@@ -44,4 +44,4 @@ main-actor-isolated function as its default is rejected with *converting
 function value ... loses global actor 'MainActor'* — the type's isolation does
 not flow into the closure type. Call sites that substitute another closure
 annotate their parameter the same way (`@escaping @MainActor (String) -> Bool`).
-See [[osc52-clipboard-write-confirmation]].
+See [[osc52-clipboard-write-policy]].
