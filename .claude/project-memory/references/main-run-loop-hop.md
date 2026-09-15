@@ -34,7 +34,7 @@ the current tick.
 
 **Do not use it** where the hazard is re-entering a library mid-tick and the
 main queue's inability to run inside the current tick is the point; see
-[[osc52-clipboard-write-confirmation]] for the rule that picks between the two.
+[[osc52-clipboard-write-policy]] for the rule that picks between the two.
 
 ## Mechanism
 
