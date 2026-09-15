@@ -21,6 +21,7 @@
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
 - [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
+- [macOS 26 appearance needs a linked SDK >= 26](references/linked-sdk-gates-macos26-appearance.md) — SwiftPM records the deployment target
 - [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
 - [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
 - [English only](references/english-only.md) — all generated text is English; commit subjects use verb + action
