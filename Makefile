@@ -11,10 +11,26 @@
 SHORT_VERSION ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); echo $${v:-0.0.0})
 BUNDLE_VERSION ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 
+# SwiftPM's default build system writes the SDK version field of the binary's
+# LC_BUILD_VERSION load command from the deployment target instead of from the SDK
+# actually linked against, so a macOS 15 target records `sdk 15.0`. macOS 26 serves
+# the Liquid Glass appearance only to apps whose linked SDK is 26 or newer, and
+# without the explicit -platform_version below the app silently falls back to the
+# legacy pre-26 appearance (hard black borders, a shorter title bar) with nothing
+# in the build output to say so. MACOS_DEPLOYMENT_TARGET must stay in step with
+# Package.swift's `platforms: [.macOS(.v15)]`.
+MACOS_DEPLOYMENT_TARGET := 15.0
+MACOS_SDK_VERSION := $(shell xcrun --show-sdk-version)
+SWIFT_PLATFORM_FLAGS := -Xlinker -platform_version -Xlinker macos \
+	-Xlinker $(MACOS_DEPLOYMENT_TARGET) -Xlinker $(MACOS_SDK_VERSION)
+export SWIFT_PLATFORM_FLAGS
+
 # Flags for the shipped release build. Exported so Scripts/bundle-app.sh runs
 # `swift build -c release --show-bin-path` with the very same flags and can
 # never resolve a build directory other than the one `make release` filled.
-SWIFT_RELEASE_FLAGS ?= -Xswiftc -Osize
+# An override has to carry $(SWIFT_PLATFORM_FLAGS) along, or the release loses the
+# Liquid Glass appearance explained above.
+SWIFT_RELEASE_FLAGS ?= -Xswiftc -Osize $(SWIFT_PLATFORM_FLAGS)
 export SWIFT_RELEASE_FLAGS
 
 # Per-branch dev session name: sanitize the current branch to SessionIdentity's
@@ -36,7 +52,7 @@ DEV_APP := Casper-dev.app
 
 ## build: compile the debug build and assemble the signed dev app bundle
 build:
-	swift build
+	swift build $(SWIFT_PLATFORM_FLAGS)
 # Stage the layout, binary, Resources and Sparkle.framework that the release
 # bundle stages the same way; only the dev-specific Info.plist and signing follow
 # here. The script's stdout is the bin path it resolved, unused by this target.

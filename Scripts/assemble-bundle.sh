@@ -19,12 +19,21 @@ CONFIGURATION="${1:?usage: assemble-bundle.sh <debug|release>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# The linker flags that make LC_BUILD_VERSION record the SDK actually linked
+# against — the Makefile exports them and explains why the app needs them. Every
+# `swift build` below repeats the flags the corresponding build ran with, so
+# --show-bin-path can never resolve a build directory other than the filled one.
+DEFAULT_PLATFORM_FLAGS="-Xlinker -platform_version -Xlinker macos -Xlinker 15.0 -Xlinker $(xcrun --show-sdk-version)"
+SWIFT_PLATFORM_FLAGS="${SWIFT_PLATFORM_FLAGS:-$DEFAULT_PLATFORM_FLAGS}"
+
 case "$CONFIGURATION" in
     debug)
         APP="$ROOT/Casper-dev.app"
         ICNS="AppIconDev.icns"
         BUILD_HINT="swift build"
-        BIN_DIR="$(swift build --show-bin-path)"
+        # Word splitting is intended here: the variable holds several arguments.
+        # shellcheck disable=SC2086
+        BIN_DIR="$(swift build $SWIFT_PLATFORM_FLAGS --show-bin-path)"
         ;;
     release)
         APP="$ROOT/Casper.app"
@@ -34,7 +43,7 @@ case "$CONFIGURATION" in
         # default keeps a standalone run of this script honest. Building the release
         # with one set of flags and locating it with another risks resolving a
         # different build directory (or planning a rebuild without them).
-        SWIFT_RELEASE_FLAGS="${SWIFT_RELEASE_FLAGS:--Xswiftc -Osize}"
+        SWIFT_RELEASE_FLAGS="${SWIFT_RELEASE_FLAGS:--Xswiftc -Osize $SWIFT_PLATFORM_FLAGS}"
         # Word splitting is intended here: the variable holds several arguments.
         # shellcheck disable=SC2086
         BIN_DIR="$(swift build -c release $SWIFT_RELEASE_FLAGS --show-bin-path)"
