@@ -153,6 +153,79 @@ public enum WorktreeManager {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
+    /// Whether the repository at `repoPath` registers a worktree checked out at
+    /// `worktreePath`. Throws when the worktree list cannot be read.
+    ///
+    /// The throw is the point: a caller deciding whether a directory is safe to
+    /// delete has to tell "the repository says no worktree lives here" apart from
+    /// "the repository could not answer", which `registeredName`'s nil conflates.
+    static func hasRegisteredWorktree(repoPath: String, worktreePath: String) throws -> Bool {
+        let target = canonicalPath(worktreePath)
+        return try list(repoPath: repoPath).contains { canonicalPath($0.path) == target }
+    }
+
+    /// Top-level entries a directory may hold and still count as a disposable
+    /// leftover: metadata an editor or the Finder writes on its own, carrying none
+    /// of the user's work. `.git` is deliberately absent — a `.git` file or
+    /// directory means a live (or half-pruned) worktree, which is never reclaimed.
+    private static let disposableLeftoverEntries: Set<String> = [
+        ".idea", ".vscode", ".fleet", ".zed", ".DS_Store",
+    ]
+
+    /// Whether the directory at `path` is an editor leftover that a new worktree of
+    /// the repository at `repoPath` may take the place of.
+    ///
+    /// An IDE that still has a closed workspace open as a project re-creates its
+    /// deleted directory minutes later, to save its own project metadata into it.
+    /// Left standing, that ghost pushes the next worktree of the same name onto a
+    /// `-2` sibling — the user asks for `repo-jev` and gets `repo-jev-2`.
+    ///
+    /// This authorizes a recursive delete of a directory under the user's projects,
+    /// so every doubt answers false. All of these must hold:
+    /// 1. `path` is a real directory and not a symbolic link — a link is never
+    ///    followed out of the tree (same discipline as `restoreOwnerPermissions`).
+    /// 2. the repository registers no worktree there *and* could be read to say so:
+    ///    a listing failure is ignorance, not permission.
+    /// 3. every top-level entry is in `disposableLeftoverEntries`. An allow-list, so
+    ///    an unknown name — a `.git` entry above all — protects the directory; an
+    ///    empty directory holds nothing to protect and qualifies.
+    static func isDisposableLeftover(at path: String, repoPath: String) -> Bool {
+        let values = try? URL(fileURLWithPath: path)
+            .resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard values?.isDirectory == true, values?.isSymbolicLink != true else { return false }
+
+        // `try?` turns a listing failure into nil, which this rejects along with
+        // true: only a repository that answered "no worktree here" opens the delete.
+        guard (try? hasRegisteredWorktree(repoPath: repoPath, worktreePath: path)) == false else {
+            return false
+        }
+
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: path) else {
+            return false
+        }
+        return entries.allSatisfy(disposableLeftoverEntries.contains)
+    }
+
+    /// Whether `path` is free to receive a new worktree of the repository at
+    /// `repoPath`, deleting what occupies it when that is only a disposable editor
+    /// leftover (`isDisposableLeftover`). A delete that fails leaves the path
+    /// taken, so the caller moves on to its next candidate rather than handing
+    /// `create` a path it would reject.
+    public static func claimWorktreePath(_ path: String, repoPath: String) -> Bool {
+        guard FileManager.default.fileExists(atPath: path) else { return true }
+        guard isDisposableLeftover(at: path, repoPath: repoPath) else { return false }
+        do {
+            try forceRemoveDirectory(at: path)
+        } catch {
+            CasperLog.app.failure("cannot reclaim leftover worktree directory", error)
+            return false
+        }
+        // Ungated: this is the only record that Casper deleted a directory the user
+        // could still see in the Finder a moment earlier.
+        CasperLog.app.notice("reclaimed leftover worktree directory \(path, privacy: .public)")
+        return true
+    }
+
     /// Remove the worktree named `name` (working tree at `worktreePath`) from the
     /// repository at `repoPath`, guaranteeing the working-tree directory is gone
     /// from disk.
