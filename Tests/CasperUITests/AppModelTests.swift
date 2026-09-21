@@ -471,9 +471,14 @@ final class AppModelTests: XCTestCase {
         let spaceID = model.spaces[0].id
 
         // Occupy the would-be target sibling so creation must fall back to `-2`.
+        // The file inside is what makes the directory the user's: an empty one, or
+        // one holding only editor metadata, would be reclaimed instead.
         let taken = repo.deletingLastPathComponent()
             .appendingPathComponent(repo.lastPathComponent + "-my-feature").path
         try FileManager.default.createDirectory(atPath: taken, withIntermediateDirectories: true)
+        try "mine\n".write(
+            to: URL(fileURLWithPath: taken).appendingPathComponent("notes.txt"),
+            atomically: true, encoding: .utf8)
         let suffixed = repo.deletingLastPathComponent()
             .appendingPathComponent(repo.lastPathComponent + "-my-feature-2").path
         addTeardownBlock {
@@ -487,6 +492,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(linked.worktreePath.hasSuffix("-my-feature-2"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: linked.worktreePath))
         XCTAssertEqual(linked.branch, "my-feature")
+    }
+
+    /// An IDE that still has a merged-away worktree open re-creates its directory
+    /// minutes later, with nothing in it but its own project metadata. The next
+    /// workspace of that name must reclaim the path, not settle for a `-2` sibling.
+    func testAddLinkedWorkspaceReclaimsAnEditorLeftoverDirectory() async throws {
+        let repo = try makeTempGitRepo()
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let spaceID = model.spaces[0].id
+
+        let leftover = repo.deletingLastPathComponent()
+            .appendingPathComponent(repo.lastPathComponent + "-my-feature")
+        try FileManager.default.createDirectory(
+            at: leftover.appendingPathComponent(".idea"), withIntermediateDirectories: true)
+        try "<project/>\n".write(
+            to: leftover.appendingPathComponent(".idea/workspace.xml"),
+            atomically: true, encoding: .utf8)
+        addTeardownBlock { try? FileManager.default.removeItem(at: leftover) }
+
+        let created = await model.addLinkedWorkspace(spaceID: spaceID, name: "My Feature")
+
+        XCTAssertTrue(created)
+        let linked = model.spaces[0].workspaces[1]
+        XCTAssertTrue(linked.worktreePath.hasSuffix("-my-feature"))
+        // A `.git` file at the leftover path is the worktree having landed there.
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: leftover.appendingPathComponent(".git").path))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: leftover.appendingPathComponent(".idea").path))
     }
 
     func testAddLinkedWorkspaceRejectedForNonGitSpace() async {

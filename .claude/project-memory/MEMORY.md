@@ -100,6 +100,7 @@
 - [Testing a guarded no-write](references/observation-tracking-guard-tests.md) — pins that a guarded mutation writes nothing
 - [Asserting the session was saved](references/session-save-assertions.md) — flushPendingSave() persists on its own, so it proves only the codec
 - [Worktree deletion deletes the directory first](references/worktree-deletion-directory-first.md) — delete the directory, then prune metadata only
+- [An IDE re-creates a deleted worktree directory](references/ide-recreates-worktree-directory.md) — `.idea/*` reappears minutes later
 - [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — nothing clips its draw rects; clip in `draw(_:)`
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — spacing lives inside layoutFragmentFrame; probes cost more
 - [Diff surface data flow](references/diff-surface-data-flow.md) — a revision-keyed property carries the document; events use the controller

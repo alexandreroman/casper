@@ -296,6 +296,117 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertNoThrow(try WorktreeManager.forceRemoveDirectory(at: missing))
     }
 
+    // MARK: - Reclaiming an editor leftover
+
+    /// Create the directory at `url` and populate it with `files` — paths relative
+    /// to it, whose intermediate directories are created as needed.
+    private func populate(_ url: URL, with files: [String]) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        for file in files {
+            let fileURL = url.appendingPathComponent(file)
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "x\n".write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+    }
+
+    /// The real-world case: an IDE still holding a deleted worktree open re-creates
+    /// its directory minutes later, writing nothing into it but its own metadata.
+    func testDirectoryHoldingOnlyEditorMetadataIsDisposable() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [".idea/workspace.xml"])
+
+        XCTAssertTrue(WorktreeManager.isDisposableLeftover(at: ghost.path, repoPath: repoDir.path))
+    }
+
+    func testEmptyDirectoryIsDisposable() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [])
+
+        XCTAssertTrue(WorktreeManager.isDisposableLeftover(at: ghost.path, repoPath: repoDir.path))
+    }
+
+    /// A `.git` entry means a live — or half-pruned — worktree, never a leftover.
+    func testDirectoryHoldingAGitEntryIsNotDisposable() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [".idea/workspace.xml", ".git"])
+
+        XCTAssertFalse(WorktreeManager.isDisposableLeftover(at: ghost.path, repoPath: repoDir.path))
+    }
+
+    /// One file nobody else wrote is enough: the allow-list admits editor metadata
+    /// only, so anything that could be the user's work protects the directory.
+    func testDirectoryHoldingAProjectFileIsNotDisposable() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [".idea/workspace.xml", "README.md"])
+
+        XCTAssertFalse(WorktreeManager.isDisposableLeftover(at: ghost.path, repoPath: repoDir.path))
+    }
+
+    /// The registration criterion on its own: the directory's contents are reduced
+    /// to exactly what an editor leftover looks like, so only the repository's
+    /// worktree list can still protect it.
+    func testRegisteredWorktreePathIsNotDisposable() throws {
+        let wtPath = root.appendingPathComponent("feature").path
+        try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        let worktree = URL(fileURLWithPath: wtPath)
+        for entry in try FileManager.default.contentsOfDirectory(atPath: wtPath) {
+            try FileManager.default.removeItem(at: worktree.appendingPathComponent(entry))
+        }
+        try populate(worktree, with: [".idea/workspace.xml"])
+
+        XCTAssertFalse(WorktreeManager.isDisposableLeftover(at: wtPath, repoPath: repoDir.path))
+    }
+
+    /// A repository that cannot be read reports no worktree anywhere — out of
+    /// ignorance, not knowledge. That silence must never authorize a delete.
+    func testDirectoryIsNotDisposableWhenTheWorktreeListingFails() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [".idea/workspace.xml"])
+        let notARepo = root.appendingPathComponent("not-a-repo")
+        try FileManager.default.createDirectory(at: notARepo, withIntermediateDirectories: true)
+
+        XCTAssertFalse(WorktreeManager.isDisposableLeftover(at: ghost.path, repoPath: notARepo.path))
+        // The very same directory IS disposable for a repository that can answer,
+        // so the unreadable repository is what flipped the verdict.
+        XCTAssertTrue(WorktreeManager.isDisposableLeftover(at: ghost.path, repoPath: repoDir.path))
+    }
+
+    /// Containment: a link is never followed, whatever its target holds.
+    func testSymlinkIsNotDisposable() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [".idea/workspace.xml"])
+        let link = root.appendingPathComponent("ghost-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: ghost)
+
+        XCTAssertFalse(WorktreeManager.isDisposableLeftover(at: link.path, repoPath: repoDir.path))
+    }
+
+    func testClaimWorktreePathAcceptsAFreePathWithoutCreatingIt() {
+        let free = root.appendingPathComponent("free").path
+
+        XCTAssertTrue(WorktreeManager.claimWorktreePath(free, repoPath: repoDir.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: free))
+    }
+
+    func testClaimWorktreePathDeletesADisposableLeftover() throws {
+        let ghost = root.appendingPathComponent("ghost")
+        try populate(ghost, with: [".idea/workspace.xml"])
+
+        XCTAssertTrue(WorktreeManager.claimWorktreePath(ghost.path, repoPath: repoDir.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ghost.path))
+    }
+
+    func testClaimWorktreePathLeavesAnOccupiedPathUntouched() throws {
+        let occupied = root.appendingPathComponent("occupied")
+        try populate(occupied, with: ["README.md"])
+
+        XCTAssertFalse(WorktreeManager.claimWorktreePath(occupied.path, repoPath: repoDir.path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: occupied.appendingPathComponent("README.md").path))
+    }
+
     /// The POSIX permission bits of the item at `path`, masked to the standard
     /// 12 mode bits so comparisons ignore incidental higher-order flags.
     private func mode(of path: String) throws -> Int {

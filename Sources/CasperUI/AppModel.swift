@@ -809,14 +809,21 @@ final class AppModel {
         persist()
     }
 
-    /// The given path if free, otherwise the first `-<n>` suffixed sibling that does
-    /// not yet exist (`…-my-feature`, `…-my-feature-2`, `…-my-feature-3`, …). Keeps
-    /// worktree creation from failing when the target directory is already taken.
-    private func availableWorktreePath(_ basePath: String) -> String {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: basePath) else { return basePath }
+    /// The given path if it can be claimed for a worktree of the repository at
+    /// `repoPath`, otherwise the first `-<n>` suffixed sibling that can
+    /// (`…-my-feature`, `…-my-feature-2`, `…-my-feature-3`, …). Keeps worktree
+    /// creation from failing when the target directory is already taken.
+    ///
+    /// "Claim", not "is free": a directory an editor re-created after its worktree
+    /// was deleted holds nothing but that editor's own metadata, and
+    /// `claimWorktreePath` clears it out of the way. Without that, one IDE still
+    /// holding the old project open is enough to name every re-creation `-2`.
+    private func availableWorktreePath(_ basePath: String, repoPath: String) -> String {
+        if WorktreeManager.claimWorktreePath(basePath, repoPath: repoPath) { return basePath }
         var suffix = 2
-        while fm.fileExists(atPath: "\(basePath)-\(suffix)") { suffix += 1 }
+        while !WorktreeManager.claimWorktreePath("\(basePath)-\(suffix)", repoPath: repoPath) {
+            suffix += 1
+        }
         return "\(basePath)-\(suffix)"
     }
 
@@ -886,9 +893,12 @@ final class AppModel {
         }
     }
 
-    /// Validate a linked-workspace request and reserve what it needs. Pure main-actor
-    /// work — it reads the model and allocates a port, and touches neither git nor the
-    /// filesystem — which is what lets the caller hand the checkout to another thread.
+    /// Validate a linked-workspace request and reserve what it needs. Main-actor work
+    /// bounded to reading the model, allocating a port, and settling the worktree
+    /// directory — which is what lets the caller hand the checkout, the one part that
+    /// can run for seconds, to another thread. Settling the directory does touch git
+    /// and the filesystem (`availableWorktreePath`), but only for a worktree listing
+    /// and a `stat` per candidate.
     private func planLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?
     ) -> Result<LinkedWorkspacePlan, WorkspaceCreationError> {
@@ -917,7 +927,7 @@ final class AppModel {
         // it reflects the workspace active when creation was requested.
         return .success(LinkedWorkspacePlan(
             spaceID: spaceID, repoPath: folder, branch: branch, base: base,
-            worktreePath: availableWorktreePath(basePath), portBase: portBase,
+            worktreePath: availableWorktreePath(basePath, repoPath: folder), portBase: portBase,
             inheritedEditor: inheritedEditor))
     }
 
