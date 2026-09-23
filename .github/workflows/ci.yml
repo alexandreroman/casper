@@ -1,9 +1,23 @@
 name: CI
 
+# Docs, project memory and the release workflow don't affect the build or the
+# tests, so a change touching only them skips CI.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - LICENSE
+      - .claude/**
+      - .superpowers/**
+      - .github/workflows/release.yml
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - LICENSE
+      - .claude/**
+      - .superpowers/**
+      - .github/workflows/release.yml
   workflow_dispatch:
 
 concurrency:
