@@ -19,7 +19,9 @@ concurrency:
 jobs:
   release:
     name: Build & publish Casper.app (macOS, arm64)
-    runs-on: macos-15
+    # actool only compiles the Liquid Glass AppIcon.icon on a macOS 26 host (it crashes on macOS 15, even with
+    # Xcode 26); the deployment target comes from the build, so the shipped app still runs on macOS 15+.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,9 +36,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/Library/Caches/org.swift.swiftpm
-          key: swiftpm-macos-15-${{ hashFiles('Package.resolved') }}
+          key: swiftpm-macos-26-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            swiftpm-macos-15-
+            swiftpm-macos-26-
 
       - name: Install dependencies
         run: brew install libgit2 pkgconf dylibbundler
