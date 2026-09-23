@@ -46,7 +46,8 @@ also rebuilds `AppIconDev.icns` from `icon-dev.svg` — and needs
 `Packaging/AppIcon/AppIcon.icon` (Icon Composer bundle, compiled to `Assets.car`
 by `actool` during `make bundle`). Both `CFBundleIconName` and
 `CFBundleIconFile` are set. Compiling the `.icon` requires **Xcode 26** selected
-(`sudo xcode-select -s /Applications/Xcode.app`). To re-author the layered icon:
+(`sudo xcode-select -s /Applications/Xcode.app`) **on a macOS 26 host** — on
+macOS 15, actool crashes. To re-author the layered icon:
 edit the layer sources in `Packaging/AppIcon/AppIcon.icon/Assets/`, re-import
 them into Icon Composer, and commit the updated `AppIcon.icon`.
 

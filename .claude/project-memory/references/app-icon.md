@@ -56,8 +56,12 @@ used (Apple dropped support for it in Xcode 26.1).
 - The layer sources live in `Packaging/AppIcon/AppIcon.icon/Assets/`, the single
   place they are authored: Icon Composer imports SVG directly — no PNG
   rasterization step — and writes the layers back there byte-identical.
-- `Scripts/bundle-app.sh` compiles `AppIcon.icon` with **`xcrun actool`** (Xcode
-  26 required) into `Contents/Resources/Assets.car`. It compiles into a **temp
+- `Scripts/bundle-app.sh` compiles `AppIcon.icon` with **`xcrun actool`** into
+  `Contents/Resources/Assets.car`. That needs Xcode 26 **and a macOS 26 host**:
+  on macOS 15, Xcode 26.3's actool crashes (`IBPlatformToolFailureException`,
+  `AssetCatalogAgent-AssetRuntime`), which is why the release job runs on the
+  `macos-26` runner. The host OS does not affect the shipped app's macOS 15
+  deployment target. It compiles into a **temp
   dir and copies only `Assets.car`** — actool also emits its own low-res
   `AppIcon.icns`, which would otherwise clobber the hand-crafted high-res one.
   The step no-ops (icns-only) when `AppIcon.icon` is absent.

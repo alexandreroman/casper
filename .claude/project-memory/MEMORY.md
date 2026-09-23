@@ -91,7 +91,7 @@
 - [Page-driven navigation in WKWebView](references/webkit-page-driven-navigation.md) — same-document navs need KVO; window.open needs a UIDelegate
 - [Browser ATS disabled app-wide](references/browser-ats-arbitrary-loads.md) — ATS blocks plain-HTTP to public-qualified hostnames
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — an mmap-truncation SIGBUS becomes a graceful throw
-- [App icon design and generation pipeline](references/app-icon.md) — SVG masters → `.icns`, plus an Icon Composer `.icon` → Assets.car
+- [App icon design and generation pipeline](references/app-icon.md) — SVG → `.icns`, plus a `.icon` → Assets.car (macOS 26 host)
 - [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY, so queued work needs it
 - [Off-screen host windows stay unordered](references/offscreen-host-windows-unordered.md) — ordering an off-screen window wrecks Mission Control
 - [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each one is a new JSContext; reuse the shared instance
@@ -115,6 +115,7 @@
 - [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a set border can draw nothing; avoid needing one
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
 - [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
+- [A release is dry-run and signature-checked before tagging](references/release-dry-run.md) — CI never bundles; verify vs SUPublicEDKey
 - [Screen Recording needs an app bundle](references/tcc-screen-recording-needs-a-bundle.md) — a loose signed binary never appears in the list at all
 - [inherited_config reports a live font size](references/ghostty-inherited-config-font-size.md) — the read-back font-size persistence rests on
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
