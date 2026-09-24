@@ -87,6 +87,12 @@ start of work. Don't store what the repo already records (code, git history, the
 - Prefer the latest stable versions of tools — **except GhosttyKit**, whose
   embedding API is unstable and must stay **pinned** (all access isolated in
   `CasperGhostty`).
+- Every user-visible change adds an entry under `## [Unreleased]` in
+  [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog: `Added`, `Changed`,
+  `Fixed`, `Removed`…), in the same commit as the change. CI, test, and
+  documentation-only work gets no entry. Before tagging a release, rename the
+  section to `## [X.Y.Z] - YYYY-MM-DD`, open a fresh `[Unreleased]` above it,
+  and update the compare links at the bottom of the file.
 - Tests use XCTest and need the **full Xcode toolchain**
   (`sudo xcode-select -s /Applications/Xcode.app`) — see the `test-toolchain`
   memory note for the CLT-can't-link-XCTest and `import Foundation` gotchas.
