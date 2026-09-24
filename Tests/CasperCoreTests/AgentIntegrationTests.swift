@@ -334,7 +334,7 @@ final class AgentIntegrationTests: XCTestCase {
 
     // MARK: - opencode config
 
-    func testParseOpencodeConfigWithCommentsAndSchemaURL() {
+    func testOpencodePluginEntriesWithCommentsAndSchemaURL() {
         // The `//` inside the schema URL must survive comment stripping — this exact
         // line ships in opencode's default config.
         let config = #"""
@@ -345,20 +345,20 @@ final class AgentIntegrationTests: XCTestCase {
               "plugin": ["casper-skills@0.2.0"]
             }
             """#
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(config).isEmpty)
     }
 
-    func testParseOpencodeConfigWithoutCasperEntry() {
+    func testOpencodePluginEntriesWithoutCasperEntry() {
         let config = #"""
             {
               "$schema": "https://opencode.ai/config.json",
               "plugin": ["some-other-plugin"]
             }
             """#
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(config), [])
     }
 
-    func testParseOpencodeConfigDoesNotMatchAnUnrelatedPluginNamedCasper() {
+    func testOpencodePluginEntriesDoesNotMatchAnUnrelatedPluginNamedCasper() {
         // The entry must be the package name exactly (optionally `@version`) or a
         // path whose last component is the plugin file. A substring or a suffix is
         // not enough: `@evil/casper-skills-fork` contains the package name and
@@ -368,21 +368,21 @@ final class AgentIntegrationTests: XCTestCase {
                         "@evil/casper-skills-fork", "./plugin/notcasper.js",
                         "casper-skills-fork", "my-casper-skills"]}
             """#
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(config), [])
     }
 
-    func testParseOpencodeConfigMatchesTheExactPackageNameWithOrWithoutAVersion() {
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["casper-skills"]}"#))
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["casper-skills@0.2.0"]}"#))
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["  casper-skills  "]}"#))
+    func testOpencodePluginEntriesMatchesTheExactPackageNameWithOrWithoutAVersion() {
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(#"{"plugin": ["casper-skills"]}"#).isEmpty)
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(#"{"plugin": ["casper-skills@0.2.0"]}"#).isEmpty)
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(#"{"plugin": ["  casper-skills  "]}"#).isEmpty)
     }
 
-    func testParseOpencodeConfigMatchesALocalPluginPath() {
+    func testOpencodePluginEntriesMatchesALocalPluginPath() {
         let config = #"{"plugin": ["./plugin/casper.js"]}"#
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(config).isEmpty)
     }
 
-    func testParseOpencodeConfigMatchesEveryDocumentedGitSpec() {
+    func testOpencodePluginEntriesMatchesEveryDocumentedGitSpec() {
         // `opencode plugin <spec> -g` writes the spec verbatim, and the plugin's
         // README documents the GitHub shorthand plus "any Git spec" alongside it.
         // Each form ends in the repository name, which is what the matcher reads.
@@ -394,13 +394,13 @@ final class AgentIntegrationTests: XCTestCase {
             "git@github.com:alexandreroman/casper-skills.git",
             "file:///Users/alex/Projects/personal/casper-skills",
         ] {
-            XCTAssertTrue(
-                AgentIntegration.parseOpencodeConfig(#"{"plugin": ["\#(entry)"]}"#),
+            XCTAssertFalse(
+                AgentIntegration.opencodePluginEntries(#"{"plugin": ["\#(entry)"]}"#).isEmpty,
                 "expected \(entry) to read as installed")
         }
     }
 
-    func testParseOpencodeConfigMatchesALocalCheckoutDirectory() {
+    func testOpencodePluginEntriesMatchesALocalCheckoutDirectory() {
         // Pointing the config at a working copy is how a contributor runs the plugin,
         // and the trailing slash is a spelling a shell's tab completion produces.
         for entry in [
@@ -408,54 +408,54 @@ final class AgentIntegrationTests: XCTestCase {
             "/Users/alex/Projects/personal/casper-skills/",
             "~/src/casper-skills",
         ] {
-            XCTAssertTrue(
-                AgentIntegration.parseOpencodeConfig(#"{"plugin": ["\#(entry)"]}"#),
+            XCTAssertFalse(
+                AgentIntegration.opencodePluginEntries(#"{"plugin": ["\#(entry)"]}"#).isEmpty,
                 "expected \(entry) to read as installed")
         }
     }
 
-    func testParseOpencodeConfigMatchesAForkOfThePluginRepository() {
+    func testOpencodePluginEntriesMatchesAForkOfThePluginRepository() {
         // Deliberate: the matcher reads the repository name, so a fork counts as
         // installed. A fork carries the integration, and a false "install the plugin"
         // nag costs more trust than a missed one.
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(#"{"plugin": ["github:someone/casper-skills"]}"#))
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(#"{"plugin": ["github:someone/casper-skills"]}"#).isEmpty)
     }
 
-    func testParseOpencodeConfigDoesNotMatchAGitSpecForAnotherRepository() {
+    func testOpencodePluginEntriesDoesNotMatchAGitSpecForAnotherRepository() {
         let config = #"""
             {"plugin": ["github:evil/casper-skills-fork",
                         "git+https://github.com/evil/not-casper-skills.git"]}
             """#
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(config), [])
     }
 
-    func testParseOpencodeConfigWithoutAPluginArray() {
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"$schema": "https://opencode.ai/config.json"}"#))
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"plugin": "casper-skills"}"#))
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(#"{"plugin": [42]}"#))
+    func testOpencodePluginEntriesWithoutAPluginArray() {
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"$schema": "https://opencode.ai/config.json"}"#), [])
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"plugin": "casper-skills"}"#), [])
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"plugin": [42]}"#), [])
     }
 
-    func testParseOpencodeConfigCommentStrippingKeepsEscapedQuotes() {
+    func testOpencodePluginEntriesCommentStrippingKeepsEscapedQuotes() {
         let config = #"""
             {
               "note": "a \" quote and a // slash",
               "plugin": ["casper-skills"]
             }
             """#
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(config).isEmpty)
     }
 
-    func testParseOpencodeConfigCommentedOutEntryIsNotAMatch() {
+    func testOpencodePluginEntriesCommentedOutEntryIsNotAMatch() {
         let config = #"""
             {
               // "plugin": ["casper-skills"]
               "plugin": []
             }
             """#
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(config))
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(config), [])
     }
 
-    func testParseOpencodeConfigFallsBackWhenUnparseable() {
+    func testOpencodePluginEntriesFallsBackWhenUnparseable() {
         // Truncated mid-write: not JSON even after stripping, but the entry is
         // plainly there, so claiming "missing" would be wrong.
         let truncated = #"""
@@ -463,10 +463,10 @@ final class AgentIntegrationTests: XCTestCase {
               "$schema": "https://opencode.ai/config.json",
               "plugin": ["casper-skills@0.2.0"
             """#
-        XCTAssertTrue(AgentIntegration.parseOpencodeConfig(truncated))
+        XCTAssertFalse(AgentIntegration.opencodePluginEntries(truncated).isEmpty)
     }
 
-    func testParseOpencodeConfigFallbackIgnoresACommentedOutEntry() {
+    func testOpencodePluginEntriesFallbackIgnoresACommentedOutEntry() {
         // Unparseable *and* commented out: the fallback scans the comment-stripped
         // text, so the commented entry is not evidence of an install.
         let truncated = #"""
@@ -474,16 +474,16 @@ final class AgentIntegrationTests: XCTestCase {
               // "plugin": ["casper-skills"]
               "plugin": [
             """#
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(truncated))
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(truncated), [])
     }
 
-    func testParseOpencodeConfigFallbackStillRejectsAnAbsentEntry() {
+    func testOpencodePluginEntriesFallbackStillRejectsAnAbsentEntry() {
         let truncated = #"""
             {
               "$schema": "https://opencode.ai/config.json",
               "plugin": ["some-other-plugin"
             """#
-        XCTAssertFalse(AgentIntegration.parseOpencodeConfig(truncated))
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(truncated), [])
     }
 
     // MARK: - opencode plugin version
@@ -544,6 +544,194 @@ final class AgentIntegrationTests: XCTestCase {
             export const CASPER_PLUGIN_VERSION = "0.2.0"
             """#
         XCTAssertEqual(AgentIntegration.parseOpencodeVersion(prefixed), "0.2.0")
+    }
+
+    // MARK: - opencode config entries
+
+    func testOpencodePluginEntriesReturnsOnlyTheMatchingEntriesTrimmed() {
+        let config = #"""
+            {
+              "$schema": "https://opencode.ai/config.json",
+              "plugin": ["some-other-plugin", "  github:alexandreroman/casper-skills  ", "/src/casper-skills"]
+            }
+            """#
+        XCTAssertEqual(
+            AgentIntegration.opencodePluginEntries(config),
+            ["github:alexandreroman/casper-skills", "/src/casper-skills"])
+    }
+
+    func testOpencodePluginEntriesIsEmptyWithoutAMatch() {
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"plugin": ["some-other-plugin"]}"#), [])
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"$schema": "https://opencode.ai/config.json"}"#), [])
+    }
+
+    func testOpencodePluginEntriesFallbackReturnsTheEntriesThemselves() {
+        let truncated = #"""
+            {
+              // "plugin": ["/commented/out/casper-skills"]
+              "plugin": ["github:alexandreroman/casper-skills"
+            """#
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(truncated), ["github:alexandreroman/casper-skills"])
+    }
+
+    // MARK: - package.json version
+
+    func testParsePackageVersionReadsTheVersionField() {
+        let manifest = #"{"name": "casper-skills", "version": "0.2.0", "type": "module"}"#
+        XCTAssertEqual(AgentIntegration.parsePackageVersion(Data(manifest.utf8)), "0.2.0")
+    }
+
+    func testParsePackageVersionReturnsNilForEveryUnusableShape() {
+        for manifest in [
+            #"{"name": "casper-skills"}"#,
+            #"{"name": "casper-skills", "version": 2}"#,
+            #"["casper-skills", "0.2.0"]"#,
+            #"{"version": "0.2.0""#,
+            "",
+        ] {
+            XCTAssertNil(AgentIntegration.parsePackageVersion(Data(manifest.utf8)), "expected nil for \(manifest)")
+        }
+    }
+
+    // MARK: - opencode entry version source
+
+    private static let home = "/stub-home"
+
+    private func versionSource(_ entry: String) -> AgentIntegration.OpencodeVersionSource? {
+        AgentIntegration.opencodeVersionSource(forEntry: entry, homeDirectory: Self.home)
+    }
+
+    func testOpencodeVersionSourceForAGitHubSpecIsTheCachedPackage() {
+        // Verified against opencode 1.18.32: the spec is used verbatim as a path
+        // under `packages/`, so its `/` nests directories and its `:` stays put.
+        XCTAssertEqual(
+            versionSource("github:alexandreroman/casper-skills"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/github:alexandreroman/casper-skills"
+                    + "/node_modules/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceCollapsesTheSlashesOfAGitFileSpec() {
+        // Verified against opencode 1.18.32: the cache path is built with Node's
+        // `path.join`, which collapses the URL's `///` into a single `/`.
+        XCTAssertEqual(
+            versionSource("git+file:///Users/x/casper-skills"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/git+file:/Users/x/casper-skills"
+                    + "/node_modules/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceCollapsesTheSlashesOfAGitHTTPSSpec() {
+        // Inferred rather than verified: opencode takes the same `path.join` route
+        // for every URL spec, so the `//` after the scheme collapses too.
+        XCTAssertEqual(
+            versionSource("git+https://github.com/alexandreroman/casper-skills.git"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/git+https:/github.com/alexandreroman/casper-skills.git"
+                    + "/node_modules/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceForAnAbsoluteCheckoutIsItsPackageManifest() {
+        XCTAssertEqual(
+            versionSource("/Users/alex/Projects/personal/casper-skills"),
+            .packageManifest(path: "/Users/alex/Projects/personal/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceIgnoresATrailingSlash() {
+        XCTAssertEqual(
+            versionSource("/Users/alex/Projects/personal/casper-skills/"),
+            .packageManifest(path: "/Users/alex/Projects/personal/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceExpandsAHomeRelativePath() {
+        XCTAssertEqual(
+            versionSource("~/src/casper-skills"),
+            .packageManifest(path: "\(Self.home)/src/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceReadsAFileURLAsALocalPath() {
+        XCTAssertEqual(
+            versionSource("file:///Users/alex/Projects/personal/casper-skills"),
+            .packageManifest(path: "/Users/alex/Projects/personal/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceForAPluginFileIsTheFileItself() {
+        XCTAssertEqual(
+            versionSource("/Users/alex/src/casper-skills/casper.js"),
+            .pluginFile(path: "/Users/alex/src/casper-skills/casper.js"))
+    }
+
+    func testOpencodeVersionSourceKeepsARefOrVersionSpecVerbatimInTheCachePath() {
+        XCTAssertEqual(
+            versionSource("github:alexandreroman/casper-skills#main"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/github:alexandreroman/casper-skills#main"
+                    + "/node_modules/casper-skills/package.json"))
+        XCTAssertEqual(
+            versionSource("casper-skills@0.2.0"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/casper-skills@0.2.0"
+                    + "/node_modules/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceCutsARefOrQueryOffALocalPath() {
+        XCTAssertEqual(
+            versionSource("/src/casper-skills#main"),
+            .packageManifest(path: "/src/casper-skills/package.json"))
+        XCTAssertEqual(
+            versionSource("~/src/casper-skills/?watch=1"),
+            .packageManifest(path: "\(Self.home)/src/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceForAPluginFileInAnyLocalSpelling() {
+        XCTAssertEqual(
+            versionSource("~/src/casper-skills/casper.js"),
+            .pluginFile(path: "\(Self.home)/src/casper-skills/casper.js"))
+        XCTAssertEqual(
+            versionSource("file:///src/casper-skills/casper.js"),
+            .pluginFile(path: "/src/casper-skills/casper.js"))
+    }
+
+    func testOpencodeVersionSourceDecodesAPercentEncodedFileURL() {
+        XCTAssertEqual(
+            versionSource("file:///a%20b/casper-skills"),
+            .packageManifest(path: "/a b/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceAcceptsALocalhostFileURL() {
+        XCTAssertEqual(
+            versionSource("file://localhost/src/casper-skills"),
+            .packageManifest(path: "/src/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceRejectsAFileURLWithAnotherHost() {
+        // `URL` would drop the host and leave `/share/…` or `/src/…`, a path on this
+        // machine that the entry never named.
+        XCTAssertNil(versionSource("file://server/share/casper-skills"))
+        XCTAssertNil(versionSource("file://~/src/casper-skills"))
+    }
+
+    func testOpencodeVersionSourceRejectsAParentDirectorySegment() {
+        for entry in [
+            "/src/../casper-skills",
+            "~/../casper-skills",
+            "github:alexandreroman/../casper-skills",
+            "file:///src/%2E%2E/casper-skills",
+        ] {
+            XCTAssertNil(versionSource(entry), "expected nil for \(entry)")
+        }
+    }
+
+    func testOpencodeVersionSourceIgnoresARelativePath() {
+        // Relative to what opencode considers the config's directory, which Casper
+        // does not try to reproduce: the version is simply unknown.
+        XCTAssertNil(versionSource("./plugin/casper.js"))
+        XCTAssertNil(versionSource("../casper-skills"))
+    }
+
+    func testOpencodeVersionSourceIsNilForAnEmptyEntry() {
+        XCTAssertNil(versionSource(""))
+        XCTAssertNil(versionSource("   "))
     }
 
     // MARK: - Codex cache

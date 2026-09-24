@@ -213,12 +213,12 @@ enum AgentIntegration {
     ///
     /// Every agent reports its installed version as an unordered set of candidates —
     /// one Claude registry record per scope, one Codex cache directory per
-    /// marketplace — so picking any candidate but the highest turns "installed from
-    /// two places, one of them stale" into a false `.outdated` nag. When nothing
-    /// parses as a version, the lexicographically last candidate is returned
-    /// verbatim, which keeps the status at "installed": `isOutdated` refuses to nag
-    /// on a version it cannot read.
-    private static func highestVersion(among candidates: [String]) -> String? {
+    /// marketplace, one opencode plugin file or config entry per install shape — so
+    /// picking any candidate but the highest turns "installed from two places, one
+    /// of them stale" into a false `.outdated` nag. When nothing parses as a version,
+    /// the lexicographically last candidate is returned verbatim, which keeps the
+    /// status at "installed": `isOutdated` refuses to nag on a version it cannot read.
+    static func highestVersion(among candidates: [String]) -> String? {
         let parsed = candidates.compactMap { candidate -> (name: String, components: [Int])? in
             guard let components = versionComponents(candidate) else { return nil }
             return (candidate, components)
@@ -367,7 +367,9 @@ enum AgentIntegration {
 
     // MARK: - opencode
 
-    /// Whether an opencode config registers the Casper plugin.
+    /// The `plugin` entries of an opencode config that refer to the Casper plugin,
+    /// trimmed but otherwise verbatim, in the order they appear. An empty list means
+    /// the config does not register the plugin.
     ///
     /// The input is `~/.config/opencode/opencode.json` or `.jsonc`. Despite the
     /// `.json` name the format is **JSONC**: `//` and `/* */` comments are legal and
@@ -383,18 +385,126 @@ enum AgentIntegration {
     /// not mistaken for the integration.
     ///
     /// When parsing fails, the string literals of the comment-stripped text are
-    /// scanned instead of returning a hard `false`: a config Casper cannot parse is
+    /// scanned instead of returning an empty list: a config Casper cannot parse is
     /// no reason to tell the user their plugin is missing. The fallback scans the
     /// *stripped* text, not the raw text, so a commented-out entry does not count as
     /// an install on this path either.
-    static func parseOpencodeConfig(_ text: String) -> Bool {
+    ///
+    /// The entries themselves are returned, not just whether one exists, because
+    /// each says where opencode loads the plugin from, and therefore where its
+    /// version can be read — see `opencodeVersionSource`.
+    static func opencodePluginEntries(_ text: String) -> [String] {
         let stripped = stripJSONComments(text)
-        guard let root = (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) as? [String: Any] else {
-            return quotedStrings(in: stripped).contains(where: isOpencodePluginEntry)
+        let candidates: [String]
+        if let root = (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) as? [String: Any] {
+            candidates = (root["plugin"] as? [Any])?.compactMap { $0 as? String } ?? []
+        } else {
+            candidates = quotedStrings(in: stripped)
+        }
+        return candidates
+            .filter(isOpencodePluginEntry)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    /// Where the version of the plugin an opencode config entry loads can be read.
+    enum OpencodeVersionSource: Equatable, Sendable {
+        /// A `package.json`, whose `version` field is the plugin's version.
+        case packageManifest(path: String)
+        /// The plugin file itself, read with `parseOpencodeVersion`.
+        case pluginFile(path: String)
+    }
+
+    /// Resolves an opencode `plugin` entry to the file carrying the version of what it
+    /// loads, or nil when Casper cannot tell.
+    ///
+    /// - A local path — absolute, `~/`-relative or a `file://` URL — is loaded by
+    ///   opencode in place: a checkout directory's version is its `package.json`, and
+    ///   a path to a `.js` file is the plugin file itself. A `#ref` or `?query`
+    ///   suffix is cut, as `isOpencodePluginEntry` does. A `file://` URL naming a host
+    ///   other than `localhost` is not on this machine, so it yields nil.
+    /// - A relative path is resolved by opencode against a directory Casper does not
+    ///   try to reproduce, so it yields nil.
+    /// - Anything else is a Git or npm spec, which opencode materialises under
+    ///   `~/.cache/opencode/packages/<entry>/node_modules/casper-skills/`. The entry
+    ///   is joined in as-is, except that runs of `/` collapse, as Node's `path.join`
+    ///   does: `git+file:///src/repo` lands under `packages/git+file:/src/repo/`.
+    ///   That layout is verified against a real opencode 1.18.32 install for the
+    ///   `github:owner/repo` shorthand (the `/` nests directories, the `:` stays in
+    ///   the name) and for `git+file:` URLs; other shapes that opencode lays out
+    ///   differently simply miss.
+    ///
+    /// A known false negative is left alone: when opencode's cache directory sits
+    /// behind a symlink, its install fails and the plugin never loads, yet the cached
+    /// `package.json` exists, so a hand-added entry reads as installed. That is an
+    /// opencode bug, and Casper does not work around it.
+    ///
+    /// An entry with a `..` path segment yields nil whatever its shape, so no entry
+    /// can steer the probe outside the directory it names.
+    ///
+    /// Only paths are computed here — no file is read. A path that turns out not to
+    /// exist is the caller's "version unknown", never a reason to nag.
+    static func opencodeVersionSource(forEntry entry: String, homeDirectory: String) -> OpencodeVersionSource? {
+        let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("."), !hasParentDirectorySegment(trimmed) else { return nil }
+
+        if trimmed.hasPrefix("file://") {
+            // `URL` rather than dropping the scheme by hand, so a percent-encoded
+            // space decodes to the real path and a `#`/`?` suffix is left out of it.
+            // `URL` also silently drops a host, so it is checked explicitly: a remote
+            // host or a `file://~/…` would otherwise read as a local absolute path.
+            guard let url = URL(string: trimmed) else { return nil }
+            let host = url.host(percentEncoded: false) ?? ""
+            guard host.isEmpty || host == "localhost" else { return nil }
+            return localVersionSource(atPath: url.path(percentEncoded: false))
+        }
+        if trimmed.hasPrefix("~/") {
+            let pathInHome = strippingReferenceAndQuery(String(trimmed.dropFirst(2)))
+            return localVersionSource(atPath: (homeDirectory as NSString).appendingPathComponent(pathInHome))
+        }
+        if trimmed.hasPrefix("/") {
+            return localVersionSource(atPath: strippingReferenceAndQuery(trimmed))
         }
 
-        let entries = (root["plugin"] as? [Any])?.compactMap { $0 as? String } ?? []
-        return entries.contains(where: isOpencodePluginEntry)
+        // `appendingPathComponent` collapses each run of `/` in the spec, mirroring the
+        // Node `path.join` opencode builds this path with: `git+file:///x` is cached
+        // under `packages/git+file:/x/`. The URL-spec tests pin that behaviour.
+        let packageDirectory = (homeDirectory as NSString)
+            .appendingPathComponent(".cache/opencode/packages/\(trimmed)/node_modules/\(opencodePackageName)")
+        return .packageManifest(path: (packageDirectory as NSString).appendingPathComponent("package.json"))
+    }
+
+    /// The version source of a plugin opencode loads in place from an absolute path,
+    /// or nil when the path is not absolute or climbs out through `..` — a decoded
+    /// `file://` URL can spell either even when the raw entry did not.
+    private static func localVersionSource(atPath path: String) -> OpencodeVersionSource? {
+        guard path.hasPrefix("/"), !hasParentDirectorySegment(path) else { return nil }
+
+        var path = path
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        if path.lowercased().hasSuffix(".js") {
+            return .pluginFile(path: path)
+        }
+        return .packageManifest(path: (path as NSString).appendingPathComponent("package.json"))
+    }
+
+    /// Whether a path or spec has a segment that is exactly `..`.
+    private static func hasParentDirectorySegment(_ path: String) -> Bool {
+        path.split(separator: "/").contains("..")
+    }
+
+    /// Cuts a `#ref` or `?query` suffix: neither is part of a name or a path.
+    private static func strippingReferenceAndQuery(_ specification: String) -> String {
+        String(specification.prefix { $0 != "#" && $0 != "?" })
+    }
+
+    /// Reads the `version` field of a `package.json`, or nil when the file is not a
+    /// JSON object or its `version` is absent or not a string.
+    ///
+    /// Like every parser here, a nil means "version unknown", which the caller must
+    /// never turn into a nag.
+    static func parsePackageVersion(_ data: Data) -> String? {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return root["version"] as? String
     }
 
     /// Reads the version an installed opencode plugin file declares.
@@ -458,7 +568,7 @@ enum AgentIntegration {
         // A Git spec can pin a `#ref` and a URL can carry a `?query`; neither belongs
         // to the name. They are cut before the split because a query string may
         // itself contain slashes and would otherwise become the last component.
-        specification = String(specification.prefix { $0 != "#" && $0 != "?" })
+        specification = strippingReferenceAndQuery(specification)
         // A directory is often written with a trailing slash, which would otherwise
         // leave the last component empty.
         while specification.hasSuffix("/") { specification.removeLast() }

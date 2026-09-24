@@ -60,6 +60,19 @@ final class AgentIntegrationProbeTests: XCTestCase {
 
     private static let opencodeConfig = #"{"plugin": ["casper-skills"]}"#
 
+    private static let opencodeGitHubSpec = "github:alexandreroman/casper-skills"
+    private static let opencodeGitHubConfig = #"{"plugin": ["\#(opencodeGitHubSpec)"]}"#
+    /// Where opencode materialises a Git spec install: the spec verbatim under
+    /// `packages/`, as verified against a real opencode 1.18.32 install.
+    private static let opencodeCachedPackagePath =
+        "\(home)/.cache/opencode/packages/\(opencodeGitHubSpec)/node_modules/casper-skills/package.json"
+
+    private static let opencodeCheckoutPath = "/src/casper-skills"
+
+    private static func packageManifest(version: String) -> String {
+        #"{"name": "casper-skills", "version": "\#(version)", "type": "module"}"#
+    }
+
     private static let codexConfigDisabled = """
         [plugins."\(AgentIntegration.pluginID)"]
         enabled = false
@@ -315,7 +328,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
             environment: makeEnvironment(
                 executables: ["opencode"],
                 files: [Self.opencodeConfigPath: Self.opencodeConfig]))
-        // A config-only install has no local file to read a version from.
+        // Nothing materialised in opencode's package cache: the version is unknown.
         XCTAssertEqual(probe.status(for: .opencode), .installed)
     }
 
@@ -336,9 +349,9 @@ final class AgentIntegrationProbeTests: XCTestCase {
     }
 
     func testOpencodeFoundInJSONCConfigPointingAtALocalCheckout() {
-        // The install `opencode plugin <spec> -g` performs writes the spec verbatim
-        // and copies no file into the plugin directories, so a contributor running
-        // from a working copy has nothing on disk but this one config entry.
+        // A contributor running from a working copy registers it by path, and no
+        // file lands in the plugin directories. The checkout's `package.json` is not
+        // readable here, so the version is unknown and the install is `.installed`.
         let probe = AgentIntegrationProbe(
             environment: makeEnvironment(
                 executables: ["opencode"],
@@ -372,6 +385,111 @@ final class AgentIntegrationProbeTests: XCTestCase {
                 files: ["\(Self.opencodePluginPath)/casper.js": "export const CasperPlugin = async () => ({})"],
                 directories: [Self.opencodePluginPath: ["casper.js"]]))
         XCTAssertEqual(probe.status(for: .opencode), .installed)
+    }
+
+    func testOpencodeGitHubSpecWithAnOutdatedCachedPackageIsOutdated() {
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    Self.opencodeConfigPath: Self.opencodeGitHubConfig,
+                    Self.opencodeCachedPackagePath: Self.packageManifest(version: Self.oldVersion),
+                ]))
+        XCTAssertEqual(probe.status(for: .opencode), .outdated(installed: Self.oldVersion))
+    }
+
+    func testOpencodeGitHubSpecWithACurrentCachedPackageIsInstalled() {
+        // Paired with a stale plugin file, so `.installed` can only come from the
+        // cached package actually being read; on its own, an unread cache would pass
+        // as "version unknown".
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    "\(Self.opencodePluginPath)/casper.js": Self.opencodePlugin(version: Self.oldVersion),
+                    Self.opencodeConfigJSONCPath: Self.opencodeGitHubConfig,
+                    Self.opencodeCachedPackagePath: Self.packageManifest(version: Self.currentVersion),
+                ],
+                directories: [Self.opencodePluginPath: ["casper.js"]]))
+        XCTAssertEqual(probe.status(for: .opencode), .installed)
+    }
+
+    func testOpencodeHighestVersionWinsAcrossBothPluginDirectories() {
+        // A stale `plugin/` file must not hide a current one in `plugins/`.
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    "\(Self.opencodePluginPath)/casper.js": Self.opencodePlugin(version: Self.oldVersion),
+                    "\(Self.opencodePluginsPath)/casper.js": Self.opencodePlugin(version: Self.currentVersion),
+                ],
+                directories: [
+                    Self.opencodePluginPath: ["casper.js"],
+                    Self.opencodePluginsPath: ["casper.js"],
+                ]))
+        XCTAssertEqual(probe.status(for: .opencode), .installed)
+    }
+
+    func testOpencodeLocalCheckoutWithAnOutdatedPackageManifestIsOutdated() {
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    Self.opencodeConfigPath: #"{"plugin": ["\#(Self.opencodeCheckoutPath)/"]}"#,
+                    "\(Self.opencodeCheckoutPath)/package.json": Self.packageManifest(version: Self.oldVersion),
+                ]))
+        XCTAssertEqual(probe.status(for: .opencode), .outdated(installed: Self.oldVersion))
+    }
+
+    func testOpencodeConfigEntryPointingAtAPluginFileReadsItsVersionConstant() {
+        let pluginFilePath = "\(Self.opencodeCheckoutPath)/casper.js"
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    Self.opencodeConfigPath: #"{"plugin": ["\#(pluginFilePath)"]}"#,
+                    pluginFilePath: Self.opencodePlugin(version: Self.oldVersion),
+                ]))
+        XCTAssertEqual(probe.status(for: .opencode), .outdated(installed: Self.oldVersion))
+    }
+
+    func testOpencodeHighestVersionWinsAcrossPluginFileAndConfigEntry() {
+        // Two installs, one stale: whichever the probe happens to read first, the
+        // current one decides, exactly as with Codex's several marketplaces.
+        let staleFileCurrentConfig = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    "\(Self.opencodePluginPath)/casper.js": Self.opencodePlugin(version: Self.oldVersion),
+                    Self.opencodeConfigPath: Self.opencodeGitHubConfig,
+                    Self.opencodeCachedPackagePath: Self.packageManifest(version: Self.currentVersion),
+                ],
+                directories: [Self.opencodePluginPath: ["casper.js"]]))
+        XCTAssertEqual(staleFileCurrentConfig.status(for: .opencode), .installed)
+
+        let currentFileStaleConfig = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    "\(Self.opencodePluginPath)/casper.js": Self.opencodePlugin(version: Self.currentVersion),
+                    Self.opencodeConfigPath: Self.opencodeGitHubConfig,
+                    Self.opencodeCachedPackagePath: Self.packageManifest(version: Self.oldVersion),
+                ],
+                directories: [Self.opencodePluginPath: ["casper.js"]]))
+        XCTAssertEqual(currentFileStaleConfig.status(for: .opencode), .installed)
+    }
+
+    func testOpencodeOutdatedCarriesTheHighestVersionWhenEveryInstallIsStale() {
+        let probe = AgentIntegrationProbe(
+            environment: makeEnvironment(
+                executables: ["opencode"],
+                files: [
+                    Self.opencodeConfigPath: Self.opencodeGitHubConfig,
+                    Self.opencodeCachedPackagePath: Self.packageManifest(version: "0.0.2"),
+                    Self.opencodeConfigJSONCPath: #"{"plugin": ["\#(Self.opencodeCheckoutPath)"]}"#,
+                    "\(Self.opencodeCheckoutPath)/package.json": Self.packageManifest(version: Self.oldVersion),
+                ]))
+        XCTAssertEqual(probe.status(for: .opencode), .outdated(installed: "0.0.2"))
     }
 
     // MARK: - Codex

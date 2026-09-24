@@ -396,9 +396,36 @@ is the direction to fail in, since a fork carries the integration and a false
 Despite the `.json` name the config format is **JSONC**, and real files carry
 comments, so comments are stripped before parsing — never inside a string
 literal, since opencode's own default config holds
-`"$schema": "https://opencode.ai/config.json"`. The version exists only inside a
-local plugin file, as `export const CASPER_PLUGIN_VERSION = "…"`; a config-only
-install has none to read and is `installed`, not `outdated`.
+`"$schema": "https://opencode.ai/config.json"`.
+
+Most install shapes carry a version. A plugin file declares it as
+`export const CASPER_PLUGIN_VERSION = "…"`. A config entry is resolved to where
+opencode loads the plugin from:
+
+- a local path — absolute, `~/…` or a `file://` URL with no host or
+  `localhost` — is loaded in place, so a checkout directory's version is its
+  `package.json`'s `version`, and a path to a `.js` file is read like a plugin
+  file;
+- a Git or npm spec is materialised at
+  `~/.cache/opencode/packages/<entry>/node_modules/casper-skills/`, whose
+  `package.json` carries the version. The entry is joined in as-is, except
+  that runs of `/` collapse, as Node's `path.join` does — `git+file:///src/repo`
+  lands under `packages/git+file:/src/repo/`. That is verified against a real
+  opencode 1.18.32 install for `github:owner/repo` (the `/` nests directories,
+  the `:` stays in the name) and for `git+file:` URLs; other shapes that
+  opencode lays out differently simply miss. One known false negative stays:
+  behind a symlinked cache directory opencode's install fails, yet the cached
+  `package.json` exists, so a hand-added entry reads as installed — an
+  opencode bug Casper does not work around;
+- a relative path is resolved against a directory Casper does not reproduce, so
+  it yields no version, and neither does a `file://` URL naming a remote host or
+  any entry with a `..` path segment.
+
+All readable versions, from the plugin files in both directories and from every
+entry in both config files, are gathered and the **highest** wins, as with
+Codex's marketplaces, so the answer does not depend on read order. No readable
+version anywhere — a cache opencode has not filled yet, a plugin file predating
+the constant, a relative path — is `installed`, not `outdated`.
 
 **Codex.** Installs land in
 `~/.codex/plugins/cache/<marketplace>/casper/<version>/`, so the version is a
