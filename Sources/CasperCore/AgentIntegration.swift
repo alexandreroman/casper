@@ -425,11 +425,18 @@ enum AgentIntegration {
     /// - A relative path is resolved by opencode against a directory Casper does not
     ///   try to reproduce, so it yields nil.
     /// - Anything else is a Git or npm spec, which opencode materialises under
-    ///   `~/.cache/opencode/packages/<entry verbatim>/node_modules/casper-skills/`.
-    ///   That layout is verified for the `github:owner/repo` shorthand against a real
-    ///   opencode 1.18.32 install (the `/` nests directories, the `:` stays in the
-    ///   name); other spec shapes are unverified and simply miss when opencode lays
-    ///   them out differently.
+    ///   `~/.cache/opencode/packages/<entry>/node_modules/casper-skills/`. The entry
+    ///   is joined in as-is, except that runs of `/` collapse, as Node's `path.join`
+    ///   does: `git+file:///src/repo` lands under `packages/git+file:/src/repo/`.
+    ///   That layout is verified against a real opencode 1.18.32 install for the
+    ///   `github:owner/repo` shorthand (the `/` nests directories, the `:` stays in
+    ///   the name) and for `git+file:` URLs; other shapes that opencode lays out
+    ///   differently simply miss.
+    ///
+    /// A known false negative is left alone: when opencode's cache directory sits
+    /// behind a symlink, its install fails and the plugin never loads, yet the cached
+    /// `package.json` exists, so a hand-added entry reads as installed. That is an
+    /// opencode bug, and Casper does not work around it.
     ///
     /// An entry with a `..` path segment yields nil whatever its shape, so no entry
     /// can steer the probe outside the directory it names.
@@ -458,6 +465,9 @@ enum AgentIntegration {
             return localVersionSource(atPath: strippingReferenceAndQuery(trimmed))
         }
 
+        // `appendingPathComponent` collapses each run of `/` in the spec, mirroring the
+        // Node `path.join` opencode builds this path with: `git+file:///x` is cached
+        // under `packages/git+file:/x/`. The URL-spec tests pin that behaviour.
         let packageDirectory = (homeDirectory as NSString)
             .appendingPathComponent(".cache/opencode/packages/\(trimmed)/node_modules/\(opencodePackageName)")
         return .packageManifest(path: (packageDirectory as NSString).appendingPathComponent("package.json"))

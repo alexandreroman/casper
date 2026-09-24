@@ -611,6 +611,26 @@ final class AgentIntegrationTests: XCTestCase {
                     + "/node_modules/casper-skills/package.json"))
     }
 
+    func testOpencodeVersionSourceCollapsesTheSlashesOfAGitFileSpec() {
+        // Verified against opencode 1.18.32: the cache path is built with Node's
+        // `path.join`, which collapses the URL's `///` into a single `/`.
+        XCTAssertEqual(
+            versionSource("git+file:///Users/x/casper-skills"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/git+file:/Users/x/casper-skills"
+                    + "/node_modules/casper-skills/package.json"))
+    }
+
+    func testOpencodeVersionSourceCollapsesTheSlashesOfAGitHTTPSSpec() {
+        // Inferred rather than verified: opencode takes the same `path.join` route
+        // for every URL spec, so the `//` after the scheme collapses too.
+        XCTAssertEqual(
+            versionSource("git+https://github.com/alexandreroman/casper-skills.git"),
+            .packageManifest(
+                path: "\(Self.home)/.cache/opencode/packages/git+https:/github.com/alexandreroman/casper-skills.git"
+                    + "/node_modules/casper-skills/package.json"))
+    }
+
     func testOpencodeVersionSourceForAnAbsoluteCheckoutIsItsPackageManifest() {
         XCTAssertEqual(
             versionSource("/Users/alex/Projects/personal/casper-skills"),

@@ -407,11 +407,16 @@ opencode loads the plugin from:
   `package.json`'s `version`, and a path to a `.js` file is read like a plugin
   file;
 - a Git or npm spec is materialised at
-  `~/.cache/opencode/packages/<entry verbatim>/node_modules/casper-skills/`,
-  whose `package.json` carries the version. For `github:owner/repo` that is
-  verified against a real opencode 1.18.32 install — the `/` nests directories,
-  the `:` stays in the name; other spec shapes are unverified and simply miss if
-  opencode lays them out differently;
+  `~/.cache/opencode/packages/<entry>/node_modules/casper-skills/`, whose
+  `package.json` carries the version. The entry is joined in as-is, except
+  that runs of `/` collapse, as Node's `path.join` does — `git+file:///src/repo`
+  lands under `packages/git+file:/src/repo/`. That is verified against a real
+  opencode 1.18.32 install for `github:owner/repo` (the `/` nests directories,
+  the `:` stays in the name) and for `git+file:` URLs; other shapes that
+  opencode lays out differently simply miss. One known false negative stays:
+  behind a symlinked cache directory opencode's install fails, yet the cached
+  `package.json` exists, so a hand-added entry reads as installed — an
+  opencode bug Casper does not work around;
 - a relative path is resolved against a directory Casper does not reproduce, so
   it yields no version, and neither does a `file://` URL naming a remote host or
   any entry with a `..` path segment.
