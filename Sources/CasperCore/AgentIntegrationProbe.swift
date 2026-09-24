@@ -163,46 +163,85 @@ public struct AgentIntegrationProbe: Sendable {
     /// file dropped in the plugin directory, or an entry in the config's `plugin`
     /// array (a Git spec or a local path opencode resolves itself).
     private func opencodeStatus() -> AgentIntegrationStatus {
-        let pluginFile = installedOpencodePluginFile()
-        guard pluginFile != nil || opencodeConfigRegistersPlugin() else { return .missing }
+        let pluginFiles = installedOpencodePluginFiles()
+        let configEntries = opencodeConfigPluginEntries()
+        guard !pluginFiles.isEmpty || !configEntries.isEmpty else { return .missing }
 
-        // The version only exists inside a local plugin file. A config-only install
-        // has none to read, and a plugin file predating the version constant (or
-        // simply unreadable) has none either. All three are "installed, version
-        // unknown" — reported as `.installed`, never `.outdated`, because an
+        // Most install shapes carry a version: a plugin file declares one, a Git
+        // spec's copy in opencode's package cache has a `package.json`, and a local
+        // checkout has its own. All readable versions are gathered before one is
+        // picked, and the highest wins — as with Codex's marketplaces — so a user
+        // with one stale and one current install is not nagged depending on which
+        // the probe happened to read first.
+        var versions: [String] = []
+        for pluginFile in pluginFiles {
+            if let version = opencodePluginFileVersion(at: pluginFile) {
+                versions.append(version)
+            }
+        }
+        for entry in configEntries {
+            if let version = opencodeVersion(forConfigEntry: entry) {
+                versions.append(version)
+            }
+        }
+
+        // No readable version anywhere — a cache opencode has not filled yet, a
+        // plugin file predating the version constant, a relative path — is
+        // "installed, version unknown": `.installed`, never `.outdated`, because an
         // unreadable version is not evidence of a stale install and a false "update
         // your plugin" nag costs more trust than a missed one.
-        guard let pluginFile,
-              let source = environment.fileContents(pluginFile),
-              let version = AgentIntegration.parseOpencodeVersion(String(decoding: source, as: UTF8.self))
-        else {
-            return .installed
-        }
+        guard let version = AgentIntegration.highestVersion(among: versions) else { return .installed }
         return status(forInstalledVersion: version)
     }
 
-    /// Path of an installed opencode plugin file, or nil when none is present.
-    /// Both directory spellings are valid to opencode's loader, so both are checked.
-    private func installedOpencodePluginFile() -> String? {
-        for directory in AgentIntegration.opencodePluginDirectories {
-            let directoryPath = homePath(directory)
-            guard environment.directoryEntries(directoryPath).contains(AgentIntegration.opencodePluginFileName) else {
-                continue
-            }
-            return joinPath(directoryPath, AgentIntegration.opencodePluginFileName)
+    /// The version a config entry's plugin declares, read from wherever
+    /// `AgentIntegration.opencodeVersionSource` says it lives, or nil when unknown.
+    private func opencodeVersion(forConfigEntry entry: String) -> String? {
+        let source = AgentIntegration.opencodeVersionSource(forEntry: entry, homeDirectory: environment.homeDirectory)
+        switch source {
+        case .packageManifest(let path):
+            guard let manifest = environment.fileContents(path) else { return nil }
+            return AgentIntegration.parsePackageVersion(manifest)
+        case .pluginFile(let path):
+            return opencodePluginFileVersion(at: path)
+        case nil:
+            return nil
         }
-        return nil
     }
 
-    /// Whether either spelling of the opencode config registers the Casper plugin.
-    /// The `.jsonc` extension is the honest one — the format is JSONC under both
-    /// names — but `.json` is what opencode writes, so both occur in the wild.
-    private func opencodeConfigRegistersPlugin() -> Bool {
+    /// The `CASPER_PLUGIN_VERSION` a plugin file declares, or nil when the file is
+    /// unreadable or declares none.
+    private func opencodePluginFileVersion(at path: String) -> String? {
+        guard let source = environment.fileContents(path) else { return nil }
+        return AgentIntegration.parseOpencodeVersion(String(decoding: source, as: UTF8.self))
+    }
+
+    /// Paths of every installed opencode plugin file, empty when none is present.
+    /// Both directory spellings are valid to opencode's loader, so both are checked,
+    /// and a file in each is a separate install with its own version.
+    private func installedOpencodePluginFiles() -> [String] {
+        var pluginFiles: [String] = []
+        for directory in AgentIntegration.opencodePluginDirectories {
+            let directoryPath = homePath(directory)
+            if environment.directoryEntries(directoryPath).contains(AgentIntegration.opencodePluginFileName) {
+                pluginFiles.append(joinPath(directoryPath, AgentIntegration.opencodePluginFileName))
+            }
+        }
+        return pluginFiles
+    }
+
+    /// The Casper plugin entries registered by either spelling of the opencode
+    /// config, `opencode.json`'s first. The `.jsonc` extension is the honest one —
+    /// the format is JSONC under both names — but `.json` is what opencode writes, so
+    /// both occur in the wild. Both files are read, because each entry is a separate
+    /// place a version can come from.
+    private func opencodeConfigPluginEntries() -> [String] {
+        var entries: [String] = []
         for fileName in ["opencode.json", "opencode.jsonc"] {
             guard let data = environment.fileContents(homePath(".config/opencode/\(fileName)")) else { continue }
-            if AgentIntegration.parseOpencodeConfig(String(decoding: data, as: UTF8.self)) { return true }
+            entries.append(contentsOf: AgentIntegration.opencodePluginEntries(String(decoding: data, as: UTF8.self)))
         }
-        return false
+        return entries
     }
 
     // MARK: - Codex

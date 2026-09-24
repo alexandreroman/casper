@@ -8,6 +8,12 @@ CI, test, and documentation-only work is left out.
 
 ## [Unreleased]
 
+### Fixed
+
+- The outdated-integration reminder now also covers opencode installs
+  registered from Git or a local checkout — the install the integration
+  documents — which previously never reported their version.
+
 ## [0.1.0] - 2026-09-23
 
 Initial release.
