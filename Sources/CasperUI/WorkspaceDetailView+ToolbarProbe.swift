@@ -400,7 +400,7 @@ struct ToolbarProbeSample {
 ///   layout passes that come with it;
 /// - a per-pass delta that FLUCTUATES. The declared width subtracts the shrink the
 ///   previous pass measured (see
-///   `WorkspaceDetailView.rowWidth(detailFrame:undershoot:)`), so a delta that
+///   `WorkspaceDetailView.rowWidth(detailFrame:undershoot:isFullScreen:)`), so a delta that
 ///   wobbles makes the declared width wobble non-monotonically — and a
 ///   non-monotonic width can walk the row's `ViewThatFits` ladder back UP a rung and
 ///   down again inside one drag, which is a visible flicker of the chips. A
@@ -513,7 +513,12 @@ enum TitleBarResizeTrace {
 
         let window = WorkspaceDetailView.workspaceWindow()
         let content = window.map { $0.contentRect(forFrameRect: $0.frame).width }
-        let row = WorkspaceDetailView.rowWidth(detailFrame: detailFrame, undershoot: undershoot)
+        // Read off the window rather than threaded from the view's `isFullScreen`, so
+        // `row=` can disagree with the declared row for the length of a full-screen
+        // transition — which that flag deliberately leads or lags — and only then.
+        let isFullScreen = window?.styleMask.contains(.fullScreen) == true
+        let row = WorkspaceDetailView.rowWidth(
+            detailFrame: detailFrame, undershoot: undershoot, isFullScreen: isFullScreen)
         CasperLog.app.debug(
             """
             TIERPROBE TRACE seq=\(sequence, privacy: .public) \
