@@ -328,10 +328,11 @@ cold-layout height estimates differ between the two, so a single runner would
 only ever show it as a failure on the other machine. Tagging a `v*` release
 builds and publishes `Casper.app` as a GitHub Release
 ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), along with
-the Sparkle `appcast.xml` feed the in-app updater reads. The release job signs
-the archive with the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is
-missing — an unsigned feed would be rejected by every installed copy. See the
-note
+the Sparkle `appcast.xml` feed the in-app updater reads. The release description
+is the version's `CHANGELOG.md` section followed by the install notes; the job
+fails early if that section is missing. The release job signs the archive with
+the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is missing — an
+unsigned feed would be rejected by every installed copy. See the note
 [`sparkle-eddsa-key.md`](./.claude/project-memory/references/sparkle-eddsa-key.md).
 
 ## Architecture

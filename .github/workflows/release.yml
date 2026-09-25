@@ -70,6 +70,20 @@ jobs:
             echo "bundle=$(git rev-list --count HEAD)"
           } >> "$GITHUB_OUTPUT"
 
+      # The release description is the version's CHANGELOG.md section followed
+      # by the install notes. Generated this early so a missing changelog entry
+      # fails in seconds rather than after the build and test. The file sits
+      # next to appcast.xml, outside dist/ (which `make dist` wipes), so the
+      # dry-run artifact keeps its dist/ layout.
+      - name: Generate release notes
+        id: notes
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+        run: |
+          NOTES="release-description.md"
+          Scripts/release-notes.sh "$SHORT" > "$NOTES"
+          echo "path=$NOTES" >> "$GITHUB_OUTPUT"
+
       # A tag can point at any commit, including one CI never ran. Sparkle
       # auto-updates every installed copy to whatever this job publishes, so the
       # suite runs here too rather than trusting that the tagged SHA was green.
@@ -125,6 +139,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHORT: ${{ steps.version.outputs.short }}
           TAG: ${{ steps.version.outputs.tag }}
+          NOTES: ${{ steps.notes.outputs.path }}
         run: |
           ZIP="dist/Casper-${SHORT}-arm64.zip"
           SUM="dist/Casper-${SHORT}-arm64.zip.sha256"
@@ -136,7 +151,7 @@ jobs:
           else
             gh release create "$TAG" "$ZIP" "$SUM" "$DSYM" appcast.xml \
               --title "Casper ${SHORT}" \
-              --notes-file Packaging/release-notes.md
+              --notes-file "$NOTES"
           fi
 
       - name: Upload build artifacts (dry-run)
@@ -149,3 +164,4 @@ jobs:
             dist/Casper-${{ steps.version.outputs.short }}-arm64.zip.sha256
             dist/Casper-${{ steps.version.outputs.short }}-arm64.dSYM.zip
             appcast.xml
+            ${{ steps.notes.outputs.path }}

@@ -9,7 +9,8 @@ type: reference
 Every `v*` tag is preceded by a dry-run of `.github/workflows/release.yml`
 through `workflow_dispatch`. It runs the full job (tests, `make dist`, Sparkle
 signing, appcast generation) but skips the publish step and uploads the zip,
-its `.sha256`, the dSYM and `appcast.xml` as a build artifact instead.
+its `.sha256`, the dSYM, `appcast.xml` and `release-description.md` (the
+release description, previewable before tagging) as a build artifact instead.
 
 **Why:** two gaps make a green CI insufficient.
 
