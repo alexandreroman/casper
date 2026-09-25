@@ -116,6 +116,7 @@
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
 - [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
 - [A release is dry-run and signature-checked before tagging](references/release-dry-run.md) — CI never bundles; verify vs SUPublicEDKey
+- [GitHub release descriptions are unwrapped](references/github-release-notes-unwrapped.md) — newlines render as breaks; the script joins lines
 - [Screen Recording needs an app bundle](references/tcc-screen-recording-needs-a-bundle.md) — a loose signed binary never appears in the list at all
 - [inherited_config reports a live font size](references/ghostty-inherited-config-font-size.md) — the read-back font-size persistence rests on
 - [Fixed frame swallows inner padding](references/fixed-frame-swallows-inner-padding.md) — `.frame(width:)` reports its size whatever nests inside
