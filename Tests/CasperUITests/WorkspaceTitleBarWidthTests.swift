@@ -20,7 +20,7 @@ import XCTest
 /// the bar of the next pass. That is pure arithmetic over two measurements, which is
 /// why it is testable without a window: the two decisions live in
 /// `WorkspaceDetailView.shrink(previousWidth:newWidth:)` and
-/// `WorkspaceDetailView.rowWidth(detailFrame:undershoot:)`, and this suite composes
+/// `WorkspaceDetailView.rowWidth(detailFrame:undershoot:isFullScreen:)`, and this suite composes
 /// them exactly as the view does.
 ///
 /// Nothing here hard-codes AppKit's own insets (the item viewer starts a few points
@@ -75,7 +75,7 @@ final class WorkspaceTitleBarWidthTests: XCTestCase {
                     let context = "minX=\(minX) step=\(step) width=\(width)"
                     let declared = declaredWidth(previousWidth: width + step, newWidth: width, minX: minX)
                     let nextSettled = WorkspaceDetailView.rowWidth(
-                        detailFrame: frame(width: width - step, minX: minX), undershoot: 0)
+                        detailFrame: frame(width: width - step, minX: minX), undershoot: 0, isFullScreen: false)
 
                     // Guards the fixture, not the code: a sweep that wandered into the
                     // mount-threshold band would be asserting the wrong requirement.
@@ -265,6 +265,26 @@ final class WorkspaceTitleBarWidthTests: XCTestCase {
             "the ratchet let the undershoot shrink mid-drag")
     }
 
+    /// In full screen the traffic lights leave the toolbar, so a collapsed sidebar costs
+    /// the row only the sidebar toggle — `fullScreenChromeReserve`, not the windowed
+    /// `windowChromeReserve` that left the trailing chips stopping ~86 pt short of the
+    /// right edge. With the sidebar open the chrome sits over the sidebar column and
+    /// costs the row nothing, full screen or not.
+    func testFullScreenChargesOnlyTheSidebarToggle() {
+        let width: CGFloat = 1000
+        let margin = WorkspaceDetailView.safetyMargin
+        XCTAssertEqual(
+            WorkspaceDetailView.rowWidth(
+                detailFrame: frame(width: width, minX: 0), undershoot: 0, isFullScreen: true),
+            width - 54 - margin, accuracy: 0.001,
+            "a collapsed sidebar in full screen charged more than the sidebar toggle")
+        XCTAssertEqual(
+            WorkspaceDetailView.rowWidth(
+                detailFrame: frame(width: width, minX: 220), undershoot: 0, isFullScreen: true),
+            width - margin, accuracy: 0.001,
+            "an open sidebar in full screen charged window chrome")
+    }
+
     /// Detail-area widths of one hand-driven drag, derived from per-pass deltas that
     /// fluctuate the way a real one's do (12, 562, 40, 8, 300, 20) — including one far
     /// above the cap and, right after it, one far below.
@@ -286,7 +306,8 @@ final class WorkspaceTitleBarWidthTests: XCTestCase {
             previousWidth = width
             declared.append(
                 WorkspaceDetailView.rowWidth(
-                    detailFrame: frame(width: width, minX: minX), undershoot: undershoot))
+                    detailFrame: frame(width: width, minX: minX), undershoot: undershoot,
+                    isFullScreen: false))
         }
         return declared
     }

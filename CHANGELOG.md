@@ -13,6 +13,9 @@ CI, test, and documentation-only work is left out.
 - The outdated-integration reminder now also covers opencode installs
   registered from Git or a local checkout — the install the integration
   documents — which previously never reported their version.
+- In full screen with the sidebar collapsed, the title bar's trailing controls
+  (Merge, Run, Editor, inspector selector) now sit against the right edge
+  instead of stopping short of it.
 
 ## [0.1.0] - 2026-09-23
 

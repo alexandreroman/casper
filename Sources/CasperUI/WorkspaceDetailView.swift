@@ -45,7 +45,7 @@ struct WorkspaceDetailView: View {
     /// It costs the settled row nothing only once it has been released, which is later
     /// than a single pass: the ratchet holds it through the growing half of a reversed
     /// drag, and the re-arming debounce holds it while the pointer is kept still
-    /// mid-drag. See `rowWidth(detailFrame:undershoot:)` for what it buys and
+    /// mid-drag. See `rowWidth(detailFrame:undershoot:isFullScreen:)` for what it buys and
     /// `scheduleUndershootRelease` for how it is given back.
     @State private var resizeUndershoot: CGFloat = 0
 
@@ -53,6 +53,16 @@ struct WorkspaceDetailView: View {
     /// most one exists at a time, so only one release can fire per drag — see
     /// `scheduleUndershootRelease`.
     @State private var undershootReleaseTask: Task<Void, Never>?
+
+    /// Whether the workspace window is in full screen, which picks the chrome reserve
+    /// `rowWidth` charges with the sidebar collapsed.
+    ///
+    /// Flipped asymmetrically so the row always errs to the larger reserve, for the
+    /// same reason `safetyMargin` exists: too narrow costs a few invisible points, too
+    /// wide sends the whole row into the chevron. So it turns true only once the window
+    /// HAS entered full screen, and false as soon as it is ABOUT to leave — before the
+    /// traffic lights come back into the row.
+    @State private var isFullScreen = false
 
     #if DEBUG
     /// The ladder rung the row last reported, for the passive resize trace and for
@@ -98,6 +108,15 @@ struct WorkspaceDetailView: View {
     /// toggle-sidebar item: the traffic lights push the first toolbar content to
     /// x = 92, and that item's viewer measures 48 pt. 92 + 48 = 140.
     static let windowChromeReserve: CGFloat = 140
+
+    /// `windowChromeReserve` for a window in full screen, where the traffic lights
+    /// leave the toolbar and only the sidebar toggle is left sharing the row.
+    ///
+    /// Measured on the same `NSWindow` + `NSToolbar` taken full screen, whose toolbar
+    /// then lives in an `NSToolbarFullScreenWindow`: the toggle's viewer starts at
+    /// x = 6 instead of 92, still 48 pt wide. 6 + 48 = 54, i.e. the traffic lights
+    /// cost exactly 86 pt.
+    static let fullScreenChromeReserve: CGFloat = 54
 
     /// Standing undershoot on the row's width, applied at every width including a
     /// settled one.
@@ -277,10 +296,22 @@ struct WorkspaceDetailView: View {
         // appearing). `rowWidth` catches only the first.
         .onChange(of: rowWidth) { _, _ in Self.healToolbarOverflow() }
         .onChange(of: workspace.inspector) { _, _ in Self.healToolbarOverflow() }
+        // Late on the way in, early on the way out — see `isFullScreen`. A flip moves
+        // `rowWidth`, so the heal above re-runs AppKit's fit check on its own.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) {
+            if Self.isToolbarWindow($0.object) { isFullScreen = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) {
+            if Self.isToolbarWindow($0.object) { isFullScreen = false }
+        }
         .onAppear {
             // `RootView` gives this view a per-workspace `.id`, so one instance only
             // ever renders one workspace — the first summary needs no keying.
             refreshDiffSummary()
+            // Seeded here because each workspace switch builds a fresh instance, and
+            // the app can launch straight into full screen: either way the
+            // notifications above were posted before this view existed.
+            isFullScreen = Self.workspaceWindow()?.styleMask.contains(.fullScreen) == true
             #if DEBUG
             // Layout harness — see `WorkspaceDetailView+ToolbarProbe.swift`. Inert
             // unless `CASPER_TIERPROBE_WIDTHS` or `CASPER_RESIZESTEP` asks for a sweep.
@@ -444,7 +475,7 @@ struct WorkspaceDetailView: View {
     /// inside the chevron the chips lose their capsule chrome entirely.
     ///
     /// What the lag itself costs is handled upstream, in
-    /// `rowWidth(detailFrame:undershoot:)`: the stale value is deliberately narrowed by
+    /// `rowWidth(detailFrame:undershoot:isFullScreen:)`: the stale value is deliberately narrowed by
     /// the shrink just observed, capped and ratcheted (see `maximumResizeUndershoot`).
     /// That covers every pass no wider than the cap — but a pass wider than it declares
     /// a row the bar of the next pass cannot hold, and a hand-drag coalesces into passes
@@ -460,7 +491,10 @@ struct WorkspaceDetailView: View {
     /// measured width barely moves — by width that pass is a GROW, so the shrink term
     /// computes 0, and AppKit judges the previous, much wider value against a bar that
     /// has just lost its leading 140 pt. Expanding is the mirror image and is safe:
-    /// the flip happens on the first pass and only makes the row wider.
+    /// the flip happens on the first pass and only makes the row wider. (In full
+    /// screen the same flip is `fullScreenChromeReserve`, 54 pt; entering and leaving
+    /// full screen moves the reserve by the 86 pt between the two, and `isFullScreen`
+    /// times that flip so it only ever narrows the row ahead of the bar.)
     ///
     /// The undershoot is deliberately NOT generalised to
     /// `settled(previous) − settled(current)`, which would subsume that chrome flip:
@@ -617,7 +651,7 @@ struct WorkspaceDetailView: View {
     /// unlike anything read back from the toolbar itself. Everything else about the
     /// row's layout is then decided by the `HStack` from this one number.
     private var rowWidth: CGFloat {
-        Self.rowWidth(detailFrame: detailFrame, undershoot: resizeUndershoot)
+        Self.rowWidth(detailFrame: detailFrame, undershoot: resizeUndershoot, isFullScreen: isFullScreen)
     }
 
     /// Whether the workspace window is in the middle of a pointer-driven resize.
@@ -642,6 +676,14 @@ struct WorkspaceDetailView: View {
     /// the very flag the row acts on.
     static func workspaceWindow() -> NSWindow? {
         NSApp.windows.first { $0.toolbar != nil && $0.isVisible }
+    }
+
+    /// Whether a window notification's sender carries a toolbar, which — by the same
+    /// argument as `workspaceWindow()` — makes it the workspace window. Checked on the
+    /// sender itself rather than by identity, so it does not depend on the window's
+    /// visibility mid-transition.
+    private static func isToolbarWindow(_ sender: Any?) -> Bool {
+        (sender as? NSWindow)?.toolbar != nil
     }
 
     /// Returns the width the detail area lost between the previous measurement and
@@ -698,9 +740,13 @@ struct WorkspaceDetailView: View {
     /// `invalidateToolbarItemSizes` — is already narrow enough for the bar of the pass
     /// that follows. Past the cap it is not, and the frame of chevron that follows is
     /// what `healToolbarOverflow` takes back.
-    static func rowWidth(detailFrame: CGRect?, undershoot: CGFloat) -> CGFloat {
+    ///
+    /// `isFullScreen` only matters with the sidebar collapsed: it picks which chrome
+    /// reserve the row pays (see `fullScreenChromeReserve`).
+    static func rowWidth(detailFrame: CGRect?, undershoot: CGFloat, isFullScreen: Bool) -> CGFloat {
         guard let detailFrame else { return unmeasuredRowWidth }
-        let windowChrome = detailFrame.minX < 1 ? windowChromeReserve : 0
+        let chromeReserve = isFullScreen ? fullScreenChromeReserve : windowChromeReserve
+        let windowChrome = detailFrame.minX < 1 ? chromeReserve : 0
         // Never negative: at a window narrower than the sidebar the detail area is a
         // few points wide, and a row wider than that would overflow.
         let settled = max(0, detailFrame.width - windowChrome - safetyMargin)
