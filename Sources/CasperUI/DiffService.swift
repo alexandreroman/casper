@@ -76,10 +76,17 @@ final class DiffService {
         return diff
     }
 
-    /// The workspace's working-tree-vs-HEAD line counts, or nil when not
-    /// Git-backed or the diff fails. Feeds the detail toolbar's `+INS −DEL`.
+    /// The workspace's working-tree-vs-HEAD line counts, or nil when there is nothing
+    /// to badge: the workspace is not Git-backed, the diff fails, or it lists no file.
+    /// Feeds the detail toolbar's `+INS −DEL` badge, which shows for any non-nil
+    /// summary.
+    ///
+    /// Keyed on the file list rather than on the counts: a pure rename or a mode-only
+    /// change touches no line, yet the diff view lists it, so its summary is `+0 −0`
+    /// and the badge — also the one-click way into that view — stays.
     func diffSummary(for workspace: Workspace) async -> (insertions: Int, deletions: Int)? {
-        await computeDiff(for: workspace).map { ($0.insertions, $0.deletions) }
+        guard let diff = await computeDiff(for: workspace), !diff.files.isEmpty else { return nil }
+        return (diff.insertions, diff.deletions)
     }
 
     /// The "before" (HEAD) and "after" (worktree) texts of many paths at once,

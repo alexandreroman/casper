@@ -60,7 +60,11 @@ binary. We own this surface; it exposes only what Casper needs.
 - **Diff — ✅ built for working-tree-vs-HEAD.** `Repository.diffWorkdirToHead()`
   returns a structured `GitDiff` (files → hunks → lines, statuses, binary flag,
   `insertions`/`deletions`) — no text parsing — feeding the diff viewer
-  (`app-ui.md`). The types live in `Sources/CasperGit/Diff.swift`.
+  (`app-ui.md`). The types live in `Sources/CasperGit/Diff.swift`. Renames are
+  detected (`git_diff_find_similar`, untracked files included, so a plain `mv`
+  pairs up too) within git's default budget of 1000² candidate pairs; a file
+  over the diff's 8 MB cap never pairs, and copy detection is off. The pass
+  lives in `Sources/CasperGit/RenameDetection.swift`.
   (Branch-vs-merge-base line counts were designed for the workspace diff
   summary, now **dropped** — see `space-project.md`.)
 

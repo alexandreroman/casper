@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 import Clibgit2
 @testable import CasperGit
@@ -9,17 +10,35 @@ enum GitFixture {
     @discardableResult
     static func repository(at path: String) throws -> Repository {
         let repo = try Repository.initialize(atPath: path)
+        try commit(repo, Data("casper fixture\n".utf8), to: "README.md", message: "Initial commit")
+        return repo
+    }
 
-        // Write a file into the working tree.
-        let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
-        try "casper fixture\n".write(to: readme, atomically: true, encoding: .utf8)
+    /// Write `contents` to `path` (relative to the working tree), stage it and commit
+    /// it onto HEAD, leaving the tree clean.
+    static func commit(_ repo: Repository, _ contents: Data, to path: String, message: String) throws {
+        let workdir = try XCTUnwrap(repo.workdirPath)
+        try contents.write(to: URL(fileURLWithPath: workdir).appendingPathComponent(path))
+        try stage(repo, adding: [path])
+        try commitIndex(repo, message: message)
+    }
 
-        // Stage it via the index.
+    /// Stage the working tree's state of `added` and drop `removed` from the index.
+    static func stage(_ repo: Repository, adding added: [String] = [], removing removed: [String] = []) throws {
         var index: OpaquePointer?
         try gitCheck(git_repository_index(&index, repo.pointer))
         defer { git_index_free(index) }
-        try gitCheck(git_index_add_bypath(index, "README.md"))
+        for path in removed { try gitCheck(git_index_remove_bypath(index, path)) }
+        for path in added { try gitCheck(git_index_add_bypath(index, path)) }
         try gitCheck(git_index_write(index))
+    }
+
+    /// Commit the index as it stands onto HEAD — as the root commit when HEAD is
+    /// unborn.
+    static func commitIndex(_ repo: Repository, message: String) throws {
+        var index: OpaquePointer?
+        try gitCheck(git_repository_index(&index, repo.pointer))
+        defer { git_index_free(index) }
 
         // Build the tree from the index.
         var treeOid = git_oid()
@@ -28,20 +47,34 @@ enum GitFixture {
         try gitCheck(git_tree_lookup(&tree, repo.pointer, &treeOid))
         defer { git_tree_free(tree) }
 
+        // The parent, when HEAD already names a commit.
+        var parents: [OpaquePointer?] = []
+        var headRef: OpaquePointer?
+        let headCode = git_repository_head(&headRef, repo.pointer)
+        defer { git_reference_free(headRef) }
+        if headCode != GIT_EUNBORNBRANCH.rawValue {
+            try gitCheck(headCode)
+            var parent: OpaquePointer?
+            try gitCheck(git_reference_peel(&parent, headRef, GIT_OBJECT_COMMIT))
+            parents.append(parent)
+        }
+        defer { parents.forEach { git_object_free($0) } }
+
         // Author/committer signature.
         var signature: UnsafeMutablePointer<git_signature>?
         try gitCheck(git_signature_now(&signature, "Casper Test", "test@casper.local"))
         defer { git_signature_free(signature) }
 
-        // Commit onto HEAD (creates the default branch ref). Swift cannot import
-        // the variadic `git_commit_create_v`, so use the array-based
-        // `git_commit_create` with zero parents (initial commit).
+        // Commit onto HEAD (creating the default branch ref on the first commit).
+        // Swift cannot import the variadic `git_commit_create_v`, so use the
+        // array-based `git_commit_create`.
         var commitOid = git_oid()
-        try gitCheck(git_commit_create(
-            &commitOid, repo.pointer, "HEAD",
-            signature, signature, nil, "Initial commit", tree, 0, nil))
-
-        return repo
+        let parentCount = parents.count
+        try gitCheck(parents.withUnsafeMutableBufferPointer { buffer in
+            git_commit_create(
+                &commitOid, repo.pointer, "HEAD",
+                signature, signature, nil, message, tree, parentCount, buffer.baseAddress)
+        })
     }
 }
 

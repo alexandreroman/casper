@@ -804,6 +804,7 @@ extension NSWindow {
 struct WorkspaceTitleBarRow: View {
     let model: AppModel
     let workspace: Workspace
+    /// The diff badge's counts, from `DiffService.diffSummary`; nil hides the badge.
     let diff: (insertions: Int, deletions: Int)?
     let width: CGFloat
 
@@ -1029,7 +1030,9 @@ struct WorkspaceTitleBarRow: View {
     }
 
     @ViewBuilder private var diffBadge: some View {
-        if let summary = visibleDiffSummary {
+        // Any summary shows, `+0 −0` included; `DiffService.diffSummary` is what
+        // leaves a worktree with nothing to show at nil.
+        if let summary = diff {
             Button {
                 model.toggleInspectorTab(.diff, for: workspace.id)
             } label: {
@@ -1039,12 +1042,6 @@ struct WorkspaceTitleBarRow: View {
             .buttonStyle(.plain)
             .help("Toggle diff")
         }
-    }
-
-    /// The summary the badge renders, or `nil` when there is nothing to show.
-    private var visibleDiffSummary: (insertions: Int, deletions: Int)? {
-        guard let diff, diff.insertions > 0 || diff.deletions > 0 else { return nil }
-        return diff
     }
 
     /// The badge's two counters.

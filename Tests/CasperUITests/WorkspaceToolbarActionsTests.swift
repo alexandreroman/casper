@@ -253,6 +253,14 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         XCTAssertEqual(layoutRow(width: 200).badge, 0, accuracy: 0.5, "the badge should be gone")
     }
 
+    /// Any summary draws the badge, a zero-line one included: a worktree whose only
+    /// change is a rename summarises to `+0 −0`, and the badge is also the one-click
+    /// way into the diff view. Only no summary at all hides it.
+    func testAZeroLineSummaryStillShowsTheBadge() {
+        XCTAssertGreaterThan(layoutRow(width: 2000, diff: (0, 0)).badge, 0, "a +0 −0 summary lost its badge")
+        XCTAssertEqual(layoutRow(width: 2000, diff: nil).badge, 0, accuracy: 0.5, "no summary drew a badge")
+    }
+
     /// Degradation runs one way. Once the badge is gone it must not come back as the
     /// row keeps narrowing — which it did when the badge and the chips were ranked by
     /// layout priority alone rather than chosen together: folding the chips freed
