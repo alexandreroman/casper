@@ -15,6 +15,9 @@ CI, test, and documentation-only work is left out.
   without `git mv`.
 - The title-bar diff badge stays visible, as `+0 −0`, when the only change is
   a rename, so the diff view is still one click away.
+- Ctrl+Return in a terminal now reaches the program running in it — such as
+  Claude Code, which uses it to force-send a message — instead of opening the
+  pane's context menu.
 
 ## [0.1.1] - 2026-09-25
 
