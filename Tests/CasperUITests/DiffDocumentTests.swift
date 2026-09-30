@@ -111,6 +111,21 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(document.files[0].id, "new/b.swift")
     }
 
+    /// A pure rename moves no content, so it reaches the document with no hunks: the
+    /// header carries both paths and the body is the "No content changes" note.
+    func testPureRenameRendersBothPathsAndANote() throws {
+        let document = DiffDocument(diff: GitDiff(files: [
+            file(old: "README.md", new: "NOTES.md", status: .renamed, []),
+        ]))
+
+        let span = try XCTUnwrap(document.files.first)
+        XCTAssertEqual(span.title, "README.md \u{2192} NOTES.md")
+        XCTAssertEqual(span.status, .renamed)
+        XCTAssertEqual(span.lineCount, 1)
+        XCTAssertEqual(document.lines.map(\.kind), [.note])
+        XCTAssertEqual(text(document, document.lines[0].range), "No content changes")
+    }
+
     func testDeletionTitleFallsBackToTheOldPath() {
         let document = DiffDocument(diff: GitDiff(files: [
             file(old: "gone.swift", new: "", status: .deleted,

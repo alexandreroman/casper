@@ -207,8 +207,8 @@ struct DiffDocument: Sendable, Equatable {
                         kind: .note, fileIndex: fileIndex)
                 } else if lines.count == firstLineIndex {
                     // A non-binary file with no hunks: a mode-only change
-                    // (`chmod +x`) or a typechange. It gets a note so the file
-                    // still owns a paragraph — see the invariants above.
+                    // (`chmod +x`), a typechange or a pure rename. It gets a note
+                    // so the file still owns a paragraph — see the invariants above.
                     append("No content changes", kind: .note, fileIndex: fileIndex)
                 }
             }

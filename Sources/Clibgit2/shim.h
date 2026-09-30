@@ -1,6 +1,9 @@
 #ifndef CLIBGIT2_SHIM_H
 #define CLIBGIT2_SHIM_H
 #include <git2.h>
+// Not pulled in by <git2.h>: the similarity signatures CasperGit's rename detection
+// builds its size-capped metric on.
+#include <git2/sys/hashsig.h>
 
 /// Read the `:`-separated directory list libgit2 searches for configuration of
 /// `level` (a `git_config_level_t`) into `out`, which the caller disposes with

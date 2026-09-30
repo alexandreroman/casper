@@ -295,6 +295,10 @@ public final class Repository {
         return String(cString: url)
     }
 
+    /// How much of a file the diff reads, in bytes: past it, a file shows as binary and
+    /// never takes part in rename detection. See `diffWorkdirToHead`.
+    static let maxDiffFileSize: Int64 = 8 * 1024 * 1024
+
     /// Structured diff of the working tree + index against HEAD (or the whole tree
     /// as additions when HEAD is unborn). Untracked files are included.
     public func diffWorkdirToHead() throws -> GitDiff {
@@ -319,16 +323,15 @@ public final class Repository {
         // diff — which FSEvents re-runs on each worktree change. Past the cap libgit2
         // marks the file binary without loading it, which `buildFile`'s existing binary
         // path already renders correctly. Trade-off: a *text* file above the cap shows
-        // as "Binary file" rather than as a diff.
-        options.max_size = 8 * 1024 * 1024
+        // as "Binary file" rather than as a diff. The rename pass honours the same cap.
+        options.max_size = Repository.maxDiffFileSize
 
-        // Rename/copy detection is intentionally not enabled: we never call
-        // `git_diff_find_similar`, so a renamed file surfaces as a delete + add
-        // rather than a single `.renamed` delta. Consequently the `.renamed` /
-        // `.copied` arms of `mapStatus` are currently unreachable for this diff.
         var diff: OpaquePointer?
         try gitCheck(git_diff_tree_to_workdir_with_index(&diff, pointer, tree, &options))
         defer { git_diff_free(diff) }
+
+        // Inside the SIGBUS guard too: similarity hashing reads working-tree content.
+        Repository.detectRenames(in: try requireNonNull(diff, "diff"))
 
         var files: [GitDiffFile] = []
         let count = git_diff_num_deltas(diff)
@@ -403,9 +406,11 @@ public final class Repository {
         let hunkCount = git_patch_num_hunks(patch)
 
         // Binary detection has two branches:
-        //  1. For tracked content (modified/deleted files) libgit2 has blobs on
-        //     both sides and runs its content-based check, so `GIT_DIFF_FLAG_BINARY`
-        //     is authoritative. We trust it directly.
+        //  1. For tracked content (modified/deleted/renamed files) libgit2 has a
+        //     blob on the HEAD side and runs its content-based check, so
+        //     `GIT_DIFF_FLAG_BINARY` is authoritative. We trust it directly — it is
+        //     set even for a renamed binary moved by a plain `mv`, whose new side is
+        //     untracked (pinned by `DiffTests.testRenamedAndModifiedBinaryFileIsBinary`).
         //  2. For an added/untracked file libgit2 never sets that flag even when
         //     the content is binary (confirmed empirically: the same bytes staged
         //     into the index, or as a modification to a tracked file, set the flag
@@ -413,9 +418,9 @@ public final class Repository {
         //     `diffWorkdirToHead`), untracked *text* now diffs into real hunks, but
         //     patch generation still refuses to emit hunks for *binary* content, so
         //     "no hunks despite a non-empty new side" is the fallback binary signal —
-        //     but only for added/untracked files. Applying it to a modified file
-        //     would misflag mode-only changes (e.g. `chmod +x`), which legitimately
-        //     produce zero hunks with unchanged content.
+        //     but only for added/untracked files. Applying it to a modified or
+        //     renamed file would misflag mode-only changes (e.g. `chmod +x`) and pure
+        //     renames, which legitimately produce zero hunks with unchanged content.
         let isAdded = delta.status == GIT_DELTA_ADDED || delta.status == GIT_DELTA_UNTRACKED
         let isBinary =
             (delta.flags & GIT_DIFF_FLAG_BINARY.rawValue) != 0
@@ -470,12 +475,12 @@ public final class Repository {
         case GIT_DELTA_CONFLICTED: return .conflicted
         // A file libgit2 could not read at all (permissions, a vanished path).
         case GIT_DELTA_UNREADABLE: return .unreadable
-        // `.renamed` / `.copied` / `.typechange` are mapped for completeness but are
-        // currently unreachable: `diffWorkdirToHead` does not run
-        // `git_diff_find_similar`, so libgit2 never emits rename/copy deltas for our
-        // diffs, and it emits typechange deltas only under
-        // `GIT_DIFF_INCLUDE_TYPECHANGE`, which we never set.
+        // Emitted by the rename pass, `detectRenames`.
         case GIT_DELTA_RENAMED: return .renamed
+        // `.copied` / `.typechange` are mapped for completeness but are unreachable:
+        // `diffWorkdirToHead` never enables copy detection, and libgit2 emits
+        // typechange deltas only under `GIT_DIFF_INCLUDE_TYPECHANGE`, which we never
+        // set.
         case GIT_DELTA_COPIED: return .copied
         case GIT_DELTA_TYPECHANGE: return .typechange
         // GIT_DELTA_UNMODIFIED and GIT_DELTA_IGNORED: neither is emitted unless the

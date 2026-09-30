@@ -48,11 +48,12 @@ public struct GitDiffFile: Equatable, Sendable, Identifiable {
     /// it is displayed under. Unique within a single diff.
     ///
     /// libgit2 fills `git_diff_delta.new_file.path` on every delta — a deletion
-    /// carries the same path as `old_file.path`, the two only diverging for a rename
-    /// (pinned by `DiffTests.testDeletedFileIsDeletion`) — so a diff read off a real
-    /// repository never takes the `oldPath` branch. It stays as the defined answer for
-    /// a directly constructed value with an empty `newPath`, which is what
-    /// `DiffDocument`'s own title fallback expects.
+    /// carries the same path as `old_file.path` (pinned by
+    /// `DiffTests.testDeletedFileIsDeletion`), the two only diverging for a rename,
+    /// whose identity is its new path — so a diff read off a real repository never
+    /// takes the `oldPath` branch. It stays as the defined answer for a directly
+    /// constructed value with an empty `newPath`, which is what `DiffDocument`'s own
+    /// title fallback expects.
     public var id: String { newPath.isEmpty ? oldPath : newPath }
     public init(
         oldPath: String, newPath: String, status: Status,
