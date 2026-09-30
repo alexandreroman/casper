@@ -1970,6 +1970,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(summary?.deletions, 0)
     }
 
+    /// A pure rename changes no line, yet the diff lists it — so the summary is there,
+    /// at `+0 −0`, and the title-bar badge that toggles the diff view stays reachable.
+    func testDiffSummaryOfARenameOnlyWorktreeIsZeroLines() async throws {
+        let dir = try makeTempGitRepo()
+        try FileManager.default.moveItem(
+            at: dir.appendingPathComponent("README.md"), to: dir.appendingPathComponent("NOTES.md"))
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        let summary = await model.diffService.diffSummary(for: model.spaces[0].workspaces[0])
+        XCTAssertEqual(summary?.insertions, 0)
+        XCTAssertEqual(summary?.deletions, 0)
+    }
+
+    /// A clean worktree has nothing to badge.
+    func testDiffSummaryOfACleanWorktreeIsNil() async throws {
+        let dir = try makeTempGitRepo()
+        let (store, _) = makeTemporarySessionStore()
+        let model = makeModel(store: store)
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+        let summary = await model.diffService.diffSummary(for: model.spaces[0].workspaces[0])
+        XCTAssertNil(summary)
+    }
+
     // MARK: - Named-command live refresh (scriptsRevision)
 
     /// Write `.casper.json` into `dir` with the given `scripts` object body,

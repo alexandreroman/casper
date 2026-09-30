@@ -13,6 +13,8 @@ CI, test, and documentation-only work is left out.
 - The diff view now shows a renamed file as a single renamed entry,
   `old → new`, instead of a deletion and an addition — including a file moved
   without `git mv`.
+- The title-bar diff badge stays visible, as `+0 −0`, when the only change is
+  a rename, so the diff view is still one click away.
 
 ## [0.1.1] - 2026-09-25
 

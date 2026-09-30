@@ -361,10 +361,12 @@ longer does are recorded in `../status.md` § Superseded designs.
   stationary pointer breaks the same intent the shared-identity `Button` exists
   to protect. The editor's app icon renders into that slot too.
 
-  The **diff badge** renders only for a non-zero summary, and clicking it
-  toggles the panel on the Diff tab — the same mutator as the segments, not an
-  expand-only shortcut. Run Script and Editor are split buttons whose menu
-  **only selects**; just the primary action runs or launches. The
+  The **diff badge** renders whenever the diff lists at least one file — a
+  rename-only or mode-only change shows `+0 −0` — and is hidden for a clean
+  worktree, a non-Git workspace or a failed diff. Clicking it toggles the panel
+  on the Diff tab — the same mutator as the segments, not an expand-only
+  shortcut. Run Script and Editor are split buttons whose menu **only
+  selects**; just the primary action runs or launches. The
   `InspectorTabSelector` is one capsule enclosing two glyph-only segments with a
   single sliding indicator: rendering it as a segmented control rather than two
   identical pills is what makes it legible that at most one tab can be on, and
