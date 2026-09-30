@@ -810,13 +810,25 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, let surface else { return false }
-        // performKeyEquivalent fires for every key-down. Only Command combos need it:
-        // macOS never routes ⌘ combos to keyDown. Control/Option/plain keys and
-        // navigation keys must fall through to keyDown, which owns IME/dead-key
-        // composition and control-character encoding.
-        guard event.modifierFlags.contains(.command) else { return false }
         // Only when focused, so ⌘Q/⌘Tab and menu equivalents still work when we're not.
         guard window?.firstResponder === self else { return false }
+        // AppKit treats Ctrl+Return as the keyboard equivalent for a view's context
+        // menu, so letting the key-equivalent pass continue pops the pane menu and the
+        // terminal program (e.g. Claude Code's force-send) never sees the key. Claim it
+        // and hand it to keyDown, which encodes it like any other Control combo —
+        // mirroring Ghostty's reference `performKeyEquivalent`, which passes C-<return>
+        // through verbatim for the same reason and, like this check, accepts any extra
+        // Shift/Option. ⌘ is left out so ⌃⌘Return keeps the ⌘ path below.
+        let flags = event.modifierFlags
+        if event.charactersIgnoringModifiers == "\r", flags.contains(.control), !flags.contains(.command) {
+            keyDown(with: event)
+            return true
+        }
+        // performKeyEquivalent fires for every key-down. Beyond Ctrl+Return above, only
+        // Command combos need it: macOS never routes ⌘ combos to keyDown. Other
+        // Control/Option/plain keys and navigation keys must fall through to keyDown,
+        // which owns IME/dead-key composition and control-character encoding.
+        guard flags.contains(.command) else { return false }
         // ⌘ combos carry no committed text; return libghostty's consumed flag so unbound
         // ⌘ combos fall through to the menu / system.
         let consumed = surface.sendKey(ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS))
