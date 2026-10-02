@@ -377,10 +377,16 @@ extension AppModel {
 
     /// Run the named command `name` (defaulting to `run`) from the workspace's
     /// `.casper.json` in a new visible terminal. Refuses reserved lifecycle names
-    /// and unknown commands with a clear message.
+    /// and unknown commands with a clear message, and every command while the
+    /// workspace's `setup` hook is still running — the one gate every entry point
+    /// (toolbar, menus, `casper run`) goes through. The `teardown` hook does not:
+    /// it runs through `runTeardown`, so closing a workspace mid-setup still runs it.
     func controlRun(name: String?, in workspaceID: UUID) -> Result<ControlTerminalInfo, ControlRunError> {
         guard let ws = workspace(id: workspaceID) else {
             return .failure(ControlRunError(message: "workspace not found"))
+        }
+        guard !isSetupRunning(in: workspaceID) else {
+            return .failure(ControlRunError(message: "the setup script is still running; wait for it to finish"))
         }
         let requested = name ?? "run"
         let config: RepoConfig

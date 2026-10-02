@@ -80,16 +80,19 @@ struct SidebarView: View {
     }
 
     /// The "Run Script" submenu, present only while the workspace's `.casper.json`
-    /// defines at least one named command.
+    /// defines at least one named command. Its items are disabled while the
+    /// workspace's `setup` hook is still running.
     @ViewBuilder
     private func runScriptMenu(for workspace: Workspace) -> some View {
         let commands = model.namedCommands(for: workspace.id)
+        let isSetupRunning = model.isSetupRunning(in: workspace.id)
         if !commands.isEmpty {
             Menu {
                 ForEach(commands, id: \.name) { command in
                     Button(command.displayName) {
                         model.runScript(command.name, for: workspace.id)
                     }
+                    .disabled(isSetupRunning)
                 }
             } label: {
                 Label("Run Script", systemImage: "play")

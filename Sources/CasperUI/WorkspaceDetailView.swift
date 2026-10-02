@@ -1293,6 +1293,7 @@ struct WorkspaceToolbarActions: View {
                     Button(command.displayName) {
                         model.runScript(command.name, for: workspace.id)
                     }
+                    .disabled(model.isSetupRunning(in: workspace.id))
                 }
             }
         }
@@ -1444,6 +1445,8 @@ struct InspectorTabSelector: View {
 /// button takes no `maxWidth`, so it stays content-sized and never stretches the
 /// toolbar.
 private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
+    /// Disables the primary action only; the menu stays open to choose from.
+    var isActionEnabled = true
     let action: () -> Void
     @ViewBuilder let primaryLabel: () -> PrimaryLabel
     @ViewBuilder let menuContent: () -> MenuContent
@@ -1458,6 +1461,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(!isActionEnabled)
 
             Menu(content: menuContent) {
                 // .menuStyle(.borderlessButton) always appends its own disclosure chevron
@@ -1485,7 +1489,9 @@ private struct ScriptToolbarButton: View {
     var body: some View {
         let commands = model.namedCommands(for: workspace.id)
         let current = model.resolvedScript(for: workspace)
-        return TitleSplitButton {
+        // Running waits for the workspace's setup hook; choosing the script does not, so
+        // only the primary action is disabled meanwhile.
+        return TitleSplitButton(isActionEnabled: !model.isSetupRunning(in: workspace.id)) {
             if let current { model.runScript(current.name, for: workspace.id) }
         } primaryLabel: {
             // Pinned explicitly: the toolbar environment resolves a `Label` icon-only

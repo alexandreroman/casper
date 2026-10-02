@@ -18,6 +18,10 @@ CI, test, and documentation-only work is left out.
 - Ctrl+Return in a terminal now reaches the program running in it — such as
   Claude Code, which uses it to force-send a message — instead of opening the
   pane's context menu.
+- A workspace's scripts can no longer be run while its `setup` script is still
+  running: the Run button and the Run Script menu items are disabled meanwhile,
+  and `casper run` reports an error. Closing or deleting the workspace in the
+  meantime still runs its `teardown` script.
 
 ## [0.1.1] - 2026-09-25
 
