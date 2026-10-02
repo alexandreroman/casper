@@ -573,8 +573,8 @@ extension AppModel {
         lastNotifiedAt[ws.id] = nil
         // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
         // is cleared — the workspace is being dropped outright here, so there is nothing
-        // left for the destroy to prune) and the per-surface setup tags of a workspace
-        // removed while its setup split is live.
+        // left for the destroy to prune), and the setup-running flag and per-surface
+        // setup tags of a workspace removed while its setup split is live.
         scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
     }
 

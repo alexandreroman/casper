@@ -1107,4 +1107,110 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(
             model.resolvedScript(for: try XCTUnwrap(model.workspace(id: wsID)))?.name, "test")
     }
+
+    // MARK: - Setup hook gate
+
+    /// Create a linked workspace through the control channel from a repo whose
+    /// `.casper.json` carries a `setup` hook and a `run` command, and return its id with
+    /// the surface id of its setup split. The split spawns headlessly; no PTY runs, so
+    /// the hook stays in flight until the test ends it through `handleScriptSurfaceExit`.
+    private func createWorkspaceRunningSetup() async throws -> (
+        model: AppModel, workspaceID: UUID, setupSplit: UUID
+    ) {
+        let (model, primaryID, _) = try seededGitModel(
+            configJSON: #"{"workspace":{"scripts":{"setup":"npm i","run":"npm run dev"}}}"#)
+        let info = try await model.controlCreateWorkspace(
+            inSpaceOf: primaryID, branch: "feature-setup", base: nil).get()
+        let workspaceID = try XCTUnwrap(UUID(uuidString: info.id))
+        let workspace = try XCTUnwrap(model.workspace(id: workspaceID))
+        let setupSplit = try XCTUnwrap(
+            LayoutTree.surfaceIDs(workspace.layout).first(where: model.scriptHooks.isPendingSetupSurface),
+            "creating the workspace must spawn its setup split")
+        return (model, workspaceID, setupSplit)
+    }
+
+    func testControlRunIsRefusedWhileSetupRunsAndAllowedOnceItSucceeds() async throws {
+        let (model, workspaceID, setupSplit) = try await createWorkspaceRunningSetup()
+        XCTAssertTrue(model.isSetupRunning(in: workspaceID))
+
+        guard case .failure(let error) = model.controlRun(name: "run", in: workspaceID) else {
+            return XCTFail("a named command must not run while the setup hook is still running")
+        }
+        XCTAssertTrue(error.message.contains("setup"), "message was: \(error.message)")
+
+        model.handleScriptSurfaceExit(setupSplit, code: 0)
+
+        XCTAssertFalse(model.isSetupRunning(in: workspaceID))
+        guard case .success = model.controlRun(name: "run", in: workspaceID) else {
+            return XCTFail("a named command must run once the setup hook has succeeded")
+        }
+    }
+
+    /// A failed setup keeps its split open with the error, but the hook is over: it must
+    /// not leave the workspace's commands locked.
+    func testControlRunIsAllowedOnceSetupFails() async throws {
+        let (model, workspaceID, setupSplit) = try await createWorkspaceRunningSetup()
+        // A failed setup flags the workspace `.error`, which notifies; the real
+        // `UNUserNotificationCenter` aborts in the unbundled test runner.
+        model.deliverNotification = { _, _, _, _ in }
+
+        model.handleScriptSurfaceExit(setupSplit, code: 1)
+
+        XCTAssertFalse(model.isSetupRunning(in: workspaceID))
+        guard case .success = model.controlRun(name: "run", in: workspaceID) else {
+            return XCTFail("a named command must run once the setup hook has failed")
+        }
+    }
+
+    /// The UI path goes through `controlRun` too, so the refusal reaches the alert — and a
+    /// refused run is not remembered as the workspace's last-used script.
+    func testRunScriptReportsTheRunningSetup() async throws {
+        let (model, workspaceID, _) = try await createWorkspaceRunningSetup()
+
+        model.runScript("run", for: workspaceID)
+
+        let message = try XCTUnwrap(model.scriptRunError, "the refusal must reach the alert")
+        XCTAssertTrue(message.contains("setup"), "message was: \(message)")
+        XCTAssertNil(model.workspace(id: workspaceID)?.lastUsedScript)
+    }
+
+    /// The toolbar and menus disable their run actions from this state, so its end has to
+    /// re-render them: the setup's exit must be a write Observation sees.
+    func testSetupExitNotifiesObservers() async throws {
+        let (model, workspaceID, setupSplit) = try await createWorkspaceRunningSetup()
+
+        // `onChange` is `@Sendable`, but the model and this test share the main actor —
+        // see `testMarkInfoSeenSkipsTheWriteWhenAlreadyRead`.
+        nonisolated(unsafe) var changed = false
+        withObservationTracking {
+            _ = model.isSetupRunning(in: workspaceID)
+        } onChange: {
+            changed = true
+        }
+
+        model.handleScriptSurfaceExit(setupSplit, code: 0)
+
+        XCTAssertTrue(changed, "the end of the setup hook must re-render the run actions")
+    }
+
+    /// No child exit can ever arrive for the setup split of a workspace that is dropped,
+    /// so dropping it must clear the state rather than leave it flagged forever.
+    func testSetupRunningStateIsClearedWhenTheWorkspaceIsDropped() async throws {
+        let (model, workspaceID, _) = try await createWorkspaceRunningSetup()
+
+        model.removeWorkspace(id: workspaceID)
+
+        XCTAssertNil(model.workspace(id: workspaceID))
+        XCTAssertFalse(model.isSetupRunning(in: workspaceID))
+    }
+
+    /// A setup split that cannot be spawned never runs, so nothing would ever end it.
+    func testSetupThatCannotSpawnIsNotRunning() {
+        let (model, _) = seededModel()
+        let unknownWorkspaceID = UUID()
+
+        model.scriptHooks.runSetupHook(in: unknownWorkspaceID, command: "npm i")
+
+        XCTAssertFalse(model.isSetupRunning(in: unknownWorkspaceID))
+    }
 }

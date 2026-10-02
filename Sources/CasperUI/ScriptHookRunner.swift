@@ -24,10 +24,11 @@ import Foundation
 /// rejects a re-entrant destroy: it covers the whole close/delete operation —
 /// cleanliness probes, merge, prune — of which the hook is only one step.
 ///
-/// Deliberately knows nothing about `AppModel`: the three things it needs — spawning
-/// a hook terminal, resolving a workspace's worktree path, and reporting a failed
-/// setup — are injected as closures, the same test-seam idiom `AppModel` uses for
-/// `makeWorktreeWatcher` / `deliverNotification` / `gitReprobe`.
+/// Deliberately knows nothing about `AppModel`: the four things it needs — spawning
+/// a hook terminal, resolving a workspace's worktree path, reporting a failed setup,
+/// and reporting when a setup starts and finishes — are injected as closures, the
+/// same test-seam idiom `AppModel` uses for `makeWorktreeWatcher` /
+/// `deliverNotification` / `gitReprobe`.
 @MainActor
 final class ScriptHookRunner {
     enum ScriptHookKind { case setup, teardown }
@@ -77,6 +78,7 @@ final class ScriptHookRunner {
     private let insertSurface: (UUID, Surface, String) -> Bool
     private let worktreePath: (UUID) -> String?
     private let reportSetupFailure: (UUID) -> Void
+    private let reportSetupRunning: (UUID, Bool) -> Void
 
     private var scriptSurfaces: [UUID: ScriptSurface] = [:]
     /// Surfaces of a FAILED setup whose one shell-exit-driven close must be swallowed
@@ -102,14 +104,19 @@ final class ScriptHookRunner {
     ///   - worktreePath: A workspace's worktree path, used as the hook split's working
     ///     directory; nil when the workspace no longer exists.
     ///   - reportSetupFailure: Flag a workspace whose `setup` hook exited non-zero.
+    ///   - reportSetupRunning: Record that a workspace's `setup` hook started (true) or
+    ///     finished (false). Every start is matched by a finish: the hook's child exit,
+    ///     whatever its status; the split failing to spawn; or the workspace being dropped.
     init(
         insertSurface: @escaping (UUID, Surface, String) -> Bool,
         worktreePath: @escaping (UUID) -> String?,
-        reportSetupFailure: @escaping (UUID) -> Void
+        reportSetupFailure: @escaping (UUID) -> Void,
+        reportSetupRunning: @escaping (UUID, Bool) -> Void
     ) {
         self.insertSurface = insertSurface
         self.worktreePath = worktreePath
         self.reportSetupFailure = reportSetupFailure
+        self.reportSetupRunning = reportSetupRunning
     }
 
     // MARK: - Running the hooks
@@ -117,8 +124,16 @@ final class ScriptHookRunner {
     /// Run a workspace's `setup` lifecycle hook in a visible split. Together with
     /// `runTeardown` the only hook spawn exposed to callers: `spawnScriptSurface`
     /// itself stays private, so a hook can never be started by hand.
+    ///
+    /// The workspace is reported running BEFORE the split is spawned, so no exit can be
+    /// processed ahead of the start it ends; a split that fails to spawn never runs, so
+    /// it is reported finished on the spot.
     func runSetupHook(in workspaceID: UUID, command: String) {
-        spawnScriptSurface(kind: .setup, in: workspaceID, command: command, onExit: nil)
+        reportSetupRunning(workspaceID, true)
+        if spawnScriptSurface(kind: .setup, in: workspaceID, command: command, onExit: nil) == nil {
+            CasperLog.app.error("setup script could not be spawned")
+            reportSetupRunning(workspaceID, false)
+        }
     }
 
     /// Spawn a visible split-down (top/bottom stack) in `workspaceID` running a
@@ -149,6 +164,10 @@ final class ScriptHookRunner {
         guard let script = scriptSurfaces.removeValue(forKey: surfaceID) else { return }
         switch script.kind {
         case .setup:
+            // Success or failure, the hook is over — a failed setup's split stays open to
+            // show the error, but nothing is running in it any more. A plain state write,
+            // so it is safe inside this child-exit callback.
+            reportSetupRunning(script.workspaceID, false)
             if code != 0 {
                 // Failure: keep the pane open showing the output, swallow the single
                 // shell-exit-driven close that follows (see keptFailedSetupSurfaces /
@@ -317,6 +336,9 @@ final class ScriptHookRunner {
         // forever. The hook's real outcome is unknown here and the workspace is already
         // gone, so report success rather than inventing a failure.
         finishTeardown(id: workspaceID, status: .succeeded)
+        // A setup still running in a dropped workspace can never deliver its child exit,
+        // so this is the last chance to report it finished.
+        reportSetupRunning(workspaceID, false)
         // Per-surface setup-hook maps, so a workspace removed while its setup split
         // is live doesn't leak its surface entries.
         for surfaceID in surfaceIDs {

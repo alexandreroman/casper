@@ -74,6 +74,14 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
   `teardownTimeout`) proceeds to prune — a broken cleanup script never traps the
   user. A manually-closed live teardown split prunes immediately rather than
   stalling the timeout.
+- **named commands wait for setup**: while a workspace's setup is in flight,
+  `controlRun` — the one gate behind the toolbar, the menus and `casper run` —
+  refuses every named command. The in-flight set is the observable
+  `AppModel.setupRunningWorkspaces`, written only through the runner's
+  `reportSetupRunning` closure: set before the split spawns, cleared on the
+  setup's child exit (any status), on a spawn failure, and in `forget`.
+  teardown runs through `runTeardown`, outside that gate, so a close or delete
+  mid-setup still runs it.
 
 ## Destroy paths: async, guarded by a synchronous claim
 

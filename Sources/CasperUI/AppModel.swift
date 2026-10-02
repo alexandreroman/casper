@@ -94,6 +94,13 @@ final class AppModel {
     /// Set when `runScript` fails to launch; drives a `.alert` in WorkspaceDetailView.
     var scriptRunError: String?
 
+    /// Workspaces whose `setup` lifecycle hook is still running. `controlRun` refuses
+    /// named commands in them, and the run actions of the toolbar and menus read it to
+    /// disable themselves — which is why it lives here, observed, rather than in the
+    /// `@ObservationIgnored` `scriptHooks` runner that reports every change to it.
+    /// Transient, never persisted: setup runs at creation only.
+    private(set) var setupRunningWorkspaces: Set<UUID> = []
+
     /// Live progress of a workspace close/delete while its modal sheet is up; nil
     /// when no operation is visible. Publishing is deliberately lagged: the
     /// orchestrator tracks its own current step from the first instant, but only
@@ -2293,7 +2300,7 @@ final class AppModel {
     // Reached from AppModel+Spaces.swift and AppModel+Control.swift.
     /// The `setup`/`teardown` hook machinery: the visible hook splits, the child-exit
     /// correlation, and the once-latched teardown prune. Lazy so the injected closures
-    /// can capture a fully-initialized `self`; all three capture it WEAKLY, because
+    /// can capture a fully-initialized `self`; all four capture it WEAKLY, because
     /// this model owns the runner and a strong capture would close the retain cycle.
     @ObservationIgnored lazy var scriptHooks = ScriptHookRunner(
         // Hook splits are plain terminal splits stacked below the anchor; the hook
@@ -2302,7 +2309,25 @@ final class AppModel {
             self?.insertTerminal(surface, in: workspaceID, command: command) ?? false
         },
         worktreePath: { [weak self] id in self?.workspace(id: id)?.worktreePath },
-        reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) })
+        reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) },
+        reportSetupRunning: { [weak self] id, running in self?.setSetupRunning(running, for: id) })
+
+    /// Whether `workspaceID`'s `setup` lifecycle hook is still running, in which case
+    /// none of its named commands may run.
+    func isSetupRunning(in workspaceID: UUID) -> Bool {
+        setupRunningWorkspaces.contains(workspaceID)
+    }
+
+    /// Writes only on an actual change: dropping any workspace reports its setup
+    /// finished, and a no-op write would still invalidate every view reading the set.
+    private func setSetupRunning(_ running: Bool, for workspaceID: UUID) {
+        guard isSetupRunning(in: workspaceID) != running else { return }
+        if running {
+            setupRunningWorkspaces.insert(workspaceID)
+        } else {
+            setupRunningWorkspaces.remove(workspaceID)
+        }
+    }
 
     // MARK: - Browser automation (release control channel)
 

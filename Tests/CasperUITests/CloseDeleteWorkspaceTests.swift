@@ -634,4 +634,58 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertEqual(notification.id, created.id, "the workspace id routes a tap back")
         XCTAssertEqual(notification.level, .active, "a passive notification would never be seen")
     }
+
+    // MARK: - Destroying a workspace whose setup hook is still running
+
+    /// A `.casper.json` carrying both lifecycle hooks. No PTY runs in a unit test, so the
+    /// setup split spawned at creation stays in flight for as long as the test needs.
+    private let setupAndTeardownConfig =
+        "{\"workspace\": {\"scripts\": {\"setup\": \"npm i\", \"teardown\": \"exit 0\"}}}\n"
+
+    /// Create a linked workspace from a repo with both hooks and return it as it stands
+    /// once created — its layout already carries the live setup split.
+    private func createWorkspaceRunningSetup(
+        in model: AppModel, primaryID: UUID, repoPath: String
+    ) async throws -> Workspace {
+        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
+        try commitFile(atPath: repoPath, filename: ".casper.json", content: setupAndTeardownConfig)
+        let created = try await model.createLinkedWorkspace(spaceID: spaceID, name: "feature", base: nil).get()
+        XCTAssertTrue(model.isSetupRunning(in: created.id), "the setup hook must still be running")
+        return try XCTUnwrap(model.workspace(id: created.id))
+    }
+
+    /// The gate on named commands must never reach the teardown hook: a workspace deleted
+    /// mid-setup still runs it, and the hook's exit resolves the delete.
+    func testDeleteWhileSetupIsRunningStillRunsTheTeardownHook() async throws {
+        let (model, primaryID, repoPath) = try seededGitModel()
+        let workspace = try await createWorkspaceRunningSetup(
+            in: model, primaryID: primaryID, repoPath: repoPath)
+
+        // Snapshotted with the setup split in it, so only the teardown split reads as new.
+        let surfacesBefore = Set(LayoutTree.surfaceIDs(workspace.layout))
+        let delete = Task { @MainActor in await model.deleteWorkspace(id: workspace.id) }
+        await completeTeardownSplit(
+            in: model, workspace: workspace.id, surfacesBefore: surfacesBefore, exitCode: 0)
+        guard case .success = await delete.value else { return XCTFail("expected delete to succeed") }
+
+        XCTAssertNil(model.workspace(id: workspace.id))
+        XCTAssertFalse(model.isSetupRunning(in: workspace.id), "a dropped workspace runs no setup")
+    }
+
+    func testCloseWhileSetupIsRunningStillRunsTheTeardownHook() async throws {
+        let (model, primaryID, repoPath) = try seededGitModel()
+        let workspace = try await createWorkspaceRunningSetup(
+            in: model, primaryID: primaryID, repoPath: repoPath)
+        try commitFile(atPath: workspace.worktreePath, filename: "feature.txt", content: "new\n")
+
+        let surfacesBefore = Set(LayoutTree.surfaceIDs(workspace.layout))
+        let close = Task { @MainActor in await model.closeWorkspace(id: workspace.id) }
+        await completeTeardownSplit(
+            in: model, workspace: workspace.id, surfacesBefore: surfacesBefore, exitCode: 0)
+        let outcome = await close.value
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertNil(model.workspace(id: workspace.id))
+        XCTAssertFalse(model.isSetupRunning(in: workspace.id), "a dropped workspace runs no setup")
+    }
 }
