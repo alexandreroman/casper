@@ -441,8 +441,8 @@ are unaffected by it.
 an explicit `casper status set done` also raises the bubble + passive
 notification. It deliberately does **not** do the same for
 `blocked`/`error`: both already get an explicit `casper notify` from their own
-callers (the plugin's own notification hook, the `casper-status` skill), so
-mirroring `setDetectedAgentState` there would double the notification.
+callers (the casper-skills plugin's `blocked.py` hook, the `casper` skill),
+so mirroring `setDetectedAgentState` there would double the notification.
 
 Arming the bubble also drives the Dock icon — a bounce that runs until Casper is
 activated, plus a badge counting the unread workspaces. Their exact clearing

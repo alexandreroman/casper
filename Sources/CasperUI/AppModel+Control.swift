@@ -50,9 +50,9 @@ extension AppModel {
         // `.superpowers/themes/agent-state-detection.md` § Authority), so this
         // is the only place that can raise its attention bubble/notification.
         // `blocked`/`error` are deliberately excluded: both already get an
-        // explicit `casper notify` from their own callers (`notification.py`,
-        // the `casper-status` skill), so mirroring this for them would double
-        // the notification.
+        // explicit `casper notify` from their own callers (the casper-skills
+        // plugin's `blocked.py` hook, the `casper` skill), so mirroring this for
+        // them would double the notification.
         if state == .done {
             controlRaiseNotification(message: Self.notificationMessage(for: .done), for: workspaceID)
         }
