@@ -287,6 +287,68 @@ final class MarkdownTextViewTests: XCTestCase {
         XCTAssertEqual(received, [])
     }
 
+    // MARK: - Command-click interception
+
+    // These pin `LinkCursorTextView.mouseDown(with:)`'s interception, not the
+    // original failure: AppKit's selection-toggling path that swallows a
+    // Command-click hinges on private state (a prior `flagsChanged(with:)` on a
+    // focused view in a live popover) that a headless view fed synthetic events
+    // never reaches — such a view reports the link click either way. So the
+    // first test below passes with or without the interception; the release-off
+    // test is the one that tells them apart, since `NSTextView` left to itself
+    // opens the link there too.
+
+    private static let linkedMarkdown = "before [Casper](https://example.com) after"
+
+    /// A Command-click on a link reaches the coordinator's `onOpenURL`, and the
+    /// modifiers it is handed — read off `NSApp.currentEvent` — still carry
+    /// Command, so the panel routes it to the system browser.
+    func testCommandClickOnALinkOpensItWithCommandHeld() throws {
+        var opened: URL?
+        var receivedModifiers: NSEvent.ModifierFlags?
+        let hosted = try windowHostedTextView(markdown: Self.linkedMarkdown) { url, modifiers in
+            opened = url
+            receivedModifiers = modifiers
+            return true
+        }
+        let linkPoint = try centerPoint(ofSubstring: "Casper", in: hosted.textView)
+
+        try click(hosted.textView, pressingAt: linkPoint, releasingAt: linkPoint, modifiers: .command)
+
+        XCTAssertEqual(opened, URL(string: "https://example.com"))
+        XCTAssertEqual(receivedModifiers?.contains(.command), true)
+    }
+
+    /// A Command-click on plain text is left to `NSTextView` and opens nothing.
+    func testCommandClickOnPlainTextOpensNothing() throws {
+        var invoked = false
+        let hosted = try windowHostedTextView(markdown: Self.linkedMarkdown) { _, _ in
+            invoked = true
+            return true
+        }
+        let plainPoint = try centerPoint(ofSubstring: "before", in: hosted.textView)
+
+        try click(hosted.textView, pressingAt: plainPoint, releasingAt: plainPoint, modifiers: .command)
+
+        XCTAssertFalse(invoked)
+    }
+
+    /// Pressing on a link and releasing off it opens nothing — the press alone
+    /// is not a click.
+    func testCommandPressOnALinkReleasedOffItOpensNothing() throws {
+        var invoked = false
+        let hosted = try windowHostedTextView(markdown: Self.linkedMarkdown) { _, _ in
+            invoked = true
+            return true
+        }
+        let linkPoint = try centerPoint(ofSubstring: "Casper", in: hosted.textView)
+        let plainPoint = try centerPoint(ofSubstring: "before", in: hosted.textView)
+
+        try click(hosted.textView, pressingAt: linkPoint, releasingAt: plainPoint, modifiers: .command)
+
+        XCTAssertFalse(invoked)
+    }
+
     /// A `.link` attribute may legitimately hold a plain string; such a click is
     /// left entirely to `NSTextView` rather than guessed at.
     func testNonURLLinkIsLeftToTheSystem() {
@@ -313,6 +375,82 @@ final class MarkdownTextViewTests: XCTestCase {
         host.frame = CGRect(x: 0, y: 0, width: Self.width, height: 400)
         host.layoutSubtreeIfNeeded()
         return try XCTUnwrap(Self.firstTextView(in: host))
+    }
+
+    /// A text view and the window that keeps it alive — `NSView.window` does not
+    /// retain its window.
+    private struct WindowHostedTextView {
+        let window: NSWindow
+        let textView: NSTextView
+    }
+
+    /// Like `hostedTextView(markdown:)`, but inside a window — which a mouse-down
+    /// needs, to pull its mouse-up from — and with the link-click closure under
+    /// the test's control.
+    ///
+    /// Never ordered in, for the reasons `WorkspaceInfoPanelTests.hostPanel`
+    /// gives.
+    private func windowHostedTextView(
+        markdown: String, onOpenURL: @escaping (URL, NSEvent.ModifierFlags) -> Bool
+    ) throws -> WindowHostedTextView {
+        let host = NSHostingView(
+            rootView: MarkdownTextView(markdown: markdown, width: Self.width, onOpenURL: onOpenURL)
+                .frame(width: Self.width, height: 400))
+        let window = NSWindow(
+            contentRect: NSRect(x: -100_000, y: -100_000, width: Self.width, height: 400),
+            styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        return WindowHostedTextView(window: window, textView: try XCTUnwrap(Self.firstTextView(in: host)))
+    }
+
+    /// Clicks `textView` the way the event loop would: the mouse-up is queued
+    /// first, so whichever tracking loop the mouse-down enters — ours or
+    /// `NSTextView`'s own — finds it instead of blocking for one. Points are in
+    /// `textView`'s own coordinate system.
+    private func click(
+        _ textView: NSTextView, pressingAt pressPoint: NSPoint, releasingAt releasePoint: NSPoint,
+        modifiers: NSEvent.ModifierFlags
+    ) throws {
+        addTeardownBlock { @MainActor in Self.resetEventQueue() }
+
+        let window = try XCTUnwrap(textView.window)
+        let mouseDown = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: textView.convert(pressPoint, to: nil), modifierFlags: modifiers,
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+            pressure: 1))
+        // No window number on the queued event: AppKit converts a posted event
+        // aimed at a window against the window server's idea of that window's
+        // frame, which for a window never ordered in is wrong — measured, the
+        // location comes back offset by the window's origin and flipped against
+        // the screen height. A windowless event keeps its location verbatim, and
+        // that location, already in window coordinates, is all the tracking loop
+        // reads.
+        let mouseUp = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseUp, location: textView.convert(releasePoint, to: nil), modifierFlags: modifiers,
+            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+
+        NSApp.postEvent(mouseUp, atStart: false)
+        textView.mouseDown(with: mouseDown)
+    }
+
+    /// Leaves the event queue as a click found it, so a later test sees neither
+    /// a mouse-up some tracking loop left undequeued nor the Command flag on
+    /// `NSApp.currentEvent` — which keeps the last dequeued event for good, and
+    /// which `testLinkClickReportsTheModifiersHeldForIt` expects to carry no
+    /// modifiers. Dequeuing a modifier-less event is what replaces it.
+    private static func resetEventQueue() {
+        var leftover: NSEvent?
+        repeat {
+            leftover = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true)
+        } while leftover != nil
+
+        guard let neutral = NSEvent.otherEvent(
+            with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+            context: nil, subtype: 0, data1: 0, data2: 0)
+        else { return }
+        NSApp.postEvent(neutral, atStart: true)
+        _ = NSApp.nextEvent(matching: .applicationDefined, until: .distantPast, inMode: .default, dequeue: true)
     }
 
     private static func firstTextView(in view: NSView) -> NSTextView? {
