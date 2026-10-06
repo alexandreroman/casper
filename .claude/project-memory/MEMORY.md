@@ -111,7 +111,7 @@
 - [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
 - [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — use `.toolbar(removing: .title)`, not AppKit
 - [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — a new verb case breaks CasperUI until routed; one commit
-- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — the pointing hand has to be driven explicitly
+- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — hand cursor and Command-click on a link are both handled explicitly
 - [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a set border can draw nothing; avoid needing one
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
 - [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
