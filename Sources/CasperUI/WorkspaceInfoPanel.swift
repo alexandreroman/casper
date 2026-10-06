@@ -113,9 +113,12 @@ struct WorkspaceInfoPanel: View {
     /// browser instead of the workspace's own browser panel.
     ///
     /// Command, because that is the macOS convention for "same click, other
-    /// destination" and it is the one modifier `NSTextView` does not already
-    /// spend on a click of its own: Shift extends the selection, Control opens
-    /// the context menu, and Option starts a rectangular selection.
+    /// destination". `NSTextView` does spend it on a click of its own — a
+    /// Command-click toggles a discontiguous selection, and can swallow the link
+    /// click outright — which is why `LinkCursorTextView` intercepts a
+    /// Command-click on a link and delivers it itself. The other modifiers are
+    /// left to `NSTextView`: Shift extends the selection, Control opens the
+    /// context menu, and Option starts a rectangular selection.
     static let systemBrowserModifier: NSEvent.ModifierFlags = .command
 
     /// Where a clicked link goes, as a value, so the routing rule can be pinned

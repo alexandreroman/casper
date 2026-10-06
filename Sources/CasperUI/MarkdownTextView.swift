@@ -20,6 +20,10 @@ private enum Style {
 /// cursor over/inside an AppKit view (see the `terminal-overlay-cursor` project
 /// memory note): a tracking area drives the cursor from BOTH `cursorUpdate(with:)`
 /// and `mouseEntered(with:)`, reset on exit, never `push`/`pop`/`addCursorRect`.
+///
+/// It also delivers a Command-click on a link itself, which `NSTextView` can
+/// mistake for a selection gesture — see `mouseDown(with:)`.
+///
 /// Not `private`: `MarkdownTextViewTests` casts `makeNSView`'s result to this
 /// type and calls `linkURL(at:)` directly, so deleting this class fails the
 /// build instead of silently leaving the suite green.
@@ -142,6 +146,41 @@ final class LinkCursorTextView: NSTextView {
         (linkURL(at: point) != nil ? NSCursor.pointingHand : NSCursor.iBeam).set()
     }
 
+    /// Delivers a Command-click on a link to `clicked(onLink:at:)` ourselves,
+    /// because `NSTextView` does not reliably do it.
+    ///
+    /// Command-click is also `NSTextView`'s discontiguous-selection gesture.
+    /// Once this view has seen Command go down through `flagsChanged(with:)` —
+    /// the panel is open and focused, then Command is pressed, then the link
+    /// clicked — AppKit's private mouse tracking treats the click as a selection
+    /// toggle and never reports the link at all. Whether that happens hinges on
+    /// AppKit's private state, so a Command-click on a link is always handled
+    /// here rather than only when it would have failed. Every other click goes
+    /// to `super` untouched.
+    ///
+    /// The link opens only if the mouse is released over that same link, so a
+    /// press can still be abandoned by dragging off it, as with a button.
+    /// `clicked(onLink:at:)` goes through the delegate exactly as AppKit's own
+    /// path does, so `MarkdownTextView.Coordinator` still reads the modifiers
+    /// off `NSApp.currentEvent` — which the tracking loop below leaves on the
+    /// mouse-up.
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard event.modifierFlags.contains(.command), let pressed = link(at: point) else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        while let next = window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            guard next.type == .leftMouseUp else { continue }
+            let released = link(at: convert(next.locationInWindow, from: nil))
+            if released?.url == pressed.url {
+                clicked(onLink: pressed.url, at: pressed.index)
+            }
+            return
+        }
+    }
+
     /// The `.link` attribute, if any, under `point` (in this view's own
     /// coordinate space). `nil` for a point past the last character —
     /// `characterIndexForInsertion(at:)` returns `textStorage.length` there,
@@ -150,10 +189,18 @@ final class LinkCursorTextView: NSTextView {
     /// Internal rather than `private` so `MarkdownTextViewTests` exercises this
     /// exact lookup instead of re-implementing it.
     func linkURL(at point: NSPoint) -> URL? {
+        link(at: point)?.url
+    }
+
+    /// The URL of the `.link` run under `point`, along with the index of the
+    /// character there — the pair `clicked(onLink:at:)` takes.
+    private func link(at point: NSPoint) -> (url: URL, index: Int)? {
         guard let textStorage else { return nil }
         let index = characterIndexForInsertion(at: point)
-        guard index < textStorage.length else { return nil }
-        return textStorage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        guard index < textStorage.length,
+            let url = textStorage.attribute(.link, at: index, effectiveRange: nil) as? URL
+        else { return nil }
+        return (url, index)
     }
 }
 
