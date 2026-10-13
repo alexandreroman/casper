@@ -1,23 +1,24 @@
 ---
-name: "titleCapsule() hit area on plain buttons"
-description: "Apply .titleCapsule() inside a Button's label, not after .buttonStyle(.plain), or only the glyph is clickable"
+name: "titleCapsule() hit area on title-bar buttons"
+description: "Apply .titleCapsule() inside a Button's label, not after its button style, or only the glyph is clickable"
 type: reference
 ---
 
-# titleCapsule() hit area on plain buttons
+# titleCapsule() hit area on title-bar buttons
 
-For title-bar capsule chips that are `Button`s with `.buttonStyle(.plain)`,
-`.titleCapsule()` MUST be applied **inside** the `label:` closure (attached to
-the label content), not chained after `.buttonStyle(.plain)` on the `Button`
-itself.
+For title-bar capsule chips that are `Button`s with `TitleChipButtonStyle`
+(the title bar's stand-in for `.plain`, which also reports the press to the
+chrome), `.titleCapsule()` MUST be applied **inside** the `label:` closure
+(attached to the label content), not chained after `.buttonStyle(...)` on the
+`Button` itself.
 
 The shared `titleCapsule()` helper (a private `View` extension in
 `Sources/CasperUI/WorkspaceDetailView.swift`) adds padding, a background, and a
-`.contentShape(Capsule())`. A plain button's hit area is defined by its
-**label's** shape. If `titleCapsule()` is applied outside the button, the
-capsule is mere decoration over the button and the interactive region stays
-limited to the raw label (e.g. just the `Image` glyph) — clicking the capsule
-padding/background does nothing.
+`.contentShape(Capsule())`. Like `.plain`, `TitleChipButtonStyle` adds no
+geometry, so the button's hit area is defined by its **label's** shape. If
+`titleCapsule()` is applied outside the button, the capsule is mere decoration
+over the button and the interactive region stays limited to the raw label (e.g.
+just the `Image` glyph) — clicking the capsule padding/background does nothing.
 
 **Why:** the failure is silent. The capsule renders exactly right and only the
 click target is wrong, so it survives visual review — typically as a chip whose

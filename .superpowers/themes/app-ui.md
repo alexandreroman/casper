@@ -336,7 +336,10 @@ longer does are recorded in `../status.md` § Superseded designs.
   cannot disagree.
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
-  and a hairline border, plus a hover highlight for the interactive ones. Glass
+  and a hairline border, plus a hover highlight for the interactive ones and a
+  pressed state past it — the fill steps further and the pill shrinks slightly,
+  fill alone under Reduce Motion — that one button style reports to the shell
+  whether the shell sits inside the button's label or around it. Glass
   was rejected because it renders nearly invisible on a chip embedding a
   borderless `Menu` (see [[glasseffect-nested-menu-invisible]]), and the fill is
   the same neutral step in both palettes — **no accent colour and no state tint

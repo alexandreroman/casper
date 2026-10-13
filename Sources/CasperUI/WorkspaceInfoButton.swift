@@ -70,6 +70,13 @@ struct WorkspaceInfoButton: View {
                 // other dimmed, read-state chip. `info.circle`/`.fill` share the
                 // same SF Symbol metrics, so neither state shifts the chip.
                 .foregroundStyle(workspace.infoUnread ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                // With no capsule to darken, the glyph itself answers a press.
+                // It goes on the glyph only, inside the frame and padding below:
+                // the scale is render-only, so the label's bounds — the
+                // popover's anchor, see the padding below — never move. It is
+                // separate from the `visible`-keyed `scaleEffect` further out,
+                // which drives the entrance and must not react to a press.
+                .titleChipGlyphPressEffect()
                 // No capsule chrome on this chip — it is a bare icon, with the
                 // unread state carried entirely by the glyph fill above. The
                 // frame/padding/hit-shape below still live INSIDE the label so
@@ -90,7 +97,9 @@ struct WorkspaceInfoButton: View {
                 .padding(.horizontal, 2)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        // The title-bar chips' style, for the press it reports to the glyph
+        // above; otherwise it lays the label out exactly as `.plain` does.
+        .buttonStyle(TitleChipButtonStyle())
         .help("Workspace info")
         .onHover { inside in scheduleHoverTransition(inside: inside) }
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {

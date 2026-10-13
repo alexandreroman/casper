@@ -9,8 +9,9 @@ type: feedback
 `Color.accentColor` has no place in the title-bar chrome: neither a fill nor a
 glyph is tinted for state. The capsule chips (`titleCapsule` /
 `titleCapsuleShell` in `Sources/CasperUI/WorkspaceDetailView.swift`) use one
-neutral palette only: `Color.secondary.opacity(0.15)` at rest and `0.28` under
-the pointer. `TitleCapsuleChrome` never touches the label's foreground style, so
+neutral palette only: `Color.secondary.opacity(0.15)` at rest, `0.28` under
+the pointer and `0.40` while pressed (`TitleChipFeedback` holds the three
+steps). `TitleCapsuleChrome` never touches the label's foreground style, so
 every chip keeps the tint it sets for itself (the diff badge's green/red
 counters, the title chip's secondary glyph).
 
