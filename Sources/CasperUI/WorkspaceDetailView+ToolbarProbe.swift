@@ -603,9 +603,9 @@ struct TitleBarRungReporter: View {
     let report: (TitleBarRung) -> Void
 
     var body: some View {
-        // Never drawn, never hit-tested: the row's own `contentShape` carries the
-        // window drag, and a hit-testable background inside a rung would be one
-        // more thing between the pointer and the title bar.
+        // Never drawn, never hit-tested: the window drag and double-click live on a
+        // layer behind the whole row, and a hit-testable background inside a rung
+        // would sit in front of that layer and take the clicks meant for it.
         Color.clear
             .allowsHitTesting(false)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in report(rung) }

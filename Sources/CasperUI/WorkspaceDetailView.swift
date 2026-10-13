@@ -872,38 +872,51 @@ struct WorkspaceTitleBarRow: View {
         // theme frame keeps is the bar LEFT of the row (traffic lights, sidebar
         // toggle, the flexible space between them) and the few points `safetyMargin`
         // leaves at the trailing edge; neither is anywhere a hand reaches for. So the
-        // row hands both behaviours back to itself, in the three modifiers below.
+        // row hands both behaviours back to itself, on the layer below.
         //
-        // Measured on the running app, the row claims the hosted view's rect and NOT
-        // the toolbar item's full height: the item's `NSToolbarItemViewer` is
-        // `f=(232,0,492,52)`, the bar's full height, while the SwiftUI hosting view
-        // inside it is `f=(4,8,484,36)`. The 8 pt strips above and below therefore
-        // stay with the theme frame, which is what keeps the top-edge resize band
-        // alive — a shape spanning the item's whole height would take the drag and
-        // give up resizing the window from its top edge.
+        // The layer sits BEHIND the row, never on it. A gesture on the row is a gesture
+        // on an ancestor of every chip, and SwiftUI holds a child button's press until
+        // its ancestors' gestures rule themselves out — the double-click above all,
+        // which has to wait out a second click that may never come — so every chip's
+        // pressed state lags the pointer while its action still lands on time. A
+        // background is a sibling of the chips instead: a click on a chip hits the chip
+        // alone, and only what no chip claims — the spacer between the groups, the gaps
+        // between chips, the info button's collapsed slot, the title (see `title(_:)`)
+        // — falls through to the layer. For the same reason the row carries no
+        // `contentShape` of its own: that would make the row itself the hit target over
+        // every inert point, and nothing it hits ever reaches a sibling behind it.
         //
-        // The `contentShape` first, because a `Spacer` claims no hits of its own — and
-        // the spacer between the diff badge and the trailing chips is an inert stretch
-        // wide enough to be somewhere people aim. Without a shape over the row's whole
-        // rect, SwiftUI finds nothing under the pointer there and the gesture never
-        // starts.
+        // The layer is `Color.clear` under a `contentShape`, because a clear colour
+        // claims no hits of its own any more than a `Spacer` does — and the spacer
+        // between the diff badge and the trailing chips is an inert stretch wide enough
+        // to be somewhere people aim.
         //
-        // Plain `.gesture` and a plain `.onTapGesture`, neither of them high-priority
-        // nor simultaneous: a container's plain gesture yields to a child's own, so the
-        // info chip, the Merge / Run / Editor chips and the inspector selector keep
-        // clicking normally, and only the inert parts of the row — the title text, the
-        // space between the groups — drag the window. Simultaneous is the actively
-        // wrong choice for the double-click: it would also fire on a double-click
-        // landing on a chip, zooming the window out from under whoever hit it.
+        // As a background, the layer takes the row's rect, and measured on the running
+        // app that is the hosted view's rect and NOT the toolbar item's full height:
+        // the item's `NSToolbarItemViewer` is `f=(232,0,492,52)`, the bar's full
+        // height, while the SwiftUI hosting view inside it is `f=(4,8,484,36)`. The
+        // 8 pt strips above and below therefore stay with the theme frame, which is
+        // what keeps the top-edge resize band alive — a layer spanning the item's whole
+        // height would take the drag and give up resizing the window from its top edge.
+        //
+        // Placement, not gesture priority, is what keeps the chips clicking normally:
+        // no modifier puts a gesture on their ancestor without it taking part in every
+        // chip's click. A plain one delays the press, a high-priority one steals the
+        // click, and a simultaneous one fires alongside it — for the double-click, a
+        // double-click landing on a chip would zoom the window out from under whoever
+        // hit it. Behind the row, both gestures stay plain.
         //
         // The double-click action is run by hand because `WindowDragGesture` carries
         // the drag and nothing else, and it goes through `TitleBarDoubleClickAction`
         // rather than calling `performZoom` unconditionally: the theme frame honours
         // the choice made in System Settings, where Fill, Zoom, Minimize and Do
         // Nothing are all real options and only the unset default means zoom.
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { performTitleBarDoubleClickAction() }
-        .gesture(WindowDragGesture())
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { performTitleBarDoubleClickAction() }
+                .gesture(WindowDragGesture())
+        }
     }
 
     /// Run the title bar's configured double-click action on the key window.
@@ -1027,6 +1040,13 @@ struct WorkspaceTitleBarRow: View {
         .padding(.leading, TitleCapsuleMetrics.horizontalInset)
         .padding(.trailing, 6)
         .titleCapsuleShell(filled: false)
+        // Out of hit testing, so a click on the title falls through to the drag and
+        // double-click layer behind the row (see `body`). The shell gives the title a
+        // `contentShape` of its own, and the layer is the title's sibling, not its
+        // ancestor, so a click the title takes never reaches it. Opting out is simpler
+        // than repeating the gestures here: the title is not a control and answers no
+        // pointer of its own, and one gesture site is one that cannot drift.
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder private var diffBadge: some View {
