@@ -872,38 +872,51 @@ struct WorkspaceTitleBarRow: View {
         // theme frame keeps is the bar LEFT of the row (traffic lights, sidebar
         // toggle, the flexible space between them) and the few points `safetyMargin`
         // leaves at the trailing edge; neither is anywhere a hand reaches for. So the
-        // row hands both behaviours back to itself, in the three modifiers below.
+        // row hands both behaviours back to itself, on the layer below.
         //
-        // Measured on the running app, the row claims the hosted view's rect and NOT
-        // the toolbar item's full height: the item's `NSToolbarItemViewer` is
-        // `f=(232,0,492,52)`, the bar's full height, while the SwiftUI hosting view
-        // inside it is `f=(4,8,484,36)`. The 8 pt strips above and below therefore
-        // stay with the theme frame, which is what keeps the top-edge resize band
-        // alive — a shape spanning the item's whole height would take the drag and
-        // give up resizing the window from its top edge.
+        // The layer sits BEHIND the row, never on it. A gesture on the row is a gesture
+        // on an ancestor of every chip, and SwiftUI holds a child button's press until
+        // its ancestors' gestures rule themselves out — the double-click above all,
+        // which has to wait out a second click that may never come — so every chip's
+        // pressed state lags the pointer while its action still lands on time. A
+        // background is a sibling of the chips instead: a click on a chip hits the chip
+        // alone, and only what no chip claims — the spacer between the groups, the gaps
+        // between chips, the info button's collapsed slot, the title (see `title(_:)`)
+        // — falls through to the layer. For the same reason the row carries no
+        // `contentShape` of its own: that would make the row itself the hit target over
+        // every inert point, and nothing it hits ever reaches a sibling behind it.
         //
-        // The `contentShape` first, because a `Spacer` claims no hits of its own — and
-        // the spacer between the diff badge and the trailing chips is an inert stretch
-        // wide enough to be somewhere people aim. Without a shape over the row's whole
-        // rect, SwiftUI finds nothing under the pointer there and the gesture never
-        // starts.
+        // The layer is `Color.clear` under a `contentShape`, because a clear colour
+        // claims no hits of its own any more than a `Spacer` does — and the spacer
+        // between the diff badge and the trailing chips is an inert stretch wide enough
+        // to be somewhere people aim.
         //
-        // Plain `.gesture` and a plain `.onTapGesture`, neither of them high-priority
-        // nor simultaneous: a container's plain gesture yields to a child's own, so the
-        // info chip, the Merge / Run / Editor chips and the inspector selector keep
-        // clicking normally, and only the inert parts of the row — the title text, the
-        // space between the groups — drag the window. Simultaneous is the actively
-        // wrong choice for the double-click: it would also fire on a double-click
-        // landing on a chip, zooming the window out from under whoever hit it.
+        // As a background, the layer takes the row's rect, and measured on the running
+        // app that is the hosted view's rect and NOT the toolbar item's full height:
+        // the item's `NSToolbarItemViewer` is `f=(232,0,492,52)`, the bar's full
+        // height, while the SwiftUI hosting view inside it is `f=(4,8,484,36)`. The
+        // 8 pt strips above and below therefore stay with the theme frame, which is
+        // what keeps the top-edge resize band alive — a layer spanning the item's whole
+        // height would take the drag and give up resizing the window from its top edge.
+        //
+        // Placement, not gesture priority, is what keeps the chips clicking normally:
+        // no modifier puts a gesture on their ancestor without it taking part in every
+        // chip's click. A plain one delays the press, a high-priority one steals the
+        // click, and a simultaneous one fires alongside it — for the double-click, a
+        // double-click landing on a chip would zoom the window out from under whoever
+        // hit it. Behind the row, both gestures stay plain.
         //
         // The double-click action is run by hand because `WindowDragGesture` carries
         // the drag and nothing else, and it goes through `TitleBarDoubleClickAction`
         // rather than calling `performZoom` unconditionally: the theme frame honours
         // the choice made in System Settings, where Fill, Zoom, Minimize and Do
         // Nothing are all real options and only the unset default means zoom.
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { performTitleBarDoubleClickAction() }
-        .gesture(WindowDragGesture())
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { performTitleBarDoubleClickAction() }
+                .gesture(WindowDragGesture())
+        }
     }
 
     /// Run the title bar's configured double-click action on the key window.
@@ -1027,6 +1040,13 @@ struct WorkspaceTitleBarRow: View {
         .padding(.leading, TitleCapsuleMetrics.horizontalInset)
         .padding(.trailing, 6)
         .titleCapsuleShell(filled: false)
+        // Out of hit testing, so a click on the title falls through to the drag and
+        // double-click layer behind the row (see `body`). The shell gives the title a
+        // `contentShape` of its own, and the layer is the title's sibling, not its
+        // ancestor, so a click the title takes never reaches it. Opting out is simpler
+        // than repeating the gestures here: the title is not a control and answers no
+        // pointer of its own, and one gesture site is one that cannot drift.
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder private var diffBadge: some View {
@@ -1039,7 +1059,7 @@ struct WorkspaceTitleBarRow: View {
                 diffCounters(summary)
                     .titleCapsule(interactive: true)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TitleChipButtonStyle())
             .help("Toggle diff")
         }
     }
@@ -1231,11 +1251,13 @@ struct WorkspaceToolbarActions: View {
     /// `.minimal` it also carries the Diff / Browser toggles, which have no
     /// segmented control left to live in.
     ///
-    /// `.menuStyle(.button)` + `.buttonStyle(.plain)` rather than the split
+    /// `.menuStyle(.button)` + `TitleChipButtonStyle` rather than the split
     /// buttons' `.borderlessButton`, so the capsule can live INSIDE the label and
     /// the whole pill stays clickable (see the `title-capsule-hit-area` note). A
     /// borderless menu ignores its label's height and keeps its click target on
-    /// the bare glyph, which measured 20×14 against this chip's 34×36. The chrome
+    /// the bare glyph, which measured 20×14 against this chip's 34×36. The button
+    /// menu style draws its label through the button style in the environment, so
+    /// this chip also gets the same pressed look as its neighbours. The chrome
     /// stays the explicit fill + hairline border — never glass, which renders
     /// nearly invisible around a nested `Menu`
     /// (`glasseffect-nested-menu-invisible`).
@@ -1248,8 +1270,8 @@ struct WorkspaceToolbarActions: View {
                 .titleCapsule(interactive: true)
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
-        // The plain button style draws no disclosure chevron of its own; this
+        .buttonStyle(TitleChipButtonStyle())
+        // The chip button style draws no disclosure chevron of its own; this
         // keeps it that way if the menu style is ever revisited — a `⋯` chip must
         // not carry an indicator.
         .menuIndicator(.hidden)
@@ -1426,7 +1448,7 @@ struct InspectorTabSelector: View {
                 }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TitleChipButtonStyle())
         .help(help)
         .accessibilityLabel(help)
     }
@@ -1460,7 +1482,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TitleChipButtonStyle())
             .disabled(!isActionEnabled)
 
             Menu(content: menuContent) {
@@ -1561,7 +1583,7 @@ struct MergeToolbarButton: View {
             // pill keeps firing the action rather than just the glyph.
             .titleCapsule(interactive: true)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TitleChipButtonStyle())
         .help(help)
         // In the glyph form the tooltip is the only thing naming the action, and it
         // names the action the click will actually perform.
@@ -1600,8 +1622,117 @@ enum TitleCapsuleMetrics {
     static let glyphChipWidth: CGFloat = glyphSlotWidth + 2 * horizontalInset
 }
 
+/// How a title-bar chip answers the pointer: the capsule's fill at rest, under the
+/// pointer and held down, and what a held chip does on top of that.
+///
+/// The fills are one neutral step each, the same in both palettes (no accent, see
+/// the `title-bar-chip-chrome` note), and each state reads stronger than the one
+/// before it — pressed has to read past hover, because the pointer is always over
+/// a chip while it is held, so a press that only matched hover would show nothing.
+/// Named rather than spelled at the call site so `TitleChipFeedbackTests` can pin
+/// that ordering against the very numbers the chrome applies.
+enum TitleChipFeedback {
+    static let restingFillOpacity = 0.15
+    static let hoveredFillOpacity = 0.28
+    static let pressedFillOpacity = 0.40
+
+    /// How far a held chip shrinks around its centre. A render-only effect, so the
+    /// row never reflows under a click; kept slight because the whole pill — text,
+    /// glyph and capsule together — moves, which reads as a press long before it
+    /// reads as a resize.
+    static let pressedScale: CGFloat = 0.95
+
+    /// The info button's bare glyph has no capsule to darken, so its press is
+    /// carried by the glyph alone. It shrinks further than a chip because it is far
+    /// smaller: 5% of a 15 pt glyph is under a point and would not register.
+    static let pressedGlyphScale: CGFloat = 0.85
+    static let pressedGlyphOpacity = 0.6
+
+    /// What `.plain` does to a disabled label, measured — so swapping it for
+    /// `TitleChipButtonStyle` leaves a disabled Run action looking exactly as it did.
+    static let disabledOpacity = 0.5
+
+    /// The same short ease-out as the hover highlight, in both directions: a click
+    /// lasts about a tenth of a second, so the press has to land and release within
+    /// that window to be seen at all.
+    static var animation: Animation { .easeOut(duration: 0.12) }
+
+    /// The capsule's fill opacity, or `nil` when the chip draws no chrome at all.
+    ///
+    /// Pressed wins over hovered, which wins over resting. An unfilled chip draws
+    /// nothing at rest but grows the standard chrome under the pointer and while
+    /// held, so the capsule "appears" like a native toolbar button.
+    static func fillOpacity(filled: Bool, hovered: Bool, pressed: Bool) -> Double? {
+        if pressed {
+            return pressedFillOpacity
+        }
+        if hovered {
+            return hoveredFillOpacity
+        }
+        if filled {
+            return restingFillOpacity
+        }
+        return nil
+    }
+}
+
+/// The button style every title-bar chip uses in place of `.plain`: the label
+/// drawn untouched, with its press reported to the capsule chrome.
+///
+/// `.plain` exposes no press to the chrome, so under it a held chip looks exactly
+/// like a hovered one. The chrome is what answers the press, but it sits on either
+/// side of the button depending on the chip — INSIDE the label for single-button
+/// chips (the diff badge, Merge, `⋯`), AROUND the button for the shells (Run /
+/// Editor, the inspector selector), see the `title-capsule-hit-area` note — so the
+/// style publishes the press both ways: down through `\.titleChipPressed` and up
+/// through `TitleChipPressedKey`. The info button, which has no chrome, reads the
+/// environment side directly through `titleChipGlyphPressEffect()`.
+///
+/// Otherwise it behaves like `.plain`: no padding, no background, and a hit area
+/// that is exactly the label's shape, which every chip's geometry relies on.
+struct TitleChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        TitleChipButtonBody(configuration: configuration)
+    }
+}
+
+/// `TitleChipButtonStyle`'s body, as a view of its own so it can read `isEnabled`
+/// for the disabled look.
+private struct TitleChipButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        configuration.label
+            .environment(\.titleChipPressed, configuration.isPressed)
+            .preference(key: TitleChipPressedKey.self, value: configuration.isPressed)
+            .opacity(isEnabled ? 1 : TitleChipFeedback.disabledOpacity)
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether the `TitleChipButtonStyle` button this view sits inside is held
+    /// down. Read by chrome drawn inside a button's label, and by the info button's
+    /// glyph.
+    @Entry var titleChipPressed = false
+}
+
+/// Carries `isPressed` up from a `TitleChipButtonStyle` button to the capsule shell
+/// wrapping it. OR-reduced, so a shell holding two buttons — the inspector
+/// selector's segments — reads as pressed while either one is.
+private struct TitleChipPressedKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 /// The capsule chrome itself — fixed height, fill, hairline border, hit shape —
-/// plus the hover highlight that makes an interactive chip read as clickable.
+/// plus the hover highlight that makes an interactive chip read as clickable, and
+/// the pressed look that confirms the click: the fill steps past hover and the
+/// whole pill shrinks slightly (fill alone under Reduce Motion).
 ///
 /// It lives in a `ViewModifier` (rather than as `.onHover` on each call site) for
 /// the `@State` it needs, and because sitting on the shell makes hover cover the
@@ -1614,9 +1745,16 @@ private struct TitleCapsuleChrome: ViewModifier {
     let interactive: Bool
 
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The press of the button whose label this chrome is drawn in.
+    @Environment(\.titleChipPressed) private var enclosingButtonPressed
     @State private var hovering = false
+    /// The press of a button this chrome wraps, reported up from inside it.
+    @State private var wrappedButtonPressed = false
 
     private var highlighted: Bool { interactive && hovering }
+
+    private var pressed: Bool { interactive && (enclosingButtonPressed || wrappedButtonPressed) }
 
     /// Native toolbar controls dim when the window stops being key/main, so the
     /// interactive chips dim with them. Fading the whole shell keeps the glyphs,
@@ -1624,29 +1762,47 @@ private struct TitleCapsuleChrome: ViewModifier {
     /// the layout.
     private var shellOpacity: Double { controlActiveState == .inactive ? 0.5 : 1 }
 
-    /// An unfilled chip grows the standard fill + border on hover, so the capsule
-    /// "appears" like a native toolbar button. Padding, height and hit area are
-    /// already identical in both states, so this can never shift the layout.
-    private var showsChrome: Bool { filled || highlighted }
+    private var fillOpacity: Double? {
+        TitleChipFeedback.fillOpacity(filled: filled, hovered: highlighted, pressed: pressed)
+    }
+
+    /// Padding, height and hit area are identical whether or not the chrome shows,
+    /// so an unfilled chip growing it under the pointer can never shift the layout.
+    private var showsChrome: Bool { fillOpacity != nil }
 
     private var fill: Color {
-        guard showsChrome else { return .clear }
-        // Same step in both palettes.
-        return Color.secondary.opacity(highlighted ? 0.28 : 0.15)
+        guard let fillOpacity else { return .clear }
+        return Color.secondary.opacity(fillOpacity)
+    }
+
+    private var scale: CGFloat {
+        pressed && !reduceMotion ? TitleChipFeedback.pressedScale : 1
     }
 
     @ViewBuilder
     func body(content: Content) -> some View {
         let shell = content
             .frame(height: TitleCapsuleMetrics.height)
-            .background(fill, in: Capsule())
-            .overlay(showsChrome ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
+            // A scoped animation rather than `.animation(_:value:)`: only the
+            // chrome's own fill, border and scale animate here, never the label
+            // inside it. Releasing a press is also when the click's action lands,
+            // and a value-keyed animation would hijack whatever that action
+            // changes in the label — the inspector indicator's slide, for one.
+            .animation(TitleChipFeedback.animation) { chrome in
+                chrome
+                    .background(fill, in: Capsule())
+                    .overlay(showsChrome ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
+                    .scaleEffect(scale)
+            }
+            // Past the scale, so the hit shape stays the full-size capsule: a chip
+            // shrinking under a press held near its rim must not slip out from
+            // under the pointer and cancel that press.
             .contentShape(Capsule())
 
         if interactive {
             shell
                 .onHover { hovering = $0 }
-                .animation(.easeOut(duration: 0.12), value: hovering)
+                .onPreferenceChange(TitleChipPressedKey.self) { wrappedButtonPressed = $0 }
                 .opacity(shellOpacity)
                 .animation(.easeOut(duration: 0.12), value: controlActiveState)
         } else {
@@ -1668,7 +1824,9 @@ private extension View {
     /// to it.
     ///
     /// Pass `interactive: true` for chips that are buttons, so they light up on
-    /// hover like a native toolbar button; see `TitleCapsuleChrome`.
+    /// hover like a native toolbar button and darken while pressed; see
+    /// `TitleCapsuleChrome`. The press needs the chip's button to use
+    /// `TitleChipButtonStyle`.
     func titleCapsule(filled: Bool = true, interactive: Bool = false) -> some View {
         self
             .padding(.horizontal, TitleCapsuleMetrics.horizontalInset)
@@ -1689,10 +1847,44 @@ private extension View {
     /// `titleCapsule` so a split-button (Run / Editor) can wrap the whole HStack in
     /// the visible pill while its inner controls carry the padding themselves —
     /// keeping that padding inside their clickable label instead of as dead
-    /// decoration around a `.plain` button (see the `title-capsule-hit-area`
-    /// memory note). `interactive` behaves as in `titleCapsule`.
+    /// decoration around the button (see the `title-capsule-hit-area` memory
+    /// note). `interactive` behaves as in `titleCapsule`; a wrapped button's press
+    /// still reaches the shell, through `TitleChipButtonStyle`.
     func titleCapsuleShell(filled: Bool = true, interactive: Bool = false) -> some View {
         modifier(TitleCapsuleChrome(filled: filled, interactive: interactive))
+    }
+}
+
+extension View {
+    /// The press feedback for a title-bar control with no capsule to darken — the
+    /// info button's bare glyph: it shrinks and dims while the
+    /// `TitleChipButtonStyle` button holding it is pressed (dims only under Reduce
+    /// Motion).
+    ///
+    /// Apply it to the glyph itself, inside any frame or padding: the scale is a
+    /// render-only effect, and on the glyph alone it leaves the button's bounds —
+    /// and anything anchored to them, like the info button's popover — untouched.
+    func titleChipGlyphPressEffect() -> some View {
+        modifier(TitleChipGlyphPressEffect())
+    }
+}
+
+private struct TitleChipGlyphPressEffect: ViewModifier {
+    @Environment(\.titleChipPressed) private var pressed
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var scale: CGFloat {
+        pressed && !reduceMotion ? TitleChipFeedback.pressedGlyphScale : 1
+    }
+
+    func body(content: Content) -> some View {
+        // Scoped for the same reason as the capsule chrome's: the glyph's own
+        // changes (its unread fill, its pulse) keep their own animations.
+        content.animation(TitleChipFeedback.animation) { glyph in
+            glyph
+                .scaleEffect(scale)
+                .opacity(pressed ? TitleChipFeedback.pressedGlyphOpacity : 1)
+        }
     }
 }
 

@@ -83,7 +83,7 @@
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI
 - [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
 - [Surface focus is first responder AND window key](references/surface-focus-responder-and-key.md) — key loss sends no resign
-- [titleCapsule() hit area on plain buttons](references/title-capsule-hit-area.md) — apply it inside the Button's label, or only the glyph is live
+- [titleCapsule() hit area on title-bar buttons](references/title-capsule-hit-area.md) — apply it inside the Button's label or only the glyph is live
 - [Title-bar chips carry no accent colour](references/title-bar-chip-chrome.md) — one neutral palette; inspector tabs are a segmented control
 - [Toolbar Labels resolve to icon-only](references/toolbar-label-style.md) — pin `.labelStyle(.titleAndIcon)` or the title is dropped
 - [A toolbar group must be told to truncate](references/toolbar-group-truncation.md) — no lineLimit means it wraps mid-word, not truncates
@@ -140,7 +140,7 @@
 - [Only the layout may create a surface view](references/surface-view-layout-membership.md) — a stale `Surface` value must not refill the view cache
 - [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH and search it in Swift; never ask it to resolve a command
 - [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
-- [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — the row carries both gestures
+- [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — a layer behind the row carries both
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
 - [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag
 - [SF Symbols need a shared width slot](references/sf-symbol-widths-need-a-slot.md) — no common intrinsic width; one measured slot per icon column

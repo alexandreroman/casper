@@ -224,17 +224,24 @@ longer does are recorded in `../status.md` § Superseded designs.
   ([[toolbar-overflows-before-squeezing]]).
 
   Spanning the bar costs the row two `NSThemeFrame` behaviours, so the row hands
-  both back to itself. **Dragging the window** is a `WindowDragGesture` over a
-  `.contentShape(Rectangle())` — a `Spacer` claims no hits of its own, so
-  without a shape the inert stretch between the badge and the chips drags
-  nothing. **Double-clicking the title bar** is an `.onTapGesture(count: 2)`
-  running `TitleBarDoubleClickAction`, which honours the choice made in System
-  Settings (Fill, Zoom, Minimize and Do Nothing are all real answers) instead of
-  zooming unconditionally, and turns away a window that would only beep. Both
-  gestures stay **plain** — never high-priority, never simultaneous — so a
-  chip's own click still wins, and the shape covers the hosted view's rect
-  rather than the toolbar item's full height, which is what leaves the window's
-  top-edge resize band with the theme frame ([[titlebar-row-window-drag]]).
+  both back to itself, on a clear layer **behind** it (a `.background`) rather
+  than on the row. On the row they would be gestures on an ancestor of every
+  chip, and SwiftUI holds a child button's press until those rule themselves
+  out — the double-click above all — so every chip's pressed state would lag the
+  pointer. As a sibling, the layer receives only the clicks no chip claims: the
+  spacer between the groups, the gaps, the info button's collapsed slot, and the
+  title, which opts out of hit testing so its clicks fall through. **Dragging
+  the window** is a `WindowDragGesture` on that layer, under a
+  `.contentShape(Rectangle())` because neither a clear colour nor a `Spacer`
+  claims hits of its own. **Double-clicking the title bar** is an
+  `.onTapGesture(count: 2)` running `TitleBarDoubleClickAction`, which honours
+  the choice made in System Settings (Fill, Zoom, Minimize and Do Nothing are
+  all real answers) instead of zooming unconditionally, and turns away a window
+  that would only beep. Placement is what keeps a chip's own click intact, and
+  what keeps a double-click on a chip from zooming the window; both gestures
+  stay plain. The layer takes the hosted row's rect rather than the toolbar
+  item's full height, which is what leaves the window's top-edge resize band
+  with the theme frame ([[titlebar-row-window-drag]]).
 
   That width is the one measured number in the row. It comes from the detail
   area's `GeometryReader` — never from content that can overflow its column,
@@ -336,7 +343,10 @@ longer does are recorded in `../status.md` § Superseded designs.
   cannot disagree.
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
-  and a hairline border, plus a hover highlight for the interactive ones. Glass
+  and a hairline border, plus a hover highlight for the interactive ones and a
+  pressed state past it — the fill steps further and the pill shrinks slightly,
+  fill alone under Reduce Motion — that one button style reports to the shell
+  whether the shell sits inside the button's label or around it. Glass
   was rejected because it renders nearly invisible on a chip embedding a
   borderless `Menu` (see [[glasseffect-nested-menu-invisible]]), and the fill is
   the same neutral step in both palettes — **no accent colour and no state tint

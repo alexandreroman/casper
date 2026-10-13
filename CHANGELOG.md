@@ -8,6 +8,11 @@ CI, test, and documentation-only work is left out.
 
 ## [Unreleased]
 
+### Added
+
+- The buttons in a workspace's title bar now show they are being pressed: the
+  button darkens and shrinks slightly until it is released.
+
 ### Fixed
 
 - Command-clicking a link in the info panel opens it in the default browser
