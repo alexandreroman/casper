@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog][keepachangelog], and this project
 adheres to [Semantic Versioning][semver]. Entries describe user-visible changes;
 CI, test, and documentation-only work is left out.
 
-## [Unreleased]
+## [0.1.3] - 2026-10-13
 
 ### Added
 
@@ -73,7 +73,7 @@ Initial release.
 
 [keepachangelog]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/spec/v2.0.0.html
-[Unreleased]: https://github.com/alexandreroman/casper/compare/v0.1.2...HEAD
+[0.1.3]: https://github.com/alexandreroman/casper/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/alexandreroman/casper/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/alexandreroman/casper/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/alexandreroman/casper/releases/tag/v0.1.0
