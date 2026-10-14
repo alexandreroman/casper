@@ -295,7 +295,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         let layout = layoutRow(width: rowWidth)
         XCTAssertEqual(layout.badge, 0, accuracy: 0.5, "the badge outlived the chips' text")
         XCTAssertEqual(
-            chipsWidth(inRowOf: rowWidth), fullChipsWidth, accuracy: 0.5,
+            layout.ladder, fullChipsWidth, accuracy: 0.5,
             "the chips gave up their text before the badge gave up its counters")
     }
 
@@ -336,7 +336,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         hostTitleBarRow(width: rowWidth, diff: diff, inspector: inspector)
     }
 
-    /// The chips' own full-width tier, for the ordering assertion below.
+    /// The chips' own full-width tier, for `testTheBadgeGoesBeforeTheChipsLoseTheirText`.
     private var fullChipsWidth: CGFloat { layoutWidth(of: makeActions().row(.full)) }
 
     /// The title group's ideal width, measured from the same label the row renders.
@@ -345,28 +345,10 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
             of: WorkspaceTitleLabel(
                 isGitRepo: true, spaceName: "casper", branchLabel: Self.titleBarBranch,
                 form: .spaceAndBranch)
-                .padding(.leading, 10)
+                .padding(.leading, TitleCapsuleMetrics.horizontalInset)
                 .padding(.trailing, 6)
                 .lineLimit(1))
             + WorkspaceInfoButton.collapsedWidth
-    }
-
-    /// The width the chips laid out to inside a row of `rowWidth`, which is what
-    /// says which tier they settled on.
-    private func chipsWidth(inRowOf rowWidth: CGFloat) -> CGFloat {
-        let (model, workspace) = makeTitleBarModelAndWorkspace()
-        var chips = CGRect.zero
-        let row = HStack(spacing: 0) {
-            Color.clear.frame(width: titleIdealWidth).layoutPriority(2)
-            Spacer(minLength: WorkspaceDetailView.chipGap).layoutPriority(-1)
-            WorkspaceToolbarActions(model: model, workspace: workspace, density: .full)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .local) } action: { chips = $0 }
-        }
-        .frame(width: rowWidth, alignment: .leading)
-        let host = NSHostingView(rootView: row)
-        host.frame = NSRect(x: 0, y: 0, width: rowWidth, height: TitleCapsuleMetrics.height)
-        host.layoutSubtreeIfNeeded()
-        return chips.width
     }
 
     /// The Merge chip alone, as the row draws it at `.mergeGlyph`.
