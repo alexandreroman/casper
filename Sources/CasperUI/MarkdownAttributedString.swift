@@ -814,21 +814,9 @@ private struct Builder {
     /// lines it wraps into, so this single cell already spans every wrapped
     /// line of a multi-line quote, not just its first.
     ///
-    /// This used to be a bare `NSTextBlock` with both width and color set on
-    /// its border, which is the configuration Apple's own docs say is
-    /// required — and it still drew nothing in the running app. `NSTextBlock`
-    /// and `NSTextTable` border rendering has multiple open, Apple-acknowledged
-    /// AppKit bugs independent of this app's code (e.g. FB16391696: table
-    /// borders intermittently fail to draw, traced to a *margin* being set on
-    /// the block; FB15162186: `NSTextList` not rendering on macOS at all).
-    /// Pixel-level headless verification could not settle this either way —
-    /// an offscreen `cacheDisplay` render of the GFM table (the one construct
-    /// already confirmed visibly correct on screen) produced no detectable
-    /// border pixels, so the technique cannot distinguish "broken" from "not
-    /// observable this way" for anything in this family. What this rewrite
-    /// does do: switch to a `NSTextTableBlock` cell, which is the same
-    /// object the GFM table's own (confirmed-visible) cell borders use, and
-    /// — per the margin finding above — deliberately set no margin on it.
+    /// The rule is a 1x1 `NSTextTableBlock` with no margin — the object the GFM
+    /// table's own visible cell borders use; bare `NSTextBlock` borders draw
+    /// nothing. See the `nstextblock-border-unreliable` project memory note.
     private func blockQuoteRule() -> NSTextBlock {
         let table = NSTextTable()
         table.numberOfColumns = 1
@@ -870,22 +858,10 @@ private struct Builder {
         // character, so that text is discarded in favor of drawing the rule
         // directly.
         //
-        // Two earlier techniques were both tried against the running app and
-        // both drew nothing, confirmed by screenshot — neither should be
-        // reintroduced:
-        //   1. A bare `NSTextBlock` border, with both a width and a color set
-        //      on one edge (the configuration Apple's own docs say is
-        //      required) — see `blockQuoteRule`'s doc comment for the wider
-        //      AppKit border-rendering bugs this points to.
-        //   2. A `.thick` `.underlineStyle` on a tab run stretched by a
-        //      far-out tab stop — still invisible, leaving only the reserved
-        //      line height as a tall blank gap where the rule should be.
-        //      Underlining a tab's whitespace advance is evidently not a
-        //      drawn glyph the way underlining actual text is.
-        // Both are attribute/border compositing paths with open AppKit gaps.
-        // An embedded image is a different, well-supported path instead —
-        // `NSTextAttachment` composites like any inline image — so the rule
-        // below is rasterized into a 1pt-tall `NSImage` and embedded that way.
+        // The rule is rasterized into a 1pt-tall `NSImage` embedded as an
+        // `NSTextAttachment`, which composites like any inline image; text-block
+        // border and underline techniques draw nothing. See the
+        // `nstextblock-border-unreliable` project memory note.
         let indent = block.ambientIndent
         let ruleWidth = max(contentWidth - indent, 1)
 
