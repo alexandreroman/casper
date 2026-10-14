@@ -846,21 +846,13 @@ final class AppModel {
     /// repo folder, `<parent>/<repo>-<branch>`) in a Git Space. Placing worktrees
     /// outside the repo keeps them naturally untracked. When the sibling directory
     /// name is already taken, a numeric suffix (`-2`, `-3`, …) is appended so
-    /// creation still succeeds; the branch name is left unchanged. Returns false when
-    /// the Space is missing, not a Git repo, the name is unusable, or the worktree
-    /// cannot be created.
-    @discardableResult
-    func addLinkedWorkspace(spaceID: UUID, name: String) async -> Bool {
-        (try? await createLinkedWorkspace(spaceID: spaceID, name: name, base: nil).get()) != nil
-    }
-
-    /// Create a linked workspace (new branch + worktree at `<parent>/<repo>-<branch>`)
-    /// in a Git Space. `base` overrides the fork point; nil derives it from the
-    /// primary workspace's branch (the prior behavior). `select` controls whether the
-    /// new workspace becomes the selected/focused one; it defaults to true for UI
-    /// creation and is set to false for the control-channel (CLI) path so a workspace
-    /// created remotely does not steal the user's current selection. Returns the new
-    /// workspace or a human-readable error.
+    /// creation still succeeds; the branch name is left unchanged. `base` overrides
+    /// the fork point; nil derives it from the primary workspace's branch. `select`
+    /// controls whether the new workspace becomes the selected/focused one; it
+    /// defaults to true for UI creation and is set to false for the control-channel
+    /// (CLI) path so a workspace created remotely does not steal the user's current
+    /// selection. Returns the new workspace or a human-readable error, which both the
+    /// CLI and the "Create Workspace…" alert show as is.
     ///
     /// `async` because the checkout in the middle runs off the main actor, like every
     /// other libgit2 call on a workspace's lifecycle (`AppModel+WorkspaceLifecycle`):

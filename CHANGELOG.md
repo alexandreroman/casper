@@ -33,6 +33,9 @@ CI, test, and documentation-only work is left out.
   longer deletes that worktree's folder. The error now says so, and suggests
   `git worktree prune` when that worktree was deleted, instead of showing Git's
   "directory exists".
+- "Create Workspace…" now says why a workspace could not be created — for
+  example a repository with no commits yet, or a name Git already has a
+  worktree entry for — instead of a generic guess.
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
   as unreadable.
 - `casper` commands fail at once instead of hanging for several seconds when

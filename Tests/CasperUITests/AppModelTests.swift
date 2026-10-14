@@ -1,7 +1,7 @@
 import Clibgit2
 import XCTest
 import CasperAgents
-import CasperCore
+@testable import CasperCore
 import CasperTestSupport
 @testable import CasperGhostty
 @testable import CasperGit
@@ -330,7 +330,7 @@ final class AppModelTests: XCTestCase {
         let repo = try makeTempGitRepo()
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
-        _ = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat")
+        _ = try await model.createLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat", base: nil).get()
         let linkedID = model.spaces[0].workspaces[1].id
         model.selectWorkspace(linkedID)
 
@@ -344,8 +344,8 @@ final class AppModelTests: XCTestCase {
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let gitSpaceID = model.spaces[0].id
-        _ = await model.addLinkedWorkspace(spaceID: gitSpaceID, name: "Feature One")
-        _ = await model.addLinkedWorkspace(spaceID: gitSpaceID, name: "Feature Two")
+        _ = try await model.createLinkedWorkspace(spaceID: gitSpaceID, name: "Feature One", base: nil).get()
+        _ = try await model.createLinkedWorkspace(spaceID: gitSpaceID, name: "Feature Two", base: nil).get()
         // Alphabetically before the repo's temp-dir name ("casper-test-…"), so
         // this Space becomes `spaces[0]` and the Git Space becomes `spaces[1]`.
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/aaa-first-space"), probe: { _ in nil })
@@ -425,15 +425,14 @@ final class AppModelTests: XCTestCase {
 
     // MARK: - Linked workspaces
 
-    func testAddLinkedWorkspaceCreatesWorktreeAndPort() async throws {
+    func testCreateLinkedWorkspaceCreatesWorktreeAndPort() async throws {
         let repo = try makeTempGitRepo()
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let spaceID = model.spaces[0].id
         let primaryPort = model.spaces[0].workspaces[0].portBase
 
-        let created = await model.addLinkedWorkspace(spaceID: spaceID, name: "My Feature")
-        XCTAssertTrue(created)
+        _ = try await model.createLinkedWorkspace(spaceID: spaceID, name: "My Feature", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
         XCTAssertEqual(linked.kind, .linked)
         XCTAssertEqual(linked.branch, "my-feature")
@@ -445,7 +444,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: expectedWorktree))
     }
 
-    func testAddLinkedWorkspaceAvoidsExistingDirectory() async throws {
+    func testCreateLinkedWorkspaceAvoidsExistingDirectory() async throws {
         let repo = try makeTempGitRepo()
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
@@ -467,8 +466,7 @@ final class AppModelTests: XCTestCase {
             try? FileManager.default.removeItem(atPath: suffixed)
         }
 
-        let created = await model.addLinkedWorkspace(spaceID: spaceID, name: "My Feature")
-        XCTAssertTrue(created)
+        _ = try await model.createLinkedWorkspace(spaceID: spaceID, name: "My Feature", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
         XCTAssertTrue(linked.worktreePath.hasSuffix("-my-feature-2"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: linked.worktreePath))
@@ -478,7 +476,7 @@ final class AppModelTests: XCTestCase {
     /// An IDE that still has a merged-away worktree open re-creates its directory
     /// minutes later, with nothing in it but its own project metadata. The next
     /// workspace of that name must reclaim the path, not settle for a `-2` sibling.
-    func testAddLinkedWorkspaceReclaimsAnEditorLeftoverDirectory() async throws {
+    func testCreateLinkedWorkspaceReclaimsAnEditorLeftoverDirectory() async throws {
         let repo = try makeTempGitRepo()
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
@@ -493,9 +491,7 @@ final class AppModelTests: XCTestCase {
             atomically: true, encoding: .utf8)
         addTeardownBlock { try? FileManager.default.removeItem(at: leftover) }
 
-        let created = await model.addLinkedWorkspace(spaceID: spaceID, name: "My Feature")
-
-        XCTAssertTrue(created)
+        _ = try await model.createLinkedWorkspace(spaceID: spaceID, name: "My Feature", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
         XCTAssertTrue(linked.worktreePath.hasSuffix("-my-feature"))
         // A `.git` file at the leftover path is the worktree having landed there.
@@ -505,13 +501,67 @@ final class AppModelTests: XCTestCase {
             atPath: leftover.appendingPathComponent(".idea").path))
     }
 
-    func testAddLinkedWorkspaceRejectedForNonGitSpace() async {
+    func testCreateLinkedWorkspaceRejectedForNonGitSpace() async {
         let dir = makeTemporaryDirectory()
         let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
-        let created = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "x")
-        XCTAssertFalse(created)
+        let result = await model.createLinkedWorkspace(spaceID: model.spaces[0].id, name: "x", base: nil)
+        XCTAssertThrowsError(try result.get())
         XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+    }
+
+    /// What the "Create Workspace…" alert says when creation fails, captured through
+    /// the `reportWorkspaceCreationFailure` seam; nil when nothing was reported.
+    private func creationFailureMessage(
+        _ model: AppModel, spaceID: UUID, name: String
+    ) async -> String? {
+        let original = AppModel.reportWorkspaceCreationFailure
+        defer { AppModel.reportWorkspaceCreationFailure = original }
+        var reported: String?
+        AppModel.reportWorkspaceCreationFailure = { reported = $0 }
+        await model.createLinkedWorkspaceReportingFailure(spaceID: spaceID, name: name)
+        return reported
+    }
+
+    /// The alert quotes the reason in Casper's own words: a repository with no commit
+    /// has nothing to check a worktree out at, and the user must read that, not a guess.
+    func testCreationFailureAlertSaysTheRepositoryHasNoCommits() async throws {
+        let dir = makeTemporaryDirectory()
+        _ = try Repository.initialize(atPath: dir.path)
+        let model = makeModel()
+        model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
+
+        let message = await creationFailureMessage(model, spaceID: model.spaces[0].id, name: "foo")
+
+        XCTAssertEqual(message, WorktreeError(.repositoryHasNoCommits).localizedDescription)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+    }
+
+    func testCreationFailureAlertSaysGitHasAWorktreeByThatName() async throws {
+        let repo = try makeTempGitRepo()
+        let elsewhere = makeTemporaryDirectory().appendingPathComponent("taken").path
+        try GitFixture.registerWorktree(
+            inRepoAt: repo.path, name: "taken", atPath: elsewhere, onNewBranch: "other")
+        let model = makeModel()
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+
+        let message = await creationFailureMessage(model, spaceID: model.spaces[0].id, name: "taken")
+
+        XCTAssertEqual(message, WorktreeError(.worktreeNameTaken).localizedDescription)
+    }
+
+    func testSuccessfulCreationReportsNothing() async throws {
+        let repo = try makeTempGitRepo()
+        let model = makeModel()
+        model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
+        let worktree = repo.deletingLastPathComponent()
+            .appendingPathComponent(repo.lastPathComponent + "-feat").path
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: worktree) }
+
+        let message = await creationFailureMessage(model, spaceID: model.spaces[0].id, name: "feat")
+
+        XCTAssertNil(message)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 2)
     }
 
     func testRemoveWorkspaceLinkedOnlyReleasesPort() async throws {
@@ -519,7 +569,7 @@ final class AppModelTests: XCTestCase {
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let spaceID = model.spaces[0].id
-        _ = await model.addLinkedWorkspace(spaceID: spaceID, name: "feat")
+        _ = try await model.createLinkedWorkspace(spaceID: spaceID, name: "feat", base: nil).get()
         let linkedID = model.spaces[0].workspaces[1].id
 
         model.removeWorkspace(id: linkedID)  // linked → dropped
@@ -916,8 +966,7 @@ final class AppModelTests: XCTestCase {
         // A worktree created by Casper, then dropped from the sidebar without
         // deleting it on disk: re-adding its folder must bring it back into the
         // same Space rather than spawning a second Space for the same repo.
-        let created = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat")
-        XCTAssertTrue(created)
+        _ = try await model.createLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
         addTeardownBlock { try? FileManager.default.removeItem(atPath: linked.worktreePath) }
         model.removeWorkspace(id: linked.id)
@@ -2186,9 +2235,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.createSpace(at: folder), .created)
         XCTAssertFalse(try Repository.open(atPath: folder.path).isHeadUnborn)
 
-        let created = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "First Feature")
+        _ = try await model.createLinkedWorkspace(spaceID: model.spaces[0].id, name: "First Feature", base: nil).get()
 
-        XCTAssertTrue(created)
         XCTAssertEqual(model.spaces[0].workspaces.count, 2)
         let linked = try XCTUnwrap(model.spaces[0].workspaces.last)
         XCTAssertEqual(linked.kind, .linked)

@@ -62,9 +62,25 @@ extension AppModel {
     func presentAddLinkedWorkspacePanel(spaceID: UUID) {
         guard let name = WorkspaceAlerts.askWorkspaceName() else { return }
         Task { @MainActor in
-            let created = await self.addLinkedWorkspace(spaceID: spaceID, name: name)
-            if !created { WorkspaceAlerts.reportCreationFailure(name: name) }
+            await self.createLinkedWorkspaceReportingFailure(spaceID: spaceID, name: name)
         }
+    }
+
+    /// The creation half of `presentAddLinkedWorkspacePanel`, past its modal prompt:
+    /// create the workspace and, when that fails, tell the user why — the very reason
+    /// `createLinkedWorkspace` gives the control channel, such as a repository with no
+    /// commit yet.
+    func createLinkedWorkspaceReportingFailure(spaceID: UUID, name: String) async {
+        if case .failure(let error) = await createLinkedWorkspace(spaceID: spaceID, name: name, base: nil) {
+            Self.reportWorkspaceCreationFailure(error.message)
+        }
+    }
+
+    /// Shows why a workspace could not be created. Production runs an alert; tests
+    /// substitute a closure, for the reason `chooseNewSpaceLocation` is a seam: an
+    /// alert cannot run under XCTest, and what matters is the message it is given.
+    static var reportWorkspaceCreationFailure: @MainActor (_ message: String) -> Void = { message in
+        WorkspaceAlerts.reportFailure(title: "Could not create workspace", message: message)
     }
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
@@ -301,15 +317,6 @@ private enum WorkspaceAlerts {
         case .noFreePortBlock:
             return "Casper has no free port block left to give a new workspace."
         }
-    }
-
-    static func reportCreationFailure(name: String) {
-        let alert = NSAlert()
-        alert.messageText = "Could not create workspace"
-        alert.informativeText =
-            "\u{201c}\(name)\u{201d} could not be created. A branch or worktree with that name "
-            + "may already exist, or the name is not a valid branch name."
-        alert.runModal()
     }
 
     /// True when the user confirms the merge-and-close.
