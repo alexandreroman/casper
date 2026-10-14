@@ -8,7 +8,6 @@ final class AgentEnvironmentTests: XCTestCase {
         let env = AgentEnvironment.surfaceEnvironment(workspaceId: id, portBase: 40010)
         XCTAssertEqual(env["CASPER_WORKSPACE_ID"], id.casperID)
         XCTAssertEqual(env["CASPER_PORT"], "40010")
-        assertLowercased(env["CASPER_WORKSPACE_ID"])
     }
 
     func testSurfaceEnvironmentOmitsPortWhenNoPortBase() {
@@ -16,7 +15,6 @@ final class AgentEnvironmentTests: XCTestCase {
         let env = AgentEnvironment.surfaceEnvironment(workspaceId: id, portBase: nil)
         XCTAssertNil(env["CASPER_PORT"])
         XCTAssertEqual(env["CASPER_WORKSPACE_ID"], id.casperID)
-        assertLowercased(env["CASPER_WORKSPACE_ID"])
     }
 
     /// Pins the canonical lowercase form against a fixed, letter-bearing id.
@@ -28,10 +26,19 @@ final class AgentEnvironmentTests: XCTestCase {
         XCTAssertEqual(env["CASPER_WORKSPACE_ID"], "abcdef01-abcd-4bcd-8bcd-abcdef012345")
     }
 
-    func testSurfaceEnvironmentDoesNotExposeNumberedPorts() {
+    func testSurfaceEnvironmentMinimalKeySet() {
         let env = AgentEnvironment.surfaceEnvironment(workspaceId: UUID(), portBase: 40010)
-        XCTAssertNil(env["CASPER_PORT_0"])
-        XCTAssertNil(env["CASPER_PORT_9"])
+        XCTAssertEqual(Set(env.keys), ["CASPER_WORKSPACE_ID", "CASPER_PORT"])
+    }
+
+    func testSurfaceEnvironmentFullKeySet() {
+        let env = AgentEnvironment.surfaceEnvironment(
+            workspaceId: UUID(), portBase: 40010,
+            casperDirectory: "/Apps/Casper.app/Contents/MacOS", basePath: "/usr/bin",
+            controlSocketPath: "/control.sock", sessionName: "dev")
+        XCTAssertEqual(
+            Set(env.keys),
+            ["CASPER_WORKSPACE_ID", "CASPER_PORT", "CASPER_CONTROL_SOCKET", "CASPER_SESSION", "PATH"])
     }
 
     func testSurfaceEnvironmentPrependsCasperDirectoryToPath() {
@@ -62,5 +69,17 @@ final class AgentEnvironmentTests: XCTestCase {
     func testSurfaceEnvironmentOmitsSessionForDefault() {
         let env = AgentEnvironment.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
         XCTAssertNil(env["CASPER_SESSION"])
+    }
+
+    func testSurfaceEnvironmentInjectsControlSocketWhenProvided() {
+        let env = AgentEnvironment.surfaceEnvironment(
+            workspaceId: UUID(), portBase: 40000,
+            controlSocketPath: "/control.sock")
+        XCTAssertEqual(env["CASPER_CONTROL_SOCKET"], "/control.sock")
+    }
+
+    func testSurfaceEnvironmentOmitsControlSocketWhenNil() {
+        let env = AgentEnvironment.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
+        XCTAssertNil(env["CASPER_CONTROL_SOCKET"])
     }
 }
