@@ -21,8 +21,12 @@ surfaces and PTYs (same model as the Ghostty app).
   `NSView` into a fresh container on each rebuild instead of creating a new one,
   so a surface's PTY survives layout restructuring; ownership is driven by
   window membership (see [[persistent-nsview-host-sharing]]).
-- **`GhosttyDefaultConfig`** — the baked-in default terminal theme, loaded
-  before the user's own Ghostty config so user settings still win (see
+- **`GhosttyDefaultConfig`** / **`GhosttyThemeFiles`** — two built-in themes
+  (Arthur dark, GitHub Light). `GhosttyThemeFiles` writes them to
+  `~/Library/Caches/<bundle id>/ghostty-themes/` and they are kept for the
+  app's lifetime; a conditional `theme = light:…,dark:…` line references them.
+  The defaults load before the user's own Ghostty config, so user settings
+  still win and a user `theme` replaces Casper's (see
   [[ghostty-config-dir-bundle-id]]).
 - **`GhosttyActionDispatcher.swift`** — the extensible seam: the
   `GhosttyActionHandler` protocol plus the default `LoggingActionHandler`, which

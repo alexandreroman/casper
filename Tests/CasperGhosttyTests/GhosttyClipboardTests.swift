@@ -29,7 +29,7 @@ final class GhosttyClipboardTests: XCTestCase {
     /// all. Deleting the config line must fail here.
     func testDefaultConfigMakesLibghosttyAskBeforeAnUntrustedWrite() {
         XCTAssertTrue(
-            GhosttyDefaultConfig.text.contains("clipboard-write = ask"),
+            GhosttyDefaultConfig.text(themes: nil).contains("clipboard-write = ask"),
             "without `clipboard-write = ask`, OSC 52 writes reach the pasteboard unprompted")
     }
 
