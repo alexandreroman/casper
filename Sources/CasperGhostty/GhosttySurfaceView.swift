@@ -453,6 +453,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // repeat state was re-pushed — so the count is what a test asserts on.
     private(set) var debugOcclusionPushCount = 0
 
+    // Test seam: how many sizes `pushSize` forwarded to libghostty
+    // (`ghostty_surface_set_size`), which is set-only and not de-duplicated: a repeat of
+    // the same size is invisible, so the count is what a test asserts on.
+    private(set) var debugSizePushCount = 0
+
     func debugRefreshOcclusion() { refreshOcclusion() }
 
     // Test seams for the bounded creation retry: the `.forTesting()` runtime fails
@@ -602,6 +607,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         let width = backing.width.isFinite ? max(0, backing.width) : 0
         let height = backing.height.isFinite ? max(0, backing.height) : 0
         surface.setSize(widthPixels: UInt32(width), heightPixels: UInt32(height))
+        #if DEBUG
+        debugSizePushCount += 1
+        #endif
     }
 
     private func pushContentScale() {
@@ -734,17 +742,15 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         })
         // Dragging the window onto another screen can change its backing scale, its
         // refresh rate, or both. Two screens sharing a scale factor change no backing
-        // property, so this is the only notification that reports the move: re-sync the
-        // Metal layer's scale and re-push the display id, or libghostty keeps rendering
-        // for the screen the window just left.
+        // property, and even a scale change does not always call
+        // `viewDidChangeBackingProperties` (ghostty-org/ghostty#2731), so this is the one
+        // notification sure to report the move: re-push everything the window governs, as
+        // upstream's `windowDidChangeScreen` does, or libghostty keeps rendering for the
+        // screen the window just left.
         windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification, object: window, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.syncLayerContentsScale()
-                self?.pushContentScale()
-                self?.pushDisplayID()
-            }
+            MainActor.assumeIsolated { self?.pushWindowGeometry() }
         })
     }
 
