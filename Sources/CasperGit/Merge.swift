@@ -1,4 +1,5 @@
 import Clibgit2
+import Foundation
 
 /// The result of `Repository.mergeBranchHeadless`.
 public enum MergeOutcome: Equatable, Sendable {
@@ -12,13 +13,62 @@ public struct MergeConflictError: Error, Equatable, Sendable {}
 
 /// Thrown when neither the environment (`GIT_AUTHOR_*`, `GIT_COMMITTER_*`) nor the
 /// user's Git configuration yields a commit identity: no name or email set, a blank
-/// one, or a configuration libgit2 cannot read (an `includeIf` condition it does not
-/// support, say). `detail` is libgit2's own message, the only thing telling those
-/// apart. Casper never invents an identity: a name the user never chose would sit
-/// in their history forever. Nothing is written to the repository when this is
-/// thrown.
+/// one, an unparsable `GIT_*_DATE`, or a configuration libgit2 cannot read (an
+/// `includeIf` condition it does not support, say). `detail` is libgit2's own
+/// message, the only thing telling those apart. Casper never invents an identity: a
+/// name the user never chose would sit in their history forever. Nothing is written
+/// to the repository when this is thrown.
 public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
     public let detail: String
+    /// The identity variables set in the process environment that the refusal is
+    /// blamed on, empty when the configuration is to blame. A set variable shadows
+    /// `user.name` / `user.email` even when blank, so `git config` cannot repair what
+    /// one of these breaks.
+    public let environmentVariables: [String]
+
+    /// Diagnose a `git_signature_default_from_env` that returned `code`, called with
+    /// libgit2's error state cleared beforehand.
+    ///
+    /// A name or email variable is to blame when `git_signature_new` rejects it on its
+    /// own: blank, or holding an angle bracket. The date variables are to blame when
+    /// libgit2 recorded no error, which only an unparsable date does; libgit2 exposes
+    /// no parser to check a date with directly.
+    init(failureCode code: Int32) {
+        let recordedNoError = git_error_last()?.pointee.klass == Int32(GIT_ERROR_NONE.rawValue)
+        // Read before the checks below, which overwrite libgit2's last error.
+        detail = recordedNoError ? "unparsable date" : lastErrorMessage(code: code)
+
+        var blamed: [String] = []
+        for variable in ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"] {
+            if let name = Self.environmentValue(variable),
+               !Self.signatureAccepts(name: name, email: "placeholder@example.com") {
+                blamed.append(variable)
+            }
+        }
+        for variable in ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"] {
+            if let email = Self.environmentValue(variable),
+               !Self.signatureAccepts(name: "Placeholder", email: email) {
+                blamed.append(variable)
+            }
+        }
+        if recordedNoError {
+            for variable in ["GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"] where Self.environmentValue(variable) != nil {
+                blamed.append(variable)
+            }
+        }
+        environmentVariables = blamed
+    }
+
+    /// `variable`'s value as libgit2 reads it (`getenv`), even when blank; nil when unset.
+    private static func environmentValue(_ variable: String) -> String? {
+        getenv(variable).map { String(cString: $0) }
+    }
+
+    private static func signatureAccepts(name: String, email: String) -> Bool {
+        var signature: UnsafeMutablePointer<git_signature>?
+        defer { git_signature_free(signature) }
+        return git_signature_new(&signature, name, email, 0, 0) == 0
+    }
 }
 
 extension Repository {
@@ -35,8 +85,8 @@ extension Repository {
     ///
     /// Throws `MergeConflictError` when the merge can't be resolved automatically,
     /// and `MissingCommitterIdentityError` when there is a commit to write but
-    /// neither the environment nor the user's Git configuration names anyone to write
-    /// it as. Nothing is written in either case.
+    /// neither the environment nor the user's Git configuration yields a usable
+    /// identity to write it as. Nothing is written in either case.
     public func mergeBranchHeadless(
         _ branchName: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -69,9 +119,10 @@ extension Repository {
             git_signature_free(author)
             git_signature_free(committer)
         }
+        git_error_clear()  // a failure that records no error is then told apart; see the error's init
         let signatureCode = git_signature_default_from_env(&author, &committer, pointer)
         guard signatureCode == 0 else {
-            throw MissingCommitterIdentityError(detail: lastErrorMessage(code: signatureCode))
+            throw MissingCommitterIdentityError(failureCode: signatureCode)
         }
 
         var mergeOptions = git_merge_options()

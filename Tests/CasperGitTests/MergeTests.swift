@@ -55,8 +55,62 @@ final class MergeTests: XCTestCase {
             let identityError = error as? MissingCommitterIdentityError
             XCTAssertNotNil(identityError, "got: \(error)")
             XCTAssertFalse(identityError?.detail.isEmpty ?? true, "libgit2's own message is kept")
+            XCTAssertEqual(identityError?.environmentVariables, [], "the configuration is to blame")
         }
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
+    }
+
+    /// A set variable shadows the configuration even when blank, so `git config` cannot
+    /// fix the refusal: the error names the variables to blame instead.
+    func testMergeRefusalBlamesBlankIdentityVariables() throws {
+        let (repo, main) = try repositoryWithAFeatureCommit()
+        setGitIdentityEnvironment([.authorName: "", .authorEmail: "author@env.example", .committerEmail: "  "])
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            XCTAssertEqual(
+                (error as? MissingCommitterIdentityError)?.environmentVariables,
+                ["GIT_AUTHOR_NAME", "GIT_COMMITTER_EMAIL"], "got: \(error)")
+        }
+    }
+
+    func testMergeRefusalBlamesAnUnparsableDateVariable() throws {
+        let (repo, main) = try repositoryWithAFeatureCommit()
+        setGitIdentityEnvironment([.authorName: "Env Author", .committerDate: "zzz"])
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            let identityError = error as? MissingCommitterIdentityError
+            XCTAssertEqual(identityError?.environmentVariables, ["GIT_COMMITTER_DATE"], "got: \(error)")
+            XCTAssertEqual(identityError?.detail, "unparsable date")
+        }
+    }
+
+    /// Valid variables set beside a broken configuration take none of the blame: there,
+    /// `git config` is the fix.
+    func testMergeRefusalBlamesNoValidIdentityVariable() throws {
+        let (repo, main) = try repositoryWithAFeatureCommit()
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "Config Name", email: "")
+        setGitIdentityEnvironment([
+            .authorName: "Env Author", .committerName: "Env Committer",
+            .authorDate: "2026-01-01 00:00:00 +0000",
+        ])
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            let identityError = error as? MissingCommitterIdentityError
+            XCTAssertNotNil(identityError, "got: \(error)")
+            XCTAssertEqual(identityError?.environmentVariables, [])
+        }
+    }
+
+    /// A repository whose `feature` branch holds one commit its base lacks, so merging it
+    /// writes a commit; returns the repository and its base branch.
+    private func repositoryWithAFeatureCommit() throws -> (Repository, String) {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let main = try repo.headBranchName()
+        let wtInfo = try repo.addWorktree(
+            name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
+        try GitFixture.commit(
+            atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
+        return (repo, main)
     }
 
     /// The environment names an identity the configuration lacks: the author comes from

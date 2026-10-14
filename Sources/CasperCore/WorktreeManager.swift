@@ -11,7 +11,7 @@ public struct WorktreeError: Error, Equatable, Sendable {
         case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
-        case missingCommitterIdentity(String)
+        case missingCommitterIdentity(detail: String, environmentVariables: [String])
         case fileCopyFailed(String)
         case configInvalid(String)
         case gitFailure(String)
@@ -37,10 +37,16 @@ extension WorktreeError: LocalizedError {
             return "The worktree path already exists."
         case .mergeConflict:
             return "The merge could not be completed automatically due to conflicts."
-        case .missingCommitterIdentity(let detail):
+        case .missingCommitterIdentity(let detail, let environmentVariables) where environmentVariables.isEmpty:
             return "Git has no usable identity to commit the merge as (\(detail)). Set user.name and "
                 + "user.email (git config --global user.name \"Your Name\" and git config --global "
                 + "user.email you@example.com), then try again."
+        case .missingCommitterIdentity(let detail, let environmentVariables):
+            let variables = environmentVariables.joined(separator: ", ")
+            return "Git has no usable identity to commit the merge as (\(detail)). Casper was started with "
+                + "\(variables) set in its environment, which overrides user.name and user.email, so "
+                + "git config cannot fix this. Correct or unset \(variables) where Casper is started, "
+                + "restart Casper, then try again."
         case .fileCopyFailed(let message):
             return "Failed to copy workspace files: \(message)"
         case .configInvalid(let message):
@@ -320,8 +326,8 @@ public enum WorktreeManager {
     /// writing a merge commit and advancing `targetBranch`. Throws
     /// `WorktreeError(.mergeConflict)` when the merge can't be resolved
     /// automatically, and `WorktreeError(.missingCommitterIdentity)` when neither the
-    /// environment nor the user's Git configuration names anyone to commit as —
-    /// nothing is written to the repository in either case.
+    /// environment nor the user's Git configuration yields a usable identity to commit
+    /// as — nothing is written to the repository in either case.
     public static func merge(
         repoPath: String, branch: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -331,7 +337,8 @@ public enum WorktreeManager {
         } catch is MergeConflictError {
             throw WorktreeError(.mergeConflict)
         } catch let error as MissingCommitterIdentityError {
-            throw WorktreeError(.missingCommitterIdentity(error.detail))
+            throw WorktreeError(.missingCommitterIdentity(
+                detail: error.detail, environmentVariables: error.environmentVariables))
         } catch let error as GitError {
             throw WorktreeError(.gitFailure(error.message))
         }

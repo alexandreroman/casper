@@ -86,9 +86,9 @@ binary. We own this surface; it exposes only what Casper needs.
   `WorktreeManager.merge` maps both refusals into `WorktreeError`
   (`.mergeConflict`, `.missingCommitterIdentity`), as it does every libgit2
   failure, and "Merge and Close" shows the identity one's message — libgit2's
-  cause, then the two `git config` commands to set the identity — with nothing
-  deleted. The cause matters because a configuration libgit2 cannot read fails
-  the same way as a missing identity. An up-to-date merge writes no commit and
+  cause, then the remedy ("Commit identity" below) — with nothing deleted. The
+  cause matters because a configuration libgit2 cannot read fails the same way
+  as a missing identity. An up-to-date merge writes no commit and
   needs no identity. See `Sources/CasperGit/Merge.swift`.
 
 - **Commit identity.** Both commits Casper writes — the merge above and a new
@@ -99,11 +99,19 @@ binary. We own this surface; it exposes only what Casper needs.
   to `user.name` / `user.email`, and to `EMAIL` when `user.email` is not set at
   all; `GIT_AUTHOR_DATE` / `GIT_COMMITTER_DATE` replace the current time. A
   blank value is refused, not skipped, and unlike `git` libgit2 never guesses a
-  `user@host` address. The environment reaches Casper only when it is launched
-  from a terminal (and in tests): launched from the Finder or the Dock, it
-  inherits launchd's environment, not the shell's. The configuration is the
-  one remedy that works however Casper was launched, which is why the refusal
-  message names the `git config` commands and not the variables.
+  `user@host` address. The environment that counts is the Casper app process's
+  own, never an agent shell's inside a Casper terminal: it holds a shell's
+  variables when that shell runs Casper's executable directly
+  (`Casper.app/Contents/MacOS/casper`, `make dev`, and the tests), while
+  `open`, the Finder and the Dock hand Casper launchd's environment, which
+  `launchctl setenv` extends. A set variable shadows the configuration even
+  when blank, so the refusal message depends on the cause. When variables are
+  to blame — a `GIT_*_NAME` or `GIT_*_EMAIL` libgit2 rejects, or a
+  `GIT_*_DATE` it cannot parse, as listed in
+  `MissingCommitterIdentityError.environmentVariables` — the message names
+  them and says to correct or unset them where Casper is started. Otherwise it
+  names the two `git config` commands, the remedy that works however Casper
+  was launched.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.

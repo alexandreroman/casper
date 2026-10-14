@@ -453,22 +453,56 @@ final class WorktreeManagerTests: XCTestCase {
             try WorktreeManager.merge(
                 repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
         ) { error in
-            guard case .missingCommitterIdentity(let detail) = (error as? WorktreeError)?.reason else {
+            guard case .missingCommitterIdentity(let detail, let variables) = (error as? WorktreeError)?.reason
+            else {
                 return XCTFail("expected .missingCommitterIdentity, got \(error)")
             }
             XCTAssertFalse(detail.isEmpty, "libgit2's own message is kept")
+            XCTAssertEqual(variables, [])
+        }
+    }
+
+    func testMergeWithABlankIdentityVariableNamesIt() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
+        setGitIdentityEnvironment([.authorName: ""])
+
+        XCTAssertThrowsError(
+            try WorktreeManager.merge(
+                repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+        ) { error in
+            guard case .missingCommitterIdentity(_, let variables) = (error as? WorktreeError)?.reason else {
+                return XCTFail("expected .missingCommitterIdentity, got \(error)")
+            }
+            XCTAssertEqual(variables, ["GIT_AUTHOR_NAME"])
         }
     }
 
     /// The message carries libgit2's cause, since a config it cannot read fails the
     /// same way as a missing identity, and shows how to set both halves of one.
     func testMissingCommitterIdentityDescriptionShowsTheCauseAndBothSettings() {
-        let error = WorktreeError(.missingCommitterIdentity("config value 'user.name' was not found"))
+        let error = WorktreeError(.missingCommitterIdentity(
+            detail: "config value 'user.name' was not found", environmentVariables: []))
         let message = error.localizedDescription
 
         XCTAssertTrue(message.contains("config value 'user.name' was not found"), message)
         XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
         XCTAssertTrue(message.contains("git config --global user.email you@example.com"), message)
+    }
+
+    /// A variable set in Casper's environment shadows `user.name` / `user.email`, so the
+    /// message names it and does not offer `git config` as the fix.
+    func testMissingCommitterIdentityDescriptionNamesTheVariablesToBlame() {
+        let error = WorktreeError(.missingCommitterIdentity(
+            detail: "unparsable date", environmentVariables: ["GIT_AUTHOR_NAME", "GIT_COMMITTER_DATE"]))
+        let message = error.localizedDescription
+
+        XCTAssertTrue(message.contains("unparsable date"), message)
+        XCTAssertTrue(message.contains("GIT_AUTHOR_NAME, GIT_COMMITTER_DATE"), message)
+        XCTAssertFalse(message.contains("git config --global"), message)
     }
 
     private func writeRepoConfig(_ json: String) throws {

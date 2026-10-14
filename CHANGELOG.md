@@ -20,12 +20,14 @@ CI, test, and documentation-only work is left out.
 ### Changed
 
 - The commits Casper writes — the merge commit of "Merge and Close" and a new
-  Space's first commit — take your Git identity from `user.name` and
-  `user.email`, or from the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` environment
-  variables when Casper is launched from a terminal. When neither names anyone,
-  "Merge and Close" refuses to write the merge commit, says why, and shows the
-  commands that set one, instead of committing as "Casper <casper@localhost>".
-  Nothing is deleted.
+  Space's first commit — take your Git identity from the `GIT_AUTHOR_*` and
+  `GIT_COMMITTER_*` environment variables Casper itself was started with (by
+  running its executable from a shell, or set with `launchctl setenv` for a
+  Dock launch), and otherwise from `user.name` and `user.email`. When neither
+  names anyone, "Merge and Close" refuses to write the merge commit, says why,
+  and shows the commands that set one, instead of committing as
+  "Casper <casper@localhost>"; when one of those variables is blank or
+  malformed, it names that variable instead. Nothing is deleted.
 
 ### Fixed
 
