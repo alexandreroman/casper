@@ -1,6 +1,6 @@
 ---
 name: ".casper.json scripts — decisions & invariants"
-description: "Non-obvious design decisions behind .casper.json copyFiles + named commands + setup/teardown hooks"
+description: "Invariants behind the .casper.json hooks: the child-exit/close race, the setup gate, the destroy-path claim"
 type: project
 ---
 

@@ -78,7 +78,7 @@
 - [Release binary size budget](references/binary-size-budget.md) — the measured levers, which are applied, and which are declined
 - [MainRunLoop, the shared modal-proof hop](references/main-run-loop-hop.md) — `MainRunLoop.perform` reaches the main thread behind a modal panel
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — a non-empty `spaces` always resolves `selectedWorkspaceID`
-- [.casper.json scripts — decisions & invariants](references/repo-config.md) — copyFiles + commands + hooks: the child-exit race and wrap choices
+- [.casper.json scripts — decisions & invariants](references/repo-config.md) — the child-exit race, the setup gate, the destroy claim
 - [Project memory conventions](references/project-memory-conventions.md) — no `casper` filename prefix; status lives in `status.md`
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI
 - [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
