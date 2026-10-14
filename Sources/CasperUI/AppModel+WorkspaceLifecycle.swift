@@ -93,8 +93,8 @@ extension AppModel {
     }
 
     /// The control channel's delete verb. Keeps a completion-based shape because
-    /// `ControlServer` replies from a synchronous `handle`; the work itself is the
-    /// shared async core.
+    /// `ControlServer` replies from a synchronous `handle`; the work itself is
+    /// `deleteWorkspace`.
     ///
     /// Reports exactly like the GUI delete, JSON reply notwithstanding: the reply only
     /// reaches the CLI caller, while the person watching the app would otherwise see the
@@ -107,52 +107,26 @@ extension AppModel {
         Task { @MainActor in
             // Read up front: by the time the hook's status comes back the workspace is
             // gone from the model. A workspace that never existed cannot reach the
-            // closure at all — `deleteLinkedWorkspace` routes that to `nonLinkedFallback`.
+            // closure at all — `deleteWorkspace` refuses it first.
             let name = self.workspace(id: workspaceID)?.name ?? ""
-            let result = await self.deleteLinkedWorkspace(
-                id: workspaceID,
-                onTeardownHook: { status in
-                    self.reportTeardownHookFailure(
-                        status, workspace: name, id: workspaceID, verb: "deleted")
-                },
-                nonLinkedFallback: {
-                    await self.pruneWorkspaceFromDisk(id: workspaceID)   // precise error, no teardown
-                })
+            let result = await self.deleteWorkspace(id: workspaceID) { status in
+                self.reportTeardownHookFailure(status, workspace: name, id: workspaceID, verb: "deleted")
+            }
             completion(result)
         }
     }
 
-    /// Shared linked-workspace teardown-then-prune flow behind `deleteWorkspace`
-    /// and `controlDeleteWorkspace`. Only the non-linked case differs, so each
-    /// caller supplies its own `nonLinkedFallback` and keeps its exact error and
-    /// return behavior.
+    /// The tail both destroy paths share once their own checks have passed: run the
+    /// `teardown` hook, when there is one, as a progress step of its own, then prune the
+    /// workspace from disk.
     ///
     /// `onTeardownHook` receives the hook's outcome — always, including `.none` and
     /// `.succeeded` — so the caller decides whether it is worth reporting; it never
-    /// affects the returned result, because a broken teardown must not block the delete.
-    private func deleteLinkedWorkspace(
-        id workspaceID: UUID,
-        onTeardownHook: @MainActor (TeardownHookStatus) -> Void,
-        nonLinkedFallback: () async -> Result<Void, OperationError>
+    /// affects the returned result, because a broken teardown must not block the prune.
+    private func teardownAndPrune(
+        id workspaceID: UUID, teardown: String?, progress: WorkspaceCloseProgressReporter,
+        onTeardownHook: @MainActor (TeardownHookStatus) -> Void
     ) async -> Result<Void, OperationError> {
-        guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
-            return await nonLinkedFallback()
-        }
-        // Claim the workspace synchronously, before the first `await` below: see
-        // `closingWorkspaces`.
-        guard closingWorkspaces.insert(workspaceID).inserted else {
-            return .failure(OperationError(message: "deletion already in progress"))
-        }
-        defer { closingWorkspaces.remove(workspaceID) }
-        // Resolved once, up front: it decides the step count AND is what `runTeardown`
-        // runs, so the config file is never read twice.
-        let teardown = teardownCommand(for: ws)
-        let progress = makeCloseProgressReporter(
-            id: workspaceID, title: "Deleting \u{201c}\(ws.name)\u{201d}",
-            stepCount: teardown == nil ? 1 : 2)
-        progress.start()
-        defer { progress.finish() }
-
         if teardown != nil {
             progress.step(
                 "Running teardown hook\u{2026}",
@@ -217,14 +191,12 @@ extension AppModel {
         defer { progress.finish() }
 
         progress.step("Checking for uncommitted changes\u{2026}")
-        guard (try? await Self.offloadGit { try WorktreeManager.isClean(repoPath: worktreePath) }) == true
-        else {
+        guard await isWorktreeClean(worktreePath) else {
             return .mergeFailed(
                 message: "\u{201c}\(ws.name)\u{201d} has uncommitted changes. Commit or discard "
                     + "them before merging.")
         }
-        guard (try? await Self.offloadGit { try WorktreeManager.isClean(repoPath: primaryPath) }) == true
-        else {
+        guard await isWorktreeClean(primaryPath) else {
             return .mergeFailed(
                 message: "\u{201c}\(primary.name)\u{201d} (branch \u{201c}\(baseBranch)\u{201d}) has "
                     + "uncommitted changes. Commit or discard them there before merging.")
@@ -245,14 +217,9 @@ extension AppModel {
         }
         // Merge done; the worktree still exists so teardown has a valid cwd. Run it,
         // then prune + resync.
-        if teardown != nil {
-            progress.step(
-                "Running teardown hook\u{2026}",
-                deadline: Date().addingTimeInterval(ScriptHookRunner.teardownTimeout))
-        }
-        onTeardownHook(await runTeardown(id: workspaceID, command: teardown))
-        progress.step("Removing the worktree\u{2026}")
-        if case .failure(let error) = await pruneWorkspaceFromDisk(id: workspaceID) {
+        let pruned = await teardownAndPrune(
+            id: workspaceID, teardown: teardown, progress: progress, onTeardownHook: onTeardownHook)
+        if case .failure(let error) = pruned {
             CasperLog.app.failure("close workspace: disk cleanup failed", error)
             return .cleanupFailed(
                 message: "The merge succeeded, but the worktree or branch could not be removed "
@@ -271,15 +238,39 @@ extension AppModel {
         return .success
     }
 
-    /// Delete a linked workspace from disk without merging: prune its worktree,
-    /// delete its branch, then drop it from the UI. Never presents UI itself —
-    /// see `closeWorkspace`.
+    /// Delete a linked workspace from disk without merging: run its `teardown` hook,
+    /// prune its worktree, delete its branch, then drop it from the UI. Refuses an
+    /// unknown or primary workspace with a precise error, which the control channel's
+    /// delete verb replies with as is. Never presents UI itself — see `closeWorkspace`.
+    ///
+    /// `onTeardownHook` receives the hook's outcome — always, including `.none` and
+    /// `.succeeded` — so the caller decides whether it is worth reporting; it never
+    /// affects the returned result, because a broken teardown must not block the delete.
     func deleteWorkspace(
         id workspaceID: UUID,
         onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in }
     ) async -> Result<Void, OperationError> {
-        await deleteLinkedWorkspace(id: workspaceID, onTeardownHook: onTeardownHook) {
-            .failure(OperationError(message: "workspace not found"))
+        guard let ws = workspace(id: workspaceID) else {
+            return .failure(OperationError(message: "workspace not found"))
         }
+        guard ws.kind == .linked else {
+            return .failure(OperationError(message: "cannot delete the primary workspace"))
+        }
+        // Claim the workspace synchronously, before the first `await` below: see
+        // `closingWorkspaces`.
+        guard closingWorkspaces.insert(workspaceID).inserted else {
+            return .failure(OperationError(message: "deletion already in progress"))
+        }
+        defer { closingWorkspaces.remove(workspaceID) }
+        // Resolved once, up front: it decides the step count AND is what `runTeardown`
+        // runs, so the config file is never read twice.
+        let teardown = teardownCommand(for: ws)
+        let progress = makeCloseProgressReporter(
+            id: workspaceID, title: "Deleting \u{201c}\(ws.name)\u{201d}",
+            stepCount: teardown == nil ? 1 : 2)
+        progress.start()
+        defer { progress.finish() }
+        return await teardownAndPrune(
+            id: workspaceID, teardown: teardown, progress: progress, onTeardownHook: onTeardownHook)
     }
 }
