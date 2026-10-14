@@ -15,6 +15,9 @@ import XCTest
 /// creates a surface, and without one `performKeyEquivalent` returns false before any
 /// of the checks under test, which would make the unfocused assertion vacuous.
 final class GhosttyControlReturnTests: XCTestCase {
+    /// Return ("\r") on a standard US ANSI keyboard.
+    private let returnKeyCode: UInt16 = 36
+
     @MainActor
     func testFocusedSurfaceClaimsControlReturn() throws {
         try withRealSurface { view, _ in
@@ -22,7 +25,7 @@ final class GhosttyControlReturnTests: XCTestCase {
             settle(0.6)
 
             XCTAssertTrue(
-                view.performKeyEquivalent(with: try returnKeyDown(modifierFlags: [.control])),
+                view.performKeyEquivalent(with: keyEvent("\r", modifiers: [.control], keyCode: returnKeyCode)),
                 "a focused surface must claim Ctrl+Return, or AppKit shows the context menu")
         }
     }
@@ -33,7 +36,7 @@ final class GhosttyControlReturnTests: XCTestCase {
             settle(0.6)
 
             XCTAssertFalse(
-                view.performKeyEquivalent(with: try returnKeyDown(modifierFlags: [])),
+                view.performKeyEquivalent(with: keyEvent("\r", keyCode: returnKeyCode)),
                 "a plain Return must fall through to keyDown, not be claimed as an equivalent")
         }
     }
@@ -46,16 +49,8 @@ final class GhosttyControlReturnTests: XCTestCase {
             XCTAssertTrue(view.window?.makeFirstResponder(nil) ?? false)
 
             XCTAssertFalse(
-                view.performKeyEquivalent(with: try returnKeyDown(modifierFlags: [.control])),
+                view.performKeyEquivalent(with: keyEvent("\r", modifiers: [.control], keyCode: returnKeyCode)),
                 "an unfocused surface must not claim Ctrl+Return from whatever is focused")
         }
-    }
-
-    /// A Return key-down: "\r" is keyCode 36 on a standard US ANSI keyboard.
-    private func returnKeyDown(modifierFlags: NSEvent.ModifierFlags) throws -> NSEvent {
-        try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: modifierFlags, timestamp: 0,
-            windowNumber: 0, context: nil, characters: "\r",
-            charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
     }
 }

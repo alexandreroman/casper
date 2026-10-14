@@ -45,7 +45,9 @@ final class GhosttyEditingCommandReplayTests: XCTestCase {
 
             // Ctrl-A resolves to moveToBeginningOfParagraph:. Forwarded raw with a correctly
             // encoded keycode, the shell moves the cursor to the start of the line.
-            view.keyDown(with: controlKeyEvent(character: "\u{01}", base: "a", keyCode: keyCode))
+            // A real Control press reports the control scalar as `characters` and the base
+            // letter as `charactersIgnoringModifiers`.
+            view.keyDown(with: keyEvent("\u{01}", ignoringModifiers: "a", modifiers: [.control], keyCode: keyCode))
             settle(0.4)
 
             // Insert a marker at the cursor: "Zabc" proves Ctrl-A reached the shell and moved
@@ -78,14 +80,5 @@ final class GhosttyEditingCommandReplayTests: XCTestCase {
         // Genuine printable text (an IME/dictation commit) must still be forwarded.
         view.insertText("héllo", replacementRange: NSRange(location: NSNotFound, length: 0))
         XCTAssertEqual(view.debugLastBulkText, "héllo")
-    }
-
-    /// Build a synthetic Control-<letter> keyDown the way a real keyboard reports it:
-    /// `characters` is the control scalar, `charactersIgnoringModifiers` the base letter.
-    private func controlKeyEvent(character: String, base: String, keyCode: UInt16) -> NSEvent {
-        NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [.control], timestamp: 0,
-            windowNumber: 0, context: nil, characters: character,
-            charactersIgnoringModifiers: base, isARepeat: false, keyCode: keyCode)!
     }
 }

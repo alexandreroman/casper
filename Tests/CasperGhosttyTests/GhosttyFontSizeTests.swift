@@ -33,17 +33,13 @@ final class GhosttyFontSizeTests: XCTestCase {
     /// font-size keypress must not invoke the closure at all — deterministic and
     /// surfaceless, no window/polling needed.
     @MainActor
-    func testFontSizeChangeClosureDoesNotFireWithoutALiveSurface() throws {
+    func testFontSizeChangeClosureDoesNotFireWithoutALiveSurface() {
         var firedCount = 0
         let view = GhosttySurfaceView(
             runtime: .forTesting(), configuration: GhosttySurfaceConfiguration(),
             onFontSizeChange: { _, _ in firedCount += 1 })
 
-        let event = try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-            windowNumber: 0, context: nil, characters: "=",
-            charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24))
-        XCTAssertFalse(view.performKeyEquivalent(with: event))
+        XCTAssertFalse(view.performKeyEquivalent(with: commandEqual()))
 
         XCTAssertEqual(firedCount, 0)
     }
@@ -66,14 +62,9 @@ final class GhosttyFontSizeTests: XCTestCase {
         var sizeBefore: Float = 0
         try withRealSurface(makeView: makeView) { view, surface in
             sizeBefore = surface.currentFontSize()
-            // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
-            // ANSI keyboard. This is a genuine NSEvent built the same way a real
-            // keypress arrives, not a synthetic debug-only path.
-            let event = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-                windowNumber: 0, context: nil, characters: "=",
-                charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24)!
-            _ = view.performKeyEquivalent(with: event)
+            // A genuine NSEvent built the same way a real keypress arrives, not a
+            // synthetic debug-only path.
+            _ = view.performKeyEquivalent(with: commandEqual())
             settle(0.3)
         }
 
@@ -81,5 +72,10 @@ final class GhosttyFontSizeTests: XCTestCase {
         XCTAssertEqual(reportedID, surfaceID)
         // Any first report clears a bare `> 0`, so compare against the size before the keypress.
         XCTAssertGreaterThan(reportedSize, sizeBefore)
+    }
+
+    /// Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US ANSI keyboard.
+    private func commandEqual() -> NSEvent {
+        keyEvent("=", modifiers: [.command], keyCode: 24)
     }
 }

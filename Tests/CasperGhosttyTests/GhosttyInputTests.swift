@@ -118,7 +118,10 @@ final class GhosttyInputTests: XCTestCase {
     /// Guards the fix where the bare key event left `unshifted_codepoint` at 0, which silently
     /// disabled libghostty's control encoding so Ctrl-C/Ctrl-D produced no output.
     func testBareKeyEventCarriesUnshiftedCodepointForControlEncoding() {
-        let event = makeControlCKeyEvent()
+        // A real Control press remaps `characters` to the control scalar (U+0003) while
+        // `charactersIgnoringModifiers` stays the base key ("c"), which is what
+        // `unshifted_codepoint` must be derived from. Keycode 8 is kVK_ANSI_C.
+        let event = keyEvent("\u{03}", ignoringModifiers: "c", modifiers: [.control], keyCode: 8)
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("c").value))
         XCTAssertNil(key.text)
@@ -129,7 +132,9 @@ final class GhosttyInputTests: XCTestCase {
     /// QWERTY 'Q' position (keycode 12) and the raw keycode makes Ctrl-A wipe the line instead of
     /// moving to its start. The produced letter still drives `unshifted_codepoint`.
     func testControlLetterComboNormalizesKeycodeToItsQwertyPosition() {
-        let event = makeControlAKeyEvent(keyCode: 12)  // 'a' on an AZERTY keyboard
+        // 'a' on an AZERTY keyboard: the control scalar, the produced letter, and the physical
+        // position, which differs between layouts for the same letter.
+        let event = keyEvent("\u{01}", ignoringModifiers: "a", modifiers: [.control], keyCode: 12)
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.keycode, 0, "Ctrl-A must encode from the QWERTY 'A' position (kVK_ANSI_A)")
         XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("a").value))
@@ -141,7 +146,7 @@ final class GhosttyInputTests: XCTestCase {
     /// reached libghostty. A modifier transition must encode as its own keycode with no base
     /// codepoint and no text, exactly like Ghostty's reference `keyAction`.
     func testControlPressFlagsChangedEventEncodesWithoutRaising() {
-        let event = makeControlFlagsChangedEvent(modifierFlags: [.control])
+        let event = controlFlagsChanged(modifiers: [.control])
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.unshifted_codepoint, 0)
         XCTAssertEqual(key.keycode, UInt32(controlKeyCode))
@@ -153,7 +158,7 @@ final class GhosttyInputTests: XCTestCase {
     /// Control go is also a `.flagsChanged` event, and it must encode with the Ctrl bit cleared
     /// rather than raise on the character read.
     func testControlReleaseFlagsChangedEventEncodesWithoutRaising() {
-        let event = makeControlFlagsChangedEvent(modifierFlags: [])
+        let event = controlFlagsChanged(modifiers: [])
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_RELEASE)
         XCTAssertEqual(key.unshifted_codepoint, 0)
         XCTAssertEqual(key.keycode, UInt32(controlKeyCode))
@@ -228,61 +233,14 @@ final class GhosttyInputTests: XCTestCase {
     #endif
 }
 
-/// Build a synthetic Ctrl-C keyDown. A real Control press remaps `characters` to the control
-/// scalar (U+0003) while `charactersIgnoringModifiers` stays the base key ("c"), which is what
-/// `unshifted_codepoint` must be derived from.
-private func makeControlCKeyEvent() -> NSEvent {
-    NSEvent.keyEvent(
-        with: .keyDown,
-        location: .zero,
-        modifierFlags: [.control],
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: "\u{03}",
-        charactersIgnoringModifiers: "c",
-        isARepeat: false,
-        keyCode: 8  // kVK_ANSI_C
-    )!
-}
-
-/// Build a synthetic Ctrl-A keyDown struck at `keyCode`, the way a real keyboard reports it:
-/// `characters` is the control scalar, `charactersIgnoringModifiers` the produced letter. The
-/// keycode is the physical position, which differs between layouts for the same letter.
-private func makeControlAKeyEvent(keyCode: UInt16) -> NSEvent {
-    NSEvent.keyEvent(
-        with: .keyDown,
-        location: .zero,
-        modifierFlags: [.control],
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: "\u{01}",
-        charactersIgnoringModifiers: "a",
-        isARepeat: false,
-        keyCode: keyCode
-    )!
-}
-
 /// Virtual keycode of the left Control key (kVK_Control), the physical key whose transitions
 /// AppKit reports as `.flagsChanged`.
 private let controlKeyCode: UInt16 = 0x3B
 
-/// Build a synthetic `.flagsChanged` event for the Control key: `modifierFlags: [.control]` is the
-/// press, `[]` the release. `NSEvent.keyEvent(with:...)` accepts the type and requires character
-/// strings, but AppKit raises when they are *read* back off a non-key event — which is exactly the
-/// behaviour these tests pin down, so the empty strings passed here are never observable.
-private func makeControlFlagsChangedEvent(modifierFlags: NSEvent.ModifierFlags) -> NSEvent {
-    NSEvent.keyEvent(
-        with: .flagsChanged,
-        location: .zero,
-        modifierFlags: modifierFlags,
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: "",
-        charactersIgnoringModifiers: "",
-        isARepeat: false,
-        keyCode: controlKeyCode
-    )!
+/// A synthetic `.flagsChanged` event for the Control key: `modifiers: [.control]` is the press,
+/// `[]` the release. `NSEvent.keyEvent(with:...)` accepts the type and requires character strings,
+/// but AppKit raises when they are *read* back off a non-key event — which is exactly the
+/// behaviour these tests pin down, so the empty string passed here is never observable.
+private func controlFlagsChanged(modifiers: NSEvent.ModifierFlags) -> NSEvent {
+    keyEvent("", modifiers: modifiers, keyCode: controlKeyCode, type: .flagsChanged)
 }

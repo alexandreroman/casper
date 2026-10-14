@@ -41,11 +41,7 @@ final class GhosttyCommandNRoutingTests: XCTestCase {
             settle(0.6)
 
             // ⌘N: "n" is keyCode 45 on a standard US ANSI keyboard.
-            let event = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-                windowNumber: 0, context: nil, characters: "n",
-                charactersIgnoringModifiers: "n", isARepeat: false, keyCode: 45)!
-            let consumed = view.performKeyEquivalent(with: event)
+            let consumed = view.performKeyEquivalent(with: keyEvent("n", modifiers: [.command], keyCode: 45))
             settle(0.4)
 
             XCTAssertEqual(
