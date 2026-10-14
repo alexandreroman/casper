@@ -267,29 +267,40 @@ struct DiffTextSurface: NSViewRepresentable {
             // The anchor is read here, immediately before the swap: applying
             // rewrites the whole text storage, so where the reader is has to come
             // off the live surface first.
-            apply(document: rendering.document, restoring: currentAnchor())
-            // In document order, which is the difference between a paint that is
-            // linear in the diff's run count and one that is quadratic — see
-            // `DiffRendering.highlightsInDocumentOrder`.
-            if let storage = textView.textContentStorage?.textStorage {
-                DiffTextAssembly.applyHighlights(
-                    rendering.highlightsInDocumentOrder, in: storage,
-                    document: rendering.document)
-            }
+            apply(
+                document: rendering.document, highlights: rendering.highlightsInDocumentOrder,
+                restoring: currentAnchor())
         }
 
-        /// Replaces the rendered document, putting the reader back where `anchor`
-        /// says they were — at the top when that file has left the diff.
+        /// Replaces the rendered document, painting `highlights` over it and
+        /// putting the reader back where `anchor` says they were — at the top when
+        /// that file has left the diff.
         ///
         /// The ordering is load-bearing, not tidiness. The gutter's width is a
         /// property of the document; a new `ruleThickness` retiles the scroll view,
         /// which changes the text container's width, which rewraps the whole
         /// document. Any `y` computed before that is stale, so the document goes in
         /// and the scroll view tiles *before* the anchor is resolved.
-        func apply(document: DiffDocument, restoring anchor: DiffScrollAnchor?) {
+        ///
+        /// The highlights go on before either. They only set colors, so they
+        /// change no geometry, but painting them invalidates layout; and restoring
+        /// an anchor past the previous document's end lays the text view out, which
+        /// on a large diff covers the whole document. Painted first, they ride
+        /// that pass instead of costing the refresh a second one.
+        ///
+        /// `highlights` must be in document order, which is the difference between
+        /// a paint that is linear in the diff's run count and one that is
+        /// quadratic — see `DiffRendering.highlightsInDocumentOrder`.
+        func apply(
+            document: DiffDocument,
+            highlights: [(fileIndex: Int, highlight: DiffFileHighlight)] = [],
+            restoring anchor: DiffScrollAnchor?
+        ) {
             self.document = document
-            textView.textContentStorage?.textStorage?
-                .setAttributedString(DiffTextAssembly.makeAttributedText(for: document))
+            if let storage = textView.textContentStorage?.textStorage {
+                storage.setAttributedString(DiffTextAssembly.makeAttributedText(for: document))
+                DiffTextAssembly.applyHighlights(highlights, in: storage, document: document)
+            }
             textView.document = document
             // Reflows the column's width itself, from its own setter.
             gutter.document = document

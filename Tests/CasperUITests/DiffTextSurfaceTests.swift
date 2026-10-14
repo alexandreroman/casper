@@ -255,6 +255,35 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f1.swift")
     }
 
+    /// Restoring an anchor the swap pushed past the previous end lays the text
+    /// view out, which on a large diff covers the whole document. Painting the
+    /// carried highlights invalidates that layout, so they have to be on the text
+    /// before the pass runs: painted after it, they throw the pass away, and the
+    /// reader's anchor reads back in the wrong file.
+    func testCarriedHighlightsAreOnTheTextWhenARefreshLaysItOut() throws {
+        let (controller, host) = makeHostedSurface(makeWrappingDocument(fileCount: 2, linesPerFile: 40))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        coordinator.scroll(toFileID: "f1.swift")
+        let longer = makeWrappingDocument(fileCount: 2, linesPerFile: 300)
+        let lastSourceLine = try XCTUnwrap(longer.lines.last { $0.diffKind != nil })
+        var paintedAtEachLayoutPass: [Bool] = []
+        let didLayout = coordinator.textView.didLayout
+        coordinator.textView.didLayout = {
+            let color = coordinator.textView.textStorage?.attribute(
+                .foregroundColor, at: lastSourceLine.contentRange.location, effectiveRange: nil)
+            paintedAtEachLayoutPass.append(color as? NSColor == NSColor(Color.purple))
+            didLayout?()
+        }
+
+        coordinator.render(DiffRendering(
+            revision: 2, document: longer, highlights: makeWrappingHighlights(for: longer, linesPerFile: 300)))
+
+        XCTAssertEqual(paintedAtEachLayoutPass, [true],
+                       "the swap lays the text view out once, over the painted highlights")
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f1.swift")
+    }
+
     /// A refresh must not throw the reader back to the top: the anchor is read
     /// before the swap and restored after it.
     func testAnchorSurvivesADocumentSwap() throws {

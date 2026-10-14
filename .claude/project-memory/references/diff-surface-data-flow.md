@@ -29,7 +29,11 @@ feedback path the whole TextKit rewrite exists to remove.
 - **Anything the swap invalidates belongs inside `render`.** The scroll anchor
   is read from the live surface immediately before the swap, and the carried
   highlights are repainted immediately after it — `DiffTextAssembly` builds the
-  fresh storage from base attributes only.
+  fresh storage from base attributes only. The repaint precedes the anchor
+  restore: painting invalidates layout, and the restore can force a
+  whole-document layout pass (see the last bullet), which a later paint would
+  throw away — along with the anchor it placed
+  (`testCarriedHighlightsAreOnTheTextWhenARefreshLaysItOut`).
 - **Events stay on `DiffSurfaceController`.** A scroll target and a file's
   syntax colors finishing are events, not state; they tolerate a nil coordinator
   and are retried. `Coordinator.scroll(toFileID:)` returns whether the surface
