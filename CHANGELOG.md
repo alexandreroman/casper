@@ -23,6 +23,10 @@ CI, test, and documentation-only work is left out.
   terminals when Casper can load it (an absolute path, or a theme in
   `~/.config/ghostty/themes/`); otherwise Casper keeps its light and dark
   themes.
+- A terminal that failed to start while your displays were asleep — such as
+  the one in a workspace an agent opens with `casper workspace new --command`
+  while you are away — now starts on its own once they wake, instead of
+  waiting until you select the workspace.
 
 ## [0.1.3] - 2026-10-13
 

@@ -96,6 +96,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // avoiding the `isolated deinit` back-deployment shim that SIGABRTs on the CI
     // runner (see the isolated-deinit-ci-sigabrt project memory note).
     nonisolated(unsafe) private var windowObservers: [NSObjectProtocol] = []
+    // Observers for the "displays are back" signals (see `updateDisplayWakeObservers()`).
+    // Each keeps the center it was registered on: the screens-wake notification lives
+    // on `NSWorkspace`'s own center and must be removed from that one, not the default.
+    // `nonisolated(unsafe)` for the same reason as `windowObservers`.
+    nonisolated(unsafe) private var displayWakeObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
     // AppKit never routes the `keyUp` of a ⌘ combo through the responder chain, so the
     // press `performKeyEquivalent` sends libghostty would never get its matching
     // release. Upstream Ghostty answers this with a process-local `.keyUp` monitor that
@@ -173,6 +178,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         for observer in windowObservers {
             NotificationCenter.default.removeObserver(observer)
         }
+        for observer in displayWakeObservers {
+            observer.center.removeObserver(observer.token)
+        }
         if let commandKeyUpMonitor {
             NSEvent.removeMonitor(commandKeyUpMonitor)
         }
@@ -190,6 +198,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         updateWindowObservers()
+        updateDisplayWakeObservers()
         guard window != nil else {
             // Left the window (e.g. a cached surface detached by the layout
             // coordinator): mark occluded so libghostty pauses its render thread.
@@ -201,17 +210,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // focus onto a surface that no longer has a PTY.
         guard !invalidated else { return }
         // Re-parenting into a window while the surface never came up (all prior
-        // attempts failed) begins a fresh creation cycle: restore the retry budget
-        // and clear the error overlay so this attachment gets a clean chance instead
-        // of inheriting an already-exhausted count and giving up after a single try.
-        // The budget stays bounded — it resets at most once per window entry, and
-        // the nominal path (surface already created) skips this entirely.
+        // attempts failed) begins a fresh creation cycle, so this attachment gets a
+        // clean chance instead of inheriting an already-exhausted count and giving up
+        // after a single try. The nominal path (surface already created) skips this.
         if surface == nil {
-            cancelPendingSurfaceRetry()
-            surfaceCreationAttempts = 0
-            removeErrorOverlay()
+            restartSurfaceCreation()
         }
-        createSurfaceIfNeeded()
         // On re-parent the surface already exists and `viewDidChangeBackingProperties`
         // may not fire, so reconcile everything the new window governs here too: the
         // re-parent leaves libghostty holding the previous window's Metal layer scale,
@@ -237,6 +241,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // the existing surface (the `surface == nil` guard makes this a no-op then).
     private func createSurfaceIfNeeded() {
         guard surface == nil, !invalidated, window != nil else { return }
+        #if DEBUG
+        debugTotalSurfaceCreationAttempts += 1
+        #endif
         let nsview = Unmanaged.passUnretained(self).toOpaque()
         // The configuration's `scaleFactor` overwrites libghostty's own, so seed it
         // from the hosting window: left at the `1.0` default, every surface is born at
@@ -307,6 +314,63 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         pendingSurfaceRetry = nil
     }
 
+    // Begin a fresh, bounded creation cycle for a surface that never came up: retire
+    // any armed retry (so two chains never overlap), restore the budget and clear the
+    // error overlay, then try again. Callers only reach this with `surface == nil`.
+    // This is the only place the budget resets, and only on discrete events — once per
+    // window entry and once per display-change notification — so it stays bounded.
+    private func restartSurfaceCreation() {
+        cancelPendingSurfaceRetry()
+        surfaceCreationAttempts = 0
+        removeErrorOverlay()
+        createSurfaceIfNeeded()
+    }
+
+    // (Re)subscribe to the system's "displays are back" signals while this view is
+    // hosted; unsubscribe when it leaves its window or is invalidated. Called from
+    // `viewDidMoveToWindow` and `invalidate()`.
+    //
+    // With every display asleep, `ghostty_surface_new` fails (libghostty cannot create
+    // its display link with no display), so a surface first attempted then — typically
+    // one hosted off-screen in the background nursery — exhausts its retries and would
+    // otherwise wait for a re-parent. Both notifications are observed so recovery does
+    // not hinge on which one a given wake posts: the workspace one reports displays
+    // waking, the application one displays being reconfigured (reattached, re-enabled).
+    private func updateDisplayWakeObservers() {
+        for observer in displayWakeObservers {
+            observer.center.removeObserver(observer.token)
+        }
+        displayWakeObservers.removeAll()
+        guard window != nil, !invalidated else { return }
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        let screensDidWake = workspaceCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.displaysDidChange() }
+        }
+        displayWakeObservers.append((workspaceCenter, screensDidWake))
+        let screenParametersDidChange = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.displaysDidChange() }
+        }
+        displayWakeObservers.append((NotificationCenter.default, screenParametersDidChange))
+    }
+
+    // A surface that failed while the displays were unavailable gets one fresh
+    // creation cycle per display change. A live, invalidated or detached view has
+    // nothing to recover (a detached one starts its own cycle on re-entry).
+    // `didChangeScreenParameters` also fires on resolution or arrangement changes, so a
+    // view that failed for an unrelated reason gets an extra cycle then — harmless,
+    // since it is just as bounded.
+    private func displaysDidChange() {
+        guard surface == nil, !invalidated, window != nil else { return }
+        // `.notice` so it ships in release builds: a field report then shows whether
+        // the wake path ran. It is rare — only a surface-less hosted view logs it.
+        CasperLog.ghostty.notice("retrying surface creation after a display change")
+        restartSurfaceCreation()
+    }
+
     // Present a centered message where the terminal would render, so a surface that
     // never comes up is explained rather than shown as a blank pane.
     private func showErrorOverlay() {
@@ -346,6 +410,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     public func invalidate() {
         invalidated = true
         cancelPendingSurfaceRetry()
+        // Drops the display-wake observers: nothing can recover a surface freed for good.
+        updateDisplayWakeObservers()
         surface = nil
     }
 
@@ -408,6 +474,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private(set) var debugOcclusionPushCount = 0
 
     func debugRefreshOcclusion() { refreshOcclusion() }
+
+    // Test seams for the bounded creation retry: the `.forTesting()` runtime fails
+    // every creation, so these let a test watch a cycle exhaust and restart.
+    var debugSurfaceCreationAttempts: Int { surfaceCreationAttempts }
+    var debugShowsErrorOverlay: Bool { errorOverlay != nil }
+
+    // Test seam: every creation attempt over the view's lifetime. The budget above
+    // resets on each new cycle, so it reads the same whether a restart happened, was
+    // ignored, or left a second retry chain running; the lifetime total tells them apart.
+    private(set) var debugTotalSurfaceCreationAttempts = 0
 
     public var debugHasSurface: Bool { surface != nil }
 
