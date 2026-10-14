@@ -19,8 +19,9 @@ The recipe (see `Tests/CasperUITests/CloseDeleteWorkspaceTests.swift`):
    repo **before** creating the linked workspace, so the worktree checks it out.
    Adding a `setup` script too would spawn a second script split at creation.
 2. Snapshot `LayoutTree.surfaceIDs(ws.layout)` before starting the close/delete.
-3. Start the operation in a `Task { @MainActor in … }`, then poll (bounded, ~5
-   ms steps) for the one surface id that is new.
+3. Start the operation in a `Task { @MainActor in … }`, then await the one
+   surface id that is new with `awaitTeardownSplit` (`SessionFixtures.swift`),
+   which polls through `waitUntil` with a 2 s bound.
 4. Call `model.handleScriptSurfaceExit(newSurfaceID, code:)` — the exact entry
    point `GhosttySurfaceView.onChildExit` uses at runtime — to end the hook.
 
@@ -37,5 +38,5 @@ verification — and a test that forgets step 4 stalls on the 30 s
 
 **How to apply:** when covering anything behind `runTeardown`, drive
 `handleScriptSurfaceExit` rather than faking the hook status; keep the poll
-bounded so a broken run fails in milliseconds instead of stalling for the
+bounded so a broken run fails within seconds instead of stalling for the
 timeout.

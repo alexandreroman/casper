@@ -35,16 +35,6 @@ final class ControlHandlerTests: XCTestCase {
         return (makeModel(spaces: [space], selecting: ws.id), ws.id, repoPath)
     }
 
-    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
-    /// `ControlServer` even though the work behind it is async.
-    private func deleteViaControl(
-        _ model: AppModel, id: UUID
-    ) async -> Result<Void, AppModel.WorkspaceDeleteError> {
-        await withCheckedContinuation { continuation in
-            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
-        }
-    }
-
     func testOpenTerminalAddsSurface() throws {
         let (model, id) = seededModel()
         let before = model.workspace(id: id).map { LayoutTree.surfaceIDs($0.layout).count } ?? 0

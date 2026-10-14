@@ -26,16 +26,6 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         return (makeModel(spaces: [space], selecting: ws.id), ws.id, repoPath)
     }
 
-    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
-    /// `ControlServer` even though the work behind it is async.
-    private func deleteViaControl(
-        _ model: AppModel, id: UUID
-    ) async -> Result<Void, AppModel.WorkspaceDeleteError> {
-        await withCheckedContinuation { continuation in
-            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
-        }
-    }
-
     func testCloseWorkspaceMergesThenDeletesFromDisk() async throws {
         let (model, primaryID, repoPath) = try seededGitModel()
         guard case .success(let created) = await model.createLinkedWorkspace(
@@ -192,25 +182,6 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// split the teardown assertions below are looking at.
     private func teardownConfig(_ command: String) -> String {
         "{\"workspace\": {\"scripts\": {\"teardown\": \"\(command)\"}}}\n"
-    }
-
-    /// Wait for the teardown split to appear and return its surface id, which is also
-    /// the point where the operation is provably suspended on its teardown hook.
-    ///
-    /// The split lands within microseconds of the teardown step; the poll bound only
-    /// exists so a broken run fails fast instead of stalling for the 30 s timeout.
-    private func awaitTeardownSplit(
-        in model: AppModel, workspace workspaceID: UUID, surfacesBefore: Set<UUID>
-    ) async -> UUID? {
-        for _ in 0..<400 {
-            if let ws = model.workspace(id: workspaceID),
-               let split = LayoutTree.surfaceIDs(ws.layout).first(where: { !surfacesBefore.contains($0) }) {
-                return split
-            }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        XCTFail("the teardown split was never spawned")
-        return nil
     }
 
     /// End the teardown split the way libghostty does at runtime.

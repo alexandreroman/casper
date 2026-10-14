@@ -1,4 +1,5 @@
 import CasperCore
+import CasperTestSupport
 import Foundation
 import WebKit
 import XCTest
@@ -144,10 +145,7 @@ final class BrowserURLSyncTests: XCTestCase {
 
     /// Two cross-linked pages in a fresh temporary directory, removed at teardown.
     private func makeTwoPageSite() throws -> URL {
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("BrowserURLSyncTests-" + UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let directory = makeTemporaryDirectory(prefix: "BrowserURLSyncTests")
         try "<html><body>one</body></html>"
             .write(to: directory.appendingPathComponent("page1.html"), atomically: true, encoding: .utf8)
         try "<html><body><a id='back' href='page1.html'>back</a></body></html>"

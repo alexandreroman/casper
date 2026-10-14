@@ -21,8 +21,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testStartsEmptyWhenSessionEmpty() {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         XCTAssertTrue(model.spaces.isEmpty)
         XCTAssertNil(model.selectedWorkspaceID)
     }
@@ -39,16 +38,14 @@ final class AppModelTests: XCTestCase {
     }
 
     func testAddedWorkspacesGetDistinctPortBlocks() {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/a"), probe: { _ in nil })
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/b"), probe: { _ in nil })
         XCTAssertNotEqual(model.allWorkspaces[0].portBase, model.allWorkspaces[1].portBase)
     }
 
     func testAddSpaceInsertsAtAlphabeticalPosition() {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/zebra"), probe: { _ in nil })
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/alpha"), probe: { _ in nil })
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/mango"), probe: { _ in nil })
@@ -77,8 +74,7 @@ final class AppModelTests: XCTestCase {
                           layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, existing.spaces[0].workspaces[0].id)
     }
@@ -98,8 +94,7 @@ final class AppModelTests: XCTestCase {
                           layout: .leaf(Surface(kind: .terminal(cwd: "/m")))),
             ]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         XCTAssertEqual(model.spaces.map(\.name), ["alpha", "Mango", "zebra"])
     }
 
@@ -114,8 +109,7 @@ final class AppModelTests: XCTestCase {
             Space(name: "g", folderPath: "/g", isGitRepo: true, workspaces: [gitWorkspace]),
             Space(name: "p", folderPath: "/p", isGitRepo: false, workspaces: [plainWorkspace]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
 
         XCTAssertTrue(model.isWorkspaceGitBacked(gitWorkspace))
         XCTAssertFalse(model.isWorkspaceGitBacked(plainWorkspace))
@@ -148,8 +142,7 @@ final class AppModelTests: XCTestCase {
         let spaceC = Space(name: "c", folderPath: "/c", isGitRepo: false, workspaces: [spaceCWorkspace])
 
         let session = Session(spaces: [spaceA, spaceB, spaceC])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
 
         let numbers = model.workspaceShortcutNumbers
         XCTAssertEqual(numbers[spaceAPrimary.id], 1)
@@ -167,8 +160,7 @@ final class AppModelTests: XCTestCase {
         }
         let space = Space(name: "many", folderPath: "/many", isGitRepo: false, workspaces: workspaces)
         let session = Session(spaces: [space])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
 
         let numbers = model.workspaceShortcutNumbers
         XCTAssertEqual(numbers.count, 9)
@@ -215,8 +207,7 @@ final class AppModelTests: XCTestCase {
                           portBase: 40000, layout: .leaf(surface)),
             ]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         XCTAssertEqual(model.focusedSurfaceID, surface.id)
     }
 
@@ -231,8 +222,7 @@ final class AppModelTests: XCTestCase {
                           portBase: 40010, layout: .leaf(surface2)),
             ]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         // Restore selects the first workspace and focuses its surface.
         XCTAssertEqual(model.focusedSurfaceID, surface1.id)
 
@@ -265,8 +255,7 @@ final class AppModelTests: XCTestCase {
     func testRestoresPersistedSelectedWorkspace() {
         let (session, _, _, ws2, surface2) = twoWorkspaceSession()
         let existing = Session(spaces: session.spaces, selectedWorkspaceID: ws2.id)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         XCTAssertEqual(model.selectedWorkspaceID, ws2.id)
         XCTAssertEqual(model.focusedSurfaceID, surface2.id)
     }
@@ -275,8 +264,7 @@ final class AppModelTests: XCTestCase {
         // A stale selection id (workspace since removed) must fall back to the
         // first workspace of the first Space, matching fresh-session behavior.
         let (session, ws1, surface1, _, _) = twoWorkspaceSession(selecting: UUID())
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
         XCTAssertEqual(model.selectedWorkspaceID, ws1.id)
         XCTAssertEqual(model.focusedSurfaceID, surface1.id)
     }
@@ -284,8 +272,7 @@ final class AppModelTests: XCTestCase {
     func testStartupExpandsSpaceOwningRestoredSelection() {
         let (session, _, _, ws2, _) = twoWorkspaceSession(isCollapsed: true)
         let existing = Session(spaces: session.spaces, selectedWorkspaceID: ws2.id)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         XCTAssertFalse(model.spaces[0].isCollapsed)
     }
 
@@ -332,8 +319,7 @@ final class AppModelTests: XCTestCase {
 
     func testRemovingSelectedLinkedWorkspaceReselectsValidWorkspace() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         _ = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat")
         let linkedID = model.spaces[0].workspaces[1].id
@@ -346,8 +332,7 @@ final class AppModelTests: XCTestCase {
 
     func testRemovingSelectedLinkedWorkspacePrefersSiblingInSameSpace() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let gitSpaceID = model.spaces[0].id
         _ = await model.addLinkedWorkspace(spaceID: gitSpaceID, name: "Feature One")
@@ -379,8 +364,7 @@ final class AppModelTests: XCTestCase {
                           layout: .leaf(Surface(kind: .terminal(cwd: "/a")))),
             ]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: existing)
+        let model = makeModel(spaces: existing.spaces, selecting: existing.selectedWorkspaceID)
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/b"), probe: { _ in nil })
         XCTAssertEqual(model.allWorkspaces.count, 2)
         XCTAssertNotEqual(model.allWorkspaces[1].portBase, 40000)
@@ -408,10 +392,7 @@ final class AppModelTests: XCTestCase {
     /// no parent-directory walk) rather than `Repository.discover`, on a real
     /// repo on disk.
     func testGitProbeOpensExactFolderAndDoesNotWalkUpFromASubdirectory() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-gitprobe-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTemporaryDirectory(prefix: "casper-gitprobe")
         try GitFixture.repository(at: root.path)
 
         let probed = AppModel.gitProbe(root)
@@ -437,8 +418,7 @@ final class AppModelTests: XCTestCase {
 
     func testAddLinkedWorkspaceCreatesWorktreeAndPort() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let spaceID = model.spaces[0].id
         let primaryPort = model.spaces[0].workspaces[0].portBase
@@ -458,8 +438,7 @@ final class AppModelTests: XCTestCase {
 
     func testAddLinkedWorkspaceAvoidsExistingDirectory() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let spaceID = model.spaces[0].id
 
@@ -492,8 +471,7 @@ final class AppModelTests: XCTestCase {
     /// workspace of that name must reclaim the path, not settle for a `-2` sibling.
     func testAddLinkedWorkspaceReclaimsAnEditorLeftoverDirectory() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let spaceID = model.spaces[0].id
 
@@ -520,8 +498,7 @@ final class AppModelTests: XCTestCase {
 
     func testAddLinkedWorkspaceRejectedForNonGitSpace() async {
         let dir = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let created = await model.addLinkedWorkspace(spaceID: model.spaces[0].id, name: "x")
         XCTAssertFalse(created)
@@ -530,8 +507,7 @@ final class AppModelTests: XCTestCase {
 
     func testRemoveWorkspaceLinkedOnlyReleasesPort() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         let spaceID = model.spaces[0].id
         _ = await model.addLinkedWorkspace(spaceID: spaceID, name: "feat")
@@ -547,18 +523,14 @@ final class AppModelTests: XCTestCase {
 
     func testAddSpaceRejectsDuplicateFolder() throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         XCTAssertEqual(model.spaces.count, 1)
     }
 
     func testAddSpaceRejectsDuplicateFolderThroughSymlink() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-symlink-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        let root = makeTemporaryDirectory(prefix: "casper-symlink")
         let realRepo = root.appendingPathComponent("realrepo")
         try FileManager.default.createDirectory(at: realRepo, withIntermediateDirectories: true)
         try GitFixture.repository(at: realRepo.path)
@@ -566,8 +538,7 @@ final class AppModelTests: XCTestCase {
         try FileManager.default.createSymbolicLink(
             atPath: link.path, withDestinationPath: realRepo.path)
 
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: realRepo, probe: AppModel.gitProbe)
         model.addSpace(folderURL: link, probe: AppModel.gitProbe)
         XCTAssertEqual(model.spaces.count, 1)
@@ -621,8 +592,7 @@ final class AppModelTests: XCTestCase {
         let adopted = try makeWorktree(of: repo, named: "adopted")
         let solo = try makeTempGitRepo()
         let soloWorktree = try makeWorktree(of: solo, named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         var saves = 0
         model.onPersistForTest = { saves += 1 }
 
@@ -640,8 +610,7 @@ final class AppModelTests: XCTestCase {
     func testAddFolderAdoptsWorktreeIntoCollapsedSpaceAndExpandsIt() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "adopted")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         model.toggleSpaceCollapsed(id: model.spaces[0].id)
         XCTAssertTrue(model.spaces[0].isCollapsed)
@@ -656,8 +625,7 @@ final class AppModelTests: XCTestCase {
     func testAddFolderPullsInTheRepositoryOfAWorktreeWhoseRepositoryIsNotOpen() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
@@ -679,8 +647,7 @@ final class AppModelTests: XCTestCase {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
         let repoBranch = try XCTUnwrap(AppModel.gitProbe(repo)?.branch)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
@@ -698,8 +665,7 @@ final class AppModelTests: XCTestCase {
     func testWorktreeAdoptedWithItsPulledInRepositoryIsShapedLikeAnyAdoptedWorktree() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
@@ -745,8 +711,7 @@ final class AppModelTests: XCTestCase {
         // still a worktree, but the main working tree it names is no longer on disk.
         let info = try XCTUnwrap(AppModel.gitProbe(worktree))
         try FileManager.default.removeItem(at: repo)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         let outcome = model.addSpace(
             folderURL: worktree, probe: { $0 == worktree ? info : AppModel.gitProbe($0) })
@@ -764,8 +729,7 @@ final class AppModelTests: XCTestCase {
     /// worktree. This test pins that product decision, reached through the real prober.
     func testAddFolderRefusesAWorktreeOfABareRepository() throws {
         let (_, worktree) = try makeBareRepoWithWorktree(named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
@@ -784,8 +748,7 @@ final class AppModelTests: XCTestCase {
         var repoSpace = gitSpace(
             name: repo.lastPathComponent, path: repo.path, branch: "main", portBase: 41000)
         repoSpace.isGitRepo = false   // `completeLaunchSetup()` never ran
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: Session(spaces: [repoSpace]))
+        let model = makeModel(spaces: [repoSpace])
 
         let outcome = model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
 
@@ -840,8 +803,7 @@ final class AppModelTests: XCTestCase {
         let plain = makeTemporaryDirectory()
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.portAllocator = try makeAllocator(freeBlocks: 0)
 
         // A plain folder needs one block; a worktree pulling its repository in needs the
@@ -858,8 +820,7 @@ final class AppModelTests: XCTestCase {
     func testAddFolderRefusesToAdoptAWorktreeWhenNoPortBlockIsFree() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "adopted")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         model.portAllocator = try makeAllocator(freeBlocks: 0)
 
@@ -872,8 +833,7 @@ final class AppModelTests: XCTestCase {
     func testAddFolderReleasesTheRepositoryPortWhenTheWorktreeHasNoneLeft() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "solo")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         // One block left: enough for the repository pulled in, one short for the
         // worktree that has to join it.
         model.portAllocator = try makeAllocator(freeBlocks: 1)
@@ -892,8 +852,7 @@ final class AppModelTests: XCTestCase {
     func testAddFolderStillGivesANonWorktreeFolderASpaceOfItsOwn() throws {
         let repo = try makeTempGitRepo()
         let plain = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         XCTAssertEqual(model.addSpace(folderURL: repo, probe: AppModel.gitProbe), .added)
         XCTAssertEqual(model.addSpace(folderURL: plain, probe: AppModel.gitProbe), .added)
@@ -909,8 +868,7 @@ final class AppModelTests: XCTestCase {
         let repoA = try makeTempGitRepo()
         let repoB = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repoB, named: "feature")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repoA, probe: AppModel.gitProbe)
 
         model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
@@ -930,8 +888,7 @@ final class AppModelTests: XCTestCase {
     func testAddFolderSelectsAnAlreadyAdoptedWorktreeInsteadOfDuplicatingIt() throws {
         let repo = try makeTempGitRepo()
         let worktree = try makeWorktree(of: repo, named: "adopted")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         model.addSpace(folderURL: worktree, probe: AppModel.gitProbe)
         let adoptedID = model.spaces[0].workspaces[1].id
@@ -945,8 +902,7 @@ final class AppModelTests: XCTestCase {
 
     func testAddFolderAdoptsWorktreeOfCasperCreatedWorkspaceRepository() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         // A worktree created by Casper, then dropped from the sidebar without
         // deleting it on disk: re-adding its folder must bring it back into the
@@ -1040,8 +996,7 @@ final class AppModelTests: XCTestCase {
             gitSpace(name: "two", path: two.path, branch: "two", portBase: 41010),
             gitSpace(name: "other", path: unrelated.path, branch: "main", portBase: 41020),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
 
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
 
@@ -1064,8 +1019,7 @@ final class AppModelTests: XCTestCase {
         let repo = try makeTempGitRepo()
         let one = try makeWorktree(of: repo, named: "one")
         let two = try makeWorktree(of: repo, named: "two")
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         model.addSpace(folderURL: one, probe: AppModel.gitProbe)
         model.addSpace(folderURL: two, probe: AppModel.gitProbe)
@@ -1101,8 +1055,7 @@ final class AppModelTests: XCTestCase {
             Space(name: "host-space", folderPath: host.path, isGitRepo: true,
                   workspaces: [hostWorkspace, childWorkspace]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
 
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
 
@@ -1126,8 +1079,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectingDegenerateSpaceThatGainedGitPromotesIt() {
         let dir = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         XCTAssertFalse(model.spaces[0].isGitRepo)
 
@@ -1143,8 +1095,7 @@ final class AppModelTests: XCTestCase {
 
     func testWorktreeChangePromotesDegenerateSpaceAndBumpsRevision() async {
         let dir = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         // Capture the watcher's onChange so the test can fire a synthetic change.
         var captured: (@Sendable () -> Void)?
         model.makeWorktreeWatcher = { _, _, onChange in
@@ -1171,8 +1122,7 @@ final class AppModelTests: XCTestCase {
 
     func testWorktreeChangeBumpsDiffRevisionForGitSpace() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         var captured: (@Sendable () -> Void)?
         model.makeWorktreeWatcher = { _, _, onChange in
             captured = onChange
@@ -1192,8 +1142,7 @@ final class AppModelTests: XCTestCase {
 
     func testWorktreeChangeDemotesSpaceWhenGitRemoved() async throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         var captured: (@Sendable () -> Void)?
         model.makeWorktreeWatcher = { _, _, onChange in
             captured = onChange
@@ -1217,8 +1166,7 @@ final class AppModelTests: XCTestCase {
 
     func testSelectionDoesNotDemoteOnTransientProbeFailure() throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         XCTAssertTrue(model.spaces[0].isGitRepo)
 
@@ -1231,8 +1179,7 @@ final class AppModelTests: XCTestCase {
 
     func testLaunchPromotesAllDegenerateSpacesThatGainedGit() {
         let dir = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: { _ in nil })  // starts degenerate
         XCTAssertFalse(model.spaces[0].isGitRepo)
 
@@ -1252,8 +1199,7 @@ final class AppModelTests: XCTestCase {
 
     func testArmWorktreeWatcherSkipsWhileWindowHidden() throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         var watcherCreated = false
         model.makeWorktreeWatcher = { _, _, _ in
             watcherCreated = true
@@ -1266,8 +1212,7 @@ final class AppModelTests: XCTestCase {
 
     func testArmWorktreeWatcherRunsWhileWindowVisible() throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         var watcherCreated = false
         model.makeWorktreeWatcher = { _, _, _ in
             watcherCreated = true
@@ -1290,8 +1235,7 @@ final class AppModelTests: XCTestCase {
 
     func testApplyWatcherVisibilityBumpsOnceOnRealTransition() throws {
         let repo = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         var watcherCreated = false
         model.makeWorktreeWatcher = { _, _, _ in
             watcherCreated = true
@@ -1321,8 +1265,7 @@ final class AppModelTests: XCTestCase {
 
     private func modelWithOneGitWorkspace() throws -> (AppModel, UUID) {
         let root = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: root, probe: AppModel.gitProbe)
         let surfaceID = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)[0]
         model.focusSurface(surfaceID)
@@ -1596,8 +1539,7 @@ final class AppModelTests: XCTestCase {
             Space(name: "repo", folderPath: "/repo", isGitRepo: true,
                   workspaces: [primary, linked]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
         model.selectWorkspace(linked.id)
         model.focusSurface(linkedSurface.id)
 
@@ -1651,8 +1593,7 @@ final class AppModelTests: XCTestCase {
 
     private func modelWithOnePlainWorkspace() -> (AppModel, UUID) {
         let dir = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: { _ in nil })
         let sid = LayoutTree.surfaceIDs(model.spaces[0].workspaces[0].layout)[0]
         model.focusSurface(sid)
@@ -1813,8 +1754,7 @@ final class AppModelTests: XCTestCase {
             Space(name: "repo", folderPath: "/repo", isGitRepo: true,
                   workspaces: [primary, linked]),
         ])
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+        let model = makeModel(spaces: session.spaces, selecting: session.selectedWorkspaceID)
 
         let primaryEnv = model.surfaceConfiguration(
             for: primary, terminal: Surface.terminal(cwd: primary.worktreePath)).environment
@@ -1915,8 +1855,7 @@ final class AppModelTests: XCTestCase {
         let dir = try makeTempGitRepo()
         try "changed\n".write(
             to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let ws = model.spaces[0].workspaces[0]
         let diff = await model.diffService.computeDiff(for: ws)
@@ -1932,8 +1871,7 @@ final class AppModelTests: XCTestCase {
         let dir = try makeTempGitRepo()
         try "changed\n".write(
             to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let ws = model.spaces[0].workspaces[0]
         let first = await model.diffService.computeDiff(for: ws)
@@ -1944,8 +1882,7 @@ final class AppModelTests: XCTestCase {
 
     func testComputeDiffNilForNonGitWorkspace() async {
         let dir = makeTemporaryDirectory()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: { _ in nil })
         let diff = await model.diffService.computeDiff(for: model.spaces[0].workspaces[0])
         XCTAssertNil(diff)
@@ -1955,8 +1892,7 @@ final class AppModelTests: XCTestCase {
         let dir = try makeTempGitRepo()
         try "casper fixture\nadded\n".write(
             to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let summary = await model.diffService.diffSummary(for: model.spaces[0].workspaces[0])
         XCTAssertEqual(summary?.insertions, 1)
@@ -1969,8 +1905,7 @@ final class AppModelTests: XCTestCase {
         let dir = try makeTempGitRepo()
         try FileManager.default.moveItem(
             at: dir.appendingPathComponent("README.md"), to: dir.appendingPathComponent("NOTES.md"))
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let summary = await model.diffService.diffSummary(for: model.spaces[0].workspaces[0])
         XCTAssertEqual(summary?.insertions, 0)
@@ -1980,8 +1915,7 @@ final class AppModelTests: XCTestCase {
     /// A clean worktree has nothing to badge.
     func testDiffSummaryOfACleanWorktreeIsNil() async throws {
         let dir = try makeTempGitRepo()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: dir, probe: AppModel.gitProbe)
         let summary = await model.diffService.diffSummary(for: model.spaces[0].workspaces[0])
         XCTAssertNil(summary)
@@ -2003,8 +1937,7 @@ final class AppModelTests: XCTestCase {
     private func gitModelWithScripts(_ scriptsJSON: String) throws -> (AppModel, UUID, URL) {
         let repo = try makeTempGitRepo()
         try writeCasperScripts(at: repo, scriptsJSON)
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
         return (model, model.spaces[0].workspaces[0].id, repo)
     }
@@ -2050,17 +1983,6 @@ final class AppModelTests: XCTestCase {
 
     // MARK: - Creating a Space from scratch
 
-    /// A throwaway parent directory for the creation tests — the "location" half of
-    /// what the save panel hands `createSpace`. Not `makeTemporaryDirectory`, which
-    /// creates the leaf too: these tests need the leaf to be missing, or to be seeded
-    /// by hand.
-    private func makeCreationParent() throws -> URL {
-        let parent = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-createspace-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-        return parent
-    }
-
     /// A probe reporting a worktree of a bare repository: the one adoption failure
     /// `createSpace` reaches without touching the port allocator or the filesystem.
     /// `@MainActor` (hence implicitly `@Sendable`) to match `createSpace`'s probe.
@@ -2073,10 +1995,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceMakesAGitFolderAndOpensIt() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let folder = parent.appendingPathComponent("brand-new")
 
         XCTAssertEqual(model.createSpace(at: folder), .created)
@@ -2093,10 +2013,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceGivesTheRepositoryOneEmptyInitialCommit() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let folder = parent.appendingPathComponent("committed-repo")
 
         XCTAssertEqual(model.createSpace(at: folder), .created)
@@ -2124,10 +2042,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceNamesItsWorkspaceAfterTheRepositoryBranch() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let folder = parent.appendingPathComponent("branch-named")
 
         XCTAssertEqual(model.createSpace(at: folder), .created)
@@ -2141,10 +2057,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceAcceptsAnExistingEmptyDirectory() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         // The shape the save panel's "New Folder" button leaves behind.
         let folder = parent.appendingPathComponent("made-by-the-panel")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -2156,10 +2070,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceAcceptsADirectoryHoldingOnlyADSStore() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let folder = parent.appendingPathComponent("shown-in-the-finder")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         // The Finder drops this in merely by displaying the folder, so it must not count
@@ -2173,10 +2085,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceRefusesASymlinkAndLeavesItsTargetAlone() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         // An empty directory every other check would accept, reached through a link.
         // Following it would root the Space somewhere other than the path the user named.
         let target = parent.appendingPathComponent("elsewhere")
@@ -2191,10 +2101,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceRefusesAPathHeldByAFileAndLeavesItAlone() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let target = parent.appendingPathComponent("notes.txt")
         let bytes = Data("keep me".utf8)
         try bytes.write(to: target)
@@ -2206,10 +2114,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceRefusesANonEmptyDirectoryAndLeavesItAlone() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let target = parent.appendingPathComponent("has-stuff-in-it")
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         try Data("keep me".utf8).write(to: target.appendingPathComponent("keep.txt"))
@@ -2223,10 +2129,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceRemovesTheFolderItMadeWhenAdoptionFails() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         let folder = parent.appendingPathComponent("rolled-back")
 
         XCTAssertEqual(
@@ -2238,10 +2142,8 @@ final class AppModelTests: XCTestCase {
     }
 
     func testCreateSpaceKeepsAnExistingEmptyFolderWhenAdoptionFails() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         // The other half of the rollback rule: this folder is the user's, so the failure
         // must leave it standing — and must take the `.git` Casper put in it away again,
         // or `isVacant` would refuse this same path forever on a folder the Finder still
@@ -2264,17 +2166,14 @@ final class AppModelTests: XCTestCase {
     /// between. `WorktreeManagerTests` pins the negative — an unborn repository is
     /// refused — and this is the positive.
     func testASpaceCreatedFromScratchHostsAWorkspaceRightAway() async throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
+        let model = makeModel()
         // Casper never invents a committer, so a machine with no Git identity configured
         // gets a Space on an unborn HEAD instead — a documented outcome, not a failure.
         // Established on a repository of its own rather than on the Space below: reading
         // the skip off the Space's own HEAD would turn a broken initial commit into a
         // skip instead of the failure it is.
-        let identityProbe = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: identityProbe) }
+        let identityProbe = makeTemporaryDirectory(prefix: "casper-createspace")
         try XCTSkipIf(
             try !Repository.initialize(atPath: identityProbe.path).createInitialCommit(),
             "no git user identity is configured on this machine")
@@ -2298,8 +2197,7 @@ final class AppModelTests: XCTestCase {
     /// rather than added, and re-selecting the workspace that is already selected
     /// encodes nothing.
     func testCreatingASpaceSavesTheLocationEvenWhenAdoptionOnlyReselects() throws {
-        let parent = try makeCreationParent()
-        defer { try? FileManager.default.removeItem(at: parent) }
+        let parent = makeTemporaryDirectory(prefix: "casper-createspace")
         let (store, _) = makeTemporarySessionStore()
         let model = makeModel(store: store)
         let folder = parent.appendingPathComponent("deleted-behind-our-back")

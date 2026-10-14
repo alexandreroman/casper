@@ -28,24 +28,6 @@ final class TeardownHookRunnerTests: XCTestCase {
         return (makeModel(spaces: [space], selecting: selected.id), selected.id, background.id)
     }
 
-    /// Wait for the teardown split to land in `workspaceID` and return its surface id.
-    /// `runTeardown` inserts it synchronously, but the task running it only starts on a
-    /// later main-queue turn; the poll bound exists so a broken run fails in milliseconds
-    /// instead of stalling for the 30 s timeout.
-    private func awaitTeardownSplit(
-        in model: AppModel, workspace workspaceID: UUID, surfacesBefore: Set<UUID>
-    ) async -> UUID? {
-        for _ in 0..<400 {
-            if let ws = model.workspace(id: workspaceID),
-               let split = LayoutTree.surfaceIDs(ws.layout).first(where: { !surfacesBefore.contains($0) }) {
-                return split
-            }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        XCTFail("the teardown split was never spawned")
-        return nil
-    }
-
     /// No `.casper.json` ⇒ no teardown hook ⇒ `runTeardown` returns without suspending
     /// or spawning anything, so the caller prunes right away and destroy keeps its
     /// pre-teardown behavior.

@@ -63,6 +63,33 @@ extension XCTestCase {
         return (makeModel(spaces: [space], selecting: workspace.id), workspace)
     }
 
+    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
+    /// `ControlServer` even though the work behind it is async.
+    @MainActor
+    func deleteViaControl(_ model: AppModel, id: UUID) async -> Result<Void, AppModel.WorkspaceDeleteError> {
+        await withCheckedContinuation { continuation in
+            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
+        }
+    }
+
+    /// Wait for the teardown split to land in `workspaceID` and return its surface id,
+    /// which is also the point where the operation is provably suspended on its
+    /// teardown hook. `runTeardown` inserts the split synchronously, but the task
+    /// running it only starts on a later main-queue turn; the bound exists so a broken
+    /// run fails fast instead of stalling for the 30 s teardown timeout.
+    @MainActor
+    func awaitTeardownSplit(
+        in model: AppModel, workspace workspaceID: UUID, surfacesBefore: Set<UUID>,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async -> UUID? {
+        func newSplit() -> UUID? {
+            guard let workspace = model.workspace(id: workspaceID) else { return nil }
+            return LayoutTree.surfaceIDs(workspace.layout).first { !surfacesBefore.contains($0) }
+        }
+        await waitUntil(timeout: 2, { newSplit() != nil }, file: file, line: line)
+        return newSplit()
+    }
+
     /// Poll `condition` on the main actor until it holds, failing at `timeout`.
     /// Preferred over a fixed delay: a green run costs only what the work actually
     /// takes, and a broken one reports a timeout instead of a stale assertion.

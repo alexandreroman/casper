@@ -37,8 +37,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     // MARK: - Which statuses earn a reminder
 
     func testMissingAndOutdatedProduceReminders() async {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         await probe(model, [.claudeCode: .missing, .codex: .outdated(installed: "0.1.0")])
 
@@ -47,8 +46,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testNotInstalledAndInstalledProduceNoReminder() async {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         // `.notInstalled` means the user does not have that agent at all, and
         // `.installed` means there is nothing to fix: both render nothing. Codex is
@@ -59,8 +57,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testMissingAndOutdatedAreActionNeededLines() async {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         await probe(model, [.claudeCode: .missing, .opencode: .outdated(installed: "0.1.0")])
 
@@ -75,8 +72,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     // `config.toml`, so the probe reports it as a status of its own.
 
     func testCodexAwaitingHookTrustProducesATrustNotice() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         await probe(model, [.codex: .installedAwaitingHookTrust])
 
@@ -86,8 +82,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testInstalledAgentsProduceNothing() async {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         // `.installed` is the end of the story for every agent, Codex included: a user
         // whose hooks are approved must not be told, permanently, to go approve them.
@@ -97,8 +92,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testNotInstalledCodexProducesNothing() async {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         // No Codex CLI on the machine: the hook-trust caveat is irrelevant, and
         // advertising an integration for a tool the user does not have is noise.
@@ -108,8 +102,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testTrustNoticeStaysDismissedWhileTheHooksAreStillUnapproved() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.codex: .installedAwaitingHookTrust])
         try dismiss(model, .codex)
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
@@ -126,8 +119,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testApprovingTheHooksRetiresADismissedTrustNotice() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.codex: .installedAwaitingHookTrust])
         try dismiss(model, .codex)
 
@@ -146,8 +138,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testDismissingTheTrustNoticeLeavesALaterActionNeededLineAlone() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.codex: .installedAwaitingHookTrust])
         try dismiss(model, .codex)
 
@@ -159,8 +150,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testDismissingAnActionNeededLineLeavesTheTrustNoticeAlone() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.codex: .missing])
         try dismiss(model, .codex)
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
@@ -201,8 +191,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testReminderCarriesTheDocumentationURL() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         await probe(model, [.codex: .missing])
 
@@ -211,8 +200,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testReminderOrderFollowsAllCasesNotDictionaryOrder() async {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         // A `[CodingAgent: …]` iterates in an order that depends on a per-process
         // hash seed, so the published list must be driven by `allCases` instead —
@@ -225,8 +213,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     // MARK: - Dismissal
 
     func testDismissRemovesOnlyThatAgentsReminder() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.claudeCode: .missing, .codex: .missing, .opencode: .missing])
 
         try dismiss(model, .codex)
@@ -270,8 +257,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testInstalledClearsTheDismissalSoALaterRegressionRemindsAgain() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.claudeCode: .missing])
         try dismiss(model, .claudeCode)
 
@@ -286,8 +272,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testInstalledClearsOnlyTheHealedAgentsDismissal() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.claudeCode: .missing, .codex: .missing])
         try dismiss(model, .claudeCode)
         try dismiss(model, .codex)
@@ -330,8 +315,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     // detection tick applies the same stale check on its own cadence.
 
     func testDetectionTickDoesNotStartTheFirstProbe() {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
 
         model.runAgentDetectionTick()
 
@@ -343,8 +327,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testDetectionTickLeavesAFreshResultAlone() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.claudeCode: .missing])
 
         // The tick runs four times a second; a result this young must not trigger a probe.
@@ -357,8 +340,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     }
 
     func testDetectionTickRetiresTheLineAfterTheUserOpensTheDocumentation() async throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+        let model = makeModel()
         await probe(model, [.claudeCode: .missing])
 
         // The user follows the line to the install instructions and runs the installer in
