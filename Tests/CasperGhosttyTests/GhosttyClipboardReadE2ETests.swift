@@ -114,8 +114,6 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
 
         var grid = ""
         try withRealSurface { view, surface in
-            // Let the shell reach an interactive prompt before typing.
-            settle(0.6)
             surface.sendText("sh \(script.path)")
             settle(0.4)
             // A Return keystroke as a real keyboard reports it: `sendText("\r")` is the

@@ -13,7 +13,9 @@ extension XCTestCase {
     ///
     /// `makeView` builds the view under test, so a caller can supply its own
     /// configuration, surface id or callbacks. The view is made first responder before
-    /// `body` runs, matching how a real terminal receives keystrokes.
+    /// `body` runs, matching how a real terminal receives keystrokes, and the run loop is
+    /// pumped until the shell is interactively ready (see `settle(_:)`), so `body` can type
+    /// at it straight away.
     ///
     /// Throws `XCTSkip` when libghostty cannot produce a surface in this environment — a
     /// documented flakiness (see the `e2e-surface-creation-flakiness` note), so the
@@ -49,6 +51,9 @@ extension XCTestCase {
             throw XCTSkip("libghostty could not create a surface in this environment")
         }
         XCTAssertTrue(window.makeFirstResponder(view))
+        // Fixed, not polled: an under-settled shell reads back kernel cooked-mode echo
+        // instead of real line-editor behaviour (see the harness note).
+        settle(0.6)
 
         try body(view, surface)
     }

@@ -36,9 +36,6 @@ final class GhosttyEditingCommandReplayTests: XCTestCase {
     @MainActor
     private func assertControlAMovesToLineStart(keyCode: UInt16) throws {
         try withRealSurface { view, surface in
-            // Let the shell reach an interactive prompt before typing.
-            settle(0.6)
-
             // Seed a known line (goes to the shell's stdin); the cursor ends at the end of "abc".
             surface.sendText("abc")
             settle(0.4)

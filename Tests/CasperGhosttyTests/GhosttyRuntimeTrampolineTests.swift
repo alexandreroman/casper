@@ -53,7 +53,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     /// existing `onAction` fallback for it.
     func testHandleActionSuppressesOnActionWhenHandlerClaims() {
         let runtime = GhosttyRuntime.forTesting()
-        runtime.actionHandler = ClaimingActionHandler(claimed: .newTab)
+        runtime.actionHandler = RecordingActionHandler(claiming: { $0 == .newTab })
         var received: GhosttyAction?
         runtime.onAction = { received = $0 }
 
@@ -159,15 +159,5 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     @MainActor
     func testSetColorSchemeWithoutAnAppIsANoOp() {
         GhosttyRuntime.forTesting().setColorScheme(dark: true, surfaces: [])
-    }
-}
-
-/// Stub `GhosttyActionHandler` that claims exactly one action, for testing
-/// `handleAction`'s fallback-suppression path.
-private struct ClaimingActionHandler: GhosttyActionHandler {
-    let claimed: GhosttyAction
-
-    func handle(_ action: GhosttyAction) -> Bool {
-        action == claimed
     }
 }

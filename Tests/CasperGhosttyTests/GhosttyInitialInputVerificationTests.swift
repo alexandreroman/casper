@@ -60,9 +60,9 @@ final class GhosttyInitialInputVerificationTests: XCTestCase {
         var grid = ""
         try withRealSurface(makeView: { GhosttySurfaceView(runtime: $0, configuration: configuration) }) {
             _, surface in
-            // Let the shell reach an interactive prompt, consume the queued input, and
-            // print its output before we read the grid.
-            settle(1.0)
+            // On top of the harness's shell-ready settle, let the shell consume the queued
+            // input and print its output before we read the grid.
+            settle(0.4)
 
             grid = surface.readText(scrollback: false) ?? ""
         }

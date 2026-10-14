@@ -21,9 +21,6 @@ final class GhosttyControlReturnTests: XCTestCase {
     @MainActor
     func testFocusedSurfaceClaimsControlReturn() throws {
         try withRealSurface { view, _ in
-            // Let the surface reach a live shell before typing at it.
-            settle(0.6)
-
             XCTAssertTrue(
                 view.performKeyEquivalent(with: keyEvent("\r", modifiers: [.control], keyCode: returnKeyCode)),
                 "a focused surface must claim Ctrl+Return, or AppKit shows the context menu")
@@ -33,8 +30,6 @@ final class GhosttyControlReturnTests: XCTestCase {
     @MainActor
     func testFocusedSurfaceLeavesPlainReturnToKeyDown() throws {
         try withRealSurface { view, _ in
-            settle(0.6)
-
             XCTAssertFalse(
                 view.performKeyEquivalent(with: keyEvent("\r", keyCode: returnKeyCode)),
                 "a plain Return must fall through to keyDown, not be claimed as an equivalent")
@@ -44,7 +39,6 @@ final class GhosttyControlReturnTests: XCTestCase {
     @MainActor
     func testUnfocusedSurfaceLeavesControlReturnAlone() throws {
         try withRealSurface { view, _ in
-            settle(0.6)
             // Hand first responder back to the window itself.
             XCTAssertTrue(view.window?.makeFirstResponder(nil) ?? false)
 

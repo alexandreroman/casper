@@ -3,17 +3,6 @@ import XCTest
 
 @testable import CasperGhostty
 
-/// Records the app-level actions the runtime dispatches, and claims them all —
-/// standing in for `CasperUI.LayoutActionHandler`, which this module cannot see.
-private final class RecordingActionHandler: GhosttyActionHandler {
-    private(set) var actions: [GhosttyAction] = []
-
-    func handle(_ action: GhosttyAction) -> Bool {
-        actions.append(action)
-        return true
-    }
-}
-
 /// Regression test for a shortcut that a focused terminal used to swallow.
 ///
 /// `performKeyEquivalent` runs ahead of the main menu and forwards every ⌘ combo to
@@ -37,9 +26,6 @@ final class GhosttyCommandNRoutingTests: XCTestCase {
         }
 
         try withRealSurface(makeView: makeView) { view, _ in
-            // Let the surface reach a live shell before typing at it.
-            settle(0.6)
-
             // ⌘N: "n" is keyCode 45 on a standard US ANSI keyboard.
             let consumed = view.performKeyEquivalent(with: keyEvent("n", modifiers: [.command], keyCode: 45))
             settle(0.4)
