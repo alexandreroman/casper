@@ -15,9 +15,10 @@ headlessly is the child exiting: no PTY runs, so nothing ever calls back.
 
 The recipe (see `Tests/CasperUITests/CloseDeleteWorkspaceTests.swift`):
 
-1. Commit a `.casper.json` carrying only a `teardown` script into the fixture
-   repo **before** creating the linked workspace, so the worktree checks it out.
-   Adding a `setup` script too would spawn a second script split at creation.
+1. Commit a `.casper.json` carrying a `teardown` script into the fixture repo
+   **before** creating the linked workspace, so the worktree checks it out. A
+   `setup` script as well spawns a second script split at creation; step 2's
+   snapshot, taken after creation, is what keeps it from reading as new.
 2. Snapshot `LayoutTree.surfaceIDs(ws.layout)` before starting the close/delete.
 3. Start the operation in a `Task { @MainActor in … }`, then await the one
    surface id that is new with `awaitTeardownSplit` (`SessionFixtures.swift`),
@@ -26,10 +27,11 @@ The recipe (see `Tests/CasperUITests/CloseDeleteWorkspaceTests.swift`):
    point `GhosttySurfaceView.onChildExit` uses at runtime — to end the hook.
 
 `AppModel.reportTeardownHookFailure` is internal rather than private for the
-same reason: its callers are the two confirmation presenters, which run an
-`NSAlert` modally and therefore cannot run headlessly, and
-`controlDeleteWorkspace`; a test asserting the notification without a delete
-calls it directly, the way the presenters do.
+same reason: its production callers are the two confirmation presenters, which
+run an `NSAlert` modally and therefore cannot run headlessly, and
+`controlDeleteWorkspace`, which is tested through its own call path. A test
+asserting the notification without a delete calls it directly, the way the
+presenters do.
 
 **Why:** without this, the whole hook-present branch (step counts, the countdown
 deadline, the failure notification) looks untestable and gets left to manual

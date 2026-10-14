@@ -21,11 +21,13 @@ neither the origin nor the style mask. `AppModelTests`,
 in `Tests/CasperGhosttyTests/RealSurfaceHarness.swift` (an `XCTestCase`
 extension, not a suite of its own) build their hosts at the default `(0, 0)` and
 are safe purely because none of them is ever ordered in;
-`WorkspaceInfoPanelTests` parks its host at `-100_000` as well, and keeps a
-`.titled` mask because the panel geometry it asserts on is measured against that
-mask. An *ordered* host is what pops a real window into the developer's desktop
-for the length of a test method — at `(0, 0)` it flashes in the bottom-left
-corner, and at `-100_000` it takes Mission Control down with it.
+`WorkspaceInfoPanelTests` and `MarkdownTextViewTests` park their hosts at
+`-100_000` as well, with a `.titled` mask: the panel geometry
+`WorkspaceInfoPanelTests` asserts on is measured against that mask, and
+`MarkdownTextViewTests` follows its host. An *ordered* host is what pops a real
+window into the developer's desktop for the length of a test method — at
+`(0, 0)` it flashes in the bottom-left corner, and at `-100_000` it takes
+Mission Control down with it.
 
 **These windows are never ordered on-screen** — no `orderFrontRegardless()`, no
 `orderFront(_:)`. Mission Control lays out *every* window the WindowServer
