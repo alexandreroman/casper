@@ -1360,7 +1360,7 @@ final class AppModelTests: XCTestCase {
         // Focus moves to the freshly created terminal.
         let focus = model.focusedSurfaceID!
         XCTAssertNotEqual(focus, first)
-        XCTAssertTrue(surfaceKindIsTerminal(layout, focus))
+        XCTAssertTrue(isTerminal(focus, in: layout))
     }
 
     /// Adding a terminal by splitting must blur the previously-focused surface's
@@ -1585,7 +1585,7 @@ final class AppModelTests: XCTestCase {
         let ids = LayoutTree.surfaceIDs(layout)
         XCTAssertEqual(ids.count, 1)
         XCTAssertNotEqual(ids[0], only)  // a fresh surface, not the closed one
-        XCTAssertTrue(surfaceKindIsTerminal(layout, ids[0]))
+        XCTAssertTrue(isTerminal(ids[0], in: layout))
     }
 
     /// Same for a linked workspace: closing its last pane re-seeds it instead of
@@ -1614,7 +1614,7 @@ final class AppModelTests: XCTestCase {
         let ids = LayoutTree.surfaceIDs(layout)
         XCTAssertEqual(ids.count, 1)
         XCTAssertNotEqual(ids[0], linkedSurface.id)  // a fresh surface, not the closed one
-        XCTAssertTrue(surfaceKindIsTerminal(layout, ids[0]))
+        XCTAssertTrue(isTerminal(ids[0], in: layout))
     }
 
     func testCloseOneOfTwoSurvives() throws {
@@ -1649,7 +1649,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(LayoutTree.surfaceIDs(layout).count, 2)
         let focus = model.focusedSurfaceID!
         XCTAssertNotEqual(focus, first)  // focus moves to the new terminal
-        XCTAssertTrue(surfaceKindIsTerminal(layout, focus))
+        XCTAssertTrue(isTerminal(focus, in: layout))
     }
 
     // MARK: - Browser surfaces
@@ -2311,19 +2311,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reloadedModel.lastNewSpaceLocation, "/tmp/projects")
     }
 
-    // Helpers: walk the layout to find a surface by id and inspect its kind.
-    private func surface(_ node: LayoutNode, _ id: UUID) -> Surface? {
-        switch node {
-        case .leaf(let s):
-            return s.id == id ? s : nil
-        case .split(_, let children, _):
-            for c in children { if let found = surface(c, id) { return found } }
-            return nil
-        }
-    }
-    private func surfaceKindIsTerminal(_ node: LayoutNode, _ id: UUID) -> Bool {
-        if case .terminal = surface(node, id)?.kind { return true }
-        return false
+    /// Whether the surface `id` in `layout` is a terminal.
+    private func isTerminal(_ id: UUID, in layout: LayoutNode) -> Bool {
+        guard case .terminal = LayoutTree.surfaces(layout).first(where: { $0.id == id })?.kind else { return false }
+        return true
     }
 }
 

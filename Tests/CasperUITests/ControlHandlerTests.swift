@@ -53,7 +53,7 @@ final class ControlHandlerTests: XCTestCase {
         let info = try XCTUnwrap(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
         XCTAssertEqual(info.cwd, "/some/dir")
         let ws = try XCTUnwrap(model.workspace(id: id))
-        let match = surfaces(in: ws.layout).contains { surface in
+        let match = LayoutTree.surfaces(ws.layout).contains { surface in
             if case .terminal(let cwd) = surface.kind { return cwd == "/some/dir" }
             return false
         }
@@ -166,17 +166,6 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(model.controlCloseTerminal(in: id, terminalID: UUID().uuidString))  // random UUID
         XCTAssertFalse(model.controlCloseTerminal(in: id, terminalID: "not-a-uuid"))       // non-UUID
         XCTAssertEqual(model.controlListTerminals(in: id).count, 2)  // nothing closed
-    }
-
-    /// Collect every leaf surface in a layout, depth-first (the test target has no
-    /// public surface-by-id accessor, so it walks the public `LayoutNode` directly).
-    private func surfaces(in node: LayoutNode) -> [Surface] {
-        switch node {
-        case .leaf(let surface):
-            return [surface]
-        case .split(_, let children, _):
-            return children.flatMap { surfaces(in: $0) }
-        }
     }
 
     func testOpenBrowserLoadsInspectorBrowserAndSelectsTab() throws {
@@ -387,7 +376,7 @@ final class ControlHandlerTests: XCTestCase {
             inSpaceOf: primaryID, branch: "feature-cmd", base: nil, command: "npm test") {
         case .success(let info):
             let ws = try XCTUnwrap(model.workspace(id: try XCTUnwrap(UUID(uuidString: info.id))))
-            let hasTerminal = surfaces(in: ws.layout).contains { surface in
+            let hasTerminal = LayoutTree.surfaces(ws.layout).contains { surface in
                 if case .terminal = surface.kind { return true }
                 return false
             }
