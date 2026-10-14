@@ -337,16 +337,17 @@ longer does are recorded in `../status.md` § Superseded designs.
   frame at the start of a shrink that the heal already catches.
 
   **The row degrades along ONE ordered ladder**, widest first, and everything
-  that yields is a rung of that same list:
+  that yields is a rung of that same list. The full action row is
+  `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )`:
 
-  | rung | title          | badge | actions                                          |
-  | ---- | -------------- | ----- | ------------------------------------------------ |
-  | 1    | Space / branch | yes   | `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )` |
-  | 2    | Space / branch | —     | as above                                         |
-  | 3    | branch         | —     | as above                                         |
-  | 4    | branch         | —     | `( ⤭ )( ⋯ )( ± │ 🌐 )`                           |
-  | 5    | branch         | —     | `( ⋯ )( ± │ 🌐 )`                                |
-  | 6    | branch         | —     | `( ⋯ )`                                          |
+  | rung | title          | badge | actions                |
+  | ---- | -------------- | ----- | ---------------------- |
+  | 1    | Space / branch | yes   | full row               |
+  | 2    | Space / branch | —     | full row               |
+  | 3    | branch         | —     | full row               |
+  | 4    | branch         | —     | `( ⤭ )( ⋯ )( ± │ 🌐 )` |
+  | 5    | branch         | —     | `( ⋯ )( ± │ 🌐 )`      |
+  | 6    | branch         | —     | `( ⋯ )`                |
 
   The order encodes what each element is worth: the diff badge is
   **informational** and goes first, the Space name is **context**, the chip
