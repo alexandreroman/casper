@@ -22,8 +22,8 @@ always-shipping control channel (`ControlSocket.swift`) is built on the same
 side (else `CASPER_SESSION` derives it, else the default) — a listener always
 binds the session-derived path (`DebugSocketPath.listenPath(for:)`), ignoring
 the env override outright, see [[socket-listen-vs-dial-path]]. Logging keeps a
-floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
-[[debug-channel-gating]].
+floor: `.notice`/`.error`/`.fault` (and `warning`, an `.error`-level alias)
+always compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
 
 ## Design
 
