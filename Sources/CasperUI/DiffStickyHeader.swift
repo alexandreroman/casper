@@ -14,10 +14,9 @@ import CasperGit
 /// It behaves as a list's pinned section headers do. Every band the viewport
 /// shows carries its file's bar, drawn at the band's own position, so a file's
 /// name rides up the viewport inside its band. The file owning the top edge holds
-/// its bar there instead, and the
-/// band coming up under it pushes that bar out — which is the same statement as
-/// the general one, since the pinned bar is only ever displaced by however much
-/// the incoming band overlaps it.
+/// its bar there instead, and the band coming up under it pushes that bar out —
+/// which is the same statement as the general one, since the pinned bar is only
+/// ever displaced by however much the incoming band overlaps it.
 final class DiffStickyHeader: NSView {
     /// One bar to draw: which file it describes, and its top edge in this view's
     /// own coordinates. Negative mid-push, when the outgoing bar is on its way out

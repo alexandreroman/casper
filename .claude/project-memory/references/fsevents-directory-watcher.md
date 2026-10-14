@@ -26,16 +26,15 @@ non-obvious constraints, each verified the hard way:
   — the main actor, through the owner's reconfigure path — get that full
   barrier, and the owner's `onChange` hop is a non-blocking
   `MainRunLoop.perform` (`CFRunLoopPerformBlock`), so it never blocks the queue
-  against it. Same
-  discipline as [[swift6-network-concurrency]]. A caller already *on* the
-  callback queue would self-deadlock on that barrier, and `deinit` calls
-  `stop()` unconditionally, so releasing the watcher's last reference from
-  inside the callback lands `stop()` there: "never call `stop()` from the
-  callback queue" is not an invariant the type can enforce. The queue therefore
-  carries a per-instance `DispatchSpecificKey` set at init, and `stop()` reads
-  `DispatchQueue.getSpecific` to tear down inline when it is already on that
-  queue — the running callback is the only in-flight one, so the barrier's
-  guarantee holds with nothing left to drain.
+  against it. Same discipline as [[swift6-network-concurrency]]. A caller
+  already *on* the callback queue would self-deadlock on that barrier, and
+  `deinit` calls `stop()` unconditionally, so releasing the watcher's last
+  reference from inside the callback lands `stop()` there: "never call `stop()`
+  from the callback queue" is not an invariant the type can enforce. The queue
+  therefore carries a per-instance `DispatchSpecificKey` set at init, and
+  `stop()` reads `DispatchQueue.getSpecific` to tear down inline when it is
+  already on that queue — the running callback is the only in-flight one, so the
+  barrier's guarantee holds with nothing left to drain.
   `DirectoryWatcherTests.testStopFromTheCallbackQueueDoesNotDeadlock` pins the
   reentrant case.
 
