@@ -6,8 +6,8 @@ type: reference
 
 # libgit2 Swift interop
 
-Gotchas hit while building `CasperGit` (the `Clibgit2` systemLibrary wrapper
-over libgit2 1.9.x). Relevant to any future CasperGit work.
+Clibgit2 interop rules for `CasperGit` (the `Clibgit2` systemLibrary wrapper
+over libgit2 1.9.x).
 
 - **Variadic `_v` functions are NOT importable by Swift.** Use the array-based
   variant instead. Concretely: `git_commit_create_v(...)` cannot be called from

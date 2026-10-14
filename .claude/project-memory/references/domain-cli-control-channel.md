@@ -44,13 +44,13 @@ records. The control channel (`casper <domain> <verb>` over
   its folder), deletes its branch in the origin repo, and drops it from the UI.
   It **refuses a primary workspace**, and git cleanup runs before the UI removal
   so a git failure leaves the workspace intact/retryable.
-- Session persistence does **not** store the transient agent state
-  (`agentState`, `todos`, `pendingNotification`) — they reset to defaults on
-  load. A handler that writes **only** transient fields therefore does not call
-  `persist()`: agents drive `status set` / `notify` on a hot path, and a save
-  there costs a main-actor session encode plus a disk write of a byte-identical
-  file. Only a handler's genuinely-persisted side effect (a Space expanding, an
-  inspector tab change) justifies the save.
+- Session persistence does **not** store the transient fields
+  (`.superpowers/themes/core.md` § SessionStore) — they reset on load. A handler
+  that writes **only** transient fields therefore does not call `persist()`:
+  agents drive `status set` / `notify` on a hot path, and a save there costs a
+  main-actor session encode plus a disk write of a byte-identical file. Only a
+  handler's genuinely-persisted side effect (a Space expanding, an inspector tab
+  change) justifies the save.
 - `workspace new` runs its libgit2 checkout off the main actor and replies from
   a `Task`, the same asynchronous shape as `workspace delete` and the
   browser-automation verbs — the GUI stays live while a large repo checks out.

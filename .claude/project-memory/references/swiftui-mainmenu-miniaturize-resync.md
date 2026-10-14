@@ -51,10 +51,11 @@ this app — express menus in `.commands`. One genuine SwiftUI limitation remain
 `.commands` cannot remove an entire default top-level menu — an emptied
 `CommandGroup(replacing: .textFormatting)` / `.help` leaves the empty "Format" /
 "Help" title on the bar (confirmed via Apple Developer Forums; there is no clean
-official fix). Casper strips those empty stubs in a shared
-`stripEmptyTopLevelMenus(in:)` helper called from **both**
-`AppDelegate.applicationWillUpdate(_:)` **and** `applicationDidUpdate(_:)`,
-which removes every empty top-level menu (`item.submenu?.numberOfItems == 0`).
+official fix). Casper strips those empty stubs in
+`stripEmptyTopLevelMenus(in:)`, which removes every empty top-level menu
+(`item.submenu?.numberOfItems == 0`); `resyncMainMenu()` runs it, and **both**
+`AppDelegate.applicationWillUpdate(_:)` **and** `applicationDidUpdate(_:)` call
+`resyncMainMenu()`.
 
 Why both, not `didUpdate` alone: SwiftUI resyncs the menu in **multiple passes**
 spanning ~250 ms (verified by logging the menu-bar composition each
@@ -110,7 +111,7 @@ which keys on an empty submenu.
 `item(at:)`/`numberOfItems` rather than touching `.items`, which bridges a whole
 ObjC array into a fresh Swift array on every access. Both update hooks fire
 after essentially every event AppKit processes — mouse-moved included — so that
-bridging, not the menu work itself, was the cost worth removing.
+bridging, not the menu work itself, is the cost that matters.
 
 Skipping the pass when `NSApp.mainMenu`'s identity **and** `numberOfItems` are
 unchanged is the obvious next optimization, and it is **rejected**:
@@ -123,22 +124,8 @@ unchanged is the obvious next optimization, and it is **rejected**:
   from no rebuild at all. Winning that race is why the will/did double hook
   exists in the first place.
 
-With the array bridging gone, one pass is a handful of ObjC message sends, so
-the cache would buy very little for that risk.
-
-The proxy is confirmed working against a human click, and the same logs settle
-the mechanism: on the first opening, `menuNeedsUpdate:` logged
-`before=[About | --- | Services | --- | Hide | …]` /
-`after=[About | --- | Hide | …]`, so Services was **already in the menu** when
-the callback fired — put there by an earlier idle resync, not by SwiftUI
-re-injecting inside `menuNeedsUpdate:` (the `willOpen` pass that follows already
-sees a clean menu). A later opening logged a `before=` with no Services at all,
-i.e. re-injection is intermittent, not per-open. Verifying this needs a real
-click: the debug channel exposes only terminal surfaces, and assistive access
-(osascript/System Events/CGEvent) plus screen capture are both denied to agents
-here, so no menu-bar state can be observed or driven from outside the app —
-in-app `.debug` logging is the only instrument, and a human has to open the
-menu.
+Without array bridging, one pass is a handful of ObjC message sends, so the
+cache would buy very little for that risk.
 
 `stripServicesItems(fromAppMenu:)` carries the detection rule and why
 `NSApp.servicesMenu` is not a usable gate for it.

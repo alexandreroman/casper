@@ -24,10 +24,10 @@ one inside the same `HStack`.
 **How to apply:** for any custom SwiftUI toolbar control whose hierarchy
 contains a native `Menu`/`Picker`/other AppKit-bridged control, skip
 `.glassEffect(in:)` and paint the background explicitly. `TitleCapsuleChrome` in
-`Sources/CasperUI/TitleChipChrome.swift` — reached through
-`.titleCapsule()`, which `diffBadge` and every other chip uses — is the shipped
-form of that: an unconditional fill plus a `strokeBorder` overlay approximating
-the Liquid Glass pill's fill and edge highlight. It is an approximation, not a
-pixel match to the system's automatic toolbar background (used by plain,
-unflattened `ToolbarItem`s), so a change there costs one round of
-human-eyeballed opacity/width tuning.
+`Sources/CasperUI/TitleChipChrome.swift` — reached through `.titleCapsule()`,
+which `diffBadge` and every other chip uses — is the shipped form of that: an
+explicit `Color` fill (never a material) plus a `strokeBorder` overlay
+approximating the Liquid Glass pill's fill and edge highlight. It is an
+approximation, not a pixel match to the system's automatic toolbar background
+(used by plain, unflattened `ToolbarItem`s), so a change there costs one round
+of human-eyeballed opacity/width tuning.

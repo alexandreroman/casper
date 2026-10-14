@@ -1,6 +1,6 @@
 ---
 name: "Swift 6 Network concurrency"
-description: "NWListener/NWConnection-based classes use @unchecked Sendable + queue discipline in CasperAgents"
+description: "NWListener/NWConnection-based classes use @unchecked Sendable + queue discipline in CasperCore's socket engine"
 type: reference
 ---
 
@@ -12,10 +12,10 @@ the framework's handlers are `@Sendable` and capture non-Sendable `self`.
 Converting such a class to an `actor` is rejected because it would force the
 public API to become `async`.
 
-Established convention for the shared socket engine in
-`Sources/CasperCore/SocketTransport.swift`, which both the release control
-channel (`ControlSocketServer`) and the DEBUG `DebugSocketServer` are
-typealiases of:
+Established convention for the shared socket engine (`SocketServerEngine` /
+`SocketClientEngine`) in `Sources/CasperCore/SocketTransport.swift`, which both
+the release control channel (`ControlSocketServer`) and the DEBUG
+`DebugSocketServer` are typealiases of:
 
 - Mark the class `final class X: @unchecked Sendable` when it must keep a
   synchronous public interface (`start()` / `stop()` etc.).
@@ -35,7 +35,7 @@ typealiases of:
   with `OSAllocatedUnfairLock(uncheckedState:)` and access it via
   `withLockUnchecked` — this is the lock's designed API for non-Sendable state
   and is *not* a second class-level `@unchecked`; the lock still supplies the
-  mutual exclusion. (`ControlSocketServer.State`.)
+  mutual exclusion. (`SocketServerEngine`'s private `State`.)
 - "No callback after `stop()`" invariant: mark the class state `stopped` under
   the lock, snapshot-and-cancel in `stop()`, then `queue.sync {}` as a barrier
   so any in-flight completion finishes before `stop()` returns. Consequence:

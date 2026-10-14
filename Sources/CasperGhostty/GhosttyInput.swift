@@ -37,8 +37,8 @@ func ghosttyKeyEvent(
     // Read the base characters once, here: `charactersIgnoringModifiers` bridges a
     // fresh Swift String out of an NSString on every access, and both helpers below
     // need it — on every keystroke. It is also *raising* on any non-key event (see
-    // `ghosttyUnshiftedCodepoint`), so the event-type guard both helpers used to
-    // repeat lives here instead; nil then makes each of them fall back correctly.
+    // `ghosttyUnshiftedCodepoint`), so the event-type guard sits here, once, for both
+    // helpers; nil then makes each of them fall back correctly.
     let baseCharacters: String? = switch event.type {
     case .keyDown, .keyUp: event.charactersIgnoringModifiers
     default: nil

@@ -19,10 +19,11 @@ socket path from `CASPER_CONTROL_SOCKET` alone — both intentional for the
 a terminal (a normal dogfooding workflow for this repo) therefore leaks the live
 instance's real socket path into the test process.
 
-**Why:** without the strip, `swift test --filter SocketPathResolutionTests` run
-inside a terminal opened by a real bundled `Casper.app` fails
-`testDebugResolveNamedSession`, because the ambient `CASPER_DEBUG_SOCKET`
-silently overrides the `SessionIdentity` argument passed to `resolve(for:)`.
+**Why:** without the strip, the env-sensitive assertions silently skip: run
+inside a terminal that exports `CASPER_DEBUG_SOCKET`, `swift test --filter
+SocketPathResolutionTests` skips `testDebugResolveNamedSession`
+(`skipWhenDebugSocketIsOverridden`), because the ambient variable would override
+the `SessionIdentity` argument passed to `resolve(for:)`.
 This only affects *assertions on the resolved path string* — no test binds a
 real listener at that default/session path (every test that opens a real socket
 uses its own UUID-suffixed temp path), so the live socket **file** is never at

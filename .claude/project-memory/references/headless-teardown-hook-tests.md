@@ -26,13 +26,6 @@ The recipe (see `Tests/CasperUITests/CloseDeleteWorkspaceTests.swift`):
 4. Call `model.handleScriptSurfaceExit(newSurfaceID, code:)` — the exact entry
    point `GhosttySurfaceView.onChildExit` uses at runtime — to end the hook.
 
-`AppModel.reportTeardownHookFailure` is internal rather than private for the
-same reason: its production callers are the two confirmation presenters, which
-run an `NSAlert` modally and therefore cannot run headlessly, and
-`controlDeleteWorkspace`, which is tested through its own call path. A test
-asserting the notification without a delete calls it directly, the way the
-presenters do.
-
 **Why:** without this, the whole hook-present branch (step counts, the countdown
 deadline, the failure notification) looks untestable and gets left to manual
 verification — and a test that forgets step 4 stalls on the 30 s

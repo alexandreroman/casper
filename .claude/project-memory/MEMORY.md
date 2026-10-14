@@ -62,7 +62,7 @@
 - [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — cursorUpdate AND mouseEntered set it; arrow on exit
 - [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — debug channel never clicks; use CGEvent on a key window
 - [Browser address bar select-all](references/browser-address-bar-select-all.md) — select-all in mouseDown after super, if the selection is empty
-- [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays
+- [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — aborts with no bundle id; guard every path
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
 - [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
 - [A MainActor member as a default argument](references/mainactor-default-argument-isolation.md) — @MainActor on the parameter; the body drops it

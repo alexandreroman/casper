@@ -458,26 +458,11 @@ its place under the dependency policy, and every limitation of the scan misses
 in the safe direction (an unseen `enabled = false` reads as enabled, never the
 reverse).
 
-Two Codex traps, both able to produce a confidently wrong answer:
-
-- **No plugin manifest is read.** The plugin repository ships only
-  `.claude-plugin/plugin.json` and relies on Codex's manifest discovery order
-  falling through to it, so probing by manifest file name matches nothing.
-- **`~/.codex/hooks.json` is never evidence of anything**, and no code reads it.
-  It appears on machines with no Codex installed at all — unrelated tools write
-  to it — and the plugin never writes to it.
-
-**The Codex cache layout is confirmed against a real Codex 0.149.0 install**:
-`~/.codex/plugins/cache/casper/casper/0.2.0/`, the version being the leaf path
-segment. That is the default Codex home, and the only one Casper builds paths
-from — a `CODEX_HOME` override is not read. `codex plugin list --json` is the
-stricter cross-check — it reports `pluginId`, `name`, `marketplaceName`,
-`version`, `installed`, `enabled`, `source`, `marketplaceSource`,
-`installPolicy` and `authPolicy`, and **no hook-trust field**, so it answers
-"is it installed" and never "is it approved".
-Its stdout can also carry trailing terminal escape bytes when a user's shell
-wraps `codex` in a function, so a parser must read the first JSON document
-rather than the whole stream. See [[codex-detection-caveats]].
+Casper builds paths from the default Codex home only; a `CODEX_HOME` override
+is not read. The external Codex observations behind this probe — the confirmed
+cache layout, the fields and stray escape bytes of `codex plugin list --json`,
+and the plugin-manifest and `~/.codex/hooks.json` traps — are recorded in
+[[codex-detection-caveats]].
 
 #### Disabled is missing
 

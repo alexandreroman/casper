@@ -21,24 +21,13 @@ cell_width_px ≈ width_px).
 `wantsLayer = true` does **not** fix this: AppKit's auto-managed scale applies
 to the layer AppKit creates, not to the Metal layer libghostty substitutes.
 
-Fix in `CasperGhostty/GhosttySurfaceView.swift` — mirror Ghostty's reference
-`SurfaceView_AppKit.swift` (`viewDidChangeBackingProperties`), wrapping the
-change in a `CATransaction` with actions disabled to avoid a scale animation:
-
-```swift
-private func syncLayerContentsScale() {
-    guard let window else { return }
-    CATransaction.begin()
-    CATransaction.setDisableActions(true)
-    layer?.contentsScale = window.backingScaleFactor
-    CATransaction.commit()
-}
-```
-
-Call it right after the surface is created (`viewDidMoveToWindow`, before
-`pushContentScale`/`pushSize`) **and** at the top of
-`viewDidChangeBackingProperties` (so moving between displays of different DPI
-re-syncs it).
+The fix mirrors Ghostty's reference `SurfaceView_AppKit.swift`
+(`viewDidChangeBackingProperties`):
+`GhosttySurfaceView.syncLayerContentsScale()` sets the scale inside a
+`CATransaction` with actions disabled, so it never animates.
+`pushWindowGeometry()` calls it first, before the content scale and size, on
+every window attach and from `viewDidChangeBackingProperties`, so moving between
+displays of different DPI re-syncs it.
 
 **Why it matters:** the pixel size and `set_content_scale` values fed to
 libghostty were already correct here — the bug is purely in Core Animation

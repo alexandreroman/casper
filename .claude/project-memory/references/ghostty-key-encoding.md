@@ -57,7 +57,9 @@ ctrl` verb (e.g. Ctrl-C over a running `sleep`, confirm SIGINT). Synthetic
 real hardware keycode is what matters), and the debug `send-key` channel
 bypasses `keyDown`/`interpretKeyEvents` entirely, so it cannot exercise that
 path — the real in-process harness in [[ghostty-real-surface-e2e-harness]] does.
-The vendored reference AppKit handler ([[ghostty-is-the-reference]]) carries the
-same `input.keycode = UInt32(keyCode)` pattern, so upstream is unverified, not
-proven safe. See [[debug-channel-gating]] and [[ghostty-layer-contents-scale]]
+Both the libghostty-spm package's own AppKit handler
+(`TerminalKeyEventHandler@AppKit.swift`) and upstream Ghostty's
+`Ghostty.Input.swift` ([[ghostty-is-the-reference]]) pass the raw `keyCode`
+(`input.keycode = UInt32(keyCode)`), so upstream is unverified, not proven
+safe. See [[debug-channel-gating]] and [[ghostty-layer-contents-scale]]
 for other libghostty embedding gotchas.

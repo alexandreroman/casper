@@ -11,9 +11,9 @@ environment, so a `Label("Merge", systemImage:)` renders as the bare glyph and
 the title is silently dropped. Toolbar chips that are meant to read as text
 pin the style explicitly with `.labelStyle(.titleAndIcon)`.
 
-This holds even for a chip drawn by a `Button` with `.buttonStyle(.plain)` and
-its own `titleCapsule()` background: the style is inherited from the toolbar
-environment, not from the capsule.
+This holds even for a chip drawn by a `Button` with its own button style
+(`TitleChipButtonStyle`) and `titleCapsule()` background: the label style is
+inherited from the toolbar environment, not from the button or the capsule.
 
 **Why it matters:** title-bar chips are a set. Editor and Run
 (`Sources/CasperUI/WorkspaceTitleBar.swift`) are text-bearing, so a

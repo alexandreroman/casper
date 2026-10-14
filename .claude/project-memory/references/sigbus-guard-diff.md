@@ -1,6 +1,6 @@
 ---
 name: "SIGBUS guard around libgit2 diff"
-description: "In-process SIGBUS handler funnels mmap-truncation faults during diff into the graceful throw path"
+description: "In-process SIGBUS handler funnels mmap-truncation faults during libgit2 diff/status/checkout into a graceful throw"
 type: project
 ---
 
@@ -14,21 +14,15 @@ libgit2 installs no SIGBUS handler of its own.
 
 The fix is an in-process SIGBUS guard — the established
 `sigsetjmp`/signal-handler technique for recovering from a `SIGBUS` on a
-truncated `mmap`:
-
-- C target `CSigbusGuard` (`Sources/CSigbusGuard/`) installs a process-wide
-  `sigaction` for **SIGBUS only** (never SIGSEGV — that would mask real
-  memory-safety bugs) exactly once via `pthread_once`. A `_Thread_local
-  sigjmp_buf *` routes the handler to the faulting thread's own jump buffer
-  (diffs run concurrently on cooperative-pool threads). If no guard is active on
-  the faulting thread, the handler restores `SIG_DFL` and returns so the fault
-  re-executes into a genuine crash report (crash fidelity preserved).
-- `SigbusGuard.run` (`Sources/CasperGit/SigbusGuard.swift`) wraps it and, on a
-  caught fault, throws `GitError(code: -1, message: "file changed before we
-  could read it (SIGBUS guarded)")` — matching libgit2's own stat-race message
-  so it lands on the existing graceful `computeDiff` catch (log + return nil,
-  refresh next revision). `Repository.diffWorkdirToHead()` runs its whole body
-  under the guard.
+truncated `mmap` — around the three libgit2 calls that read mapped
+working-directory files: the working-tree diff and the `isClean` status walk
+(`Repository.swift`) and `forceCheckoutHead` (`Merge.swift`). The mechanism —
+SIGBUS only, the `_Thread_local` jump buffer, the `SIG_DFL` re-fault outside a
+guarded region — is in `.superpowers/themes/git-worktrees.md` § Design. On a
+caught fault `SigbusGuard.run` throws `GitError(code: -1, message: "file changed
+before we could read it (SIGBUS guarded)")`, matching libgit2's own stat-race
+message so it lands on the existing graceful `computeDiff` catch (log + return
+nil, refresh next revision).
 
 Accepted trade-off: on the fault path `siglongjmp` abandons the frames inside
 `body`, so Swift `defer`/ARC cleanup there never runs and any libgit2 handles
