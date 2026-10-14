@@ -2,6 +2,14 @@ import ArgumentParser
 import CasperCore
 import Foundation
 
+/// The version `casper --version` reports when it runs unbundled.
+///
+/// The real version ships in `Casper.app`'s `Info.plist` as
+/// `CFBundleShortVersionString`, which `Scripts/bundle-app.sh` substitutes at
+/// packaging time. An unbundled binary — `swift run casper`, or the executable
+/// invoked outside the app — has no Info.plist to read, and reports this instead.
+private let casperFallbackVersion = "0.1.0"
+
 /// The version `casper --version` reports: the packaged app's real version when
 /// there is a bundle to read it from, else the compiled-in fallback.
 private let casperVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
