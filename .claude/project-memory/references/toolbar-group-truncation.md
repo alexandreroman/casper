@@ -25,8 +25,7 @@ Measured on the running app at a 600 pt window, where the navigation item alone
 reported 293 pt and went into the chevron with its title still one truncatable
 line — and in the chevron the custom chips lose their capsule chrome and the
 segmented control clips to a lone glyph. Hence one item that is never wider than
-the bar, degrading itself internally. The same reasoning is recorded in the code
-comment above the item.
+the bar, degrading itself internally.
 
 **How to access:** the geometry is measurable headlessly —
 `Tests/CasperUITests/WorkspaceTitleLabelTests.swift` hosts the label at a sweep

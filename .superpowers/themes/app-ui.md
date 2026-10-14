@@ -350,12 +350,14 @@ longer does are recorded in `../status.md` § Superseded designs.
   **informational** and goes first, the Space name is **context**, the chip
   labels are **actions**, and the branch is **identity** and never drops. One
   list rather than one ladder per element, because **a second decision-maker
-  makes the degradation non-monotone** — measured three times over: a badge on
-  its own layout priority vanished at 500 pt and came back at 260 pt, and a
-  title running its own `ViewThatFits` handed ~90 pt back and brought the
-  selector back as the window got *narrower*. Elements cannot be ranked against
-  each other except by being rungs of the same list. Within a rung the branch
-  still middle-truncates — that is `Text` under a proposal, not a second ladder.
+  makes the degradation non-monotone** — measured three times over: a badge
+  that vanished at 500 pt came back at 260 pt beside a folded chip, a badge
+  ranked by layout priority came back the moment the chips folded, and a title
+  running its own `ViewThatFits` dropped its Space name, handed ~90 pt back and
+  brought the selector back at 279 pt as the window got *narrower*. Elements
+  cannot be ranked against each other except by being rungs of the same list.
+  Within a rung the branch still middle-truncates — that is `Text` under a
+  proposal, not a second ladder.
 
   Run and Editor have **no glyph-only form**: they go from full text straight
   into the `⋯` menu. Only Merge and the selector have a glyph form on the bar.

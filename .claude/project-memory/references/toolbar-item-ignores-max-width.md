@@ -1,6 +1,6 @@
 ---
 name: "A toolbar item ignores `.frame(maxWidth:)`"
-description: "A ToolbarItem's content is measured under an unspecified proposal, so a flexible maxWidth frame constrains nothing and a ViewThatFits behind it always picks its widest candidate; a single-subview Layout is what imposes a width budget"
+description: "A ToolbarItem's content is measured under an unspecified proposal, so a flexible maxWidth frame constrains nothing and a ViewThatFits behind it always picks its widest candidate; a definite `.frame(width:)` is what proposes a width downward"
 type: reference
 ---
 
