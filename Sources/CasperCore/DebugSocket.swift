@@ -10,7 +10,7 @@ public enum DebugSocketPath {
     /// the default session), so a driver that exports `CASPER_SESSION=dev`
     /// automatically targets `/tmp/casper-debug-dev.sock`.
     public static var `default`: String {
-        let session = SessionIdentity(name: ProcessInfo.processInfo.environment["CASPER_SESSION"])
+        let session = SessionIdentity(name: ProcessInfo.processInfo.environment[CasperEnvironment.session])
             ?? .default
         return resolve(for: session)
     }
@@ -19,7 +19,7 @@ public enum DebugSocketPath {
     /// wins; otherwise the session-derived path. Dial side only; the sole
     /// production caller is `default`.
     static func resolve(for session: SessionIdentity) -> String {
-        ProcessInfo.processInfo.environment["CASPER_DEBUG_SOCKET"] ?? session.debugSocketPath
+        ProcessInfo.processInfo.environment[CasperEnvironment.debugSocket] ?? session.debugSocketPath
     }
 
     /// The path the App itself must bind its listener to: always the

@@ -14,7 +14,7 @@ struct WorkspaceTargetOption: ParsableArguments {
         // Treat an empty or whitespace-only selector as absent so `requireSelector`
         // raises its clear "no target workspace" error instead of round-tripping a
         // useless empty selector to the app.
-        nonBlank(workspace ?? environment["CASPER_WORKSPACE_ID"])
+        nonBlank(workspace ?? environment[CasperEnvironment.workspaceID])
     }
 }
 
@@ -118,7 +118,7 @@ extension ControlResponse {
 func sendControl(
     _ command: ControlCommand, retriable: Bool, timeout: TimeInterval = ControlSocketClient.defaultTimeout
 ) throws -> ControlResponse {
-    guard let socketPath = ProcessInfo.processInfo.environment["CASPER_CONTROL_SOCKET"] else {
+    guard let socketPath = ProcessInfo.processInfo.environment[CasperEnvironment.controlSocket] else {
         throw exitWithError("Casper is not running (CASPER_CONTROL_SOCKET unset); run inside a Casper terminal")
     }
     return try sendUnwrapped(command, toSocketAt: socketPath, timeout: timeout, retriable: retriable)

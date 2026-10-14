@@ -36,7 +36,7 @@ struct WorkspaceCommand: ParsableCommand {
         /// counts as absent — matching `WorkspaceTargetOption.resolvedSelector` — so
         /// `run()` reports the error instead of succeeding with an empty id.
         func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
-            nonBlank(environment["CASPER_WORKSPACE_ID"])
+            nonBlank(environment[CasperEnvironment.workspaceID])
         }
 
         func makeCommand() -> ControlCommand { ControlCommand(verb: .workspaceList) }

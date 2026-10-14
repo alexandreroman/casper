@@ -77,6 +77,10 @@ The pure-Swift, UI-free core. Fully unit-tested.
   socket paths so a dev/test instance runs beside the user's real one. A `nil`
   name is the default session, whose paths stay byte-for-byte the historical
   ones. See [[app-sessions]] and [[socket-listen-vs-dial-path]].
+- **`CasperEnvironment`** — the names of the `CASPER_*` environment variables,
+  spelled once for the side that writes them (CasperAgents'
+  `AgentEnvironment`) and the sides that read them (the CLI, `DebugSocketPath`).
+  The names are a contract with the agent plugins and never change.
 - **`RepoConfig`** — the per-repository `.casper.json` loader/validator, with
   `WorkspaceFileCopier` seeding its `copyFiles` patterns into a new worktree.
   The design decisions live in `cli-agents.md` § Design → "Per-repository

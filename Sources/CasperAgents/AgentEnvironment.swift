@@ -37,15 +37,15 @@ public enum AgentEnvironment {
         controlSocketPath: String? = nil,
         sessionName: String? = nil
     ) -> [String: String] {
-        var env: [String: String] = ["CASPER_WORKSPACE_ID": workspaceId.casperID]
+        var env: [String: String] = [CasperEnvironment.workspaceID: workspaceId.casperID]
         if let portBase {
-            env["CASPER_PORT"] = String(portBase)
+            env[CasperEnvironment.port] = String(portBase)
         }
         if let controlSocketPath {
-            env["CASPER_CONTROL_SOCKET"] = controlSocketPath
+            env[CasperEnvironment.controlSocket] = controlSocketPath
         }
         if let sessionName {
-            env["CASPER_SESSION"] = sessionName
+            env[CasperEnvironment.session] = sessionName
         }
         if let casperDirectory {
             if let basePath, !basePath.isEmpty {
