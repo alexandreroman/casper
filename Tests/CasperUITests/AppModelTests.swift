@@ -1249,22 +1249,29 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.spaces[0].isGitRepo)
     }
 
+    /// Only the first Space holds the selection, so the selection-time promotion cannot
+    /// reach the second one: its promotion is `resolveGitBacking`'s loop at work.
     func testLaunchPromotesAllDegenerateSpacesThatGainedGit() {
-        let dir = makeTemporaryDirectory()
-        let model = makeModel()
-        model.addSpace(folderURL: dir, probe: { _ in nil })  // starts degenerate
-        XCTAssertFalse(model.spaces[0].isGitRepo)
+        let first = Workspace(
+            name: "one", worktreePath: "/one", branch: "", portBase: 40000,
+            layout: .leaf(Surface.terminal(cwd: "/one")))
+        let second = Workspace(
+            name: "two", worktreePath: "/two", branch: "", portBase: 40010,
+            layout: .leaf(Surface.terminal(cwd: "/two")))
+        let model = makeModel(
+            spaces: [
+                Space(name: "one", folderPath: "/one", isGitRepo: false, workspaces: [first]),
+                Space(name: "two", folderPath: "/two", isGitRepo: false, workspaces: [second]),
+            ],
+            selecting: first.id)
+        model.makeWorktreeWatcher = { _, _, _ in StubDirectoryWatcher() }
+        // Both folders gained a repository since the session was saved.
+        model.gitReprobe = { path in WorkspaceFactory.GitInfo(canonicalPath: path, branch: "main", remoteURL: nil) }
 
-        // `init`'s promote-all loop uses the default disk-hitting probe, but this
-        // model is built via `addSpace` after construction and `gitReprobe` is
-        // injected only afterwards — so exercise the same promote-only path
-        // directly to assert a degenerate Space that gained a `.git` gets promoted.
-        model.gitReprobe = { _ in
-            WorkspaceFactory.GitInfo(canonicalPath: dir.path, branch: "main", remoteURL: nil)
-        }
-        XCTAssertTrue(model.promoteSpaceIfGitInitialized(spaceIndex: 0))
-        XCTAssertTrue(model.spaces[0].isGitRepo)
-        XCTAssertEqual(model.spaces[0].workspaces[0].branch, "main")
+        model.completeLaunchSetup()
+
+        XCTAssertEqual(model.spaces.map(\.isGitRepo), [true, true])
+        XCTAssertEqual(model.spaces.map { $0.workspaces[0].branch }, ["main", "main"])
     }
 
     // MARK: - Watcher arm guarded by window visibility
