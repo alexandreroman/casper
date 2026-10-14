@@ -18,18 +18,9 @@ public struct RepoConfig: Codable, Equatable, Sendable {
         /// and `teardown` are lifecycle hooks; every other name is a user-invocable
         /// command. An empty command string is treated as no script.
         public var scripts: [String: String]?
-
-        public init(copyFiles: [String]? = nil, scripts: [String: String]? = nil) {
-            self.copyFiles = copyFiles
-            self.scripts = scripts
-        }
     }
 
     public var workspace: Workspace?
-
-    public init(workspace: Workspace? = nil) {
-        self.workspace = workspace
-    }
 
     /// The effective list of files to copy: the file's list when present, else
     /// `defaults`. An explicit empty list is returned as empty (copy nothing).
@@ -82,11 +73,6 @@ public struct RepoConfig: Codable, Equatable, Sendable {
 public struct RepoConfigError: Error, Equatable, Sendable {
     public let path: String
     public let reason: String
-
-    public init(path: String, reason: String) {
-        self.path = path
-        self.reason = reason
-    }
 }
 
 /// The outcome of resolving a `casper run <name>` request.

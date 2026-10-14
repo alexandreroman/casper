@@ -13,10 +13,6 @@ public enum TodoStatus: String, Codable, Sendable {
 public struct Todo: Codable, Equatable, Sendable {
     public var content: String
     public var status: TodoStatus
-    public init(content: String, status: TodoStatus) {
-        self.content = content
-        self.status = status
-    }
 }
 
 public struct Surface: Codable, Equatable, Identifiable, Sendable {

@@ -253,11 +253,6 @@ enum AgentIntegration {
         let version: String
         /// Whether the match came from `legacyPluginID` rather than `pluginID`.
         let usesLegacyPluginID: Bool
-
-        init(version: String, usesLegacyPluginID: Bool) {
-            self.version = version
-            self.usesLegacyPluginID = usesLegacyPluginID
-        }
     }
 
     /// Reads the installed plugin registration out of Claude Code's plugin registry

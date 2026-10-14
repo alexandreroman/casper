@@ -11,12 +11,6 @@ public enum ProcessMemory {
         public var residentBytes: Int
         /// `ledger_phys_footprint_peak`, or 0 when the kernel does not report it.
         public var peakFootprintBytes: Int
-
-        public init(footprintBytes: Int, residentBytes: Int, peakFootprintBytes: Int) {
-            self.footprintBytes = footprintBytes
-            self.residentBytes = residentBytes
-            self.peakFootprintBytes = peakFootprintBytes
-        }
     }
 
     /// The current sample, or `nil` when `task_info` fails.
