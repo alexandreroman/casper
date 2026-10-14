@@ -8,7 +8,7 @@ final class AgentDetectionTests: XCTestCase {
     /// claim about work the terminal cannot see — and only `idle`/`unknown` hand
     /// the workspace back to the scraper.
     func testAssertedStatesLatchAuthorityWhileIdleReleasesIt() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         XCTAssertFalse(model.explicitAuthority.contains(id), "authority starts released")
 
@@ -60,7 +60,7 @@ final class AgentDetectionTests: XCTestCase {
     /// the injected `deliverNotification`) and raises the sidebar attention dot,
     /// with no agent hook involved — this is the notify-without-a-hook feature.
     func testDetectedBlockedDeliversNotificationAndRaisesDot() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         model.isWindowKey = { false }  // not focused ⇒ dot may raise
         var delivered: [(title: String, body: String, workspaceID: UUID)] = []
@@ -82,7 +82,7 @@ final class AgentDetectionTests: XCTestCase {
 
     /// A detected transition into `done` likewise fires a notification.
     func testDetectedDoneDeliversNotification() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         model.isWindowKey = { false }
         var delivered: [(title: String, body: String)] = []
@@ -96,7 +96,7 @@ final class AgentDetectionTests: XCTestCase {
 
     /// Non-attention states (`working`, `idle`) never notify.
     func testDetectedWorkingOrIdleDoesNotNotify() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         var delivered = 0
         model.deliverNotification = { _, _, _, _ in delivered += 1 }
@@ -109,7 +109,7 @@ final class AgentDetectionTests: XCTestCase {
 
     /// The "only on change" guard means a repeated same-state write notifies once.
     func testRepeatedBlockedNotifiesOnce() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         model.isWindowKey = { false }
         var delivered = 0
@@ -126,7 +126,7 @@ final class AgentDetectionTests: XCTestCase {
     /// already looking at it. The focus semantics come for free from
     /// `controlRaiseNotification`.
     func testDetectedBlockedWhileFocusedDoesNotNotifyOrRaiseDot() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id  // seeded session selects this workspace
         model.isWindowKey = { true }
         var delivered = 0

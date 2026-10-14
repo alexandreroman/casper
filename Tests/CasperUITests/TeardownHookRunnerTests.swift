@@ -8,7 +8,7 @@ final class TeardownHookRunnerTests: XCTestCase {
     /// A minimal model holding one workspace rooted at `worktreePath`. No Git backing
     /// is needed: resolving the hook only reads `.casper.json` from the worktree.
     private func makeModel(worktreePath: String) -> (AppModel, UUID) {
-        let (model, workspace) = makeSeededModel(worktreePath: worktreePath, portBase: 42000)
+        let (model, workspace) = makeSeededModel(worktreePath: worktreePath)
         return (model, workspace.id)
     }
 

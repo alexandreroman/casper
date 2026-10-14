@@ -51,12 +51,11 @@ extension XCTestCase {
     @MainActor
     func makeSeededModel(
         worktreePath: String = "/wt",
-        portBase: Int = 40000,
         inspector: InspectorState = InspectorState()
     ) -> (model: AppModel, workspace: Workspace) {
         let workspace = Workspace(
             name: "main", worktreePath: worktreePath, branch: "main",
-            portBase: portBase, layout: .leaf(Surface.terminal(cwd: worktreePath)),
+            portBase: 40000, layout: .leaf(Surface.terminal(cwd: worktreePath)),
             inspector: inspector)
         let space = Space(
             name: "main", folderPath: worktreePath, isGitRepo: false, workspaces: [workspace])
