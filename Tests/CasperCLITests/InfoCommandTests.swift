@@ -12,6 +12,12 @@ final class InfoCommandTests: XCTestCase {
         XCTAssertEqual(command.workspace, "feature")
     }
 
+    func testSetAcceptsMessageStartingWithDash() throws {
+        // A Markdown list opens with a dash, so the message must not be taken for an option.
+        let set = try InfoCommand.Set.parse(["--message", "- step one\n- step two", "--workspace", "feature"])
+        XCTAssertEqual(try set.makeCommand().message, "- step one\n- step two")
+    }
+
     func testSetReadsMarkdownFromFile() throws {
         let url = makeTemporaryDirectory(prefix: "casper-info").appendingPathComponent("info.md")
         try "## Ready\n- <http://localhost:8080>\n".write(to: url, atomically: true, encoding: .utf8)

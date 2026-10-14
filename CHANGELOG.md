@@ -66,6 +66,11 @@ CI, test, and documentation-only work is left out.
   instead of returning before the reload has started.
 - `casper browser screenshot` with `--width`, `--height` or `--url` no longer
   fails on a page that redirects itself while loading.
+- Text that starts with a dash is accepted as a value: `casper progress set
+  --label`, `casper notify --message`, `casper info set --message`, the
+  `--command` of `casper terminal new` and `casper workspace new`, and
+  `casper browser wait --js` no longer reject "- waiting" or "--force flag" as
+  a missing value.
 
 ## [0.1.3] - 2026-10-13
 

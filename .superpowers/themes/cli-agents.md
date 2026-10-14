@@ -71,6 +71,19 @@ branch rather than reaching the app as a blank ref. An option whose empty value
 is meaningless (`--selector`, `--url`, `--level`) is rejected instead, by
 `requireNonEmptyIfPresent` or its own validation, and exits non-zero.
 
+**A free-text option takes its next argument verbatim.** `--label`,
+`--message` (`notify`, `info set`), `--command` (`terminal new`,
+`workspace new`) and `browser wait --js` are declared `parsing:
+.unconditional`, so a value that starts with a dash (a todo reading "-> wire
+X", a Markdown list) is accepted rather than refused as a missing value: agents
+and the plugin pass such text as a separate argv element, and a usage error
+there is lost. The accepted cost is that a forgotten value swallows the next
+option (`--message --workspace x` sends `--workspace` as the text). An option
+whose value is never free text — an id, a ref, a path, a URL, a selector, a
+number — keeps the default parsing, so a forgotten value there stays a usage
+error. A free-text positional (`browser eval`, `browser type`) follows the
+POSIX convention instead: `--` ends the options before it.
+
 **Transport.** Each command sends a `ControlCommand` over the Unix domain socket
 named by `$CASPER_CONTROL_SOCKET` and reads back a `ControlResponse`. With that
 variable unset the CLI exits with a "Casper is not running" error rather than

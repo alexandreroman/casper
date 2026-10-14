@@ -51,6 +51,22 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(try set.makeCommand().total, ProgressSynthesis.maxSynthesizedTotal)
     }
 
+    func testProgressSetAcceptsLabelStartingWithDash() throws {
+        // A todo's text is free text: "-> wire X" or "--force flag" must reach the
+        // bar rather than be refused as a missing value, in both argv forms.
+        let separate = try ProgressCommand.Set.parse(
+            ["--total", "2", "--current", "1", "--label", "-x", "--workspace", "f"])
+        XCTAssertEqual(try separate.makeCommand().label, "-x")
+
+        let longFlag = try ProgressCommand.Set.parse(
+            ["--total", "2", "--current", "1", "--label", "--force flag", "--workspace", "f"])
+        XCTAssertEqual(try longFlag.makeCommand().label, "--force flag")
+
+        let equals = try ProgressCommand.Set.parse(
+            ["--total", "2", "--current", "1", "--label=-x", "--workspace", "f"])
+        XCTAssertEqual(try equals.makeCommand().label, "-x")
+    }
+
     func testStatusGetBuildsCommand() throws {
         let get = try StatusCommand.Get.parse(["--workspace", "feature"])
         let command = try get.makeCommand()
@@ -77,6 +93,17 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.verb, .notify)
         XCTAssertEqual(command.message, "look here")
         XCTAssertEqual(command.workspace, "feature")
+    }
+
+    func testNotifyAcceptsMessageStartingWithDash() throws {
+        let bullet = try NotifyCommand.parse(["--message", "- waiting", "--workspace", "f"])
+        XCTAssertEqual(try bullet.makeCommand().message, "- waiting")
+
+        let flagLike = try NotifyCommand.parse(["--message", "--dry-run failed", "--workspace", "f"])
+        XCTAssertEqual(try flagLike.makeCommand().message, "--dry-run failed")
+
+        let equals = try NotifyCommand.parse(["--message=-x", "--workspace", "f"])
+        XCTAssertEqual(try equals.makeCommand().message, "-x")
     }
 
     func testNotifyWithoutMessage() throws {
@@ -109,6 +136,11 @@ final class ControlCommandTests: XCTestCase {
     func testTerminalNewKeepsAbsoluteWorkingDirUnchanged() throws {
         let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "/some/dir"])
         XCTAssertEqual(try new.makeCommand().cwd, "/some/dir")
+    }
+
+    func testTerminalNewAcceptsCommandStartingWithDash() throws {
+        let new = try TerminalCommand.New.parse(["--command", "-x", "--workspace", "f"])
+        XCTAssertEqual(try new.makeCommand().command, "-x")
     }
 
     func testTerminalNewTreatsEmptyCommandAsNil() throws {
@@ -396,6 +428,11 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.waitTimeout, 5000)   // default
     }
 
+    func testBrowserWaitAcceptsJSStartingWithDash() throws {
+        let wait = try BrowserCommand.Wait.parse(["--js", "-1 < window.scrollY", "--workspace", "f"])
+        XCTAssertEqual(try wait.makeCommand().predicate, "-1 < window.scrollY")
+    }
+
     func testBrowserWaitRejectsBothSelectorAndJS() throws {
         let wait = try BrowserCommand.Wait.parse(["#main", "--js", "true", "--workspace", "f"])
         XCTAssertThrowsError(try wait.makeCommand())
@@ -495,6 +532,11 @@ final class ControlCommandTests: XCTestCase {
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .workspaceNew)
         XCTAssertEqual(command.command, "npm test")
+    }
+
+    func testWorkspaceNewAcceptsCommandStartingWithDash() throws {
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--command", "-x", "--workspace", "primary"])
+        XCTAssertEqual(try new.makeCommand().command, "-x")
     }
 
     func testWorkspaceNewTreatsEmptyCommandAsNil() throws {

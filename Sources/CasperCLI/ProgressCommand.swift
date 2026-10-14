@@ -17,7 +17,7 @@ struct ProgressCommand: ParsableCommand {
         var total: Int
         @Option(name: .long, help: "1-based index of the current task.")
         var current: Int
-        @Option(name: .long, help: "Label of the current task.")
+        @Option(name: .long, parsing: .unconditional, help: "Label of the current task.")
         var label: String
         @OptionGroup var target: WorkspaceTargetOption
 

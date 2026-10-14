@@ -63,7 +63,8 @@ struct WorkspaceCommand: ParsableCommand {
         var branch: String
         @Option(name: .long, help: "Base ref to fork from (defaults to the space's base branch).")
         var base: String?
-        @Option(name: .long, help: "Command to run in the workspace's initial terminal.") var command: String?
+        @Option(name: .long, parsing: .unconditional, help: "Command to run in the workspace's initial terminal.")
+        var command: String?
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {

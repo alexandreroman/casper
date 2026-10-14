@@ -15,7 +15,7 @@ struct InfoCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Replace the info panel's Markdown message.")
 
-        @Option(name: .long, help: "Markdown message; omit to read --file or stdin.")
+        @Option(name: .long, parsing: .unconditional, help: "Markdown message; omit to read --file or stdin.")
         var message: String?
         @Option(name: .long, help: "Read the Markdown message from a file.")
         var file: String?

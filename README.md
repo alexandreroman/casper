@@ -425,6 +425,11 @@ the space's base branch, and
 plus `--working-dir <path>` to start it somewhere other than the workspace's
 worktree.
 
+A free-text value — `--label`, `--message`, `--command`, `browser wait --js` —
+is taken as is, even when it starts with a dash (`--label "-> wire the API"`).
+A free-text positional that starts with a dash goes after `--`:
+`casper browser eval --workspace feature -- "-1"`.
+
 The browser panel doubles as an automation surface, so a coding agent can drive
 and inspect the page it just changed:
 

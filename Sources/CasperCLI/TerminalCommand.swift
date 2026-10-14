@@ -14,7 +14,8 @@ struct TerminalCommand: ParsableCommand {
             abstract: "Open a new terminal as a split below.")
 
         @OptionGroup var target: WorkspaceTargetOption
-        @Option(name: .long, help: "Command to run in the new terminal.") var command: String?
+        @Option(name: .long, parsing: .unconditional, help: "Command to run in the new terminal.")
+        var command: String?
         @Option(
             name: .long,
             help: "Working directory for the new terminal (defaults to the workspace's worktree).")

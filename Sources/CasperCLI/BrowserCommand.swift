@@ -267,7 +267,7 @@ struct BrowserCommand: ParsableCommand {
 
         @Argument(help: "CSS selector to wait for (omit when using --js).")
         var selector: String?
-        @Option(name: .long, help: "JavaScript predicate to wait until truthy.")
+        @Option(name: .long, parsing: .unconditional, help: "JavaScript predicate to wait until truthy.")
         var js: String?
         @Flag(name: .long, help: "Wait until the selector is visible (selector form only).")
         var visible = false
