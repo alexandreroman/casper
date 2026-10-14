@@ -12,14 +12,6 @@ import CasperCore
 @MainActor
 final class AgentIntegrationReminderTests: XCTestCase {
 
-    /// Publish one stubbed probe result and wait for it to land. The probe runs off
-    /// the main actor, so the model's own task is what tells us it is done.
-    private func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
-        model.agentIntegrationProbe = { statuses }
-        model.refreshAgentIntegrations()
-        await model.agentReminders.task?.value
-    }
-
     private func remindedAgents(_ model: AppModel) -> [CodingAgent] {
         model.agentIntegrationReminders.map(\.agent)
     }

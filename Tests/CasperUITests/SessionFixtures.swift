@@ -90,6 +90,16 @@ extension XCTestCase {
         return newSplit()
     }
 
+    /// Publish one stubbed agent-integration probe result and wait for it to land.
+    /// The probe runs off the main actor, so the model's own task is what tells us it
+    /// is done.
+    @MainActor
+    func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
+        model.agentIntegrationProbe = { statuses }
+        model.refreshAgentIntegrations()
+        await model.agentReminders.task?.value
+    }
+
     /// Poll `condition` on the main actor until it holds, failing at `timeout`.
     /// Preferred over a fixed delay: a green run costs only what the work actually
     /// takes, and a broken one reports a timeout instead of a stale assertion.

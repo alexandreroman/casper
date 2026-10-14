@@ -118,9 +118,7 @@ final class SidebarIconSlotTests: XCTestCase {
         let model = makeModel()
         // Resolved here rather than inside the probe: the probe runs off the main actor.
         let statuses: [CodingAgent: AgentIntegrationStatus] = [.claudeCode: Self.status(for: kind)]
-        model.agentIntegrationProbe = { statuses }
-        model.refreshAgentIntegrations()
-        await model.agentReminders.task?.value
+        await probe(model, statuses)
         guard let reminder = model.agentIntegrationReminders.first,
               model.agentIntegrationReminders.count == 1, reminder.kind == kind else {
             XCTFail("expected exactly one \(kind) reminder")

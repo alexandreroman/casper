@@ -26,12 +26,6 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     private static let absurdVersion =
         String(repeating: "9.", count: 200) + "\n" + String(repeating: "x", count: 400)
 
-    private func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
-        model.agentIntegrationProbe = { statuses }
-        model.refreshAgentIntegrations()
-        await model.agentReminders.task?.value
-    }
-
     /// Host the real view and return the size it lays out to.
     private func layoutSize(for model: AppModel) -> NSSize {
         measure(AgentIntegrationReminderView(model: model))
