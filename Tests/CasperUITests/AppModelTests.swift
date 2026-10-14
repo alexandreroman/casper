@@ -1294,16 +1294,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(watcherCreated)
     }
 
-    func testApplyWatcherVisibilityIsNoOpWhenUnchanged() {
+    func testWindowVisibilityIsNoOpWhenUnchanged() {
         let model = makeModel()  // isWindowVisible defaults to true
         let revisionBefore = model.diffRevision
-        // No transition (still visible), so the guard blocks both calls.
-        model.applyWatcherVisibility()
-        model.applyWatcherVisibility()
+        // No transition (still visible), so the guard blocks both writes.
+        model.isWindowVisible = true
+        model.isWindowVisible = true
         XCTAssertEqual(model.diffRevision, revisionBefore)
     }
 
-    func testApplyWatcherVisibilityBumpsOnceOnRealTransition() throws {
+    func testWindowVisibilityBumpsOnceOnRealTransition() throws {
         let repo = try makeTempGitRepo()
         let model = makeModel()
         var watcherCreated = false
@@ -1315,19 +1315,17 @@ final class AppModelTests: XCTestCase {
 
         // Real true→false transition: stops the watchers (no re-arm on this path).
         model.isWindowVisible = false
-        model.applyWatcherVisibility()
 
         watcherCreated = false
         let revisionBefore = model.diffRevision
 
         // Real false→true transition: re-arms and bumps the diff exactly once.
         model.isWindowVisible = true
-        model.applyWatcherVisibility()
         XCTAssertTrue(watcherCreated)
         XCTAssertEqual(model.diffRevision, revisionBefore + 1)
 
         // No further transition: the guard blocks the repeat.
-        model.applyWatcherVisibility()
+        model.isWindowVisible = true
         XCTAssertEqual(model.diffRevision, revisionBefore + 1)
     }
 

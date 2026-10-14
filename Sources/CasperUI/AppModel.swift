@@ -148,12 +148,6 @@ final class AppModel {
     /// commit signal with no storm. Reconfigured on every selection change.
     @ObservationIgnored private var gitMetaWatcher: DirectoryWatching?
 
-    /// Last window-visibility state `applyWatcherVisibility` acted on, so it can
-    /// react only to real transitions. Starts `true` because `init` already armed
-    /// the watchers as visible before any window seed arrives — matching that
-    /// makes the first seed from a visible window a no-op.
-    @ObservationIgnored private var lastAppliedWindowVisible = true
-
     /// Builds the watcher for the selected worktree. Injectable so tests can
     /// substitute a stub; the default builds the real FSEvents-backed watcher.
     @ObservationIgnored
@@ -342,10 +336,28 @@ final class AppModel {
 
     /// Whether the app's window is currently visible on screen — `false` when
     /// minimized, fully occluded by other windows, on another Space, or the app
-    /// is hidden. Drives suspension of the terminal surfaces' render threads and
-    /// the agent-detection cadence. Defaults `true` so a headless AppModel (no
-    /// window, e.g. tests) never suspends work.
-    var isWindowVisible = true
+    /// is hidden. Drives the selected worktree's FSEvents watchers and the
+    /// agent-detection cadence; the terminal surfaces pause their render threads
+    /// through `GhosttySurfaceView`'s own occlusion observers. Defaults `true` so a
+    /// headless AppModel (no window, e.g. tests) never suspends work.
+    ///
+    /// Only a real transition acts. Hidden ⇒ stop the watchers (a busy background
+    /// worktree must not wake the main actor for a window nobody sees). Visible ⇒
+    /// re-arm them and bump `diffRevision` once so the diff/summary catches up on
+    /// anything missed while hidden. Writing the value already held does nothing, so
+    /// the first seed from a visible window and repeated same-state occlusion
+    /// notifications neither re-arm nor bump.
+    var isWindowVisible = true {
+        didSet {
+            guard oldValue != isWindowVisible else { return }
+            if isWindowVisible {
+                reconfigureWorktreeWatcher()
+                diffRevision += 1
+            } else {
+                stopWorktreeWatchers()
+            }
+        }
+    }
 
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp?.keyWindow != nil }
@@ -1069,7 +1081,8 @@ final class AppModel {
     /// launch/selection time) and then (re)arm its watcher. Promotion picks up a
     /// `.git` that appeared before selection; demotion never happens here, only on
     /// a live filesystem event, so a transient probe failure can't drop a Space's
-    /// Git backing. Called from `selectWorkspace(_:)` and `init`.
+    /// Git backing. Called from `selectWorkspace(_:)`, `completeLaunchSetup()` and a
+    /// window-visibility transition (`isWindowVisible`).
     private func reconfigureWorktreeWatcher() {
         if let id = selectedWorkspaceID, let at = locate(id) {
             promoteSpaceIfGitInitialized(spaceIndex: at.space)
@@ -1097,8 +1110,8 @@ final class AppModel {
         // Never leave watchers armed while the window is hidden. Every path that arms
         // them — `selectWorkspace`, `completeLaunchSetup`, a live promote/demote — can
         // run while the window is occluded or minimized, so this guard is what keeps an
-        // FSEvents stream off a window nobody is looking at; `applyWatcherVisibility`
-        // re-arms on the transition back to visible.
+        // FSEvents stream off a window nobody is looking at; `isWindowVisible` re-arms
+        // on the transition back to visible.
         guard isWindowVisible else { stopWorktreeWatchers(); return }
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
@@ -1155,26 +1168,6 @@ final class AppModel {
             exclusions: exclusions, reflogDirectory: repo.map { $0.gitDirPath + "logs" })
         watcherPathsCache[ws.id] = paths
         return paths
-    }
-
-    /// Suspend or resume the selected-worktree FSEvents watchers with window
-    /// visibility. Hidden ⇒ stop them (a busy background worktree must not wake
-    /// the main actor for a window nobody sees). Visible ⇒ re-arm and bump
-    /// `diffRevision` once so the diff/summary catches up on anything missed
-    /// while hidden.
-    func applyWatcherVisibility() {
-        // Act only on an actual visibility transition. The initial `true` matches
-        // `init`, which already armed the watchers as visible — so the first seed
-        // from a visible window is a no-op (no redundant re-arm or diff bump), and
-        // repeated same-state occlusion notifications do nothing.
-        guard lastAppliedWindowVisible != isWindowVisible else { return }
-        lastAppliedWindowVisible = isWindowVisible
-        if isWindowVisible {
-            reconfigureWorktreeWatcher()
-            diffRevision += 1
-        } else {
-            stopWorktreeWatchers()
-        }
     }
 
     /// The debounced watcher callback shared by both worktree watchers: hop to the

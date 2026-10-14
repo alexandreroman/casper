@@ -142,12 +142,11 @@ private struct WindowConfigurator: NSViewRepresentable {
 
         init(model: AppModel) { self.model = model }
 
-        /// Push the window's current visibility to the model and reconcile
-        /// watchers. Single source of the occlusion predicate for both the
-        /// initial seed and the occlusion-change observer.
+        /// Push the window's current visibility to the model, which reconciles its
+        /// watchers on a real transition. Single source of the occlusion predicate for
+        /// both the initial seed and the occlusion-change observer.
         private func refreshVisibility(_ window: NSWindow) {
             model.isWindowVisible = window.occlusionState.contains(.visible)
-            model.applyWatcherVisibility()
         }
 
         func attach(to window: NSWindow) {
