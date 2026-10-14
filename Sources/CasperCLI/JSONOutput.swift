@@ -1,4 +1,5 @@
 import ArgumentParser
+import CasperCore
 import Foundation
 
 /// Shared encoder for all CLI JSON output. `sortedKeys` gives deterministic,
@@ -71,16 +72,10 @@ struct StatusOut: Encodable {
     let workspace: String
 }
 
-/// `{"total":T,"current":C,"label":"L"}` — the body of a progress report.
-struct ProgressBody: Encodable {
-    let total: Int
-    let current: Int
-    let label: String
-}
-
-/// `{"progress":{…},"workspace":"<id>"}` — a progress report for `progress set`.
+/// `{"progress":{…},"workspace":"<id>"}` — a progress report for `progress set`,
+/// whose body is `{"current":C,"label":"L","total":T}`.
 struct ProgressOut: Encodable {
-    let progress: ProgressBody
+    let progress: ControlProgressInfo
     let workspace: String
 }
 
@@ -89,7 +84,7 @@ struct ProgressOut: Encodable {
 /// omitted: "there is no bar" is the answer this command exists to give, and a
 /// missing key reads as a truncated response instead of an answer.
 struct ProgressGetOut: Encodable {
-    let progress: ProgressBody?
+    let progress: ControlProgressInfo?
     let workspace: String
 
     enum CodingKeys: String, CodingKey { case progress, workspace }
