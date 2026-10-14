@@ -45,13 +45,11 @@ extension MenuGroups where GroupSuffix == EmptyView {
 final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
 
-    init(title: String, systemImage: String? = nil, handler: @escaping () -> Void) {
+    init(title: String, systemImage: String, handler: @escaping () -> Void) {
         self.handler = handler
         super.init(title: title, action: #selector(fire), keyEquivalent: "")
         target = self
-        if let systemImage {
-            image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
-        }
+        image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
     }
 
     @available(*, unavailable)
