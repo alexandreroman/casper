@@ -26,17 +26,24 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
     /// one of these breaks.
     public let environmentVariables: [String]
 
-    /// Diagnose a `git_signature_default_from_env` that returned `code`, called with
-    /// libgit2's error state cleared beforehand.
+    /// Diagnose why `git_signature_default_from_env` fails for `repository` by resolving
+    /// the author and the committer again, each on its own. Self-contained: it clears
+    /// libgit2's error state itself before each probe.
     ///
     /// A name or email variable is to blame when `git_signature_new` rejects it on its
-    /// own: blank, or holding an angle bracket. The date variables are to blame when
-    /// libgit2 recorded no error, which only an unparsable date does; libgit2 exposes
-    /// no parser to check a date with directly.
-    init(failureCode code: Int32) {
-        let recordedNoError = git_error_last()?.pointee.klass == Int32(GIT_ERROR_NONE.rawValue)
-        // Read before the checks below, which overwrite libgit2's last error.
-        detail = recordedNoError ? "unparsable date" : lastErrorMessage(code: code)
+    /// own: blank, or holding an angle bracket. A date variable is to blame when its own
+    /// side fails with no error recorded, which only an unparsable date does; libgit2
+    /// exposes no parser to check a date with directly.
+    init(diagnosing repository: OpaquePointer) {
+        var failures: [SideFailure] = []
+        for side in Side.allCases {
+            if let failure = Self.failure(of: side, in: repository) {
+                failures.append(failure)
+            }
+        }
+        // libgit2 resolves the author first, so its failure is the one libgit2 reports. No
+        // side failing means the identity changed since the refused call; say so plainly.
+        detail = failures.first?.detail ?? "the identity resolved when retried"
 
         var blamed: [String] = []
         for variable in ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"] {
@@ -51,12 +58,48 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
                 blamed.append(variable)
             }
         }
-        if recordedNoError {
-            for variable in ["GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE"] where Self.environmentValue(variable) != nil {
-                blamed.append(variable)
-            }
+        for failure in failures where failure.unparsableDate {
+            blamed.append(failure.side.dateVariable)
         }
         environmentVariables = blamed
+    }
+
+    /// One half of a commit's identity. libgit2 resolves each from its own variables.
+    private enum Side: CaseIterable {
+        case author
+        case committer
+
+        var dateVariable: String {
+            switch self {
+            case .author: "GIT_AUTHOR_DATE"
+            case .committer: "GIT_COMMITTER_DATE"
+            }
+        }
+    }
+
+    /// Why resolving one `Side` failed.
+    private struct SideFailure {
+        let side: Side
+        let detail: String
+        let unparsableDate: Bool
+    }
+
+    /// Resolve `side` alone, as `git_signature_default_from_env` does; nil when it resolves.
+    private static func failure(of side: Side, in repository: OpaquePointer) -> SideFailure? {
+        var signature: UnsafeMutablePointer<git_signature>?
+        defer { git_signature_free(signature) }
+        git_error_clear()  // so that a failure recording no error can be told apart
+        let code = switch side {
+        case .author: git_signature_default_from_env(&signature, nil, repository)
+        case .committer: git_signature_default_from_env(nil, &signature, repository)
+        }
+        guard code != 0 else { return nil }
+
+        let recordedNoError = git_error_last()?.pointee.klass == Int32(GIT_ERROR_NONE.rawValue)
+        if recordedNoError {
+            return SideFailure(side: side, detail: "unparsable date", unparsableDate: true)
+        }
+        return SideFailure(side: side, detail: lastErrorMessage(code: code), unparsableDate: false)
     }
 
     /// `variable`'s value as libgit2 reads it (`getenv`), even when blank; nil when unset.
@@ -119,10 +162,8 @@ extension Repository {
             git_signature_free(author)
             git_signature_free(committer)
         }
-        git_error_clear()  // a failure that records no error is then told apart; see the error's init
-        let signatureCode = git_signature_default_from_env(&author, &committer, pointer)
-        guard signatureCode == 0 else {
-            throw MissingCommitterIdentityError(failureCode: signatureCode)
+        guard git_signature_default_from_env(&author, &committer, pointer) == 0 else {
+            throw MissingCommitterIdentityError(diagnosing: pointer)
         }
 
         var mergeOptions = git_merge_options()

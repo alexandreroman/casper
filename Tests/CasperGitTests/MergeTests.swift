@@ -84,6 +84,26 @@ final class MergeTests: XCTestCase {
         }
     }
 
+    /// Only the side that fails on its date is blamed: a valid date beside an unparsable
+    /// one is never named, whichever side libgit2 reaches first.
+    func testMergeRefusalBlamesOnlyTheUnparsableOfTwoDateVariables() throws {
+        let (repo, main) = try repositoryWithAFeatureCommit()
+        let validDate = "2026-01-01 00:00:00 +0000"
+        let cases: [(dates: [GitIdentityVariable: String], blamed: String)] = [
+            ([.authorDate: "zzz", .committerDate: validDate], "GIT_AUTHOR_DATE"),
+            ([.authorDate: validDate, .committerDate: "zzz"], "GIT_COMMITTER_DATE"),
+        ]
+        for (dates, blamed) in cases {
+            setGitIdentityEnvironment(dates)
+
+            XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+                let identityError = error as? MissingCommitterIdentityError
+                XCTAssertEqual(identityError?.environmentVariables, [blamed], "got: \(error)")
+                XCTAssertEqual(identityError?.detail, "unparsable date")
+            }
+        }
+    }
+
     /// Valid variables set beside a broken configuration take none of the blame: there,
     /// `git config` is the fix.
     func testMergeRefusalBlamesNoValidIdentityVariable() throws {
