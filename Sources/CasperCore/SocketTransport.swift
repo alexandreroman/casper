@@ -578,10 +578,15 @@ public enum SocketClientEngine<
                         }
                     })
                 receiveResponse()
-            // On a Unix-domain endpoint `.waiting` only ever means the connect was
-            // refused — typically a stale socket file a crashed app left behind.
-            // No path change can cure that, so fail now instead of at `timeout`.
-            case .failed(let error), .waiting(let error):
+            // On a Unix-domain endpoint `.waiting` means the connect was refused or
+            // the path is unreachable — typically a stale socket file a crashed app
+            // left behind. No path change can cure that, so fail now instead of at
+            // `timeout`.
+            case .waiting(let error):
+                finish(.failure(SocketTransportError(
+                    reason: "cannot connect to \(socketPath): \(error) (is the GUI running?)")))
+                connection.cancel()
+            case .failed(let error):
                 finish(.failure(SocketTransportError(reason: "\(error)")))
                 connection.cancel()
             default:

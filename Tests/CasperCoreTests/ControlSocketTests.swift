@@ -43,7 +43,11 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertThrowsError(
             try ControlSocketClient.send(ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5)
         ) { error in
-            XCTAssertTrue(error is SocketTransportError)
+            // The reason names the socket and the likely cause, like the
+            // missing-file case does, rather than a bare POSIX error.
+            let reason = (error as? SocketTransportError)?.reason ?? ""
+            XCTAssertTrue(reason.hasPrefix("cannot connect to \(path): "), reason)
+            XCTAssertTrue(reason.hasSuffix(" (is the GUI running?)"), reason)
         }
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
