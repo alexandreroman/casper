@@ -1,10 +1,10 @@
 ---
-name: "Asserting that a production path saved the session"
+name: "Asserting the session was saved"
 description: "flushPendingSave() persists unconditionally, so a test that calls it proves the codec, never that the code under test wrote anything"
 type: feedback
 ---
 
-# Asserting that a production path saved the session
+# Asserting the session was saved
 
 `AppModel.flushPendingSave()` calls `persist()` itself before draining the save
 queue. A test that drives some model call, then flushes, then reloads the store

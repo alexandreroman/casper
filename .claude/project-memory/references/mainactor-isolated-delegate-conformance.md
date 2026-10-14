@@ -14,7 +14,8 @@ conformance — spell the protocol `@MainActor Y` in the inheritance clause:
 
 ```swift
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate { … }
+final class AppDelegate: NSObject, NSApplicationDelegate,
+    @MainActor UNUserNotificationCenterDelegate { … }
 ```
 
 Same treatment as `GhosttySurfaceView: NSView, @MainActor NSTextInputClient`.

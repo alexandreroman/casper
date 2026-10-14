@@ -1,10 +1,10 @@
 ---
-name: "PersistentNSViewHost shared-view ownership"
+name: "PersistentNSViewHost view ownership"
 description: "One cached NSView per surface; a window-membership-driven coordinator converges it into the container actually in the window (splits, collapses, drag-relocate)"
 type: reference
 ---
 
-# PersistentNSViewHost shared-view ownership
+# PersistentNSViewHost view ownership
 
 Each terminal/browser surface is backed by exactly **one** cached `NSView` that
 keeps the PTY / web page alive — a terminal's in `AppModel.surfaceViews`, a

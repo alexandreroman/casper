@@ -1,10 +1,10 @@
 ---
-name: "NSTextStorage attribute writes must go in ascending offset order"
+name: "NSTextStorage attribute writes go in ascending order"
 description: "Attributes live in a run-length array, so writing them out of document order is quadratic and freezes the main thread"
 type: reference
 ---
 
-# NSTextStorage attribute writes must go in ascending offset order
+# NSTextStorage attribute writes go in ascending order
 
 `NSTextStorage` keeps its attributes in a run-length array
 (`NSMutableRLEArray`). Inserting a run in the middle memmoves every run after

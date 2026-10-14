@@ -1,10 +1,10 @@
 ---
-name: "Off-screen host windows stay out of the on-screen list"
+name: "Off-screen host windows stay unordered"
 description: "Ordering a window parked at -100_000 breaks Mission Control; off-screen hosts are never ordered in"
 type: project
 ---
 
-# Off-screen host windows stay out of the on-screen list
+# Off-screen host windows stay unordered
 
 Casper hosts views that must lay out and run without being visible in borderless
 `NSWindow`s parked far off-screen at `(-100_000, -100_000)`, all built by

@@ -8,8 +8,9 @@ type: reference
 
 `UNUserNotificationCenter.current()` throws `NSInternalInconsistencyException`
 ("bundleProxyForCurrentProcess is nil") and `abort()`s on macOS 26 when the
-process has no bundle identifier — it does **not** silently no-op. Any bare-executable run (`swift run`, a raw
-`.build/.../debug/casper` launch) has no bundle id.
+process has no bundle identifier — it does **not** silently no-op. Any
+bare-executable run (`swift run`, a raw `.build/.../debug/casper` launch) has no
+bundle id.
 
 `AppModel.deliverNotification`'s default closure carries the bundle-id guard.
 Every new `UserNotifications` call path needs the same one, whatever its

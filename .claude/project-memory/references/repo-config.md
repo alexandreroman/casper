@@ -1,10 +1,10 @@
 ---
-name: ".casper.json scripts — design decisions & invariants"
+name: ".casper.json scripts — decisions & invariants"
 description: "Non-obvious design decisions behind .casper.json copyFiles + named commands + setup/teardown hooks"
 type: project
 ---
 
-# .casper.json scripts — design decisions & invariants
+# .casper.json scripts — decisions & invariants
 
 The `.casper.json` design — the two kinds of scripts, their opposite wraps, the
 `setup`/`teardown` decisions and the alphabetical script menu — is in

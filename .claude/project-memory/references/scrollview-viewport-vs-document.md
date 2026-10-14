@@ -1,10 +1,10 @@
 ---
-name: "A ScrollView's padding and height are viewport-side"
+name: "ScrollView padding and height"
 description: "Padding around a SwiftUI ScrollView pads the viewport, not the scrolled document, and a pinned height overflows a shorter host"
 type: reference
 ---
 
-# A ScrollView's padding and height are viewport-side
+# ScrollView padding and height
 
 Two independent facts about a SwiftUI `ScrollView`, measured on
 `WorkspaceInfoPanel` hosted in a real `NSWindow` (a window is required —

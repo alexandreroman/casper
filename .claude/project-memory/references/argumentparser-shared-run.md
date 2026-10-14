@@ -1,10 +1,10 @@
 ---
-name: "ArgumentParser shared run() via a refining protocol"
+name: "ArgumentParser shared run()"
 description: "A protocol refining ParsableCommand can carry the default run(); Swift picks it over ArgumentParser's own default"
 type: reference
 ---
 
-# ArgumentParser shared run() via a refining protocol
+# ArgumentParser shared run()
 
 Subcommands whose `run()` bodies are identical share one implementation through
 a protocol that refines `ParsableCommand` and provides `run()` in its extension
@@ -20,8 +20,10 @@ touching this — a wrong witness compiles fine and only shows up at runtime as
 the command printing its help text instead of acting:
 
 ```bash
-env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET ./.build/debug/casper notify --message hi
-# {"error":"no target workspace: run inside a Casper terminal or pass --workspace"}
+env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET \
+  ./.build/debug/casper notify --message hi
+# {"error":"no target workspace: run inside a Casper terminal or pass
+# --workspace"}
 ```
 
 Per-command variation rides on a protocol requirement with a default (e.g.

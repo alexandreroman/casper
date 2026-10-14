@@ -384,32 +384,37 @@ prepends its own binary directory to `PATH`. The CLI is organized by domain,
 targeting the workspace behind the current terminal by default:
 
 ```bash
-casper status set working                    # set the agent state (working|blocked|idle|done|unknown|error)
+# Agent states: working | blocked | idle | done | unknown | error
+casper status set working                    # set the agent state
 casper status get                            # read the agent state back
 casper progress set --total 5 --current 2 --label "run tests"
-casper progress get                          # read the bar back ({"progress":null} when none)
+casper progress get                          # read the bar back
 casper progress clear
 casper notify --message "needs review"       # raise the attention flag + notify
 casper info set --message "## App ready
 - API: <http://localhost:8080>"
-casper info set --file docs/endpoints.md     # read the Markdown message from a file
+casper info set --file docs/endpoints.md     # read the message from a file
 printf '## App ready\n' | casper info set    # or read it from stdin
 printf '## App ready\n' | casper info set -  # same, with an explicit '-' marker
-casper info clear                            # empty the panel and hide its button
+casper info clear                            # empty the panel, hide its button
 casper terminal new                          # open a terminal (split below)
 casper terminal list                         # list the workspace's terminals
-casper terminal close 3f2a9c14-8b7e-4d51-9a0c-2e6f1b48d7aa   # close a terminal by id
-casper browser open https://example.com      # load a URL in the inspector browser
-casper browser close                         # collapse the inspector if the browser is showing
+casper terminal close 3f2a9c14-8b7e-4d51-9a0c-2e6f1b48d7aa  # close one by id
+casper browser open https://example.com      # load a URL in the inspector
+casper browser close                         # collapse it if the browser shows
 casper diff open Sources/App/Main.swift      # open the diff, scroll to a file
-casper diff close                            # collapse the inspector if the diff is showing
+casper diff close                            # collapse it if the diff shows
 casper workspace list                        # enumerate workspaces
-casper workspace current                     # print the current workspace + path
+casper workspace current                     # print this workspace + path
 casper workspace new feature/x               # create a Git worktree workspace
 casper workspace new feature/x --base main --command "claude"
-casper workspace delete                      # destroy a workspace (worktree + branch)
-casper run test                              # run a named .casper.json command in a split (omit the name for 'run')
+casper workspace delete                      # destroy worktree + branch
+casper run test                              # run a .casper.json command
 ```
+
+`casper progress get` prints `{"progress":null}` when no bar is up. `casper run`
+runs a named `.casper.json` command in a split; without a name it runs the one
+named `run`.
 
 `casper workspace new <branch>` takes the branch name as a positional argument
 and sanitizes it into a valid Git ref (lowercased, separators collapsed), which
@@ -424,20 +429,24 @@ The browser panel doubles as an automation surface, so a coding agent can drive
 and inspect the page it just changed:
 
 ```bash
-casper browser load https://localhost:8080   # navigate without opening the panel
-casper browser screenshot --out out.png      # PNG of the page (--width/--height/--url)
+casper browser load https://localhost:8080   # navigate without opening it
+casper browser screenshot --out out.png      # PNG (--width, --height, --url)
 casper browser content                       # dump the page's HTML (--selector)
 casper browser url                           # print the page's current URL
 casper browser eval "document.title"         # evaluate JavaScript in the page
 casper browser click "button.submit"         # click the first matching element
-casper browser type "input[name=q]" casper   # type into the first matching element
-casper browser key Enter                     # dispatch a keydown/keyup to the page (--selector)
-casper browser console                       # captured console output + uncaught errors (--level, --clear)
-casper browser wait ".ready"                 # block until a selector holds (or --js <expr>)
-                                             # --visible/--gone, --timeout <ms> (default 5000)
-casper browser reload                        # reload the page (--wait until it finishes loading)
-casper browser scroll-down                   # also scroll-up / scroll-top / scroll-bottom
+casper browser type "input[name=q]" casper   # type into the first match
+casper browser key Enter                     # send a keydown/keyup (--selector)
+casper browser console                       # console log (--level, --clear)
+casper browser wait ".ready"                 # block until a selector holds
+casper browser reload                        # reload the page (--wait)
+casper browser scroll-down                   # or scroll-up/-top/-bottom
 ```
+
+`browser console` reports uncaught errors alongside the console output.
+`browser wait` takes `--js <expr>` in place of a selector, plus
+`--visible`/`--gone` and `--timeout <ms>` (default 5000).
+`browser reload --wait` returns once the reloaded page finishes loading.
 
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
 workspace other than the current one. The exceptions are the two that aren't

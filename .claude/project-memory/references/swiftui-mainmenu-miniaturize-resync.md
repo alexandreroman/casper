@@ -1,10 +1,10 @@
 ---
-name: "SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe"
+name: "SwiftUI owns the main menu"
 description: "Casper's menu bar is SwiftUI .commands; the .commands body must not observe volatile state, or SwiftUI re-asserts the whole menu"
 type: reference
 ---
 
-# SwiftUI owns the main menu; AppKit resync makes imperative menus unsafe
+# SwiftUI owns the main menu
 
 Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands`
 in `Sources/CasperUI/MenuCommands.swift`, wired via `CasperApp.body`'s

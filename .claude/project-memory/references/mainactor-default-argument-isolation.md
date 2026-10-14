@@ -23,7 +23,8 @@ drop it:
 
 ```swift
 func createSpace(
-    at folderURL: URL, probe: @MainActor (URL) -> WorkspaceFactory.GitInfo? = AppModel.gitProbe
+    at folderURL: URL,
+    probe: @MainActor (URL) -> WorkspaceFactory.GitInfo? = AppModel.gitProbe
 ) -> CreateSpaceOutcome {
     …
     // The isolation is dropped here, legally.

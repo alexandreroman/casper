@@ -1,10 +1,10 @@
 ---
-name: "Measuring a TUI agent's viewport affordance"
+name: "Measuring a TUI viewport affordance"
 description: "A raw PTY capture cannot be grepped for viewport text; replay it into a grid, because TUIs redraw cell runs split across escape sequences"
 type: reference
 ---
 
-# Measuring a TUI agent's viewport affordance
+# Measuring a TUI viewport affordance
 
 Detection reads what libghostty's **grid** holds, not the byte stream that
 produced it, so a viewport needle must be measured from a replayed grid.

@@ -1,10 +1,10 @@
 ---
-name: "App sessions (--session) and isolated live verification"
+name: "App sessions (--session)"
 description: "casper --session <name> (DEBUG builds only) suffixes layout+sockets and sets CASPER_SESSION; live-verify the GUI under session dev to never disturb the real instance"
 type: feedback
 ---
 
-# App sessions (--session) and isolated live verification
+# App sessions (--session)
 
 When live-verifying the Casper GUI during development (the `debug-casper` skill,
 or any manual launch), **always run under a dedicated session**:

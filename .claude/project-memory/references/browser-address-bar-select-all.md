@@ -1,10 +1,10 @@
 ---
-name: "Browser address bar select-all on click"
+name: "Browser address bar select-all"
 description: "Address field select-all is done in NSTextField.mouseDown after super, not on focus transition"
 type: reference
 ---
 
-# Browser address bar select-all on click
+# Browser address bar select-all
 
 `SelectAllTextField.mouseDown` in `Sources/CasperUI/BrowserSurfaceView.swift`
 holds the rule and its rationale. What the code cannot show is why the

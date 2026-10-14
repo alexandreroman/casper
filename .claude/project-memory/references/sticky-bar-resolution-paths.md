@@ -1,10 +1,10 @@
 ---
-name: "Sticky bars have three invalidation paths, and a test must isolate one"
+name: "Sticky bars have three invalidation paths"
 description: "The anchor restore moves the clip view during the layout pass, so the scroll path re-resolves the diff's sticky bars and can hide a missing settled-layout trigger; only the container path forces layout"
 type: reference
 ---
 
-# Sticky bars have three invalidation paths, and a test must isolate one
+# Sticky bars have three invalidation paths
 
 `DiffStickyHeader.bars` is a cache with three invalidation triggers (document
 swap or resize, clip-view bounds change, and TextKit's layout settling through

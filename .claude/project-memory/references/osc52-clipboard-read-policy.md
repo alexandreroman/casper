@@ -1,10 +1,10 @@
 ---
-name: "OSC 52 clipboard reads are unprompted"
+name: "OSC 52 clipboard reads"
 description: "Untrusted OSC 52 clipboard reads are answered with no confirmation, and the `confirmed` flag silently disables libghostty's whole read policy"
 type: project
 ---
 
-# OSC 52 clipboard reads are unprompted
+# OSC 52 clipboard reads
 
 An OSC 52 *read* — `printf '\033]52;c;?\007'` — asks the terminal for the
 clipboard and gets the answer written back to the asking program's stdin.

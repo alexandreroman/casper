@@ -1,10 +1,10 @@
 ---
-name: "A caller-sized NSTextView must not be vertically resizable"
+name: "A caller-sized NSTextView must not self-resize"
 description: "When the caller assigns the frame from a measured height, isVerticallyResizable lets AppKit override it with the lazily laid-out extent"
 type: reference
 ---
 
-# A caller-sized NSTextView must not be vertically resizable
+# A caller-sized NSTextView must not self-resize
 
 `MarkdownTextView` is sized by its caller: `WorkspaceInfoPanel` hands the view a
 height through `.frame(width:height:)`. Where that height comes from is a

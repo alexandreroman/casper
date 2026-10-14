@@ -1,10 +1,10 @@
 ---
-name: "OSC 52 clipboard writes are unprompted"
+name: "OSC 52 clipboard writes"
 description: "Untrusted OSC 52 clipboard writes reach the pasteboard with no confirmation: the deciding seam, the dormant prompt, the accepted risk"
 type: project
 ---
 
-# OSC 52 clipboard writes are unprompted
+# OSC 52 clipboard writes
 
 `GhosttyClipboardWrite.apply`
 (`Sources/CasperGhostty/GhosttyClipboardWrite.swift`) puts every write on the

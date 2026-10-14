@@ -21,9 +21,9 @@
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
 - [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
-- [macOS 26 appearance needs a linked SDK >= 26](references/linked-sdk-gates-macos26-appearance.md) — SwiftPM records the deployment target
+- [macOS 26 appearance is gated on the linked SDK](references/linked-sdk-gates-macos26-appearance.md) — SwiftPM records the deployment target
 - [Git workflow](references/git-workflow.md) — explicit authorization before commit, remote or push; plan commits are fine
-- [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
+- [SDD design and plan document location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
 - [English only](references/english-only.md) — all generated text is English; commit subjects use verb + action
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
@@ -39,7 +39,7 @@
 - [Debug channel and logging gating](references/debug-channel-gating.md) — `#if DEBUG` only, never in release; verbose logs gated
 - [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync contentsScale to the backing scale or it upscales ×2
 - [libghostty Control-combo key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint + a QWERTY-normalized keycode
-- [Command key-ups need a local monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
+- [Command key-ups need a local NSEvent monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
 - [libghostty keybinds shadow the main menu](references/ghostty-keybinds-shadow-the-main-menu.md) — a bound ⌘ combo never reaches the menu item
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — null surfaces with displays asleep; wake and poll
@@ -74,7 +74,7 @@
 - [In-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — the real-keyDown recipe; fixed settles, not polling
 - [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menus are `.commands`; Services needs a delegate proxy
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module never checks Contents/Resources
-- [Main-thread hang watchdog and dumps](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
+- [Main-thread hang watchdog and dump exploitation](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
 - [Release binary size budget](references/binary-size-budget.md) — the measured levers, which are applied, and which are declined
 - [MainRunLoop, the shared modal-proof hop](references/main-run-loop-hop.md) — `MainRunLoop.perform` reaches the main thread behind a modal panel
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — a non-empty `spaces` always resolves `selectedWorkspaceID`
@@ -109,13 +109,13 @@
 - [NSTextStorage attribute writes go in ascending order](references/nstextstorage-attribute-run-order.md) — out-of-order writes go quadratic
 - [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — in the text they poison selection
 - [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore re-resolves them off the scroll path
-- [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
+- [NSEvent character accessors raise on non-key events](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
 - [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — use `.toolbar(removing: .title)`, not AppKit
 - [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — a new verb case breaks CasperUI until routed; one commit
 - [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — hand cursor and ⌘-click need explicit handling
 - [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a set border can draw nothing; avoid needing one
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
-- [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
+- [Sparkle's EdDSA key rotates but never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
 - [A release is dry-run and signature-checked before tagging](references/release-dry-run.md) — CI never bundles; verify vs SUPublicEDKey
 - [GitHub release descriptions are unwrapped](references/github-release-notes-unwrapped.md) — newlines render as breaks; the script joins lines
 - [Screen Recording needs an app bundle](references/tcc-screen-recording-needs-a-bundle.md) — a loose signed binary never appears in the list at all
@@ -127,7 +127,7 @@
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
 - [Codex detection caveats](references/codex-detection-caveats.md) — confirmed cache path, hook trust in config.toml, hooks.json false positive
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
-- [Unused-import false positives](references/unused-import-grep-false-positives.md) — a green build proves nothing
+- [Unused-import greps give false positives on extension members](references/unused-import-grep-false-positives.md) — a green build proves nothing
 - [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind
 - [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame

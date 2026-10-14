@@ -1,10 +1,10 @@
 ---
-name: "A libghostty default keybind shadows the main menu"
+name: "libghostty keybinds shadow the main menu"
 description: "A ⌘ combo libghostty binds is consumed by the focused surface, so a menu item on that combo acts only if LayoutActionHandler claims the action"
 type: reference
 ---
 
-# A libghostty default keybind shadows the main menu
+# libghostty keybinds shadow the main menu
 
 `GhosttySurfaceView.performKeyEquivalent` runs **ahead of the main menu**:
 AppKit offers a ⌘ combo to the key window's view hierarchy before it consults

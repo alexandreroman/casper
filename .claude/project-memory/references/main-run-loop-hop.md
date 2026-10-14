@@ -1,10 +1,10 @@
 ---
-name: "MainRunLoop is the shared modal-proof main-thread hop"
+name: "MainRunLoop, the shared modal-proof hop"
 description: "CasperCore's MainRunLoop.perform reaches the main thread even while a modal panel is up; DispatchQueue.main.async does not"
 type: reference
 ---
 
-# MainRunLoop is the shared modal-proof main-thread hop
+# MainRunLoop, the shared modal-proof hop
 
 `Sources/CasperCore/MainRunLoop.swift` is Casper's one route for "run this on
 the main thread, on a later turn of its run loop", shared by CasperUI and by

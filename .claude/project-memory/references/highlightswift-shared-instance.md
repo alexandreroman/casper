@@ -1,10 +1,10 @@
 ---
-name: "HighlightSwift Highlight() must be reused, never per-call"
+name: "HighlightSwift Highlight() must be reused"
 description: "Each Highlight() spins up its own JavaScriptCore JSContext; per-call construction leaks GBs under diff churn"
 type: reference
 ---
 
-# HighlightSwift Highlight() must be reused, never per-call
+# HighlightSwift Highlight() must be reused
 
 `HighlightSwift.Highlight` (a `Sendable final class`) owns an `HLJS` **actor**
 that lazily creates a **new JavaScriptCore `JSContext`** and re-evaluates the

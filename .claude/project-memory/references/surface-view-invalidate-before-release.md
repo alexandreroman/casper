@@ -1,10 +1,10 @@
 ---
-name: "A surface view is invalidated before its last reference is dropped"
+name: "Surface view invalidation"
 description: "GhosttySurfaceView.invalidate() frees the libghostty surface while the view is still alive, closing a use-after-deinit window"
 type: reference
 ---
 
-# A surface view is invalidated before its last reference is dropped
+# Surface view invalidation
 
 Teardown of a terminal pane is reference-driven: `AppModel.discardSurfaceViews`
 drops its reference to a `GhosttySurfaceView`, the view deallocates, and its

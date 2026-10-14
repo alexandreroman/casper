@@ -1,10 +1,10 @@
 ---
-name: "Real in-process GhosttySurfaceView e2e test harness"
+name: "In-process GhosttySurfaceView e2e harness"
 description: "How to drive a real keyDown -> interpretKeyEvents -> libghostty -> shell round trip in XCTest, and its timing gotcha"
 type: reference
 ---
 
-# Real in-process GhosttySurfaceView e2e test harness
+# In-process GhosttySurfaceView e2e harness
 
 To test real keyboard-dispatch behavior (`keyDown` → `interpretKeyEvents` →
 libghostty → PTY shell) end to end in XCTest, without OS Accessibility
