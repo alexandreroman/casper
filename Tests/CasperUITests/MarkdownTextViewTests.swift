@@ -160,7 +160,7 @@ final class MarkdownTextViewTests: XCTestCase {
                 .frame(width: Self.width, height: 400))
         host.frame = CGRect(x: 0, y: 0, width: Self.width, height: 400)
         host.layoutSubtreeIfNeeded()
-        let textView = try XCTUnwrap(Self.firstTextView(in: host))
+        let textView = try XCTUnwrap(firstDescendant(NSTextView.self, in: host))
         XCTAssertEqual(try attachmentImageWidth(in: textView), Self.width, accuracy: 0.5)
 
         let widerWidth = Self.width + 100
@@ -374,7 +374,7 @@ final class MarkdownTextViewTests: XCTestCase {
                 .frame(width: Self.width, height: 400))
         host.frame = CGRect(x: 0, y: 0, width: Self.width, height: 400)
         host.layoutSubtreeIfNeeded()
-        return try XCTUnwrap(Self.firstTextView(in: host))
+        return try XCTUnwrap(firstDescendant(NSTextView.self, in: host))
     }
 
     /// A text view and the window that keeps it alive — `NSView.window` does not
@@ -401,7 +401,7 @@ final class MarkdownTextViewTests: XCTestCase {
             styleMask: [.titled], backing: .buffered, defer: false)
         window.contentView = host
         host.layoutSubtreeIfNeeded()
-        return WindowHostedTextView(window: window, textView: try XCTUnwrap(Self.firstTextView(in: host)))
+        return WindowHostedTextView(window: window, textView: try XCTUnwrap(firstDescendant(NSTextView.self, in: host)))
     }
 
     /// Clicks `textView` the way the event loop would: the mouse-up is queued
@@ -451,14 +451,6 @@ final class MarkdownTextViewTests: XCTestCase {
         else { return }
         NSApp.postEvent(neutral, atStart: true)
         _ = NSApp.nextEvent(matching: .applicationDefined, until: .distantPast, inMode: .default, dequeue: true)
-    }
-
-    private static func firstTextView(in view: NSView) -> NSTextView? {
-        if let textView = view as? NSTextView { return textView }
-        for subview in view.subviews {
-            if let found = firstTextView(in: subview) { return found }
-        }
-        return nil
     }
 
     /// The center of the first occurrence of `substring`, in `textView`'s own

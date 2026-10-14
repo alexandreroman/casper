@@ -159,25 +159,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         XCTAssertEqual(panel.textView.frame.height, contentHeight, accuracy: 1)
     }
 
-    /// Depth-first, so the panel's own text view is found rather than any
-    /// scrollbar or chrome `NSTextView` a future `ScrollView` might add above it.
-    private static func firstTextView(in view: NSView) -> NSTextView? {
-        if let textView = view as? NSTextView { return textView }
-        for subview in view.subviews {
-            if let found = firstTextView(in: subview) { return found }
-        }
-        return nil
-    }
-
-    /// The `ScrollView`'s AppKit backing, found the same depth-first way.
-    private static func firstScrollView(in view: NSView) -> NSScrollView? {
-        if let scrollView = view as? NSScrollView { return scrollView }
-        for subview in view.subviews {
-            if let found = firstScrollView(in: subview) { return found }
-        }
-        return nil
-    }
-
     // MARK: - Reading the tail of a message that has to scroll
 
     /// A message far taller than the panel, so the `ScrollView` genuinely
@@ -236,8 +217,8 @@ final class WorkspaceInfoPanelTests: XCTestCase {
 
         let panel = HostedPanel(
             window: window, host: host,
-            textView: try XCTUnwrap(Self.firstTextView(in: host)),
-            scrollView: try XCTUnwrap(Self.firstScrollView(in: host)),
+            textView: try XCTUnwrap(firstDescendant(NSTextView.self, in: host)),
+            scrollView: try XCTUnwrap(firstDescendant(NSScrollView.self, in: host)),
             // Read before `settleLayout` below, which is what gives the
             // reported height its hop: this has to be the size the panel asks
             // for knowing nothing but its own measurement.
