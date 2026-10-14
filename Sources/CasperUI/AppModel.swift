@@ -549,7 +549,7 @@ final class AppModel {
             CasperLog.app.failure("failed to load session, starting fresh", error)
             let fallback = SessionStore(
                 fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
-                    .appendingPathComponent("casper-session\(identity.pathSuffix).json"))
+                    .appendingPathComponent("casper-" + identity.layoutFileName))
             return AppModel(sessionStore: fallback, portAllocator: allocator,
                             sessionIdentity: identity)
         }
