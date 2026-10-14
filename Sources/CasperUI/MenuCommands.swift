@@ -156,12 +156,8 @@ extension AppModel {
     /// Enable-state for "Delete Workspace…": only a linked worktree can be deleted.
     var canDeleteSelectedWorkspace: Bool { menuSelectedWorkspace?.kind == .linked }
 
-    /// Enable-state for "Merge and Close Workspace…": a linked workspace that still
-    /// records the base branch to merge back into.
-    var canCloseSelectedWorkspace: Bool {
-        guard let workspace = menuSelectedWorkspace, workspace.kind == .linked else { return false }
-        return !(workspace.baseBranch?.isEmpty ?? true)
-    }
+    /// Enable-state for "Merge and Close Workspace…" — `Workspace.canMerge`.
+    var canCloseSelectedWorkspace: Bool { menuSelectedWorkspace?.canMerge ?? false }
 
     /// Enable-state for the Edit menu's "Copy Workspace Path" / "Copy Branch Name".
     var hasSelectedWorkspace: Bool { selectedWorkspaceID != nil }
