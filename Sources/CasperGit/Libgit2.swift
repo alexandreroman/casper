@@ -1,5 +1,10 @@
 import Clibgit2
 import Foundation
+import os
+
+/// CasperGit sits below CasperCore, so it cannot reach `CasperLog`; it logs under the
+/// same subsystem, which is what the `debug-casper` skill filters on.
+let log = Logger(subsystem: "com.github.alexandreroman.casper", category: "git")
 
 /// Process-wide libgit2 initialization. `git_libgit2_init` is reference-counted
 /// by libgit2; we call it exactly once and never shut down (acceptable for a

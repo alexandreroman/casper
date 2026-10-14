@@ -1,10 +1,5 @@
 import Clibgit2
 import Foundation
-import os
-
-/// CasperGit sits below CasperCore, so it cannot reach `CasperLog`; it logs under the
-/// same subsystem, which is what the `debug-casper` skill filters on.
-private let log = Logger(subsystem: "com.github.alexandreroman.casper", category: "git")
 
 extension Repository {
     /// The rename budget, in git's `diff.renameLimit` terms and at git's default for

@@ -338,13 +338,22 @@ public final class Repository {
         for i in 0..<count {
             var patch: OpaquePointer?
             defer { git_patch_free(patch) }  // before the call: free on the failure path too
-            guard git_patch_from_diff(&patch, diff, i) >= 0 else {
+            do {
+                try gitCheck(git_patch_from_diff(&patch, diff, i))
+            } catch {
                 // A file the diff lists but cannot load — a mode-000 file passes the
                 // `lstat` that lists it and fails the `open` — has no patch. It costs
                 // only its own content: listed as unreadable, it leaves every other
-                // file's diff intact instead of failing the whole call.
+                // file's diff intact instead of failing the whole call. Any other patch
+                // failure (a missing blob, a filter error) takes the same path, so the
+                // error is logged rather than lost.
                 guard let deltaPtr = git_diff_get_delta(diff, i) else { continue }
-                files.append(Repository.unreadableFile(delta: deltaPtr))
+                let file = Repository.unreadableFile(delta: deltaPtr)
+                log.error("""
+                    patch skipped for \(file.id, privacy: .public): \
+                    \(String(describing: error), privacy: .public)
+                    """)
+                files.append(file)
                 continue
             }
             let handle = try requireNonNull(patch, "patch")
