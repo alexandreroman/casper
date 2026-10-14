@@ -6,11 +6,13 @@ type: project
 
 # Domain CLI and control channel
 
-`.superpowers/themes/cli-agents.md` records the domain roster, targeting,
-transport, the JSON-output and exit-code contract, and the no-hooks decision;
-the per-verb JSON shapes live in `Sources/CasperCLI/JSONOutput.swift`. This
-note keeps what neither records. The control channel (`casper <domain> <verb>`
-over `$CASPER_CONTROL_SOCKET`) **ships in every release build**, unlike the
+`.superpowers/themes/cli-agents.md` records the noun-per-domain rule and why
+`run` sits at the top level, targeting, transport, the JSON-output and
+exit-code contract (entity ids keyed by type name included) and the no-hooks
+decision; `README.md` § CLI is the verb inventory, and the per-verb JSON shapes
+live in `Sources/CasperCLI/JSONOutput.swift`. This note keeps what none of them
+records. The control channel (`casper <domain> <verb>` over
+`$CASPER_CONTROL_SOCKET`) **ships in every release build**, unlike the
 `#if DEBUG`-only `casper debug` channel ([[debug-channel-gating]]) and the
 `#if DEBUG`-only `--session` flag ([[app-sessions]]). Usage errors exit 64;
 `--help` and `--version` exit 0.
@@ -63,4 +65,5 @@ them must keep.
 **How to apply:** add a new action as a new `ControlCommand.Verb` +
 `ControlServer` dispatch case + CLI command + JSON output struct, following the
 existing domains. Success emits the resulting resource state including the
-affected `workspace`; every error path must exit non-zero.
+affected `workspace`, with every entity id keyed by its type name (the theme's
+§ JSON output); every error path must exit non-zero.

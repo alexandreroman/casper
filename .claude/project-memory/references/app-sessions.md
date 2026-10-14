@@ -45,4 +45,5 @@ independent sessions. A hand-rolled launch is the case that has to name one.
   CLI flag.
 - Ports: `PortAllocator` uses a randomized scan start (`randomStartBase`) to
   reduce — not eliminate — cross-instance port-block collisions.
-- See [[domain-cli-control-channel]].
+- The per-surface env injection and the per-session control socket are in
+  `.superpowers/themes/cli-agents.md` § Agent state & progress.

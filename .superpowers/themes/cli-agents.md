@@ -26,8 +26,10 @@ Parsing uses swift-argument-parser; the fork happens before the
 ### Domain CLI (`casper <domain> <verb>`)
 
 The CLI is organized by domain, one noun per area of app state, each with a
-handful of verbs. **`README.md` § CLI is the verb inventory** and the
-user-facing reference for every flag; what follows is the design behind it.
+handful of verbs. `run [<name>]` is the one exception and sits at the top
+level, because it acts on the workspace itself rather than on a resource of its
+own. **`README.md` § CLI is the verb inventory** and the user-facing reference
+for every flag; what follows is the design behind it.
 
 **`terminal new --command` types, it does not exec.** The text goes into the
 newly opened terminal's real login shell via `ghostty_surface_text` right after
@@ -61,11 +63,13 @@ exception: it answers "which workspace is *this* terminal", so it reads the env
 var only and takes no target option — outside a Casper terminal it errors
 rather than defaulting to something.
 
-**An empty option value means "not given".** Every optional value goes through
-`nonEmpty` in `makeCommand()`, so `--base ""`, `--command ""` or
-`--working-dir ""` behaves exactly as if the option were omitted — an empty
-`--base` falls back to the space's base branch rather than reaching the app as
-a blank ref.
+**An empty option value means "not given" — or is rejected.** An option whose
+absence has a meaning (`--base`, `--command`, `--working-dir`, `--out`)
+goes through `nonEmpty` in `makeCommand()`, so an empty value behaves exactly as
+if the option were omitted — an empty `--base` falls back to the space's base
+branch rather than reaching the app as a blank ref. An option whose empty value
+is meaningless (`--selector`, `--url`, `--level`) is rejected instead, by
+`requireNonEmptyIfPresent` or its own validation, and exits non-zero.
 
 **Transport.** Each command sends a `ControlCommand` over the Unix domain socket
 named by `$CASPER_CONTROL_SOCKET` and reads back a `ControlResponse`. With that
@@ -80,8 +84,8 @@ an array for the `list` verbs. The **per-verb shapes** are the `Encodable`
 types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its literal
 shape in the type's own doc comment, plus `jsonLine(key:…)` for the two verbs
 that embed app-serialized JSON (`browser eval` → `result`, `browser console` →
-`console`); that file is the reference. Two contracts behind them bind every new
-verb:
+`console`); that file is the reference. Three contracts behind them bind every
+new verb:
 
 - **A success payload always carries the affected `workspace` id**, even when
   the verb has no state of its own to report (`progress clear`, `notify`,
@@ -89,6 +93,9 @@ verb:
   omits anything that is not durable state — `terminal list` carries
   `working-dir` but no `command`, because a launch command is a one-shot
   instruction.
+- **Every entity id is keyed by its type name, never a bare `id`**:
+  `terminal new` carries `terminal`, `workspace list` elements carry
+  `workspace`.
 - **A command in error never exits 0.** It prints `{"error":"<msg>"}` to stderr
   and exits non-zero; validate CLI-side in `makeCommand()` wherever the check is
   possible without the app. The exception is ArgumentParser's own output, which

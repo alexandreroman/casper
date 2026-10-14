@@ -46,5 +46,5 @@ socket file stays untouched.
   pick the bind-side resolver.
 - `SocketPathResolutionTests` pins both halves: that a listen path is
   session-derived, and that it ignores an ambient env override.
-- See [[app-sessions]] and [[domain-cli-control-channel]] for the surrounding
-  session/env-injection design.
+- See [[app-sessions]] and `.superpowers/themes/cli-agents.md` § Agent state &
+  progress for the surrounding session/env-injection design.
