@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Regenerate appcast.xml (the Sparkle feed): start from the previous feed
 # published on the latest GitHub release, or the template on the very first
-# release, then prepend a new <item> for this version (newest first).
+# release, then prepend a new <item> for this version (newest first), dropping
+# any item the feed already holds for the same build number.
 #
 # Usage: Scripts/update-appcast.sh <short-version> <bundle-version> <zip-url> <zip-length> <ed-signature>
 set -euo pipefail
@@ -53,12 +54,25 @@ IFS= read -r -d '' ITEM <<EOF || true
 EOF
 
 # Replace the single marker with the new item (safe literal replace via python3).
-ITEM="$ITEM" python3 - "$OUT" <<'PY'
-import os, sys
+# A re-run of a published release fetches a feed that already lists this build,
+# so any item carrying the same sparkle:version goes first: the insert stays
+# idempotent instead of doubling the item.
+ITEM="$ITEM" BUNDLE_VERSION="$BUNDLE_VERSION" python3 - "$OUT" <<'PY'
+import os, re, sys
 path = sys.argv[1]
 item = os.environ["ITEM"]
+same_build = f"<sparkle:version>{os.environ['BUNDLE_VERSION']}</sparkle:version>"
 with open(path, encoding="utf-8") as f:
     xml = f.read()
+
+
+def drop_same_build(match):
+    if same_build in match.group(0):
+        return ""
+    return match.group(0)
+
+
+xml = re.sub(r"[ \t]*<item>.*?</item>\n?", drop_same_build, xml, flags=re.DOTALL)
 marker = "    <!-- ITEMS -->"
 found = xml.count(marker)
 if found != 1:

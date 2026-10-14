@@ -334,6 +334,9 @@ fails early if that section is missing. The release job signs the archive with
 the `SPARKLE_PRIVATE_KEY` repository secret and fails if it is missing — an
 unsigned feed would be rejected by every installed copy. See the note
 [`sparkle-eddsa-key.md`](./.claude/project-memory/references/sparkle-eddsa-key.md).
+Re-running a release replaces that build's feed item instead of adding a second
+one; `Scripts/test-update-appcast.sh` checks the feed update offline, with a
+stand-in `curl`.
 
 ## Architecture
 
