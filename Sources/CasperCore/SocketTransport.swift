@@ -299,10 +299,9 @@ public final class SocketServerEngine<
         }
         connection.start(queue: queue)
         // Read the 4-byte big-endian length header, then exactly that many
-        // payload bytes. No reliance on request EOF anymore. There is
-        // intentionally no idle/read timeout here: this is a local, single-peer
-        // channel; the >8 MB length guard bounds memory, and the client bounds
-        // its own wait with `timeout`.
+        // payload bytes. There is intentionally no idle/read timeout here: this
+        // is a local, single-peer channel; the >8 MB length guard bounds memory,
+        // and the client bounds its own wait with `timeout`.
         // Every callback below cancels the strongly-captured `connection` when the
         // engine is already gone: nothing would untrack or cancel it otherwise, so it
         // would survive to process exit. Cancelling from the connection's own queue
@@ -532,10 +531,9 @@ public enum SocketClientEngine<
         // Read the framed response: a 4-byte big-endian length header, then
         // exactly that many JSON bytes. Success depends only on receiving the
         // full frame — once the bytes are in hand we `finish(.success(...))` and
-        // cancel, and any later `.failed`/receive error is ignored (the server
-        // cancels right after sending, which used to race the client's read and
-        // surface a spurious `ENETDOWN`). `finish` records the first result
-        // only, so that teardown error never overrides the delivered response.
+        // cancel, and any later `.failed`/receive error is ignored: `finish`
+        // records the first result only, so a teardown error never overrides the
+        // delivered response.
         @Sendable func receiveResponse() {
             readExactly(4, on: connection, into: ReadBuffer()) { header in
                 guard let header else {

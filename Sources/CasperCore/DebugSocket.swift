@@ -16,9 +16,9 @@ public enum DebugSocketPath {
     }
 
     /// The debug socket path for `session`: the `CASPER_DEBUG_SOCKET` override
-    /// wins; otherwise the session-derived path. The app (server) passes its
-    /// launch identity here.
-    public static func resolve(for session: SessionIdentity) -> String {
+    /// wins; otherwise the session-derived path. Dial side only; the sole
+    /// production caller is `default`.
+    static func resolve(for session: SessionIdentity) -> String {
         ProcessInfo.processInfo.environment["CASPER_DEBUG_SOCKET"] ?? session.debugSocketPath
     }
 
