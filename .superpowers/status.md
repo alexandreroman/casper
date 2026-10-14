@@ -140,8 +140,11 @@ non-selected workspaces.
    it has. See [[nstextstorage-attribute-run-order]].
 4. **Standing limitations** — `WorktreeManager.remove` prunes a worktree without
    deleting its branch; its one production caller deletes the branch on the next
-   line, so this only bites a second caller. The unpinned libgit2 is filed as a
-   risk in [`architecture.md`](architecture.md) § Risks & mitigations.
+   line, so this only bites a second caller. The terminal draws no marked text
+   (preedit): IME candidates and dead-key previews are not shown inline, while
+   committed text works — see `themes/terminal.md` § Keyboard & clipboard. The
+   unpinned libgit2 is filed as a risk in [`architecture.md`](architecture.md)
+   § Risks & mitigations.
 
 Two visual passes still need a human, since agents cannot screenshot the SwiftUI
 chrome: the `.casper.json` setup/teardown split lifecycle, and the info panel's

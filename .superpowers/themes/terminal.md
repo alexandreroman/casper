@@ -91,6 +91,11 @@ surfaces and PTYs (same model as the Ghostty app).
   keybindings inside the surface and reported back to the model through
   `onFontSizeChange`, so no menu item drives it. See
   [[swiftui-mainmenu-miniaturize-resync]].
+- **No marked text (preedit)** — IME candidates and dead-key previews are not
+  drawn inline; committed text works. `GhosttySurfaceView`'s marked-text
+  `NSTextInputClient` methods are deliberate no-ops, where upstream feeds
+  `ghostty_surface_preedit` from `setMarkedText`. A standing limitation (see
+  `../status.md`).
 - **`macos-option-as-alt`** is wired via `ghostty_surface_key_translation_mods`;
   the observable effect is inert in the current pinned binary (revisit on pin
   bump) — see [[ghostty-option-as-alt]].

@@ -1197,10 +1197,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface?.sendText(text)
     }
 
-    // Known limitation (out of v1 scope, not a regression): marked-text composition —
-    // CJK IME and dead-key accents — is intentionally NOT implemented. The methods
-    // below are deliberate no-ops; only committed text (via `insertText` above) is
-    // handled. Full NSTextInputClient marked-text support is deferred to a later plan.
+    // Standing limitation: marked-text composition (preedit) — CJK IME candidates and
+    // dead-key previews — is not drawn inline. The methods below are deliberate no-ops;
+    // only committed text (via `insertText` above) is handled. Upstream feeds
+    // `ghostty_surface_preedit` from `setMarkedText`. Filed in `.superpowers/status.md`
+    // § Remaining work and the terminal theme's Keyboard & clipboard section.
     public func hasMarkedText() -> Bool { false }
     public func markedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
     public func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
