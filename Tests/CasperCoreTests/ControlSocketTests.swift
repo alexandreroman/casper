@@ -34,4 +34,55 @@ final class ControlSocketTests: XCTestCase {
             XCTAssertTrue(error is ControlSocketError)
         }
     }
+
+    func testStaleSocketFileFailsFast() throws {
+        let path = try staleSocketPath()
+        defer { unlink(path) }
+
+        let start = Date()
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5)
+        ) { error in
+            XCTAssertTrue(error is ControlSocketError)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+    }
+
+    func testStaleSocketFileFailsFastEvenWhenRetriable() throws {
+        let path = try staleSocketPath()
+        defer { unlink(path) }
+
+        let start = Date()
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(
+                ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5, retriable: true)
+        ) { error in
+            XCTAssertTrue(error is ControlSocketError)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+    }
+
+    /// The file a crashed app leaves behind: a socket bound and then closed
+    /// without `unlink`, so the path exists but nothing listens on it.
+    private func staleSocketPath() throws -> String {
+        let path = tempSocketPath()
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { throw POSIXError(.EBADF) }
+        defer { close(descriptor) }
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let capacity = MemoryLayout.size(ofValue: address.sun_path)
+        guard path.utf8.count < capacity else { throw POSIXError(.ENAMETOOLONG) }
+        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+            buffer.copyBytes(from: path.utf8)
+        }
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard bound == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        return path
+    }
 }

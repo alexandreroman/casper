@@ -31,6 +31,8 @@ CI, test, and documentation-only work is left out.
   longer fails with "directory exists".
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
   as unreadable.
+- `casper` commands fail at once instead of hanging for several seconds when
+  Casper quit uncleanly and left its socket behind.
 
 ## [0.1.3] - 2026-10-13
 

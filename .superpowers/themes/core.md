@@ -67,10 +67,11 @@ The pure-Swift, UI-free core. Fully unit-tested.
   typealiases over the engine, plus `ControlSocketError`; neither file declares
   a type of its own name) over the shared `SocketTransport` (symmetric 4-byte
   big-endian length-prefixed framing with an 8 MB per-frame guard, applied in
-  both directions so a malformed peer cannot force an unbounded allocation),
-  plus the pure CLI helpers `ProgressSynthesis`, `ControlTargeting`, and
-  `GitBranchName`. Concurrency discipline for the socket classes is in
-  [[swift6-network-concurrency]].
+  both directions so a malformed peer cannot force an unbounded allocation;
+  a refused connect — the stale socket file a crashed instance leaves — fails
+  the client at once rather than at its timeout), plus the pure CLI helpers
+  `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`. Concurrency
+  discipline for the socket classes is in [[swift6-network-concurrency]].
 - **`SessionIdentity`** — the name that suffixes a session's layout file and
   socket paths so a dev/test instance runs beside the user's real one. A `nil`
   name is the default session, whose paths stay byte-for-byte the historical

@@ -566,7 +566,10 @@ public enum SocketClientEngine<
                         }
                     })
                 receiveResponse()
-            case .failed(let error):
+            // On a Unix-domain endpoint `.waiting` only ever means the connect was
+            // refused — typically a stale socket file a crashed app left behind.
+            // No path change can cure that, so fail now instead of at `timeout`.
+            case .failed(let error), .waiting(let error):
                 finish(.failure(TransportError(reason: "\(error)")))
                 connection.cancel()
             default:
