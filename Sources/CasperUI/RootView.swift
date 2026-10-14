@@ -205,8 +205,7 @@ private struct WindowConfigurator: NSViewRepresentable {
 
 
 /// What the window's floor is computed from: the widths flanking the terminal
-/// region, and the detail column's height against which the window's own chrome is
-/// measured.
+/// region.
 ///
 /// Every term is measured rather than assumed. The sidebar's CURRENT width matters,
 /// not its column minimum: the sidebar does not give way as the window narrows — the
@@ -230,8 +229,6 @@ struct TerminalHostMetrics: Equatable {
     let sidebarWidth: CGFloat
     /// The inspector panel plus its separator, and 0 while the panel is collapsed.
     let inspectorSlice: CGFloat
-    /// The height the detail column spends on something other than the pane tree.
-    let detailChromeHeight: CGFloat
 }
 
 /// The window's lower bound, derived from the room the terminal region needs.
@@ -253,8 +250,9 @@ enum WindowFloor {
     ///
     /// Width is the sidebar and the inspector at their current widths plus the
     /// terminal's minimum. Height goes through the window because only the window
-    /// knows how much of its content the toolbar takes: everything above and below
-    /// the pane tree is `content − detail + the detail's own chrome`.
+    /// knows how much of its content the toolbar takes: it is that toolbar height,
+    /// plus the divider above the pane tree (`WorkspaceDetailView.paneDividerHeight`),
+    /// plus the terminal's minimum.
     ///
     /// It converges rather than chasing itself: not one term depends on the window's
     /// size, so raising the floor resizes the window and the next pass computes the
@@ -296,7 +294,7 @@ enum WindowFloor {
             let toolbarHeight = max(0, content.height - window.contentLayoutRect.height)
             floor = CGSize(
                 width: metrics.sidebarWidth + metrics.inspectorSlice + minimum,
-                height: toolbarHeight + metrics.detailChromeHeight + minimum)
+                height: toolbarHeight + WorkspaceDetailView.paneDividerHeight + minimum)
         } else {
             // No workspace on screen: AppKit's own floor, so the empty state is not
             // held open by whatever the last workspace needed.

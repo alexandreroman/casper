@@ -524,9 +524,7 @@ struct WorkspaceDetailView: View {
             ? 0
             : max(detailFrame.minX, TerminalHostMetrics.sidebarColumnMinimum)
         return TerminalHostMetrics(
-            sidebarWidth: sidebarWidth,
-            inspectorSlice: inspectorSlice(container: detailFrame.width),
-            detailChromeHeight: Self.paneDividerHeight)
+            sidebarWidth: sidebarWidth, inspectorSlice: inspectorSlice(container: detailFrame.width))
     }
 
     /// The `Divider()` above the pane tree, which is part of the detail area's height
