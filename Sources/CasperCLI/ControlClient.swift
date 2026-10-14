@@ -113,18 +113,28 @@ extension ControlResponse {
 }
 
 /// Send a control command to the running app over `$CASPER_CONTROL_SOCKET`.
-/// Converts a transport failure or an `ok: false` reply into a thrown `ExitCode`
-/// (identical contract to the debug channel's `CasperCLI.run`).
+/// Converts a transport failure or an `ok: false` reply into a thrown `ExitCode`.
 @discardableResult
-func sendControl(_ command: ControlCommand, retriable: Bool, timeout: TimeInterval = 5) throws -> ControlResponse {
+func sendControl(
+    _ command: ControlCommand, retriable: Bool, timeout: TimeInterval = ControlSocketClient.defaultTimeout
+) throws -> ControlResponse {
     guard let socketPath = ProcessInfo.processInfo.environment["CASPER_CONTROL_SOCKET"] else {
         throw exitWithError("Casper is not running (CASPER_CONTROL_SOCKET unset); run inside a Casper terminal")
     }
-    let response: ControlResponse
+    return try sendUnwrapped(command, toSocketAt: socketPath, timeout: timeout, retriable: retriable)
+}
+
+/// Send one command over the socket at `socketPath` and unwrap the reply, turning
+/// a transport failure or an `ok: false` answer into a thrown `ExitCode`. The
+/// contract the control channel (`sendControl`) and the debug channel share.
+func sendUnwrapped<Command: Encodable & Sendable, Response: Decodable & Sendable & SocketFailureResponse>(
+    _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval, retriable: Bool
+) throws -> Response {
+    let response: Response
     do {
-        response = try ControlSocketClient.send(
+        response = try SocketClientEngine<Command, Response>.send(
             command, toSocketAt: socketPath, timeout: timeout, retriable: retriable)
-    } catch let error as ControlSocketError {
+    } catch let error as SocketTransportError {
         throw exitWithError(error.reason)
     }
     guard response.ok else { throw exitWithError(response.error ?? "unknown") }

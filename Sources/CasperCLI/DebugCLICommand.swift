@@ -35,16 +35,7 @@ struct SocketOption: ParsableArguments {
 /// that drives the GUI passes `false`: a resend would inject the text, key or
 /// action a second time.
 private func run(_ command: DebugCommand, socket: String, retriable: Bool) throws -> DebugResponse {
-    let response: DebugResponse
-    do {
-        response = try DebugSocketClient.send(command, toSocketAt: socket, retriable: retriable)
-    } catch let error as DebugSocketError {
-        throw exitWithError(error.reason)
-    }
-    guard response.ok else {
-        throw exitWithError(response.error ?? "unknown")
-    }
-    return response
+    try sendUnwrapped(command, toSocketAt: socket, timeout: DebugSocketClient.defaultTimeout, retriable: retriable)
 }
 
 /// Encoder for the debug verbs that dump a whole payload for a human to read.

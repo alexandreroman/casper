@@ -15,22 +15,26 @@ private let maxSocketFrameBytes = 8 * 1024 * 1024
 /// that never closes cannot leak the connection.
 private let socketReplyLingerTimeout: TimeInterval = 15
 
-/// A transport failure the generic engine can construct without knowing the
-/// concrete error type. Each channel provides its own conforming error struct.
-public protocol SocketTransportError: Error, Equatable {
-    init(reason: String)
+/// A transport failure on either socket channel: the exchange never produced a
+/// decoded response (no socket, refused connect, timeout, truncated frame…).
+public struct SocketTransportError: Error, Equatable {
+    public let reason: String
 }
 
-/// A response the generic server can synthesize for protocol-level failures
-/// (undecodable command, no handler, invalid length) without knowing the
-/// concrete response type. Each channel's response already provides `failure`.
+/// A response the generic engine and its callers handle without knowing the
+/// concrete response type: the server synthesizes `failure` for protocol-level
+/// errors (undecodable command, no handler, invalid length), and a client reads
+/// `ok`/`error` to tell a refusal from an answer. Each channel's response
+/// already provides all three.
 public protocol SocketFailureResponse {
+    var ok: Bool { get }
+    var error: String? { get }
     static func failure(_ message: String) -> Self
 }
 
 /// Thrown by `SocketClientEngine.sendOnce` when no reply arrived within the
 /// timeout — typically a server that took the request but has not answered yet.
-/// Kept apart from the channel's transport error so `send` never retries it: the
+/// Kept apart from `SocketTransportError` so `send` never retries it: the
 /// server may still be working on the request, and a resend would queue it a
 /// second time and multiply the caller's wait.
 private struct SocketReplyTimeout: Error {}
@@ -114,8 +118,7 @@ private func decodeLength(_ header: Data) -> UInt32 {
 /// callbacks are configured before `start()`.
 public final class SocketServerEngine<
     Command: Decodable & Sendable,
-    Response: Encodable & Sendable & SocketFailureResponse,
-    TransportError: SocketTransportError
+    Response: Encodable & Sendable & SocketFailureResponse
 >: @unchecked Sendable {
     /// Lock-guarded server state so `stop()` can tear down cleanly. `stopped`
     /// refuses connections accepted
@@ -230,7 +233,7 @@ public final class SocketServerEngine<
         // cannot hang the caller forever.
         if bound.wait(timeout: .now() + bindTimeout) == .timedOut {
             abandonListener()
-            throw TransportError(reason: "timed out binding socket at \(socketPath)")
+            throw SocketTransportError(reason: "timed out binding socket at \(socketPath)")
         }
         if let error = bindError.withLock({ $0 }) {
             abandonListener()
@@ -444,9 +447,10 @@ public final class SocketServerEngine<
 /// Synchronous by design: `casper` CLI invocations are short-lived.
 public enum SocketClientEngine<
     Command: Encodable & Sendable,
-    Response: Decodable & Sendable,
-    TransportError: SocketTransportError
+    Response: Decodable & Sendable
 > {
+    /// How long `send` waits for a reply unless the caller asks otherwise.
+    public static var defaultTimeout: TimeInterval { 5 }
     /// Total attempts when `retriable` is true: the first try plus three retries.
     private static var maxRetriableAttempts: Int { 4 }
     /// Backoff between retries. Short on purpose: a fresh connection usually
@@ -457,7 +461,7 @@ public enum SocketClientEngine<
     /// Sends `command` and returns the decoded `Response`.
     ///
     /// Set `retriable` to true ONLY for idempotent verbs. A transport-level
-    /// failure (`TransportError`) then triggers a bounded retry over a fresh
+    /// failure (`SocketTransportError`) then triggers a bounded retry over a fresh
     /// connection, which papers over the intermittent cross-process
     /// `ENETDOWN` seen when a slow handler blocks before any response byte
     /// arrives. A decoded `Response` — even `ok: false` — is a real answer and
@@ -471,17 +475,17 @@ public enum SocketClientEngine<
     /// stays individually identifiable in Instruments and crash reports.
     public static func send(
         _ command: Command, toSocketAt socketPath: String,
-        timeout: TimeInterval = 5, retriable: Bool = false,
+        timeout: TimeInterval = defaultTimeout, retriable: Bool = false,
         queueLabel: String = "casper.socket.client.\(Command.self)"
     ) throws -> Response {
         let maxAttempts = retriable ? maxRetriableAttempts : 1
-        var lastError: TransportError?
+        var lastError: SocketTransportError?
         for attempt in 1...maxAttempts {
             do {
                 return try sendOnce(command, toSocketAt: socketPath, timeout: timeout, queueLabel: queueLabel)
             } catch is SocketReplyTimeout {
-                throw TransportError(reason: "timed out talking to \(socketPath)")
-            } catch let error as TransportError {
+                throw SocketTransportError(reason: "timed out talking to \(socketPath)")
+            } catch let error as SocketTransportError {
                 lastError = error
                 if attempt < maxAttempts {
                     usleep(retryBackoffMicroseconds)
@@ -489,24 +493,24 @@ public enum SocketClientEngine<
             }
         }
         // `maxAttempts >= 1`, so the loop always ran, and it falls through only when
-        // every attempt threw a transport `TransportError` — `lastError` is set.
+        // every attempt threw a `SocketTransportError` — `lastError` is set.
         throw lastError!
     }
 
     /// One request/response exchange over a single fresh connection. Throws
     /// `SocketReplyTimeout` when no reply arrives within `timeout`, a
-    /// `TransportError` on any other transport failure; returns whatever
+    /// `SocketTransportError` on any other transport failure; returns whatever
     /// `Response` the server delivers, including an `ok: false` one.
     private static func sendOnce(
         _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval, queueLabel: String
     ) throws -> Response {
         guard FileManager.default.fileExists(atPath: socketPath) else {
-            throw TransportError(reason: "no socket at \(socketPath) (is the GUI running?)")
+            throw SocketTransportError(reason: "no socket at \(socketPath) (is the GUI running?)")
         }
 
         let payload = try JSONEncoder().encode(command)
         guard payload.count <= maxSocketFrameBytes else {
-            throw TransportError(reason: "request too large: \(payload.count) bytes")
+            throw SocketTransportError(reason: "request too large: \(payload.count) bytes")
         }
         // Frame the request with a 4-byte big-endian length prefix so the
         // server reads an exact byte count and never waits for request EOF.
@@ -537,26 +541,26 @@ public enum SocketClientEngine<
         @Sendable func receiveResponse() {
             readExactly(4, on: connection, into: ReadBuffer()) { header in
                 guard let header else {
-                    finish(.failure(TransportError(reason: "no response from \(socketPath)")))
+                    finish(.failure(SocketTransportError(reason: "no response from \(socketPath)")))
                     connection.cancel()
                     return
                 }
                 let length = decodeLength(header)
                 guard length > 0, length <= UInt32(maxSocketFrameBytes) else {
-                    finish(.failure(TransportError(reason: "invalid response length: \(length) bytes")))
+                    finish(.failure(SocketTransportError(reason: "invalid response length: \(length) bytes")))
                     connection.cancel()
                     return
                 }
                 readExactly(Int(length), on: connection, into: ReadBuffer()) { payload in
                     guard let payload else {
-                        finish(.failure(TransportError(reason: "truncated response from \(socketPath)")))
+                        finish(.failure(SocketTransportError(reason: "truncated response from \(socketPath)")))
                         connection.cancel()
                         return
                     }
                     if let response = try? JSONDecoder().decode(Response.self, from: payload) {
                         finish(.success(response))
                     } else {
-                        finish(.failure(TransportError(reason: "undecodable response")))
+                        finish(.failure(SocketTransportError(reason: "undecodable response")))
                     }
                     connection.cancel()
                 }
@@ -573,7 +577,7 @@ public enum SocketClientEngine<
                     content: request,
                     completion: .contentProcessed { error in
                         if let error {
-                            finish(.failure(TransportError(reason: "\(error)")))
+                            finish(.failure(SocketTransportError(reason: "\(error)")))
                             connection.cancel()
                         }
                     })
@@ -582,7 +586,7 @@ public enum SocketClientEngine<
             // refused — typically a stale socket file a crashed app left behind.
             // No path change can cure that, so fail now instead of at `timeout`.
             case .failed(let error), .waiting(let error):
-                finish(.failure(TransportError(reason: "\(error)")))
+                finish(.failure(SocketTransportError(reason: "\(error)")))
                 connection.cancel()
             default:
                 break
@@ -597,7 +601,7 @@ public enum SocketClientEngine<
         switch result.withLock({ $0 }) {
         case .success(let response): return response
         case .failure(let error): throw error
-        case .none: throw TransportError(reason: "no response from \(socketPath)")
+        case .none: throw SocketTransportError(reason: "no response from \(socketPath)")
         }
     }
 }

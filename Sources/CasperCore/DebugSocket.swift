@@ -32,23 +32,13 @@ public enum DebugSocketPath {
     }
 }
 
-/// A transport failure on the debug channel.
-public struct DebugSocketError: Error, Equatable {
-    public let reason: String
-    public init(reason: String) { self.reason = reason }
-}
-
-extension DebugSocketError: SocketTransportError {}
-
 extension DebugResponse: SocketFailureResponse {}
 
 /// Listens on a Unix-domain socket for one `DebugCommand` per connection and
 /// writes back one `DebugResponse`.
-public typealias DebugSocketServer =
-    SocketServerEngine<DebugCommand, DebugResponse, DebugSocketError>
+public typealias DebugSocketServer = SocketServerEngine<DebugCommand, DebugResponse>
 
 /// Sends one `DebugCommand` to the app's debug socket and returns the decoded
 /// `DebugResponse`. Synchronous by design: `casper debug` is short-lived.
-public typealias DebugSocketClient =
-    SocketClientEngine<DebugCommand, DebugResponse, DebugSocketError>
+public typealias DebugSocketClient = SocketClientEngine<DebugCommand, DebugResponse>
 #endif

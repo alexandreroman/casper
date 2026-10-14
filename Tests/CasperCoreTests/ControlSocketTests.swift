@@ -26,12 +26,12 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertEqual(response.text, "ok")
     }
 
-    func testMissingSocketThrowsControlSocketError() {
+    func testMissingSocketThrowsSocketTransportError() {
         XCTAssertThrowsError(
             try ControlSocketClient.send(
                 ControlCommand(verb: .workspaceList), toSocketAt: tempSocketPath())
         ) { error in
-            XCTAssertTrue(error is ControlSocketError)
+            XCTAssertTrue(error is SocketTransportError)
         }
     }
 
@@ -43,7 +43,7 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertThrowsError(
             try ControlSocketClient.send(ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5)
         ) { error in
-            XCTAssertTrue(error is ControlSocketError)
+            XCTAssertTrue(error is SocketTransportError)
         }
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
@@ -57,7 +57,7 @@ final class ControlSocketTests: XCTestCase {
             try ControlSocketClient.send(
                 ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5, retriable: true)
         ) { error in
-            XCTAssertTrue(error is ControlSocketError)
+            XCTAssertTrue(error is SocketTransportError)
         }
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
@@ -74,7 +74,7 @@ final class ControlSocketTests: XCTestCase {
             try ControlSocketClient.send(
                 ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 0.3, retriable: true)
         ) { error in
-            XCTAssertTrue(error is ControlSocketError)
+            XCTAssertTrue(error is SocketTransportError)
         }
         XCTAssertLessThan(Date().timeIntervalSince(start), 0.6)
     }
