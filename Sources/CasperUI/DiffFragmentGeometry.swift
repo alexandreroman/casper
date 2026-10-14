@@ -14,12 +14,15 @@ import AppKit
 ///
 /// **Coordinate space.** Every rect and every `y` here is in the *text
 /// container's* space, which is what `NSTextLayoutManager` reports. A text view
-/// shifts that by its `textContainerInset`, so a caller holding view
+/// places its container at `textContainerOrigin`, so a caller holding view
 /// coordinates (`drawBackground(in:)`, an `NSRulerView` rect, a clip view's
-/// bounds) converts on the way in and on the way out. Doing the conversion here
-/// is not an option: the layout manager does not know the inset — only the text
-/// view does. Each member below repeats this where it matters, because the
-/// members are what a caller reads while holding a view-space number.
+/// bounds) converts by `textContainerOrigin.y` on the way in and on the way out.
+/// The origin rather than `textContainerInset`, because it also folds in any
+/// centering AppKit applies when the container is narrower than the view. Doing
+/// the conversion here is not an option: the layout manager does not know where
+/// the view placed its container — only the text view does. Each member below
+/// repeats this where it matters, because the members are what a caller reads
+/// while holding a view-space number.
 ///
 /// `@MainActor` because live TextKit layout is main-thread-only, and because
 /// `DiffTextAssembly`'s constants are.
@@ -134,8 +137,8 @@ struct DiffFragmentGeometry {
 
     /// The `y` of the top of the blank band reserved for the file's sticky
     /// header, in **text-container** coordinates — so a caller holding a clip
-    /// view's `bounds.origin.y` subtracts `textContainerInset.height` before
-    /// comparing, and adds it back before scrolling.
+    /// view's `bounds.origin.y` subtracts the text view's `textContainerOrigin.y`
+    /// before comparing, and adds it back before scrolling.
     ///
     /// **Negative for the first file**, whose band is the text view's
     /// `textContainerInset` and therefore sits *above* the container's origin:
@@ -189,7 +192,8 @@ struct DiffFragmentGeometry {
     /// the sticky overlay has to consider the file current from there down.
     ///
     /// `y` is in **text-container** coordinates, so a caller holding a clip
-    /// view's `bounds.origin.y` subtracts `textContainerInset.height` first.
+    /// view's `bounds.origin.y` subtracts the text view's `textContainerOrigin.y`
+    /// first.
     ///
     /// Deliberately does **not** call `top(ofFileAt:)`. This is the sticky
     /// header's hot path — a scroll bounds-change notification fires several
