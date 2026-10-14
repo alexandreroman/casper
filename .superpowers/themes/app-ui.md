@@ -147,7 +147,7 @@ longer does are recorded in `../status.md` § Superseded designs.
   [[intra-app-drag-pasteboard-type]]. There is no `insertTab` operation: tabs
   are gone.
 - **Diff viewer** — a read-only surface backed by libgit2's `git_diff`
-  (structured hunks/lines, working tree vs base/HEAD), rendered as **one TextKit
+  (structured hunks/lines, working tree vs HEAD), rendered as **one TextKit
   2 text document**. The diff is flattened into flat text plus per-file and
   per-line spans, and AppKit draws everything on top of it: the row tints in the
   text view, the accent stripe, the line numbers and the `+`/`-` cue in an
@@ -660,9 +660,10 @@ longer does are recorded in `../status.md` § Superseded designs.
   [[webkit-page-driven-navigation]].
 - **UI-5 — ✅ built.** A read-only diff surface over CasperGit's
   `diffWorkdirToHead()`: per-file sections (path + status, binary and unreadable
-  files noted), hunk headers, and monospaced line rows colored by kind (green
-  addition / red deletion / neutral context) with old/new line-number gutters
-  and a `+`/`-`/space prefix cue. Computed on open and **live-refreshed** by
+  files noted), hunk headers, and code rows tinted by kind (green addition / red
+  deletion / neutral context), with a single line-number column (old for
+  deletions, new otherwise) and a `+`/`-` cue on changed rows, both drawn in the
+  gutter. Computed on open and **live-refreshed** by
   **two** native FSEvents watchers on the selected workspace, both funnelling
   through one ~200 ms debounce that bumps an observable revision the diff
   surface and the title-bar `+/−` badge react to: one on the worktree folder
