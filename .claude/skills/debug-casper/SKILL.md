@@ -30,7 +30,8 @@ char, `[A-Za-z0-9._-]` limit:
 
 ```bash
 make build
-branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null \
+  | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
 export CASPER_SESSION="test-${branch:-x}-$$"   # e.g. test-my-feature-51377
 ```
 
@@ -46,21 +47,27 @@ not persisted; it is re-probed from `folderPath` at load, so the folder must
 actually be Git-backed:
 
 ```bash
-REPO=$(mktemp -d); REPO=$(cd "$REPO" && pwd -P)   # canonical path (avoids /tmp symlink)
+# Canonical path, so the /tmp symlink never shows up in the layout.
+REPO=$(mktemp -d); REPO=$(cd "$REPO" && pwd -P)
 git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 SP=$(uuidgen); WS=$(uuidgen); SURF=$(uuidgen); BROW=$(uuidgen)
-mkdir -p "$HOME/Library/Application Support/Casper"
-cat > "$HOME/Library/Application Support/Casper/session-$CASPER_SESSION.json" <<JSON
+DIR="$HOME/Library/Application Support/Casper"
+mkdir -p "$DIR"
+cat > "$DIR/session-$CASPER_SESSION.json" <<JSON
 {
   "spaces": [{
     "id": "$SP", "name": "test", "folderPath": "$REPO", "isCollapsed": false,
     "workspaces": [{
       "id": "$WS", "name": "test", "worktreePath": "$REPO", "branch": "main",
       "portBase": 47000, "kind": "primary",
-      "layout": { "leaf": { "_0": { "id": "$SURF", "kind": { "terminal": { "cwd": "$REPO" } } } } },
+      "layout": { "leaf": { "_0": {
+        "id": "$SURF", "kind": { "terminal": { "cwd": "$REPO" } }
+      } } },
       "inspector": { "collapsed": true, "tab": "diff", "width": 780,
-        "browser": { "id": "$BROW", "kind": { "browser": { "url": "about:blank" } } } }
+        "browser": {
+          "id": "$BROW", "kind": { "browser": { "url": "about:blank" } }
+        } }
     }]
   }],
   "selectedWorkspaceID": "$WS"
@@ -78,7 +85,8 @@ injected and the `casper` CLI works when driven via `send-text`.
 ### Launch
 
 ```bash
-Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
+Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" \
+  >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
 until [ -S "/tmp/casper-debug-$CASPER_SESSION.sock" ]; do sleep 0.2; done
 ```
 
@@ -166,27 +174,29 @@ Then re-read to verify:
 
 The debug bridge — `AppModel`'s `DebugSurfaceProvider` conformance, in
 `Sources/CasperUI/DebugSurfaceBridge.swift` — exposes **at most one surface**:
-the *first* `GhosttySurfaceView` found in the key window's content
-hierarchy — i.e. the selected workspace's focused/first pane. Its reported `id`
+the *first* `GhosttySurfaceView` found in the content hierarchy of the key
+window (or, without one, the app's first window) — the first pane in the view
+hierarchy, not necessarily the focused one. Its reported `id`
 is the **selected workspace's UUID in Casper's canonical lowercase form**
 (`selectedWorkspaceID.casperID`, i.e. `uuidString.lowercased()` — Foundation's
 plain `uuidString` is uppercase and is never what the harness prints), not a
 per-pane id and not a numeric index. So `dump-state` returns a `surfaces` array
-of **at most one element** — it is empty when no key window, no surface view, or
-no selected workspace can be resolved. Consequently the harness **cannot reach**
-other panes in a split, or any unselected workspace's surface (including a
-background/off-screen one).
+of **at most one element** — it is empty when no window, no live surface view,
+or no selected workspace can be resolved. Consequently the harness **cannot
+reach** other panes in a split, or any unselected workspace's surface (including
+a background/off-screen one).
 
 Because there is never more than one surface, `--target` is essentially
 redundant —
 just omit it and verbs act on that surface. If you do pass it, `--target` /
-`focus` match the id **exactly** (`surfaces.first(where: { $0.id == target })`,
-in `DebugServer.resolve`); there is **no** numeric-index form, so `--target 0` /
+`focus` match the id **case-insensitively** (`DebugServer.surface(withID:in:)`);
+there is **no** numeric-index form, so `--target 0` /
 `focus 0` never match and fail with `no surface with id 0`. Pass the workspace
 UUID from `dump-state` instead:
 
 ```bash
-WS=$(.build/debug/casper debug dump-state | sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+WS=$(.build/debug/casper debug dump-state \
+  | sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
 .build/debug/casper debug read-text --target "$WS"
 .build/debug/casper debug focus "$WS"          # changes UI focus (not retried)
 ```
@@ -219,18 +229,18 @@ unset CASPER_SESSION
   `--socket <path>`, defaulting to `$CASPER_DEBUG_SOCKET`, else the
   `$CASPER_SESSION`-derived path, else `/tmp/casper-debug.sock`):
 
-  | Verb                                   | Notes                                              |
-  | -------------------------------------- | -------------------------------------------------- |
-  | `dump-state`                           | Prints every exposed surface as JSON. No `--target`. |
-  | `memory`                               | Process memory, the live-object census and named collection sizes. No `--target`. |
-  | `read-text [--scrollback] [--target]`  | Viewport text, or the full screen with `--scrollback`. |
-  | `send-text <text> [--enter] [--target]`| Injects text; `--enter` submits with Return.       |
-  | `send-keys <text> [--target]`          | Types the text as real per-character key events.   |
-  | `send-key <char> [--mods …] [--target]`| One key event; `--mods` takes `ctrl`, `cmd`, `opt`, `shift`, repeatable (`--mods ctrl shift`). |
-  | `send-action <name> [--target]`        | Fires a libghostty keybinding action, e.g. `copy_to_clipboard`. |
-  | `mouse-move <x> <y> [--target]`        | Injects a mouse position in libghostty top-left coordinates. |
-  | `screenshot <path> [--target]`         | Writes a PNG of the app window.                    |
-  | `focus <id>`                           | Gives UI focus to a surface. The id is a **required positional**, not `--target`. |
+  | Verb                                    | Notes                                                                                          |
+  | --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+  | `dump-state`                            | Prints every exposed surface as JSON. No `--target`.                                           |
+  | `memory`                                | Process memory, the live-object census and named collection sizes. No `--target`.              |
+  | `read-text [--scrollback] [--target]`   | Viewport text, or the full screen with `--scrollback`.                                         |
+  | `send-text <text> [--enter] [--target]` | Injects text; `--enter` submits with Return.                                                   |
+  | `send-keys <text> [--target]`           | Types the text as real per-character key events.                                               |
+  | `send-key <char> [--mods …] [--target]` | One key event; `--mods` takes `ctrl`, `cmd`, `opt`, `shift`, repeatable (`--mods ctrl shift`). |
+  | `send-action <name> [--target]`         | Fires a libghostty keybinding action, e.g. `copy_to_clipboard`.                                |
+  | `mouse-move <x> <y> [--target]`         | Injects a mouse position in libghostty top-left coordinates.                                   |
+  | `screenshot <path> [--target]`          | Writes a PNG of the app window.                                                                |
+  | `focus <id>`                            | Gives UI focus to a surface. The id is a **required positional**, not `--target`.              |
 
 - `read-text` returns the terminal contents as plain text — prefer it over
   screenshots for asserting terminal output.
@@ -239,9 +249,10 @@ unset CASPER_SESSION
   not a surface), and `focus` demands an explicit positional id. The other
   seven default to the focused surface — falling back to the first — when
   `--target` is omitted.
-- Only the selected workspace's focused/first surface is ever exposed — see
-  "What the harness can (and cannot) see". To exercise a specific pane or
-  workspace, select/arrange it in the UI first.
+- Only the selected workspace's first pane in the view hierarchy, not
+  necessarily the focused one, is ever exposed — see "What the harness can
+  (and cannot) see". To exercise a specific pane or workspace, select/arrange
+  it in the UI first.
 - This is a DEBUG-only channel. A `make release` (`swift build -c release`)
   binary omits the socket server and the `casper debug` subcommand entirely.
 - `--target <id>` addresses a surface without changing focus; `focus <id>`

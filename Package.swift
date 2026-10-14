@@ -1,20 +1,20 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
     name: "Casper",
     platforms: [.macOS(.v15)],
-    products: [
-        .executable(name: "casper", targets: ["casper"]),
-    ],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-argument-parser.git",
             from: "1.5.0"
         ),
+        // Pinned by revision, not by tag: upstream tags are mutable. This
+        // revision is the 1.2.8 release, with the same tree as the commit the
+        // tag first named, so the binary checksum and vendored header hold.
         .package(
             url: "https://github.com/Lakr233/libghostty-spm.git",
-            exact: "1.2.8"
+            revision: "2ef85df0292dc864a857d30963b943e5d5b8dc87"
         ),
         .package(
             url: "https://github.com/appstefan/HighlightSwift.git",
@@ -64,13 +64,21 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperUI"]),
+        // Fixtures shared by the test targets, which cannot import one another. A
+        // regular target, so `swift build -c release` compiles it too: no
+        // `@testable import` here.
+        .target(
+            name: "CasperTestSupport",
+            dependencies: ["CasperGit", "Clibgit2"],
+            path: "Tests/CasperTestSupport"
+        ),
         .testTarget(
             name: "CasperGitTests",
-            dependencies: ["CasperGit", "Clibgit2"]
+            dependencies: ["CasperGit", "Clibgit2", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperCoreTests",
-            dependencies: ["CasperCore", "Clibgit2"]
+            dependencies: ["CasperCore", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperAgentsTests",
@@ -78,15 +86,18 @@ let package = Package(
         ),
         .testTarget(
             name: "CasperCLITests",
-            dependencies: ["CasperCLI", "CasperCore"]
+            dependencies: ["CasperCLI", "CasperCore", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperGhosttyTests",
-            dependencies: ["CasperGhostty"]
+            dependencies: ["CasperGhostty", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperUITests",
-            dependencies: ["CasperUI", "CasperCore", "CasperGhostty", "CasperAgents", "CasperGit", "Clibgit2"]
+            dependencies: [
+                "CasperUI", "CasperCore", "CasperGhostty", "CasperAgents", "CasperGit", "Clibgit2",
+                "CasperTestSupport",
+            ]
         ),
     ]
 )

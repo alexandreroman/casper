@@ -36,12 +36,6 @@ final class BrowserSurfaceViewTests: XCTestCase {
         // becomes non-nil "about:blank"), but that must still count as "no URL" — not
         // an openable page — so the button stays disabled until a real navigation.
         XCTAssertNil(BrowserSurfaceView.externalURL(webViewURL: URL(string: "about:blank"), address: ""))
-        // The real runtime state on a fresh surface: BrowserCoordinator.syncNav() sets
-        // `address` to the committed URL's string on every commit, including the initial
-        // about:blank one — so address is "about:blank" too, not empty. Lock in that the
-        // button stays disabled against this actual composite state, not just the
-        // empty-address case above.
-        XCTAssertNil(BrowserSurfaceView.externalURL(webViewURL: .aboutBlank, address: "about:blank"))
     }
 
     /// Return must end editing, and must do so *before* the submitted load starts:

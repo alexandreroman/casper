@@ -1,3 +1,5 @@
+import Foundation
+
 /// A single command sent from the `casper` CLI to the running app over the
 /// release control socket. One flat struct (not an enum with associated values)
 /// keeps the JSON wire form trivial and stable across the CLI/app boundary —
@@ -48,14 +50,27 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     /// limit well below that transport ceiling.
     public static let infoMessageMaxBytes = 256 * 1024
 
+    /// The app-side deadline of `browserWait` and `browserReload`, in
+    /// milliseconds, when the command carries no `waitTimeout`. `casper browser
+    /// wait` sizes its socket timeout from the same value.
+    public static let defaultWaitTimeoutMs = 5000
+
+    /// `raw` as a URL the browser verbs accept: absolute, with both a scheme and a
+    /// host. Anything else — a bare path, a relative reference, nil — is nil, so
+    /// the CLI and the app refuse the same inputs.
+    public static func absoluteURL(_ raw: String?) -> URL? {
+        guard let raw, let url = URL(string: raw), url.scheme != nil, url.host != nil else { return nil }
+        return url
+    }
+
     public var verb: Verb
     public var workspace: String?   // target selector: workspace id or name (nil = app's selected)
     public var state: String?       // statusSet: AgentState raw value
     public var total: Int?          // progressSet
     public var current: Int?        // progressSet
     public var label: String?       // progressSet
-    public var message: String?     // notify: optional macOS-notification body
-    public var url: String?         // browserOpen
+    public var message: String?     // notify: optional macOS-notification body; infoSet: the Markdown
+    public var url: String?         // browserOpen / browserLoad; browserScreenshot: optional page to render
     public var target: String?      // diffOpen: file path to scroll to; terminalClose: terminal id
     public var branch: String?      // workspaceNew
     public var base: String?        // workspaceNew
@@ -63,17 +78,17 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var cwd: String?         // terminalNew: optional working directory
     public var name: String?        // run: named command from .casper.json
     public var script: String?      // browserEval: JavaScript source to evaluate
-    public var selector: String?    // browserClick/Type/Key/Content: CSS selector target
+    public var selector: String?    // browserClick/Type/Key/Content/Wait: CSS selector target
     public var value: String?       // browserType: text to type into the element
     public var key: String?         // browserKey: key name (e.g. Enter, Escape)
     public var path: String?        // browserScreenshot: output PNG path
     public var level: String?       // browserConsole: severity threshold (ConsoleLevel raw value)
     public var predicate: String?   // browserWait: JavaScript predicate (--js form)
-    public var waitTimeout: Int?    // browserWait: deadline in milliseconds
+    public var waitTimeout: Int?    // browserWait / browserReload: deadline in milliseconds
     public var clear: Bool?         // browserConsole: drain the buffer after reading
     public var visible: Bool?       // browserWait: require the selector to be visible
     public var gone: Bool?          // browserWait: require the selector to be absent
-    public var waitReady: Bool?     // browserReload: also wait for readyState === "complete"
+    public var waitReady: Bool?     // browserReload: also wait for the reload to finish loading
     public var width: Int?          // browserScreenshot: off-screen render viewport width
     public var height: Int?         // browserScreenshot: off-screen render viewport height
 
@@ -187,6 +202,14 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
         self.branch = branch
         self.path = path
     }
+
+    /// The reply entry for `workspace`: its lowercase id, its name and branch, and its
+    /// worktree as the path.
+    public init(_ workspace: Workspace) {
+        self.init(
+            id: workspace.id.casperID, name: workspace.name, branch: workspace.branch,
+            path: workspace.worktreePath)
+    }
 }
 
 /// The progress bar a workspace is currently showing, returned by
@@ -256,5 +279,18 @@ public struct ControlResponse: Codable, Equatable, Sendable {
 
     public static func failure(_ message: String) -> ControlResponse {
         ControlResponse(ok: false, error: message)
+    }
+
+    /// Unwrap a JSON-serialized page value, as the browser's `evaluate` produces it:
+    /// a top-level JSON string becomes its bare contents (no surrounding quotes),
+    /// while every other JSON token (number, bool, null, object, array) — or text
+    /// that is not JSON at all — comes back verbatim. The app unwraps `content` and
+    /// `url` with it; the CLI unwraps `eval --raw` the same way, so all three agree.
+    public static func unwrappedJSONString(_ json: String) -> String {
+        guard let value = try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed]),
+              let string = value as? String else {
+            return json
+        }
+        return string
     }
 }

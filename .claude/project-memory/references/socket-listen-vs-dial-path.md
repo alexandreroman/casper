@@ -24,14 +24,15 @@ two channels express the split differently:
 
 **Why:** every terminal a running Casper.app opens unconditionally carries that
 instance's own `CASPER_CONTROL_SOCKET` (`AgentEnvironment.swift`, regardless of
-session — see [[domain-cli-control-channel]]). If a listener resolved its bind
-path through the env override, launching a second, differently `--session`-named
-instance (e.g. via the `debug-casper` harness, see [[app-sessions]]) **from
-inside a terminal the real instance opened** would make the new instance inherit
-the real instance's socket path; its `start()` would then `unlink()` and rebind
-onto the REAL instance's socket, silently hijacking it even though `--session`
-was passed correctly. Session-derived bind paths avoid this: the second instance
-binds its own socket and the first instance's socket file stays untouched.
+session — see `cli-agents.md` § Agent state & progress). If a listener resolved
+its bind path through the env override, launching a second, differently
+`--session`-named instance (e.g. via the `debug-casper` harness, see
+[[app-sessions]]) **from inside a terminal the real instance opened** would make
+the new instance inherit the real instance's socket path; its `start()` would
+then `unlink()` and rebind onto the REAL instance's socket, silently hijacking
+it even though `--session` was passed correctly. Session-derived bind paths
+avoid this: the second instance binds its own socket and the first instance's
+socket file stays untouched.
 
 **How to apply:**
 
@@ -45,5 +46,5 @@ binds its own socket and the first instance's socket file stays untouched.
   pick the bind-side resolver.
 - `SocketPathResolutionTests` pins both halves: that a listen path is
   session-derived, and that it ignores an ambient env override.
-- See [[app-sessions]] and [[domain-cli-control-channel]] for the surrounding
-  session/env-injection design.
+- See [[app-sessions]] and `.superpowers/themes/cli-agents.md` § Agent state &
+  progress for the surrounding session/env-injection design.

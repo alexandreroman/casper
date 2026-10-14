@@ -1,10 +1,10 @@
 ---
-name: "HighlightSwift resource bundle placement in app bundles"
+name: "HighlightSwift resource bundle placement"
 description: "Bundle.module resolves only from the .app root or a machine-local build path, never Contents/Resources; a runtime mirror is required"
 type: feedback
 ---
 
-# HighlightSwift resource bundle placement in app bundles
+# HighlightSwift resource bundle placement
 
 HighlightSwift's SwiftPM-generated `Bundle.module` accessor resolves
 `HighlightSwift_HighlightSwift.bundle` from exactly two candidates, in order:

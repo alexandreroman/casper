@@ -2,8 +2,8 @@ import XCTest
 import CasperCore
 @testable import CasperUI
 
-/// `@MainActor` because `EditorLauncher` is: it memoizes icon and CLI-path
-/// lookups in shared state, isolated to the actor every caller already runs on.
+/// `@MainActor` because `EditorLauncher` is: it memoizes icon lookups in shared
+/// state, isolated to the actor every caller already runs on.
 @MainActor
 final class EditorLauncherTests: XCTestCase {
     /// `detectInstalled()` depends on what's actually installed on the machine
@@ -20,12 +20,11 @@ final class EditorLauncherTests: XCTestCase {
         }
     }
 
-    /// `launch(_:at:)` now falls back to an async, fire-and-forget bundle
-    /// open when the CLI shim is missing, so it no longer throws
-    /// synchronously just because the target directory doesn't exist. The
-    /// contract that still holds: launching throws if and only if the
-    /// editor isn't actually installed (per `detectInstalled()`) on the
-    /// machine running the test.
+    /// `launch(_:at:)` falls back to an async, fire-and-forget bundle open
+    /// when the CLI shim is missing, so a target directory that doesn't exist
+    /// raises nothing synchronously. The contract: launching throws if and
+    /// only if the editor isn't actually installed (per `detectInstalled()`)
+    /// on the machine running the test.
     func testLaunchThrowsForAnEditorNotInstalledOnThisMachine() throws {
         let detected = EditorLauncher.detectInstalled()
         guard let notInstalled = EditorKind.allCases.first(where: { !detected.contains($0) }) else {

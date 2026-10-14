@@ -1,5 +1,6 @@
 import ArgumentParser
 import CasperCore
+import Foundation
 
 /// `casper terminal new|list|close` — open, enumerate, and close terminals in a
 /// workspace.
@@ -14,16 +15,36 @@ struct TerminalCommand: ParsableCommand {
             abstract: "Open a new terminal as a split below.")
 
         @OptionGroup var target: WorkspaceTargetOption
-        @Option(name: .long, help: "Command to run in the new terminal.") var command: String?
+        @Option(name: .long, parsing: .unconditional, help: "Command to run in the new terminal.")
+        var command: String?
         @Option(
             name: .long,
             help: "Working directory for the new terminal (defaults to the workspace's worktree).")
         var workingDir: String?
 
+        func validate() throws {
+            try requestHelpIfHelpFlag(command, of: self)
+        }
+
         func makeCommand() throws -> ControlCommand {
-            ControlCommand(
-                verb: .terminalNew, workspace: try requireSelector(target),
-                command: nonEmpty(command), cwd: nonEmpty(workingDir).map(absolutePath))
+            let selector = try requireSelector(target)
+            let cwd = try nonEmpty(workingDir).map { try Self.requireDirectory(absolutePath($0)) }
+            return ControlCommand(
+                verb: .terminalNew, workspace: selector, command: nonEmpty(command), cwd: cwd)
+        }
+
+        /// libghostty ignores a failed `chdir` and starts the shell in the app's
+        /// own directory, so a missing `--working-dir` must fail here or the verb
+        /// would succeed and report a directory the terminal is not in.
+        private static func requireDirectory(_ path: String) throws -> String {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
+                throw exitWithError("working directory '\(path)' does not exist")
+            }
+            guard isDirectory.boolValue else {
+                throw exitWithError("working directory '\(path)' is not a directory")
+            }
+            return path
         }
 
         func run() throws {
@@ -61,13 +82,20 @@ struct TerminalCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            let id = try requireNonEmpty(self.id, "terminal id")
-            return ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: id)
+            ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: try canonicalID())
         }
 
         func run() throws {
             let r = try sendControl(makeCommand(), retriable: false)
-            emit(TerminalCloseOut(terminal: id, workspace: r.workspaceRef))
+            emit(TerminalCloseOut(terminal: try canonicalID(), workspace: r.workspaceRef))
+        }
+
+        /// The id in its canonical lowercase form (`UUID.casperID`), so the echo
+        /// reads like every other id Casper emits. A string that is not a UUID is
+        /// passed through as typed, for the app to reject.
+        private func canonicalID() throws -> String {
+            let id = try requireNonEmpty(self.id, "terminal id")
+            return UUID(uuidString: id)?.casperID ?? id
         }
     }
 }

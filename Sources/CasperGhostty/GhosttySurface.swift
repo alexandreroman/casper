@@ -9,20 +9,21 @@ final class GhosttySurface {
     /// exists, since the surface belongs to that app and frees itself into it.
     private let runtime: GhosttyRuntime
 
-    /// Create a surface hosted in `nsview`. `userdata` is handed back verbatim to
-    /// libghostty's clipboard/close callbacks — pass the view pointer so those
-    /// callbacks can recover the owning `GhosttySurfaceView`. Throws if the
-    /// runtime has no app or libghostty returns null.
+    /// Create a surface hosted in `nsview`, at the hosting window's `scaleFactor`.
+    /// `userdata` is handed back verbatim to libghostty's clipboard/close callbacks —
+    /// pass the view pointer so those callbacks can recover the owning
+    /// `GhosttySurfaceView`. Throws if the runtime has no app or libghostty returns null.
     init(
         runtime: GhosttyRuntime,
         configuration: GhosttySurfaceConfiguration,
         nsview: UnsafeMutableRawPointer,
-        userdata: UnsafeMutableRawPointer?
+        userdata: UnsafeMutableRawPointer?,
+        scaleFactor: Double
     ) throws {
         guard let app = runtime.app else {
             throw GhosttyError(reason: "runtime has no app")
         }
-        let created = configuration.withCValue(nsview: nsview, userdata: userdata) { c in
+        let created = configuration.withCValue(nsview: nsview, userdata: userdata, scaleFactor: scaleFactor) { c in
             ghostty_surface_new(app, &c)
         }
         guard let created else {
@@ -178,33 +179,6 @@ final class GhosttySurface {
         return String(decoding: UnsafeRawBufferPointer(start: bytes, count: Int(out.text_len)),
                       as: UTF8.self)
     }
-
-    /// Full readback of `ghostty_surface_size`: grid dimensions plus the pixel
-    /// geometry libghostty derives from them. Used for debug/diagnostics only,
-    /// so it is compiled only into debug builds (matching its sole consumer,
-    /// `GhosttySurfaceView.debugGeometry()`).
-    #if DEBUG
-    struct Geometry {
-        let columns: Int
-        let rows: Int
-        let widthPixels: Int
-        let heightPixels: Int
-        let cellWidthPixels: Int
-        let cellHeightPixels: Int
-    }
-
-    /// Read every field of `ghostty_surface_size_s` for the current surface.
-    func geometry() -> Geometry {
-        let size = ghostty_surface_size(surface)
-        return Geometry(
-            columns: Int(size.columns),
-            rows: Int(size.rows),
-            widthPixels: Int(size.width_px),
-            heightPixels: Int(size.height_px),
-            cellWidthPixels: Int(size.cell_width_px),
-            cellHeightPixels: Int(size.cell_height_px))
-    }
-    #endif
 
     /// The surface's current live font size, read via libghostty's
     /// inherited-config mechanism (the same path it uses to propagate the

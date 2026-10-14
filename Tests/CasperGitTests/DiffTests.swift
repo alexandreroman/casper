@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class DiffTests: XCTestCase {
@@ -11,15 +12,12 @@ final class DiffTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-diff-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        directory = makeTemporaryDirectory(prefix: "casper-diff")
         repo = try GitFixture.repository(at: directory.path)
     }
 
     override func tearDownWithError() throws {
         repo = nil
-        try? FileManager.default.removeItem(at: directory)
         directory = nil
         try super.tearDownWithError()
     }
@@ -88,19 +86,41 @@ final class DiffTests: XCTestCase {
                 to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
         }
         let paths = try repo.diffWorkdirToHead().files.map { $0.newPath }
-        XCTAssertEqual(paths, paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
         XCTAssertEqual(paths, ["apple.txt", "mango.txt", "zebra.txt"])
     }
 
     func testDeletedFileIsDeletion() throws {
         try FileManager.default.removeItem(at: directory.appendingPathComponent("README.md"))
-        let file = try repo.diffWorkdirToHead().files.first { $0.oldPath == "README.md" }
-        XCTAssertEqual(file?.status, .deleted)
+        let file = try XCTUnwrap(repo.diffWorkdirToHead().files.first { $0.oldPath == "README.md" })
+        XCTAssertEqual(file.status, .deleted)
         // libgit2 mirrors `old_file.path` into `new_file.path` for a deletion (the two
         // only diverge for a rename), so a deletion still has a usable display path and
         // `GitDiffFile.id` never has to fall back to `oldPath`.
-        XCTAssertEqual(file?.newPath, "README.md")
-        XCTAssertTrue((file?.hunks.flatMap(\.lines) ?? []).allSatisfy { $0.kind == .deletion })
+        XCTAssertEqual(file.newPath, "README.md")
+        // The content first: `allSatisfy` alone passes on an empty list.
+        let lines = file.hunks.flatMap(\.lines)
+        XCTAssertEqual(lines.map(\.content), ["casper fixture"])
+        XCTAssertTrue(lines.allSatisfy { $0.kind == .deletion })
+    }
+
+    /// A file libgit2 lists but cannot open (mode 000) has no patch. It must cost
+    /// only its own content: it is listed as unreadable, and every other change in
+    /// the worktree still diffs.
+    func testUnreadableFileIsListedWithoutFailingTheDiff() throws {
+        try XCTSkipIf(geteuid() == 0, "root reads a mode-000 file regardless")
+        try "casper CHANGED\n".write(to: url("README.md"), atomically: true, encoding: .utf8)
+        let secretPath = url("secret.txt").path
+        try "hidden\n".write(toFile: secretPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: secretPath)
+
+        let files = try repo.diffWorkdirToHead().files
+
+        XCTAssertEqual(files.map(\.newPath), ["README.md", "secret.txt"])
+        XCTAssertEqual(files[0].status, .modified)
+        XCTAssertFalse(files[0].hunks.isEmpty)
+        XCTAssertEqual(files[1].status, .unreadable)
+        XCTAssertFalse(files[1].isBinary)
+        XCTAssertTrue(files[1].hunks.isEmpty)
     }
 
     func testUnbornHeadDiffsWholeTreeAsAdded() throws {
@@ -178,7 +198,7 @@ final class DiffTests: XCTestCase {
     func testStagedRenameIsOneRenamedFile() throws {
         // `git mv`, spelled out through the index.
         try FileManager.default.moveItem(at: url("README.md"), to: url("NOTES.md"))
-        try GitFixture.stage(repo, adding: ["NOTES.md"], removing: ["README.md"])
+        try GitFixture.stage(atPath: directory.path, adding: ["NOTES.md"], removing: ["README.md"])
 
         let diff = try repo.diffWorkdirToHead()
         XCTAssertEqual(diff.files.count, 1)
@@ -192,7 +212,8 @@ final class DiffTests: XCTestCase {
     }
 
     func testRenameWithAnEditCarriesOnlyTheEdit() throws {
-        try GitFixture.commit(repo, Data(Self.twentyLines.utf8), to: "lines.txt", message: "Add lines")
+        try GitFixture.commit(
+            atPath: directory.path, file: "lines.txt", contents: Self.twentyLines, message: "Add lines")
         try FileManager.default.moveItem(at: url("lines.txt"), to: url("renamed.txt"))
         let edited = Self.twentyLines.replacingOccurrences(of: "line 10\n", with: "line ten\n")
         try edited.write(to: url("renamed.txt"), atomically: true, encoding: .utf8)
@@ -256,9 +277,10 @@ final class DiffTests: XCTestCase {
         // Three deleted sources; the renamed file's is the last one libgit2 visits.
         // With `diff.renameLimit = 1` honoured it would stop after two, and with
         // `diff.renames = false` it would not look at all.
-        try GitFixture.commit(repo, Data("alpha\n".utf8), to: "a.txt", message: "Add a")
-        try GitFixture.commit(repo, Data("bravo\n".utf8), to: "b.txt", message: "Add b")
-        try GitFixture.commit(repo, Data(Self.twentyLines.utf8), to: "c.txt", message: "Add c")
+        try GitFixture.commit(atPath: directory.path, file: "a.txt", contents: "alpha\n", message: "Add a")
+        try GitFixture.commit(atPath: directory.path, file: "b.txt", contents: "bravo\n", message: "Add b")
+        try GitFixture.commit(
+            atPath: directory.path, file: "c.txt", contents: Self.twentyLines, message: "Add c")
         var config: OpaquePointer?
         try gitCheck(git_repository_config(&config, repo.pointer))
         defer { git_config_free(config) }
@@ -275,8 +297,10 @@ final class DiffTests: XCTestCase {
 
     func testFailedRenamePassLeavesTheDeltasUnpaired() throws {
         // Rename detection is best-effort: a target it cannot read mid-pass costs the
-        // pairing, not the diff. Driven below `diffWorkdirToHead`, because a target
-        // unreadable from the start already fails patch generation on its own.
+        // pairing, not the diff. Drives the rename pass directly, so the target can
+        // turn unreadable between the listing and the hashing. A target unreadable from
+        // the start is another case: `diffWorkdirToHead` lists it as `unreadable`
+        // (`testUnreadableFileIsListedWithoutFailingTheDiff`).
         try FileManager.default.removeItem(at: url("README.md"))
         try writeReadmeLookalike(to: "unreadable.txt", size: 64)
 
@@ -293,7 +317,6 @@ final class DiffTests: XCTestCase {
         // Readable when the diff listed it, locked by the time its content is hashed.
         let unreadablePath = url("unreadable.txt").path
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: unreadablePath)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: unreadablePath) }
         Repository.detectRenames(in: try XCTUnwrap(diff))
 
         let statuses = (0..<git_diff_num_deltas(diff)).map { git_diff_get_delta(diff, $0)?.pointee.status }
@@ -313,7 +336,8 @@ final class DiffTests: XCTestCase {
     /// A renamed binary file is flagged binary by libgit2 itself: unlike an added
     /// file, it has a blob on the HEAD side, so `buildFile` needs no fallback for it.
     func testRenamedAndModifiedBinaryFileIsBinary() throws {
-        try GitFixture.commit(repo, Self.binaryBlob, to: "blob.bin", message: "Add a blob")
+        try GitFixture.commit(
+            atPath: directory.path, file: "blob.bin", contents: Self.binaryBlob, message: "Add a blob")
         try FileManager.default.moveItem(at: url("blob.bin"), to: url("moved.bin"))
         var modified = Self.binaryBlob
         modified[100] = 0x42
@@ -331,7 +355,8 @@ final class DiffTests: XCTestCase {
     }
 
     func testPureBinaryRenameIsBinary() throws {
-        try GitFixture.commit(repo, Self.binaryBlob, to: "blob.bin", message: "Add a blob")
+        try GitFixture.commit(
+            atPath: directory.path, file: "blob.bin", contents: Self.binaryBlob, message: "Add a blob")
         try FileManager.default.moveItem(at: url("blob.bin"), to: url("moved.bin"))
 
         let file = try XCTUnwrap(repo.diffWorkdirToHead().files.first)

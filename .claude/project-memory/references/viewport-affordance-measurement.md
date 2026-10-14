@@ -1,10 +1,10 @@
 ---
-name: "Measuring a TUI agent's viewport affordance"
+name: "Measuring a TUI viewport affordance"
 description: "A raw PTY capture cannot be grepped for viewport text; replay it into a grid, because TUIs redraw cell runs split across escape sequences"
 type: reference
 ---
 
-# Measuring a TUI agent's viewport affordance
+# Measuring a TUI viewport affordance
 
 Detection reads what libghostty's **grid** holds, not the byte stream that
 produced it, so a viewport needle must be measured from a replayed grid.
@@ -17,8 +17,9 @@ from an earlier frame. `grep 'esc interrupt'` over that capture matches nothing
 at all, and reports an agent as publishing no affordance when it publishes one.
 
 OSC sequences are exempt: they are contiguous, so the raw-file grep for
-`ESC]9;4;` and `ESC]0;` in [[agent-state-working-signal]] stays the right tool
-for the progress report and the title.
+`ESC]9;4;` and `ESC]0;` in `.superpowers/themes/agent-state-detection.md`
+§ What each agent actually emits stays the right tool for the progress report
+and the title.
 
 **Why:** a needle that never matches yields silent `idle` forever, and the
 mistake is invisible — the capture is real, the grep is clean, and the

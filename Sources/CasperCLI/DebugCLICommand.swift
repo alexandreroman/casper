@@ -26,6 +26,12 @@ struct SocketOption: ParsableArguments {
     var path: String { socket ?? DebugSocketPath.default }
 }
 
+/// Shared surface-target option for the verbs that act on one surface.
+struct SurfaceTargetOption: ParsableArguments {
+    @Option(name: .long, help: "Surface id (see dump-state; defaults to the focused surface).")
+    var target: String?
+}
+
 /// Send one debug command and unwrap the reply, turning a transport failure or an
 /// `ok: false` answer into a thrown `ExitCode`.
 ///
@@ -35,16 +41,7 @@ struct SocketOption: ParsableArguments {
 /// that drives the GUI passes `false`: a resend would inject the text, key or
 /// action a second time.
 private func run(_ command: DebugCommand, socket: String, retriable: Bool) throws -> DebugResponse {
-    let response: DebugResponse
-    do {
-        response = try DebugSocketClient.send(command, toSocketAt: socket, retriable: retriable)
-    } catch let error as DebugSocketError {
-        throw exitWithError(error.reason)
-    }
-    guard response.ok else {
-        throw exitWithError(response.error ?? "unknown")
-    }
-    return response
+    try sendUnwrapped(command, toSocketAt: socket, timeout: DebugSocketClient.defaultTimeout, retriable: retriable)
 }
 
 /// Encoder for the debug verbs that dump a whole payload for a human to read.
@@ -96,12 +93,11 @@ extension DebugCLICommand {
         @OptionGroup var socket: SocketOption
         @Flag(name: .long, help: "Include scrollback (full screen), not just the viewport.")
         var scrollback = false
-        @Option(name: .long, help: "Surface id to read (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {
             let response = try CasperCLI.run(
-                DebugCommand(verb: .readText, scrollback: scrollback, target: target),
+                DebugCommand(verb: .readText, scrollback: scrollback, target: surface.target),
                 socket: socket.path, retriable: true)
             print(response.text ?? "")
         }
@@ -113,12 +109,11 @@ extension DebugCLICommand {
         @Argument(help: "Text to send.") var text: String
         @Flag(name: .long, help: "Submit the line by pressing Return.")
         var enter = false
-        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {
             _ = try CasperCLI.run(
-                DebugCommand(verb: .sendText, text: text, enter: enter, target: target),
+                DebugCommand(verb: .sendText, text: text, enter: enter, target: surface.target),
                 socket: socket.path, retriable: false)
         }
     }
@@ -128,12 +123,11 @@ extension DebugCLICommand {
             abstract: "Inject text as real per-character key events (press + release).")
         @OptionGroup var socket: SocketOption
         @Argument(help: "Text to type as key events.") var text: String
-        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {
             _ = try CasperCLI.run(
-                DebugCommand(verb: .sendKeys, text: text, target: target),
+                DebugCommand(verb: .sendKeys, text: text, target: surface.target),
                 socket: socket.path, retriable: false)
         }
     }
@@ -142,14 +136,14 @@ extension DebugCLICommand {
         static let configuration = CommandConfiguration(
             abstract: "Inject a key with modifiers as a real key event (press + release).")
         @OptionGroup var socket: SocketOption
-        @Argument(help: "Character to send, e.g. c") var text: String
+        @Argument(help: ArgumentHelp("Character to send, e.g. c", valueName: "key")) var text: String
         @Option(name: .long, parsing: .upToNextOption,
                 help: "Modifiers: ctrl, cmd, opt, shift (repeatable).") var mods: [String] = []
-        @Option(name: .long, help: "Surface id (defaults to focused).") var target: String?
+        @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {
             _ = try CasperCLI.run(
-                DebugCommand(verb: .sendKey, text: text, mods: mods, target: target),
+                DebugCommand(verb: .sendKey, text: text, mods: mods, target: surface.target),
                 socket: socket.path, retriable: false)
         }
     }
@@ -158,13 +152,12 @@ extension DebugCLICommand {
         static let configuration = CommandConfiguration(
             abstract: "Trigger a libghostty keybinding action by name (e.g. copy_to_clipboard).")
         @OptionGroup var socket: SocketOption
-        @Argument(help: "Action name, e.g. copy_to_clipboard") var text: String
-        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @Argument(help: ArgumentHelp("Action name, e.g. copy_to_clipboard", valueName: "name")) var text: String
+        @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {
             _ = try CasperCLI.run(
-                DebugCommand(verb: .sendAction, text: text, target: target),
+                DebugCommand(verb: .sendAction, text: text, target: surface.target),
                 socket: socket.path, retriable: false)
         }
     }
@@ -175,12 +168,11 @@ extension DebugCLICommand {
         @OptionGroup var socket: SocketOption
         @Argument(help: "X position, in libghostty top-left coordinates.") var x: Double
         @Argument(help: "Y position, in libghostty top-left coordinates.") var y: Double
-        @Option(name: .long, help: "Surface id to send to (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {
             _ = try CasperCLI.run(
-                DebugCommand(verb: .mouseMove, target: target, x: x, y: y),
+                DebugCommand(verb: .mouseMove, target: surface.target, x: x, y: y),
                 socket: socket.path, retriable: false)
         }
     }
@@ -189,11 +181,10 @@ extension DebugCLICommand {
         static let configuration = CommandConfiguration(abstract: "Write a PNG of the app window.")
         @OptionGroup var socket: SocketOption
         @Argument(help: "Output PNG path.") var path: String
-        @Option(name: .long, help: "Surface id to capture (see dump-state; defaults to the focused surface).")
-        var target: String?
+        @OptionGroup var surface: SurfaceTargetOption
 
         func makeCommand() -> DebugCommand {
-            DebugCommand(verb: .screenshot, path: absolutePath(path), target: target)
+            DebugCommand(verb: .screenshot, path: absolutePath(path), target: surface.target)
         }
 
         func run() throws {

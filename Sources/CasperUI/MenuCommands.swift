@@ -28,9 +28,10 @@ import SwiftUI
 struct CasperCommands: Commands {
     /// Title of the first item of the standard File slot, and the marker
     /// `AppDelegate.renameFileMenu(in:)` matches that menu on — it is Casper's own
-    /// string, so unlike the standard File items macOS does not localize it. Keep
-    /// this item first in the `.newItem` group below.
-    static let newSpaceTitle = "New Space…"
+    /// string, so unlike the standard File items macOS does not localize it. Read
+    /// off `allCases`, which the `.newItem` group below lists first, so reordering
+    /// the cases cannot desync the marker; keep that `ForEach` first in the group.
+    static let newSpaceTitle = SpaceEntryCommand.allCases[0].title
 
     let model: AppModel
 
@@ -51,14 +52,12 @@ struct CasperCommands: Commands {
         // Space menu (the standard File slot, retitled in AppDelegate).
         Group {
             CommandGroup(replacing: .newItem) {
-                Button { model.presentCreateSpacePanel() } label: {
-                    Label(Self.newSpaceTitle, systemImage: "folder.badge.plus")
+                ForEach(SpaceEntryCommand.allCases, id: \.self) { command in
+                    Button { command.perform(model: model) } label: {
+                        Label(command.title, systemImage: command.systemImage)
+                    }
+                    .keyboardShortcut(command.keyEquivalent, modifiers: .command)
                 }
-                .keyboardShortcut("n", modifiers: .command)
-                Button { model.presentAddFolderPanel() } label: {
-                    Label("Add Folder…", systemImage: "plus")
-                }
-                .keyboardShortcut("o", modifiers: .command)
                 Button {
                     guard let space = model.targetSpaceForNewWorkspace() else { return }
                     model.presentAddLinkedWorkspacePanel(spaceID: space.id)
@@ -101,7 +100,7 @@ struct CasperCommands: Commands {
             }
             CommandGroup(replacing: .textEditing) {}
             // Format menu removed: emptying `.textFormatting` drops its items; the
-            // resulting empty stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
+            // resulting empty stub is stripped in AppDelegate.stripEmptyTopLevelMenus(in:).
             CommandGroup(replacing: .textFormatting) {}
         }
 
@@ -131,7 +130,7 @@ struct CasperCommands: Commands {
         CommandGroup(replacing: .toolbar) {}
 
         // Help menu removed: emptying `.help` drops its items; the resulting empty
-        // stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
+        // stub is stripped in AppDelegate.stripEmptyTopLevelMenus(in:).
         CommandGroup(replacing: .help) {}
     }
 
@@ -156,12 +155,8 @@ extension AppModel {
     /// Enable-state for "Delete Workspace…": only a linked worktree can be deleted.
     var canDeleteSelectedWorkspace: Bool { menuSelectedWorkspace?.kind == .linked }
 
-    /// Enable-state for "Merge and Close Workspace…": a linked workspace that still
-    /// records the base branch to merge back into.
-    var canCloseSelectedWorkspace: Bool {
-        guard let workspace = menuSelectedWorkspace, workspace.kind == .linked else { return false }
-        return !(workspace.baseBranch?.isEmpty ?? true)
-    }
+    /// Enable-state for "Merge and Close Workspace…" — `Workspace.canMerge`.
+    var canCloseSelectedWorkspace: Bool { menuSelectedWorkspace?.canMerge ?? false }
 
     /// Enable-state for the Edit menu's "Copy Workspace Path" / "Copy Branch Name".
     var hasSelectedWorkspace: Bool { selectedWorkspaceID != nil }

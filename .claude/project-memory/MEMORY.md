@@ -21,25 +21,25 @@
 - [libgit2 linker warning](references/libgit2-linker-warning.md) — the macOS-26-vs-15 ld warning is benign; unsuppressed on purpose
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
 - [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
-- [macOS 26 appearance needs a linked SDK >= 26](references/linked-sdk-gates-macos26-appearance.md) — SwiftPM records the deployment target
-- [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
-- [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
+- [macOS 26 appearance is gated on the linked SDK](references/linked-sdk-gates-macos26-appearance.md) — SwiftPM records the deployment target
+- [Git workflow](references/git-workflow.md) — explicit authorization before commit, remote or push; plan commits are fine
+- [SDD design and plan document location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
 - [English only](references/english-only.md) — all generated text is English; commit subjects use verb + action
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — a worktree watcher plus a reflog one, so a commit refreshes
-- [Domain CLI and control channel](references/domain-cli-control-channel.md) — JSON shapes and key conventions; non-zero error exits; no hooks
+- [Domain CLI and control channel](references/domain-cli-control-channel.md) — per-verb behavior the CLI theme leaves out; adding a verb
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning wrapped values crashes `.parse()`
 - [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
 - [App sessions (--session)](references/app-sessions.md) — DEBUG-only `--session <name>` isolates layout, sockets and env
 - [CLI availability](references/cli-availability.md) — no global install; PATH injection only, and it can be outranked
-- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — pinned exact; GhosttyKit product only; the 1.2.8 tag names another revision
+- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — pinned by revision (the 1.2.8 tag is mutable); GhosttyKit product only
 - [Ghostty conditional themes](references/ghostty-conditional-themes.md) — explicit keys beat themes; files re-read per switch; answer RELOAD_CONFIG
 - [libghostty initial_input mojibakes non-ASCII](references/ghostty-initial-input-utf8.md) — inject queued input via `ghostty_surface_text`
 - [Debug channel and logging gating](references/debug-channel-gating.md) — `#if DEBUG` only, never in release; verbose logs gated
 - [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync contentsScale to the backing scale or it upscales ×2
 - [libghostty Control-combo key encoding](references/ghostty-key-encoding.md) — Ctrl-combos need unshifted_codepoint + a QWERTY-normalized keycode
-- [Command key-ups need a local monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
+- [Command key-ups need a local NSEvent monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
 - [libghostty keybinds shadow the main menu](references/ghostty-keybinds-shadow-the-main-menu.md) — a bound ⌘ combo never reaches the menu item
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — null surfaces with displays asleep; wake and poll
@@ -59,27 +59,27 @@
 - [Agents cannot self-verify SwiftUI visual changes](references/agent-visual-verification-limits.md) — subagents lack screen-recording TCC
 - [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a nested Menu breaks glassEffect compositing
 - [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — match Ghostty's macOS Swift source rather than improvising
-- [Cursor for chrome over the terminal](references/terminal-overlay-cursor.md) — set the cursor from cursorUpdate AND mouseEntered; reset on exit
+- [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — cursorUpdate AND mouseEntered set it; arrow on exit
 - [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — debug channel never clicks; use CGEvent on a key window
 - [Browser address bar select-all](references/browser-address-bar-select-all.md) — select-all in mouseDown after super, if the selection is empty
-- [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays
+- [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — aborts with no bundle id; guard every path
 - [macOS notification sound cache bug](references/macos-notification-sound-cache-bug.md) — a custom sound falls back to default; an OS bug, not code
 - [MainActor isolated delegate conformance](references/mainactor-isolated-delegate-conformance.md) — annotate the conformance, not just the class
 - [A MainActor member as a default argument](references/mainactor-default-argument-isolation.md) — @MainActor on the parameter; the body drops it
-- [The working signal is the OSC 9;4 progress report](references/agent-state-working-signal.md) — title spinner secondary; version-coupled detection
 - [Measuring a TUI viewport affordance](references/viewport-affordance-measurement.md) — replay the PTY into a grid; raw greps miss split writes
 - [libghostty reads the user's Ghostty config](references/ghostty-user-config-dirs.md) — XDG + com.mitchellh.ghostty, whatever the bundle id
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, not after
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_* vars so no live env leaks in
 - [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — the env override is dial-side only, never listen-side
+- [The idempotent-verb socket retry is deliberate](references/socket-idempotent-retry.md) — a user decision; remove it only after the screenshot loop
 - [In-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — the real-keyDown recipe; fixed settles, not polling
 - [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menus are `.commands`; Services needs a delegate proxy
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module never checks Contents/Resources
-- [Main-thread hang watchdog and dumps](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
+- [Main-thread hang watchdog and dump exploitation](references/hang-dump-watchdog.md) — DEBUG-only auto-sampling on a >2s block; how to read a dump
 - [Release binary size budget](references/binary-size-budget.md) — the measured levers, which are applied, and which are declined
 - [MainRunLoop, the shared modal-proof hop](references/main-run-loop-hop.md) — `MainRunLoop.perform` reaches the main thread behind a modal panel
 - [Workspace selection invariant](references/workspace-selection-invariant.md) — a non-empty `spaces` always resolves `selectedWorkspaceID`
-- [.casper.json scripts — decisions & invariants](references/repo-config.md) — copyFiles + commands + hooks: the child-exit race and wrap choices
+- [.casper.json scripts — decisions & invariants](references/repo-config.md) — the child-exit race, the setup gate, the destroy claim
 - [Project memory conventions](references/project-memory-conventions.md) — no `casper` filename prefix; status lives in `status.md`
 - [Avoid isolated deinit on @MainActor classes](references/isolated-deinit-ci-sigabrt.md) — its back-deploy shim SIGABRTs under XCTest on CI
 - [libghostty set_occlusion takes `visible`, not `occluded`](references/ghostty-set-occlusion-visible-polarity.md) — false pauses the render thread
@@ -106,17 +106,17 @@
 - [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — nothing clips its draw rects; clip in `draw(_:)`
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — spacing lives inside layoutFragmentFrame; probes cost more
 - [Diff surface data flow](references/diff-surface-data-flow.md) — a revision-keyed property carries the document; events use the controller
-- [AttributedString interop limits](references/attributedstring-interop-limits.md) — AppKit-scope colors; `.utf16` needs macOS 26
+- [AttributedString interop limits](references/attributedstring-interop-limits.md) — AppKit-scope colors; edge trim; `.utf16` needs macOS 26
 - [NSTextStorage attribute writes go in ascending order](references/nstextstorage-attribute-run-order.md) — out-of-order writes go quadratic
 - [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — in the text they poison selection
 - [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore re-resolves them off the scroll path
-- [NSEvent characters are key-events-only](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
+- [NSEvent character accessors raise on non-key events](references/nsevent-characters-key-events-only.md) — reading them off `.flagsChanged` raises
 - [SwiftUI owns NSWindow.titleVisibility](references/swiftui-owns-window-title-visibility.md) — use `.toolbar(removing: .title)`, not AppKit
 - [Control verb exhaustive switch](references/control-verb-exhaustive-switch.md) — a new verb case breaks CasperUI until routed; one commit
-- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — hand cursor and Command-click on a link are both handled explicitly
+- [Link cursor and selection in the info panel](references/nstextview-link-cursor-and-selection.md) — hand cursor and ⌘-click need explicit handling
 - [NSTextBlock/NSTextTable borders are unreliable](references/nstextblock-border-unreliable.md) — a set border can draw nothing; avoid needing one
 - [Control-socket paths are absolutized CLI-side](references/cli-path-absolutization.md) — the GUI's cwd is `/`, so the CLI absolutizes paths first
-- [Sparkle's EdDSA key rotates, never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
+- [Sparkle's EdDSA key rotates but never disappears](references/sparkle-eddsa-key.md) — losing the seed strands every installed copy
 - [A release is dry-run and signature-checked before tagging](references/release-dry-run.md) — CI never bundles; verify vs SUPublicEDKey
 - [GitHub release descriptions are unwrapped](references/github-release-notes-unwrapped.md) — newlines render as breaks; the script joins lines
 - [Screen Recording needs an app bundle](references/tcc-screen-recording-needs-a-bundle.md) — a loose signed binary never appears in the list at all
@@ -128,7 +128,7 @@
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
 - [Codex detection caveats](references/codex-detection-caveats.md) — confirmed cache path, hook trust in config.toml, hooks.json false positive
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
-- [Unused-import false positives](references/unused-import-grep-false-positives.md) — a green build proves nothing
+- [Unused-import greps give false positives on extension members](references/unused-import-grep-false-positives.md) — a green build proves nothing
 - [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind
 - [Cross-session provenance](references/cross-session-provenance.md) — peer sessions are distinct voices; ask which worktree before trusting state
 - [A caller-sized NSTextView must not self-resize](references/nstextview-caller-sized-frame.md) — resizability overrides the assigned frame
@@ -140,8 +140,8 @@
 - [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick
 - [DEBUG memory observability](references/memory-observability.md) — weak-ref live-object census + `casper debug memory` + the churn script
 - [Only the layout may create a surface view](references/surface-view-layout-membership.md) — a stale `Surface` value must not refill the view cache
-- [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH and search it in Swift; never ask it to resolve a command
-- [AppKit overflows a toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
+- [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH with every rung, against a monotonic deadline
+- [AppKit overflows a SwiftUI toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
 - [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — a layer behind the row carries both
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
 - [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag

@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import CasperTestSupport
 @testable import CasperCore
 
 final class SessionStoreTests: XCTestCase {
@@ -7,10 +8,7 @@ final class SessionStoreTests: XCTestCase {
     /// `SessionStore` writes for real, so an un-cleaned fixture leaves the file — and the
     /// `.corrupt` backup the store makes beside it — behind on every run.
     private func tempFileURL() -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-test-\(UUID().uuidString)")
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
-        return directory.appendingPathComponent("session.json")
+        makeTemporaryDirectory().appendingPathComponent("session.json")
     }
 
     // `isGitRepo` is intentionally not persisted (it is resolved at runtime), so
@@ -40,10 +38,17 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), session)
     }
 
+    func testWriteCreatesTheMissingParentDirectory() throws {
+        let url = makeTemporaryDirectory().appendingPathComponent("nested/session.json")
+        let store = SessionStore(fileURL: url)
+
+        let session = makeSampleSession()
+        try store.write(store.encode(session))
+        XCTAssertEqual(try store.load(), session)
+    }
+
     func testLoadCorruptFileSelfHealsAndBacksItUp() throws {
         let url = tempFileURL()
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let garbage = Data("{ this is not valid session json".utf8)
         try garbage.write(to: url)
 
@@ -60,8 +65,6 @@ final class SessionStoreTests: XCTestCase {
 
     func testLoadCorruptFileReplacesPriorBackup() throws {
         let url = tempFileURL()
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let backupURL = url.appendingPathExtension("corrupt")
         try Data("stale backup".utf8).write(to: backupURL)
         let garbage = Data("still not json".utf8)
@@ -75,8 +78,6 @@ final class SessionStoreTests: XCTestCase {
 
     func testUI1FormatSessionIsRejectedAndBackedUp() throws {
         let url = tempFileURL()
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let legacy = """
         { "workspaces": [ { "id": "\(UUID().uuidString)", "name": "w",
           "repoPath": "/r", "worktreePath": "/r", "branch": "main",

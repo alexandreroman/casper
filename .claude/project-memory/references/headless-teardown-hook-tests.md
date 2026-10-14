@@ -15,20 +15,16 @@ headlessly is the child exiting: no PTY runs, so nothing ever calls back.
 
 The recipe (see `Tests/CasperUITests/CloseDeleteWorkspaceTests.swift`):
 
-1. Commit a `.casper.json` carrying only a `teardown` script into the fixture
-   repo **before** creating the linked workspace, so the worktree checks it out.
-   Adding a `setup` script too would spawn a second script split at creation.
+1. Commit a `.casper.json` carrying a `teardown` script into the fixture repo
+   **before** creating the linked workspace, so the worktree checks it out. A
+   `setup` script as well spawns a second script split at creation; step 2's
+   snapshot, taken after creation, is what keeps it from reading as new.
 2. Snapshot `LayoutTree.surfaceIDs(ws.layout)` before starting the close/delete.
-3. Start the operation in a `Task { @MainActor in … }`, then poll (bounded, ~5
-   ms steps) for the one surface id that is new.
+3. Start the operation in a `Task { @MainActor in … }`, then await the one
+   surface id that is new with `awaitTeardownSplit` (`SessionFixtures.swift`),
+   which polls through `waitUntil` with a 2 s bound.
 4. Call `model.handleScriptSurfaceExit(newSurfaceID, code:)` — the exact entry
    point `GhosttySurfaceView.onChildExit` uses at runtime — to end the hook.
-
-`AppModel.reportTeardownHookFailure` is internal rather than private for the
-same reason: its only production callers are the two confirmation presenters,
-which run an `NSAlert` modally and therefore cannot run headlessly, so a test
-that wants to assert the teardown-failure notification calls it the way the
-presenters do.
 
 **Why:** without this, the whole hook-present branch (step counts, the countdown
 deadline, the failure notification) looks untestable and gets left to manual
@@ -37,5 +33,5 @@ verification — and a test that forgets step 4 stalls on the 30 s
 
 **How to apply:** when covering anything behind `runTeardown`, drive
 `handleScriptSurfaceExit` rather than faking the hook status; keep the poll
-bounded so a broken run fails in milliseconds instead of stalling for the
+bounded so a broken run fails within seconds instead of stalling for the
 timeout.

@@ -3,24 +3,26 @@ import Foundation
 
 /// A worktree-creation failure expressed in Casper's own vocabulary, so the UI
 /// never sees a raw libgit2 code.
-struct WorktreeError: Error, Equatable, Sendable {
-    enum Reason: Equatable, Sendable {
+public struct WorktreeError: Error, Equatable, Sendable {
+    public enum Reason: Equatable, Sendable {
         case repositoryNotFound
         case repositoryHasNoCommits
         case branchAlreadyCheckedOut
+        case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
+        case missingCommitterIdentity(detail: String, environmentVariables: [String], configurationAtFault: Bool)
         case fileCopyFailed(String)
         case configInvalid(String)
         case gitFailure(String)
     }
 
-    let reason: Reason
+    public let reason: Reason
     init(_ reason: Reason) { self.reason = reason }
 }
 
 extension WorktreeError: LocalizedError {
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch reason {
         case .repositoryNotFound:
             return "Repository not found."
@@ -28,10 +30,16 @@ extension WorktreeError: LocalizedError {
             return "This repository has no commits yet. Make a first commit before creating a workspace."
         case .branchAlreadyCheckedOut:
             return "That branch is already checked out in another worktree."
+        case .worktreeNameTaken:
+            return "Git already has a worktree entry by that name in this repository. Pick another name, "
+                + "or run 'git worktree prune' if that worktree was deleted."
         case .worktreePathExists:
             return "The worktree path already exists."
         case .mergeConflict:
             return "The merge could not be completed automatically due to conflicts."
+        case .missingCommitterIdentity(let detail, let environmentVariables, let configurationAtFault):
+            return Self.missingCommitterIdentityDescription(
+                detail: detail, environmentVariables: environmentVariables, configurationAtFault: configurationAtFault)
         case .fileCopyFailed(let message):
             return "Failed to copy workspace files: \(message)"
         case .configInvalid(let message):
@@ -39,6 +47,32 @@ extension WorktreeError: LocalizedError {
         case .gitFailure(let message):
             return "Git error: \(message)"
         }
+    }
+}
+
+extension WorktreeError {
+    /// The refusal's cause, then every remedy it needs: correcting the environment
+    /// variables to blame, setting `user.name` / `user.email`, or both. `git config` is
+    /// ruled out only when nothing but those variables is to blame.
+    private static func missingCommitterIdentityDescription(
+        detail: String, environmentVariables: [String], configurationAtFault: Bool
+    ) -> String {
+        let cause = "Git has no usable identity to commit the merge as (\(detail))."
+        let settings = "user.name and user.email (git config --global user.name \"Your Name\" and "
+            + "git config --global user.email you@example.com)"
+        if environmentVariables.isEmpty {
+            return "\(cause) Set \(settings), then try again."
+        }
+
+        let variables = environmentVariables.joined(separator: ", ")
+        let environmentCause = "Casper was started with \(variables) set in its environment, which libgit2 rejects"
+        let environmentRemedy = "Correct or unset \(variables) where Casper is started"
+        if configurationAtFault {
+            return "\(cause) \(environmentCause), and Git's configuration is at fault as well. "
+                + "\(environmentRemedy), set \(settings), restart Casper, then try again."
+        }
+        return "\(cause) \(environmentCause); git config cannot fix this. "
+            + "\(environmentRemedy), restart Casper, then try again."
     }
 }
 
@@ -87,6 +121,14 @@ public enum WorktreeManager {
         if (try? repo.isBranchCheckedOut(name)) == true {
             throw WorktreeError(.branchAlreadyCheckedOut)
         }
+        // libgit2 names the worktree's admin entry after it and creates the entry
+        // exclusively, so a name another worktree holds — `git worktree add <path> -b
+        // <other-branch>` registers one — fails with a raw "directory exists". The
+        // entry is what collides, so the entry is what is checked: the worktree listing
+        // skips a half-written one that would collide all the same.
+        if FileManager.default.fileExists(atPath: repo.worktreeAdminPath(named: name)) {
+            throw WorktreeError(.worktreeNameTaken)
+        }
         if FileManager.default.fileExists(atPath: worktreePath) {
             throw WorktreeError(.worktreePathExists)
         }
@@ -107,11 +149,12 @@ public enum WorktreeManager {
             _ = try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
         }
 
-        // Same Git-ignore source `DirectoryWatcher` prunes with: walking `.build` or
-        // `node_modules` costs a syscall per entry and can never yield a match worth
-        // seeding. A failure here only loses the pruning, so the copy still runs.
+        // The same Git-ignored top-level directories AppModel excludes from its
+        // `DirectoryWatcher`: walking `.build` or `node_modules` costs a syscall per
+        // entry and can never yield a match worth seeding. A failure here only loses
+        // the pruning, so the copy still runs.
         let ignoredTrees = Set(
-            ((try? repo.ignoredTopLevelDirectories()) ?? []).map {
+            repo.ignoredTopLevelDirectories().map {
                 URL(fileURLWithPath: $0).lastPathComponent
             })
 
@@ -147,9 +190,10 @@ public enum WorktreeManager {
             .first(where: { canonicalPath($0.path) == target })?.name
     }
 
-    /// `path` with symlinks resolved, so paths reported by libgit2 and paths held by
-    /// the model compare equal whichever spelling each came from.
-    private static func canonicalPath(_ path: String) -> String {
+    /// `path` with symlinks resolved, so two spellings of the same folder compare
+    /// equal — paths reported by libgit2 and paths held by the model alike (on
+    /// macOS `/tmp/x` and `/private/tmp/x` are the same directory).
+    public static func canonicalPath(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
@@ -300,7 +344,9 @@ public enum WorktreeManager {
     /// Merge `branch` into `targetBranch` in the repository at `repoPath`,
     /// writing a merge commit and advancing `targetBranch`. Throws
     /// `WorktreeError(.mergeConflict)` when the merge can't be resolved
-    /// automatically — nothing is written to the repository in that case.
+    /// automatically, and `WorktreeError(.missingCommitterIdentity)` when neither the
+    /// environment nor the user's Git configuration yields a usable identity to commit
+    /// as — nothing is written to the repository in either case.
     public static func merge(
         repoPath: String, branch: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -309,6 +355,10 @@ public enum WorktreeManager {
             return try repo.mergeBranchHeadless(branch, into: targetBranch, message: message)
         } catch is MergeConflictError {
             throw WorktreeError(.mergeConflict)
+        } catch let error as MissingCommitterIdentityError {
+            throw WorktreeError(.missingCommitterIdentity(
+                detail: error.detail, environmentVariables: error.environmentVariables,
+                configurationAtFault: error.configurationAtFault))
         } catch let error as GitError {
             throw WorktreeError(.gitFailure(error.message))
         }

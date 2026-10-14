@@ -1,6 +1,7 @@
 import AppKit
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 
@@ -10,28 +11,15 @@ import XCTest
 /// Alt/Meta modifier (`macos-option-as-alt = true`, resolved upstream by libghostty's
 /// `ghostty_surface_key_translation_mods` into the `translationMods` parameter here).
 final class GhosttyOptionAsAltTests: XCTestCase {
-    private func makeKeyEvent(
-        keyCode: UInt16 = 11,  // kVK_ANSI_B
-        modifierFlags: NSEvent.ModifierFlags
-    ) -> NSEvent {
-        NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: modifierFlags,
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            characters: "b",
-            charactersIgnoringModifiers: "b",
-            isARepeat: false,
-            keyCode: keyCode
-        )!
+    /// A "b" key-down (kVK_ANSI_B) carrying `modifiers`.
+    private func bKeyDown(modifiers: NSEvent.ModifierFlags) -> NSEvent {
+        keyEvent("b", modifiers: modifiers, keyCode: 11)
     }
 
     // `macos-option-as-alt = true`: libghostty's translation mods omit Alt, so Option
     // must not reach Cocoa's composition — otherwise Meta-b never reaches the shell.
     func testOptionStrippedWhenLibghosttySaysNotToCompose() {
-        let event = makeKeyEvent(modifierFlags: [.option])
+        let event = bKeyDown(modifiers: [.option])
         let translated = ghosttyTranslationEvent(
             for: event, translationMods: ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue))
         XCTAssertFalse(translated.modifierFlags.contains(.option))
@@ -40,7 +28,7 @@ final class GhosttyOptionAsAltTests: XCTestCase {
     // Default macOS behavior (`macos-option-as-alt = false`): libghostty's translation
     // mods include Alt, so Option must still reach Cocoa to compose special characters.
     func testOptionKeptWhenLibghosttySaysToCompose() {
-        let event = makeKeyEvent(modifierFlags: [.option])
+        let event = bKeyDown(modifiers: [.option])
         let translated = ghosttyTranslationEvent(
             for: event, translationMods: ghostty_input_mods_e(GHOSTTY_MODS_ALT.rawValue))
         XCTAssertTrue(translated === event)
@@ -49,7 +37,7 @@ final class GhosttyOptionAsAltTests: XCTestCase {
 
     // No Option held: nothing to translate, regardless of libghostty's answer.
     func testNonOptionEventIsUnaffected() {
-        let event = makeKeyEvent(modifierFlags: [.shift])
+        let event = bKeyDown(modifiers: [.shift])
         let translated = ghosttyTranslationEvent(
             for: event, translationMods: ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue))
         XCTAssertTrue(translated === event)
@@ -57,7 +45,7 @@ final class GhosttyOptionAsAltTests: XCTestCase {
 
     // Stripping Option must not disturb other modifiers riding on the same event.
     func testOtherModifiersSurviveOptionStripping() {
-        let event = makeKeyEvent(modifierFlags: [.option, .shift])
+        let event = bKeyDown(modifiers: [.option, .shift])
         let translated = ghosttyTranslationEvent(
             for: event, translationMods: ghostty_input_mods_e(GHOSTTY_MODS_NONE.rawValue))
         XCTAssertFalse(translated.modifierFlags.contains(.option))
@@ -69,7 +57,7 @@ final class GhosttyOptionAsAltTests: XCTestCase {
     // this is what lets `keyDown` send bare (text-less) events, like Option+arrows,
     // without telling libghostty Alt was consumed and losing their Meta encoding.
     func testConsumedModsPlumbsThroughAndDefaultsToNone() {
-        let event = makeKeyEvent(modifierFlags: [.option])
+        let event = bKeyDown(modifiers: [.option])
 
         let withAlt = ghosttyKeyEvent(
             event, action: GHOSTTY_ACTION_PRESS,

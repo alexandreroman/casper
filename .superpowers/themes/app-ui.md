@@ -1,20 +1,22 @@
 # Theme: App & UI (CasperUI)
 
-**Module:** CasperUI · **Status:** ✅ **UI-1..UI-5 built** (app shell + wiring;
-Space-grouped sidebar + linked Git worktrees; tmux-style pane layout; WKWebView
-browser surface; read-only diff viewer). The live GUI verification pass is
-complete (see `../status.md`).
+**Module:** CasperUI · **Status:** ✅ built (see `../status.md`)
 
-The SwiftUI app that turns the built modules into the real product. Delivered as
-five sub-projects (UI-1…UI-5), each with its own spec → plan → build cycle. The
-diff viewer (UI-5) depends on CasperGit `git_diff` (`git-worktrees.md`); the
-pane layout (UI-3) depends on Ghostty layout composition (`terminal.md`).
-
-§ Design describes the app that exists. Designs this doc once carried and no
-longer does are recorded in `../status.md` § Superseded designs.
+The SwiftUI app that turns the built modules into the real product. The diff
+viewer depends on CasperGit `git_diff` (`git-worktrees.md`); the pane layout
+depends on Ghostty layout composition (`terminal.md`).
 
 ## Design
 
+- **App shell** — a SwiftUI `App` scene with an `NSApplicationDelegateAdaptor`,
+  and one `@MainActor @Observable AppModel` as the single state owner and the
+  bridge to the other modules; the window is a `NavigationSplitView` with an
+  empty state. Casper owns the menu bar through SwiftUI `.commands`
+  (`terminal.md` § Design → "Main menu"), **replacing** the standard command
+  groups, with one additive group, "Check for Updates…" (see "Software
+  update"); the Window menu and the rest of the App menu are SwiftUI's
+  defaults. The only `NSMenu` built in AppKit is the pane context menu
+  (`PaneContextMenu`).
 - **Appearance** — the app follows the system Light/Dark appearance; nothing
   forces one. `AppDelegate` observes `NSApp.effectiveAppearance` and forwards it
   through `AppModel.applyColorScheme(dark:)` to libghostty (the app and every
@@ -49,7 +51,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   the empty state's two buttons, create prominent and adopt merely bordered,
   since a user with nothing open is likelier to be starting something than to be
   hunting for a repo they forgot to add; and they are the two rows pinned below
-  the sidebar's scrolling list, create above adopt.
+  the sidebar's scrolling list, create above adopt. All three sites render one
+  `SpaceEntryCommand` description and list its `allCases`, so titles, symbols,
+  actions and order cannot drift apart.
 
   **New Space…** asks for a name *and* a location in **one** `NSSavePanel`
   (`AppModel.presentCreateSpacePanel`), rather than a name prompt followed by a
@@ -73,8 +77,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   README and no `.gitignore`. It exists so the Space can host a workspace from
   its first frame — `git worktree add` checks the new worktree out at a commit
   resolved through HEAD, and `git init` alone leaves HEAD unborn, resolving to
-  nothing (`space-project.md`). Casper never invents a committer to get it: on a
-  machine with no `user.name`/`user.email` configured the commit is skipped, the
+  nothing (`space-project.md`). Casper never invents a committer to get it: when
+  neither `user.name`/`user.email` nor the environment names one
+  (`git-worktrees.md` § Design → "Commit identity") the commit is skipped, the
   Space is created anyway, and creating a workspace in it is what says so.
 
   **Casper never deletes or overwrites what it did not create.** A directory
@@ -100,9 +105,9 @@ longer does are recorded in `../status.md` § Superseded designs.
 
   One structural consequence: `AppDelegate.renameFileMenu(in:)` recognizes the
   standard File menu by its submenu's **first item title**, in order to retitle
-  it **Space**. That marker is `CasperCommands.newSpaceTitle` — whichever
-  command leads the `.newItem` group is the first item, so putting one ahead of
-  "Add Folder…" moves the marker onto it.
+  it **Space**. That marker is `CasperCommands.newSpaceTitle`, which must stay
+  the first item of the `.newItem` group: a command placed ahead of New Space…
+  breaks the rename unless the constant names it instead.
 - **Dock attention** — the sidebar dot's out-of-app counterpart, owned by
   `DockAttention` (a `DockAttentionPresenting` seam on `AppModel`, over a
   `DockAttentionBackend` seam on `NSApp`, so both the wiring and the latch are
@@ -141,13 +146,37 @@ longer does are recorded in `../status.md` § Superseded designs.
   tested: `split` (which inserts a flat sibling when the parent's orientation
   already matches, rather than nesting a second split), `closeSurface`, `move`
   (relocate a leaf elsewhere in the tree), and `dropZone` (map a point inside a
-  pane to the edge-or-centre zone a drag would land in). The last two back pane
+  pane to the nearest-edge zone a drag would land in). The last two back pane
   **drag-and-drop** — `PaneDragAndDrop.swift` owns the grip, the drag session
   and the drop overlay, surfaced by `SurfaceHostView`/`SplitContainerView`; see
-  [[intra-app-drag-pasteboard-type]]. There is no `insertTab` operation: tabs
-  are gone.
+  [[intra-app-drag-pasteboard-type]].
+
+  Splits render through the custom `SplitContainerView`, which lays panes out by
+  fraction along the axis. A separator is a drawn 1 pt hairline with a wider
+  **transparent** grab strip over it, carrying the resize cursor and the drag
+  without reserving visible width — native `HSplitView`/`VSplitView` draw a
+  near-black divider. Both measures come from `SeparatorMetrics`, the one
+  contract the inter-pane, inspector and inspector-edge separators all read, so
+  they cannot drift apart. The grab strip is a concrete `NSView`: a SwiftUI
+  `.pointerStyle` loses the cursor to the terminal surface's own `cursorUpdate`
+  ([[terminal-overlay-cursor]]). Panes are placed with explicit non-overlapping
+  frames, because libghostty's `CAMetalLayer`-backed terminals ignore SwiftUI
+  `.opacity` and would occlude one another. Right-clicking a pane opens the
+  split/copy/paste/close menu.
+
+  Surface views live in a persistent cache keyed by `Surface.id`, so a PTY
+  survives split, collapse and reorder; only the layout may bring a view into
+  existence, so a `Surface` value the tree no longer holds cannot refill the
+  cache ([[surface-view-layout-membership]]). Pane fractions seed from the
+  layout's persisted `ratios` and are written back through
+  `AppModel.setSplitRatios` → `LayoutTree.updateRatios` (debounced save) on
+  drag-end and on double-click-to-equalize, so a resize survives relaunch. The
+  `LayoutActionHandler` routes libghostty's split and tab actions to the
+  **focused** workspace, tracked through the surface's first-responder callback.
+  Closing the last surface re-seeds the workspace with a fresh terminal instead
+  of closing it, so panes alone never remove a workspace or a Space.
 - **Diff viewer** — a read-only surface backed by libgit2's `git_diff`
-  (structured hunks/lines, working tree vs base/HEAD), rendered as **one TextKit
+  (structured hunks/lines, working tree vs HEAD), rendered as **one TextKit
   2 text document**. The diff is flattened into flat text plus per-file and
   per-line spans, and AppKit draws everything on top of it: the row tints in the
   text view, the accent stripe, the line numbers and the `+`/`-` cue in an
@@ -162,23 +191,52 @@ longer does are recorded in `../status.md` § Superseded designs.
   line is a prefix of the real one. Syntax colors are applied progressively per
   file (HighlightSwift), **color attributes only**, so a highlight landing
   mid-scroll cannot change a line height and shift the text under the reader.
+  A `casper diff open <file>` scroll request is one-shot: the view clears it
+  once the scroll lands, or once a diff computed after the request does not
+  list the file (matched by exact worktree-relative path), so an unchanged file
+  opens the diff without scrolling and a remount never scrolls again.
+
+  The document carries per-file sections (path + status, binary and unreadable
+  files noted), hunk headers, and code rows tinted by kind (green addition / red
+  deletion / neutral context), with a single line-number column (old for
+  deletions, new otherwise). It is computed on open and **live-refreshed** by
+  **two** native FSEvents watchers on the selected workspace, both funnelling
+  through one 0.2 s debounce (`diffDebouncer`) that bumps an observable revision
+  the diff surface and the title-bar `+/−` badge react to: one on the worktree
+  folder (`.git` and Git-ignored top-level dirs excluded), and one on the
+  resolved gitdir's `logs` reflog directory, which is what catches a commit.
+  Both stop while the window is hidden and re-arm when it comes back
+  ([[diff-refresh-two-watchers]]).
 - **Browser** — a `WKWebView` surface (address bar with bare-host
   normalization, back/forward/reload), aimed at previewing a `localhost:PORT`
-  app started by the agent. No Chromium.
+  app started by the agent. No Chromium. The web view is owned by its
+  `BrowserCoordinator`, cached in `AppModel.browserCoordinators` by
+  `Surface.id`, so the page and its history survive the inspector collapsing
+  and switching tabs.
+
+  The address bar and the page itself persist the URL through **one** path:
+  `BrowserCoordinator` reports every navigation through `onCommitURL`, wired by
+  `AppModel.browserCoordinator(for:)` to `AppModel.setBrowserURL`, which no-ops
+  when the stored URL already matches so a page load cannot thrash
+  `session.json`. An address-bar `load` changes the web view's `url` inside the
+  call, so the report lands before it returns. The control channel's
+  `browser open`/`load` bypass it: they write the stored URL themselves, then
+  load and save it. Same-document navigations need KVO rather than the
+  navigation delegate — see [[webkit-page-driven-navigation]].
 - **Inspector panel** — a collapsible right-side panel on the workspace detail
   view with two tabs (Diff | Browser, in that order), per workspace and
   persisted (`Workspace.inspector`). It reuses the browser and diff surfaces
   rather than replacing them.
 
-  **The inspector is the only home for both.** The `.diff` layout-leaf surface
-  kind was removed outright, and `Surface.Kind.browser` is now reached only
-  through `Workspace.inspector.browser`: splits always create a terminal
+  **The inspector is the only home for both.** There is no diff surface kind,
+  and `Surface.Kind.browser` is reached only through
+  `Workspace.inspector.browser`: splits always create a terminal
   (`PaneContextMenu`), there is no "New browser" menu item anywhere, and
   `AppModel.surfaceView(for:in:)` returns a view only for `case .terminal` — so
-  a `.browser` leaf that did reach the layout tree would render as the black
-  fallback rectangle `SurfaceHostView` paints when no view resolves. Such a leaf
-  survives only as a legacy `session.json` decode; nothing in the app creates
-  one.
+  a `.browser` leaf that did reach the layout tree would render as the
+  `textBackgroundColor` placeholder `SurfaceHostView` paints when no view
+  resolves. Such a leaf survives only as a legacy `session.json` decode; nothing
+  in the app creates one.
 
   The panel has no tab control of its own. Everything that opens, closes or
   switches it lives in the title bar (see "Title bar" below) or arrives over the
@@ -224,11 +282,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   their capsule chrome and the segmented control clips to a lone glyph. AppKit
   sizes a toolbar item to its content's **ideal** width and will not propose it
   less: too little room and it overflows the item **whole**, the truncatable
-  ones included (measured: a leading group of `Text` under `.lineLimit(1)`
-  reporting 293 pt went into the chevron with its title still on one line). Any
-  item AppKit can single out is an item it can overflow, so the row hands it a
-  single item that is never wider than the bar and does the degrading itself
-  ([[toolbar-overflows-before-squeezing]]).
+  ones included (measured in [[toolbar-overflows-before-squeezing]]). Any item
+  AppKit can single out is an item it can overflow, so the row hands it a single
+  item that is never wider than the bar and does the degrading itself.
 
   Spanning the bar costs the row two `NSThemeFrame` behaviours, so the row hands
   both back to itself, on a clear layer **behind** it (a `.background`) rather
@@ -312,28 +368,48 @@ longer does are recorded in `../status.md` § Superseded designs.
   undershoot of 40 pt, a narrowest declared row of 136 pt, and no rung climbing
   back up the ladder while the window narrowed.
 
-  **The row degrades along ONE ordered ladder**, widest first, and everything
-  that yields is a rung of that same list:
+  What the anticipation cannot cover is left to the **heal**, which invalidates
+  the toolbar items' intrinsic size (the one thing that makes AppKit re-run its
+  fit check) and retries while the clipped-items indicator stays up. Beyond a
+  pass wider than the cap, two jumps need it: one with no previous pass to learn
+  from (a zoom, a display change), and **collapsing the sidebar**. The chrome
+  reserve is charged on `detailFrame.minX < 1`, so a collapse drops the declared
+  width by ~140 pt on a pass whose detail area *grows*: the shrink term computes
+  zero and AppKit judges the previous, wider row against a bar that has just
+  lost its leading 140 pt. Expanding is the safe mirror image. Deriving the
+  shrink from the chrome-adjusted widths would cover the collapse, but would
+  hold ~140 pt of undershoot for the whole settle delay and visibly fold the
+  chips on every collapse — worse than one frame of chevron that heals itself.
+  Pre-arming a budget on `willStartLiveResizeNotification` was rejected on the
+  same grounds: it cannot know the drag's direction, so it would fold the chips
+  at the start of every **grow** drag, where no artifact exists, to save one
+  frame at the start of a shrink that the heal already catches.
 
-  | rung | title          | badge | actions                                          |
-  | ---- | -------------- | ----- | ------------------------------------------------ |
-  | 1    | Space / branch | yes   | `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )` |
-  | 2    | Space / branch | —     | as above                                         |
-  | 3    | branch         | —     | as above                                         |
-  | 4    | branch         | —     | `( ⤭ )( ⋯ )( ± │ 🌐 )`                           |
-  | 5    | branch         | —     | `( ⋯ )( ± │ 🌐 )`                                |
-  | 6    | branch         | —     | `( ⋯ )`                                          |
+  **The row degrades along ONE ordered ladder**, widest first, and everything
+  that yields is a rung of that same list. The full action row is
+  `( ⤭ Merge )( ▶ Run )( icon Editor ⌄)( ± │ 🌐 )`:
+
+  | rung | title          | badge | actions                |
+  | ---- | -------------- | ----- | ---------------------- |
+  | 1    | Space / branch | yes   | full row               |
+  | 2    | Space / branch | —     | full row               |
+  | 3    | branch         | —     | full row               |
+  | 4    | branch         | —     | `( ⤭ )( ⋯ )( ± │ 🌐 )` |
+  | 5    | branch         | —     | `( ⋯ )( ± │ 🌐 )`      |
+  | 6    | branch         | —     | `( ⋯ )`                |
 
   The order encodes what each element is worth: the diff badge is
   **informational** and goes first, the Space name is **context**, the chip
   labels are **actions**, and the branch is **identity** and never drops. One
   list rather than one ladder per element, because **a second decision-maker
-  makes the degradation non-monotone** — measured three times over: a badge on
-  its own layout priority vanished at 500 pt and came back at 260 pt, and a
-  title running its own `ViewThatFits` handed ~90 pt back and brought the
-  selector back as the window got *narrower*. Elements cannot be ranked against
-  each other except by being rungs of the same list. Within a rung the branch
-  still middle-truncates — that is `Text` under a proposal, not a second ladder.
+  makes the degradation non-monotone** — measured three times over: a badge
+  that vanished at 500 pt came back at 260 pt beside a folded chip, a badge
+  ranked by layout priority came back the moment the chips folded, and a title
+  running its own `ViewThatFits` dropped its Space name, handed ~90 pt back and
+  brought the selector back at 279 pt as the window got *narrower*. Elements
+  cannot be ranked against each other except by being rungs of the same list.
+  Within a rung the branch still middle-truncates — that is `Text` under a
+  proposal, not a second ladder.
 
   Run and Editor have **no glyph-only form**: they go from full text straight
   into the `⋯` menu. Only Merge and the selector have a glyph form on the bar.
@@ -350,23 +426,22 @@ longer does are recorded in `../status.md` § Superseded designs.
   cannot disagree.
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
-  and a hairline border, plus a hover highlight for the interactive ones and a
-  pressed state past it — the fill steps further and the pill shrinks slightly,
-  fill alone under Reduce Motion — that one button style reports to the shell
-  whether the shell sits inside the button's label or around it. Glass
-  was rejected because it renders nearly invisible on a chip embedding a
-  borderless `Menu` (see [[glasseffect-nested-menu-invisible]]), and the fill is
-  the same neutral step in both palettes — **no accent colour and no state tint
-  anywhere**, so a Delete chip is not red (see [[title-bar-chip-chrome]]). The
-  interior padding lives **inside** each control's label, never on the shell, so
-  the whole pill is clickable rather than just the glyph
-  ([[title-capsule-hit-area]]); `Label`s pin `.titleAndIcon` because the toolbar
-  environment otherwise resolves them icon-only and drops the title
-  ([[toolbar-label-style]]). The title capsule itself is chrome-less: it is not
-  a control, so it takes the shared metrics without the pill — and every label
-  in the row is pinned to one line, because a group with no line limit **wraps**
-  mid-word once it is proposed less than its ideal width, and inside a
-  fixed-height capsule a second line has nowhere to go
+  and a hairline border, plus a hover highlight and a pressed state past it —
+  the fill steps further and the pill shrinks slightly, fill alone under Reduce
+  Motion — that one button style reports to the shell whether the shell sits
+  inside the button's label or around it. Glass was rejected because it renders
+  nearly invisible on a chip embedding a borderless `Menu` (see
+  [[glasseffect-nested-menu-invisible]]), and the fill is the same neutral step
+  in both palettes — **no accent colour and no state tint anywhere**, so a
+  Delete chip is not red (see [[title-bar-chip-chrome]]). The interior padding
+  lives **inside** each control's label, never on the shell, so the whole pill
+  is clickable rather than just the glyph ([[title-capsule-hit-area]]); `Label`s
+  pin `.titleAndIcon` because the toolbar environment otherwise resolves them
+  icon-only and drops the title ([[toolbar-label-style]]). The title capsule
+  itself is chrome-less: it is not a control, so it takes the shared metrics
+  without the pill — and every label in the row is pinned to one line, because a
+  group with no line limit **wraps** mid-word once it is proposed less than its
+  ideal width, and inside a fixed-height capsule a second line has nowhere to go
   ([[toolbar-group-truncation]]).
 
   **Every glyph-only chip measures exactly the same**, the `⋯` chip being the
@@ -376,7 +451,7 @@ longer does are recorded in `../status.md` § Superseded designs.
   from changing width the moment Option swaps it to Delete — `trash` and
   `arrow.triangle.merge` do not measure alike, and a chip that jumps under a
   stationary pointer breaks the same intent the shared-identity `Button` exists
-  to protect. The editor's app icon renders into that slot too.
+  to protect.
 
   The **diff badge** renders whenever the diff lists at least one file — a
   rename-only or mode-only change shows `+0 −0` — and is hidden for a clean
@@ -480,8 +555,8 @@ longer does are recorded in `../status.md` § Superseded designs.
 - **Closing a workspace** — "Merge and Close" and "Delete" are async
   main-actor operations behind a window-modal progress sheet, and every
   blocking libgit2 or filesystem call inside them hops to a **detached task**,
-  so a slow `teardown` hook, a large worktree or a slow base resync no longer
-  looks like a frozen app. Offloading is safe because `WorktreeManager`'s entry
+  so a slow `teardown` hook, a large worktree or a slow base resync never
+  freezes the app. Offloading is safe because `WorktreeManager`'s entry
   points are not actor-isolated, each opens its own repository so no libgit2
   object crosses a thread, and libgit2's error state is thread-local. **All
   model mutation stays on the main actor** — the hop runs the git work and
@@ -505,8 +580,8 @@ longer does are recorded in `../status.md` § Superseded designs.
 
   `AppModel.closingWorkspaces` claims a workspace **synchronously, before the
   first `await`**, and releases it in a `defer` covering the whole operation
-  rather than just the hook wait: the async conversion made an entry check
-  meaningless on its own, and both a menu action (a window-modal sheet does not
+  rather than just the hook wait: an entry check alone guards nothing across the
+  operation's `await`s, and both a menu action (a window-modal sheet does not
   disable the menu bar) and `casper workspace delete` can arrive mid-flight —
   which would strand a continuation and run two libgit2 writers at once. The
   control-channel path is deliberately silent: it reports back as JSON and gets
@@ -543,140 +618,3 @@ longer does are recorded in `../status.md` § Superseded designs.
   a dev build and an unbundled binary are quiet by construction. The
   operational side (the feed, the release job, key custody) belongs to
   `README.md` and [[sparkle-eddsa-key]].
-
-## Sub-projects
-
-- **UI-1 — ✅ built.** App shell (SwiftUI `App` scene +
-  `NSApplicationDelegateAdaptor`; Casper owns the menu bar through SwiftUI
-  `.commands`, **replacing** the standard command groups — with one *additive*
-  group, "Check for Updates…" (see § Design → "Software update"), and the
-  Window menu plus the rest of the App menu left to SwiftUI's defaults; the only
-  `NSMenu` built in AppKit is the pane context menu, see `terminal.md` § Design
-  → "Main menu"), `@MainActor @Observable AppModel` as the single state
-  owner/bridge,
-  `NavigationSplitView` with empty state, "Add folder…" (adopt any folder — Git
-  or not, multiple allowed), one live terminal per workspace, and all startup
-  wiring (the release control server, per-surface env, session persistence,
-  `#if DEBUG` debug bridge). No Git worktree creation. Renders only the
-  single-terminal layout.
-- **UI-2 — ✅ built.** The `Space` level (`Session → Space → Workspace`;
-  `repoPath` moved up to `Space.folderPath`; `Workspace` gained
-  `kind: primary|linked` and `baseBranch`). Opening a folder builds a Space (Git
-  or not — non-Git folders are degenerate Spaces with one primary workspace and
-  no worktree creation), with **one Space per Git repository** — identity being
-  the common `.git` directory every working tree of a repository shares. A
-  folder that is a **linked worktree of a repository already open as a Space**
-  is adopted into that Space as a linked workspace instead of becoming a Space
-  of its own (nothing is created on disk, so no `setup` hook runs); a folder
-  that is a **linked worktree of a repository not open** pulls that repository
-  in rather than standing alone — the Space roots at the repository's **main
-  working tree**, built exactly as opening that folder would build it (its name
-  taken from the `origin` remote, its primary workspace sitting on the
-  repository's checked-out branch, typically `main`), and the folder the user
-  picked joins it as a **linked** workspace named after its branch, with the
-  primary's branch as its `baseBranch`; that linked workspace is the one
-  selected, being the folder actually chosen, and again nothing is created on
-  disk and no `setup` hook runs. That main working tree is resolved with
-  libgit2: opening the repository's common `.git` directory, shared by every
-  working tree, yields the main repository, whose workdir is the folder to root
-  at. A worktree of a **bare** repository is refused: rooting at a main working
-  tree is the rule, a bare repository has none and never will, so that layout is
-  one Casper does not support and the alert says exactly that. So is a worktree
-  whose main working tree does not come back as a folder of the *same*
-  repository — the repository directory gone from disk, or a
-  `--separate-git-dir` layout, which records no `core.worktree` and so has
-  libgit2 answer the git directory's parent, an unrelated existing folder a
-  same-repository guard rejects. Either way the picked folder is **refused
-  outright**: nothing is added and an alert says so, there being deliberately no
-  silent fallback to a Space rooted at the worktree, precisely the shape this
-  rule exists to avoid. Conversely, opening a **repository whose worktrees are
-  already open as Spaces** reunifies them into the Space it creates, moving
-  those workspaces whole (ids, ports, layouts and live terminals unchanged) with
-  each ex-primary becoming a linked workspace named after its branch. Re-adding
-  a folder Casper already tracks only selects it; a per-Space "+" creates a
-  **linked** workspace as a new branch + `git worktree` at a visible sibling of
-  the repo folder, `<parent>/<repo>-<branch>` (outside the repo, so naturally
-  untracked — no in-repo `.casper/worktrees/` and no `.git/info/exclude` entry;
-  a `-2`/`-3`… suffix is used if the sibling name is taken). The sidebar is
-  grouped by Space in collapsible sections. **"Remove Space" is the only
-  non-destructive removal**: it drops the Space from `session.json` and releases
-  its ports, leaving the repository, its worktrees and its branches on disk. A
-  workspace's own two actions both destroy — "Merge and Close Workspace…" and
-  "Delete Workspace…" route to the same `AppModel+WorkspaceLifecycle` teardown,
-  which prunes the worktree (deleting its folder) and then deletes its branch. A
-  degenerate Space is promoted to Git when its folder gains a `.git` (detected
-  live by the filesystem watcher, and once per Space at launch), and demoted
-  back if the `.git` is removed. The per-workspace `+/−` diff summary is
-  **dropped** (decision 2026-07-06) — see the "Next action" note below.
-- **UI-3 — ✅ built, then reshaped into panes.** Recursive `LayoutNode`
-  composition. Splits render through the custom `SplitContainerView`, which
-  lays panes out by fraction along the axis. Native `HSplitView`/`VSplitView`
-  were dropped because their divider was near-black and stood out; a separator
-  is now a drawn 1 pt hairline with a wider **transparent** grab strip over it,
-  carrying the resize cursor and the drag without reserving visible width. Both
-  come from `SeparatorMetrics`, the one contract the inter-pane, inspector and
-  inspector-edge separators all read, so they cannot drift apart. The grab strip
-  is a concrete `NSView`: a SwiftUI `.pointerStyle` loses the cursor to the
-  terminal surface's own `cursorUpdate` ([[terminal-overlay-cursor]]). Panes are
-  placed with explicit non-overlapping frames, because libghostty's
-  `CAMetalLayer`-backed terminals ignore SwiftUI `.opacity` and would occlude
-  one another. Right-clicking a pane opens the split/copy/paste/close menu.
-
-  Surface views live in a persistent cache keyed by `Surface.id`, so a PTY
-  survives split, collapse and reorder (identity is anchored solely on
-  `Surface.id`); only the layout may bring a view into existence, so a `Surface`
-  value the tree no longer holds cannot refill the cache — see
-  [[surface-view-layout-membership]]. Pane fractions seed from the layout's
-  persisted `ratios` and are written back through `AppModel.setSplitRatios` →
-  `LayoutTree.updateRatios` (debounced save) on drag-end and on
-  double-click-to-equalize, so a resize survives relaunch. libghostty
-  `newTab`/`newSplit`/`closeTab` route through a `LayoutActionHandler` installed
-  on the runtime to the **focused** workspace (focus tracked via the surface's
-  first-responder callback). Closing the last surface re-seeds the workspace
-  with a fresh terminal instead of closing it, so panes alone never remove a
-  workspace or a Space. The pure tree operations live in CasperCore and are
-  heavily tested (see § Design → "Layout composition", which also owns the
-  action mapping).
-- **UI-4 — ✅ built.** A `WKWebView` browser surface (address bar with bare-host
-  normalization, back/forward/reload). It originally rendered `.browser` layout
-  leaves created from the tab-bar "+" menu; the tmux-pane redesign removed that
-  entry point, and the browser now lives in the inspector panel only. The web
-  view lives in the persistent surface-view cache keyed by `Surface.id`
-  (generalized from UI-3 to hold any `NSView`), so it survives layout
-  restructuring like terminals.
-
-  Its URL is persisted from **both** ends. The address bar writes it, and so
-  does the page: `BrowserCoordinator` reports every committed navigation through
-  `onCommitURL`, wired by `AppModel.browserCoordinator(for:)` to
-  `AppModel.setBrowserURL`, which no-ops when the stored URL already matches so
-  a page load cannot thrash `session.json`. Covered by
-  `Tests/CasperUITests/BrowserURLSyncTests.swift`. Same-document navigations
-  need KVO rather than the navigation delegate — see
-  [[webkit-page-driven-navigation]].
-- **UI-5 — ✅ built.** A read-only diff surface over CasperGit's
-  `diffWorkdirToHead()`: per-file sections (path + status, binary files noted),
-  hunk headers, and monospaced line rows colored by kind (green addition / red
-  deletion / neutral context) with old/new line-number gutters and a
-  `+`/`-`/space prefix cue. Computed on open and **live-refreshed** by **two**
-  native FSEvents watchers on the selected workspace, both funnelling through
-  one ~200 ms debounce that bumps an observable revision the diff surface and
-  the title-bar `+/−` badge react to: one on the worktree folder (`.git` +
-  Git-ignored top-level dirs excluded), and one on the resolved gitdir's `logs`
-  reflog directory. The second is what catches a commit, which writes only
-  inside `.git` and leaves every working-tree file byte-for-byte identical, so
-  the first sees nothing at all. Both are stopped while the window is hidden and
-  re-armed when it comes back ([[diff-refresh-two-watchers]]). Originally
-  rendered as a `.diff` layout leaf (created via the tab-bar "+" menu); that
-  surface kind was later **removed** — the diff view now lives **only** in the
-  right inspector panel (`Workspace.inspector`). The rendering above is
-  unchanged, just hosted by the inspector instead of a layout leaf.
-
-## Next action
-
-**All five CasperUI sub-projects (UI-1..UI-5) are built** and have passed the
-live GUI verification pass on a real desktop (panes, browser navigation, diff
-surface); two areas still want a human eye, listed in `../status.md`. The
-outstanding **feature** is **Space rename**; the other open CasperUI items are
-in `../status.md` § Remaining work. (The Space `+/−` per-workspace diff summary
-was **dropped** — decision 2026-07-06; the title-bar working-tree-vs-HEAD
-summary covers the need.)

@@ -128,7 +128,7 @@ struct BrowserCommand: ParsableCommand {
             let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
             let value = response.text ?? "null"
             emitResult(
-                raw: raw, plain: unwrappedRawValue(value),
+                raw: raw, plain: ControlResponse.unwrappedJSONString(value),
                 json: jsonLine(key: "result", json: value, fallback: NSNull(), workspace: response.workspaceRef))
         }
     }
@@ -267,7 +267,7 @@ struct BrowserCommand: ParsableCommand {
 
         @Argument(help: "CSS selector to wait for (omit when using --js).")
         var selector: String?
-        @Option(name: .long, help: "JavaScript predicate to wait until truthy.")
+        @Option(name: .long, parsing: .unconditional, help: "JavaScript predicate to wait until truthy.")
         var js: String?
         @Flag(name: .long, help: "Wait until the selector is visible (selector form only).")
         var visible = false
@@ -280,7 +280,13 @@ struct BrowserCommand: ParsableCommand {
         // Give the socket read a margin beyond the app-side deadline (the same
         // `--timeout` the command carries) so the reply always arrives before the
         // client gives up.
-        var commandTimeout: TimeInterval { TimeInterval((timeout ?? 5000) / 1000 + 5) }
+        var commandTimeout: TimeInterval {
+            TimeInterval((timeout ?? ControlCommand.defaultWaitTimeoutMs) / 1000 + 5)
+        }
+
+        func validate() throws {
+            try requestHelpIfHelpFlag(js, of: self)
+        }
 
         func makeCommand() throws -> ControlCommand {
             let hasSelector = !(selector?.isEmpty ?? true)
@@ -294,7 +300,7 @@ struct BrowserCommand: ParsableCommand {
             if hasJS && (visible || gone) {
                 throw exitWithError("--visible and --gone apply to the selector form only, not --js")
             }
-            let ms = timeout ?? 5000
+            let ms = timeout ?? ControlCommand.defaultWaitTimeoutMs
             guard ms > 0 else { throw exitWithError("--timeout must be a positive number of milliseconds") }
             return ControlCommand(
                 verb: .browserWait, workspace: try requireSelector(target),
@@ -311,7 +317,7 @@ struct BrowserCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Reload the browser page, optionally waiting for it to finish loading.")
 
-        @Flag(name: .long, help: "Also wait until the page finishes loading (readyState complete).")
+        @Flag(name: .long, help: "Also wait until the reloaded page finishes loading (or fails to load).")
         var wait = false
         @OptionGroup var target: WorkspaceTargetOption
 

@@ -45,13 +45,11 @@ extension MenuGroups where GroupSuffix == EmptyView {
 final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
 
-    init(title: String, systemImage: String? = nil, handler: @escaping () -> Void) {
+    init(title: String, systemImage: String, handler: @escaping () -> Void) {
         self.handler = handler
         super.init(title: title, action: #selector(fire), keyEquivalent: "")
         target = self
-        if let systemImage {
-            image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
-        }
+        image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
     }
 
     @available(*, unavailable)
@@ -90,10 +88,9 @@ struct PaneMenuItem {
     /// Splits always create a terminal. Copy/Paste fire their Edit-menu selector
     /// down the responder chain, reaching the focused `GhosttySurfaceView` (mirrors
     /// the Edit-menu Copy/Paste in `CasperCommands` (MenuCommands.swift), which also
-    /// dispatch through the responder chain), so on a browser/diff pane they act on
-    /// the focused terminal rather than the pane itself.
+    /// dispatch through the responder chain).
     static func groups(model: AppModel, surfaceID: UUID) -> [[PaneMenuItem]] {
-        func split(_ title: String, _ systemImage: String, _ direction: GhosttySplitDirectionLike) -> PaneMenuItem {
+        func split(_ title: String, _ systemImage: String, _ direction: SplitDirection) -> PaneMenuItem {
             // `weak`: the AppKit menu outlives the click that built it.
             PaneMenuItem(title: title, systemImage: systemImage) { [weak model] in
                 model?.applySplit(from: surfaceID, direction: direction)

@@ -62,7 +62,7 @@ final class BrowserAutomationControllerTests: XCTestCase {
     }
 
     /// The error message of a failed op, or nil when it unexpectedly succeeded.
-    private static func failureMessage<T>(_ result: Result<T, BrowserOpError>) -> String? {
+    private static func failureMessage<T>(_ result: Result<T, OperationError>) -> String? {
         guard case .failure(let error) = result else { return nil }
         return error.message
     }

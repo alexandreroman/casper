@@ -3,9 +3,9 @@ import Combine
 import WebKit
 
 /// Owns a browser surface's `WKWebView` and its navigation state, kept alive in
-/// `AppModel`'s cache so it survives layout restructuring. Reports focus and
-/// commits (URL, back/forward availability) back to the model/UI. One per
-/// browser `Surface.id`.
+/// `AppModel`'s cache so it survives the inspector collapsing and switching tabs.
+/// Reports focus and commits (URL, back/forward availability) back to the
+/// model/UI. One per browser `Surface.id`.
 @MainActor
 final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
@@ -48,6 +48,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// the first sync.
     private var lastSyncedNav: NavigationState?
 
+    /// Callers of `reload(waitingUpTo:)` still waiting for the reload to settle;
+    /// the next finished or failed navigation resumes them all with `true`.
+    private var loadWaiters: [OneShotWaiter<Bool>] = []
+
     /// The three KVO-observed web-view properties `syncNav` reacts to.
     private struct NavigationState: Equatable {
         let url: URL?
@@ -57,12 +61,12 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
 
     init(url: URL) {
         // Build a configuration that captures the page's console output and uncaught
-        // errors: a document-start user script wraps `console.*`, `window.onerror`,
-        // and `unhandledrejection`, forwarding each entry to the `casperConsole`
-        // message handler. `WeakScriptMessageHandler` forwards weakly so the
-        // controller→handler→coordinator chain never forms a retain cycle: the
-        // controller strongly retains the handler, but the handler holds the
-        // coordinator weakly, so nothing points back to keep it alive.
+        // errors: a document-start user script wraps `console.*` and listens for
+        // `error` and `unhandledrejection`, forwarding each entry to the
+        // `casperConsole` message handler. `WeakScriptMessageHandler` forwards
+        // weakly so the controller→handler→coordinator chain never forms a retain
+        // cycle: the controller strongly retains the handler, but the handler holds
+        // the coordinator weakly, so nothing points back to keep it alive.
         let controller = WKUserContentController()
         controller.addUserScript(WKUserScript(
             source: Self.consoleCaptureScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
@@ -101,16 +105,48 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     func goBack() { webView.goBack() }
     func goForward() { webView.goForward() }
 
-    func reload() {
+    /// Reload the page; returns the started navigation, nil when there is nothing
+    /// to reload.
+    @discardableResult
+    func reload() -> WKNavigation? {
         // WKWebView.reload() reloads the *committed* page. After a failed provisional
         // navigation nothing committed (webView.url is nil, back/forward list empty),
         // so reload() is a silent no-op — re-issue the failed request instead so a
         // now-reachable server actually loads. The address-bar Return path already
         // works because it always issues a fresh load().
         if let failedURL {
-            webView.load(URLRequest(url: failedURL))
+            return webView.load(URLRequest(url: failedURL))
         } else {
-            webView.reload()
+            return webView.reload()
+        }
+    }
+
+    /// Reload the page and wait until that load finishes or fails; returns false
+    /// when `timeoutMs` elapses first. Waits on the navigation itself, because the
+    /// old document stays committed (and `complete`) until the new one replaces
+    /// it, so a poll of the page would be answered by the old document. A reload
+    /// superseded by a newer navigation (a page redirecting itself) settles on that
+    /// one instead, as `handleFailure` ignores the superseded load.
+    func reload(waitingUpTo timeoutMs: Int) async -> Bool {
+        guard reload() != nil else { return true }
+        let waiter = OneShotWaiter<Bool>()
+        loadWaiters.append(waiter)
+        let timeout = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(timeoutMs))
+            waiter.resume(returning: false)
+        }
+        let settled = await waiter.wait()
+        timeout.cancel()
+        loadWaiters.removeAll { $0 === waiter }
+        return settled
+    }
+
+    /// Resume every `reload(waitingUpTo:)` caller: the current load has settled.
+    private func settleLoadWaiters() {
+        let waiters = loadWaiters
+        loadWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume(returning: true)
         }
     }
 
@@ -121,6 +157,14 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         if let url = userInfo[NSURLErrorFailingURLErrorKey] as? URL { return url }
         if let string = userInfo[NSURLErrorFailingURLStringErrorKey] as? String { return URL(string: string) }
         return nil
+    }
+
+    /// Whether a navigation error only reports a load superseded by a newer one
+    /// (WebKit cancels the old navigation): not a failure, as the newer load
+    /// reports its own outcome.
+    nonisolated static func isSupersededLoad(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
     }
 
     #if DEBUG
@@ -136,7 +180,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// string (`.fragmentsAllowed`, so scalars come back as `2`, `"hi"`, `true`);
     /// `undefined`/`null`, and non-JSON-serializable results (`NaN`/`Infinity`),
     /// become `"null"`. A JS runtime error is rethrown as a
-    /// `BrowserOpError` carrying the page's exception message.
+    /// `OperationError` carrying the page's exception message.
     func evaluate(_ js: String) async throws -> String {
         // Serialize the result to a JSON String (Sendable) inside the completion
         // handler: the raw `Any?` is main-actor-isolated and not Sendable, so it
@@ -144,7 +188,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         try await withCheckedThrowingContinuation { continuation in
             webView.evaluateJavaScript(js) { result, error in
                 if let error {
-                    continuation.resume(throwing: BrowserOpError(message: Self.message(from: error)))
+                    continuation.resume(throwing: OperationError(message: Self.message(from: error)))
                 } else {
                     continuation.resume(returning: Self.jsonString(from: result))
                 }
@@ -244,14 +288,16 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// `BrowserCapture` instead.
     func snapshot() async throws -> Data {
         if webView.window == nil {
-            webView.frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
+            let viewport = BrowserCapture.defaultViewport
+            webView.frame = NSRect(x: 0, y: 0, width: viewport.width, height: viewport.height)
         }
         return try await BrowserCapture.snapshotPNG(of: webView)
     }
 
     /// Serialize an `evaluateJavaScript` result to a JSON string. `nil`/`NSNull`
-    /// (the JS `undefined`/`null`) become `"null"`.
-    private static func jsonString(from value: Any?) -> String {
+    /// (the JS `undefined`/`null`) become `"null"`. `BrowserAutomation` reuses it to
+    /// quote strings into the scripts it builds.
+    nonisolated static func jsonString(from value: Any?) -> String {
         guard let value, !(value is NSNull) else { return "null" }
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
               let string = String(data: data, encoding: .utf8) else {
@@ -358,12 +404,11 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     }
 
     private func handleFailure(_ error: Error) {
-        // A load superseded by a newer one reports as cancelled — not a failure.
-        let nsError = error as NSError
-        guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
+        guard !Self.isSupersededLoad(error) else { return }
         failedURL = Self.failingURL(from: error)
         loadError = error.localizedDescription
         syncNav()
+        settleLoadWaiters()
     }
 
     // MARK: - WKUIDelegate
@@ -389,12 +434,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// Whether a popup navigation should be loaded in place. `hasTargetFrame` is
     /// false when WebKit has no frame to load into, i.e. it really is asking for a
     /// new window; anything else already has a home and must not be hijacked. Only
-    /// `http`/`https` are adopted, mirroring the address bar's scheme policy
-    /// (`BrowserSurfaceView.normalize`), so a `file:` or custom-scheme popup is
-    /// ignored rather than handed a full-privilege load.
+    /// `http`/`https` are adopted (`BrowserSurfaceView.isWebScheme`), so a `file:`
+    /// or custom-scheme popup is ignored rather than handed a full-privilege load.
     nonisolated static func shouldAdoptPopup(url: URL?, hasTargetFrame: Bool) -> Bool {
-        guard !hasTargetFrame, let scheme = url?.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
+        !hasTargetFrame && BrowserSurfaceView.isWebScheme(url?.scheme)
     }
 
     // MARK: - WKNavigationDelegate
@@ -404,7 +447,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         failedURL = nil
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { syncNav() }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { syncNav() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        syncNav()
+        settleLoadWaiters()
+    }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         handleFailure(error)
     }

@@ -62,8 +62,10 @@ final class AppModel {
     var lastNewSpaceLocation: String?
 
     /// Observable revision token bumped when the selected workspace's folder
-    /// changes on disk. The diff badge and diff surface re-pull on its change,
-    /// giving them a live refresh without knowing about the filesystem watcher.
+    /// changes on disk, by `requestDiffScroll`, and once when the window becomes
+    /// visible again (`isWindowVisible`). The diff badge and diff surface re-pull
+    /// on its change, giving them a live refresh without knowing about the
+    /// filesystem watcher.
     private(set) var diffRevision = 0
 
     /// Observable revision token bumped when the selected workspace's
@@ -73,9 +75,8 @@ final class AppModel {
     /// the filesystem watcher.
     private(set) var scriptsRevision = 0
 
-    /// Editors detected as launchable at startup (CLI shim on `PATH` and app
-    /// bundle resolvable), in `EditorKind.allCases`. Never re-detected
-    /// while the app is running.
+    /// Editors detected as launchable at startup (app bundle resolvable), in
+    /// `EditorKind.allCases`. Never re-detected while the app is running.
     private(set) var availableEditors: [EditorKind] = []
 
     /// What the window's floor is built from, or `nil` when no workspace is on
@@ -110,27 +111,47 @@ final class AppModel {
     /// before any failure alert, so an `NSAlert` never stacks on a live sheet.
     var closeProgress: WorkspaceCloseProgress?
 
-    /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
-    /// makes repeated requests for the same file distinct so the view re-scrolls.
+    /// A one-shot request to scroll a workspace's diff view to a file, held until
+    /// the view settles it through `consumeDiffScrollTarget(_:)`.
     struct DiffScrollTarget: Equatable {
         let workspaceID: UUID
+        /// A worktree-relative path, matched against `GitDiffFile.id` exactly.
         let file: String
-        let nonce: Int
+        /// The `diffRevision` the request bumped to. A diff computed at this
+        /// revision or later reflects the disk as of the request; one computed
+        /// earlier may predate the file's change.
+        let diffRevision: Int
+
+        /// Whether a diff computed at `revision` settles this target without a
+        /// scroll: it is recent enough to reflect the request, and it does not list
+        /// the file. `files` is nil when that diff couldn't be computed.
+        func isUnreachable(inDiffListing files: [GitDiffFile]?, computedAt revision: Int) -> Bool {
+            guard revision >= diffRevision else { return false }
+            let listed = files?.contains { $0.id == file } ?? false
+            return !listed
+        }
     }
-    /// Set by `requestDiffScroll` / read by `DiffSurfaceView`. Observable so the
-    /// view reacts; not part of any persisted model.
+    /// Set by `requestDiffScroll`, read and cleared by `DiffSurfaceView`.
+    /// Observable so the view reacts; not part of any persisted model.
     private(set) var diffScrollTarget: DiffScrollTarget?
-    @ObservationIgnored private var diffScrollNonce = 0
 
     // Reached from AppModel+Control.swift.
     /// Ask `DiffSurfaceView` to scroll `workspaceID`'s diff to `file`.
     ///
-    /// The nonce bump and the target write belong together: the nonce is what
-    /// makes a repeated request for the same file a *distinct* target value, so
-    /// the view re-scrolls instead of ignoring an unchanged one.
+    /// Bumps `diffRevision` so the view computes a diff that holds the file even
+    /// when its change is still inside the watcher's debounce window. The bump
+    /// also makes a repeated request for the same file a distinct target value.
     func requestDiffScroll(workspaceID: UUID, file: String) {
-        diffScrollNonce += 1
-        diffScrollTarget = DiffScrollTarget(workspaceID: workspaceID, file: file, nonce: diffScrollNonce)
+        diffRevision += 1
+        diffScrollTarget = DiffScrollTarget(workspaceID: workspaceID, file: file, diffRevision: diffRevision)
+    }
+
+    /// Clears `target` once the diff view has settled it — scrolled to its file,
+    /// or found a fresh diff that doesn't list it. A newer request that replaced
+    /// `target` in the meantime stays in place.
+    func consumeDiffScrollTarget(_ target: DiffScrollTarget) {
+        guard diffScrollTarget == target else { return }
+        diffScrollTarget = nil
     }
 
     /// FSEvents watcher for the selected workspace's worktree, or nil when
@@ -147,12 +168,6 @@ final class AppModel {
     /// yet is never written by `git status`/`add`/`diff`, making it a low-churn
     /// commit signal with no storm. Reconfigured on every selection change.
     @ObservationIgnored private var gitMetaWatcher: DirectoryWatching?
-
-    /// Last window-visibility state `applyWatcherVisibility` acted on, so it can
-    /// react only to real transitions. Starts `true` because `init` already armed
-    /// the watchers as visible before any window seed arrives — matching that
-    /// makes the first seed from a visible window a no-op.
-    @ObservationIgnored private var lastAppliedWindowVisible = true
 
     /// Builds the watcher for the selected worktree. Injectable so tests can
     /// substitute a stub; the default builds the real FSEvents-backed watcher.
@@ -342,10 +357,28 @@ final class AppModel {
 
     /// Whether the app's window is currently visible on screen — `false` when
     /// minimized, fully occluded by other windows, on another Space, or the app
-    /// is hidden. Drives suspension of the terminal surfaces' render threads and
-    /// the agent-detection cadence. Defaults `true` so a headless AppModel (no
-    /// window, e.g. tests) never suspends work.
-    var isWindowVisible = true
+    /// is hidden. Drives the selected worktree's FSEvents watchers and the
+    /// agent-detection cadence; the terminal surfaces pause their render threads
+    /// through `GhosttySurfaceView`'s own occlusion observers. Defaults `true` so a
+    /// headless AppModel (no window, e.g. tests) never suspends work.
+    ///
+    /// Only a real transition acts. Hidden ⇒ stop the watchers (a busy background
+    /// worktree must not wake the main actor for a window nobody sees). Visible ⇒
+    /// re-arm them and bump `diffRevision` once so the diff/summary catches up on
+    /// anything missed while hidden. Writing the value already held does nothing, so
+    /// the first seed from a visible window and repeated same-state occlusion
+    /// notifications neither re-arm nor bump.
+    var isWindowVisible = true {
+        didSet {
+            guard oldValue != isWindowVisible else { return }
+            if isWindowVisible {
+                reconfigureWorktreeWatcher()
+                diffRevision += 1
+            } else {
+                stopWorktreeWatchers()
+            }
+        }
+    }
 
     /// Whether the app's window currently has key focus. Injectable for tests.
     @ObservationIgnored var isWindowKey: () -> Bool = { NSApp?.keyWindow != nil }
@@ -369,10 +402,10 @@ final class AppModel {
 
     /// Delivers a local notification for a workspace. Injectable for tests; the
     /// default posts a best-effort `UserNotifications` request. Skipped entirely when
-    /// the process has no bundle identifier (a bare `swift run` executable): on macOS
-    /// 26 `UNUserNotificationCenter.current()` aborts rather than no-ops without a
-    /// bundle, so guarding here keeps `make dev` runs from crashing on the first hook
-    /// notification.
+    /// the process has no bundle identifier — a bare executable (`swift run`, a raw
+    /// `.build` binary): on macOS 26 `UNUserNotificationCenter.current()` aborts
+    /// rather than no-ops without a bundle, so guarding here keeps such runs from
+    /// crashing on the first hook notification.
     ///
     /// The request identifier is the workspace id (not a random UUID) so the
     /// `AppDelegate`'s `didReceive` can route a tap back to the right workspace. It
@@ -407,23 +440,18 @@ final class AppModel {
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var controlSocketPath: String?
 
-    /// Live surface views, keyed by surface id. Holds terminal
-    /// (`GhosttySurfaceView`) and browser (`WKWebView`) views. Persisting these
-    /// across SwiftUI rebuilds keeps each PTY or web page alive when the layout
-    /// tree is restructured.
-    @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
-
-    /// The live Ghostty view for a surface id, or nil for a browser/absent surface.
-    private func ghosttyView(_ surfaceID: UUID) -> GhosttySurfaceView? {
-        surfaceViews[surfaceID] as? GhosttySurfaceView
-    }
+    /// Live terminal views, keyed by surface id. Persisting these across SwiftUI
+    /// rebuilds keeps each PTY alive when the layout tree is restructured. A browser's
+    /// `WKWebView` is not here: its `BrowserCoordinator` owns it, cached in
+    /// `browserCoordinators`.
+    @ObservationIgnored private var surfaceViews: [UUID: GhosttySurfaceView] = [:]
 
     /// Forwards the app's appearance to libghostty: the app itself, and every
     /// terminal view alive — the background nursery's included, whose off-screen
     /// windows never see an appearance change of their own. No-op before the runtime
     /// exists.
     func applyColorScheme(dark: Bool) {
-        runtime?.setColorScheme(dark: dark, surfaces: surfaceViews.values.compactMap { $0 as? GhosttySurfaceView })
+        runtime?.setColorScheme(dark: dark, surfaces: Array(surfaceViews.values))
     }
 
     #if DEBUG
@@ -523,10 +551,11 @@ final class AppModel {
 
     /// Sub-cadence for scraping non-selected workspaces: the selected workspace
     /// stays at full cadence (~250ms) for a live sidebar/spinner, while background
-    /// workspaces are scraped only every 4th tick (~1s while visible). They feed
-    /// only the background `done` notification, which tolerates ~1s of extra
-    /// latency (and the resolver debounces in ticks anyway), so the reduced rate
-    /// trades imperceptible latency for a much cheaper hot path.
+    /// workspaces are scraped only every 4th tick (~1s while visible). They feed the
+    /// non-selected sidebar rows' state icons and the background notifications, both
+    /// of which tolerate ~1s of extra latency (and the resolver debounces in ticks
+    /// anyway), so the reduced rate trades imperceptible latency for a much cheaper
+    /// hot path.
     nonisolated static let backgroundDetectionStride = 4
 
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
@@ -549,7 +578,7 @@ final class AppModel {
             CasperLog.app.failure("failed to load session, starting fresh", error)
             let fallback = SessionStore(
                 fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
-                    .appendingPathComponent("casper-session\(identity.pathSuffix).json"))
+                    .appendingPathComponent("casper-" + identity.layoutFileName))
             return AppModel(sessionStore: fallback, portAllocator: allocator,
                             sessionIdentity: identity)
         }
@@ -647,7 +676,7 @@ final class AppModel {
         spaces.map { ($0, $0.isCollapsed ? [] : $0.orderedWorkspaces) }
     }
 
-    /// Maps eligible workspaces to their `Cmd+N` shortcut (1-9), numbering
+    /// Maps eligible workspaces to their ⌘1–⌘9 shortcut, numbering
     /// `spacesWithVisibleWorkspaces()` in order. The single definition of the
     /// numbering: the sidebar hint labels and `selectWorkspace(atShortcutNumber:)` both
     /// go through it, on the same input, so the two can never drift apart.
@@ -664,12 +693,12 @@ final class AppModel {
         return numbers
     }
 
-    /// The `Cmd+N` shortcut numbers for the sidebar as it currently stands.
+    /// The ⌘1–⌘9 shortcut numbers for the sidebar as it currently stands.
     var workspaceShortcutNumbers: [UUID: Int] {
         Self.shortcutNumbers(for: spacesWithVisibleWorkspaces())
     }
 
-    /// Whether the sidebar should show the `Cmd+N` shortcut hint in place of
+    /// Whether the sidebar should show the ⌘1–⌘9 shortcut hint in place of
     /// the notification bubble. Set by `WorkspaceShortcutKeyMonitor` while
     /// Cmd is held past the reveal delay.
     var showWorkspaceShortcutHints: Bool = false
@@ -846,21 +875,13 @@ final class AppModel {
     /// repo folder, `<parent>/<repo>-<branch>`) in a Git Space. Placing worktrees
     /// outside the repo keeps them naturally untracked. When the sibling directory
     /// name is already taken, a numeric suffix (`-2`, `-3`, …) is appended so
-    /// creation still succeeds; the branch name is left unchanged. Returns false when
-    /// the Space is missing, not a Git repo, the name is unusable, or the worktree
-    /// cannot be created.
-    @discardableResult
-    func addLinkedWorkspace(spaceID: UUID, name: String) async -> Bool {
-        (try? await createLinkedWorkspace(spaceID: spaceID, name: name, base: nil).get()) != nil
-    }
-
-    /// Create a linked workspace (new branch + worktree at `<parent>/<repo>-<branch>`)
-    /// in a Git Space. `base` overrides the fork point; nil derives it from the
-    /// primary workspace's branch (the prior behavior). `select` controls whether the
-    /// new workspace becomes the selected/focused one; it defaults to true for UI
-    /// creation and is set to false for the control-channel (CLI) path so a workspace
-    /// created remotely does not steal the user's current selection. Returns the new
-    /// workspace or a human-readable error.
+    /// creation still succeeds; the branch name is left unchanged. `base` overrides
+    /// the fork point; nil derives it from the primary workspace's branch. `select`
+    /// controls whether the new workspace becomes the selected/focused one; it
+    /// defaults to true for UI creation and is set to false for the control-channel
+    /// (CLI) path so a workspace created remotely does not steal the user's current
+    /// selection. Returns the new workspace or a human-readable error, which both the
+    /// CLI and the "Create Workspace…" alert show as is.
     ///
     /// `async` because the checkout in the middle runs off the main actor, like every
     /// other libgit2 call on a workspace's lifecycle (`AppModel+WorkspaceLifecycle`):
@@ -869,7 +890,7 @@ final class AppModel {
     func createLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil,
         select: Bool = true
-    ) async -> Result<Workspace, WorkspaceCreationError> {
+    ) async -> Result<Workspace, OperationError> {
         let plan: LinkedWorkspacePlan
         switch planLinkedWorkspace(spaceID: spaceID, name: name, base: baseOverride) {
         case .failure(let error): return .failure(error)
@@ -916,15 +937,15 @@ final class AppModel {
     /// and a `stat` per candidate.
     private func planLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?
-    ) -> Result<LinkedWorkspacePlan, WorkspaceCreationError> {
+    ) -> Result<LinkedWorkspacePlan, OperationError> {
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
-            return .failure(WorkspaceCreationError(message: "space not found"))
+            return .failure(OperationError(message: "space not found"))
         }
         guard spaces[si].isGitRepo else {
-            return .failure(WorkspaceCreationError(message: "space is not a Git repository"))
+            return .failure(OperationError(message: "space is not a Git repository"))
         }
         guard let branch = GitBranchName.sanitize(name) else {
-            return .failure(WorkspaceCreationError(message: "invalid branch name: \(name)"))
+            return .failure(OperationError(message: "invalid branch name: \(name)"))
         }
         let folder = spaces[si].folderPath
         let base = baseOverride ?? (spaces[si].primaryWorkspace?.branch ?? "")
@@ -932,10 +953,8 @@ final class AppModel {
         let basePath = folderURL.deletingLastPathComponent()
             .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
 
-        let portBase: Int
-        do { portBase = try portAllocator.allocate() } catch {
-            CasperLog.app.failure("cannot add workspace: no free port block", error)
-            return .failure(WorkspaceCreationError(message: "no free port block"))
+        guard let portBase = allocatePortBase(toAction: "add workspace") else {
+            return .failure(OperationError(message: "no free port block"))
         }
         // The editor carries over from the currently-active workspace (nil is fine — it
         // keeps the same resolved default), read here rather than after the checkout so
@@ -950,22 +969,22 @@ final class AppModel {
     /// so a failed attempt cannot leak one.
     private func worktreeCreationError(
         _ error: Error, releasing plan: LinkedWorkspacePlan
-    ) -> WorkspaceCreationError {
+    ) -> OperationError {
         portAllocator.release(plan.portBase)
         CasperLog.app.failure("worktree creation failed", error)
-        return WorkspaceCreationError(message: error.localizedDescription)
+        return OperationError(message: error.localizedDescription)
     }
 
     /// Fold a finished checkout into the model: append the workspace, queue its initial
     /// command, take the selection when asked, and run the repo's `setup` hook.
     private func adoptLinkedWorkspace(
         _ plan: LinkedWorkspacePlan, command: String?, select: Bool
-    ) -> Result<Workspace, WorkspaceCreationError> {
+    ) -> Result<Workspace, OperationError> {
         // The Space can be discarded while the checkout runs. The worktree left on disk
         // is inert — nothing in the model points at it — so the failure is honest.
         guard let si = spaces.firstIndex(where: { $0.id == plan.spaceID }) else {
             portAllocator.release(plan.portBase)
-            return .failure(WorkspaceCreationError(message: "space not found"))
+            return .failure(OperationError(message: "space not found"))
         }
         var ws = WorkspaceFactory.makeLinkedWorkspace(
             name: plan.branch, worktreePath: plan.worktreePath, branch: plan.branch,
@@ -1028,8 +1047,14 @@ final class AppModel {
     /// URL field). `surfaceIDs(...).first` is the depth-first, top-left surface.
     /// `focusActiveSurfaceView()` covers the already-attached case; a freshly
     /// mounted terminal's `onAttach` covers the not-yet-attached case. When `id` is
-    /// nil or resolves to no workspace, only the selection changes.
+    /// nil, only the selection changes. An id that resolves to no workspace — a
+    /// notification tapped after its workspace was deleted — changes nothing, so the
+    /// selection can never dangle (see the workspace-selection-invariant note).
     func selectWorkspace(_ id: UUID?) {
+        // Resolved once for the whole body: nothing below inserts or removes a Space or a
+        // workspace (`revealSpace` only flips `isCollapsed`), so the index stays valid.
+        let at = id.flatMap { locate($0) }
+        if id != nil, at == nil { return }
         // Re-selecting the workspace that is already selected is an ordinary call —
         // tapping its sidebar row, or a notification raised for it. The rest of the body
         // still matters there: it is how the attention bubble clears and how a `done`
@@ -1039,9 +1064,7 @@ final class AppModel {
         selectedWorkspaceID = id
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
-        // Resolved once for the whole body: nothing below inserts or removes a Space or a
-        // workspace (`revealSpace` only flips `isCollapsed`), so the index stays valid.
-        guard let id, let at = locate(id) else { return }
+        guard let id, let at else { return }
         if changed { refreshNamedCommands(for: id) }
         // A selected workspace must be visible: reveal its owning Space.
         revealSpace(at: at.space)
@@ -1080,7 +1103,8 @@ final class AppModel {
     /// launch/selection time) and then (re)arm its watcher. Promotion picks up a
     /// `.git` that appeared before selection; demotion never happens here, only on
     /// a live filesystem event, so a transient probe failure can't drop a Space's
-    /// Git backing. Called from `selectWorkspace(_:)` and `init`.
+    /// Git backing. Called from `selectWorkspace(_:)`, `completeLaunchSetup()` and a
+    /// window-visibility transition (`isWindowVisible`).
     private func reconfigureWorktreeWatcher() {
         if let id = selectedWorkspaceID, let at = locate(id) {
             promoteSpaceIfGitInitialized(spaceIndex: at.space)
@@ -1108,8 +1132,8 @@ final class AppModel {
         // Never leave watchers armed while the window is hidden. Every path that arms
         // them — `selectWorkspace`, `completeLaunchSetup`, a live promote/demote — can
         // run while the window is occluded or minimized, so this guard is what keeps an
-        // FSEvents stream off a window nobody is looking at; `applyWatcherVisibility`
-        // re-arms on the transition back to visible.
+        // FSEvents stream off a window nobody is looking at; `isWindowVisible` re-arms
+        // on the transition back to visible.
         guard isWindowVisible else { stopWorktreeWatchers(); return }
         stopWorktreeWatchers()
         guard let id = selectedWorkspaceID, let at = locate(id) else { return }
@@ -1143,7 +1167,7 @@ final class AppModel {
     /// `armWorktreeWatcher` runs on every ⌘1…9 selection and every window-occlusion
     /// transition. The answer only moves when the Space's Git backing flips or its
     /// `.gitignore` changes, both of which land in `handleSelectedWorktreeChange`,
-    /// which drops the entry. Pruned with the workspace by `pruneTransientState`.
+    /// which drops the entry. Pruned with the workspace by `retire`.
     private func watcherPaths(for ws: Workspace, isGitRepo: Bool) -> WatcherPaths {
         if let cached = watcherPathsCache[ws.id] { return cached }
         let path = ws.worktreePath
@@ -1154,7 +1178,7 @@ final class AppModel {
         if isGitRepo {
             exclusions.append(path + "/.git")
             if let repo {
-                exclusions.append(contentsOf: (try? repo.ignoredTopLevelDirectories()) ?? [])
+                exclusions.append(contentsOf: repo.ignoredTopLevelDirectories())
             }
         }
         // FSEventStreamSetExclusionPaths accepts at most 8 paths; .git stays first.
@@ -1168,30 +1192,11 @@ final class AppModel {
         return paths
     }
 
-    /// Suspend or resume the selected-worktree FSEvents watchers with window
-    /// visibility. Hidden ⇒ stop them (a busy background worktree must not wake
-    /// the main actor for a window nobody sees). Visible ⇒ re-arm and bump
-    /// `diffRevision` once so the diff/summary catches up on anything missed
-    /// while hidden.
-    func applyWatcherVisibility() {
-        // Act only on an actual visibility transition. The initial `true` matches
-        // `init`, which already armed the watchers as visible — so the first seed
-        // from a visible window is a no-op (no redundant re-arm or diff bump), and
-        // repeated same-state occlusion notifications do nothing.
-        guard lastAppliedWindowVisible != isWindowVisible else { return }
-        lastAppliedWindowVisible = isWindowVisible
-        if isWindowVisible {
-            reconfigureWorktreeWatcher()
-            diffRevision += 1
-        } else {
-            stopWorktreeWatchers()
-        }
-    }
-
     /// The debounced watcher callback shared by both worktree watchers: hop to the
     /// main actor and, after the debounce window, drive `handleSelectedWorktreeChange`.
-    /// The hop goes through the run loop rather than the main queue so a modal panel
-    /// standing when a change lands cannot hold it back (see `MainRunLoop`).
+    /// The run-loop hop lets `schedule` run while a modal panel is up, but the 200 ms
+    /// debounce itself rides the main queue, so the `diffRevision` bump lands once the
+    /// panel closes — an accepted delay (`main-run-loop-hop` § Caveat: delayed hops).
     private func makeWorktreeChangeHandler() -> @Sendable () -> Void {
         { [weak self] in
             MainRunLoop.perform {
@@ -1248,13 +1253,13 @@ final class AppModel {
         reconfigureWorktreeWatcher()
     }
 
-    /// Determine every Space's Git backing at load time. `isGitRepo` is no longer
-    /// persisted, so each decoded Space arrives non-Git; probe its folder to set
+    /// Determine every Space's Git backing at load time. `isGitRepo` is runtime-only,
+    /// never persisted, so each decoded Space arrives non-Git; probe its folder to set
     /// the runtime flag and adopt HEAD's branch on the primary workspace. Runs
     /// ONCE at startup (not on a timer). Uses the injectable `gitReprobe`.
     ///
     /// A transient probe failure here shows a real repo as non-Git for the
-    /// session — acceptable now that the flag is computed rather than stored; the
+    /// session — acceptable because the flag is computed rather than stored; the
     /// live FSEvents path (promote/demote) still corrects it on the next change.
     private func resolveGitBacking() {
         for si in spaces.indices {
@@ -1271,7 +1276,7 @@ final class AppModel {
     /// Re-probe a not-yet-Git space and, if it now has a repository, promote it:
     /// mark it Git-backed, adopt HEAD's branch on its primary workspace, and
     /// persist. Returns whether a promotion happened. Reuses the injectable
-    /// `gitReprobe`. (Formerly driven by the heartbeat poll.)
+    /// `gitReprobe`.
     @discardableResult
     func promoteSpaceIfGitInitialized(spaceIndex si: Int) -> Bool {
         // A missing primary fails safe: no promotion.
@@ -1316,8 +1321,8 @@ final class AppModel {
     /// workspace switch (or a new/closed surface) re-parents the newly active
     /// surface's view during the SwiftUI update that runs right after this state
     /// change.
-    /// A no-op for surfaces with no cached `NSView` (e.g. the diff surface),
-    /// which manage their own focus.
+    /// A no-op for a surface with no cached terminal view (the inspector browser),
+    /// which manages its own focus.
     ///
     /// The deferral goes through the run loop rather than the main queue so a modal
     /// panel standing over the app cannot hold the focus move back until it is
@@ -1344,7 +1349,7 @@ final class AppModel {
     /// early return, or it would keep libghostty's default (solid-caret) state.
     private func focusSurfaceViewIfActive(_ id: UUID) {
         guard id == focusedSurfaceID else {
-            ghosttyView(id)?.blurForLayoutChange()
+            surfaceViews[id]?.blurForLayoutChange()
             return
         }
         focusActiveSurfaceView()
@@ -1357,8 +1362,8 @@ final class AppModel {
     }
 
     /// Where the focused surface lives, but only when it is a TERMINAL pane: nil for a
-    /// focused non-layout surface (the Inspector browser), for a layout browser/diff
-    /// surface, and for "nothing focused". One walk answers both questions the Split
+    /// focused non-layout surface (the Inspector browser), for a `.browser` leaf from a
+    /// legacy session, and for "nothing focused". One walk answers both questions the Split
     /// action asks — is a terminal focused, and which workspace owns it — so a split
     /// does not scan every Space's layout twice. Gates `applyNewSplit`: Split only makes
     /// sense on a focused terminal.
@@ -1406,7 +1411,7 @@ final class AppModel {
             // view from the window (reparenting an ancestor container) before AppKit
             // fires `resignFirstResponder`, so libghostty would otherwise keep
             // rendering a solid caret on it even though the new surface holds focus.
-            ghosttyView(currentlyFocused)?.blurForLayoutChange()
+            surfaceViews[currentlyFocused]?.blurForLayoutChange()
         }
         let (layout, newFocus) = LayoutTree.split(
             workspace(at: at).layout,
@@ -1428,7 +1433,7 @@ final class AppModel {
 
     /// Split the given surface with a new terminal in `direction` (the pane
     /// context-menu action; always creates a terminal).
-    func applySplit(from surfaceID: UUID, direction: GhosttySplitDirectionLike) {
+    func applySplit(from surfaceID: UUID, direction: SplitDirection) {
         guard let at = locateSurface(surfaceID) else { return }
         applySplit(at: at, from: surfaceID, direction: direction)
     }
@@ -1436,7 +1441,7 @@ final class AppModel {
     /// Split the focused terminal in `direction` (the View menu's Split items). Those
     /// items are always enabled in the menu — never greyed — so the action itself is
     /// the gate: it does nothing unless a terminal is focused.
-    func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
+    func applyNewSplit(_ direction: SplitDirection) {
         guard let focus = focusedSurfaceID, let at = locateFocusedTerminal() else { return }
         applySplit(at: at, from: focus, direction: direction)
     }
@@ -1444,7 +1449,7 @@ final class AppModel {
     /// The one implementation behind every "add a terminal by splitting" action, for a
     /// caller that has already located the workspace holding `surfaceID`.
     private func applySplit(
-        at: WorkspaceIndex, from surfaceID: UUID, direction: GhosttySplitDirectionLike
+        at: WorkspaceIndex, from surfaceID: UUID, direction: SplitDirection
     ) {
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(
@@ -1531,7 +1536,7 @@ final class AppModel {
         // libghostty would keep rendering a solid caret on it. `newFocus` is the moved
         // pane, which is not necessarily the one that had focus.
         if let currentlyFocused = focusedSurfaceID, currentlyFocused != newFocus {
-            ghosttyView(currentlyFocused)?.blurForLayoutChange()
+            surfaceViews[currentlyFocused]?.blurForLayoutChange()
         }
         updateWorkspace(at: at) { $0.layout = layout }
         focusedSurfaceID = newFocus
@@ -1550,7 +1555,7 @@ final class AppModel {
     /// observing a workspace's transient agent fields.
     func surfaceView(for surface: Surface, in workspaceID: UUID) -> GhosttySurfaceView? {
         guard let runtime, case .terminal = surface.kind else { return nil }
-        if let existing = ghosttyView(surface.id) {
+        if let existing = surfaceViews[surface.id] {
             return existing
         }
         guard let workspace = workspace(id: workspaceID) else { return nil }
@@ -1608,19 +1613,14 @@ final class AppModel {
         }
     }
 
-    /// Borderless window parked far off-screen (mirrors `BrowserCapture`), sized so
-    /// hosted surfaces get valid dimensions. It is deliberately never ordered on-screen:
-    /// hosting a surface only needs a non-nil `window` (see
-    /// `GhosttySurfaceView.viewDidMoveToWindow`), whereas an ordered window parked at
-    /// -100_000 joins Mission Control's layout — its bounding box then spans ~101,000 px
-    /// and every real window is scaled to nothing. Staying out of the on-screen list also
-    /// means it can never become key and steal keyboard focus, and its surfaces read as
-    /// occluded, so libghostty pauses their render thread (the PTY still runs).
+    /// The off-screen host window (`NSWindow.offscreenHost`) the background surfaces
+    /// live in, sized so they get valid dimensions. A surface only needs a non-nil
+    /// `window` to come up (see `GhosttySurfaceView.viewDidMoveToWindow`); hosted here,
+    /// it reads as occluded, so libghostty pauses its render thread while the PTY runs.
     private func makeBackgroundSurfaceNursery() -> NSWindow {
-        let frame = NSRect(x: -100_000, y: -100_000, width: 800, height: 600)
-        let window = NSWindow(
-            contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
-        window.contentView = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        let size = NSSize(width: 800, height: 600)
+        let window = NSWindow.offscreenHost(size: size)
+        window.contentView = NSView(frame: NSRect(origin: .zero, size: size))
         backgroundSurfaceNursery = window
         return window
     }
@@ -1629,19 +1629,19 @@ final class AppModel {
     /// Visible viewport text of a live terminal surface, or nil if it has no
     /// live Ghostty view. Read-only; used by agent-state detection.
     func surfaceViewportText(_ surfaceID: UUID) -> String? {
-        ghosttyView(surfaceID)?.readViewportText()
+        surfaceViews[surfaceID]?.readViewportText()
     }
 
     /// OSC window title of a live terminal surface, or nil if it has no live
     /// Ghostty view. Read-only; used by agent-state detection.
     private func surfaceOSCTitle(_ surfaceID: UUID) -> String? {
-        ghosttyView(surfaceID)?.readOSCTitle()
+        surfaceViews[surfaceID]?.readOSCTitle()
     }
 
     /// Latest OSC 9;4 progress state of a live terminal surface, or nil if it has
     /// no live Ghostty view. Read-only; used by agent-state detection.
     private func surfaceProgressReport(_ surfaceID: UUID) -> AgentProgressState? {
-        ghosttyView(surfaceID)?.readProgressReport()
+        surfaceViews[surfaceID]?.readProgressReport()
     }
 
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
@@ -1672,7 +1672,7 @@ final class AppModel {
     @ObservationIgnored private(set) lazy var diffService = DiffService(
         currentRevision: { [weak self] in self?.diffRevision ?? 0 })
 
-    /// Rewrite a browser surface's persisted URL (address-bar navigation).
+    /// Rewrite a browser surface's persisted URL, from its coordinator's `onCommitURL`.
     /// Browsers live exclusively in each workspace's inspector, so this matches the
     /// surface against the inspector browsers alone — there is no layout-tree search.
     ///
@@ -1716,12 +1716,6 @@ final class AppModel {
         } else {
             updateWorkspace(at: at) { $0.inspector.tab = tab }
         }
-        persist()
-    }
-
-    /// Explicitly set the inspector's collapsed state (the panel's collapse button).
-    func setInspectorCollapsed(_ collapsed: Bool, for workspaceID: UUID) {
-        guard mutate(workspaceID, { $0.inspector.collapsed = collapsed }) else { return }
         persist()
     }
 
@@ -1922,7 +1916,7 @@ final class AppModel {
             // the reference alone frees the surface after `deinit`, when a libghostty
             // callback recovering the view from the per-surface userdata would resurrect
             // an object that is already deallocating.
-            ghosttyView(id)?.invalidate()
+            surfaceViews[id]?.invalidate()
             surfaceViews[id] = nil
             browserCoordinators[id] = nil
             pendingInitialInput[id] = nil
@@ -1956,7 +1950,7 @@ final class AppModel {
     }
 
     // Reached from AppModel+Control.swift.
-    /// Debounced persistence for high-frequency agent-state changes.
+    /// Debounced persistence for high-frequency layout/inspector edits.
     func scheduleSave() {
         // Weakly, because this model owns the debouncer: a strong capture would let the
         // pending work item hold the model alive until it fires.
@@ -2004,8 +1998,8 @@ final class AppModel {
     }
 
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
-    /// state; returns nil for a non-Git folder (accepted by the UI-1 design — see
-    /// `.superpowers/themes/app-ui.md` § Sub-projects).
+    /// state; returns nil for a non-Git folder, which opens as a degenerate Space
+    /// (see `.superpowers/themes/space-project.md` § Space — the project level).
     /// Uses `Repository.open`, an exact-path open, rather than `discover`,
     /// which walks up to parent directories — a Space must root at the
     /// folder the user picked, not at an ancestor repository.
@@ -2020,7 +2014,7 @@ final class AppModel {
             branch: branch, remoteURL: remote,
             // Canonicalized (not just standardized) because it is compared across
             // folders reached by different spellings — see `spacesSharingRepository`.
-            commonDirPath: canonicalPath(repo.commonDirPath),
+            commonDirPath: WorktreeManager.canonicalPath(repo.commonDirPath),
             isLinkedWorktree: repo.isLinkedWorktree,
             // Standardized like `canonicalPath` and for the same reason: on the main
             // working tree the two name that one folder, so they must normalize alike.
@@ -2031,21 +2025,6 @@ final class AppModel {
     /// `path` with `.`, `..` and a trailing slash resolved away, symlinks left alone.
     private static func standardizedPath(_ path: String) -> String {
         URL(fileURLWithPath: path).standardizedFileURL.path
-    }
-
-    /// Error carrying a human-readable reason for a failed workspace creation.
-    struct WorkspaceCreationError: Error {
-        let message: String
-    }
-
-    /// Error carrying a human-readable reason for a rejected `diff open` request.
-    struct DiffOpenError: Error {
-        let message: String
-    }
-
-    /// Error carrying a human-readable reason for a rejected `workspace delete`.
-    struct WorkspaceDeleteError: Error {
-        let message: String
     }
 
     /// The outcome of `closeWorkspace(id:)`, distinguishing a merge failure (nothing
@@ -2138,18 +2117,9 @@ final class AppModel {
                 }
                 let signals = terminalIDs.compactMap { id -> AgentSignal? in
                     guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
-                    let oscTitle = surfaceOSCTitle(id)
                     // Every rule set is applied, because nothing here knows which agent runs
-                    // in this surface. The two text sources are read once above and replayed
-                    // across the rule sets — re-fetching them per rule set would triple the
-                    // cost of the pass for no gain.
-                    var textual = AgentSignal.absent
-                    for rules in AgentDetectionRuleSet.all {
-                        textual = max(textual, rules.signal(fromViewport: text))
-                        if let oscTitle {
-                            textual = max(textual, rules.signal(fromTitle: oscTitle))
-                        }
-                    }
+                    // in this surface.
+                    let textual = AgentDetectionRuleSet.signal(fromViewport: text, title: surfaceOSCTitle(id))
                     let progress = surfaceProgressReport(id).map(AgentSignal.init(progress:)) ?? .absent
                     // Roll the sources together. The OSC 9;4 progress report is the primary
                     // "working" signal — Claude Code brackets a turn with `ESC]9;4;3` …
@@ -2176,8 +2146,8 @@ final class AppModel {
     /// Write a *detected* agent state. Distinct from the explicit
     /// `controlSetAgentState`: it must NOT grant authority. Writes only when the
     /// value actually changes, so a steady detection stream doesn't thrash the UI.
-    /// Internal, not private, because `scriptHooks`' `reportSetupFailure` closure calls
-    /// it from outside this file to flag a workspace whose `setup` hook failed.
+    /// Internal, not private, for the tests that drive a detected state directly
+    /// (`AgentDetectionTests`, `ControlHandlerTests`, `PaneTreeInputsTests`).
     func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
         setDetectedAgentState(state, at: at)
@@ -2219,7 +2189,8 @@ final class AppModel {
 
     // Reached from AppModel+Control.swift.
     /// The notification text for a detected state, or `nil` when the state needs
-    /// no attention. Only `blocked` and `done` alert the user; the rest are silent.
+    /// no attention. Only `blocked`, `done` and `error` alert the user; the rest are
+    /// silent.
     /// Exhaustive by design so a new `AgentState` case forces a decision here.
     static func notificationMessage(for state: AgentState) -> String? {
         switch state {
@@ -2260,20 +2231,6 @@ final class AppModel {
         dismissed: restoredAgentReminderDismissals,
         persist: { [weak self] in self?.persist() })
 
-    /// One sidebar reminder line. Spelled `AppModel.AgentIntegrationReminder` by the
-    /// views and the tests, so the name stays put now that the type lives in its own file.
-    typealias AgentIntegrationReminder = AgentIntegrationReminders.Reminder
-
-    /// How long a probe result stays fresh before a stale check re-runs one.
-    nonisolated static var agentIntegrationProbeInterval: TimeInterval {
-        AgentIntegrationReminders.probeInterval
-    }
-
-    /// Whether a stale check should re-probe.
-    nonisolated static func shouldRefreshAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
-        AgentIntegrationReminders.shouldRefresh(lastProbeAt: lastProbeAt, now: now)
-    }
-
     /// Probes each agent's integration. Injectable so tests never spawn a login shell
     /// or read the real home directory.
     var agentIntegrationProbe: @Sendable () -> [CodingAgent: AgentIntegrationStatus] {
@@ -2284,22 +2241,19 @@ final class AppModel {
     /// The agents the sidebar should currently remind about, in `CodingAgent.allCases`
     /// order. Observed through `agentReminders`, so a probe landing after the sidebar
     /// has rendered still re-renders it.
-    var agentIntegrationReminders: [AgentIntegrationReminder] { agentReminders.reminders }
-
-    /// The in-flight probe, if any — the seam a test awaits after triggering one.
-    var agentIntegrationTask: Task<Void, Never>? { agentReminders.task }
+    var agentIntegrationReminders: [AgentIntegrationReminders.Reminder] { agentReminders.reminders }
 
     /// Probe now, whatever the last result's age (the launch probe).
     func refreshAgentIntegrations() { agentReminders.refresh() }
 
-    /// Re-probe if the last result is older than `agentIntegrationProbeInterval`.
+    /// Re-probe if the last result is older than `AgentIntegrationReminders.probeInterval`.
     func refreshAgentIntegrationsIfStale() { agentReminders.refreshIfStale() }
 
     /// The user opened a reminder's documentation, so an install is imminent.
     func agentReminderDocumentationOpened() { agentReminders.documentationOpened() }
 
     /// Dismiss one reminder line, permanently as far as this problem is concerned.
-    func dismissAgentReminder(_ reminder: AgentIntegrationReminder) {
+    func dismissAgentReminder(_ reminder: AgentIntegrationReminders.Reminder) {
         agentReminders.dismiss(reminder)
     }
 

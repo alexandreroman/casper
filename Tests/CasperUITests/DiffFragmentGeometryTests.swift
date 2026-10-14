@@ -13,27 +13,11 @@ final class DiffFragmentGeometryTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func codeFile(named name: String, lines lineCount: Int) -> GitDiffFile {
-        let lines = (1...lineCount).map {
-            GitDiffLine(kind: .addition, content: "line \($0)", oldLineNumber: nil, newLineNumber: $0)
-        }
-        let hunk = GitDiffHunk(header: "@@ -1,\(lineCount) +1,\(lineCount) @@",
-                               oldStart: 1, oldLines: lineCount,
-                               newStart: 1, newLines: lineCount, lines: lines)
-        return GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: false, hunks: [hunk])
-    }
-
     /// A file whose whole rendering is a single `.note` paragraph. `DiffDocument`
     /// guarantees these exist — a binary file, or one the line budget emptied —
     /// and they lay out in `DiffTextAssembly.noteFont`, not the code font.
     private func binaryFile(named name: String) -> GitDiffFile {
-        GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: true, hunks: [])
-    }
-
-    private func makeDocument(fileCount: Int, linesPerFile: Int) -> DiffDocument {
-        DiffDocument(diff: GitDiff(files: (0..<fileCount).map {
-            codeFile(named: "f\($0).swift", lines: linesPerFile)
-        }))
+        diffFile(name, lines: [], isBinary: true)
     }
 
     /// A text view laid out at a fixed width, the way the surface hosts it.
@@ -80,7 +64,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     // MARK: - Fragment mapping
 
     func testEveryVisibleFragmentMapsToADiffLine() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 5)
+        let document = additionsDocument(fileCount: 2, linesPerFile: 5)
         let geometry = try makeGeometry(document)
 
         let fragments = geometry.fragments(in: CGRect(x: 0, y: 0, width: width, height: 10_000))
@@ -101,13 +85,8 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// the first may print a gutter number.
     func testWrappedLineYieldsOneLineStartAndSeveralFragments() throws {
         let long = (1...80).map { "word\($0)" }.joined(separator: " ")
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: 1,
-                               newStart: 1, newLines: 1,
-                               lines: [GitDiffLine(kind: .addition, content: long,
-                                                   oldLineNumber: nil, newLineNumber: 1)])
         let document = DiffDocument(diff: GitDiff(files: [
-            GitDiffFile(oldPath: "a.swift", newPath: "a.swift", status: .modified,
-                        isBinary: false, hunks: [hunk]),
+            diffFile("a.swift", lines: [diffLine(.addition, long, new: 1)]),
         ]))
         let geometry = try makeGeometry(document)
 
@@ -120,7 +99,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     }
 
     func testFragmentsAreFilteredByTheRequestedRect() throws {
-        let document = makeDocument(fileCount: 1, linesPerFile: 200)
+        let document = additionsDocument(fileCount: 1, linesPerFile: 200)
         let geometry = try makeGeometry(document)
 
         let all = geometry.fragments(in: CGRect(x: 0, y: 0, width: width, height: 100_000))
@@ -140,7 +119,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// that enumerated the whole document and filtered afterwards would return the
     /// same rows — so the assertion is on how much layout the call forced.
     func testEnumerationLaysOutOnlyTheRequestedRect() throws {
-        let document = makeDocument(fileCount: 1, linesPerFile: 2000)
+        let document = additionsDocument(fileCount: 1, linesPerFile: 2000)
         let fullHeight = try fullLayoutHeight(of: document)
         // Deliberately cold: what is under test is what this one call forces.
         let textView = makeTextView(document, layingOut: false)
@@ -175,7 +154,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// and the gutter stripe stop cleanly at a file boundary with no
     /// special-casing, and leaves the band to the sticky overlay alone.
     func testNoFragmentsInTheReservedBandOrTheInterFileGap() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 2, linesPerFile: 4)
         let geometry = try makeGeometry(document)
         let bandTop = try XCTUnwrap(geometry.top(ofFileAt: 1))
 
@@ -188,7 +167,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     }
 
     func testNoFragmentsBelowTheLastRow() throws {
-        let document = makeDocument(fileCount: 1, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 1, linesPerFile: 4)
         let textView = makeTextView(document)
         let layoutManager = try XCTUnwrap(textView.textLayoutManager)
         let geometry = DiffFragmentGeometry(layoutManager: layoutManager, document: document)
@@ -203,7 +182,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     // MARK: - File tops
 
     func testFileTopsAscendAndRoundTripThroughFileIndexAtY() throws {
-        let document = makeDocument(fileCount: 3, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 3, linesPerFile: 4)
         let geometry = try makeGeometry(document)
 
         let tops = try document.files.indices.map { try XCTUnwrap(geometry.top(ofFileAt: $0)) }
@@ -215,7 +194,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     }
 
     func testTopIsNilForAnOutOfRangeFile() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 2, linesPerFile: 4)
         let geometry = try makeGeometry(document)
 
         XCTAssertNil(geometry.top(ofFileAt: -1))
@@ -228,7 +207,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// origin instead would hand back the band's bottom, and a scroll to the first
     /// file would leave its bar painting over the file's first hunk header.
     func testFirstFilesBandTopSitsAboveTheContainerOrigin() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 2, linesPerFile: 4)
         let geometry = try makeGeometry(document)
 
         let top = try XCTUnwrap(geometry.top(ofFileAt: 0))
@@ -240,7 +219,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// warm one must agree. If the probe ever accepted a fragment TextKit had only
     /// estimated the position of, `casper diff <file>` would land off-target.
     func testFileTopIsTheSameColdAsWarm() throws {
-        let document = makeDocument(fileCount: 30, linesPerFile: 20)
+        let document = additionsDocument(fileCount: 30, linesPerFile: 20)
         let target = document.files.count - 1
         let cold = try makeGeometry(document, layingOut: false)
         let warm = try makeGeometry(document)
@@ -258,7 +237,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// quietly forced layout, or one that disagreed with `top`, would each be a
     /// defect the overlay itself cannot show.
     func testWarmTopAnswersOnlyForFilesAlreadyLaidOut() throws {
-        let document = makeDocument(fileCount: 30, linesPerFile: 20)
+        let document = additionsDocument(fileCount: 30, linesPerFile: 20)
         let target = document.files.count - 1
         let coldView = makeTextView(document, layingOut: false)
         let coldLayoutManager = try XCTUnwrap(coldView.textLayoutManager)
@@ -288,7 +267,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// the machine: a warm probe is three orders of magnitude cheaper than a
     /// walk, so twenty probes must still come in under one walk.
     func testWarmFileTopCostsFarLessThanALayoutWalk() throws {
-        let document = makeDocument(fileCount: 100, linesPerFile: 100)
+        let document = additionsDocument(fileCount: 100, linesPerFile: 100)
         let lastFile = document.files.count - 1
         let geometry = try makeGeometry(document)
         let clock = ContinuousClock()
@@ -306,7 +285,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// `ensureLayout(for: documentRange)`, which lays out the entire diff and is
     /// the cost every other decision here is arranged to avoid.
     func testEnsureLayoutStopsAtTheTargetFile() throws {
-        let document = makeDocument(fileCount: 40, linesPerFile: 30)
+        let document = additionsDocument(fileCount: 40, linesPerFile: 30)
         let fullHeight = try fullLayoutHeight(of: document)
         let textView = makeTextView(document, layingOut: false)
         let layoutManager = try XCTUnwrap(textView.textLayoutManager)
@@ -331,7 +310,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// file are all covered: the answer must not depend on how deep in the
     /// document the boundary sits.
     func testFileOwnershipStartsAtTheReservedBandNotAtTheLayoutFragment() throws {
-        let document = makeDocument(fileCount: 12, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 12, linesPerFile: 4)
         let geometry = try makeGeometry(document)
         // The gap really is a distinct region above the band, so the assertions
         // below test the correction rather than restate the band top.
@@ -352,7 +331,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// file's own band top. There is no geometry above the container's origin, so
     /// both resolve to the first file rather than to nothing.
     func testNegativeYBelongsToTheFirstFile() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 4)
+        let document = additionsDocument(fileCount: 2, linesPerFile: 4)
         let geometry = try makeGeometry(document)
 
         XCTAssertEqual(geometry.fileIndex(atY: -100), 0)
@@ -365,7 +344,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// `DiffDocument` guarantees.
     func testNoteOnlyFileOwnsItsBandLikeAnyOther() throws {
         let document = DiffDocument(diff: GitDiff(files: [
-            codeFile(named: "a.swift", lines: 4),
+            diffFile("a.swift", lines: additionLines(4)),
             binaryFile(named: "logo.png"),
         ]))
         let geometry = try makeGeometry(document)

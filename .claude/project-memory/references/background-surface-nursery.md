@@ -1,10 +1,10 @@
 ---
-name: "Background surface nursery for unselected-workspace commands"
+name: "Background surface nursery"
 description: "Unselected workspaces have no live PTY; queued commands run via an off-screen nursery window"
 type: project
 ---
 
-# Background surface nursery for unselected-workspace commands
+# Background surface nursery
 
 An unselected workspace has **no live terminal surface at all**: libghostty
 surfaces (and their PTYs) are created lazily in `GhosttySurfaceView`, gated on

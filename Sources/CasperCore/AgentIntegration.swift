@@ -253,11 +253,6 @@ enum AgentIntegration {
         let version: String
         /// Whether the match came from `legacyPluginID` rather than `pluginID`.
         let usesLegacyPluginID: Bool
-
-        init(version: String, usesLegacyPluginID: Bool) {
-            self.version = version
-            self.usesLegacyPluginID = usesLegacyPluginID
-        }
     }
 
     /// Reads the installed plugin registration out of Claude Code's plugin registry
@@ -622,7 +617,8 @@ enum AgentIntegration {
 
             let next: Character? = index + 1 < characters.count ? characters[index + 1] : nil
             if character == "/", next == "/" {
-                while index < characters.count, characters[index] != "\n" { index += 1 }
+                // `isNewline`, not `== "\n"`: a CRLF is one `Character`, unequal to "\n".
+                while index < characters.count, !characters[index].isNewline { index += 1 }
                 continue
             }
             if character == "/", next == "*" {

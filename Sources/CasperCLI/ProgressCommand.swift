@@ -17,9 +17,13 @@ struct ProgressCommand: ParsableCommand {
         var total: Int
         @Option(name: .long, help: "1-based index of the current task.")
         var current: Int
-        @Option(name: .long, help: "Label of the current task.")
+        @Option(name: .long, parsing: .unconditional, help: "Label of the current task.")
         var label: String
         @OptionGroup var target: WorkspaceTargetOption
+
+        func validate() throws {
+            try requestHelpIfHelpFlag(label, of: self)
+        }
 
         func makeCommand() throws -> ControlCommand {
             guard total <= ProgressSynthesis.maxSynthesizedTotal else {
@@ -39,7 +43,7 @@ struct ProgressCommand: ParsableCommand {
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: false)
             emit(ProgressOut(
-                progress: ProgressBody(total: total, current: current, label: label),
+                progress: ControlProgressInfo(total: total, current: current, label: label),
                 workspace: response.workspaceRef))
         }
     }
@@ -60,11 +64,7 @@ struct ProgressCommand: ParsableCommand {
 
         func run() throws {
             let response = try sendControl(makeCommand(), retriable: true)
-            emit(ProgressGetOut(
-                progress: response.progress.map {
-                    ProgressBody(total: $0.total, current: $0.current, label: $0.label)
-                },
-                workspace: response.workspaceRef))
+            emit(ProgressGetOut(progress: response.progress, workspace: response.workspaceRef))
         }
     }
 

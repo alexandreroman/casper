@@ -18,10 +18,8 @@ import CasperCore
 /// The prompt itself (`presentConfirmation`) stays intact and complete: assigning it to
 /// `approveUntrusted` is the whole of what asking the user would take.
 ///
-/// `clipboard-write = ask` belongs in `GhosttyDefaultConfig` even so. Under libghostty's own
-/// `allow` default the callback is always trusted and `apply`'s untrusted branch is
-/// unreachable; `ask` is what keeps `approveUntrusted` the single place the write policy is
-/// decided rather than dead code.
+/// `clipboard-write = ask` belongs in `GhosttyDefaultConfig` even so: it is what makes
+/// libghostty flag an untrusted write at all (see `GhosttyDefaultConfig.text`).
 @MainActor
 enum GhosttyClipboardWrite {
     /// Whether an untrusted write may proceed. Approves unconditionally, by the policy above,
@@ -38,7 +36,8 @@ enum GhosttyClipboardWrite {
     /// to the developer's clipboard.
     static func apply(_ text: String, confirm: Bool, to pasteboard: NSPasteboard = .general) {
         if confirm, !approveUntrusted(text) {
-            CasperLog.ghostty.notice("denied an untrusted clipboard write of \(text.count, privacy: .public) characters")
+            CasperLog.ghostty.notice(
+                "denied an untrusted clipboard write of \(text.count, privacy: .public) characters")
             return
         }
         pasteboard.clearContents()

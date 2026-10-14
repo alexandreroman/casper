@@ -6,52 +6,30 @@ import CasperCore
 
 /// Layout tests for the Diff/Browser segmented capsule.
 ///
-/// The failure they guard against is purely geometric and easy to reintroduce:
+/// The failure it guards against is purely geometric and easy to reintroduce:
 /// `plusminus` and `globe` do not measure the same, so segments sized to their
 /// content come out lopsided and the sliding selection indicator changes size as
 /// it moves. `TitleCapsuleMetrics.glyphSlotWidth` is what makes the two halves
-/// identical by construction, and these tests pin both ends of it — the slot is
-/// wide enough for either symbol, and the assembled control measures exactly two
-/// equal segments.
+/// identical by construction, and the test below pins the assembled control at
+/// its declared `intrinsicWidth` — exactly two equal segments — and checks that
+/// the two symbols really do measure differently. That the slot clears both is
+/// pinned with the other glyph-chip symbols by
+/// `WorkspaceToolbarActionsTests.testGlyphSlotClearsEverySymbolThatGoesInIt`.
 @MainActor
 final class InspectorTabSelectorTests: XCTestCase {
-    /// A segment is one glyph chip, from the metrics every title-bar chip shares.
-    private static var expectedSegmentWidth: CGFloat { TitleCapsuleMetrics.glyphChipWidth }
-
-    /// The whole control measures exactly two segments of the declared width — so
+    /// The whole control measures its declared width of two glyph chips — so
     /// neither symbol widened its own half. Checked in all three visible states
     /// because the selection indicator is a `.background`, which must never
     /// contribute to the layout.
     func testBothSegmentsMeasureTheSameWidthInEveryState() {
+        XCTAssertNotEqual(
+            symbolWidth("plusminus"), symbolWidth("globe"), accuracy: 0.5,
+            "the two symbols measure alike, so equal halves prove nothing")
         for tab in [nil, InspectorTab.diff, InspectorTab.browser] as [InspectorTab?] {
             XCTAssertEqual(
-                selectorWidth(selecting: tab), 2 * Self.expectedSegmentWidth, accuracy: 0.5,
+                selectorWidth(selecting: tab), InspectorTabSelector.intrinsicWidth, accuracy: 0.5,
                 "selection \(String(describing: tab))")
         }
-    }
-
-    /// Proves the equality above has teeth — the two symbols really do measure
-    /// differently, so equal segments can only come from the fixed slot — and that
-    /// the slot is generous enough that neither glyph overflows it.
-    func testGlyphSlotFitsBothSymbolsThatDoNotMeasureAlike() {
-        let plusminus = symbolWidth("plusminus")
-        let globe = symbolWidth("globe")
-
-        XCTAssertNotEqual(plusminus, globe, accuracy: 0.5)
-        XCTAssertLessThanOrEqual(plusminus, TitleCapsuleMetrics.glyphSlotWidth)
-        XCTAssertLessThanOrEqual(globe, TitleCapsuleMetrics.glyphSlotWidth)
-    }
-
-    /// The chip row's width budget subtracts `intrinsicWidth` because this control
-    /// is exempt from the degradation ladder — it never collapses and never folds.
-    ///
-    /// The other side of the definition the test above measures: that one pins the
-    /// hosted control against the shared segment metric, this one pins the constant
-    /// the budget reads against that same metric. Together they say the number the
-    /// budget subtracts is the number the control lays out to — which a constant
-    /// respelled as a literal, or widened for one caller, would break silently.
-    func testIntrinsicWidthIsTwoSegmentsOfTheSharedMetric() {
-        XCTAssertEqual(InspectorTabSelector.intrinsicWidth, 2 * Self.expectedSegmentWidth)
     }
 
     // MARK: - Helpers

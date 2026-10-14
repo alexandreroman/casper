@@ -8,18 +8,16 @@ type: reference
 
 `UNUserNotificationCenter.current()` throws `NSInternalInconsistencyException`
 ("bundleProxyForCurrentProcess is nil") and `abort()`s on macOS 26 when the
-process has no bundle identifier — it does **not** silently no-op, contrary to
-older code comments. Any bare-executable run (`swift run`, a raw
-`.build/.../debug/casper` launch) has no bundle id.
+process has no bundle identifier — it does **not** silently no-op. Any
+bare-executable run (`swift run`, a raw `.build/.../debug/casper` launch) has no
+bundle id.
 
 `AppModel.deliverNotification`'s default closure carries the bundle-id guard.
 Every new `UserNotifications` call path needs the same one, whatever its
 entry point.
 
 The crash surfaces when a `casper notify --message` triggers a notification and
-looks unrelated to whatever change is being tested — easy to misattribute. Same
-family as other macOS-26 unbundled/abort gotchas (native `.inspector`,
-`CGWindowListCreateImage`).
+looks unrelated to whatever change is being tested — easy to misattribute.
 
 `make dev` launches through a real bundle (`Casper-dev.app`, bundle id
 `com.github.alexandreroman.casper.dev`), so notifications do reach

@@ -26,12 +26,87 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertEqual(response.text, "ok")
     }
 
-    func testMissingSocketThrowsControlSocketError() {
+    func testMissingSocketThrowsSocketTransportError() {
         XCTAssertThrowsError(
             try ControlSocketClient.send(
                 ControlCommand(verb: .workspaceList), toSocketAt: tempSocketPath())
         ) { error in
-            XCTAssertTrue(error is ControlSocketError)
+            XCTAssertTrue(error is SocketTransportError)
         }
+    }
+
+    func testStaleSocketFileFailsFast() throws {
+        let path = try staleSocketPath()
+        defer { unlink(path) }
+
+        let start = Date()
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5)
+        ) { error in
+            // The reason names the socket and the likely cause, like the
+            // missing-file case does, rather than a bare POSIX error.
+            let reason = (error as? SocketTransportError)?.reason ?? ""
+            XCTAssertTrue(reason.hasPrefix("cannot connect to \(path): "), reason)
+            XCTAssertTrue(reason.hasSuffix(" (is the GUI running?)"), reason)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+    }
+
+    func testStaleSocketFileFailsFastEvenWhenRetriable() throws {
+        let path = try staleSocketPath()
+        defer { unlink(path) }
+
+        let start = Date()
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(
+                ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 5, retriable: true)
+        ) { error in
+            XCTAssertTrue(error is SocketTransportError)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+    }
+
+    func testRetriableSendDoesNotRetryATimedOutAttempt() throws {
+        let path = tempSocketPath()
+        let server = ControlSocketServer(socketPath: path)
+        let requests = Recorder<ControlCommand.Verb>()
+        // Accepts each request but never replies.
+        server.onCommand = { command, _ in requests.record(command.verb) }
+        try server.start()
+        defer { server.stop() }
+
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(
+                ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 0.3, retriable: true)
+        ) { error in
+            XCTAssertTrue(error is SocketTransportError)
+        }
+        // Every retry would run, and reach the server, before `send` returns, so counting the
+        // requests needs no timing bound.
+        XCTAssertEqual(requests.values, [.workspaceList])
+    }
+
+    /// The file a crashed app leaves behind: a socket bound and then closed
+    /// without `unlink`, so the path exists but nothing listens on it.
+    private func staleSocketPath() throws -> String {
+        let path = tempSocketPath()
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { throw POSIXError(.EBADF) }
+        defer { close(descriptor) }
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let capacity = MemoryLayout.size(ofValue: address.sun_path)
+        guard path.utf8.count < capacity else { throw POSIXError(.ENAMETOOLONG) }
+        withUnsafeMutableBytes(of: &address.sun_path) { buffer in
+            buffer.copyBytes(from: path.utf8)
+        }
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard bound == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        return path
     }
 }

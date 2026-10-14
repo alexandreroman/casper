@@ -1,10 +1,10 @@
 ---
-name: "Testing a guarded no-write with withObservationTracking"
+name: "Testing a guarded no-write"
 description: "withObservationTracking proves a guarded mutation does NOT write to an @Observable property, with no instrumentation added to production code"
 type: feedback
 ---
 
-# Testing a guarded no-write with withObservationTracking
+# Testing a guarded no-write
 
 `withObservationTracking` can prove a guarded mutation does **not** write, with
 no instrumentation added to production code, whenever the model under test is

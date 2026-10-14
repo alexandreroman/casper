@@ -53,15 +53,7 @@ final class DiffService {
         }
 
         let path = workspace.worktreePath
-        let task = Task.detached(priority: .userInitiated) { () -> GitDiff? in
-            do {
-                let repo = try Repository.open(atPath: path)
-                return try repo.diffWorkdirToHead()
-            } catch {
-                CasperLog.app.failure("diff failed", error)
-                return nil
-            }
-        }
+        let task = Task.detached(priority: .userInitiated) { Self.readDiff(ofWorktreeAt: path) }
         inFlightDiff = (workspace.id, revision, task)
         let diff = await task.value
 
@@ -74,6 +66,48 @@ final class DiffService {
             inFlightDiff = nil
         }
         return diff
+    }
+
+    /// Whether the workspace's diff lists `relativePath`, a file missing from its
+    /// worktree — a deletion. Read from disk right now, bypassing the cache and the
+    /// in-flight walk: either may predate a change the worktree watcher has not
+    /// reported yet.
+    ///
+    /// Only a file HEAD tracks can be a deletion, so a path HEAD lacks — a typo —
+    /// is refused from a cheap tree lookup, without the full walk. A tracked file
+    /// still needs the walk: rename detection lists a moved file under its new path
+    /// only, so its old path is no scroll target.
+    func listsMissingFile(_ relativePath: String, in workspace: Workspace) async -> Bool {
+        let path = workspace.worktreePath
+        return await Task.detached(priority: .userInitiated) {
+            guard Self.isTrackedAtHead(relativePath, inWorktreeAt: path) else { return false }
+            let diff = Self.readDiff(ofWorktreeAt: path)
+            return diff?.files.contains { $0.id == relativePath } ?? false
+        }.value
+    }
+
+    /// Opens its own `Repository`, like `readDiff`. False when the workspace is not
+    /// Git-backed or the lookup fails.
+    private nonisolated static func isTrackedAtHead(_ relativePath: String, inWorktreeAt path: String) -> Bool {
+        do {
+            let repo = try Repository.open(atPath: path)
+            return try repo.isTrackedAtHead(path: relativePath)
+        } catch {
+            CasperLog.app.failure("HEAD tree lookup failed", error)
+            return false
+        }
+    }
+
+    /// Opens its own `Repository`, so it runs off the main actor without one
+    /// crossing an actor boundary; only the `Sendable` `GitDiff` comes back.
+    private nonisolated static func readDiff(ofWorktreeAt path: String) -> GitDiff? {
+        do {
+            let repo = try Repository.open(atPath: path)
+            return try repo.diffWorkdirToHead()
+        } catch {
+            CasperLog.app.failure("diff failed", error)
+            return nil
+        }
     }
 
     /// The workspace's working-tree-vs-HEAD line counts, or nil when there is nothing

@@ -8,15 +8,8 @@ import XCTest
 final class DiffDocumentTests: XCTestCase {
     // MARK: - Builders
 
-    private func line(
-        _ kind: GitDiffLine.Kind, _ content: String, old: Int? = nil, new: Int? = nil
-    ) -> GitDiffLine {
-        GitDiffLine(kind: kind, content: content, oldLineNumber: old, newLineNumber: new)
-    }
-
     private func hunk(header: String = "@@ -1,2 +1,2 @@", _ lines: [GitDiffLine]) -> GitDiffHunk {
-        GitDiffHunk(header: header, oldStart: 1, oldLines: lines.count, newStart: 1,
-                    newLines: lines.count, lines: lines)
+        GitDiffHunk(header: header, lines: lines)
     }
 
     private func file(
@@ -59,8 +52,8 @@ final class DiffDocumentTests: XCTestCase {
     func testHunkHeaderPrecedesItsLines() {
         let document = DiffDocument(diff: GitDiff(files: [
             file([hunk(header: "@@ -1,1 +1,2 @@", [
-                line(.context, "keep", old: 1, new: 1),
-                line(.addition, "added", new: 2),
+                diffLine(.context, "keep", old: 1, new: 1),
+                diffLine(.addition, "added", new: 2),
             ])]),
         ]))
 
@@ -73,7 +66,7 @@ final class DiffDocumentTests: XCTestCase {
     /// in the gutter, so it neither prefixes the text nor shifts `contentRange`.
     func testDiffLineIsItsSourceTextWithNoCue() {
         let document = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.addition, "let x = 1", new: 7)])]),
+            file([hunk([diffLine(.addition, "let x = 1", new: 7)])]),
         ]))
 
         let added = document.lines[1]
@@ -89,9 +82,9 @@ final class DiffDocumentTests: XCTestCase {
     func testGutterNumberFollowsTheLinesSide() {
         let document = DiffDocument(diff: GitDiff(files: [
             file([hunk([
-                line(.deletion, "gone", old: 41),
-                line(.addition, "new", new: 42),
-                line(.context, "same", old: 43, new: 44),
+                diffLine(.deletion, "gone", old: 41),
+                diffLine(.addition, "new", new: 42),
+                diffLine(.context, "same", old: 43, new: 44),
             ])]),
         ]))
 
@@ -103,7 +96,7 @@ final class DiffDocumentTests: XCTestCase {
     func testRenameTitleJoinsBothPaths() {
         let document = DiffDocument(diff: GitDiff(files: [
             file(old: "old/a.swift", new: "new/b.swift", status: .renamed,
-                 [hunk([line(.context, "x", old: 1, new: 1)])]),
+                 [hunk([diffLine(.context, "x", old: 1, new: 1)])]),
         ]))
 
         XCTAssertEqual(document.files[0].title, "old/a.swift \u{2192} new/b.swift")
@@ -129,7 +122,7 @@ final class DiffDocumentTests: XCTestCase {
     func testDeletionTitleFallsBackToTheOldPath() {
         let document = DiffDocument(diff: GitDiff(files: [
             file(old: "gone.swift", new: "", status: .deleted,
-                 [hunk([line(.deletion, "x", old: 1)])]),
+                 [hunk([diffLine(.deletion, "x", old: 1)])]),
         ]))
 
         XCTAssertEqual(document.files[0].title, "gone.swift")
@@ -139,10 +132,10 @@ final class DiffDocumentTests: XCTestCase {
     func testFileCarriesItsInsertionAndDeletionCounts() {
         let document = DiffDocument(diff: GitDiff(files: [
             file([hunk([
-                line(.addition, "a", new: 1),
-                line(.addition, "b", new: 2),
-                line(.deletion, "c", old: 1),
-                line(.context, "d", old: 2, new: 3),
+                diffLine(.addition, "a", new: 1),
+                diffLine(.addition, "b", new: 2),
+                diffLine(.deletion, "c", old: 1),
+                diffLine(.context, "d", old: 2, new: 3),
             ])]),
         ]))
 
@@ -150,18 +143,20 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(document.files[0].deletions, 1)
     }
 
-    /// The gutter must be wide enough for the file's widest line number, with a
-    /// floor so short files don't get a cramped column.
+    /// The gutter must be wide enough for the widest line number of any file,
+    /// with a floor so short diffs don't get a cramped column.
     func testGutterWidthGrowsWithTheWidestLineNumber() {
         let narrow = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.context, "x", old: 1, new: 1)])]),
+            file([hunk([diffLine(.context, "x", old: 1, new: 1)])]),
         ]))
         let wide = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.context, "x", old: 12345, new: 12345)])]),
+            file([hunk([diffLine(.context, "x", old: 1, new: 1)])]),
+            file(old: "b.swift", new: "b.swift", [hunk([diffLine(.context, "x", old: 12345, new: 12345)])]),
         ]))
 
-        XCTAssertEqual(narrow.files[0].gutterWidth, 36)
-        XCTAssertEqual(wide.files[0].gutterWidth, CGFloat(5 * 9 + 12))
+        XCTAssertEqual(narrow.gutterWidth, 36)
+        XCTAssertEqual(wide.gutterWidth, CGFloat(5 * 9 + 12))
+        XCTAssertEqual(DiffDocument(diff: GitDiff(files: [])).gutterWidth, 0)
     }
 
     // MARK: - Binary files
@@ -197,12 +192,25 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(span.status, .conflicted)
     }
 
+    /// An unreadable file has no hunks for a reason other than an unchanged content,
+    /// so it must not claim "No content changes".
+    func testUnreadableFileRendersACouldNotBeReadNote() throws {
+        let document = DiffDocument(diff: GitDiff(files: [
+            file(status: .unreadable, []),
+        ]))
+
+        XCTAssertEqual(document.lines.map(\.kind), [.note])
+        let note = try XCTUnwrap(document.lines.first)
+        XCTAssertEqual(text(document, note.range), "File could not be read")
+        XCTAssertEqual(document.files.first?.status, .unreadable)
+    }
+
     // MARK: - Truncation
 
     func testLongLineIsTruncatedAndMarkedUnhighlightable() {
         let long = String(repeating: "x", count: DiffLineStyle.maxDisplayLineLength + 50)
         let document = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.addition, long, new: 1)])]),
+            file([hunk([diffLine(.addition, long, new: 1)])]),
         ]))
 
         let added = document.lines[1]
@@ -216,7 +224,7 @@ final class DiffDocumentTests: XCTestCase {
     func testLineExactlyAtTheCapIsNotTruncated() {
         let exact = String(repeating: "x", count: DiffLineStyle.maxDisplayLineLength)
         let document = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.addition, exact, new: 1)])]),
+            file([hunk([diffLine(.addition, exact, new: 1)])]),
         ]))
 
         XCTAssertFalse(document.lines[1].truncated)
@@ -233,7 +241,7 @@ final class DiffDocumentTests: XCTestCase {
     func testSeparatorsInsideContentBecomeSpaces() {
         let content = "first\rsecond\u{2028}third\r"
         let document = DiffDocument(diff: GitDiff(files: [
-            file([hunk(header: "@@ -1,1 +1,1 @@", [line(.addition, content, new: 1)])]),
+            file([hunk(header: "@@ -1,1 +1,1 @@", [diffLine(.addition, content, new: 1)])]),
         ]))
 
         XCTAssertEqual(document.text, "@@ -1,1 +1,1 @@\nfirst second third \n")
@@ -253,7 +261,7 @@ final class DiffDocumentTests: XCTestCase {
     /// the line and desynchronise every range after it.
     func testInteriorCRLFBecomesTwoSpaces() {
         let document = DiffDocument(diff: GitDiff(files: [
-            file([hunk(header: "@@ -1,1 +1,1 @@", [line(.addition, "a\r\nb", new: 1)])]),
+            file([hunk(header: "@@ -1,1 +1,1 @@", [diffLine(.addition, "a\r\nb", new: 1)])]),
         ]))
 
         XCTAssertEqual(document.text, "@@ -1,1 +1,1 @@\na  b\n")
@@ -265,7 +273,7 @@ final class DiffDocumentTests: XCTestCase {
     func testNonASCIIContentRoundTripsThroughItsRanges() {
         let content = "héllo 👨‍👩‍👧 → ok"
         let document = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.addition, content, new: 1)])]),
+            file([hunk([diffLine(.addition, content, new: 1)])]),
         ]))
 
         let added = document.lines[1]
@@ -278,7 +286,7 @@ final class DiffDocumentTests: XCTestCase {
     func testPerFileCapHidesTheOverflowAndNotesIt() {
         let overflow = 25
         let lines = (1...DiffDocument.maxLinesPerFile + overflow).map {
-            line(.addition, "l\($0)", new: $0)
+            diffLine(.addition, "l\($0)", new: $0)
         }
         let document = DiffDocument(diff: GitDiff(files: [file([hunk(lines)])]))
 
@@ -302,7 +310,7 @@ final class DiffDocumentTests: XCTestCase {
         let fileCount = DiffDocument.maxTotalLines / perFile + 2
         let files = (0..<fileCount).map { index in
             file(old: "f\(index).swift", new: "f\(index).swift",
-                 [hunk((1...perFile).map { line(.addition, "l\($0)", new: $0) })])
+                 [hunk((1...perFile).map { diffLine(.addition, "l\($0)", new: $0) })])
         }
         let document = DiffDocument(diff: GitDiff(files: files))
 
@@ -329,9 +337,9 @@ final class DiffDocumentTests: XCTestCase {
     func testPartiallyBudgetedHunkKeepsItsHeaderAndTheDroppedOneVanishes() {
         let fitting = DiffDocument.maxLinesPerFile - 10
         let hunks = [
-            hunk(header: "@@ fitting @@", (1...fitting).map { line(.addition, "l\($0)", new: $0) }),
-            hunk(header: "@@ partial @@", (1...50).map { (n: Int) in line(.addition, "p\(n)", new: n) }),
-            hunk(header: "@@ dropped @@", (1...50).map { (n: Int) in line(.addition, "d\(n)", new: n) }),
+            hunk(header: "@@ fitting @@", (1...fitting).map { diffLine(.addition, "l\($0)", new: $0) }),
+            hunk(header: "@@ partial @@", (1...50).map { (n: Int) in diffLine(.addition, "p\(n)", new: n) }),
+            hunk(header: "@@ dropped @@", (1...50).map { (n: Int) in diffLine(.addition, "d\(n)", new: n) }),
         ]
         let document = DiffDocument(diff: GitDiff(files: [file(hunks)]))
 
@@ -349,8 +357,8 @@ final class DiffDocumentTests: XCTestCase {
 
     func testSpansTileTheDocumentAndMapBackFromOffsets() {
         let document = DiffDocument(diff: GitDiff(files: [
-            file(old: "a.swift", new: "a.swift", [hunk([line(.addition, "a", new: 1)])]),
-            file(old: "b.swift", new: "b.swift", [hunk([line(.deletion, "b", old: 1)])]),
+            file(old: "a.swift", new: "a.swift", [hunk([diffLine(.addition, "a", new: 1)])]),
+            file(old: "b.swift", new: "b.swift", [hunk([diffLine(.deletion, "b", old: 1)])]),
         ]))
 
         for (index, span) in document.lines.enumerated() {
@@ -368,8 +376,8 @@ final class DiffDocumentTests: XCTestCase {
     /// not a character early, not a character into the next file.
     func testFileRangeCoversExactlyItsOwnLines() throws {
         let document = DiffDocument(diff: GitDiff(files: [
-            file(old: "a.swift", new: "a.swift", [hunk([line(.addition, "a", new: 1)])]),
-            file(old: "b.swift", new: "b.swift", [hunk([line(.deletion, "b", old: 1)])]),
+            file(old: "a.swift", new: "a.swift", [hunk([diffLine(.addition, "a", new: 1)])]),
+            file(old: "b.swift", new: "b.swift", [hunk([diffLine(.deletion, "b", old: 1)])]),
         ]))
 
         for (index, span) in document.files.enumerated() {
@@ -393,8 +401,8 @@ final class DiffDocumentTests: XCTestCase {
     /// the very end of the document, so the search's edges are load-bearing.
     func testLineIndexAtTheDocumentsEdges() throws {
         let document = DiffDocument(diff: GitDiff(files: [
-            file(old: "a.swift", new: "a.swift", [hunk([line(.addition, "a", new: 1)])]),
-            file(old: "b.swift", new: "b.swift", [hunk([line(.deletion, "b", old: 1)])]),
+            file(old: "a.swift", new: "a.swift", [hunk([diffLine(.addition, "a", new: 1)])]),
+            file(old: "b.swift", new: "b.swift", [hunk([diffLine(.deletion, "b", old: 1)])]),
         ]))
         let last = try XCTUnwrap(document.lines.last)
 

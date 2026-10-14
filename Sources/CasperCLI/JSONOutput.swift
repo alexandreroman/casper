@@ -1,4 +1,5 @@
 import ArgumentParser
+import CasperCore
 import Foundation
 
 /// Shared encoder for all CLI JSON output. `sortedKeys` gives deterministic,
@@ -34,18 +35,6 @@ func emitResult(raw: Bool, plain: @autoclosure () -> String, json: @autoclosure 
     print(raw ? plain() : json())
 }
 
-/// Unwrap a JSON-serialized value for `--raw` shell piping: a top-level JSON
-/// string prints as its bare contents (no surrounding quotes), while every other
-/// JSON token (number, bool, null, object, array) prints verbatim. Mirrors the
-/// app-side `content` unwrap so `eval --raw` and `content --raw` behave alike.
-func unwrappedRawValue(_ json: String) -> String {
-    guard let value = try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed]),
-          let string = value as? String else {
-        return json
-    }
-    return string
-}
-
 /// Build `{"<key>":<json>,"workspace":"<id>"}` from a payload the app already
 /// serialized. `json` is re-parsed so it embeds as a real JSON token instead of an
 /// escaped string — `Codable` can't emit raw JSON — falling back to `fallback`
@@ -71,16 +60,10 @@ struct StatusOut: Encodable {
     let workspace: String
 }
 
-/// `{"total":T,"current":C,"label":"L"}` — the body of a progress report.
-struct ProgressBody: Encodable {
-    let total: Int
-    let current: Int
-    let label: String
-}
-
-/// `{"progress":{…},"workspace":"<id>"}` — a progress report for `progress set`.
+/// `{"progress":{…},"workspace":"<id>"}` — a progress report for `progress set`,
+/// whose body is `{"current":C,"label":"L","total":T}`.
 struct ProgressOut: Encodable {
-    let progress: ProgressBody
+    let progress: ControlProgressInfo
     let workspace: String
 }
 
@@ -89,7 +72,7 @@ struct ProgressOut: Encodable {
 /// omitted: "there is no bar" is the answer this command exists to give, and a
 /// missing key reads as a truncated response instead of an answer.
 struct ProgressGetOut: Encodable {
-    let progress: ProgressBody?
+    let progress: ControlProgressInfo?
     let workspace: String
 
     enum CodingKeys: String, CodingKey { case progress, workspace }

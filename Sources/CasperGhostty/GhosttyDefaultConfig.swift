@@ -1,48 +1,23 @@
 import AppKit
 
-/// Casper's built-in libghostty defaults, baked into the binary and loaded
-/// *before* the user's own Ghostty config so any user setting still overrides
-/// them: the terminal colours and the clipboard-write policy.
+/// Casper's built-in libghostty defaults, baked into the binary and loaded *before* the
+/// user's own Ghostty config (see `GhosttyConfigBuilder`), so any user setting still
+/// overrides them: the terminal colours and the clipboard-write policy, whose reason sits
+/// next to its line in `text(themes:)`.
 ///
 /// The colours ship as two Ghostty themes, "Arthur" (dark) and "GitHub Light",
 /// written to disk by `GhosttyThemeFiles` and selected by one conditional
 /// `theme = light:<path>,dark:<path>` line, so the terminal follows the system
 /// appearance. They are themes rather than explicit `background = …` keys
 /// because in Ghostty an explicit colour key beats any theme, whichever file set
-/// it: explicit defaults would mask a `theme` in the user's own config. As themes,
-/// they lose to every explicit user key, and a user's own `theme` replaces
-/// Casper's value outright — provided libghostty can load it (an absolute path, or
-/// a name found in `~/.config/ghostty/themes/`). A theme that cannot load, typically
-/// a named one that only Ghostty's own resources dir would resolve, would leave the
-/// terminal on libghostty's vanilla colours, so `GhosttyConfigBuilder` detects it
-/// (`isThemeLoadFailure`) and re-applies `themeLine` after the user's files.
-///
-/// The defaults are embedded, rather than shipped as a file for libghostty to find, for
-/// three reasons: Casper's own light and dark themes, the clipboard-write policy below, and
-/// a sane look for a user with no Ghostty config at all (who would otherwise get
-/// libghostty's vanilla `#282c34` gray). libghostty does read a Ghostty.app user's config
-/// (`~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`, plus the XDG
-/// `~/.config/ghostty/config`), so that config reaches Casper and overrides these defaults.
-/// The theme bodies are inlined here (no `themes/` dir or `GHOSTTY_RESOURCES_DIR` needed),
-/// keeping them self-contained.
+/// it: explicit defaults would mask a `theme` in the user's own config.
 ///
 /// Each theme's `background` is not a literal: it is the app's content background,
 /// `NSColor.textBackgroundColor`, resolved under the theme's appearance when the files are
 /// written (`contentBackgroundHex(for:)`). That is the background of the content panes
-/// beside the terminal (the diff view, the browser and `SurfaceHostView`'s fallback), on
-/// every macOS version, so the terminal reads as part of the same surface; on macOS 26 it
-/// equals the window background. The OS owns that colour and it differs across macOS
-/// versions, so it cannot be hard-coded. A user's explicit `background` or `foreground` key
-/// still beats it, as it beats any theme, and applies in both appearances: per-appearance
-/// colours take a conditional `theme = light:…,dark:…` instead.
-///
-/// `clipboard-write` is set to `ask` because libghostty's own default is `allow`,
-/// under which `write_clipboard_cb` is always flagged trusted and
-/// `GhosttyClipboardWrite.apply`'s untrusted branch is unreachable. `ask` makes
-/// libghostty raise the `confirm` flag instead, which keeps
-/// `GhosttyClipboardWrite.approveUntrusted` the single place the write policy is
-/// decided rather than dead code. A user who prefers the upstream behaviour can
-/// override it with `clipboard-write = allow`.
+/// beside the terminal (the diff view, the browser and `SurfaceHostView`'s fallback), so
+/// the terminal reads as part of the same surface. The OS owns that colour and it differs
+/// across macOS versions, so it cannot be hard-coded.
 enum GhosttyDefaultConfig {
     /// The "Arthur" theme, in Ghostty theme-file syntax, on the given `#rrggbb` background.
     static func darkTheme(background: String) -> String {

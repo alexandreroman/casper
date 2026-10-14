@@ -1,12 +1,10 @@
 import XCTest
+import CasperTestSupport
 @testable import CasperGit
 
 final class IgnoreTests: XCTestCase {
     func testIgnoredTopLevelDirectories() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-ignore-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let dir = makeTemporaryDirectory(prefix: "casper-ignore")
 
         let repo = try GitFixture.repository(at: dir.path)
 
@@ -23,7 +21,7 @@ final class IgnoreTests: XCTestCase {
 
         // Compare on the last path components so the assertion is symlink-agnostic: libgit2 reports
         // canonical working-dir paths (/private/var/...) while the temp dir is a /var/... symlink.
-        let dirs = try repo.ignoredTopLevelDirectories()
+        let dirs = repo.ignoredTopLevelDirectories()
         XCTAssertEqual(dirs.map { URL(fileURLWithPath: $0).lastPathComponent }, ["build", "node_modules"])
         XCTAssertFalse(dirs.contains { $0.hasSuffix("/src") })
         XCTAssertFalse(dirs.contains { $0.hasSuffix("/.git") })

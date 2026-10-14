@@ -36,20 +36,11 @@ in [README.md](README.md) § Building from source. The targets in daily use:
 make build   # compile, then assemble + sign Casper-dev.app
 make dev     # rebuild + launch Casper-dev.app under a per-branch dev session
 make test    # run the test suite
-casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
 
-The app icon ships in two forms: the legacy `Packaging/AppIcon/AppIcon.icns`
-(fallback for macOS 15–25, regenerated from `icon.svg` via `make icon` — which
-also rebuilds `AppIconDev.icns` from `icon-dev.svg` — and needs
-`brew install resvg`), and the macOS 26 Liquid Glass
-`Packaging/AppIcon/AppIcon.icon` (Icon Composer bundle, compiled to `Assets.car`
-by `actool` during `make bundle`). Both `CFBundleIconName` and
-`CFBundleIconFile` are set. Compiling the `.icon` requires **Xcode 26** selected
-(`sudo xcode-select -s /Applications/Xcode.app`) **on a macOS 26 host** — on
-macOS 15, actool crashes. To re-author the layered icon:
-edit the layer sources in `Packaging/AppIcon/AppIcon.icon/Assets/`, re-import
-them into Icon Composer, and commit the updated `AppIcon.icon`.
+The app icon ships as `AppIcon.icns` (`make icon`) plus the macOS 26
+`AppIcon.icon` compiled in `make bundle` — see the
+[`app-icon`](.claude/project-memory/references/app-icon.md) memory note.
 
 ## Modules
 

@@ -1,10 +1,10 @@
 ---
-name: "Screen Recording is granted to app bundles, not to signed binaries"
+name: "Screen Recording needs an app bundle"
 description: "A loose Mach-O never appears in the Screen Recording list whatever its identity; this is why make build assembles Casper-dev.app"
 type: reference
 ---
 
-# Screen Recording is granted to app bundles, not to signed binaries
+# Screen Recording needs an app bundle
 
 For Screen Recording specifically, TCC and System Settings only enumerate and
 prompt for real `.app` bundles — an `Info.plist` on disk at a conventional path.

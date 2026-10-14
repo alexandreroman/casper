@@ -36,21 +36,6 @@ final class AgentIntegrationProbeTests: XCTestCase {
         """
     }
 
-    /// The pre-rename registry shape, `installPath` and `gitCommitSha` included, as
-    /// found on a real machine that installed before the marketplace was renamed.
-    private static func legacyClaudeRegistry(version: String) -> String {
-        """
-        {"version": 2,
-         "plugins": {"\(AgentIntegration.legacyPluginID)": [
-           {"scope": "user",
-            "installPath": "/Users/alex/.claude/plugins/cache/Casper/casper/\(version)",
-            "version": "\(version)",
-            "installedAt": "2026-07-07T13:04:49.792Z",
-            "lastUpdated": "2026-07-07T13:04:49.792Z",
-            "gitCommitSha": "17fd..."}]}}
-        """
-    }
-
     private static func opencodePlugin(version: String) -> String {
         """
         export const CASPER_PLUGIN_VERSION = "\(version)"
@@ -94,25 +79,11 @@ final class AgentIntegrationProbeTests: XCTestCase {
 
     // MARK: - Stub environment
 
-    /// Records every path the probe read or listed. `@unchecked Sendable` because
-    /// the recorded paths are only ever touched under `lock` — the same discipline
-    /// `LoginShellPath`'s own storage uses.
-    private final class AccessRecorder: @unchecked Sendable {
-        private let lock = NSLock()
-        private var paths: [String] = []
-
-        var accessedPaths: [String] { lock.withLock { paths } }
-
-        func record(_ path: String) {
-            lock.withLock { paths.append(path) }
-        }
-    }
-
     private func makeEnvironment(
         executables: Set<String>,
         files: [String: String] = [:],
         directories: [String: [String]] = [:],
-        recorder: AccessRecorder = AccessRecorder()
+        recorder: Recorder<String> = Recorder<String>()
     ) -> AgentIntegrationProbe.Environment {
         AgentIntegrationProbe.Environment(
             executablePath: { executables.contains($0) ? "/opt/stub/bin/\($0)" : nil },
@@ -153,7 +124,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
     func testAbsentCLIReportsNotInstalledWithoutReadingAnything() {
         // Everything is installed on disk; the user simply does not have the CLIs.
         for agent in CodingAgent.allCases {
-            let recorder = AccessRecorder()
+            let recorder = Recorder<String>()
             let probe = AgentIntegrationProbe(
                 environment: makeEnvironment(
                     executables: [],
@@ -163,7 +134,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
 
             XCTAssertEqual(probe.status(for: agent), .notInstalled, "\(agent)")
             // An agent the user does not have must cost zero disk access.
-            XCTAssertEqual(recorder.accessedPaths, [], "\(agent) probed the disk")
+            XCTAssertEqual(recorder.values, [], "\(agent) probed the disk")
         }
     }
 
@@ -203,7 +174,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
         let probe = AgentIntegrationProbe(
             environment: makeEnvironment(
                 executables: ["claude"],
-                files: [Self.claudeRegistryPath: Self.legacyClaudeRegistry(version: "0.1.0")]))
+                files: [Self.claudeRegistryPath: legacyClaudeRegistry(version: "0.1.0")]))
         XCTAssertEqual(probe.status(for: .claudeCode), .outdated(installed: "0.1.0"))
     }
 
@@ -215,7 +186,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
         let probe = AgentIntegrationProbe(
             environment: makeEnvironment(
                 executables: ["claude"],
-                files: [Self.claudeRegistryPath: Self.legacyClaudeRegistry(version: "99.0.0")]))
+                files: [Self.claudeRegistryPath: legacyClaudeRegistry(version: "99.0.0")]))
         XCTAssertEqual(probe.status(for: .claudeCode), .outdated(installed: "99.0.0"))
     }
 
@@ -238,7 +209,7 @@ final class AgentIntegrationProbeTests: XCTestCase {
             environment: makeEnvironment(
                 executables: ["claude"],
                 files: [
-                    Self.claudeRegistryPath: Self.legacyClaudeRegistry(version: "0.1.0"),
+                    Self.claudeRegistryPath: legacyClaudeRegistry(version: "0.1.0"),
                     Self.claudeSettingsPath:
                         #"{"enabledPlugins": {"\#(AgentIntegration.legacyPluginID)": false}}"#,
                 ]))

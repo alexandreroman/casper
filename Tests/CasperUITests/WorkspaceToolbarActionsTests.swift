@@ -261,28 +261,12 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         XCTAssertEqual(layoutRow(width: 2000, diff: nil).badge, 0, accuracy: 0.5, "no summary drew a badge")
     }
 
-    /// Degradation runs one way. Once the badge is gone it must not come back as the
-    /// row keeps narrowing — which it did when the badge and the chips were ranked by
-    /// layout priority alone rather than chosen together: folding the chips freed
-    /// room, and the badge reappeared at 260 pt after vanishing at 500 pt.
-    func testTheBadgeNeverComesBackAsTheRowNarrows() {
-        var badgeWasGone = false
-        for rowWidth in stride(from: CGFloat(900), through: 60, by: -20) {
-            let badge = layoutRow(width: rowWidth).badge
-            if badge < 0.5 {
-                badgeWasGone = true
-            } else {
-                XCTAssertFalse(badgeWasGone, "the badge came back at \(rowWidth) pt")
-            }
-        }
-        XCTAssertTrue(badgeWasGone, "the badge never dropped, so this proves nothing")
-    }
-
     /// The order of sacrifice has teeth: there is a width where the badge is ALREADY
     /// gone while the chips still carry their text. Without it, "the badge goes
     /// first" would be satisfied by a row that simply dropped everything at once —
-    /// and a layout-priority mistake (an equal-priority `Spacer` swallowing the
-    /// badge's room, say) reads entirely plausible until measured.
+    /// and a ladder-order mistake (a rung list that drops the chip labels before the
+    /// badge, the `.mergeGlyph` rung placed ahead of rung 2, say) reads entirely
+    /// plausible until measured.
     func testTheBadgeGoesBeforeTheChipsLoseTheirText() {
         let titleAndBadge = layoutRow(width: 2000)
         let badgeIdeal = titleAndBadge.badge
@@ -295,7 +279,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         let layout = layoutRow(width: rowWidth)
         XCTAssertEqual(layout.badge, 0, accuracy: 0.5, "the badge outlived the chips' text")
         XCTAssertEqual(
-            chipsWidth(inRowOf: rowWidth), fullChipsWidth, accuracy: 0.5,
+            layout.ladder, fullChipsWidth, accuracy: 0.5,
             "the chips gave up their text before the badge gave up its counters")
     }
 
@@ -336,7 +320,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         hostTitleBarRow(width: rowWidth, diff: diff, inspector: inspector)
     }
 
-    /// The chips' own full-width tier, for the ordering assertion below.
+    /// The chips' own full-width tier, for `testTheBadgeGoesBeforeTheChipsLoseTheirText`.
     private var fullChipsWidth: CGFloat { layoutWidth(of: makeActions().row(.full)) }
 
     /// The title group's ideal width, measured from the same label the row renders.
@@ -345,28 +329,10 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
             of: WorkspaceTitleLabel(
                 isGitRepo: true, spaceName: "casper", branchLabel: Self.titleBarBranch,
                 form: .spaceAndBranch)
-                .padding(.leading, 10)
+                .padding(.leading, TitleCapsuleMetrics.horizontalInset)
                 .padding(.trailing, 6)
                 .lineLimit(1))
             + WorkspaceInfoButton.collapsedWidth
-    }
-
-    /// The width the chips laid out to inside a row of `rowWidth`, which is what
-    /// says which tier they settled on.
-    private func chipsWidth(inRowOf rowWidth: CGFloat) -> CGFloat {
-        let (model, workspace) = makeTitleBarModelAndWorkspace()
-        var chips = CGRect.zero
-        let row = HStack(spacing: 0) {
-            Color.clear.frame(width: titleIdealWidth).layoutPriority(2)
-            Spacer(minLength: WorkspaceDetailView.chipGap).layoutPriority(-1)
-            WorkspaceToolbarActions(model: model, workspace: workspace, density: .full)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .local) } action: { chips = $0 }
-        }
-        .frame(width: rowWidth, alignment: .leading)
-        let host = NSHostingView(rootView: row)
-        host.frame = NSRect(x: 0, y: 0, width: rowWidth, height: TitleCapsuleMetrics.height)
-        host.layoutSubtreeIfNeeded()
-        return chips.width
     }
 
     /// The Merge chip alone, as the row draws it at `.mergeGlyph`.

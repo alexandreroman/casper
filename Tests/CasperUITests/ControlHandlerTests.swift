@@ -1,8 +1,7 @@
 import XCTest
 import CasperCore
-import Clibgit2
+import CasperTestSupport
 import Observation
-import UserNotifications
 @testable import CasperGit
 @testable import CasperUI
 
@@ -13,52 +12,6 @@ final class ControlHandlerTests: XCTestCase {
         return (model, workspace.id)
     }
 
-    /// Initialize a repo at `path` and create one commit on it, via libgit2 only
-    /// (no `git` binary). Inlined from `Tests/CasperGitTests/GitFixture.swift`,
-    /// which this target cannot import: that fixture lives in the CasperGitTests
-    /// target, whereas `CasperUITests` links `CasperGit`/`Clibgit2` directly (see
-    /// Package.swift) without seeing that target's test sources.
-    ///
-    /// `configJSON` commits a `.casper.json` alongside the README. It has to be part of
-    /// the commit, not just written to the working tree, so a linked worktree forked from
-    /// HEAD checks it out and its lifecycle hooks resolve.
-    private func makeRepo(at path: String, configJSON: String? = nil) throws {
-        let repo = try Repository.initialize(atPath: path)
-
-        let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
-        try "casper fixture\n".write(to: readme, atomically: true, encoding: .utf8)
-        var committedFiles = ["README.md"]
-        if let configJSON {
-            try configJSON.write(
-                to: URL(fileURLWithPath: path).appendingPathComponent(".casper.json"),
-                atomically: true, encoding: .utf8)
-            committedFiles.append(".casper.json")
-        }
-
-        var index: OpaquePointer?
-        XCTAssertEqual(git_repository_index(&index, repo.pointer), 0)
-        defer { git_index_free(index) }
-        for file in committedFiles {
-            XCTAssertEqual(git_index_add_bypath(index, file), 0)
-        }
-        XCTAssertEqual(git_index_write(index), 0)
-
-        var treeOid = git_oid()
-        XCTAssertEqual(git_index_write_tree(&treeOid, index), 0)
-        var tree: OpaquePointer?
-        XCTAssertEqual(git_tree_lookup(&tree, repo.pointer, &treeOid), 0)
-        defer { git_tree_free(tree) }
-
-        var signature: UnsafeMutablePointer<git_signature>?
-        XCTAssertEqual(git_signature_now(&signature, "Casper Test", "test@casper.local"), 0)
-        defer { git_signature_free(signature) }
-
-        var commitOid = git_oid()
-        XCTAssertEqual(git_commit_create(
-            &commitOid, repo.pointer, "HEAD",
-            signature, signature, nil, "Initial commit", tree, 0, nil), 0)
-    }
-
     /// Seeds a Git-backed model: a real temp repo with one commit, opened as a
     /// Space whose primary workspace's `branch` is left empty. libgit2's default
     /// branch after `initialize` depends on the host's `git config
@@ -66,25 +19,19 @@ final class ControlHandlerTests: XCTestCase {
     /// An empty branch makes `createLinkedWorkspace`'s `base` resolve to `nil`,
     /// which `WorktreeManager.create` always accepts as "fork from HEAD" — the
     /// same outcome without guessing the branch name.
+    ///
+    /// `configJSON` commits a `.casper.json` alongside the README. It has to be part of
+    /// the commit, not just written to the working tree, so a linked worktree forked from
+    /// HEAD checks it out and its lifecycle hooks resolve.
     private func seededGitModel(configJSON: String? = nil) throws -> (AppModel, UUID, String) {
         let repoPath = makeTemporaryDirectory(prefix: "casper-ctrl").path
-        try makeRepo(at: repoPath, configJSON: configJSON)
+        try GitFixture.repository(at: repoPath, files: configJSON.map { [".casper.json": $0] } ?? [:])
 
         let ws = Workspace(
             name: "main", worktreePath: repoPath, branch: "",
             portBase: 41000, layout: .leaf(Surface.terminal(cwd: repoPath)))
         let space = Space(name: "main", folderPath: repoPath, isGitRepo: true, workspaces: [ws])
         return (makeModel(spaces: [space], selecting: ws.id), ws.id, repoPath)
-    }
-
-    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
-    /// `ControlServer` even though the work behind it is async.
-    private func deleteViaControl(
-        _ model: AppModel, id: UUID
-    ) async -> Result<Void, AppModel.WorkspaceDeleteError> {
-        await withCheckedContinuation { continuation in
-            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
-        }
     }
 
     func testOpenTerminalAddsSurface() throws {
@@ -105,7 +52,7 @@ final class ControlHandlerTests: XCTestCase {
         let info = try XCTUnwrap(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
         XCTAssertEqual(info.cwd, "/some/dir")
         let ws = try XCTUnwrap(model.workspace(id: id))
-        let match = surfaces(in: ws.layout).contains { surface in
+        let match = LayoutTree.surfaces(ws.layout).contains { surface in
             if case .terminal(let cwd) = surface.kind { return cwd == "/some/dir" }
             return false
         }
@@ -220,17 +167,6 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.controlListTerminals(in: id).count, 2)  // nothing closed
     }
 
-    /// Collect every leaf surface in a layout, depth-first (the test target has no
-    /// public surface-by-id accessor, so it walks the public `LayoutNode` directly).
-    private func surfaces(in node: LayoutNode) -> [Surface] {
-        switch node {
-        case .leaf(let surface):
-            return [surface]
-        case .split(_, let children, _):
-            return children.flatMap { surfaces(in: $0) }
-        }
-    }
-
     func testOpenBrowserLoadsInspectorBrowserAndSelectsTab() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!
@@ -275,8 +211,6 @@ final class ControlHandlerTests: XCTestCase {
         await waitUntil { coordinator.address != firstCommitted }
     }
 
-    /// Polls `condition` on the main actor until it holds or `timeout` elapses,
-    /// yielding between checks so pending `WKWebView` navigation callbacks can run.
     func testCloseBrowserCollapsesWhenBrowserTabActive() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!
@@ -287,9 +221,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
     }
 
-    func testCloseBrowserNoOpsWhenDiffTabActive() throws {
+    func testCloseBrowserNoOpsWhenDiffTabActive() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id) else {
+        guard case .success = await model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
         XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
@@ -305,9 +239,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(model.controlCloseBrowser(in: UUID()))
     }
 
-    func testCloseDiffCollapsesWhenDiffTabActive() throws {
+    func testCloseDiffCollapsesWhenDiffTabActive() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id) else {
+        guard case .success = await model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
         XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
@@ -333,9 +267,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(model.controlCloseDiff(in: UUID()))
     }
 
-    func testOpenDiffSelectsInspectorTab() throws {
+    func testOpenDiffSelectsInspectorTab() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id) else {
+        guard case .success = await model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
         XCTAssertNil(model.diffScrollTarget)
@@ -343,30 +277,57 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, false)
     }
 
-    func testOpenDiffWithExistingFileSetsScrollTarget() throws {
+    func testOpenDiffWithExistingFileSetsScrollTarget() async throws {
         // `makeRepo` writes a real `README.md` into the fixture worktree, so the
         // on-disk existence check passes for it.
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
+        guard case .success = await model.controlOpenDiff(in: id, file: "README.md") else {
             return XCTFail("expected success")
         }
         let first = try XCTUnwrap(model.diffScrollTarget)
         XCTAssertEqual(first.workspaceID, id)
         XCTAssertEqual(first.file, "README.md")
 
-        // A repeat request for the same file must produce a fresh nonce so the
-        // view re-scrolls even though the file argument is unchanged.
-        guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
+        // Once the view has settled the first request, a repeat for the same file
+        // must set a target again so the view re-scrolls.
+        model.consumeDiffScrollTarget(first)
+        guard case .success = await model.controlOpenDiff(in: id, file: "README.md") else {
             return XCTFail("expected success")
         }
         let second = try XCTUnwrap(model.diffScrollTarget)
         XCTAssertEqual(second.file, "README.md")
-        XCTAssertNotEqual(second.nonce, first.nonce)
+        XCTAssertGreaterThan(second.diffRevision, first.diffRevision)
     }
 
-    func testOpenDiffWithMissingFileFails() throws {
+    /// A file deleted from the worktree is gone from disk, yet the diff lists it
+    /// as a deletion — so it is a valid target to scroll to.
+    func testOpenDiffWithDeletedFileListedInTheDiffSetsScrollTarget() async throws {
+        let (model, id, repoPath) = try seededGitModel()
+        try FileManager.default.removeItem(atPath: repoPath + "/README.md")
+
+        guard case .success = await model.controlOpenDiff(in: id, file: "README.md") else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(model.diffScrollTarget?.file, "README.md")
+        XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff)
+    }
+
+    /// A renamed file's old path is gone from disk and tracked by HEAD, yet the diff
+    /// lists the file under its new path only — so the old one is no scroll target.
+    func testOpenDiffWithRenamedFilesOldPathFails() async throws {
+        let (model, id, repoPath) = try seededGitModel()
+        try FileManager.default.moveItem(atPath: repoPath + "/README.md", toPath: repoPath + "/NOTES.md")
+
+        guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "README.md") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
+        XCTAssertNil(model.diffScrollTarget)
+    }
+
+    func testOpenDiffWithMissingFileFails() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .failure(let error) = model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
+        guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
             return XCTFail("expected failure")
         }
         XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
@@ -376,13 +337,13 @@ final class ControlHandlerTests: XCTestCase {
     /// A directory resolves and exists, and the worktree root's relative path is the
     /// empty string — which matches no `GitDiffFile.id`. Accepting one would report
     /// success and then scroll nowhere, so it has to fail like a missing file.
-    func testOpenDiffWithDirectoryFails() throws {
+    func testOpenDiffWithDirectoryFails() async throws {
         let (model, id, repoPath) = try seededGitModel()
         try FileManager.default.createDirectory(
             atPath: repoPath + "/Sources", withIntermediateDirectories: true)
 
         for directory in [".", "Sources"] {
-            guard case .failure(let error) = model.controlOpenDiff(in: id, file: directory) else {
+            guard case .failure(let error) = await model.controlOpenDiff(in: id, file: directory) else {
                 return XCTFail("expected '\(directory)' to be refused")
             }
             XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
@@ -390,9 +351,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertNil(model.diffScrollTarget)
     }
 
-    func testOpenDiffWithEscapingFileFails() throws {
+    func testOpenDiffWithEscapingFileFails() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .failure(let error) = model.controlOpenDiff(in: id, file: "../escape.txt") else {
+        guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "../escape.txt") else {
             return XCTFail("expected failure")
         }
         XCTAssertTrue(error.message.contains("outside the workspace"), "got: \(error.message)")
@@ -438,7 +399,7 @@ final class ControlHandlerTests: XCTestCase {
             inSpaceOf: primaryID, branch: "feature-cmd", base: nil, command: "npm test") {
         case .success(let info):
             let ws = try XCTUnwrap(model.workspace(id: try XCTUnwrap(UUID(uuidString: info.id))))
-            let hasTerminal = surfaces(in: ws.layout).contains { surface in
+            let hasTerminal = LayoutTree.surfaces(ws.layout).contains { surface in
                 if case .terminal = surface.kind { return true }
                 return false
             }
@@ -918,50 +879,6 @@ final class ControlHandlerTests: XCTestCase {
         model.isWindowKey = { true }             // app returns to foreground
         model.clearNotificationForFocusedWorkspace()
         XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
-    }
-
-    /// Captures the message (body) and interruption level a detected transition
-    /// into `state` passes to `deliverNotification`. Returns nil when nothing is
-    /// delivered. The workspace is left unfocused (window not key) so delivery is
-    /// not suppressed by the focus check.
-    private func deliveredNotification(
-        forDetected state: AgentState) -> (body: String, level: UNNotificationInterruptionLevel)? {
-        let (model, id) = seededModel()
-        model.isWindowKey = { false }  // unfocused → delivery not suppressed
-        var captured: (String, UNNotificationInterruptionLevel)?
-        model.deliverNotification = { _, body, _, level in captured = (body, level) }
-        model.setDetectedAgentState(state, for: id)
-        return captured.map { (body: $0.0, level: $0.1) }
-    }
-
-    func testDetectedBlockedDeliversActiveNotification() throws {
-        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .blocked))
-        XCTAssertEqual(delivered.body, "Waiting for your input")
-        XCTAssertEqual(delivered.level, .active)
-    }
-
-    func testDetectedDoneDeliversPassiveNotification() throws {
-        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .done))
-        XCTAssertEqual(delivered.body, "Done")
-        XCTAssertEqual(delivered.level, .passive)
-    }
-
-    func testDetectedErrorDeliversActiveNotification() throws {
-        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .error))
-        XCTAssertEqual(delivered.body, "Something went wrong")
-        XCTAssertEqual(delivered.level, .active)
-    }
-
-    func testDetectedWorkingDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .working))
-    }
-
-    func testDetectedIdleDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .idle))
-    }
-
-    func testDetectedUnknownDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .unknown))
     }
 
     func testDedupCooldownSuppressesSecondRapidNotification() {

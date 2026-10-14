@@ -45,14 +45,12 @@ public struct DebugCommand: Codable, Equatable, Sendable {
 
 /// Snapshot of the app's observable UI state, returned by `dumpState`.
 public struct DebugState: Codable, Equatable, Sendable {
-    public struct Surface: Codable, Equatable, Sendable {
-        public var id: String
-        public var title: String
-        public var workingDirectory: String?
+    /// Raw geometry of one surface, for diagnosing content-scale double-counting:
+    /// libghostty's `ghostty_surface_size` readback plus the hosting AppKit view's
+    /// own metrics.
+    public struct Geometry: Codable, Equatable, Sendable {
         public var columns: Int
         public var rows: Int
-        public var focused: Bool
-        // Raw geometry, for diagnosing content-scale double-counting.
         // libghostty's `ghostty_surface_size` readback (pixels):
         public var widthPixels: Int
         public var heightPixels: Int
@@ -66,6 +64,51 @@ public struct DebugState: Codable, Equatable, Sendable {
         public var contentScaleX: Double      // points→pixels scale vector
         public var contentScaleY: Double
         public var backingScaleFactor: Double // window.backingScaleFactor
+
+        public init(
+            columns: Int, rows: Int,
+            widthPixels: Int, heightPixels: Int,
+            cellWidthPixels: Int, cellHeightPixels: Int,
+            boundsWidth: Double, boundsHeight: Double,
+            backingWidth: Double, backingHeight: Double,
+            contentScaleX: Double, contentScaleY: Double,
+            backingScaleFactor: Double
+        ) {
+            self.columns = columns
+            self.rows = rows
+            self.widthPixels = widthPixels
+            self.heightPixels = heightPixels
+            self.cellWidthPixels = cellWidthPixels
+            self.cellHeightPixels = cellHeightPixels
+            self.boundsWidth = boundsWidth
+            self.boundsHeight = boundsHeight
+            self.backingWidth = backingWidth
+            self.backingHeight = backingHeight
+            self.contentScaleX = contentScaleX
+            self.contentScaleY = contentScaleY
+            self.backingScaleFactor = backingScaleFactor
+        }
+
+        /// All-zero geometry, used when no live surface backs the view yet.
+        public static let zero = Geometry(
+            columns: 0, rows: 0,
+            widthPixels: 0, heightPixels: 0,
+            cellWidthPixels: 0, cellHeightPixels: 0,
+            boundsWidth: 0, boundsHeight: 0,
+            backingWidth: 0, backingHeight: 0,
+            contentScaleX: 0, contentScaleY: 0,
+            backingScaleFactor: 0)
+    }
+
+    /// One surface as `dump-state` reports it. On the wire the geometry fields sit
+    /// flat beside the identity fields (`"columns"`, `"cellWidthPixels"`, …), not
+    /// nested under a `"geometry"` key: the `debug-casper` skill reads them by name.
+    public struct Surface: Codable, Equatable, Sendable {
+        public var id: String
+        public var title: String
+        public var workingDirectory: String?
+        public var focused: Bool
+        public var geometry: Geometry
         // Agent-state detection, reported so a detection change can be verified against the
         // running app rather than by reading the sidebar by eye. `agentState` is detection's
         // output; `oscTitle` and `progressReport` are two of its three inputs — the third, the
@@ -82,38 +125,48 @@ public struct DebugState: Codable, Equatable, Sendable {
         public var progressReport: String?
 
         public init(
-            id: String, title: String, workingDirectory: String?,
-            columns: Int, rows: Int, focused: Bool,
-            widthPixels: Int, heightPixels: Int,
-            cellWidthPixels: Int, cellHeightPixels: Int,
-            boundsWidth: Double, boundsHeight: Double,
-            backingWidth: Double, backingHeight: Double,
-            contentScaleX: Double, contentScaleY: Double,
-            backingScaleFactor: Double,
-            // Defaulted so existing call sites — and decoding of payloads written before these
-            // fields existed — stay valid.
+            id: String, title: String, workingDirectory: String?, focused: Bool,
+            geometry: Geometry,
             agentState: String? = nil, oscTitle: String? = nil, progressReport: String? = nil
         ) {
             self.id = id
             self.title = title
             self.workingDirectory = workingDirectory
-            self.columns = columns
-            self.rows = rows
             self.focused = focused
-            self.widthPixels = widthPixels
-            self.heightPixels = heightPixels
-            self.cellWidthPixels = cellWidthPixels
-            self.cellHeightPixels = cellHeightPixels
-            self.boundsWidth = boundsWidth
-            self.boundsHeight = boundsHeight
-            self.backingWidth = backingWidth
-            self.backingHeight = backingHeight
-            self.contentScaleX = contentScaleX
-            self.contentScaleY = contentScaleY
-            self.backingScaleFactor = backingScaleFactor
+            self.geometry = geometry
             self.agentState = agentState
             self.oscTitle = oscTitle
             self.progressReport = progressReport
+        }
+
+        // The keys this type writes itself; `Geometry` writes its own into the same
+        // keyed container, which is what keeps the wire form flat.
+        private enum CodingKeys: String, CodingKey {
+            case id, title, workingDirectory, focused, agentState, oscTitle, progressReport
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            title = try container.decode(String.self, forKey: .title)
+            workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
+            focused = try container.decode(Bool.self, forKey: .focused)
+            geometry = try Geometry(from: decoder)
+            agentState = try container.decodeIfPresent(String.self, forKey: .agentState)
+            oscTitle = try container.decodeIfPresent(String.self, forKey: .oscTitle)
+            progressReport = try container.decodeIfPresent(String.self, forKey: .progressReport)
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(title, forKey: .title)
+            try container.encodeIfPresent(workingDirectory, forKey: .workingDirectory)
+            try container.encode(focused, forKey: .focused)
+            try geometry.encode(to: encoder)
+            try container.encodeIfPresent(agentState, forKey: .agentState)
+            try container.encodeIfPresent(oscTitle, forKey: .oscTitle)
+            try container.encodeIfPresent(progressReport, forKey: .progressReport)
         }
     }
 
@@ -126,15 +179,18 @@ public struct DebugState: Codable, Equatable, Sendable {
 /// they separate "the process grew" from "these objects were never released",
 /// which is what tells a real leak apart from allocator noise.
 public struct DebugMemory: Codable, Equatable, Sendable {
+    /// `phys_footprint` — the number Activity Monitor shows as "Memory".
     public var footprintBytes: Int
+    /// `resident_size` — physical pages currently mapped in.
     public var residentBytes: Int
+    /// `ledger_phys_footprint_peak`, or 0 when the kernel does not report it.
     public var peakFootprintBytes: Int
     public var liveObjects: [LiveObjectCensus.Entry]
     /// Named sizes of the app's per-id caches and collections, e.g. "surfaceViews": 3.
     public var counters: [String: Int]
 
     public init(
-        footprintBytes: Int = 0, residentBytes: Int = 0, peakFootprintBytes: Int = 0,
+        footprintBytes: Int, residentBytes: Int, peakFootprintBytes: Int,
         liveObjects: [LiveObjectCensus.Entry] = [], counters: [String: Int] = [:]
     ) {
         self.footprintBytes = footprintBytes

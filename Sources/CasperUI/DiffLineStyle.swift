@@ -1,26 +1,45 @@
+import AppKit
 import CasperGit
-import SwiftUI
 
-/// Pure mapping from a diff line kind to its rendering cues. Kept out of the
-/// view so this (color-independent) logic is unit-testable and the view stays
-/// declarative.
+/// The diff view's palette and per-kind rendering cues, as pure mappings the
+/// AppKit renderer draws from: `DiffTextView` paints the row tints,
+/// `DiffGutterRuler` the stripe, cue and number, `DiffStickyHeader` the status
+/// and `+N −N` counts. Kept apart from the drawing so it is unit-testable.
+///
+/// Every colour is an `NSColor`, the type all three draw with. Each adaptive one
+/// resolves against the drawing appearance at draw time, so the attribute
+/// dictionaries that hold them follow a live Light/Dark switch without being
+/// rebuilt. The title bar's badge, the one SwiftUI consumer, wraps them in
+/// `Color(nsColor:)`.
 enum DiffLineStyle {
-    /// Accent hues for the leading stripe, the +/- prefix, the gutter line
-    /// number, and the +N -N stat badges. The dark values are sampled from
-    /// Claude Code's own diff rendering so Casper's diff view reads the same way;
-    /// the light ones come from GitHub's diff.
+    /// Accent hues for the leading stripe, the +/- cue, the gutter line number,
+    /// and the +N -N stat badges. The dark values are sampled from Claude Code's
+    /// own diff rendering so Casper's diff view reads the same way; the light ones
+    /// come from GitHub's diff.
     static let insertionTint = adaptive(
         dark: NSColor(srgbRed: 0.529, green: 0.757, blue: 0.388, alpha: 1), light: srgb(0x1A7F37))
     static let deletionTint = adaptive(
         dark: NSColor(srgbRed: 0.725, green: 0.416, blue: 0.369, alpha: 1), light: srgb(0xCF222E))
 
+    /// Solid, saturated row backgrounds (not derived from the accent tint, which
+    /// is too pale at any reasonable opacity to match). The dark values are
+    /// sampled from Claude Code's own diff rendering, the light ones from
+    /// GitHub's diff.
+    static let additionBackground = adaptive(
+        dark: NSColor(srgbRed: 0.082, green: 0.149, blue: 0.024, alpha: 1), light: srgb(0xDAFBE1))
+    static let deletionBackground = adaptive(
+        dark: NSColor(srgbRed: 0.188, green: 0.043, blue: 0.012, alpha: 1), light: srgb(0xFFEBE9))
+
+    /// Gutter line-number colour for context lines, beside `accent(for:)` so all
+    /// three number tints are named in one place.
+    static let contextNumberTint = NSColor.tertiaryLabelColor
+
     /// A colour that resolves to `dark` under a dark appearance and `light`
-    /// otherwise, at draw time — so the cached `NSColor`s the diff renderer holds
-    /// follow a live system switch without being rebuilt.
-    private static func adaptive(dark: NSColor, light: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
+    /// otherwise, at draw time.
+    private static func adaptive(dark: NSColor, light: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
             appearance.isDark ? dark : light
-        })
+        }
     }
 
     private static func srgb(_ hex: UInt32) -> NSColor {
@@ -28,12 +47,30 @@ enum DiffLineStyle {
                 blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 
-    /// Concrete gutter line-number color for context lines, sitting beside
-    /// `accent(for:)` so all three number tints are named in one place. A plain
-    /// `Color` rather than the hierarchical `.tertiary` style: `DiffGutterRuler`
-    /// draws the numbers itself and converts this to an `NSColor` once, which a
-    /// style that only resolves against a rendering context could not supply.
-    static let contextNumberTint = Color(nsColor: .tertiaryLabelColor)
+    /// The background behind one diff row, or `nil` for a context row — as for
+    /// the hunk headers and notes that have no diff kind at all — which keeps the
+    /// plain text background.
+    ///
+    /// `DiffTextView` fills it across the code column and `DiffGutterRuler`
+    /// across the gutter, both from here, so the two halves of a row cannot come
+    /// out different colours.
+    static func rowTint(for kind: GitDiffLine.Kind) -> NSColor? {
+        switch kind {
+        case .addition: additionBackground
+        case .deletion: deletionBackground
+        case .context: nil
+        }
+    }
+
+    /// The leading accent stripe of a changed row, also the colour of its cue and
+    /// gutter line number; `nil` for a context row, which has no stripe.
+    static func accent(for kind: GitDiffLine.Kind) -> NSColor? {
+        switch kind {
+        case .addition: insertionTint
+        case .deletion: deletionTint
+        case .context: nil
+        }
+    }
 
     /// Caps a single diff line's length in characters, complementing
     /// `DiffDocument.maxLinesPerFile` (which caps the line *count*). Without it,
@@ -71,33 +108,6 @@ enum DiffLineStyle {
         }
     }
 
-    private static let additionBackground = adaptive(
-        dark: NSColor(srgbRed: 0.082, green: 0.149, blue: 0.024, alpha: 1), light: srgb(0xDAFBE1))
-    private static let deletionBackground = adaptive(
-        dark: NSColor(srgbRed: 0.188, green: 0.043, blue: 0.012, alpha: 1), light: srgb(0xFFEBE9))
-
-    /// Solid, saturated row background (not derived from the accent tint, which
-    /// is too pale at any reasonable opacity to match). The dark values are
-    /// sampled from Claude Code's own diff rendering, the light ones from
-    /// GitHub's diff.
-    static func background(for kind: GitDiffLine.Kind) -> Color {
-        switch kind {
-        case .addition: return additionBackground
-        case .deletion: return deletionBackground
-        case .context: return Color.clear
-        }
-    }
-
-    /// Solid leading accent stripe, also used to tint the +/- prefix and the
-    /// gutter line number on changed lines.
-    static func accent(for kind: GitDiffLine.Kind) -> Color {
-        switch kind {
-        case .addition: return insertionTint
-        case .deletion: return deletionTint
-        case .context: return Color.clear
-        }
-    }
-
     /// How a file's status word is set in the diff file header.
     ///
     /// Most statuses are chrome: `modified` beside a file's name asks nothing of the
@@ -109,10 +119,10 @@ enum DiffLineStyle {
         /// Tinted and bold. `conflicted` only: the file holds conflict markers rather
         /// than an author's changes, which is the most consequential thing a diff
         /// header can say, and the header is the only place the diff says it.
-        case warning(Color)
+        case warning(NSColor)
         /// Tinted down. `unreadable` only: libgit2 could not open the file at all, a
         /// non-answer rather than something to act on.
-        case muted(Color)
+        case muted(NSColor)
     }
 
     /// How the file header sets `status`. The warning tint is the deletion tint the
@@ -121,8 +131,8 @@ enum DiffLineStyle {
     static func statusEmphasis(for status: GitDiffFile.Status) -> StatusEmphasis {
         switch status {
         case .conflicted: return .warning(deletionTint)
-        case .unreadable: return .muted(Color(nsColor: .tertiaryLabelColor))
-        case .added, .deleted, .modified, .renamed, .copied, .typechange, .unmodified: return .chrome
+        case .unreadable: return .muted(.tertiaryLabelColor)
+        case .added, .deleted, .modified, .renamed: return .chrome
         }
     }
 

@@ -1,5 +1,5 @@
 import XCTest
-import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class WorktreeTests: XCTestCase {
@@ -7,15 +7,9 @@ final class WorktreeTests: XCTestCase {
     private var repoDir: URL!
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-wt-\(UUID().uuidString)")
+        root = makeTemporaryDirectory(prefix: "casper-wt")
         repoDir = root.appendingPathComponent("repo")
-        try FileManager.default.createDirectory(
-            at: repoDir, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: root)
+        try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
     }
 
     func testAddWorktreeCreatesBranchAndDirectory() throws {
@@ -64,7 +58,7 @@ final class WorktreeTests: XCTestCase {
         XCTAssertTrue(try repo.isBranchCheckedOut("from-base"))
     }
 
-    func testAddWorktreeRollsBackBranchWhenAddFails() throws {
+    func testAddWorktreeRollsBackBranchAndAdminEntryWhenAddFails() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let wtPath = root.appendingPathComponent("blocked").path
 
@@ -82,6 +76,29 @@ final class WorktreeTests: XCTestCase {
         // The branch created before the failed add must have been rolled back,
         // so the operation stays idempotent and retryable.
         XCTAssertFalse(try repo.branchExists("blocked"))
+        // So must the partial admin entry libgit2 created before the failure, or a
+        // retry under the same name fails with "directory exists".
+        XCTAssertFalse(FileManager.default.fileExists(atPath: repo.commonDirPath + "worktrees/blocked"))
+        let retryPath = root.appendingPathComponent("blocked-2").path
+        XCTAssertNoThrow(try repo.addWorktree(name: "blocked", atPath: retryPath, basedOn: nil))
+    }
+
+    /// A worktree registered under the name but checked out on another branch — what
+    /// `git worktree add ../taken -b other` leaves — is not this call's to roll back.
+    func testFailedAddLeavesAForeignWorktreeOfTheSameNameIntact() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let foreignPath = root.appendingPathComponent("taken").path
+        try GitFixture.registerWorktree(
+            inRepoAt: repoDir.path, name: "taken", atPath: foreignPath, onNewBranch: "other")
+        let foreignFile = URL(fileURLWithPath: foreignPath).appendingPathComponent("precious.txt")
+        try "uncommitted work".write(to: foreignFile, atomically: true, encoding: .utf8)
+
+        let casperPath = root.appendingPathComponent("casper-taken").path
+        XCTAssertThrowsError(try repo.addWorktree(name: "taken", atPath: casperPath, basedOn: nil))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: foreignFile.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repo.commonDirPath + "worktrees/taken"))
+        XCTAssertFalse(try repo.branchExists("taken"))
     }
 
     /// The common directory is the repository's identity: a linked worktree reports

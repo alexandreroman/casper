@@ -71,9 +71,8 @@ enum DiffTextAssembly {
     /// Point size of the chrome lines — hunk headers and notes — which are
     /// commentary rather than code.
     ///
-    /// This mirrors SwiftUI's `.caption`, which the row-based renderer styled
-    /// both with and which resolves to 10 pt on macOS. The rewrite has to be
-    /// visually equivalent, so the size is pinned to that rather than rounded up.
+    /// 10 pt, SwiftUI's `.caption` size on macOS: small enough that the chrome
+    /// stays behind the 14 pt code it annotates.
     static let chromeFontSize: CGFloat = 10
 
     /// Hunk headers, monospaced: `@@ -1,4 +1,6 @@` is positional, and it keeps
@@ -90,8 +89,7 @@ enum DiffTextAssembly {
     /// that must not cover the file's first line.
     static let headerBandHeight: CGFloat = 31
 
-    /// Breathing room between two files, on top of the reserved header band —
-    /// the same 14 pt the row-based renderer put after every file but the last.
+    /// Breathing room between two files, on top of the reserved header band.
     static let interFileGap: CGFloat = 14
 
     /// Builds the document's attributed text: one document-wide pass for the

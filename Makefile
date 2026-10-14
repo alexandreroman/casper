@@ -4,7 +4,7 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build dev test release clean vendor help bundle dist icon memory
+.PHONY: build dev test release clean vendor help bundle dist icon memory
 
 # Version metadata for packaging (overridable by CI). SHORT_VERSION is the
 # marketing version; BUNDLE_VERSION is a monotonic build number.
@@ -17,21 +17,19 @@ BUNDLE_VERSION ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 # the Liquid Glass appearance only to apps whose linked SDK is 26 or newer, and
 # without the explicit -platform_version below the app silently falls back to the
 # legacy pre-26 appearance (hard black borders, a shorter title bar) with nothing
-# in the build output to say so. MACOS_DEPLOYMENT_TARGET must stay in step with
-# Package.swift's `platforms: [.macOS(.v15)]`.
-MACOS_DEPLOYMENT_TARGET := 15.0
+# in the build output to say so.
+#
+# Packaging/Info.plist's LSMinimumSystemVersion is the deployment target every
+# packaging step reads (this Makefile, Scripts/bundle-app.sh's actool pass and
+# the appcast's minimumSystemVersion). It must stay in step with Package.swift's
+# `platforms: [.macOS(.v15)]`, the one copy a manifest cannot read from a plist.
+MACOS_DEPLOYMENT_TARGET := $(shell plutil -extract LSMinimumSystemVersion raw Packaging/Info.plist)
+ifeq ($(MACOS_DEPLOYMENT_TARGET),)
+$(error could not read LSMinimumSystemVersion from Packaging/Info.plist)
+endif
 MACOS_SDK_VERSION := $(shell xcrun --show-sdk-version)
 SWIFT_PLATFORM_FLAGS := -Xlinker -platform_version -Xlinker macos \
 	-Xlinker $(MACOS_DEPLOYMENT_TARGET) -Xlinker $(MACOS_SDK_VERSION)
-export SWIFT_PLATFORM_FLAGS
-
-# Flags for the shipped release build. Exported so Scripts/bundle-app.sh runs
-# `swift build -c release --show-bin-path` with the very same flags and can
-# never resolve a build directory other than the one `make release` filled.
-# An override has to carry $(SWIFT_PLATFORM_FLAGS) along, or the release loses the
-# Liquid Glass appearance explained above.
-SWIFT_RELEASE_FLAGS ?= -Xswiftc -Osize $(SWIFT_PLATFORM_FLAGS)
-export SWIFT_RELEASE_FLAGS
 
 # Per-branch dev session name: sanitize the current branch to SessionIdentity's
 # charset ([A-Za-z0-9._-], max 32 chars) so two worktrees on different branches
@@ -86,12 +84,9 @@ dev: build
 test:
 	env -u CASPER_CONTROL_SOCKET -u CASPER_DEBUG_SOCKET -u CASPER_SESSION swift test
 
-## all: build then test
-all: build test
-
 ## release: size-optimized release build (arm64)
 release:
-	swift build -c release $(SWIFT_RELEASE_FLAGS)
+	swift build -c release -Xswiftc -Osize $(SWIFT_PLATFORM_FLAGS)
 
 ## bundle: assemble a self-contained Casper.app (release binary + bundled dylibs)
 bundle: release
@@ -110,8 +105,10 @@ dist: bundle
 	ditto -c -k --sequesterRsrc --keepParent Casper.dSYM dist/Casper-$(SHORT_VERSION)-arm64.dSYM.zip
 
 ## clean: remove build artifacts
+# Everything `make build`/`bundle`/`dist` and Scripts/update-appcast.sh write;
+# all of it is gitignored as build or packaging output.
 clean:
-	rm -rf .build $(DEV_APP)
+	rm -rf .build $(DEV_APP) Casper.app Casper.dSYM dist appcast.xml
 
 ## vendor: re-sync vendored files (pinned libghostty header) via Carvel vendir
 vendor:

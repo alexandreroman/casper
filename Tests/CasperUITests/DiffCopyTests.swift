@@ -15,23 +15,10 @@ import XCTest
 final class DiffCopyTests: XCTestCase {
     // MARK: - Builders
 
-    private func line(
-        _ kind: GitDiffLine.Kind, _ content: String, old: Int? = nil, new: Int? = nil
-    ) -> GitDiffLine {
-        GitDiffLine(kind: kind, content: content, oldLineNumber: old, newLineNumber: new)
-    }
-
     /// The header spells out the line count, so an expectation over the copied
     /// text can be written out in full without a magic constant in it.
     private func document(_ lines: [GitDiffLine]) -> DiffDocument {
-        DiffDocument(diff: GitDiff(files: [
-            GitDiffFile(
-                oldPath: "a.swift", newPath: "a.swift", status: .modified, isBinary: false,
-                hunks: [GitDiffHunk(
-                    header: "@@ -1,\(lines.count) +1,\(lines.count) @@",
-                    oldStart: 1, oldLines: lines.count,
-                    newStart: 1, newLines: lines.count, lines: lines)]),
-        ]))
+        DiffDocument(diff: GitDiff(files: [diffFile("a.swift", lines: lines)]))
     }
 
     /// A selection over the whole document.
@@ -46,9 +33,9 @@ final class DiffCopyTests: XCTestCase {
     /// starts on the same character column as its later ones.
     func testTheTextCarriesNoCue() {
         let document = document([
-            line(.context, "let a = 1", old: 1, new: 1),
-            line(.deletion, "let b = 2", old: 2),
-            line(.addition, "let b = 3", new: 2),
+            diffLine(.context, "let a = 1", old: 1, new: 1),
+            diffLine(.deletion, "let b = 2", old: 2),
+            diffLine(.addition, "let b = 3", new: 2),
         ])
 
         XCTAssertEqual(document.text, """
@@ -71,9 +58,9 @@ final class DiffCopyTests: XCTestCase {
     /// lived and where the guard belongs.
     func testEveryCodeLineStartsItsContentAtItsFirstCharacter() {
         let document = document([
-            line(.context, "context", old: 1, new: 1),
-            line(.deletion, "gone", old: 2),
-            line(.addition, "added", new: 2),
+            diffLine(.context, "context", old: 1, new: 1),
+            diffLine(.deletion, "gone", old: 2),
+            diffLine(.addition, "added", new: 2),
         ])
 
         for line in document.lines where line.diffKind != nil {
@@ -88,7 +75,7 @@ final class DiffCopyTests: XCTestCase {
     /// only sign that a copy of this line is a prefix of the real one.
     func testATruncatedLineKeepsItsMarkerInTheTextAndOutsideItsContent() {
         let long = String(repeating: "x", count: DiffLineStyle.maxDisplayLineLength + 10)
-        let document = document([line(.addition, long, new: 1)])
+        let document = document([diffLine(.addition, long, new: 1)])
         let added = document.lines[1]
         let text = document.text as NSString
 
@@ -103,21 +90,15 @@ final class DiffCopyTests: XCTestCase {
 
     // MARK: - Selection and copy
 
-    /// A text view holding `document`, wired to a TextKit 2 stack the way the
-    /// surface wires its own.
+    /// A TextKit 2 text view holding `document`, built the way the surface builds
+    /// its own.
     private func makeTextView(_ document: DiffDocument) -> DiffTextView {
-        let contentStorage = NSTextContentStorage()
-        let layoutManager = NSTextLayoutManager()
-        let container = NSTextContainer(
-            size: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
-        contentStorage.addTextLayoutManager(layoutManager)
-        layoutManager.textContainer = container
-
-        let textView = DiffTextView(frame: CGRect(x: 0, y: 0, width: 400, height: 400),
-                                    textContainer: container)
+        let textView = DiffTextView(usingTextLayoutManager: true)
+        textView.frame = CGRect(x: 0, y: 0, width: 400, height: 400)
+        textView.textContainer?.size = CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
         textView.isEditable = false
         textView.isSelectable = true
-        contentStorage.textStorage?.setAttributedString(
+        textView.textContentStorage?.textStorage?.setAttributedString(
             DiffTextAssembly.makeAttributedText(for: document))
         textView.document = document
         return textView
@@ -129,8 +110,8 @@ final class DiffCopyTests: XCTestCase {
     /// working.
     func testSelectingEverythingIsOneUntouchedRange() {
         let document = document([
-            line(.addition, "first", new: 1),
-            line(.deletion, "second", old: 2),
+            diffLine(.addition, "first", new: 1),
+            diffLine(.deletion, "second", old: 2),
         ])
         let textView = makeTextView(document)
 
@@ -143,8 +124,8 @@ final class DiffCopyTests: XCTestCase {
     /// reader gets is the code.
     func testCopyingTheSelectionYieldsCleanCode() throws {
         let document = document([
-            line(.deletion, "let b = 2", old: 2),
-            line(.addition, "let b = 3", new: 2),
+            diffLine(.deletion, "let b = 2", old: 2),
+            diffLine(.addition, "let b = 3", new: 2),
         ])
         let textView = makeTextView(document)
         textView.setSelectedRange(whole(document))

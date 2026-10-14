@@ -40,7 +40,8 @@ SPKI DER prefix `302a300506032b6570032100`:
   printf '%s' "$PUB" | base64 -D; } > pub.der
 openssl pkey -pubin -inform DER -in pub.der -out pub.pem
 printf '%s' "$SIG" | base64 -D > sig
-openssl pkeyutl -verify -pubin -inkey pub.pem -rawin -in Casper-<X.Y.Z>-arm64.zip -sigfile sig
+openssl pkeyutl -verify -pubin -inkey pub.pem -rawin \
+  -in Casper-<X.Y.Z>-arm64.zip -sigfile sig
 ```
 
 Tag the exact commit the dry-run built: `CFBundleVersion` is

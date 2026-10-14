@@ -1,10 +1,10 @@
 ---
-name: "OSC 52 clipboard reads are unprompted"
+name: "OSC 52 clipboard reads"
 description: "Untrusted OSC 52 clipboard reads are answered with no confirmation, and the `confirmed` flag silently disables libghostty's whole read policy"
 type: project
 ---
 
-# OSC 52 clipboard reads are unprompted
+# OSC 52 clipboard reads
 
 An OSC 52 *read* — `printf '\033]52;c;?\007'` — asks the terminal for the
 clipboard and gets the answer written back to the asking program's stdin.
@@ -51,9 +51,8 @@ because Casper sets `clipboard-write = ask` itself.
 
 **Only OSC 52 reads reach this policy.** `confirm_read_clipboard_cb` also serves
 `GHOSTTY_CLIPBOARD_REQUEST_PASTE`, which auto-confirms, so an ordinary ⌘V takes
-its own path — including the multi-line paste that trips Ghostty's
-`clipboard-paste-protection`. That protection is a separate, unimplemented
-feature.
+its own path and never reaches this policy — including the multi-line paste
+that trips Ghostty's `clipboard-paste-protection`.
 
 **A denied read still completes**, with an empty string, rather than being
 dropped as upstream Ghostty drops it — the path a substituted `approveUntrusted`

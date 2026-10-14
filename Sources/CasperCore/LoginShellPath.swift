@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Resolves a command name to its absolute path against the `PATH` the user has
 /// **in a terminal**, not the bare `PATH` a Finder/Dock-launched app inherits
@@ -78,12 +79,23 @@ import Foundation
 /// answer — and cheaper than holding the lock across a process spawn.
 ///
 /// Concurrency (Swift 6): the caches and the test seams are process-wide
-/// mutable state reachable from any isolation domain, so they live in a
-/// lock-protected `Storage` box rather than in `nonisolated(unsafe)` globals —
-/// the `@unchecked Sendable` + documented-discipline idiom `SessionStore` and
-/// the socket types already use. The lock is never held across a shell spawn.
+/// mutable state reachable from any isolation domain, so they live in one
+/// `State` behind an `OSAllocatedUnfairLock` rather than in
+/// `nonisolated(unsafe)` globals — the idiom the socket transport and the hang
+/// watchdog already use. The lock is never held across a shell spawn.
 public enum LoginShellPath {
-    private static let storage = Storage()
+    /// The caches and the test seams. Touched only through `storage`'s lock.
+    private struct State {
+        /// The doubly-optional value separates "never looked up" (outer `nil`)
+        /// from "looked up and not found" (inner `nil`), which is what keeps an
+        /// unresolvable command cached instead of retried.
+        var resolvedPaths: [String: String?] = [:]
+        var searchPath: [String]?
+        var shellProbe: @Sendable ([String], DispatchTime) -> String? = LoginShellPath.runShellProbe
+        var processSearchPath: @Sendable () -> String = LoginShellPath.liveProcessSearchPath
+    }
+
+    private static let storage = OSAllocatedUnfairLock(initialState: State())
 
     /// The absolute path `command` resolves to, or `nil` when it is on none of
     /// the search path's directories. Blocking on the very first call of the
@@ -91,9 +103,9 @@ public enum LoginShellPath {
     /// a missing command is cached like any other answer, since it costs
     /// exactly as much to establish.
     public static func resolve(_ command: String) -> String? {
-        if let cached = storage.cachedPath(for: command) { return cached }
+        if let cached = storage.withLock({ $0.resolvedPaths[command] }) { return cached }
         let resolved = firstExecutable(named: command, in: searchPath())
-        storage.cachePath(resolved, for: command)
+        storage.withLock { $0.resolvedPaths[command] = resolved }
         return resolved
     }
 
@@ -152,7 +164,7 @@ public enum LoginShellPath {
     /// spawn shells again on every `AgentIntegrationProbe` tick, and a profile
     /// that blocks once blocks every time.
     private static func searchPath() -> [String] {
-        if let cached = storage.cachedSearchPath { return cached }
+        if let cached = storage.withLock({ $0.searchPath }) { return cached }
         let collected = ComponentsBox()
         // Monotonic, and the same instant the waiting semaphore below is armed
         // against: a wall-clock deadline would jump hours across a system sleep,
@@ -162,8 +174,9 @@ public enum LoginShellPath {
             runWithTimeout(timeout: lookupTimeout) {
                 shellSearchPath(into: collected, deadline: deadline)
             } ?? collected.components
-        let components = deduplicated(fromShell + searchPathComponents(in: storage.processSearchPath()))
-        storage.cacheSearchPath(components)
+        let processSearchPath = storage.withLock { $0.processSearchPath }
+        let components = deduplicated(fromShell + searchPathComponents(in: processSearchPath()))
+        storage.withLock { $0.searchPath = components }
         return components
     }
 
@@ -180,7 +193,7 @@ public enum LoginShellPath {
     /// directly instead of waiting out a real `lookupTimeout`.
     @discardableResult
     static func shellSearchPath(into collected: ComponentsBox, deadline: DispatchTime) -> [String] {
-        let probe = storage.shellProbe
+        let probe = storage.withLock { $0.shellProbe }
         for arguments in unionedArgumentCandidates where DispatchTime.now() < deadline {
             collected.append(searchPathComponents(in: probe(arguments, deadline)))
         }
@@ -288,14 +301,15 @@ public enum LoginShellPath {
     /// Internal rather than private so tests can drive the deadline through the
     /// injected probe instead of waiting on a real shell.
     static func runWithTimeout<T: Sendable>(timeout: TimeInterval, _ work: @escaping @Sendable () -> T?) -> T? {
-        let result = ResultBox<T>()
+        let result = OSAllocatedUnfairLock<T?>(initialState: nil)
         let finished = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .userInitiated).async {
-            result.value = work()
+            let value = work()
+            result.withLock { $0 = value }
             finished.signal()
         }
         guard finished.wait(timeout: .now() + timeout) == .success else { return nil }
-        return result.value
+        return result.withLock { $0 }
     }
 
     #if DEBUG
@@ -309,23 +323,23 @@ public enum LoginShellPath {
         /// not carry a way to swap the process-wide shell probe. Tests build
         /// debug, so `@testable import CasperCore` still sees it.
         static var shellProbe: @Sendable ([String], DispatchTime) -> String? {
-            get { storage.shellProbe }
-            set { storage.shellProbe = newValue }
+            get { storage.withLock { $0.shellProbe } }
+            set { storage.withLock { $0.shellProbe = newValue } }
         }
 
         /// The process's own `PATH`, injectable for the same reason: a test that
         /// asserts a command resolves *nowhere* must not see the developer's real
         /// `PATH`.
         static var processSearchPath: @Sendable () -> String {
-            get { storage.processSearchPath }
-            set { storage.processSearchPath = newValue }
+            get { storage.withLock { $0.processSearchPath } }
+            set { storage.withLock { $0.processSearchPath = newValue } }
         }
 
         /// Drops both caches — the per-command answers and the search path — and
         /// restores the real, shell-spawning seams, so one test's stubs and its
         /// results never leak into the next.
         static func resetForTesting() {
-            storage.reset()
+            storage.withLock { $0 = State() }
         }
     #endif
 
@@ -380,76 +394,16 @@ public enum LoginShellPath {
     /// is abandoned — `runWithTimeout` is all-or-nothing, and without this a
     /// timeout would discard a perfectly good first answer.
     ///
-    /// `@unchecked Sendable`: the single field is only ever touched under `lock`.
     /// Internal rather than private so tests can hold one across a timeout.
-    final class ComponentsBox: @unchecked Sendable {
-        private let lock = NSLock()
-        private var stored: [String] = []
+    /// `OSAllocatedUnfairLock` has reference semantics, so every copy of a box
+    /// shares one store.
+    struct ComponentsBox: Sendable {
+        private let lock = OSAllocatedUnfairLock<[String]>(initialState: [])
 
-        var components: [String] { lock.withLock { stored } }
+        var components: [String] { lock.withLock { $0 } }
 
         func append(_ components: [String]) {
-            lock.withLock { stored += components }
-        }
-    }
-
-    /// Carries a background thread's answer back to the waiting caller.
-    /// `@unchecked Sendable`: the single field is only ever touched under `lock`.
-    private final class ResultBox<T: Sendable>: @unchecked Sendable {
-        private let lock = NSLock()
-        private var stored: T?
-
-        var value: T? {
-            get { lock.withLock { stored } }
-            set { lock.withLock { stored = newValue } }
-        }
-    }
-
-    /// `@unchecked Sendable`: every mutable field is only ever touched under
-    /// `lock`, and the box holds nothing else.
-    private final class Storage: @unchecked Sendable {
-        private let lock = NSLock()
-        private var resolvedPaths: [String: String?] = [:]
-        private var searchPath: [String]?
-        private var probe: @Sendable ([String], DispatchTime) -> String? = LoginShellPath.runShellProbe
-        private var processPath: @Sendable () -> String = LoginShellPath.liveProcessSearchPath
-
-        var shellProbe: @Sendable ([String], DispatchTime) -> String? {
-            get { lock.withLock { probe } }
-            set { lock.withLock { probe = newValue } }
-        }
-
-        var processSearchPath: @Sendable () -> String {
-            get { lock.withLock { processPath } }
-            set { lock.withLock { processPath = newValue } }
-        }
-
-        var cachedSearchPath: [String]? {
-            lock.withLock { searchPath }
-        }
-
-        func cacheSearchPath(_ components: [String]) {
-            lock.withLock { searchPath = components }
-        }
-
-        /// The doubly-optional result separates "never looked up" (outer `nil`)
-        /// from "looked up and not found" (inner `nil`), which is what keeps an
-        /// unresolvable command cached instead of retried.
-        func cachedPath(for command: String) -> String?? {
-            lock.withLock { resolvedPaths[command] }
-        }
-
-        func cachePath(_ path: String?, for command: String) {
-            lock.withLock { resolvedPaths[command] = path }
-        }
-
-        func reset() {
-            lock.withLock {
-                resolvedPaths.removeAll()
-                searchPath = nil
-                probe = LoginShellPath.runShellProbe
-                processPath = LoginShellPath.liveProcessSearchPath
-            }
+            lock.withLock { $0 += components }
         }
     }
 }

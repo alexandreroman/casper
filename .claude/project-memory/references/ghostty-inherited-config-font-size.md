@@ -1,10 +1,10 @@
 ---
-name: "inherited_config reports a surface's live font size"
+name: "inherited_config reports a live font size"
 description: "The read-back the font-size persistence rests on, and the update_config alternative that was rejected"
 type: reference
 ---
 
-# inherited_config reports a surface's live font size
+# inherited_config reports a live font size
 
 `ghostty_surface_inherited_config` reports a surface's **current** font size,
 including runtime adjustments made through Cmd+/Cmd-/Cmd0 — not merely the size

@@ -32,10 +32,13 @@ feedback path the whole TextKit rewrite exists to remove.
   fresh storage from base attributes only.
 - **Events stay on `DiffSurfaceController`.** A scroll target and a file's
   syntax colors finishing are events, not state; they tolerate a nil coordinator
-  and are retried. `Coordinator.scroll(toFileID:)` returns whether it landed,
-  and `DiffSurfaceView` consumes the target's nonce only then, so a target
-  naming a file that only the freshly computed diff holds survives until the
-  document reaches the surface.
+  and are retried. `Coordinator.scroll(toFileID:)` returns whether it landed.
+  `DiffSurfaceView` clears `AppModel.diffScrollTarget` through
+  `consumeDiffScrollTarget(_:)` once the scroll lands, or once a diff computed
+  at the target's `diffRevision` or later lacks the file. A target naming a
+  file that only the freshly computed diff holds therefore survives until the
+  document reaches the surface, and a settled one cannot fire again when the
+  view remounts (collapse, Browser tab, workspace switch).
 - **SwiftUI sizes the hosted view *after* `updateNSView`.** A document can
   therefore arrive while the container is still zero-sized, which silently
   resolves anything viewport-derived against an empty viewport — for the pinned

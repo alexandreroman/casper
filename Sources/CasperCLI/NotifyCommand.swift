@@ -8,9 +8,13 @@ struct NotifyCommand: WorkspaceRefCommand {
         commandName: "notify",
         abstract: "Raise a workspace's attention flag (optionally with a message).")
 
-    @Option(name: .long, help: "Notification body; also posts a macOS notification.")
+    @Option(name: .long, parsing: .unconditional, help: "Notification body; also posts a macOS notification.")
     var message: String?
     @OptionGroup var target: WorkspaceTargetOption
+
+    func validate() throws {
+        try requestHelpIfHelpFlag(message, of: self)
+    }
 
     func makeCommand() throws -> ControlCommand {
         ControlCommand(

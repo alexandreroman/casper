@@ -129,10 +129,6 @@ final class BrowserAutomationTests: XCTestCase {
         XCTAssertTrue(js.contains("rect.width > 0 && rect.height > 0"))
     }
 
-    func testReadyStateCompleteJS() {
-        XCTAssertEqual(BrowserAutomation.readyStateCompleteJS(), "document.readyState === \"complete\"")
-    }
-
     func testWaitPredicateSelectorsAreJSONEscaped() {
         // A selector with a double quote stays a single valid string literal.
         let js = BrowserAutomation.presenceJS(selector: "a[title=\"x\"]")

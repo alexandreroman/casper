@@ -11,8 +11,9 @@ the dragged `Surface.id` over the **standard** pasteboard type
 `public.utf8-plain-text` (`NSPasteboard.PasteboardType.string` /
 `UTType.utf8PlainText`), written by the AppKit drag source
 (`PaneDragHandleView.beginDrag`) and read by the SwiftUI `PaneDropDelegate`. The
-delegate filters foreign text drags by parsing the payload as a `UUID` (non-UUID
-→ silent no-op). The relevant code is `Sources/CasperUI/PaneDragAndDrop.swift`.
+delegate reads the drag pasteboard and refuses a non-UUID payload (no highlight;
+the drop is rejected), which filters out foreign text drags. The relevant code
+is `Sources/CasperUI/PaneDragAndDrop.swift`.
 
 **Why:** a custom `UTType(exportedAs: "com.casper.surface-id")` declared **only
 in code** (even `conformingTo: .data`) is silently ignored by SwiftUI `.onDrop`

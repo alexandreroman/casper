@@ -1,6 +1,7 @@
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 @testable import CasperGhostty
 
 /// The config build sequence's theme fallback: a user theme that loads replaces
@@ -11,13 +12,7 @@ final class GhosttyConfigBuilderTests: XCTestCase {
 
     override func setUpWithError() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-builder-tests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    }
-
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: directory)
+        directory = makeTemporaryDirectory(prefix: "casper-builder-tests")
     }
 
     // MARK: - Fallback
@@ -42,9 +37,13 @@ final class GhosttyConfigBuilderTests: XCTestCase {
         XCTAssertEqual(background(of: config), [0x12, 0x34, 0x56])
     }
 
+    /// libghostty's conditional state starts light, so a fresh config resolves to the light
+    /// theme's background. With no theme failure the builder keeps its first config, so the
+    /// diagnostics are those of Casper's own defaults and theme files: there must be none.
     func testWithoutUserThemeCasperLightApplies() throws {
         let config = try build(user: nil)
         defer { ghostty_config_free(config) }
+        XCTAssertEqual(ghostty_config_diagnostics_count(config), 0)
         XCTAssertEqual(background(of: config), contentBackgroundBytes(for: .aqua))
     }
 

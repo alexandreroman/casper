@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 
@@ -13,7 +14,9 @@ extension XCTestCase {
     ///
     /// `makeView` builds the view under test, so a caller can supply its own
     /// configuration, surface id or callbacks. The view is made first responder before
-    /// `body` runs, matching how a real terminal receives keystrokes.
+    /// `body` runs, matching how a real terminal receives keystrokes, and the run loop is
+    /// pumped until the shell is interactively ready (see `settle(_:)`), so `body` can type
+    /// at it straight away.
     ///
     /// Throws `XCTSkip` when libghostty cannot produce a surface in this environment — a
     /// documented flakiness (see the `e2e-surface-creation-flakiness` note), so the
@@ -23,7 +26,7 @@ extension XCTestCase {
         makeView: (GhosttyRuntime) -> GhosttySurfaceView,
         body: (GhosttySurfaceView, GhosttySurface) throws -> Void
     ) throws {
-        let runtime = try GhosttyRuntime()
+        let runtime = try makeIsolatedRuntime()
         let view = makeView(runtime)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -40,8 +43,11 @@ extension XCTestCase {
             window.contentView = nil
         }
 
-        // Surface creation can transiently return null and retry; poll until it lands.
-        let deadline = Date().addingTimeInterval(10)
+        // Surface creation can transiently return null and retry; poll until it lands. The
+        // view tries at once and then at most twice more, 0.25 s apart
+        // (`GhosttySurfaceView.maxSurfaceCreationAttempts`), before giving up until its next
+        // window entry, so polling past ~0.5 s would only delay the skip.
+        let deadline = Date().addingTimeInterval(1)
         while view.surface == nil, Date() < deadline {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
@@ -49,6 +55,9 @@ extension XCTestCase {
             throw XCTSkip("libghostty could not create a surface in this environment")
         }
         XCTAssertTrue(window.makeFirstResponder(view))
+        // Fixed, not polled: an under-settled shell reads back kernel cooked-mode echo
+        // instead of real line-editor behaviour (see the harness note).
+        settle(0.6)
 
         try body(view, surface)
     }
@@ -59,6 +68,17 @@ extension XCTestCase {
         try withRealSurface(
             makeView: { GhosttySurfaceView(runtime: $0, configuration: GhosttySurfaceConfiguration()) },
             body: body)
+    }
+
+    /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
+    /// writes its theme files to `themeDirectory`, a per-test temporary directory unless
+    /// the caller passes the one it inspects. A local `clipboard-read = allow` or a rebound
+    /// `super+n` would otherwise change what a test observes; CI has no user config, so
+    /// such a leak would only bite local runs.
+    func makeIsolatedRuntime(themeDirectory: URL? = nil) throws -> GhosttyRuntime {
+        try GhosttyRuntime(
+            themeDirectory: themeDirectory ?? makeTemporaryDirectory(prefix: "casper-ghostty-themes"),
+            loadUserFiles: { _ in })
     }
 
     /// Pump the main run loop for a fixed duration so libghostty can drain PTY output and

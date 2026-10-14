@@ -1,8 +1,8 @@
 import ArgumentParser
 import CasperCore
 
-/// Lets ArgumentParser parse, validate, and list the closed `AgentState` value
-/// set natively for `status set <state>`.
+/// Lets ArgumentParser parse and validate the closed `AgentState` value set
+/// natively for `status set <state>` (exit 64 on an unknown state).
 extension AgentState: ExpressibleByArgument {}
 
 /// `casper status set <state>` / `casper status get` — set and read back the

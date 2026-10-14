@@ -4,7 +4,7 @@ import SwiftUI
 /// A workspace row: a leading agent-state icon sitting under the Space header's
 /// chevron column, then the Git/folder glyph (aligned under the Space name) and
 /// the branch label with optional agent progress, and a trailing notification
-/// bubble (or, while Cmd is held, a `⌘N` shortcut hint) — see
+/// bubble (or, while Cmd is held, a ⌘1–⌘9 shortcut hint) — see
 /// `WorkspaceShortcutHint`. The caption line beneath shows a pending
 /// notification message when one exists, falling back to the progress task
 /// label otherwise. Draws its own selection pill so the accent stays visible
@@ -159,7 +159,7 @@ private struct ProgressBar: View {
     }
 }
 
-/// The `Cmd+N` hint shown in the notification bubble's slot while Cmd is held
+/// The ⌘1–⌘9 hint shown in the notification bubble's slot while Cmd is held
 /// past the reveal delay (see `WorkspaceShortcutKeyMonitor`). Selection-aware,
 /// matching every other trailing/leading glyph in this row.
 private struct WorkspaceShortcutHint: View {

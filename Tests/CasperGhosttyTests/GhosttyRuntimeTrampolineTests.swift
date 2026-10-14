@@ -1,6 +1,7 @@
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 @testable import CasperGhostty
 
 final class GhosttyRuntimeTrampolineTests: XCTestCase {
@@ -52,7 +53,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     /// existing `onAction` fallback for it.
     func testHandleActionSuppressesOnActionWhenHandlerClaims() {
         let runtime = GhosttyRuntime.forTesting()
-        runtime.actionHandler = ClaimingActionHandler(claimed: .newTab)
+        runtime.actionHandler = RecordingActionHandler(claiming: { $0 == .newTab })
         var received: GhosttyAction?
         runtime.onAction = { received = $0 }
 
@@ -102,7 +103,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     /// plumbing, not an app action. Pushing the stored config must not crash.
     func testReloadConfigTrampolineClaimsWithoutReachingOnAction() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        let runtime = try GhosttyRuntime()
+        let runtime = try makeIsolatedRuntime()
         var received: [GhosttyAction] = []
         runtime.onAction = { received.append($0) }
         var target = ghostty_target_s()
@@ -122,7 +123,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     @MainActor
     func testSetColorSchemeOnLiveAppAnswersReloadsWithoutReachingOnAction() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        let runtime = try GhosttyRuntime()
+        let runtime = try makeIsolatedRuntime()
         var received: [GhosttyAction] = []
         runtime.onAction = { received.append($0) }
 
@@ -141,10 +142,8 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     @MainActor
     func testSetColorSchemeRewritesPurgedThemeFiles() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-runtime-themes-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let runtime = try GhosttyRuntime(themeDirectory: directory)
+        let directory = makeTemporaryDirectory(prefix: "casper-runtime-themes")
+        let runtime = try makeIsolatedRuntime(themeDirectory: directory)
         let paths = GhosttyThemeFiles.Paths(
             light: directory.appendingPathComponent("casper-light"),
             dark: directory.appendingPathComponent("casper-dark"))
@@ -160,15 +159,5 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     @MainActor
     func testSetColorSchemeWithoutAnAppIsANoOp() {
         GhosttyRuntime.forTesting().setColorScheme(dark: true, surfaces: [])
-    }
-}
-
-/// Stub `GhosttyActionHandler` that claims exactly one action, for testing
-/// `handleAction`'s fallback-suppression path.
-private struct ClaimingActionHandler: GhosttyActionHandler {
-    let claimed: GhosttyAction
-
-    func handle(_ action: GhosttyAction) -> Bool {
-        action == claimed
     }
 }

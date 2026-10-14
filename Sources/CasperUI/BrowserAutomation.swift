@@ -136,11 +136,6 @@ enum BrowserAutomation {
         "document.querySelector(\(jsLiteral(selector))) === null"
     }
 
-    /// True once the document has finished loading (`readyState === "complete"`).
-    static func readyStateCompleteJS() -> String {
-        "document.readyState === \"complete\""
-    }
-
     // MARK: - JS source helpers
 
     /// The JS expression that resolves the target element for a `key` dispatch.
@@ -164,10 +159,6 @@ enum BrowserAutomation {
     /// so it embeds safely into JavaScript source. JSON's string grammar is a
     /// subset of JavaScript's, so the result is a valid JS string literal.
     private static func jsLiteral(_ value: String) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
-              let literal = String(data: data, encoding: .utf8) else {
-            return "\"\""
-        }
-        return literal
+        BrowserCoordinator.jsonString(from: value)
     }
 }

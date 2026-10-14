@@ -1,10 +1,10 @@
 ---
-name: "Real in-process GhosttySurfaceView e2e test harness"
+name: "In-process GhosttySurfaceView e2e harness"
 description: "How to drive a real keyDown -> interpretKeyEvents -> libghostty -> shell round trip in XCTest, and its timing gotcha"
 type: reference
 ---
 
-# Real in-process GhosttySurfaceView e2e test harness
+# In-process GhosttySurfaceView e2e harness
 
 To test real keyboard-dispatch behavior (`keyDown` → `interpretKeyEvents` →
 libghostty → PTY shell) end to end in XCTest, without OS Accessibility
@@ -12,13 +12,18 @@ permission and without the debug-channel bypass (`casper debug send-key` calls
 `ghostty_surface_key` directly, skipping `keyDown`/`interpretKeyEvents` entirely
 — it cannot exercise this class of bug, see [[ghostty-option-as-alt]]):
 
-1. Use a real (non-`.forTesting()`) `GhosttyRuntime()` — `.forTesting()` has
-   `app = nil` and never creates a surface.
+1. Use a real (non-`.forTesting()`) runtime — `.forTesting()` has `app = nil`
+   and never creates a surface. Build it with `makeIsolatedRuntime()`:
+   `GhosttyRuntime(themeDirectory:loadUserFiles:)` with a per-test temp theme
+   directory and a loader that reads nothing, so the developer's own Ghostty
+   config ([[ghostty-user-config-dirs]]) cannot change what the test observes
+   (a local `clipboard-read = allow` disarms the OSC 52 read probe).
 2. Build `GhosttySurfaceView(runtime:configuration:)`, assign it as
    `window.contentView` on a real (can be `.borderless`, off-screen-sized fine)
    `NSWindow` — this triggers `viewDidMoveToWindow` → real
    `ghostty_surface_new`.
-3. Poll `view.surface != nil` for up to ~10s on the RunLoop;
+3. Poll `view.surface != nil` on the RunLoop until the view's bounded creation
+   retries are spent (~0.5 s; the harness allows 1 s), and
    `throw XCTSkip(...)` if it never appears (the documented
    [[e2e-surface-creation-flakiness]], environmental — running the suite with
    the display awake, e.g. under `caffeinate -u`, is what makes these tests
@@ -45,10 +50,13 @@ prefer fixed settle times over adaptive polling here.
 
 `Tests/CasperGhosttyTests/RealSurfaceHarness.swift` implements steps 1-4 and
 owns the single `settle(_:)`: `withRealSurface(makeView:body:)` builds the
-runtime, view and window, polls, makes the view first responder, and tears the
-surface down with `view.invalidate()` before the window drops it (the ordering
+runtime, view and window, polls, makes the view first responder, pumps the
+fixed `settle(0.6)` before handing over, and tears the surface down with
+`view.invalidate()` before the window drops it (the ordering
 [[surface-view-invalidate-before-release]] requires). Every real-surface test
-goes through it rather than re-spelling the recipe.
+in that target goes through it rather than re-spelling the recipe.
+`CasperUITests` cannot see it, so `AppModelTests` carries its own one copy,
+`withHostedSurface(_:body:)`, for the tests that host a view the model built.
 
 Its closure parameters are deliberately plain (non-`@MainActor`,
 non-escaping) so they inherit isolation from the `@MainActor` call site: a

@@ -14,12 +14,11 @@ import CasperCore
 /// drive a real click or hover-dwell through `NSHostingView` in this codebase
 /// (see `headless-swiftui-layout-tests`), so `reveal()`'s call into
 /// `AppModel.markInfoSeen(for:)` is not exercised through the button itself —
-/// only the model primitive it relies on is pinned below.
+/// only the model primitive it relies on is pinned, by `ControlHandlerTests`.
 @MainActor
 final class WorkspaceInfoButtonTests: XCTestCase {
     /// The seeded model, plus its workspace re-read after `markdown` (when given)
-    /// is published via `controlSetInfo` — the same path a real `casper info set`
-    /// takes, so the workspace starts unread.
+    /// is published via `controlSetInfo`.
     private func seeded(markdown: String?) -> (AppModel, Workspace) {
         let (model, seed) = makeSeededModel()
         if let markdown {
@@ -34,9 +33,9 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// collapsed. See `WorkspaceInfoButton.collapsedWidth`'s doc.
     func testCollapsesToOnlyItsGapWithoutAMessage() {
         let (model, workspace) = seeded(markdown: nil)
-        let host = NSHostingView(rootView: WorkspaceInfoButton(model: model, workspace: workspace))
+        let size = layoutSize(for: WorkspaceInfoButton(model: model, workspace: workspace))
 
-        XCTAssertEqual(host.fittingSize.width, WorkspaceInfoButton.collapsedWidth, accuracy: 0.5)
+        XCTAssertEqual(size.width, WorkspaceInfoButton.collapsedWidth, accuracy: 0.5)
     }
 
     /// With a message the chip must report the full `iconSlotWidth`, not merely
@@ -44,22 +43,9 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// slot collapsed to the `collapsedWidth` gap, clipping the glyph.
     func testLaysOutWithAMessage() {
         let (model, workspace) = seeded(markdown: "## Ready")
-        let host = NSHostingView(rootView: WorkspaceInfoButton(model: model, workspace: workspace))
+        let size = layoutSize(for: WorkspaceInfoButton(model: model, workspace: workspace))
 
-        XCTAssertEqual(host.fittingSize.width, WorkspaceInfoButton.iconSlotWidth, accuracy: 0.5)
-        XCTAssertGreaterThan(host.fittingSize.height, 0)
-    }
-
-    /// NOT a test of `WorkspaceInfoButton` — it never constructs one. `reveal()`
-    /// calls exactly this AppModel method, but nothing here drives `reveal()`
-    /// itself (no headless click/hover), so this only pins the primitive: after
-    /// `controlSetInfo` starts a workspace unread, `markInfoSeen` clears it.
-    func testMarkInfoSeenClearsTheUnreadFlagThatRevealRelinquishes() {
-        let (model, workspace) = seeded(markdown: "## Ready")
-        XCTAssertTrue(model.workspace(id: workspace.id)?.infoUnread ?? false)
-
-        model.markInfoSeen(for: workspace.id)
-
-        XCTAssertFalse(model.workspace(id: workspace.id)?.infoUnread ?? true)
+        XCTAssertEqual(size.width, WorkspaceInfoButton.iconSlotWidth, accuracy: 0.5)
+        XCTAssertGreaterThan(size.height, 0)
     }
 }

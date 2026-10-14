@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import UserNotifications
 @testable import CasperUI
 
 @MainActor
@@ -8,7 +9,7 @@ final class AgentDetectionTests: XCTestCase {
     /// claim about work the terminal cannot see — and only `idle`/`unknown` hand
     /// the workspace back to the scraper.
     func testAssertedStatesLatchAuthorityWhileIdleReleasesIt() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         XCTAssertFalse(model.explicitAuthority.contains(id), "authority starts released")
 
@@ -60,7 +61,7 @@ final class AgentDetectionTests: XCTestCase {
     /// the injected `deliverNotification`) and raises the sidebar attention dot,
     /// with no agent hook involved — this is the notify-without-a-hook feature.
     func testDetectedBlockedDeliversNotificationAndRaisesDot() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         model.isWindowKey = { false }  // not focused ⇒ dot may raise
         var delivered: [(title: String, body: String, workspaceID: UUID)] = []
@@ -80,36 +81,61 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 
-    /// A detected transition into `done` likewise fires a notification.
-    func testDetectedDoneDeliversNotification() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
-        let id = workspace.id
-        model.isWindowKey = { false }
-        var delivered: [(title: String, body: String)] = []
-        model.deliverNotification = { title, body, _, _ in delivered.append((title, body)) }
-
-        model.setDetectedAgentState(.done, for: id)
-
-        XCTAssertEqual(delivered.count, 1)
-        XCTAssertEqual(delivered.first?.body, "Done")
+    /// Captures the message (body) and interruption level a detected transition
+    /// from `initial` into `state` passes to `deliverNotification`, failing if it
+    /// delivers more than once. Returns nil when nothing is delivered. The workspace
+    /// is left unfocused (window not key) so delivery is not suppressed by the focus
+    /// check. `initial` is applied before the capture is installed, so only the
+    /// transition under test is counted. `initial` must be a silent state: a notifying
+    /// one would arm `notificationCooldown` and hide the delivery under test.
+    private func deliveredNotification(
+        forDetected state: AgentState,
+        from initial: AgentState = .idle) -> (body: String, level: UNNotificationInterruptionLevel)? {
+        let (model, workspace) = makeSeededModel()
+        model.isWindowKey = { false }  // unfocused → delivery not suppressed
+        model.setDetectedAgentState(initial, for: workspace.id)
+        var delivered: [(body: String, level: UNNotificationInterruptionLevel)] = []
+        model.deliverNotification = { _, body, _, level in delivered.append((body, level)) }
+        model.setDetectedAgentState(state, for: workspace.id)
+        XCTAssertLessThanOrEqual(delivered.count, 1, "one transition delivers at most one notification")
+        return delivered.first
     }
 
-    /// Non-attention states (`working`, `idle`) never notify.
-    func testDetectedWorkingOrIdleDoesNotNotify() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
-        let id = workspace.id
-        var delivered = 0
-        model.deliverNotification = { _, _, _, _ in delivered += 1 }
+    func testDetectedBlockedDeliversActiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .blocked))
+        XCTAssertEqual(delivered.body, "Waiting for your input")
+        XCTAssertEqual(delivered.level, .active)
+    }
 
-        model.setDetectedAgentState(.working, for: id)
-        model.setDetectedAgentState(.idle, for: id)
+    func testDetectedDoneDeliversPassiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .done))
+        XCTAssertEqual(delivered.body, "Done")
+        XCTAssertEqual(delivered.level, .passive)
+    }
 
-        XCTAssertEqual(delivered, 0, "working/idle must not raise a notification")
+    func testDetectedErrorDeliversActiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .error))
+        XCTAssertEqual(delivered.body, "Something went wrong")
+        XCTAssertEqual(delivered.level, .active)
+    }
+
+    func testDetectedWorkingDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .working))
+    }
+
+    /// A seeded workspace already starts idle, so this drives a real working → idle
+    /// transition: a same-state write would stop at the change guard.
+    func testDetectedIdleDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .idle, from: .working))
+    }
+
+    func testDetectedUnknownDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .unknown))
     }
 
     /// The "only on change" guard means a repeated same-state write notifies once.
     func testRepeatedBlockedNotifiesOnce() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id
         model.isWindowKey = { false }
         var delivered = 0
@@ -126,7 +152,7 @@ final class AgentDetectionTests: XCTestCase {
     /// already looking at it. The focus semantics come for free from
     /// `controlRaiseNotification`.
     func testDetectedBlockedWhileFocusedDoesNotNotifyOrRaiseDot() {
-        let (model, workspace) = makeSeededModel(portBase: 42000)
+        let (model, workspace) = makeSeededModel()
         let id = workspace.id  // seeded session selects this workspace
         model.isWindowKey = { true }
         var delivered = 0

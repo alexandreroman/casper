@@ -87,7 +87,7 @@ extension AppModel {
     @discardableResult
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) -> AddSpaceOutcome {
         let folderPath = folderURL.path
-        let candidate = Self.canonicalPath(folderPath)
+        let candidate = WorktreeManager.canonicalPath(folderPath)
         if let known = trackedWorkspace(atCanonicalPath: candidate) {
             CasperLog.app.error("folder already open: \(folderPath, privacy: .public)")
             selectWorkspace(known.workspaceID)
@@ -100,11 +100,7 @@ extension AppModel {
             }
             return addSpacePullingInRepository(ofWorktreeAt: folderURL, info: info, probe: probe)
         }
-        let portBase: Int
-        do {
-            portBase = try portAllocator.allocate()
-        } catch {
-            CasperLog.app.failure("cannot add space: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "add space") else {
             return .failed(reason: .noFreePortBlock)
         }
         var space = WorkspaceFactory.makeSpace(
@@ -182,34 +178,23 @@ extension AppModel {
         // folder, each with a `.primary` on the same working tree, which is exactly what
         // `linkedWorkspaces(absorbing:baseBranch:excluding:)` guards against on the
         // reunify side. Adopt into the Space already tracking that folder instead.
-        if let tracked = trackedWorkspace(atCanonicalPath: Self.canonicalPath(mainPath)) {
+        if let tracked = trackedWorkspace(atCanonicalPath: WorktreeManager.canonicalPath(mainPath)) {
             return adoptWorktree(at: folderURL, info: info, into: tracked.spaceIndex)
         }
         // Two workspaces, so two port blocks: the repository's primary and the worktree.
-        let portBase: Int
-        let worktreePortBase: Int
-        do {
-            portBase = try portAllocator.allocate()
-        } catch {
-            CasperLog.app.failure("cannot add space: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "add space") else {
             return .failed(reason: .noFreePortBlock)
         }
-        do {
-            worktreePortBase = try portAllocator.allocate()
-        } catch {
+        guard let worktreePortBase = allocatePortBase(toAction: "adopt worktree") else {
             // Nothing is added, so nothing may stay reserved.
             portAllocator.release(portBase)
-            CasperLog.app.failure("cannot adopt worktree: no free port block", error)
             return .failed(reason: .noFreePortBlock)
         }
         var space = WorkspaceFactory.makeSpace(
             folderURL: mainURL, info: mainInfo, portBase: portBase)
-        let branch = info.branch
-        let baseBranch = space.primaryWorkspace?.branch ?? ""
-        var adopted = WorkspaceFactory.makeLinkedWorkspace(
-            name: branch.isEmpty ? folderURL.lastPathComponent : branch,
-            worktreePath: info.canonicalPath, branch: branch,
-            baseBranch: baseBranch, portBase: worktreePortBase)
+        var adopted = WorkspaceFactory.makeAdoptedWorkspace(
+            folderURL: folderURL, info: info,
+            baseBranch: space.primaryWorkspace?.branch ?? "", portBase: worktreePortBase)
         // Read before the selection moves below, exactly as `adoptWorktree` does.
         adopted.lastUsedEditor = inheritedEditor
         space.workspaces.append(adopted)
@@ -236,10 +221,10 @@ extension AppModel {
     /// Workspace…" work.
     ///
     /// That commit is **not** part of the rollback: it can be skipped (see
-    /// `Repository.createInitialCommit`, which writes nothing when the machine
-    /// configures no committer identity) or fail outright, and either way the
-    /// repository on disk is a valid one that is still worth adopting. Only
-    /// `Repository.initialize` failing and the adoption failing roll anything back.
+    /// `Repository.createInitialCommit`, which writes nothing when neither the
+    /// environment nor the Git configuration names a committer) or fail outright, and
+    /// either way the repository on disk is a valid one that is still worth adopting.
+    /// Only `Repository.initialize` failing and the adoption failing roll anything back.
     ///
     /// A path that is already taken is refused rather than reused: Casper never
     /// deletes or overwrites anything it did not create. The one exception is an
@@ -348,7 +333,7 @@ extension AppModel {
     /// built on it can host a workspace right away.
     ///
     /// Reports only to the log, deliberately: every outcome — the commit written, the
-    /// commit skipped for want of a configured Git identity, or libgit2 refusing it —
+    /// commit skipped for want of a Git identity, or libgit2 refusing it —
     /// leaves a valid repository behind, so none of them is a reason to refuse the
     /// Space or to undo what is already on disk. A Space left on an unborn HEAD is
     /// still a Space; creating a workspace in it is what then says so, in Casper's own
@@ -401,13 +386,6 @@ extension AppModel {
         return exists && isDirectory.boolValue
     }
 
-    // Reached from AppModel.swift.
-    /// `path` with symlinks resolved, so two spellings of the same folder compare
-    /// equal (on macOS `/tmp/x` and `/private/tmp/x` are the same directory).
-    static func canonicalPath(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-    }
-
     /// The workspace Casper already tracks at `canonical` — either a Space rooted
     /// there (answering with its primary workspace) or any workspace whose worktree is
     /// that folder — together with the index of the Space holding it, for the callers
@@ -416,11 +394,11 @@ extension AppModel {
         atCanonicalPath canonical: String
     ) -> (spaceIndex: Int, workspaceID: UUID)? {
         for (si, space) in spaces.enumerated() {
-            if Self.canonicalPath(space.folderPath) == canonical {
+            if WorktreeManager.canonicalPath(space.folderPath) == canonical {
                 return space.firstOrderedWorkspaceID.map { (si, $0) }
             }
             if let match = space.workspaces.first(where: {
-                Self.canonicalPath($0.worktreePath) == canonical
+                WorktreeManager.canonicalPath($0.worktreePath) == canonical
             }) {
                 return (si, match.id)
             }
@@ -484,7 +462,7 @@ extension AppModel {
         guard !absorbed.isEmpty, let primary = space.primaryWorkspace else { return }
         space.workspaces.append(contentsOf: Self.linkedWorkspaces(
             absorbing: absorbed, baseBranch: primary.branch,
-            excluding: Self.canonicalPath(primary.worktreePath)))
+            excluding: WorktreeManager.canonicalPath(primary.worktreePath)))
         let moved = Set(space.workspaces.map(\.id))
         for workspace in absorbed.flatMap(\.workspaces) where !moved.contains(workspace.id) {
             retire(workspace)
@@ -508,7 +486,7 @@ extension AppModel {
         absorbing absorbed: [Space], baseBranch: String, excluding primaryPath: String
     ) -> [Workspace] {
         absorbed.flatMap(\.orderedWorkspaces)
-            .filter { canonicalPath($0.worktreePath) != primaryPath }
+            .filter { WorktreeManager.canonicalPath($0.worktreePath) != primaryPath }
             .map { workspace in
                 var workspace = workspace
                 if workspace.kind == .primary {
@@ -530,20 +508,12 @@ extension AppModel {
     private func adoptWorktree(
         at folderURL: URL, info: WorkspaceFactory.GitInfo, into si: Int
     ) -> AddSpaceOutcome {
-        let portBase: Int
-        do { portBase = try portAllocator.allocate() } catch {
-            CasperLog.app.failure("cannot adopt worktree: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "adopt worktree") else {
             return .failed(reason: .noFreePortBlock)
         }
-        // Same shape as a Casper-created linked workspace: named after its branch,
-        // with the Space's primary branch as the base it merges back into. A worktree
-        // with no branch name of its own falls back to its folder name.
-        let branch = info.branch
-        let baseBranch = spaces[si].primaryWorkspace?.branch ?? ""
-        var ws = WorkspaceFactory.makeLinkedWorkspace(
-            name: branch.isEmpty ? folderURL.lastPathComponent : branch,
-            worktreePath: info.canonicalPath, branch: branch,
-            baseBranch: baseBranch, portBase: portBase)
+        var ws = WorkspaceFactory.makeAdoptedWorkspace(
+            folderURL: folderURL, info: info,
+            baseBranch: spaces[si].primaryWorkspace?.branch ?? "", portBase: portBase)
         // Read before the selection moves below, exactly as `createLinkedWorkspace` does.
         ws.lastUsedEditor = inheritedEditor
         mutateSpaces { $0[si].workspaces.append(ws) }
@@ -553,29 +523,23 @@ extension AppModel {
     }
 
     // Reached from AppModel.swift.
+    /// Reserve a port block for a new workspace, or nil — logged as "cannot `action`"
+    /// — when the range holds no free block. Each caller maps nil to its own failure.
+    func allocatePortBase(toAction action: String) -> Int? {
+        do {
+            return try portAllocator.allocate()
+        } catch {
+            CasperLog.app.failure("cannot \(action): no free port block", error)
+            return nil
+        }
+    }
+
+    // Reached from AppModel.swift.
     /// The workspace selection should fall back to after a removal: the first
     /// remaining workspace of `space` in display order if it still has one,
     /// otherwise the first workspace of the first remaining Space overall.
     func fallbackSelection(preferring space: Space?) -> UUID? {
         space?.firstOrderedWorkspaceID ?? spaces.first?.firstOrderedWorkspaceID
-    }
-
-    /// Prune every transient, non-persisted map keyed by a workspace being
-    /// removed, so a long-lived session with workspace churn doesn't accumulate
-    /// dead entries. Called from both `removeWorkspace` (linked drop) and
-    /// `removeSpace` (whole-Space discard) so the two teardown paths can't drift.
-    private func pruneTransientState(for ws: Workspace) {
-        explicitAuthority.remove(ws.id)
-        agentResolvers[ws.id] = nil
-        namedCommandsCache[ws.id] = nil
-        namedCommandsStamps[ws.id] = nil
-        watcherPathsCache[ws.id] = nil
-        lastNotifiedAt[ws.id] = nil
-        // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
-        // is cleared — the workspace is being dropped outright here, so there is nothing
-        // left for the destroy to prune), and the setup-running flag and per-surface
-        // setup tags of a workspace removed while its setup split is live.
-        scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
     }
 
     // Reached from AppModel.swift.
@@ -595,6 +559,16 @@ extension AppModel {
     func retire(_ ws: Workspace) {
         portAllocator.release(ws.portBase)
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
-        pruneTransientState(for: ws)
+        explicitAuthority.remove(ws.id)
+        agentResolvers[ws.id] = nil
+        namedCommandsCache[ws.id] = nil
+        namedCommandsStamps[ws.id] = nil
+        watcherPathsCache[ws.id] = nil
+        lastNotifiedAt[ws.id] = nil
+        // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
+        // is cleared — the workspace is being dropped outright here, so there is nothing
+        // left for the destroy to prune), and the setup-running flag and per-surface
+        // setup tags of a workspace removed while its setup split is live.
+        scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
     }
 }

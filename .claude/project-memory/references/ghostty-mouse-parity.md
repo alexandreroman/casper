@@ -7,7 +7,8 @@ type: reference
 # libghostty mouse handling parity
 
 Confirmed against the pinned header (`Vendor/ghostty/ghostty.h`, Ghostty v1.3.1)
-while bringing `GhosttySurfaceView` to upstream mouse parity.
+and upstream's macOS sources at the same tag while bringing
+`GhosttySurfaceView` to upstream mouse parity.
 
 - **Multi-click is entirely core-side.** `ghostty_surface_mouse_button(surface,
   state, button,
@@ -20,18 +21,23 @@ while bringing `GhosttySurfaceView` to upstream mouse parity.
   fresh click lands at a stale cell and word/line selection cannot work. There
   is nothing to "enable" on the C side — position tracking alone fixes it.
 
-- **`ghostty_surface_mouse_button` button mapping** from `NSEvent.buttonNumber`:
-  0→`GHOSTTY_MOUSE_LEFT`, 1→`GHOSTTY_MOUSE_RIGHT`, 2→`GHOSTTY_MOUSE_MIDDLE`,
-  3→`GHOSTTY_MOUSE_FOUR`, 4→`GHOSTTY_MOUSE_FIVE` (`GHOSTTY_MOUSE_UNKNOWN` for
-  the rest). Middle-click paste is handled by the core once the button is
+- **`ghostty_surface_mouse_button` button mapping** from `NSEvent.buttonNumber`
+  follows upstream's table, `MouseButton.init(fromNSEventButtonNumber:)` in
+  `macos/Sources/Ghostty/Ghostty.Input.swift` (the header only lists the enum,
+  not the mapping): 0 LEFT, 1 RIGHT, 2 MIDDLE, 3 EIGHT (Back), 4 NINE
+  (Forward), 5 SIX, 6 SEVEN, 7 FOUR, 8 FIVE, 9 TEN, 10 ELEVEN, UNKNOWN for the
+  rest. In the X11/xterm convention buttons 4 and 5 are the scroll wheel, so
+  sending Back/Forward as FOUR/FIVE makes a mouse-reporting program (vim, tmux,
+  less) scroll. Middle-click paste is handled by the core once the button is
   forwarded.
 
 - **Scroll modifiers** — `ghostty_input_scroll_mods_t` is `typedef int` with an
   undocumented packed bit layout; `scrollWheel` sets both the precision bit and
   the momentum phase. See [[ghostty-scroll-mods-layout]] for the layout and why
   the precision bit is mandatory. Alongside it, `scrollingDeltaX/Y` is doubled
-  when `event.hasPreciseScrollingDeltas` (trackpad deltas arrive at ~half the
-  magnitude of wheel deltas).
+  when `event.hasPreciseScrollingDeltas`: upstream's own 2× multiplier, which
+  its source (`SurfaceView_AppKit.scrollWheel`) calls subjective — it "feels"
+  better. No measurement backs it.
 
 - **The resting I-beam is the app's default, NOT a libghostty action.**
   libghostty emits `GHOSTTY_ACTION_MOUSE_SHAPE` only to *change* the shape
@@ -46,7 +52,8 @@ while bringing `GhosttySurfaceView` to upstream mouse parity.
   `.cursorUpdate` tracking-area option) plus a re-apply on `mouseEntered` —
   because `MOUSE_SHAPE` is delivered asynchronously (wakeup→tick→`action_cb`)
   and a bare `NSCursor.set()` gets clobbered by AppKit's cursor-rect reset on
-  the next move.
+  the next move. That `cursorUpdate`/`mouseEntered`/arrow-on-exit trio is
+  Casper's own mechanism, not upstream's — see [[terminal-overlay-cursor]].
 
 - **Mouse-shape and mouse-visibility are surface-scoped actions**, delivered
   through `action_cb`'s `ghostty_target_s` (tag `GHOSTTY_TARGET_SURFACE`), NOT

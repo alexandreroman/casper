@@ -5,8 +5,8 @@ import Foundation
 import UserNotifications
 
 /// Carries lifecycle work that a SwiftUI `App` scene does not express: start the
-/// control server, set the AppKit menu, and save on terminate. Shares the one
-/// `AppModel` with the SwiftUI scene via `AppModel.shared`.
+/// control server, apply the AppKit menu-bar fixups, and save on terminate. Shares
+/// the one `AppModel` with the SwiftUI scene via `AppModel.shared`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate {
     /// Visible title of the standard File menu — see `renameFileMenu(in:)`.
@@ -15,7 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private var controlServer: ControlServer?
     private var appearanceObservation: NSKeyValueObservation?
     private var keyWindowObserver: NSObjectProtocol?
-    private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
+    /// Internal, not private, so tests can install a monitor over their own model.
+    var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
     // `NSMenu.delegate` is weak, so the App-menu proxy needs an owner here.
     private var appMenuDelegateProxy: AppMenuDelegateProxy?
     #if DEBUG
@@ -49,7 +50,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
         // Per-surface env inputs.
         model.casperDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
-            ?? (CommandLine.arguments.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
 
         // Release control socket: the `casper` CLI's command channel, distinct
         // from the DEBUG-only debug channel below — this one ships in release.
@@ -143,12 +143,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         }
 
         // Debug channel for the `debug-casper` harness. Compiled out of release
-        // builds entirely — see the `nm` gating check in the task report.
+        // builds entirely — see the `debug-channel-gating` memory note.
         #if DEBUG
         let debug = DebugServer(socketPath: DebugSocketPath.listenPath(for: AppModel.shared.sessionIdentity),
                                 provider: AppModel.shared)
         do { try debug.start(); self.debugServer = debug }
-        catch { CasperLog.debug.error("debug server failed to start: \(String(describing: error))") }
+        catch { CasperLog.debug.failure("debug server failed to start", error) }
         #endif
 
         // Bare SPM executable launched from a terminal: macOS does not foreground
@@ -161,8 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// every `UNNotificationRequest`, so this is what makes `casper notify` visible.
     private func setupNotifications() {
         // `UNUserNotificationCenter.current()` aborts (does not no-op) when the
-        // process has no bundle identifier — e.g. the bare `swift run` executable
-        // under `make dev`. Same guard the `deliverNotification` closure uses.
+        // process has no bundle identifier — e.g. `swift run` or a raw
+        // `.build/debug/casper` launch. Same guard the `deliverNotification` closure uses.
         guard Bundle.main.bundleIdentifier != nil else { return }
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
@@ -192,11 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// tap select the originating workspace before bringing Casper to the front.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Guard on the workspace still existing: `selectWorkspace` sets the selection
-        // unconditionally, so tapping a notification for a since-deleted workspace
-        // would otherwise leave a dangling selection.
-        if let workspaceID = UUID(uuidString: response.notification.request.identifier),
-           AppModel.shared.workspace(id: workspaceID) != nil {
+        // A since-deleted workspace's id is safe to pass: `selectWorkspace` ignores an id
+        // that resolves to no workspace.
+        if let workspaceID = UUID(uuidString: response.notification.request.identifier) {
             AppModel.shared.selectWorkspace(workspaceID)
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -333,7 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// release the Dock bounce the user just answered, and re-probe the agent
     /// integrations — the user may have installed or updated a plugin in the app
     /// they just came back from. Stale-checked, so a Cmd-Tab storm probes at most
-    /// once per `AppModel.agentIntegrationProbeInterval`; the detection tick applies
+    /// once per `AgentIntegrationReminders.probeInterval`; the detection tick applies
     /// the same check on its own cadence, which covers an install done *inside*
     /// Casper, where the app never resigns active at all.
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -342,12 +340,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         AppModel.shared.refreshAgentIntegrationsIfStale()
     }
 
+    func applicationDidResignActive(_ notification: Notification) {
+        resignActive(model: AppModel.shared)
+    }
+
     /// Tell libghostty the app lost focus. Complementary to occlusion — this does
     /// not pause rendering, only quiets focus-driven work. Also releases the Dock
-    /// bounce, so nothing an active Casper may have requested outlives its activation.
-    func applicationDidResignActive(_ notification: Notification) {
-        AppModel.shared.runtime?.setAppFocus(false)
-        AppModel.shared.releaseDockBounce()
+    /// bounce, so nothing an active Casper may have requested outlives its activation,
+    /// and any ⌘ or ⌥ the shortcut monitor still believes held.
+    ///
+    /// Takes the model rather than reading `AppModel.shared`, which loads the real
+    /// session, so tests can drive it.
+    func resignActive(model: AppModel) {
+        model.runtime?.setAppFocus(false)
+        model.releaseDockBounce()
+        workspaceShortcutMonitor?.releaseModifiers()
     }
 }
 
@@ -439,7 +446,7 @@ private final class AppMenuDelegateProxy: NSObject, NSMenuDelegate {
 /// during those openings shows Services present and expanded. The item was removed
 /// every single time, always too late to matter. The two hooks are kept as a safety
 /// net for re-injections that happen with no menu open (they also feed
-/// `stripEmptyTopLevelMenus()` a final menu), but the removal that the user
+/// `stripEmptyTopLevelMenus(in:)` a final menu), but the removal that the user
 /// actually sees is the one driven from `AppMenuDelegateProxy.menuNeedsUpdate(_:)`,
 /// which AppKit calls immediately before displaying the menu.
 ///

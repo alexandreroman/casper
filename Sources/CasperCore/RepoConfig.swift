@@ -1,11 +1,12 @@
 import Foundation
 
-/// A repository's `.casper.json`, read from the repo root when a workspace is
-/// created. The file is grouped by domain so future sections have a home; the
-/// `workspace` section is the only one read today — its `copyFiles` patterns
-/// and its named `scripts` (the `setup`/`teardown` lifecycle hooks plus the
-/// user-invocable commands). Unknown keys are ignored, so a file that already
-/// carries other sections still decodes.
+/// A repository's `.casper.json`, read from a worktree's root: the repository's
+/// when a workspace is created, the workspace's own for its scripts. The file is
+/// grouped by domain so future sections have a home; the `workspace` section is
+/// the only one read today — its `copyFiles` patterns and its named `scripts`
+/// (the `setup`/`teardown` lifecycle hooks plus the user-invocable commands).
+/// Unknown keys are ignored, so a file that already carries other sections still
+/// decodes.
 public struct RepoConfig: Codable, Equatable, Sendable {
     /// Workspace-scoped preferences.
     public struct Workspace: Codable, Equatable, Sendable {
@@ -18,18 +19,9 @@ public struct RepoConfig: Codable, Equatable, Sendable {
         /// and `teardown` are lifecycle hooks; every other name is a user-invocable
         /// command. An empty command string is treated as no script.
         public var scripts: [String: String]?
-
-        public init(copyFiles: [String]? = nil, scripts: [String: String]? = nil) {
-            self.copyFiles = copyFiles
-            self.scripts = scripts
-        }
     }
 
     public var workspace: Workspace?
-
-    public init(workspace: Workspace? = nil) {
-        self.workspace = workspace
-    }
 
     /// The effective list of files to copy: the file's list when present, else
     /// `defaults`. An explicit empty list is returned as empty (copy nothing).
@@ -82,11 +74,6 @@ public struct RepoConfig: Codable, Equatable, Sendable {
 public struct RepoConfigError: Error, Equatable, Sendable {
     public let path: String
     public let reason: String
-
-    public init(path: String, reason: String) {
-        self.path = path
-        self.reason = reason
-    }
 }
 
 /// The outcome of resolving a `casper run <name>` request.

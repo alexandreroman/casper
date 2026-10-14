@@ -14,7 +14,7 @@ struct WorkspaceTargetOption: ParsableArguments {
         // Treat an empty or whitespace-only selector as absent so `requireSelector`
         // raises its clear "no target workspace" error instead of round-tripping a
         // useless empty selector to the app.
-        nonBlank(workspace ?? environment["CASPER_WORKSPACE_ID"])
+        nonBlank(workspace ?? environment[CasperEnvironment.workspaceID])
     }
 }
 
@@ -29,6 +29,18 @@ func nonBlank(_ value: String?) -> String? {
 /// An option or argument value, with the empty string normalized to nil.
 func nonEmpty(_ value: String?) -> String? {
     value.flatMap { $0.isEmpty ? nil : $0 }
+}
+
+/// Ask for `command`'s help when a free-text option's value is `--help` or `-h`.
+/// Called from the `validate()` of every command with such an option.
+///
+/// A free-text option is declared `parsing: .unconditional`, so it takes its next
+/// argument whatever that is, and ArgumentParser only looks for its help flags among
+/// the arguments left over: `--message --help` would send "--help" as the text. Those
+/// two exact values are a help request instead, as anywhere else on the command line.
+func requestHelpIfHelpFlag(_ value: String?, of command: ParsableCommand) throws {
+    guard value == "--help" || value == "-h" else { return }
+    throw CleanExit.helpRequest(command)
 }
 
 /// Reject an empty required argument with a uniform message, returning the value
@@ -64,7 +76,7 @@ func requireSelector(_ option: WorkspaceTargetOption) throws -> String {
 /// by every verb that takes a URL, so they all refuse the same inputs with the
 /// same wording.
 func requireAbsoluteURL(_ url: String) throws {
-    guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
+    guard ControlCommand.absoluteURL(url) != nil else {
         throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
     }
 }
@@ -86,8 +98,10 @@ func absolutePath(_ path: String) -> String {
 /// the default `run()` below is the send-and-emit body they would otherwise all
 /// repeat verbatim.
 ///
-/// None of these verbs is idempotent, hence the uniform `retriable: false`: a
-/// transport-level resend could apply the same mutation twice.
+/// The family mixes idempotent verbs with ones that are not (`notify`, `click`,
+/// `type`, `key`, `scroll-up`/`scroll-down`, `reload`, `workspace delete`), so it
+/// uses the safe uniform `retriable: false`: a transport-level resend could apply
+/// a non-idempotent mutation twice.
 protocol WorkspaceRefCommand: ParsableCommand {
     func makeCommand() throws -> ControlCommand
 
@@ -97,7 +111,7 @@ protocol WorkspaceRefCommand: ParsableCommand {
 }
 
 extension WorkspaceRefCommand {
-    var commandTimeout: TimeInterval { 5 }
+    var commandTimeout: TimeInterval { ControlSocketClient.defaultTimeout }
 
     func run() throws {
         let response = try sendControl(makeCommand(), retriable: false, timeout: commandTimeout)
@@ -113,18 +127,28 @@ extension ControlResponse {
 }
 
 /// Send a control command to the running app over `$CASPER_CONTROL_SOCKET`.
-/// Converts a transport failure or an `ok: false` reply into a thrown `ExitCode`
-/// (identical contract to the debug channel's `CasperCLI.run`).
+/// Converts a transport failure or an `ok: false` reply into a thrown `ExitCode`.
 @discardableResult
-func sendControl(_ command: ControlCommand, retriable: Bool, timeout: TimeInterval = 5) throws -> ControlResponse {
-    guard let socketPath = ProcessInfo.processInfo.environment["CASPER_CONTROL_SOCKET"] else {
+func sendControl(
+    _ command: ControlCommand, retriable: Bool, timeout: TimeInterval = ControlSocketClient.defaultTimeout
+) throws -> ControlResponse {
+    guard let socketPath = ProcessInfo.processInfo.environment[CasperEnvironment.controlSocket] else {
         throw exitWithError("Casper is not running (CASPER_CONTROL_SOCKET unset); run inside a Casper terminal")
     }
-    let response: ControlResponse
+    return try sendUnwrapped(command, toSocketAt: socketPath, timeout: timeout, retriable: retriable)
+}
+
+/// Send one command over the socket at `socketPath` and unwrap the reply, turning
+/// a transport failure or an `ok: false` answer into a thrown `ExitCode`. The
+/// contract the control channel (`sendControl`) and the debug channel share.
+func sendUnwrapped<Command: Encodable & Sendable, Response: Decodable & Sendable & SocketFailureResponse>(
+    _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval, retriable: Bool
+) throws -> Response {
+    let response: Response
     do {
-        response = try ControlSocketClient.send(
+        response = try SocketClientEngine<Command, Response>.send(
             command, toSocketAt: socketPath, timeout: timeout, retriable: retriable)
-    } catch let error as ControlSocketError {
+    } catch let error as SocketTransportError {
         throw exitWithError(error.reason)
     }
     guard response.ok else { throw exitWithError(response.error ?? "unknown") }

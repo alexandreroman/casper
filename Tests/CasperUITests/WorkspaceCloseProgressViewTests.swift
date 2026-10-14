@@ -16,7 +16,8 @@ final class WorkspaceCloseProgressViewTests: XCTestCase {
     private static let longBranchName = String(repeating: "very-long-feature-branch-name-", count: 12)
 
     func testLaysOutAtDeclaredWidthWithNonZeroHeight() {
-        let size = layoutSize(for: makeProgress(label: "Merging \u{201c}feature\u{201d} into \u{201c}main\u{201d}\u{2026}"))
+        let label = "Merging \u{201c}feature\u{201d} into \u{201c}main\u{201d}\u{2026}"
+        let size = layoutSize(for: progressView(label: label))
 
         XCTAssertEqual(size.width, WorkspaceCloseProgressView.width, accuracy: 0.5)
         XCTAssertGreaterThan(size.height, 0)
@@ -27,9 +28,10 @@ final class WorkspaceCloseProgressViewTests: XCTestCase {
     /// reservesSpace: true)` must cap the extra height at the single line the
     /// short-label case does not use.
     func testLongBranchNameNeitherWidensNorGrowsTheSheet() {
-        let shortSize = layoutSize(for: makeProgress(label: "Merging \u{201c}x\u{201d} into \u{201c}main\u{201d}\u{2026}"))
+        let shortLabel = "Merging \u{201c}x\u{201d} into \u{201c}main\u{201d}\u{2026}"
+        let shortSize = layoutSize(for: progressView(label: shortLabel))
         let longLabel = "Merging \u{201c}\(Self.longBranchName)\u{201d} into \u{201c}main\u{201d}\u{2026}"
-        let longSize = layoutSize(for: makeProgress(label: longLabel))
+        let longSize = layoutSize(for: progressView(label: longLabel))
 
         XCTAssertEqual(longSize.width, WorkspaceCloseProgressView.width, accuracy: 0.5)
         // Both labels reserve two lines, so in practice the long one adds no height
@@ -45,11 +47,11 @@ final class WorkspaceCloseProgressViewTests: XCTestCase {
     /// down that the timeline branch composes and the sheet still lays out — not
     /// that the countdown text itself is non-empty, which the fixed geometry hides.
     func testCountdownStepLaysOut() {
-        let progress = makeProgress(
+        let view = progressView(
             label: "Running teardown hook\u{2026}",
             deadline: Date().addingTimeInterval(30))
 
-        let size = layoutSize(for: progress)
+        let size = layoutSize(for: view)
 
         XCTAssertEqual(size.width, WorkspaceCloseProgressView.width, accuracy: 0.5)
         XCTAssertGreaterThan(size.height, 0)
@@ -60,20 +62,13 @@ final class WorkspaceCloseProgressViewTests: XCTestCase {
     /// One line of `.callout` text, which measures 15pt here, plus a little slack.
     private static let singleLineAllowance: CGFloat = 16
 
-    private func makeProgress(label: String, deadline: Date? = nil) -> WorkspaceCloseProgress {
-        WorkspaceCloseProgress(
+    private func progressView(label: String, deadline: Date? = nil) -> WorkspaceCloseProgressView {
+        WorkspaceCloseProgressView(progress: WorkspaceCloseProgress(
             id: UUID(),
             title: "Closing \u{201c}feature\u{201d}",
             stepIndex: 2,
             stepCount: 4,
             label: label,
-            deadline: deadline)
-    }
-
-    /// Host the real view in AppKit and return the size it lays out to.
-    private func layoutSize(for progress: WorkspaceCloseProgress) -> NSSize {
-        let host = NSHostingView(rootView: WorkspaceCloseProgressView(progress: progress))
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
+            deadline: deadline))
     }
 }

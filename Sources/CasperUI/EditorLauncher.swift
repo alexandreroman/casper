@@ -8,7 +8,7 @@ import Foundation
 /// app startup and cache the result on `AppModel`.
 ///
 /// `icon(for:)` is memoized here because its caller cannot afford to hit the
-/// system: it runs on every `WorkspaceDetailView` body pass (once per editor
+/// system: it runs on every `WorkspaceToolbarActions` body pass (once per editor
 /// menu entry, and a `Menu`'s content is built eagerly), and the icon cannot
 /// change during a session. Main-actor-isolated for that shared state; every
 /// caller is already on the main actor. Resolving an editor's CLI shim against
@@ -50,8 +50,8 @@ enum EditorLauncher {
     /// `NSWorkspace.shared.open(_:withApplicationAt:configuration:completionHandler:)`.
     /// That fallback is fire-and-forget: its completion handler runs
     /// asynchronously, so a failure there is logged rather than thrown. This
-    /// function only throws when neither mechanism resolves at all, which
-    /// should be rare now that `detectInstalled()` requires the bundle.
+    /// function only throws when neither mechanism resolves at all — for an
+    /// editor `detectInstalled()` listed, only if its bundle has since gone.
     static func launch(_ kind: EditorKind, at path: String) throws {
         if let cliPath = LoginShellPath.resolve(kind.cliCommand) {
             let process = Process()

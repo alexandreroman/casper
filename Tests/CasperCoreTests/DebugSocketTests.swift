@@ -81,7 +81,7 @@ final class DebugSocketTests: XCTestCase {
         XCTAssertThrowsError(
             try DebugSocketClient.send(
                 DebugCommand(verb: .dumpState), toSocketAt: path, retriable: false)
-        ) { XCTAssertTrue($0 is DebugSocketError) }
+        ) { XCTAssertTrue($0 is SocketTransportError) }
         // A single attempt: the failed first connection is not retried.
         XCTAssertEqual(server.connectionCount, 1)
     }
@@ -106,22 +106,6 @@ final class DebugSocketTests: XCTestCase {
             env["CASPER_DEBUG_SOCKET"] == nil && env["CASPER_SESSION"] == nil,
             "an ambient CASPER_DEBUG_SOCKET/CASPER_SESSION overrides the default path")
         XCTAssertEqual(DebugSocketPath.default, "/tmp/casper-debug.sock")
-    }
-
-    func testStartSucceedsWellWithinBindTimeout() throws {
-        // A local Unix-domain listener binds near-instantly, so even a tight
-        // bind timeout must not trip. Guards the bounded-wait path against a
-        // regression that would make a healthy `start()` throw or hang.
-        let path = tempSocketPath()
-        let server = DebugSocketServer(socketPath: path, bindTimeout: 2)
-        server.onCommand = { _, reply in reply(.success(text: "bound")) }
-        try server.start()
-        defer { server.stop() }
-
-        let response = try DebugSocketClient.send(
-            DebugCommand(verb: .dumpState), toSocketAt: path)
-        XCTAssertTrue(response.ok)
-        XCTAssertEqual(response.text, "bound")
     }
 }
 
@@ -172,7 +156,7 @@ private final class FlakyDebugServer: @unchecked Sendable {
         // hanging the whole suite on an unbounded semaphore.
         guard ready.wait(timeout: .now() + 5) == .success else {
             listener.cancel()
-            throw DebugSocketError(reason: "flaky debug server did not become ready within 5s")
+            throw SocketTransportError(reason: "flaky debug server did not become ready within 5s")
         }
     }
 

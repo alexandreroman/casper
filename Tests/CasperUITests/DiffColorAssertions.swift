@@ -51,7 +51,7 @@ func assertSameColor(
 /// `cacheDisplay(in:to:)` renders a view through its real `draw(_:)` path into an
 /// offscreen bitmap. **No window, no screen and no screen-recording permission are
 /// involved**, which is what makes pixel assertions possible in these suites at all —
-/// a reader who assumes otherwise will leave visual equivalence unasserted.
+/// a reader who assumes otherwise will leave what the diff draws unasserted.
 ///
 /// Two things to respect when sampling one:
 ///

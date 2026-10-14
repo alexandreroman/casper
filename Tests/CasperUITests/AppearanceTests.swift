@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import CasperTestSupport
 @testable import CasperUI
 
 final class AppearanceTests: XCTestCase {
@@ -10,11 +11,17 @@ final class AppearanceTests: XCTestCase {
         XCTAssertFalse(NSAppearance(named: .vibrantLight)!.isDark)
     }
 
-    /// Headless tests have no runtime; forwarding must be a silent no-op.
+    /// The runtime rewrites its theme files on every scheme switch, so files that
+    /// reappear after being deleted are the trace of the model's call reaching it.
     @MainActor
-    func testApplyColorSchemeWithoutARuntimeIsANoOp() {
+    func testApplyColorSchemeForwardsToTheRuntime() throws {
+        let directory = makeTemporaryDirectory(prefix: "casper-appearance-themes")
         let model = makeModel()
+        model.runtime = try makeIsolatedRuntime(themeDirectory: directory)
+        try FileManager.default.removeItem(at: directory)
+
         model.applyColorScheme(dark: true)
-        XCTAssertNil(model.runtime)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("casper-dark").path))
     }
 }

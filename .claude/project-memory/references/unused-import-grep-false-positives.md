@@ -10,9 +10,9 @@ Auditing imports by grepping a file for framework-prefixed names (`NS…`,
 `SwiftUI` types) under-reports what the file actually needs. Two shapes carry no
 framework name at the call site:
 
-- **Attribute-scope accessors** — `attributes.swiftUI.foregroundColor` in
-  `DiffTextAssembly.foregroundColor(in:)`, `stripped.swiftUI.font = nil` in
-  `DiffHighlighter.droppingFonts(_:)`. Both require `import SwiftUI`.
+- **Attribute-scope accessors** — `attributes.appKit.foregroundColor` requires
+  `import AppKit`, and an `attributes.swiftUI…` accessor requires
+  `import SwiftUI`.
 - **Extension initializers and properties** — `NSColor(_: Color)` reads as a
   plain `NSColor` construction but is a SwiftUI-provided initializer.
 

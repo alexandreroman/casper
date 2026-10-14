@@ -13,10 +13,6 @@ public enum TodoStatus: String, Codable, Sendable {
 public struct Todo: Codable, Equatable, Sendable {
     public var content: String
     public var status: TodoStatus
-    public init(content: String, status: TodoStatus) {
-        self.content = content
-        self.status = status
-    }
 }
 
 public struct Surface: Codable, Equatable, Identifiable, Sendable {
@@ -36,23 +32,6 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
         self.id = id
         self.kind = kind
         self.fontSize = fontSize
-    }
-
-    // Full case set is required once `init(from:)` is hand-rolled; case names
-    // match the property names so the synthesized `encode(to:)` keeps the same
-    // on-disk keys.
-    private enum CodingKeys: String, CodingKey { case id, kind, fontSize }
-
-    /// Decodes `fontSize` as optional so legacy `session.json` files (written
-    /// before font size was persisted) default it to nil, leaving that
-    /// terminal at libghostty's own default — unchanged from today's
-    /// behavior. `encode(to:)` stays synthesized, keeping the on-disk shape
-    /// stable and forward-writing the new field.
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decode(UUID.self, forKey: .id)
-        self.kind = try c.decode(Kind.self, forKey: .kind)
-        self.fontSize = try c.decodeIfPresent(Float.self, forKey: .fontSize)
     }
 }
 
@@ -171,8 +150,8 @@ public enum InspectorTab: String, Codable, Sendable {
 /// Per-workspace state for the right inspector panel: whether it's collapsed,
 /// which tab is active, and the dedicated browser `Surface` (invariant: its
 /// `kind` is `.browser`). A full `Surface` — not just a URL — so the panel
-/// browser reuses `AppModel`'s surface-view and coordinator caches, keyed by a
-/// stable `Surface.id` that survives workspace switches and collapse/expand.
+/// browser reuses `AppModel`'s coordinator cache, keyed by a stable `Surface.id`
+/// that survives workspace switches and collapse/expand.
 public struct InspectorState: Codable, Equatable, Sendable {
     /// Bounds for the user-resizable panel width, in points. Single source of
     /// truth shared by `WorkspaceDetailView`'s divider-drag clamp (which narrows
@@ -182,10 +161,12 @@ public struct InspectorState: Codable, Equatable, Sendable {
     ///
     /// `defaultWidth` is sized so the diff view (`DiffTextSurface` in CasperUI) can show ~80 columns of
     /// code content without wrapping. Budget, in points, of one diff line at its 14pt monospaced font
-    /// (SF Mono advance ≈ 8.65pt/char):
-    /// - code column: 80 content columns + 1 diff-marker prefix = 81 cells × 8.65 ≈ 701
+    /// (SF Mono advance ≈ 8.65pt/char), the first four terms being `DiffGutterRuler`'s columns:
+    /// - leading accent stripe: 3
     /// - gutter: budgeted for 4-digit line numbers (`maxDigits*9 + 12` = 48)
-    /// - leading accent stripe (3) + gutter↔code spacing (8) = 11
+    /// - `+`/`-` cue column: 4 gap + one glyph rounded up to 9 = 13
+    /// - code gap: 8, split between the ruler and the text container's 5pt `lineFragmentPadding`
+    /// - code column: 80 cells × 8.65 ≈ 692
     /// - ~16 slack for a legacy always-on vertical scroller
     /// Total ≈ 780, comfortably within min/max.
     public static let minWidth: Double = 240
@@ -399,9 +380,9 @@ public extension Workspace {
     /// linked worktree that records one has anywhere to merge to.
     ///
     /// Lives on the model, not on each view that asks: this gate decides whether a
-    /// destructive action is offered at all, and the sidebar's context menu and the
-    /// title bar's Merge chip and `⋯` menu must all offer it on exactly the same
-    /// terms.
+    /// destructive action is offered at all, and the sidebar's context menu, the
+    /// title bar's Merge chip and `⋯` menu, and the menu bar's Merge and Close must all
+    /// offer it on exactly the same terms.
     var canMerge: Bool { kind == .linked && !(baseBranch?.isEmpty ?? true) }
 }
 
@@ -491,12 +472,13 @@ public struct Session: Codable, Equatable, Sendable {
     /// relaunch. Optional, so an absent key (legacy `session.json` files) decodes
     /// to nil.
     public var selectedWorkspaceID: UUID?
-    /// `CodingAgent.reminderID` values of the coding agents whose integration
-    /// reminder the user dismissed. One entry per agent, so dismissing one reminder
-    /// leaves the others showing. Deliberately `Set<String>` rather than a set of
-    /// agent enum cases: the persisted file then survives an agent being added,
-    /// renamed, or dropped — an id matching no known agent is simply ignored instead
-    /// of failing the whole session decode.
+    /// Keys of the coding-agent integration reminders the user dismissed: an agent's
+    /// `CodingAgent.reminderID` for its action-needed reminder, and that id plus a
+    /// `-trust` suffix for its hook-trust notice. Each reminder has its own key, so
+    /// dismissing one leaves the others showing. Deliberately `Set<String>` rather
+    /// than a set of agent enum cases: the persisted file then survives an agent
+    /// being added, renamed, or dropped — an id matching no known agent is simply
+    /// ignored instead of failing the whole session decode.
     public var dismissedAgentReminders: Set<String>
     /// The **parent** directory the user last created a Space in — the folder that
     /// holds the new Space, not the Space itself — so the creation panel reopens

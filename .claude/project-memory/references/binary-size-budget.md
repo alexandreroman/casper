@@ -7,8 +7,8 @@ type: project
 # Release binary size budget
 
 The size levers below are measured on this codebase (arm64, macOS 15 target),
-not estimated. `CLAUDE.md` documents the resulting pipeline; this note records
-the numbers and the trade-offs behind it.
+not estimated. `README.md` § Build & test documents the resulting pipeline; this
+note records the numbers and the trade-offs behind it.
 
 **Applied:**
 

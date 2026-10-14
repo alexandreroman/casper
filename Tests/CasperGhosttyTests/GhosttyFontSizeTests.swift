@@ -1,15 +1,17 @@
 import AppKit
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 
-/// Spike (see [[ghostty-inherited-config-font-size]]): confirms
-/// `ghostty_surface_inherited_config` reflects a LIVE, runtime-adjusted font
-/// size — its documented purpose is building a config for a *new child* split,
-/// and whether it also echoes the current surface's own live size was
-/// unconfirmed before this test. Runs on the shared `withRealSurface` harness —
-/// the `.forTesting()` runtime never creates a surface.
+/// The standing guard for the font-size read-back: pins that
+/// `ghostty_surface_inherited_config` reports a surface's LIVE, runtime-adjusted
+/// font size, not the size it was created with. That is a use its documented
+/// purpose (building a config for a *new child* split) only implies, and font-size
+/// persistence rests on it; if this fails, read
+/// [[ghostty-inherited-config-font-size]]. Runs on the shared `withRealSurface`
+/// harness — the `.forTesting()` runtime never creates a surface.
 final class GhosttyFontSizeTests: XCTestCase {
     @MainActor
     func testInheritedConfigReflectsLiveFontSizeIncrease() throws {
@@ -33,17 +35,13 @@ final class GhosttyFontSizeTests: XCTestCase {
     /// font-size keypress must not invoke the closure at all — deterministic and
     /// surfaceless, no window/polling needed.
     @MainActor
-    func testFontSizeChangeClosureDoesNotFireWithoutALiveSurface() throws {
+    func testFontSizeChangeClosureDoesNotFireWithoutALiveSurface() {
         var firedCount = 0
         let view = GhosttySurfaceView(
             runtime: .forTesting(), configuration: GhosttySurfaceConfiguration(),
             onFontSizeChange: { _, _ in firedCount += 1 })
 
-        let event = try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-            windowNumber: 0, context: nil, characters: "=",
-            charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24))
-        XCTAssertFalse(view.performKeyEquivalent(with: event))
+        XCTAssertFalse(view.performKeyEquivalent(with: commandEqual()))
 
         XCTAssertEqual(firedCount, 0)
     }
@@ -63,20 +61,23 @@ final class GhosttyFontSizeTests: XCTestCase {
                 onFontSizeChange: { id, size in reported = (id, size) })
         }
 
-        try withRealSurface(makeView: makeView) { view, _ in
-            // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
-            // ANSI keyboard. This is a genuine NSEvent built the same way a real
-            // keypress arrives, not a synthetic debug-only path.
-            let event = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-                windowNumber: 0, context: nil, characters: "=",
-                charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24)!
-            _ = view.performKeyEquivalent(with: event)
+        var sizeBefore: Float = 0
+        try withRealSurface(makeView: makeView) { view, surface in
+            sizeBefore = surface.currentFontSize()
+            // A genuine NSEvent built the same way a real keypress arrives, not a
+            // synthetic debug-only path.
+            _ = view.performKeyEquivalent(with: commandEqual())
             settle(0.3)
         }
 
         let (reportedID, reportedSize) = try XCTUnwrap(reported)
         XCTAssertEqual(reportedID, surfaceID)
-        XCTAssertGreaterThan(reportedSize, 0)
+        // Any first report clears a bare `> 0`, so compare against the size before the keypress.
+        XCTAssertGreaterThan(reportedSize, sizeBefore)
+    }
+
+    /// Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US ANSI keyboard.
+    private func commandEqual() -> NSEvent {
+        keyEvent("=", modifiers: [.command], keyCode: 24)
     }
 }

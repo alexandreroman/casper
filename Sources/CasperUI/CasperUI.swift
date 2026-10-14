@@ -8,7 +8,7 @@ public enum CasperUI {
     public static func runApp() -> Never {
         do {
             AppLaunch.sessionIdentity = try SessionIdentity.parse(arguments: CommandLine.arguments)
-        } catch let error as SessionIdentity.ParseError {
+        } catch {
             let message: String
             switch error {
             case .missingValue: message = "error: --session requires a name\n"
@@ -17,9 +17,6 @@ public enum CasperUI {
                     + "(use 1-32 chars from [A-Za-z0-9._-])\n"
             }
             FileHandle.standardError.write(Data(message.utf8))
-            exit(1)
-        } catch {
-            FileHandle.standardError.write(Data("error: \(error)\n".utf8))
             exit(1)
         }
         NSApplication.shared.setActivationPolicy(.regular)

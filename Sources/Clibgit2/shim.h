@@ -4,6 +4,9 @@
 // Not pulled in by <git2.h>: the similarity signatures CasperGit's rename detection
 // builds its size-capped metric on.
 #include <git2/sys/hashsig.h>
+// Not pulled in by <git2.h> either: `git_error_clear`, which lets the headless merge
+// tell a failure that records no error (an unparsable `GIT_*_DATE`) from the rest.
+#include <git2/sys/errors.h>
 
 /// Read the `:`-separated directory list libgit2 searches for configuration of
 /// `level` (a `git_config_level_t`) into `out`, which the caller disposes with

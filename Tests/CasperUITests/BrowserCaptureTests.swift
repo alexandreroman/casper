@@ -1,4 +1,6 @@
 import AppKit
+import Foundation
+import WebKit
 import XCTest
 @testable import CasperUI
 
@@ -30,6 +32,21 @@ final class BrowserCaptureTests: XCTestCase {
         try await assertCapture(width: 1400, height: 900)
     }
 
+    /// A page that navigates itself before its load event (a head script setting
+    /// `location.href`, an SPA root redirecting) cancels its first navigation. That
+    /// load was superseded, not failed: the capture waits for the successor's
+    /// `didFinish` instead of failing on the "cancelled" error.
+    func testASupersededNavigationDoesNotFailTheCapture() async throws {
+        let delegate = NavigationLoadDelegate(url: URL(string: "https://example.com/")!)
+        let webView = WKWebView(frame: .zero)
+        let superseded = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
+
+        delegate.webView(webView, didFail: nil, withError: superseded)
+        delegate.webView(webView, didFinish: nil)
+
+        try await delegate.waitForLoad()
+    }
+
     /// Capture at `width`×`height` and assert the PNG is non-empty and its pixel
     /// dimensions are that viewport scaled by a single integer backing factor
     /// (1×, 2×, …). Deriving the factor from the output rather than from
@@ -39,12 +56,10 @@ final class BrowserCaptureTests: XCTestCase {
         XCTAssertFalse(png.isEmpty, "expected a non-empty PNG")
 
         let bitmap = try XCTUnwrap(NSBitmapImageRep(data: png), "PNG did not decode")
-        XCTAssertGreaterThan(bitmap.pixelsWide, 0)
         XCTAssertEqual(bitmap.pixelsWide % width, 0, "pixel width should be an integer multiple of the viewport width")
 
         let scale = bitmap.pixelsWide / width
         XCTAssertGreaterThanOrEqual(scale, 1)
-        XCTAssertEqual(bitmap.pixelsWide, width * scale)
         XCTAssertEqual(bitmap.pixelsHigh, height * scale, "width and height must share the same backing scale")
     }
 }

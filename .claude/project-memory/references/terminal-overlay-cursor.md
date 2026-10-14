@@ -32,6 +32,16 @@ same pattern: its grab strip is the AppKit `SplitterHandleView`
 cursor to the terminal surface's own `cursorUpdate` (the terminal is a concrete
 sibling `NSView`), so a concrete overlay `NSView` is required here too.
 
+**Casper's own mechanism, not upstream's.** At v1.3.1 upstream Ghostty
+overrides no `cursorUpdate` and sets no arrow on exit: it applies the surface
+cursor through its `NSScrollView`'s `documentCursor`
+(`SurfaceScrollView.swift`), the drag grip through `addCursorRect`
+(`SurfaceDragSource.swift`) and the split divider through SwiftUI
+`.pointerStyle` (`SplitView.Divider.swift`). Casper deviates on purpose
+([[ghostty-is-the-reference]]): `PersistentNSViewHost` hosts the surface bare,
+with no scroll view whose `documentCursor` could carry the cursor, and cursor
+rects miss the entry from the toolbar, as above.
+
 **How to apply:** mirror `GhosttySurfaceView`'s `mouseEntered`/`cursorUpdate`/
 `mouseExited` cursor trio for any new overlay/handle over a terminal surface;
 drive the shape with a small state flag (e.g. `isTracking` for open vs closed

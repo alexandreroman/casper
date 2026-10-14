@@ -1,6 +1,7 @@
 import AppKit
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 
@@ -20,6 +21,13 @@ final class GhosttyInputTests: XCTestCase {
         let mods = ghosttyMods(from: [.control, .option])
         XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_CTRL.rawValue, 0)
         XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_ALT.rawValue, 0)
+    }
+
+    // Caps Lock is a modifier in its own right: `flagsChanged` sends a press for
+    // keyCode 0x39, and a keystroke typed with it on must carry the bit too.
+    func testMapsCapsLockFromEventFlags() {
+        let mods = ghosttyMods(from: [.capsLock])
+        XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_CAPS.rawValue, 0)
     }
 
     func testControlCharactersDoNotRideOnKeyEvent() {
@@ -76,15 +84,22 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertNil(GhosttySurfaceView.cursor(for: GHOSTTY_MOUSE_SHAPE_PROGRESS))
     }
 
-    /// The `NSEvent.buttonNumber`→libghostty-button mapping used by the middle/extra mouse buttons.
+    /// The `NSEvent.buttonNumber`→libghostty-button mapping used by the middle/extra mouse buttons,
+    /// upstream's table: Back (3) and Forward (4) are X11 buttons 8 and 9, since 4 and 5 are the
+    /// scroll wheel a mouse-reporting program would see.
     @MainActor
     func testButtonNumberMapsToGhosttyButton() {
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 0).rawValue, GHOSTTY_MOUSE_LEFT.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 1).rawValue, GHOSTTY_MOUSE_RIGHT.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 2).rawValue, GHOSTTY_MOUSE_MIDDLE.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 3).rawValue, GHOSTTY_MOUSE_FOUR.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 4).rawValue, GHOSTTY_MOUSE_FIVE.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 9).rawValue, GHOSTTY_MOUSE_UNKNOWN.rawValue)
+        let expected: [(Int, ghostty_input_mouse_button_e)] = [
+            (0, GHOSTTY_MOUSE_LEFT), (1, GHOSTTY_MOUSE_RIGHT), (2, GHOSTTY_MOUSE_MIDDLE),
+            (3, GHOSTTY_MOUSE_EIGHT), (4, GHOSTTY_MOUSE_NINE), (5, GHOSTTY_MOUSE_SIX),
+            (6, GHOSTTY_MOUSE_SEVEN), (7, GHOSTTY_MOUSE_FOUR), (8, GHOSTTY_MOUSE_FIVE),
+            (9, GHOSTTY_MOUSE_TEN), (10, GHOSTTY_MOUSE_ELEVEN), (11, GHOSTTY_MOUSE_UNKNOWN),
+        ]
+        for (buttonNumber, button) in expected {
+            XCTAssertEqual(
+                GhosttySurfaceView.ghosttyButton(for: buttonNumber).rawValue, button.rawValue,
+                "buttonNumber \(buttonNumber)")
+        }
     }
 
     /// The `NSEvent.Phase`→libghostty-momentum mapping `scrollWheel` packs into the opaque
@@ -111,7 +126,10 @@ final class GhosttyInputTests: XCTestCase {
     /// Guards the fix where the bare key event left `unshifted_codepoint` at 0, which silently
     /// disabled libghostty's control encoding so Ctrl-C/Ctrl-D produced no output.
     func testBareKeyEventCarriesUnshiftedCodepointForControlEncoding() {
-        let event = makeControlCKeyEvent()
+        // A real Control press remaps `characters` to the control scalar (U+0003) while
+        // `charactersIgnoringModifiers` stays the base key ("c"), which is what
+        // `unshifted_codepoint` must be derived from. Keycode 8 is kVK_ANSI_C.
+        let event = keyEvent("\u{03}", ignoringModifiers: "c", modifiers: [.control], keyCode: 8)
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("c").value))
         XCTAssertNil(key.text)
@@ -122,7 +140,9 @@ final class GhosttyInputTests: XCTestCase {
     /// QWERTY 'Q' position (keycode 12) and the raw keycode makes Ctrl-A wipe the line instead of
     /// moving to its start. The produced letter still drives `unshifted_codepoint`.
     func testControlLetterComboNormalizesKeycodeToItsQwertyPosition() {
-        let event = makeControlAKeyEvent(keyCode: 12)  // 'a' on an AZERTY keyboard
+        // 'a' on an AZERTY keyboard: the control scalar, the produced letter, and the physical
+        // position, which differs between layouts for the same letter.
+        let event = keyEvent("\u{01}", ignoringModifiers: "a", modifiers: [.control], keyCode: 12)
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.keycode, 0, "Ctrl-A must encode from the QWERTY 'A' position (kVK_ANSI_A)")
         XCTAssertEqual(key.unshifted_codepoint, UInt32(UnicodeScalar("a").value))
@@ -134,7 +154,7 @@ final class GhosttyInputTests: XCTestCase {
     /// reached libghostty. A modifier transition must encode as its own keycode with no base
     /// codepoint and no text, exactly like Ghostty's reference `keyAction`.
     func testControlPressFlagsChangedEventEncodesWithoutRaising() {
-        let event = makeControlFlagsChangedEvent(modifierFlags: [.control])
+        let event = controlFlagsChanged(modifiers: [.control])
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_PRESS)
         XCTAssertEqual(key.unshifted_codepoint, 0)
         XCTAssertEqual(key.keycode, UInt32(controlKeyCode))
@@ -146,12 +166,48 @@ final class GhosttyInputTests: XCTestCase {
     /// Control go is also a `.flagsChanged` event, and it must encode with the Ctrl bit cleared
     /// rather than raise on the character read.
     func testControlReleaseFlagsChangedEventEncodesWithoutRaising() {
-        let event = makeControlFlagsChangedEvent(modifierFlags: [])
+        let event = controlFlagsChanged(modifiers: [])
         let key = ghosttyKeyEvent(event, action: GHOSTTY_ACTION_RELEASE)
         XCTAssertEqual(key.unshifted_codepoint, 0)
         XCTAssertEqual(key.keycode, UInt32(controlKeyCode))
         XCTAssertNil(key.text)
         XCTAssertEqual(key.mods.rawValue, GHOSTTY_MODS_NONE.rawValue)
+    }
+
+    /// A modifier key going down is a press and coming up a release, read off the event's flags.
+    @MainActor
+    func testFlagsChangedReportsAModifierPressAndRelease() {
+        let leftShiftDown = NSEvent.ModifierFlags(
+            rawValue: NSEvent.ModifierFlags.shift.rawValue | UInt(NX_DEVICELSHIFTKEYMASK))
+        XCTAssertEqual(
+            GhosttySurfaceView.flagsChangedAction(keyCode: 0x38, flags: leftShiftDown), GHOSTTY_ACTION_PRESS)
+        XCTAssertEqual(GhosttySurfaceView.flagsChangedAction(keyCode: 0x38, flags: []), GHOSTTY_ACTION_RELEASE)
+        XCTAssertEqual(
+            GhosttySurfaceView.flagsChangedAction(keyCode: 0x3B, flags: [.control]), GHOSTTY_ACTION_PRESS)
+        XCTAssertNil(GhosttySurfaceView.flagsChangedAction(keyCode: 0x00, flags: [.shift]), "not a modifier key")
+    }
+
+    /// Releasing a right-hand modifier while its left twin is still held leaves the side-agnostic
+    /// flag set, so only the device-dependent side bit tells the release apart from a press. Each
+    /// case holds the left key only, which must read as the right key's release.
+    @MainActor
+    func testReleasingARightModifierWhileTheLeftOneIsHeldIsARelease() {
+        let cases: [(keyCode: UInt16, modifier: NSEvent.ModifierFlags, leftSideBit: Int32, rightSideBit: Int32)] = [
+            (0x3C, .shift, NX_DEVICELSHIFTKEYMASK, NX_DEVICERSHIFTKEYMASK),
+            (0x3E, .control, NX_DEVICELCTLKEYMASK, NX_DEVICERCTLKEYMASK),
+            (0x3D, .option, NX_DEVICELALTKEYMASK, NX_DEVICERALTKEYMASK),
+            (0x36, .command, NX_DEVICELCMDKEYMASK, NX_DEVICERCMDKEYMASK),
+        ]
+        for (keyCode, modifier, leftSideBit, rightSideBit) in cases {
+            let leftHeld = NSEvent.ModifierFlags(rawValue: modifier.rawValue | UInt(leftSideBit))
+            XCTAssertEqual(
+                GhosttySurfaceView.flagsChangedAction(keyCode: keyCode, flags: leftHeld), GHOSTTY_ACTION_RELEASE,
+                "keyCode \(keyCode)")
+            let rightHeld = NSEvent.ModifierFlags(rawValue: modifier.rawValue | UInt(rightSideBit))
+            XCTAssertEqual(
+                GhosttySurfaceView.flagsChangedAction(keyCode: keyCode, flags: rightHeld), GHOSTTY_ACTION_PRESS,
+                "keyCode \(keyCode)")
+        }
     }
 
     #if DEBUG
@@ -185,61 +241,14 @@ final class GhosttyInputTests: XCTestCase {
     #endif
 }
 
-/// Build a synthetic Ctrl-C keyDown. A real Control press remaps `characters` to the control
-/// scalar (U+0003) while `charactersIgnoringModifiers` stays the base key ("c"), which is what
-/// `unshifted_codepoint` must be derived from.
-private func makeControlCKeyEvent() -> NSEvent {
-    NSEvent.keyEvent(
-        with: .keyDown,
-        location: .zero,
-        modifierFlags: [.control],
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: "\u{03}",
-        charactersIgnoringModifiers: "c",
-        isARepeat: false,
-        keyCode: 8  // kVK_ANSI_C
-    )!
-}
-
-/// Build a synthetic Ctrl-A keyDown struck at `keyCode`, the way a real keyboard reports it:
-/// `characters` is the control scalar, `charactersIgnoringModifiers` the produced letter. The
-/// keycode is the physical position, which differs between layouts for the same letter.
-private func makeControlAKeyEvent(keyCode: UInt16) -> NSEvent {
-    NSEvent.keyEvent(
-        with: .keyDown,
-        location: .zero,
-        modifierFlags: [.control],
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: "\u{01}",
-        charactersIgnoringModifiers: "a",
-        isARepeat: false,
-        keyCode: keyCode
-    )!
-}
-
 /// Virtual keycode of the left Control key (kVK_Control), the physical key whose transitions
 /// AppKit reports as `.flagsChanged`.
 private let controlKeyCode: UInt16 = 0x3B
 
-/// Build a synthetic `.flagsChanged` event for the Control key: `modifierFlags: [.control]` is the
-/// press, `[]` the release. `NSEvent.keyEvent(with:...)` accepts the type and requires character
-/// strings, but AppKit raises when they are *read* back off a non-key event — which is exactly the
-/// behaviour these tests pin down, so the empty strings passed here are never observable.
-private func makeControlFlagsChangedEvent(modifierFlags: NSEvent.ModifierFlags) -> NSEvent {
-    NSEvent.keyEvent(
-        with: .flagsChanged,
-        location: .zero,
-        modifierFlags: modifierFlags,
-        timestamp: 0,
-        windowNumber: 0,
-        context: nil,
-        characters: "",
-        charactersIgnoringModifiers: "",
-        isARepeat: false,
-        keyCode: controlKeyCode
-    )!
+/// A synthetic `.flagsChanged` event for the Control key: `modifiers: [.control]` is the press,
+/// `[]` the release. `NSEvent.keyEvent(with:...)` accepts the type and requires character strings,
+/// but AppKit raises when they are *read* back off a non-key event — which is exactly the
+/// behaviour these tests pin down, so the empty string passed here is never observable.
+private func controlFlagsChanged(modifiers: NSEvent.ModifierFlags) -> NSEvent {
+    keyEvent("", modifiers: modifiers, keyCode: controlKeyCode, type: .flagsChanged)
 }

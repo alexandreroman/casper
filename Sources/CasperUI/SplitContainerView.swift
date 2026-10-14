@@ -42,8 +42,8 @@ enum SeparatorMetrics {
 /// note).
 ///
 /// The visible 1pt line and the grab strip's width both come from the shared
-/// `SeparatorMetrics`, so every separator in the app — sidebar edge, inspector
-/// edge, and the terminal splits — reads the same.
+/// `SeparatorMetrics`, so the terminal splits read the same as the inspector
+/// divider and the inspector's own edge.
 ///
 /// A resize drives the live drag via local `@State fractions`; the model
 /// (`AppModel.setSplitRatios`) is written back only once the drag ends (mouse-up) —

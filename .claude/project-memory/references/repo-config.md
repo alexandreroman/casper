@@ -1,40 +1,15 @@
 ---
-name: ".casper.json scripts — design decisions & invariants"
-description: "Non-obvious design decisions behind .casper.json copyFiles + named commands + setup/teardown hooks"
+name: ".casper.json scripts — decisions & invariants"
+description: "Invariants behind the .casper.json hooks: the child-exit/close race, the setup gate, the destroy-path claim"
 type: project
 ---
 
-# .casper.json scripts — design decisions & invariants
+# .casper.json scripts — decisions & invariants
 
-`.casper.json` at a Git repo root is the per-repository config, grouped under a
-`workspace` key: `copyFiles` (untracked files seeded into a new worktree) and
-`scripts` (name → shell command). This note records the durable design decisions
-and rationale that are NOT obvious from the code. Implementation STATUS lives in
-`.superpowers/status.md`, not here (see [[project-memory-conventions]]).
-
-## Two kinds of scripts
-
-- Reserved keys `setup`/`teardown` are lifecycle hooks — run automatically,
-  never invocable by hand (`RepoScripts.reservedNames`; `resolveRunCommand`
-  `.denied`s them; `spawnScriptSurface` is private to `ScriptHookRunner`, whose
-  only internal entry points for a hook spawn are the narrow `runSetupHook` that
-  `createLinkedWorkspace` calls and the `runTeardown` the destroy paths await).
-- Every other key is a named command, run on demand from the UI or `casper run`.
-
-## Hook wrap vs. named-command wrap (opposite goals)
-
-- Named commands wrap as `subshellWrappedScriptCommand` =
-  `"(\n<cmd>\n)\n[ $? -eq 0 ] && exit"`. The subshell keeps a script that
-  `exit`s (or fails under `set -e`) from killing the interactive shell; the
-  trailing test then exits that shell — closing the pane through the normal
-  close path — only when the script succeeded. A non-zero status leaves the pane
-  alive at a prompt with the script's output still readable. The command and the
-  closing `[ … ]` test each sit on their own line so a trailing `#` comment
-  cannot swallow the closing paren or the test.
-- Hooks wrap as `hookWrappedScriptCommand` = `"<cmd>\nexit $?"` so the shell
-  exits with the command's status, which makes libghostty emit a child-exit
-  event — the completion signal a hook needs. The newline (not `;`) keeps a
-  trailing `#` comment on the command's last line from swallowing `exit $?`.
+The `.casper.json` design — the two kinds of scripts, their opposite wraps, the
+`setup`/`teardown` decisions and the alphabetical script menu — is in
+`.superpowers/themes/cli-agents.md` § Per-repository config. This note keeps the
+invariants and gotchas the theme hands off to it.
 
 ## THE child-exit / close race (load-bearing invariant)
 
@@ -47,33 +22,27 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
   down mid-tick detaches sibling panes (the exact hazard `close_surface_cb`
   defers). setup-success relies on the deferred `close_surface_cb` to close its
   split; teardown defers its continuation resume — and so the prune it triggers
-  — via `DispatchQueue.main.async` (+ `MainActor`) in `finishTeardown`. Resuming
-  a continuation already enqueues rather than running inline, but the explicit
-  hop is what makes that guarantee independent of Swift scheduling details.
+  — via `MainRunLoop.perform` in `finishTeardown` (see [[main-run-loop-hop]]).
+  Resuming a continuation already enqueues rather than running inline, but the
+  explicit hop is what makes that guarantee independent of Swift scheduling
+  details.
 - **setup guards in `applyCloseSurface`:** a still-tagged `.setup` surface is
   never torn down by an early close (its fate is the exit code); a FAILED setup
   arms `keptFailedSetupSurfaces` to swallow the one shell-exit close so the pane
   stays open showing the error. That hook state — `scriptSurfaces`,
   `keptFailedSetupSurfaces`, `pendingTeardownResumes` — is owned privately by
-  `ScriptHookRunner`; `applyCloseSurface` (still on `AppModel`) reaches it only
+  `ScriptHookRunner`; `applyCloseSurface`, on `AppModel`, reaches it only
   through the runner's narrow query/consume methods. `closingWorkspaces` is the
-  exception that stays on `AppModel`: it claims the whole close/delete operation
+  exception that lives on `AppModel`: it claims the whole close/delete operation
   (probes, merge, prune), not just the hook.
 - This assumes libghostty emits a `close_surface_cb` after the child exits —
   true for the current pin (every shell-exit pane close relies on it). A future
   pin that suppressed it would strand a successful setup's split.
 
-## setup / teardown behavior decisions
+## setup / teardown runtime rules
 
-- **setup** runs from `createLinkedWorkspace` ONLY — the call site is the guard
-  against re-running on restore/re-open, so there is no persisted "ran" flag.
-  Exit 0 → split auto-closes; exit ≠ 0 → split kept open + workspace flagged
-  `.error` (`setDetectedAgentState`); no rollback.
-- **teardown** runs before prune, AFTER the merge on the close path (the
-  worktree still exists → valid cwd). Any outcome (success / non-zero / 30 s
-  `teardownTimeout`) proceeds to prune — a broken cleanup script never traps the
-  user. A manually-closed live teardown split prunes immediately rather than
-  stalling the timeout.
+- A manually-closed live teardown split prunes immediately rather than
+  stalling the 30 s `teardownTimeout`.
 - **named commands wait for setup**: while a workspace's setup is in flight,
   `controlRun` — the one gate behind the toolbar, the menus and `casper run` —
   refuses every named command. The in-flight set is the observable
@@ -106,14 +75,10 @@ workspace with `.timedOut` — aborting a healthy hook and posting a false "time
 out" notification. Same reason the manual-close branch resumes through the
 split's own `onExit` instead of calling `finishTeardown` directly.
 
-## Script menu ordering
+## Default script
 
-`workspace.scripts` is a JSON object, and Swift's `JSONDecoder` does NOT
-preserve object key order (proven: `allKeys` returns hash order). The menu is
-therefore **alphabetical** (`namedCommands()` sorts); file order would need
-reformatting `scripts` to an array — deliberately not done. Default selected
-script (toolbar primary button) = remembered `lastUsedScript` → `run` if present
-→ first alphabetical.
+The toolbar's primary script button defaults to the remembered `lastUsedScript`,
+then `run` if present, then the first name alphabetically.
 
 ## Gotcha when live-testing on a dev machine
 

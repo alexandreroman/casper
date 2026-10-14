@@ -25,6 +25,6 @@ CLAUDE.md) and the [git workflow](git-workflow.md) note.
 **How to apply:** drive execution with the
 `superpowers:subagent-driven-development` skill; per task — dispatch
 `skillbox:code-writer` (TDD), generate a diff, dispatch
-`skillbox:code-reviewer`, fix Critical/Important findings, then commit. Track
-progress in the `.superpowers/sdd/progress.md` ledger. Commit authorization
-still follows [git workflow](git-workflow.md) (explicit user go-ahead required).
+`skillbox:code-reviewer`, fix Critical/Major findings, then commit. Track
+progress in the `.superpowers/sdd/progress.md` ledger. Pushing and publishing
+follow [git workflow](git-workflow.md).

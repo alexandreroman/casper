@@ -6,7 +6,7 @@ struct SidebarView: View {
 
     var body: some View {
         // Resolve the display order once per body pass: each Space's `orderedWorkspaces`
-        // is a fresh sort, and the rows and the `Cmd+N` hints both need it. Deriving the
+        // is a fresh sort, and the rows and the ⌘1–⌘9 hints both need it. Deriving the
         // shortcut numbers from this very list — through the model's own numbering rule —
         // is what keeps the hints and `selectWorkspace(atShortcutNumber:)` in agreement.
         let ordered = model.spacesWithVisibleWorkspaces()
@@ -31,9 +31,7 @@ struct SidebarView: View {
             }
             AgentIntegrationReminderView(model: model)
             Divider()
-            SidebarFooter(
-                onNewSpace: { model.presentCreateSpacePanel() },
-                onAdd: { model.presentAddFolderPanel() })
+            SidebarFooter(model: model)
         }
         .navigationTitle("Casper")
     }
@@ -105,14 +103,15 @@ struct SidebarView: View {
 /// the Space menu opens with, in the same order — always reachable (unlike the
 /// empty-state affordances) and never scrolling away.
 private struct SidebarFooter: View {
-    let onNewSpace: () -> Void
-    let onAdd: () -> Void
+    let model: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
-            SidebarFooterButton(
-                title: "New Space…", systemImage: "folder.badge.plus", action: onNewSpace)
-            SidebarFooterButton(title: "Add Folder…", systemImage: "plus", action: onAdd)
+            ForEach(SpaceEntryCommand.allCases, id: \.self) { command in
+                SidebarFooterButton(title: command.title, systemImage: command.systemImage) {
+                    command.perform(model: model)
+                }
+            }
         }
     }
 }

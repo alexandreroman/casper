@@ -140,7 +140,6 @@ final class ScriptHookRunner {
     /// lifecycle hook, tagged in `scriptSurfaces` so its child-exit is correlated.
     /// Hook-wraps the command and registers the tag BEFORE splitting. Returns the
     /// new surface id, or nil if the workspace/anchor can't be resolved.
-    @discardableResult
     private func spawnScriptSurface(
         kind: ScriptHookKind, in workspaceID: UUID, command: String,
         onExit: ((Int32) -> Void)?
@@ -195,7 +194,7 @@ final class ScriptHookRunner {
     /// non-zero exit or a timeout is logged and still returns normally: the caller
     /// prunes regardless, because a broken teardown must never block deletion.
     ///
-    /// The caller always resumes on a later main-queue turn than the child-exit
+    /// The caller always resumes on a later main run-loop turn than the child-exit
     /// callback that ended the hook — see `finishTeardown` for why that matters.
     func runTeardown(id workspaceID: UUID, command: String?) async -> TeardownHookStatus {
         guard let command else { return .none }
@@ -253,13 +252,13 @@ final class ScriptHookRunner {
     }
 
     /// Resume a workspace's latched `runTeardown` continuation exactly once, on the
-    /// NEXT main-queue turn. The child-exit path calls this from inside
+    /// NEXT main run-loop turn. The child-exit path calls this from inside
     /// `ghostty_app_tick`, and the caller tears views down (prunes the workspace) as
     /// soon as it resumes — doing that mid-tick detaches sibling panes, the exact
     /// hazard `close_surface_cb` defers for. Resuming a continuation already enqueues
     /// the awaiting task rather than running it inline, but this hop makes the
     /// guarantee independent of that scheduling detail: the resume itself happens in a
-    /// later main-queue work item, off the tick. A no-op once the latch has been
+    /// later main run-loop turn, off the tick. A no-op once the latch has been
     /// cleared by another exit path, which is what keeps the resume exactly-once.
     ///
     /// `generation` scopes the resume to one specific run: a trigger left over from an

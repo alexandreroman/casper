@@ -9,19 +9,13 @@ import CasperCore
 /// whatever the message throws at it. Pixels still need human eyes.
 @MainActor
 final class WorkspaceInfoPanelTests: XCTestCase {
-    /// `NSHostingView.fittingSize` reflects the SwiftUI layout tree as of the
-    /// last layout pass, so `layoutSubtreeIfNeeded()` before reading it is
-    /// required — not optional the way it looked in the sibling
-    /// `WorkspaceCloseProgressViewTests` convention. Without it, `fittingSize`
-    /// would answer against a stale or unlaid-out tree, and the hug/cap
-    /// assertions below would pass whether or not the panel's sizing actually
-    /// works.
+    /// The panel's own padding, counted on both sides of its content.
+    private static let bothSidesPadding = 2 * WorkspaceInfoPanel.padding
+
+    /// The size the panel lays out to when it shows `markdown`.
     private func layoutSize(for markdown: String) -> CGSize {
         let (model, workspace) = makeSeededModel()
-        let view = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown)
-        let host = NSHostingView(rootView: view)
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
+        return layoutSize(for: WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown))
     }
 
     /// A no-op hug/cap (contentHeight stuck at 0, `ScrollView` always at its
@@ -79,9 +73,8 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         let size = layoutSize(for: "")
 
         XCTAssertEqual(size.width, WorkspaceInfoPanel.width, accuracy: 0.5)
-        // The panel's own 12pt top/bottom padding (`WorkspaceInfoPanel.padding`,
-        // not visible to this test target) sits outside the floored ScrollView.
-        XCTAssertEqual(size.height, WorkspaceInfoPanel.minHeight + 24, accuracy: 0.5)
+        // The panel's own top/bottom padding sits outside the floored ScrollView.
+        XCTAssertEqual(size.height, WorkspaceInfoPanel.minHeight + Self.bothSidesPadding, accuracy: 0.5)
     }
 
     /// Pins that `MarkdownTextView` wraps at the panel's own CONTENT width — the
@@ -93,7 +86,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// so feeding the full width to `MarkdownTextView` would only overflow
     /// silently into the padding rather than fail that test.
     func testContentWrapsAtThePanelWidthMinusItsOwnPadding() {
-        let correctContentWidth = WorkspaceInfoPanel.width - 24
+        let correctContentWidth = WorkspaceInfoPanel.width - Self.bothSidesPadding
         let fullWidth = WorkspaceInfoPanel.width
 
         // Search for the shortest "word word word …" line whose wrap actually
@@ -119,7 +112,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         // The panel's padding lands above and below the scrollable content, so it
         // counts twice — derived from the shipped constant rather than spelled out,
         // which is the drift `contentWidth`'s own comment warns about.
-        let expectedPanelHeight = scrollHeight + 2 * WorkspaceInfoPanel.padding
+        let expectedPanelHeight = scrollHeight + Self.bothSidesPadding
         let size = layoutSize(for: longLine)
 
         XCTAssertEqual(size.height, expectedPanelHeight, accuracy: 1)
@@ -137,12 +130,13 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// says nothing about what a reader would see.
     func testTallMessageKeepsTheFullMeasuredHeightInTheTextView() throws {
         let markdown = Self.tallMarkdown()
-        let contentHeight = MarkdownTextView.height(for: markdown, width: WorkspaceInfoPanel.width - 24)
+        let contentHeight = MarkdownTextView.height(
+            for: markdown, width: WorkspaceInfoPanel.width - Self.bothSidesPadding)
         XCTAssertGreaterThan(
             contentHeight, 2 * WorkspaceInfoPanel.maxHeight,
             "the fixture must be far taller than the panel, or it would never scroll")
 
-        let panel = try hostPanel(markdown, hostHeight: WorkspaceInfoPanel.maxHeight + 24)
+        let panel = try hostPanel(markdown, hostHeight: WorkspaceInfoPanel.maxHeight + Self.bothSidesPadding)
 
         // Equality still holds for THIS fixture, and only because it holds no
         // table: the frame the panel assigns is the larger of this measurement
@@ -157,25 +151,6 @@ final class WorkspaceInfoPanelTests: XCTestCase {
         // `textkit2-layout-geometry` project memory note). The frame alone answers
         // this test anyway.
         XCTAssertEqual(panel.textView.frame.height, contentHeight, accuracy: 1)
-    }
-
-    /// Depth-first, so the panel's own text view is found rather than any
-    /// scrollbar or chrome `NSTextView` a future `ScrollView` might add above it.
-    private static func firstTextView(in view: NSView) -> NSTextView? {
-        if let textView = view as? NSTextView { return textView }
-        for subview in view.subviews {
-            if let found = firstTextView(in: subview) { return found }
-        }
-        return nil
-    }
-
-    /// The `ScrollView`'s AppKit backing, found the same depth-first way.
-    private static func firstScrollView(in view: NSView) -> NSScrollView? {
-        if let scrollView = view as? NSScrollView { return scrollView }
-        for subview in view.subviews {
-            if let found = firstScrollView(in: subview) { return found }
-        }
-        return nil
     }
 
     // MARK: - Reading the tail of a message that has to scroll
@@ -236,8 +211,8 @@ final class WorkspaceInfoPanelTests: XCTestCase {
 
         let panel = HostedPanel(
             window: window, host: host,
-            textView: try XCTUnwrap(Self.firstTextView(in: host)),
-            scrollView: try XCTUnwrap(Self.firstScrollView(in: host)),
+            textView: try XCTUnwrap(firstDescendant(NSTextView.self, in: host)),
+            scrollView: try XCTUnwrap(firstDescendant(NSScrollView.self, in: host)),
             // Read before `settleLayout` below, which is what gives the
             // reported height its hop: this has to be the size the panel asks
             // for knowing nothing but its own measurement.
@@ -296,7 +271,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// tail as truncated.
     func testLastLineKeepsATrailingMarginAtMaximumScroll() throws {
         let panel = try hostScrolledToBottom(
-            Self.tallMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + 24)
+            Self.tallMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + Self.bothSidesPadding)
 
         // TextKit 2 lays out viewport-first, so the tail of the document has no
         // real geometry until layout is forced over the whole range.
@@ -402,7 +377,8 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// the suite runs, including a CI runner whose TextKit may disagree by a
     /// different amount or not at all.
     func testATableMessageIsSizedByTheEngineThatLaysItOut() throws {
-        let panel = try hostPanel(Self.tableMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + 24)
+        let panel = try hostPanel(
+            Self.tableMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + Self.bothSidesPadding)
 
         let layoutManager = try XCTUnwrap(panel.textView.layoutManager)
         let container = try XCTUnwrap(panel.textView.textContainer)
@@ -424,7 +400,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// still covers everything that engine laid out. Cheap because it needs no
     /// migration — the point is precisely that none happens.
     func testATableFreeMessageStaysOnTextKit2AndKeepsItsLaidOutHeight() throws {
-        let panel = try hostPanel(Self.tallMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + 24)
+        let panel = try hostPanel(Self.tallMarkdown(), hostHeight: WorkspaceInfoPanel.maxHeight + Self.bothSidesPadding)
 
         let layoutManager = try XCTUnwrap(
             panel.textView.textLayoutManager, "a table-free message must still be on the TextKit 2 stack")
@@ -547,7 +523,7 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     /// the very same SwiftUI layout pass.
     func testTheOpeningHeightAlreadyCoversWhatTheLiveEngineLaysOut() throws {
         let markdown = Self.shortTableMarkdown()
-        let contentWidth = WorkspaceInfoPanel.width - 24
+        let contentWidth = WorkspaceInfoPanel.width - Self.bothSidesPadding
         let measuredHeight = MarkdownTextView.height(for: markdown, width: contentWidth)
         XCTAssertLessThan(
             measuredHeight, WorkspaceInfoPanel.maxHeight - 100,
@@ -642,9 +618,9 @@ final class WorkspaceInfoPanelTests: XCTestCase {
     }
 
     /// Every other scheme must fall through to the system instead — pinned
-    /// against a real model so deleting the guard (routing everything into the
-    /// workspace browser) cannot pass silently: the inspector would stay off
-    /// the `.browser` tab it starts on.
+    /// against a real model so deleting the guard cannot pass silently: it would
+    /// route the file URL into the workspace browser and land the inspector on
+    /// `.browser`.
     func testOpenURLLeavesNonHTTPSchemesToTheSystem() throws {
         let (model, workspace) = makeSeededModel()
         let panel = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: "")

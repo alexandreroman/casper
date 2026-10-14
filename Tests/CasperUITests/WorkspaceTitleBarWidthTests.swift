@@ -276,7 +276,7 @@ final class WorkspaceTitleBarWidthTests: XCTestCase {
         XCTAssertEqual(
             WorkspaceDetailView.rowWidth(
                 detailFrame: frame(width: width, minX: 0), undershoot: 0, isFullScreen: true),
-            width - 54 - margin, accuracy: 0.001,
+            width - WorkspaceDetailView.fullScreenChromeReserve - margin, accuracy: 0.001,
             "a collapsed sidebar in full screen charged more than the sidebar toggle")
         XCTAssertEqual(
             WorkspaceDetailView.rowWidth(

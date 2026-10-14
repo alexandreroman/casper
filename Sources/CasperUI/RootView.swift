@@ -12,9 +12,7 @@ struct RootView: View {
                 // No space configured: show only the empty state — no
                 // NavigationSplitView, so there is no sidebar and no sidebar
                 // toggle in the toolbar at all.
-                EmptyStateView(
-                    onNewSpace: { model.presentCreateSpacePanel() },
-                    onAddFolder: { model.presentAddFolderPanel() })
+                EmptyStateView(model: model)
             } else {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView(model: model)
@@ -24,10 +22,10 @@ struct RootView: View {
                             min: TerminalHostMetrics.sidebarColumnMinimum, ideal: 290, max: 400)
                 } detail: {
                     if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
-                        // Give the detail a per-workspace identity so its `@State
-                        // inspectorWidth` re-seeds from this workspace's persisted
-                        // `inspector.width` on `.onAppear`; without it, one workspace's
-                        // dragged width would carry across a switch.
+                        // Give the detail a per-workspace identity so its `@State`
+                        // starts fresh on every switch: a dragged `inspectorWidth`
+                        // would otherwise carry across to the next workspace, which
+                        // reads its own persisted `inspector.width` until a drag.
                         WorkspaceDetailView(model: model, workspace: workspace)
                             .id(id)
                     } else {
@@ -142,12 +140,11 @@ private struct WindowConfigurator: NSViewRepresentable {
 
         init(model: AppModel) { self.model = model }
 
-        /// Push the window's current visibility to the model and reconcile
-        /// watchers. Single source of the occlusion predicate for both the
-        /// initial seed and the occlusion-change observer.
+        /// Push the window's current visibility to the model, which reconciles its
+        /// watchers on a real transition. Single source of the occlusion predicate for
+        /// both the initial seed and the occlusion-change observer.
         private func refreshVisibility(_ window: NSWindow) {
             model.isWindowVisible = window.occlusionState.contains(.visible)
-            model.applyWatcherVisibility()
         }
 
         func attach(to window: NSWindow) {
@@ -206,8 +203,7 @@ private struct WindowConfigurator: NSViewRepresentable {
 
 
 /// What the window's floor is computed from: the widths flanking the terminal
-/// region, and the detail column's height against which the window's own chrome is
-/// measured.
+/// region.
 ///
 /// Every term is measured rather than assumed. The sidebar's CURRENT width matters,
 /// not its column minimum: the sidebar does not give way as the window narrows — the
@@ -231,8 +227,6 @@ struct TerminalHostMetrics: Equatable {
     let sidebarWidth: CGFloat
     /// The inspector panel plus its separator, and 0 while the panel is collapsed.
     let inspectorSlice: CGFloat
-    /// The height the detail column spends on something other than the pane tree.
-    let detailChromeHeight: CGFloat
 }
 
 /// The window's lower bound, derived from the room the terminal region needs.
@@ -254,8 +248,9 @@ enum WindowFloor {
     ///
     /// Width is the sidebar and the inspector at their current widths plus the
     /// terminal's minimum. Height goes through the window because only the window
-    /// knows how much of its content the toolbar takes: everything above and below
-    /// the pane tree is `content − detail + the detail's own chrome`.
+    /// knows how much of its content the toolbar takes: it is that toolbar height,
+    /// plus the divider above the pane tree (`WorkspaceDetailView.paneDividerHeight`),
+    /// plus the terminal's minimum.
     ///
     /// It converges rather than chasing itself: not one term depends on the window's
     /// size, so raising the floor resizes the window and the next pass computes the
@@ -297,22 +292,12 @@ enum WindowFloor {
             let toolbarHeight = max(0, content.height - window.contentLayoutRect.height)
             floor = CGSize(
                 width: metrics.sidebarWidth + metrics.inspectorSlice + minimum,
-                height: toolbarHeight + metrics.detailChromeHeight + minimum)
+                height: toolbarHeight + WorkspaceDetailView.paneDividerHeight + minimum)
         } else {
             // No workspace on screen: AppKit's own floor, so the empty state is not
             // held open by whatever the last workspace needed.
             floor = .zero
         }
-        #if DEBUG
-        CasperLog.app.debug(
-            """
-            TIERPROBE WINDOWFLOOR sidebar=\(metrics?.sidebarWidth ?? -1, privacy: .public) \
-            inspector=\(metrics?.inspectorSlice ?? -1, privacy: .public) \
-            content=\(window.contentRect(forFrameRect: window.frame).height, privacy: .public) \
-            layout=\(window.contentLayoutRect.height, privacy: .public) \
-            floor=\(floor.width, privacy: .public)x\(floor.height, privacy: .public)
-            """)
-        #endif
         // BOTH minimums, because SwiftUI owns one of them: a `WindowGroup` recomputes
         // `contentMinSize` from its content on every view update and writes it back —
         // measured at 228 x 142, which credits the sidebar 28 pt when it is really

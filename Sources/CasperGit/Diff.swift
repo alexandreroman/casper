@@ -36,8 +36,7 @@ public struct GitDiff: Equatable, Sendable {
 
 public struct GitDiffFile: Equatable, Sendable, Identifiable {
     public enum Status: String, Sendable {
-        case added, deleted, modified, renamed, copied, typechange
-        case conflicted, unreadable, unmodified
+        case added, deleted, modified, renamed, conflicted, unreadable
     }
     public let oldPath: String
     public let newPath: String
@@ -65,18 +64,11 @@ public struct GitDiffFile: Equatable, Sendable, Identifiable {
 }
 
 public struct GitDiffHunk: Equatable, Sendable {
+    /// libgit2's `@@ -a,b +c,d @@` line, which carries the hunk's ranges.
     public let header: String
-    public let oldStart: Int
-    public let oldLines: Int
-    public let newStart: Int
-    public let newLines: Int
     public let lines: [GitDiffLine]
-    public init(
-        header: String, oldStart: Int, oldLines: Int,
-        newStart: Int, newLines: Int, lines: [GitDiffLine]
-    ) {
-        self.header = header; self.oldStart = oldStart; self.oldLines = oldLines
-        self.newStart = newStart; self.newLines = newLines; self.lines = lines
+    public init(header: String, lines: [GitDiffLine]) {
+        self.header = header; self.lines = lines
     }
 }
 

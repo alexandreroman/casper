@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import CasperTestSupport
 @testable import CasperCLI
 
 final class ControlCommandTests: XCTestCase {
@@ -51,6 +52,22 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(try set.makeCommand().total, ProgressSynthesis.maxSynthesizedTotal)
     }
 
+    func testProgressSetAcceptsLabelStartingWithDash() throws {
+        // A todo's text is free text: "-> wire X" or "--force flag" must reach the
+        // bar rather than be refused as a missing value, in both argv forms.
+        let separate = try ProgressCommand.Set.parse(
+            ["--total", "2", "--current", "1", "--label", "-x", "--workspace", "f"])
+        XCTAssertEqual(try separate.makeCommand().label, "-x")
+
+        let longFlag = try ProgressCommand.Set.parse(
+            ["--total", "2", "--current", "1", "--label", "--force flag", "--workspace", "f"])
+        XCTAssertEqual(try longFlag.makeCommand().label, "--force flag")
+
+        let equals = try ProgressCommand.Set.parse(
+            ["--total", "2", "--current", "1", "--label=-x", "--workspace", "f"])
+        XCTAssertEqual(try equals.makeCommand().label, "-x")
+    }
+
     func testStatusGetBuildsCommand() throws {
         let get = try StatusCommand.Get.parse(["--workspace", "feature"])
         let command = try get.makeCommand()
@@ -79,6 +96,51 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.workspace, "feature")
     }
 
+    func testNotifyAcceptsMessageStartingWithDash() throws {
+        let bullet = try NotifyCommand.parse(["--message", "- waiting", "--workspace", "f"])
+        XCTAssertEqual(try bullet.makeCommand().message, "- waiting")
+
+        let flagLike = try NotifyCommand.parse(["--message", "--dry-run failed", "--workspace", "f"])
+        XCTAssertEqual(try flagLike.makeCommand().message, "--dry-run failed")
+
+        let equals = try NotifyCommand.parse(["--message=-x", "--workspace", "f"])
+        XCTAssertEqual(try equals.makeCommand().message, "-x")
+    }
+
+    /// A free-text option takes its next argument whatever it is, yet `--help` or
+    /// `-h` there still asks for the command's help rather than becoming the text.
+    func testHelpFlagAfterAFreeTextOptionShowsHelp() {
+        assertShowsHelp(["progress", "set", "--total", "2", "--current", "1", "--label"], usage: "casper progress set")
+        assertShowsHelp(["notify", "--message"], usage: "casper notify")
+        assertShowsHelp(["info", "set", "--message"], usage: "casper info set")
+        assertShowsHelp(["terminal", "new", "--command"], usage: "casper terminal new")
+        assertShowsHelp(["workspace", "new", "feature-x", "--command"], usage: "casper workspace new")
+        assertShowsHelp(["browser", "wait", "--js"], usage: "casper browser wait")
+    }
+
+    /// The documented cost of taking the next argument verbatim: any other option
+    /// placed right after a free-text option becomes its value.
+    func testOtherFlagAfterAFreeTextOptionBecomesItsValue() throws {
+        let wait = try BrowserCommand.Wait.parse(["--js", "--visible", "--workspace", "f"])
+        XCTAssertEqual(try wait.makeCommand().predicate, "--visible")
+    }
+
+    /// Parse `arguments` followed by each help flag from the root command, and
+    /// assert it ends in the help of the command `usage` names, exiting 0.
+    private func assertShowsHelp(
+        _ arguments: [String], usage: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        for flag in ["--help", "-h"] {
+            XCTAssertThrowsError(
+                try CasperCommand.parseAsRoot(arguments + [flag, "--workspace", "f"]), file: file, line: line
+            ) { error in
+                XCTAssertTrue(CasperCommand.exitCode(for: error).isSuccess, "\(flag): \(error)", file: file, line: line)
+                let message = CasperCommand.fullMessage(for: error)
+                XCTAssertTrue(message.contains("USAGE: \(usage)"), "\(flag): \(message)", file: file, line: line)
+            }
+        }
+    }
+
     func testNotifyWithoutMessage() throws {
         let notify = try NotifyCommand.parse(["--workspace", "feature"])
         let command = try notify.makeCommand()
@@ -87,28 +149,50 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testTerminalNewBuildsCommand() throws {
+        let dir = makeTemporaryDirectory(prefix: "casper-terminal").path
         let new = try TerminalCommand.New.parse(
-            ["--workspace", "feature", "--command", "npm test", "--working-dir", "/some/dir"])
-        XCTAssertEqual(new.workingDir, "/some/dir")
+            ["--workspace", "feature", "--command", "npm test", "--working-dir", dir])
+        XCTAssertEqual(new.workingDir, dir)
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .terminalNew)
         XCTAssertEqual(command.workspace, "feature")
         XCTAssertEqual(command.command, "npm test")
-        XCTAssertEqual(command.cwd, "/some/dir")
+        XCTAssertEqual(command.cwd, dir)
     }
 
     func testTerminalNewAbsolutizesRelativeWorkingDir() throws {
         // The app resolves the path it receives against its own working directory
         // (`/` when launched from Finder), so a relative `--working-dir` has to be
         // made absolute here, against the shell the CLI was invoked from.
-        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "sub/dir"])
-        let expected = FileManager.default.currentDirectoryPath + "/sub/dir"
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "."])
+        let expected = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).standardizedFileURL.path
         XCTAssertEqual(try new.makeCommand().cwd, expected)
     }
 
     func testTerminalNewKeepsAbsoluteWorkingDirUnchanged() throws {
-        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "/some/dir"])
-        XCTAssertEqual(try new.makeCommand().cwd, "/some/dir")
+        let dir = makeTemporaryDirectory(prefix: "casper-terminal").path
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", dir])
+        XCTAssertEqual(try new.makeCommand().cwd, dir)
+    }
+
+    func testTerminalNewRejectsMissingWorkingDir() throws {
+        // libghostty ignores a failed chdir and starts the shell elsewhere, so a
+        // typo would otherwise succeed and report a directory nothing runs in.
+        let missing = "/nonexistent-\(UUID().uuidString)"
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", missing])
+        XCTAssertThrowsError(try new.makeCommand())
+    }
+
+    func testTerminalNewRejectsFileAsWorkingDir() throws {
+        let file = makeTemporaryDirectory(prefix: "casper-terminal").appendingPathComponent("file.txt")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", file.path])
+        XCTAssertThrowsError(try new.makeCommand())
+    }
+
+    func testTerminalNewAcceptsCommandStartingWithDash() throws {
+        let new = try TerminalCommand.New.parse(["--command", "-x", "--workspace", "f"])
+        XCTAssertEqual(try new.makeCommand().command, "-x")
     }
 
     func testTerminalNewTreatsEmptyCommandAsNil() throws {
@@ -130,12 +214,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.workspace, "feature")
     }
 
-    func testTerminalCloseBuildsCommand() throws {
-        let uuid = UUID().uuidString
-        let close = try TerminalCommand.Close.parse([uuid, "--workspace", "f"])
+    func testTerminalCloseBuildsCommandWithTheCanonicalId() throws {
+        // An id typed in uppercase is sent, and echoed, in its canonical
+        // lowercase form, like every id Casper emits.
+        let close = try TerminalCommand.Close.parse(["ABCDEF01-ABCD-4BCD-8BCD-ABCDEF012345", "--workspace", "f"])
         let command = try close.makeCommand()
         XCTAssertEqual(command.verb, .terminalClose)
-        XCTAssertEqual(command.target, uuid)
+        XCTAssertEqual(command.target, "abcdef01-abcd-4bcd-8bcd-abcdef012345")
         XCTAssertEqual(command.workspace, "f")
     }
 
@@ -281,16 +366,6 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(line, "{\"result\":{\"a\":1},\"workspace\":\"w\"}")
     }
 
-    func testBrowserEvalRawUnwrapsStringButNotOtherTokens() {
-        // `eval --raw` unwraps a JSON string to its bare contents for shell piping,
-        // but leaves numbers, booleans, null, and containers as-is.
-        XCTAssertEqual(unwrappedRawValue("\"My Title\""), "My Title")
-        XCTAssertEqual(unwrappedRawValue("42"), "42")
-        XCTAssertEqual(unwrappedRawValue("true"), "true")
-        XCTAssertEqual(unwrappedRawValue("null"), "null")
-        XCTAssertEqual(unwrappedRawValue("{\"a\":1}"), "{\"a\":1}")
-    }
-
     func testBrowserContentBuildsCommand() throws {
         let content = try BrowserCommand.Content.parse(["--selector", "main", "--workspace", "feature"])
         let command = try content.makeCommand()
@@ -406,6 +481,11 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.waitTimeout, 5000)   // default
     }
 
+    func testBrowserWaitAcceptsJSStartingWithDash() throws {
+        let wait = try BrowserCommand.Wait.parse(["--js", "-1 < window.scrollY", "--workspace", "f"])
+        XCTAssertEqual(try wait.makeCommand().predicate, "-1 < window.scrollY")
+    }
+
     func testBrowserWaitRejectsBothSelectorAndJS() throws {
         let wait = try BrowserCommand.Wait.parse(["#main", "--js", "true", "--workspace", "f"])
         XCTAssertThrowsError(try wait.makeCommand())
@@ -475,6 +555,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertNil(command.target)
     }
 
+    /// A deleted file costs the app a full diff read before it replies, so the
+    /// default 5 s would misreport a slow but successful open as a timeout.
+    func testDiffOpenWaitsLikeTheSlowVerbs() throws {
+        let open = try DiffCommand.Open.parse(["Sources/Foo.swift", "--workspace", "feature"])
+        XCTAssertEqual(open.commandTimeout, WorkspaceCommand.slowVerbTimeout)
+    }
+
     func testDiffOpenCarriesFileArgument() throws {
         let open = try DiffCommand.Open.parse(["Sources/Foo.swift", "--workspace", "feature"])
         let command = try open.makeCommand()
@@ -490,7 +577,7 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testWorkspaceNewBuildsCommand() throws {
-        // The branch is now the required positional subject (not `--branch`).
+        // The branch is the required positional subject.
         let new = try WorkspaceCommand.New.parse(["feature-x", "--base", "main", "--workspace", "primary"])
         XCTAssertEqual(new.branch, "feature-x")
         let command = try new.makeCommand()
@@ -507,10 +594,23 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.command, "npm test")
     }
 
+    func testWorkspaceNewAcceptsCommandStartingWithDash() throws {
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--command", "-x", "--workspace", "primary"])
+        XCTAssertEqual(try new.makeCommand().command, "-x")
+    }
+
     func testWorkspaceNewTreatsEmptyCommandAsNil() throws {
         let new = try WorkspaceCommand.New.parse(["feature-x", "--command", "", "--workspace", "primary"])
         let command = try new.makeCommand()
         XCTAssertNil(command.command)
+    }
+
+    func testWorkspaceNewTreatsEmptyBaseAsNil() throws {
+        // An empty base means "no base given": the app then falls back to the
+        // space's base branch instead of recording an empty one.
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--base", "", "--workspace", "primary"])
+        let command = try new.makeCommand()
+        XCTAssertNil(command.base)
     }
 
     func testWorkspaceNewRequiresBranch() {
@@ -579,6 +679,11 @@ final class ControlCommandTests: XCTestCase {
     func testDebugScreenshotKeepsAbsolutePathUnchanged() throws {
         let shot = try DebugCLICommand.Screenshot.parse(["/tmp/shot.png"])
         XCTAssertEqual(shot.makeCommand().path, "/tmp/shot.png")
+    }
+
+    func testDebugScreenshotCarriesTheSurfaceTarget() throws {
+        let shot = try DebugCLICommand.Screenshot.parse(["/tmp/shot.png", "--target", "surface-1"])
+        XCTAssertEqual(shot.makeCommand().target, "surface-1")
     }
     #endif
 

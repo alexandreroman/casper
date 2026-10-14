@@ -10,11 +10,9 @@ New SDD design and plan documents go in `.superpowers/sdd/`, not in
 `docs/superpowers/specs/`. This overrides the superpowers `brainstorming`
 skill's default location of `docs/superpowers/specs/`.
 
-**Why:** `.superpowers/sdd/` is the active scratch directory where every recent
-design/plan pair lives (e.g. `native-sidebar`, `sidebar-ui-rework`,
-`casper-ui-1..5`, `casper-git-diff`, `keyboard-shortcuts`). The repository's own
-`.gitignore` ignores `.superpowers/sdd/`, so these docs are never committed and
-need no commit authorization. The repo has no `docs/superpowers/` tree (the
+**Why:** `.superpowers/sdd/` is the scratch directory for design/plan pairs,
+and the repository's `.gitignore` ignores it, so these docs are never committed
+and need no commit authorization. The repo has no `docs/superpowers/` tree (the
 `brainstorming` skill's default location): the authoritative distilled design
 lives in `.superpowers/architecture.md` + `.superpowers/themes/`, and anything
 a spec under `docs/superpowers/specs/` would hold belongs there or in the sdd
@@ -26,8 +24,5 @@ scratch. Do not create it.
 authoritative distilled design in `.superpowers/architecture.md` + `themes/` and
 durable facts in `.claude/project-memory/`.
 
-**There is no `.superpowers/plans/`.** A plan is absorbed into
-`architecture.md` + `themes/` (and `.claude/project-memory/` for its one-off
-findings) once its work ships, then deleted — see `.superpowers/INDEX.md`
-§ Plans. Do not recreate the directory to park a shipped design in it. SDD
-output always goes in the gitignored `.superpowers/sdd/`.
+There is no `.superpowers/plans/` either — see `.superpowers/INDEX.md`
+§ Plans.

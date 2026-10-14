@@ -14,19 +14,22 @@ environment that lets an agent in a terminal report its state through the CLI.
 The bundle executable inspects its argv **by shape, not by vocabulary**
 (`LaunchMode.detect`). Empty argv → **GUI mode**. A first argument that does not
 start with `-` → **CLI mode**, whatever the word is: `casper bogus` enters the
-CLI and fails there with ArgumentParser's own "unknown subcommand" error, which
-is the intent — a typo should be reported, not silently launch a window. A first
-argument that *does* start with `-` is treated as an AppKit/system launch flag
-(`-NSDocumentRevisionsDebugMode`, `-psn_0_12345`, `-AppleLanguages`) and means
-GUI, with `-h`/`--help`/`--version` carved out as the exceptions that mean CLI.
+CLI and fails there with ArgumentParser's own usage error (`Unexpected argument
+'bogus'`, exit 64), which is the intent — a typo should be reported, not
+silently launch a window. A first argument that *does* start with `-` is treated
+as an AppKit/system launch flag (`-NSDocumentRevisionsDebugMode`,
+`-psn_0_12345`, `-AppleLanguages`) and means GUI, with `-h`/`--help`/`--version`
+carved out as the exceptions that mean CLI.
 Parsing uses swift-argument-parser; the fork happens before the
 `ParsableCommand` tree is ever built.
 
 ### Domain CLI (`casper <domain> <verb>`)
 
 The CLI is organized by domain, one noun per area of app state, each with a
-handful of verbs. **`README.md` § CLI is the verb inventory** and the
-user-facing reference for every flag; what follows is the design behind it.
+handful of verbs. `run [<name>]` is the one exception and sits at the top
+level, because it acts on the workspace itself rather than on a resource of its
+own. **`README.md` § CLI is the verb inventory** and the user-facing reference
+for every flag; what follows is the design behind it.
 
 **`terminal new --command` types, it does not exec.** The text goes into the
 newly opened terminal's real login shell via `ghostty_surface_text` right after
@@ -39,6 +42,13 @@ for a zsh user). Because it is typed rather than `exec`'d, the terminal returns
 to an interactive prompt after the command exits instead of closing, and a
 compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
 instruction, not persisted — restoring a saved session never re-runs it.
+
+**`terminal new --working-dir` must name an existing directory.** libghostty
+ignores a failed `chdir` silently and starts the shell in the app's own
+directory (`/` for a Finder launch), so a typo would otherwise succeed and be
+echoed — and listed by `terminal list` — as a directory nothing runs in. The
+CLI checks the absolutized path before contacting the app and exits non-zero
+when it is missing or not a directory.
 
 **`browser open` has exactly one possible target.** `Surface.Kind.browser` is
 reached only through `Workspace.inspector.browser`, splits always create a
@@ -60,6 +70,33 @@ exception: it answers "which workspace is *this* terminal", so it reads the env
 var only and takes no target option — outside a Casper terminal it errors
 rather than defaulting to something.
 
+**An empty option value means "not given" — or is rejected.** An option whose
+absence has a meaning (`--base`, `--command`, `--working-dir`, `--out`)
+goes through `nonEmpty` in `makeCommand()`, so an empty value behaves exactly as
+if the option were omitted — an empty `--base` falls back to the space's base
+branch rather than reaching the app as a blank ref. An option whose empty value
+is meaningless (`--selector`, `--url`, `--level`) is rejected instead, by
+`requireNonEmptyIfPresent` or its own validation, and exits non-zero.
+
+**A free-text option takes its next argument verbatim.** `--label`,
+`--message` (`notify`, `info set`), `--command` (`terminal new`,
+`workspace new`) and `browser wait --js` are declared `parsing:
+.unconditional`, so a value that starts with a dash (a todo reading "-> wire
+X", a Markdown list) is accepted rather than refused as a missing value: agents
+and the plugin pass such text as a separate argv element, and a usage error
+there is lost. The accepted cost is that a forgotten value swallows the next
+argument. `--message --workspace x` takes `--workspace` as the text (the stray
+`x` then usually ends in a usage error), and a flag placed right after a
+free-text option silently becomes its value: `browser wait --js --visible`
+waits on the predicate `--visible`. `--help` and `-h` are the exception:
+ArgumentParser looks for them only among the arguments left over, so each such
+command's `validate()` turns them back into a help request
+(`requestHelpIfHelpFlag`), and those two exact strings can never be sent as
+text. An option whose value is never free text — an id, a ref, a path, a URL, a
+selector, a number — keeps the default parsing, so a forgotten value there
+stays a usage error. A free-text positional (`browser eval`, `browser type`)
+follows the POSIX convention instead: `--` ends the options before it.
+
 **Transport.** Each command sends a `ControlCommand` over the Unix domain socket
 named by `$CASPER_CONTROL_SOCKET` and reads back a `ControlResponse`. With that
 variable unset the CLI exits with a "Casper is not running" error rather than
@@ -69,10 +106,12 @@ present in a release build. See [[debug-channel-gating]].
 ### JSON output
 
 `README.md` § CLI records the generic contract only — a JSON object on stdout,
-an array for the `list` verbs. The **per-verb shapes** are the 16 `Encodable`
-payload types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its
-literal shape in the type's own doc comment; that file is the reference. Two
-contracts behind them bind every new verb:
+an array for the `list` verbs. The **per-verb shapes** are the `Encodable`
+types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its literal
+shape in the type's own doc comment, plus `jsonLine(key:…)` for the two verbs
+that embed app-serialized JSON (`browser eval` → `result`, `browser console` →
+`console`); that file is the reference. Three contracts behind them bind every
+new verb:
 
 - **A success payload always carries the affected `workspace` id**, even when
   the verb has no state of its own to report (`progress clear`, `notify`,
@@ -80,6 +119,9 @@ contracts behind them bind every new verb:
   omits anything that is not durable state — `terminal list` carries
   `working-dir` but no `command`, because a launch command is a one-shot
   instruction.
+- **Every entity id is keyed by its type name, never a bare `id`**:
+  `terminal new` carries `terminal`, `workspace list` elements carry
+  `workspace`.
 - **A command in error never exits 0.** It prints `{"error":"<msg>"}` to stderr
   and exits non-zero; validate CLI-side in `makeCommand()` wherever the check is
   possible without the app. The exception is ArgumentParser's own output, which
@@ -89,7 +131,8 @@ contracts behind them bind every new verb:
   is a failure, so neither may look like one to a script.
 
 Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_ID`
-— is **lowercase**, its canonical external form (`UUID.casperID`); `--workspace`
+— is **lowercase**, its canonical external form (`UUID.casperID`), an id echoed
+back from the caller's own input (`terminal close <id>`) included; `--workspace`
 matches an id **case-insensitively**, so an uppercase id from an older build
 still resolves (a workspace *name* still matches exactly). Persisted state is
 unaffected: `session.json` keeps Swift's native `Codable` UUID encoding.
@@ -396,7 +439,8 @@ is the direction to fail in, since a fork carries the integration and a false
 Despite the `.json` name the config format is **JSONC**, and real files carry
 comments, so comments are stripped before parsing — never inside a string
 literal, since opencode's own default config holds
-`"$schema": "https://opencode.ai/config.json"`.
+`"$schema": "https://opencode.ai/config.json"`. A `//` comment ends at any line
+break, a CRLF or a lone CR included.
 
 Most install shapes carry a version. A plugin file declares it as
 `export const CASPER_PLUGIN_VERSION = "…"`. A config entry is resolved to where
@@ -441,26 +485,11 @@ its place under the dependency policy, and every limitation of the scan misses
 in the safe direction (an unseen `enabled = false` reads as enabled, never the
 reverse).
 
-Two Codex traps, both able to produce a confidently wrong answer:
-
-- **No plugin manifest is read.** The plugin repository ships only
-  `.claude-plugin/plugin.json` and relies on Codex's manifest discovery order
-  falling through to it, so probing by manifest file name matches nothing.
-- **`~/.codex/hooks.json` is never evidence of anything**, and no code reads it.
-  It appears on machines with no Codex installed at all — unrelated tools write
-  to it — and the plugin never writes to it.
-
-**The Codex cache layout is confirmed against a real Codex 0.149.0 install**:
-`~/.codex/plugins/cache/casper/casper/0.2.0/`, the version being the leaf path
-segment. That is the default Codex home, and the only one Casper builds paths
-from — a `CODEX_HOME` override is not read. `codex plugin list --json` is the
-stricter cross-check — it reports `pluginId`, `name`, `marketplaceName`,
-`version`, `installed`, `enabled`, `source`, `marketplaceSource`,
-`installPolicy` and `authPolicy`, and **no hook-trust field**, so it answers
-"is it installed" and never "is it approved".
-Its stdout can also carry trailing terminal escape bytes when a user's shell
-wraps `codex` in a function, so a parser must read the first JSON document
-rather than the whole stream. See [[codex-detection-caveats]].
+Casper builds paths from the default Codex home only; a `CODEX_HOME` override
+is not read. The external Codex observations behind this probe — the confirmed
+cache layout, the fields and stray escape bytes of `codex plugin list --json`,
+and the plugin-manifest and `~/.codex/hooks.json` traps — are recorded in
+[[codex-detection-caveats]].
 
 #### Disabled is missing
 
@@ -575,7 +604,7 @@ UI for that whole time.
 pays the cold cost. Afterwards a **staleness check** rides the existing agent
 detection tick: each pass calls `refreshAgentIntegrationsIfStale()`, which
 re-probes once the last result is older than
-`AppModel.agentIntegrationProbeInterval` — **five seconds**. It is a freshness
+`AgentIntegrationReminders.probeInterval` — **five seconds**. It is a freshness
 horizon, not a rate limiter: nothing is being protected from load, the answer is
 simply not trusted past that age. The cadence is affordable precisely because of
 the `LoginShellPath` cache above: every probe after the first spawns nothing at
@@ -585,11 +614,11 @@ still probes at most once per interval.
 
 Three rules hold the cadence together:
 
-- **A tick never starts the *first* probe.** `shouldRefreshAgentIntegrations`
-  answers `false` for a nil `lastProbeAt`: with no earlier result there is
-  nothing to *re*fresh, and paying the cold login-shell cost stays the launch
-  path's job. It also keeps every unit test that drives the detection tick off
-  the real filesystem.
+- **A tick never starts the *first* probe.**
+  `AgentIntegrationReminders.shouldRefresh` answers `false` for a nil
+  `lastProbeAt`: with no earlier result there is nothing to *re*fresh, and
+  paying the cold login-shell cost stays the launch path's job. It also keeps
+  every unit test that drives the detection tick off the real filesystem.
 - **Seconds are what close the loop.** The expected way to install an
   integration is a `plugin install` command typed *in a Casper terminal*, which
   never resigns the app active — so activation alone fires no event at all, and

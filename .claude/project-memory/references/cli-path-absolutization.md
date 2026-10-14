@@ -21,10 +21,15 @@ echoed JSON report the path the file actually landed at.
 
 Any new verb carrying a filesystem path routes it through `absolutePath` in its
 `makeCommand()`. An **optional** path option passes through `nonEmpty` first —
-`nonEmpty(out).map(absolutePath)`, `nonEmpty(workingDir).map(absolutePath)` —
-so an explicitly empty value stays absent and the verb falls back to its
-default. Absolutizing `""` would instead answer the CLI's own working
-directory, turning a caller's "no path" into a real and wrong one.
+`nonEmpty(out).map(absolutePath)` — so an explicitly empty value stays absent
+and the verb falls back to its default. Absolutizing `""` would instead answer
+the CLI's own working directory, turning a caller's "no path" into a real and
+wrong one. A path that must already exist is checked after absolutizing, as
+`terminal new --working-dir` is.
+
+The exception is `diff open <file>`: a worktree-relative path, resolved by the
+app against the target workspace's worktree (`WorkspaceFilePath`), so it is
+sent as typed. That is what keeps it meaningful with `--workspace <other>`.
 
 Tests pin this through `.parse([...])` + `makeCommand()` — see
 [[argumentparser-optional-default]] for why direct construction is not an

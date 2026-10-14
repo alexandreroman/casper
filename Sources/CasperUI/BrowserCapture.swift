@@ -9,6 +9,9 @@ import WebKit
 /// regardless of the panel's actual size (or whether it's even mounted).
 @MainActor
 enum BrowserCapture {
+    /// The viewport a capture renders at when the caller sets no size: the
+    /// off-screen capture's default, and the frame given to a detached live view.
+    static let defaultViewport = (width: 1280, height: 800)
     /// How long to wait for the page's navigation to finish before giving up. Kept
     /// under the 15 s automation socket timeout so the CLI still gets a reply.
     private static let loadTimeout: Duration = .seconds(10)
@@ -25,7 +28,7 @@ enum BrowserCapture {
     /// Render `url` off-screen at `width`×`height` and return a PNG of the resulting
     /// viewport. The capture shares the default website data store
     /// (cookies/localStorage) with the live browser so authenticated pages render.
-    /// Throws `BrowserOpError` on a load failure, timeout, or render/encode
+    /// Throws `OperationError` on a load failure, timeout, or render/encode
     /// failure. The PNG is at the display's backing scale, matching the live
     /// `BrowserCoordinator.snapshot` path.
     static func snapshot(url: URL, width: Int, height: Int) async throws -> Data {
@@ -38,20 +41,12 @@ enum BrowserCapture {
         config.websiteDataStore = .default()
         let webView = WKWebView(frame: frame, configuration: config)
 
-        // A WKWebView never placed in a window may not lay out or paint, so host it in
-        // a borderless window — one deliberately never ordered on-screen. Layout and
-        // painting only need a non-nil `window`, whereas an ordered window parked at
-        // -100_000 joins Mission Control's layout: its bounding box then spans ~101,000
-        // px and every real window is scaled to nothing. The window and delegate are
-        // held in locals so they outlive the awaits (WKWebView retains its navigation
+        // A WKWebView never placed in a window may not lay out or paint, so host it in an
+        // off-screen window (`NSWindow.offscreenHost`), whose `close()` is a plain
+        // removal from the application's window list. The window and delegate are held
+        // in locals so they outlive the awaits (WKWebView retains its navigation
         // delegate only weakly), and torn down in `defer` even on throw.
-        let window = NSWindow(
-            contentRect: NSRect(x: -100_000, y: -100_000, width: CGFloat(width), height: CGFloat(height)),
-            styleMask: .borderless, backing: .buffered, defer: false)
-        // A programmatically created window defaults to releasing itself on `close()`,
-        // which over-releases the ARC-owned local below; clearing the flag first makes
-        // `close()` a plain removal from the application's window list.
-        window.isReleasedWhenClosed = false
+        let window = NSWindow.offscreenHost(size: frame.size)
         window.contentView = webView
 
         let delegate = NavigationLoadDelegate(url: url)
@@ -94,7 +89,7 @@ enum BrowserCapture {
     static func snapshotPNG(of webView: WKWebView) async throws -> Data {
         let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            throw BrowserOpError(message: "failed to render page snapshot")
+            throw OperationError(message: "failed to render page snapshot")
         }
         // Only `takeSnapshot` needs the main actor. Re-encoding the raw buffer (1280x800
         // at the backing scale, i.e. ~4 MB of pixels) is pure CPU work that would
@@ -112,7 +107,7 @@ enum BrowserCapture {
         let bitmap = NSBitmapImageRep(cgImage: image)
         bitmap.size = size
         guard let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw BrowserOpError(message: "failed to encode snapshot as PNG")
+            throw OperationError(message: "failed to encode snapshot as PNG")
         }
         return png
     }
@@ -121,7 +116,7 @@ enum BrowserCapture {
     /// ready, in-flight images finished (load or error), then a paint barrier of two
     /// animation frames raced against a ~120 ms fallback. The race is required, not a
     /// safety net: `requestAnimationFrame` never fires in a window parked off any
-    /// display (see the -100_000 placement above), so the barrier alone would never
+    /// display (see `NSWindow.offscreenHost`), so the barrier alone would never
     /// resolve and every capture would burn the full `renderSettleTimeout`. A visible
     /// window still waits for a real compositor paint; an off-display one proceeds
     /// after roughly two frames' worth of slack. Bounded by `renderSettleTimeout` and
@@ -160,54 +155,29 @@ enum BrowserCapture {
         // release the `webView` it captures. Whichever fires first wins; the other
         // resume is a no-op. Best-effort — a thrown JS error or the timeout both
         // simply proceed to the snapshot.
-        let waiter = RenderWaiter()
+        let waiter = OneShotWaiter<Void>()
         Task { @MainActor in
             _ = try? await webView.callAsyncJavaScript(
                 js, arguments: [:], in: nil, contentWorld: .page)
-            waiter.resume()
+            waiter.resume(returning: ())
         }
         let timeout = Task { @MainActor in
             try? await Task.sleep(for: renderSettleTimeout)
-            waiter.resume()
+            waiter.resume(returning: ())
         }
         await waiter.wait()
         timeout.cancel()
     }
 }
 
-/// A one-shot main-actor waiter: `wait()` suspends until the first `resume()`.
-/// Handles `resume()` arriving before `wait()`. Used to race the render-readiness
-/// JavaScript against its timeout in `BrowserCapture.waitForFullRender`.
-@MainActor
-private final class RenderWaiter {
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var resumed = false
-
-    func wait() async {
-        await withCheckedContinuation { continuation in
-            if resumed {
-                continuation.resume()
-            } else {
-                self.continuation = continuation
-            }
-        }
-    }
-
-    func resume() {
-        guard !resumed else { return }
-        resumed = true
-        continuation?.resume()
-        continuation = nil
-    }
-}
-
 /// Bridges a `WKWebView`'s navigation completion to an `async` waiter. Resumes its
 /// continuation exactly once — on `didFinish` (success), `didFail` /
-/// `didFailProvisionalNavigation` (a clear load error), or `fail(message:)` (the
-/// timeout). `WKNavigationDelegate` is already `@MainActor`, so the callbacks and
-/// the continuation are main-actor-isolated with no data race.
+/// `didFailProvisionalNavigation` (a clear load error; a superseded load is not
+/// one), or `fail(message:)` (the timeout). `WKNavigationDelegate` is already
+/// `@MainActor`, so the callbacks and the continuation are main-actor-isolated with
+/// no data race.
 @MainActor
-private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
+final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     private let url: URL
     private var continuation: CheckedContinuation<Void, Error>?
     /// The outcome of the first `settle`, kept so a callback landing before
@@ -230,7 +200,7 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
 
     /// Resume the waiter with a failure — used by the timeout.
     func fail(message: String) {
-        settle(.failure(BrowserOpError(message: message)))
+        settle(.failure(OperationError(message: message)))
     }
 
     private func settle(_ result: Result<Void, Error>) {
@@ -240,8 +210,12 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
         continuation = nil
     }
 
+    /// Settle with a load failure, unless the load was only superseded (a page
+    /// redirecting itself before its load event): the successor's `didFinish`
+    /// settles the wait instead, still bounded by the timeout.
     private func loadFailure(_ error: Error) {
-        settle(.failure(BrowserOpError(
+        guard !BrowserCoordinator.isSupersededLoad(error) else { return }
+        settle(.failure(OperationError(
             message: "failed to load \(url.absoluteString) for capture: \(error.localizedDescription)")))
     }
 

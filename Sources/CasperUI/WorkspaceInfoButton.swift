@@ -36,7 +36,7 @@ struct WorkspaceInfoButton: View {
     /// to contribute (confirmed empirically: an `NSHostingView` fitting-size
     /// probe reports exactly the frame's width, never more, no matter what
     /// padding sits inside it). Without a nonzero floor here, the branch
-    /// title's own 4pt trailing inset (set in `WorkspaceDetailView`) would be
+    /// title's own 6pt trailing inset (set in `WorkspaceTitleBarRow`) would be
     /// the only thing separating the title from the diff badge — reads as
     /// cramped.
     static let collapsedWidth: CGFloat = 6
@@ -54,9 +54,10 @@ struct WorkspaceInfoButton: View {
         // (unlike an in-window `if`/`Group`). Driving `opacity`/`scaleEffect`/
         // `frame(width:)` off `visible` below instead is a plain PROPERTY
         // animation, which AppKit-hosted toolbar content animates fine — see
-        // `ScriptToolbarButton` in `WorkspaceDetailView.swift` for the same
-        // convention on its own entrance. Do not "simplify" this back into a
-        // `.transition` + `if let`; that is the bug this file was fixing.
+        // `ScriptToolbarButton` in `WorkspaceTitleBar.swift` for the same
+        // convention on its own entrance. Do not "simplify" this into a
+        // `.transition` + `if let`: the button would then appear and vanish
+        // without animating.
         let visible = workspace.infoMarkdown != nil
         Button {
             reveal()
@@ -103,7 +104,7 @@ struct WorkspaceInfoButton: View {
         .help("Workspace info")
         .onHover { inside in scheduleHoverTransition(inside: inside) }
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
-            // The view is now always mounted, so `workspace.infoMarkdown` can be
+            // The view is always mounted, so `workspace.infoMarkdown` can be
             // nil while this closure exists (though never while presented — see
             // `reveal()`'s guard). Fall back to "" rather than force-unwrapping.
             WorkspaceInfoPanel(model: model, workspace: workspace, markdown: workspace.infoMarkdown ?? "")
@@ -117,9 +118,9 @@ struct WorkspaceInfoButton: View {
         // The remaining teardown path: RootView keys `WorkspaceDetailView` on
         // the workspace id, so switching workspaces discards this exact button
         // instance outright, bypassing the animated hide entirely. `casper info
-        // clear` no longer takes this path at all — the button stays mounted
-        // and eases itself invisible via the `visible`-keyed modifiers below,
-        // which is what the `onChange` below handles. Cancel + close here
+        // clear` does not take this path — the button stays mounted and eases
+        // itself invisible via the `visible`-keyed modifiers below, which is
+        // what the `onChange` below handles. Cancel + close here
         // anyway so a popover mid-presentation isn't left dangling on a source
         // view that is about to vanish. Running after `onChange` already reset
         // the same state is harmless — both are idempotent.
@@ -186,7 +187,7 @@ struct WorkspaceInfoButton: View {
     }
 
     private func reveal() {
-        // The button is now always mounted, so a click can land after the icon
+        // The button is always mounted, so a click can land after the icon
         // has already faded to invisible (`allowsHitTesting` should prevent
         // that, but this guard is what actually keeps the popover from ever
         // presenting with no message, rather than relying on layout alone).

@@ -90,8 +90,8 @@ struct DiffRendering {
 /// The scroll view takes its size from the panel and negotiates **nothing** with
 /// SwiftUI — no lazy stack, no pinned sections, no scroll-position binding. Every
 /// input arrives through the coordinator's imperative API, one way, so a refresh
-/// can never turn into a SwiftUI state write during layout. That feedback path is
-/// what the row-based renderer hung on.
+/// can never turn into a SwiftUI state write during layout — a feedback path that
+/// can keep layout from converging and hang the main thread.
 struct DiffTextSurface: NSViewRepresentable {
     let controller: DiffSurfaceController
     /// What to render. One-way, SwiftUI to AppKit — no state is written back
@@ -160,22 +160,16 @@ struct DiffTextSurface: NSViewRepresentable {
         private nonisolated(unsafe) var boundsObserver: NSObjectProtocol?
 
         init() {
-            // The TextKit 2 chain, built by hand. `NSTextView` would make one
-            // itself, but merely *reading* `NSTextView.layoutManager` anywhere
-            // migrates the view to TextKit 1 and nils out `textLayoutManager`,
-            // silently taking every geometry call with it. Assembling the stack
-            // explicitly means TextKit 2 is guaranteed rather than incidental.
-            let contentStorage = NSTextContentStorage()
-            let layoutManager = NSTextLayoutManager()
-            let container = NSTextContainer(
-                size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
-            contentStorage.addTextLayoutManager(layoutManager)
-            layoutManager.textContainer = container
-
-            textView = DiffTextView(frame: .zero, textContainer: container)
-            // Selectable but not editable: character-level selection and copy are a
-            // goal of this rewrite, and the numbers living in the ruler is what makes
-            // a copy come out as clean code.
+            // A stock TextKit 2 text view. It stays on TextKit 2 only for as long
+            // as nothing reads `NSTextView.layoutManager`: that read migrates the
+            // view to TextKit 1 and nils out `textLayoutManager`, silently taking
+            // every geometry call with it, however the view was built (see the
+            // `textkit2-layout-geometry` memory note).
+            textView = DiffTextView(usingTextLayoutManager: true)
+            textView.textContainer?.size = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+            // Selectable but not editable: the reader selects and copies the code
+            // character by character, and the numbers living in the ruler is what
+            // makes a copy come out as clean code.
             textView.isEditable = false
             textView.isSelectable = true
             textView.drawsBackground = true
@@ -193,7 +187,6 @@ struct DiffTextSurface: NSViewRepresentable {
             // `paragraphSpacingBefore` on the document's very first paragraph, so the
             // band that file's bar draws into can only come from the inset.
             textView.textContainerInset = NSSize(width: 0, height: DiffTextAssembly.headerBandHeight)
-            container.widthTracksTextView = true
 
             scrollView = NSScrollView()
             scrollView.borderType = .noBorder
@@ -378,8 +371,8 @@ struct DiffTextSurface: NSViewRepresentable {
         /// document is still one SwiftUI update away from the surface.
         ///
         /// The target is usually far below what TextKit has laid out, which the
-        /// forcing `top(ofFileAt:)` settles outright — where the row-based
-        /// renderer deferred a run-loop turn and hoped the row existed by then.
+        /// forcing `top(ofFileAt:)` settles outright, so the scroll lands within
+        /// this call rather than on a later run-loop turn.
         @discardableResult
         func scroll(toFileID fileID: String) -> Bool {
             guard let document, let geometry, let fileIndex = document.fileIndex(withID: fileID)

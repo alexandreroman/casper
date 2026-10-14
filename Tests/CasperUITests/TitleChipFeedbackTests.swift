@@ -18,20 +18,12 @@ final class TitleChipFeedbackTests: XCTestCase {
     }
 
     func testPressWinsOverHoverWhichWinsOverRest() {
-        XCTAssertEqual(fill(filled: true), TitleChipFeedback.restingFillOpacity)
-        XCTAssertEqual(fill(filled: true, hovered: true), TitleChipFeedback.hoveredFillOpacity)
-        XCTAssertEqual(fill(filled: true, hovered: true, pressed: true), TitleChipFeedback.pressedFillOpacity)
+        XCTAssertEqual(fill(), TitleChipFeedback.restingFillOpacity)
+        XCTAssertEqual(fill(hovered: true), TitleChipFeedback.hoveredFillOpacity)
+        XCTAssertEqual(fill(hovered: true, pressed: true), TitleChipFeedback.pressedFillOpacity)
         // Not reachable with a pointer, but a keyboard or VoiceOver press has no
         // hover to stand on.
-        XCTAssertEqual(fill(filled: true, pressed: true), TitleChipFeedback.pressedFillOpacity)
-    }
-
-    /// An unfilled chip draws no chrome at rest and grows it on interaction, the
-    /// same way a native toolbar button's bezel appears.
-    func testUnfilledChipShowsChromeOnlyWhileInteractedWith() {
-        XCTAssertNil(fill(filled: false))
-        XCTAssertEqual(fill(filled: false, hovered: true), TitleChipFeedback.hoveredFillOpacity)
-        XCTAssertEqual(fill(filled: false, pressed: true), TitleChipFeedback.pressedFillOpacity)
+        XCTAssertEqual(fill(pressed: true), TitleChipFeedback.pressedFillOpacity)
     }
 
     /// The Run chip's primary action is disabled while the workspace's setup hook
@@ -53,8 +45,8 @@ final class TitleChipFeedbackTests: XCTestCase {
         Label("Run", systemImage: "play.fill").labelStyle(.titleAndIcon)
     }
 
-    private func fill(filled: Bool, hovered: Bool = false, pressed: Bool = false) -> Double? {
-        TitleChipFeedback.fillOpacity(filled: filled, hovered: hovered, pressed: pressed)
+    private func fill(hovered: Bool = false, pressed: Bool = false) -> Double {
+        TitleChipFeedback.fillOpacity(hovered: hovered, pressed: pressed)
     }
 
     /// Renders `view` on white offscreen and sums how dark its pixels are —

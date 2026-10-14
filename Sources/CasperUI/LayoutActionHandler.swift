@@ -25,7 +25,7 @@ struct LayoutActionHandler: GhosttyActionHandler {
             MainActor.assumeIsolated { model.applyNewTerminal() }
             return true
         case .newSplit(let direction):
-            MainActor.assumeIsolated { model.applyNewSplit(map(direction)) }
+            MainActor.assumeIsolated { model.applyNewSplit(direction) }
             return true
         case .newWindow:
             // The one case that is deferred rather than run inline. This action is
@@ -48,15 +48,6 @@ struct LayoutActionHandler: GhosttyActionHandler {
             return true
         default:
             return false
-        }
-    }
-
-    private func map(_ d: GhosttySplitDirection) -> GhosttySplitDirectionLike {
-        switch d {
-        case .right: return .right
-        case .down: return .down
-        case .left: return .left
-        case .up: return .up
         }
     }
 }

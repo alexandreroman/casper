@@ -85,9 +85,9 @@ public enum LayoutTree {
         return .split(orientation: orientation, children: children, ratios: currentRatios)
     }
 
-    /// Map a Ghostty split direction to an orientation and insertion side.
+    /// Map a split direction to an orientation and insertion side.
     public static func orientationAndSide(
-        for direction: GhosttySplitDirectionLike
+        for direction: SplitDirection
     ) -> (LayoutNode.Orientation, InsertSide) {
         switch direction {
         case .right: return (.horizontal, .after)
@@ -202,10 +202,10 @@ public enum LayoutTree {
     /// id missing from the tree (before or after removal).
     public static func move(
         _ node: LayoutNode, surfaceID: UUID, toTarget targetID: UUID,
-        direction: GhosttySplitDirectionLike
+        direction: SplitDirection
     ) -> (LayoutNode, focus: UUID)? {
         guard surfaceID != targetID else { return nil }
-        guard let source = surface(node, id: surfaceID) else { return nil }
+        guard let source = firstSurface(in: node, where: { $0.id == surfaceID }) else { return nil }
 
         let (reduced, _) = closeSurface(node, surface: surfaceID)
         guard let reduced, contains(reduced, id: targetID) else { return nil }
@@ -220,7 +220,7 @@ public enum LayoutTree {
         case top, bottom, left, right
 
         /// The split direction a drop in this zone relocates the pane along.
-        public var direction: GhosttySplitDirectionLike {
+        public var direction: SplitDirection {
             switch self {
             case .top: return .up
             case .bottom: return .down
@@ -255,37 +255,25 @@ public enum LayoutTree {
     /// first match instead of materializing every id like `surfaceIDs`, so it is
     /// cheap enough for the render path.
     public static func contains(_ node: LayoutNode, id: UUID) -> Bool {
-        switch node {
-        case .leaf(let surface):
-            return surface.id == id
-        case .split(_, let children, _):
-            return children.contains { contains($0, id: id) }
-        }
+        firstSurface(in: node, where: { $0.id == id }) != nil
     }
 
     /// The id of the first surface in visual (depth-first) order, or `nil` for an
-    /// empty subtree. Stops at the first leaf instead of materializing every id
-    /// like `surfaceIDs`.
+    /// empty subtree.
     private static func firstSurfaceID(_ node: LayoutNode) -> UUID? {
-        switch node {
-        case .leaf(let surface):
-            return surface.id
-        case .split(_, let children, _):
-            for child in children {
-                if let id = firstSurfaceID(child) { return id }
-            }
-            return nil
-        }
+        firstSurface(in: node, where: { _ in true })?.id
     }
 
-    /// The `Surface` value with `id` from the tree, or `nil` if absent.
-    private static func surface(_ node: LayoutNode, id: UUID) -> Surface? {
+    /// The first surface in visual (depth-first) order that satisfies `match`, or
+    /// `nil` when none does. Stops at the first match instead of materializing
+    /// every surface like `surfaces`.
+    private static func firstSurface(in node: LayoutNode, where match: (Surface) -> Bool) -> Surface? {
         switch node {
         case .leaf(let surface):
-            return surface.id == id ? surface : nil
+            return match(surface) ? surface : nil
         case .split(_, let children, _):
             for child in children {
-                if let found = surface(child, id: id) { return found }
+                if let found = firstSurface(in: child, where: match) { return found }
             }
             return nil
         }
@@ -300,6 +288,7 @@ public enum LayoutTree {
     }
 }
 
-/// Direction abstraction so CasperCore's `LayoutTree` does not depend on
-/// CasperGhostty. CasperUI maps `GhosttySplitDirection` onto this.
-public enum GhosttySplitDirectionLike: Equatable { case right, down, left, up }
+/// The direction a new split grows, or a moved pane lands, relative to its
+/// target. CasperGhostty decodes libghostty's `ghostty_action_split_direction_e`
+/// straight onto it.
+public enum SplitDirection: Equatable, Sendable { case right, down, left, up }

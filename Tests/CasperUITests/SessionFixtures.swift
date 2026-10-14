@@ -1,9 +1,12 @@
 import Foundation
 import XCTest
 import CasperCore
+@testable import CasperGhostty
+import CasperTestSupport
 @testable import CasperUI
 
-/// Fixtures shared by every test case in this target.
+/// Fixtures shared by every test case in this target. The ones every test target
+/// shares — `makeTemporaryDirectory` and `GitFixture` — live in CasperTestSupport.
 ///
 /// `SessionStore` writes a real file and `AppModel` saves through it on a
 /// background queue, so seeding a model always leaves something behind on disk —
@@ -20,19 +23,15 @@ extension XCTestCase {
         return (SessionStore(fileURL: url), url)
     }
 
-    /// A fresh temp directory on disk, removed after the test. `prefix` only makes
-    /// a stranded directory traceable back to the suite that made it.
-    ///
-    /// It sits one level inside a container that teardown removes, because Casper
-    /// puts a linked worktree *beside* its repository: deleting the repo directory
-    /// alone would leave every worktree a test created behind.
-    func makeTemporaryDirectory(prefix: String = "casper-test") -> URL {
-        let name = "\(prefix)-\(UUID().uuidString)"
-        let container = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        let dir = container.appendingPathComponent(name)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: container) }
-        return dir
+    /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
+    /// writes its theme files to `themeDirectory`, a per-test temporary directory unless
+    /// the caller passes the one it inspects, so a local config cannot change what a test
+    /// observes. Mirrors `CasperGhosttyTests`' helper of the same name, which this target
+    /// cannot see.
+    func makeIsolatedRuntime(themeDirectory: URL? = nil) throws -> GhosttyRuntime {
+        try GhosttyRuntime(
+            themeDirectory: themeDirectory ?? makeTemporaryDirectory(prefix: "casper-ghostty-themes"),
+            loadUserFiles: { _ in })
     }
 
     /// An `AppModel` over `spaces`, with `selected` as the current workspace.
@@ -65,16 +64,52 @@ extension XCTestCase {
     @MainActor
     func makeSeededModel(
         worktreePath: String = "/wt",
-        portBase: Int = 40000,
         inspector: InspectorState = InspectorState()
     ) -> (model: AppModel, workspace: Workspace) {
         let workspace = Workspace(
             name: "main", worktreePath: worktreePath, branch: "main",
-            portBase: portBase, layout: .leaf(Surface.terminal(cwd: worktreePath)),
+            portBase: 40000, layout: .leaf(Surface.terminal(cwd: worktreePath)),
             inspector: inspector)
         let space = Space(
             name: "main", folderPath: worktreePath, isGitRepo: false, workspaces: [workspace])
         return (makeModel(spaces: [space], selecting: workspace.id), workspace)
+    }
+
+    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
+    /// `ControlServer` even though the work behind it is async.
+    @MainActor
+    func deleteViaControl(_ model: AppModel, id: UUID) async -> Result<Void, OperationError> {
+        await withCheckedContinuation { continuation in
+            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
+        }
+    }
+
+    /// Wait for the teardown split to land in `workspaceID` and return its surface id,
+    /// which is also the point where the operation is provably suspended on its
+    /// teardown hook. `runTeardown` inserts the split synchronously, but the task
+    /// running it only starts on a later main-queue turn; the bound exists so a broken
+    /// run fails fast instead of stalling for the 30 s teardown timeout.
+    @MainActor
+    func awaitTeardownSplit(
+        in model: AppModel, workspace workspaceID: UUID, surfacesBefore: Set<UUID>,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async -> UUID? {
+        func newSplit() -> UUID? {
+            guard let workspace = model.workspace(id: workspaceID) else { return nil }
+            return LayoutTree.surfaceIDs(workspace.layout).first { !surfacesBefore.contains($0) }
+        }
+        await waitUntil(timeout: 2, { newSplit() != nil }, file: file, line: line)
+        return newSplit()
+    }
+
+    /// Publish one stubbed agent-integration probe result and wait for it to land.
+    /// The probe runs off the main actor, so the model's own task is what tells us it
+    /// is done.
+    @MainActor
+    func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
+        model.agentIntegrationProbe = { statuses }
+        model.refreshAgentIntegrations()
+        await model.agentReminders.task?.value
     }
 
     /// Poll `condition` on the main actor until it holds, failing at `timeout`.

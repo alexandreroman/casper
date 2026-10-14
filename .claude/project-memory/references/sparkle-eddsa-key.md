@@ -33,8 +33,9 @@ points here when it fails. Neither script sees the key:
 Regenerate only if the secret leaks or is lost:
 
 ```bash
-"$(Scripts/sparkle-tool.sh generate_keys)"              # writes to the login keychain
-"$(Scripts/sparkle-tool.sh generate_keys)" -x key.txt   # export for the CI secret
+# Write the key to the login keychain, then export it for the CI secret.
+"$(Scripts/sparkle-tool.sh generate_keys)"
+"$(Scripts/sparkle-tool.sh generate_keys)" -x key.txt
 gh secret set SPARKLE_PRIVATE_KEY < key.txt && rm key.txt
 ```
 

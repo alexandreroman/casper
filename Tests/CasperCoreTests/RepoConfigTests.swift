@@ -1,18 +1,14 @@
 import Foundation
 import XCTest
+import CasperTestSupport
 @testable import CasperCore
 
 final class RepoConfigTests: XCTestCase {
     private var root: URL!
 
-    override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-config-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: root)
+    override func setUp() {
+        super.setUp()
+        root = makeTemporaryDirectory(prefix: "casper-config")
     }
 
     private func writeConfig(_ json: String) throws {

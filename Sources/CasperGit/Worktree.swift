@@ -1,17 +1,22 @@
 import Clibgit2
+import Foundation
 
 /// Value description of a git worktree.
 public struct WorktreeInfo: Equatable, Sendable {
     public let name: String
     public let path: String
-
-    public init(name: String, path: String) {
-        self.name = name
-        self.path = path
-    }
 }
 
 extension Repository {
+    /// Where Git keeps the admin entry of the worktree named `name`:
+    /// `<common dir>/worktrees/<name>`. The entry exists whenever Git has a
+    /// worktree registered under that name — even one whose folder is gone, or a
+    /// half-written one the worktree listing skips — and `git worktree add`
+    /// refuses the name while it does.
+    public func worktreeAdminPath(named name: String) -> String {
+        commonDirPath + "worktrees/" + name
+    }
+
     /// Create a worktree named `name` at `path`, checked out to a new branch
     /// (also named `name`) based on `basedOn` (a branch/tag/commit-ish) or HEAD.
     public func addWorktree(
@@ -32,6 +37,8 @@ extension Repository {
         var options = git_worktree_add_options()
         try gitCheck(git_worktree_add_options_init(
             &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
+        let adminPath = worktreeAdminPath(named: name)
+        let adminEntryExisted = FileManager.default.fileExists(atPath: adminPath)
 
         // Create the branch at that commit.
         var branchRef: OpaquePointer?
@@ -49,15 +56,27 @@ extension Repository {
             return try worktreeInfo(fromPointer: handle, name: name)
         } catch {
             // Roll back so retrying the same name is idempotent instead of
-            // failing with GIT_EEXISTS. Prune unconditionally: `git_worktree_add`
-            // can write the on-disk admin entry and still fail with a NULL
-            // out-pointer (a partial failure where `worktree == nil`), so gating
-            // the prune on `worktree != nil` would leak that orphaned entry.
-            // `pruneWorktree` re-looks-up by name and throws GIT_ENOTFOUND —
-            // swallowed by `try?` — when nothing is registered, so it is a safe
-            // no-op when there is nothing to prune. The `defer`s still free the
-            // handles; this clears the on-disk worktree and the refdb branch.
-            try? pruneWorktree(name: name)
+            // failing with GIT_EEXISTS. Only what this call created is undone:
+            // libgit2 creates the admin directory exclusively, as its first write,
+            // so an entry that existed before the call belongs to another worktree
+            // registered under the same name — pruning it would delete that
+            // worktree's folder — and the failed call created nothing to undo.
+            if !adminEntryExisted {
+                // Gated on the admin entry, not on `worktree != nil`:
+                // `git_worktree_add` can write the entry and still fail with a NULL
+                // out-pointer. `pruneWorktree` re-looks-up by name, and its throw is
+                // swallowed by `try?`. The `defer`s still free the handles.
+                try? pruneWorktree(name: name)
+                // libgit2 only writes the entry's `gitdir`/`commondir`/`HEAD` files
+                // after creating the worktree path, so a failure in between (the
+                // path already exists) leaves a partial entry the lookup rejects
+                // with a generic error rather than GIT_ENOTFOUND, and the prune
+                // never removes it. The worktree path is left alone: if it
+                // pre-existed, it is someone else's.
+                if FileManager.default.fileExists(atPath: adminPath) {
+                    try? FileManager.default.removeItem(atPath: adminPath)
+                }
+            }
             // Branch-delete result is intentionally ignored: rollback is
             // best-effort and the original `error` is what we re-throw, so we
             // must not let a cleanup failure mask it.

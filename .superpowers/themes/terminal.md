@@ -75,7 +75,13 @@ surfaces and PTYs (same model as the Ghostty app).
   by `NSPasteboard`, resolved to the surface via the per-surface `userdata` (the
   view pointer); paste completes through
   `ghostty_surface_complete_clipboard_request` — see
-  [[ghostty-clipboard-callbacks]].
+  [[ghostty-clipboard-callbacks]]. Untrusted OSC 52 reads and writes go through
+  the `approveUntrusted` gates of `GhosttyClipboardRead` and
+  `GhosttyClipboardWrite`, which approve unconditionally — see
+  [[osc52-clipboard-write-policy]] and [[osc52-clipboard-read-policy]]. An
+  ordinary ⌘V confirms its paste request on sight: Ghostty's
+  `clipboard-paste-protection` prompt for a multi-line paste is not
+  implemented, a standing limitation (see `../status.md`).
 - **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
   in CasperUI (`MenuCommands.swift`), not an AppKit menu built here. Its Edit
   group's Copy/Paste/Select All reach the focused surface through the responder
@@ -88,6 +94,11 @@ surfaces and PTYs (same model as the Ghostty app).
   keybindings inside the surface and reported back to the model through
   `onFontSizeChange`, so no menu item drives it. See
   [[swiftui-mainmenu-miniaturize-resync]].
+- **No marked text (preedit)** — IME candidates and dead-key previews are not
+  drawn inline; committed text works. `GhosttySurfaceView`'s marked-text
+  `NSTextInputClient` methods are deliberate no-ops, where upstream feeds
+  `ghostty_surface_preedit` from `setMarkedText`. A standing limitation (see
+  `../status.md`).
 - **`macos-option-as-alt`** is wired via `ghostty_surface_key_translation_mods`;
   the observable effect is inert in the current pinned binary (revisit on pin
   bump) — see [[ghostty-option-as-alt]].
@@ -105,11 +116,11 @@ claims four of the seam's five actions. Three of them — `newSplit`, `newTab`,
 `newWindow`, has no layout meaning in a single-window app, so it is remapped
 onto the nearest honest equivalent and opens the New Space panel; it is the one
 case deferred to the next main-loop turn rather than run inline, because its
-modal `NSSavePanel` must not hold libghostty's tick open. **Tabs are gone**:
-`LayoutNode` is `split | leaf`, rendered by CasperUI's own `SplitContainerView`,
-and `newTab` maps to a right split. `close_surface_cb` is wired, so Ctrl-D or
-`exit` closes the pane via `GhosttySurfaceView.onClose`. See `app-ui.md`
-§ Design → "Layout composition".
+modal `NSSavePanel` must not hold libghostty's tick open. `LayoutNode` is
+`split | leaf`, rendered by CasperUI's own `SplitContainerView`, and `newTab`
+maps to a right split. `close_surface_cb` is wired, so Ctrl-D or `exit` closes
+the pane via `GhosttySurfaceView.onClose`. See `app-ui.md` § Design → "Layout
+composition".
 
 ## Standing caveat
 

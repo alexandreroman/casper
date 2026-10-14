@@ -108,13 +108,13 @@ final class ControlServer {
             reply(Self.ack(model.controlCloseTerminal(in: id, terminalID: command.target), workspace: id,
                            failure: "no terminal '\(command.target ?? "")' in this workspace")); return
         case .browserOpen:
-            guard let url = Self.parsedURL(command.url) else {
+            guard let url = ControlCommand.absoluteURL(command.url) else {
                 reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
             reply(Self.ack(model.controlOpenBrowser(url: url, in: id), workspace: id,
                            failure: "cannot open browser")); return
         case .browserLoad:
-            guard let url = Self.parsedURL(command.url) else {
+            guard let url = ControlCommand.absoluteURL(command.url) else {
                 reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
             reply(Self.ack(model.controlLoadBrowser(url: url, in: id), workspace: id,
@@ -123,10 +123,15 @@ final class ControlServer {
             reply(Self.ack(model.controlCloseBrowser(in: id), workspace: id,
                            failure: "cannot close browser")); return
         case .diffOpen:
-            switch model.controlOpenDiff(in: id, file: command.target) {
-            case .success: reply(.success(workspace: id.casperID)); return
-            case .failure(let error): reply(.failure(error.message)); return
+            // A file missing from disk is checked against a fresh diff, read off the
+            // main actor, so the reply waits for it.
+            Task { @MainActor in
+                switch await model.controlOpenDiff(in: id, file: command.target) {
+                case .success: reply(.success(workspace: id.casperID))
+                case .failure(let error): reply(.failure(error.message))
+                }
             }
+            return
         case .diffClose:
             reply(Self.ack(model.controlCloseDiff(in: id), workspace: id,
                            failure: "cannot close diff")); return
@@ -209,7 +214,7 @@ final class ControlServer {
             guard let (predicate, description) = Self.waitPredicate(for: command) else {
                 reply(.failure("wait needs a <selector> or --js <expr>")); return
             }
-            let timeout = command.waitTimeout ?? 5000
+            let timeout = command.waitTimeout ?? ControlCommand.defaultWaitTimeoutMs
             replyWhenReady(workspace: id, reply: reply) {
                 await model.browserAutomation.controlBrowserWait(
                     js: predicate, timeoutMs: timeout, description: description, in: id).map { _ in "" }
@@ -217,7 +222,7 @@ final class ControlServer {
             return
         case .browserReload:
             let waitReady = command.waitReady ?? false
-            let timeout = command.waitTimeout ?? 5000
+            let timeout = command.waitTimeout ?? ControlCommand.defaultWaitTimeoutMs
             replyWhenReady(workspace: id, reply: reply) {
                 await model.browserAutomation.controlBrowserReload(
                     waitReady: waitReady, timeoutMs: timeout, in: id).map { _ in "" }
@@ -246,18 +251,11 @@ final class ControlServer {
     private func replyWhenReady(
         workspace id: UUID,
         reply: @escaping @Sendable (ControlResponse) -> Void,
-        _ op: @escaping @MainActor () async -> Result<String, BrowserOpError>
+        _ op: @escaping @MainActor () async -> Result<String, OperationError>
     ) {
         Task { @MainActor in
             reply(Self.browserReply(await op(), workspace: id))
         }
-    }
-
-    /// The `--url` argument, accepted only as an absolute URL: a bare path or any
-    /// string without both a scheme and a host is rejected rather than loaded.
-    private static func parsedURL(_ raw: String?) -> URL? {
-        guard let raw, let url = URL(string: raw), url.scheme != nil, url.host != nil else { return nil }
-        return url
     }
 
     /// The acknowledgement a workspace-scoped command replies with: the workspace id
@@ -290,7 +288,7 @@ final class ControlServer {
     /// payload (eval result / HTML / screenshot path, empty for action verbs) in
     /// `text`; failure carries the error message.
     private static func browserReply(
-        _ result: Result<String, BrowserOpError>, workspace id: UUID
+        _ result: Result<String, OperationError>, workspace id: UUID
     ) -> ControlResponse {
         switch result {
         case .success(let text): return .success(text: text, workspace: id.casperID)

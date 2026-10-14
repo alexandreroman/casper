@@ -5,8 +5,9 @@ import CasperGhostty
 
 extension AppModel: DebugSurfaceProvider {
     /// Expose the selected workspace's live terminal to the debug harness. The
-    /// `GhosttySurfaceView` for the current detail pane is located via the key
-    /// window's content-view hierarchy (the SwiftUI representable hosts it).
+    /// `GhosttySurfaceView` for the current detail pane is located via the
+    /// content-view hierarchy of the key window, or of the first window when none
+    /// is key (the SwiftUI representable hosts it).
     func debugSurfaces() -> [DebugSurfaceHandle] {
         guard let window = NSApp.keyWindow ?? NSApp.windows.first,
               let view = Self.findSurfaceView(in: window.contentView),

@@ -1,4 +1,5 @@
 import Clibgit2
+import Foundation
 
 /// The result of `Repository.mergeBranchHeadless`.
 public enum MergeOutcome: Equatable, Sendable {
@@ -8,21 +9,150 @@ public enum MergeOutcome: Equatable, Sendable {
 
 /// Thrown when a headless merge can't be resolved automatically. Nothing is
 /// written to the repository when this is thrown.
-public struct MergeConflictError: Error, Equatable, Sendable {
-    public init() {}
-}
+public struct MergeConflictError: Error, Equatable, Sendable {}
 
-/// Thrown when the two branches share no common ancestor, so there is no base to
-/// merge against (`git merge` calls this "refusing to merge unrelated histories").
-/// Distinguishable from a missing branch, which surfaces as a `GitError`. Nothing
-/// is written to the repository when this is thrown.
-public struct MergeUnrelatedHistoriesError: Error, Equatable, Sendable {
-    public let sourceBranch: String
-    public let targetBranch: String
+/// Thrown when neither the environment (`GIT_AUTHOR_*`, `GIT_COMMITTER_*`) nor the
+/// user's Git configuration yields a commit identity: no name or email set, a blank
+/// one, an unparsable `GIT_*_DATE`, or a configuration libgit2 cannot read (an
+/// `includeIf` condition it does not support, say). `detail` is libgit2's own
+/// message, the only thing telling those apart. Casper never invents an identity: a
+/// name the user never chose would sit in their history forever. Nothing is written
+/// to the repository when this is thrown.
+public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
+    public let detail: String
+    /// The identity variables set in the process environment that the refusal is
+    /// blamed on, empty when only the configuration is to blame. `git config` cannot
+    /// repair what one of these breaks: a name or email variable shadows `user.name` /
+    /// `user.email` even when blank, and no setting stands in for a date.
+    public let environmentVariables: [String]
+    /// True when Git's configuration is to blame as well, so `git config` is part of the
+    /// fix whatever `environmentVariables` holds. Decided per side: a `user.name` or
+    /// `user.email` that libgit2 needed is set nowhere (for the email, with no `EMAIL`
+    /// either), or the side failed on something other than its date with neither of its
+    /// own name or email variables to blame, so the value libgit2 rejected came from the
+    /// configuration, or the configuration was unreadable.
+    public let configurationAtFault: Bool
 
-    public init(sourceBranch: String, targetBranch: String) {
-        self.sourceBranch = sourceBranch
-        self.targetBranch = targetBranch
+    /// Diagnose why `git_signature_default_from_env` fails for `repository` by resolving
+    /// the author and the committer again, each on its own. Self-contained: it clears
+    /// libgit2's error state itself before each probe.
+    ///
+    /// A name or email variable is to blame when `git_signature_new` rejects it on its
+    /// own: blank, or holding an angle bracket. A date variable is to blame when its own
+    /// side fails on the date, which libgit2 records no error for; libgit2 exposes no
+    /// parser to check a date with directly. See `failure(of:in:)` for the one stale
+    /// error that can still be recorded then.
+    init(diagnosing repository: OpaquePointer) {
+        var failures: [SideFailure] = []
+        for side in Side.allCases {
+            if let failure = Self.failure(of: side, in: repository) {
+                failures.append(failure)
+            }
+        }
+        // libgit2 resolves the author first, so its failure is the one libgit2 reports. No
+        // side failing means the identity changed since the refused call; say so plainly.
+        detail = failures.first?.detail ?? "the identity resolved when retried"
+
+        var blamed: [String] = []
+        for variable in ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"] {
+            if let name = Self.environmentValue(variable),
+               !Self.signatureAccepts(name: name, email: "placeholder@example.com") {
+                blamed.append(variable)
+            }
+        }
+        for variable in ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"] {
+            if let email = Self.environmentValue(variable),
+               !Self.signatureAccepts(name: "Placeholder", email: email) {
+                blamed.append(variable)
+            }
+        }
+        for failure in failures where failure.unparsableDate {
+            blamed.append(failure.side.dateVariable)
+        }
+        environmentVariables = blamed
+        configurationAtFault = failures.contains { Self.blamesTheConfiguration($0, blamedVariables: blamed) }
+    }
+
+    /// Whether `failure` is the configuration's fault: a setting is missing, or the side
+    /// failed on a name or email that none of its own variables supplied.
+    private static func blamesTheConfiguration(_ failure: SideFailure, blamedVariables: [String]) -> Bool {
+        if failure.settingMissing {
+            return true
+        }
+        if failure.unparsableDate {
+            return false
+        }
+        let ownVariableIsBlamed = failure.side.identityVariables.contains { blamedVariables.contains($0) }
+        return !ownVariableIsBlamed
+    }
+
+    /// One half of a commit's identity. libgit2 resolves each from its own variables.
+    private enum Side: CaseIterable {
+        case author
+        case committer
+
+        var identityVariables: [String] {
+            switch self {
+            case .author: ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL"]
+            case .committer: ["GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]
+            }
+        }
+
+        var dateVariable: String {
+            switch self {
+            case .author: "GIT_AUTHOR_DATE"
+            case .committer: "GIT_COMMITTER_DATE"
+            }
+        }
+    }
+
+    /// Why resolving one `Side` failed.
+    private struct SideFailure {
+        let side: Side
+        let detail: String
+        let unparsableDate: Bool
+        /// libgit2 returns GIT_ENOTFOUND only for a `user.name` or `user.email` set nowhere.
+        let settingMissing: Bool
+    }
+
+    /// Resolve `side` alone, as `git_signature_default_from_env` does; nil when it resolves.
+    private static func failure(of side: Side, in repository: OpaquePointer) -> SideFailure? {
+        var signature: UnsafeMutablePointer<git_signature>?
+        defer { git_signature_free(signature) }
+        git_error_clear()  // so that a failure recording no error can be told apart
+        let code = switch side {
+        case .author: git_signature_default_from_env(&signature, nil, repository)
+        case .committer: git_signature_default_from_env(nil, &signature, repository)
+        }
+        guard code != 0 else { return nil }
+
+        // An unparsable date fails with -1 and records no error. Not quite always, though:
+        // when `user.email` is missing, libgit2 takes `EMAIL` instead but leaves that miss
+        // recorded, so a date failing after it shows the miss. A genuine miss returns
+        // GIT_ENOTFOUND, never -1, which is what tells the two apart.
+        let lastError = git_error_last()?.pointee
+        let recordedNoError = lastError?.klass == Int32(GIT_ERROR_NONE.rawValue)
+        let recordedOnlyTheEmailFallback = code == GIT_ERROR.rawValue
+            && lastError?.klass == Int32(GIT_ERROR_CONFIG.rawValue)
+            && lastError?.message.map { String(cString: $0) } == "config value 'user.email' was not found"
+        let dateIsSet = environmentValue(side.dateVariable) != nil
+        if dateIsSet && (recordedNoError || recordedOnlyTheEmailFallback) {
+            return SideFailure(side: side, detail: "unparsable date", unparsableDate: true, settingMissing: false)
+        }
+        return SideFailure(
+            side: side, detail: lastErrorMessage(code: code), unparsableDate: false,
+            settingMissing: code == GIT_ENOTFOUND.rawValue)
+    }
+
+    /// `variable`'s value as libgit2 reads it (`getenv`), even when blank; nil when unset.
+    private static func environmentValue(_ variable: String) -> String? {
+        getenv(variable).map { String(cString: $0) }
+    }
+
+    private static func signatureAccepts(name: String, email: String) -> Bool {
+        var signature: UnsafeMutablePointer<git_signature>?
+        defer { git_signature_free(signature) }
+        return git_signature_new(&signature, name, email, 0, 0) == 0
     }
 }
 
@@ -33,6 +163,15 @@ extension Repository {
     /// runs `git_checkout` — safe to call even when `targetBranch` is checked
     /// out in another worktree, which simply becomes "behind" until it is
     /// re-checked-out there, exactly as if a teammate had pushed to it.
+    ///
+    /// The merge commit's author and committer are the user's own, as
+    /// `git_signature_default_from_env` derives them: `GIT_AUTHOR_*` and
+    /// `GIT_COMMITTER_*` first, then `user.name` / `user.email`.
+    ///
+    /// Throws `MergeConflictError` when the merge can't be resolved automatically,
+    /// and `MissingCommitterIdentityError` when there is a commit to write but
+    /// neither the environment nor the user's Git configuration yields a usable
+    /// identity to write it as. Nothing is written in either case.
     public func mergeBranchHeadless(
         _ branchName: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -47,13 +186,26 @@ extension Repository {
         let baseCode = git_merge_base(&baseOid, pointer, targetOid, sourceOid)
         if baseCode == GIT_ENOTFOUND.rawValue {
             // Two independent histories. Refusing is deliberate for v1: a headless
-            // merge must not silently stitch unrelated trees together, and a raw
-            // libgit2 GIT_ENOTFOUND here is indistinguishable from a missing branch.
-            throw MergeUnrelatedHistoriesError(sourceBranch: branchName, targetBranch: targetBranch)
+            // merge must not silently stitch unrelated trees together. The code alone
+            // is a missing branch's too, so the message, in `git merge`'s wording, is
+            // what tells the two apart. Nothing has been written.
+            throw GitError(
+                code: GIT_ENOTFOUND.rawValue,
+                message: "refusing to merge unrelated histories ('\(branchName)' into '\(targetBranch)')")
         }
         try gitCheck(baseCode)
         if git_oid_equal(&baseOid, sourceOid) != 0 {
             return .upToDate
+        }
+        // Before the merge writes its tree: a refusal leaves no object behind.
+        var author: UnsafeMutablePointer<git_signature>?
+        var committer: UnsafeMutablePointer<git_signature>?
+        defer {  // before the call: free on the throw path too
+            git_signature_free(author)
+            git_signature_free(committer)
+        }
+        guard git_signature_default_from_env(&author, &committer, pointer) == 0 else {
+            throw MissingCommitterIdentityError(diagnosing: pointer)
         }
 
         var mergeOptions = git_merge_options()
@@ -74,16 +226,13 @@ extension Repository {
         defer { git_tree_free(tree) }
         let mergeTree = try requireNonNull(tree, "merge tree")
 
-        let signature = try mergeSignature()
-        defer { git_signature_free(signature) }
-
         var newCommitOid = git_oid()
         let refName = "refs/heads/\(targetBranch)"
         var parents: [OpaquePointer?] = [targetCommit, sourceCommit]
         try gitCheck(parents.withUnsafeMutableBufferPointer { buf in
             git_commit_create(
                 &newCommitOid, pointer, refName,
-                signature, signature, "UTF-8", message,
+                author, committer, "UTF-8", message,
                 mergeTree, buf.count, buf.baseAddress)
         })
 
@@ -115,17 +264,5 @@ extension Repository {
         var commit: OpaquePointer?
         try gitCheck(git_reference_peel(&commit, ref, GIT_OBJECT_COMMIT))
         return try requireNonNull(commit, "commit")
-    }
-
-    /// A signature for the merge commit: the repo's configured user if set,
-    /// else a fixed fallback (a headless merge has no interactive user).
-    private func mergeSignature() throws -> UnsafeMutablePointer<git_signature> {
-        var signature: UnsafeMutablePointer<git_signature>?
-        if git_signature_default(&signature, pointer) == 0, let signature {
-            return signature
-        }
-        var fallback: UnsafeMutablePointer<git_signature>?
-        try gitCheck(git_signature_now(&fallback, "Casper", "casper@localhost"))
-        return try requireNonNull(fallback, "signature")
     }
 }

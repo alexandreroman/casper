@@ -1,27 +1,16 @@
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class Libgit2Tests: XCTestCase {
-    func testEnsureInitIsIdempotent() {
-        Libgit2.ensureInit()
-        Libgit2.ensureInit()  // must not crash or over-init
-
-        // After a double init, a real libgit2 call must still work.
-        var major: Int32 = 0
-        var minor: Int32 = 0
-        var rev: Int32 = 0
-        git_libgit2_version(&major, &minor, &rev)
-        XCTAssertGreaterThanOrEqual(major, 1)
-    }
-
     func testEnsureInitPutsAppleGitSystemConfigOnTheSearchPath() {
         Libgit2.ensureInit()
         let afterInit = Libgit2.systemConfigSearchPath()
 
         let searched = Set((afterInit ?? "").split(separator: ":").map(String.init))
-        // libgit2 always searches somewhere of its own (`/etc`, a package prefix), so an
-        // empty path would mean the augmentation clobbered it instead of extending it.
+        // libgit2 always searches somewhere of its own (`/etc`), so an empty path would
+        // mean the augmentation clobbered it instead of extending it.
         XCTAssertFalse(searched.isEmpty)
         // Machine-dependent by nature: a machine with neither Xcode nor the Command Line
         // Tools installed discovers nothing, and then there is nothing to have been added.
@@ -64,9 +53,7 @@ final class Libgit2Tests: XCTestCase {
             throw XCTSkip("Apple's gitconfig sets no init.defaultBranch on this machine")
         }
 
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-libgit2-\(UUID().uuidString)")
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let directory = makeTemporaryDirectory(prefix: "casper-libgit2")
         let repository = try Repository.initialize(atPath: directory.path)
 
         XCTAssertEqual(try repository.headBranchName(), expected)
@@ -93,6 +80,12 @@ final class Libgit2Tests: XCTestCase {
         // Order matters: what libgit2 already searched keeps its precedence.
         XCTAssertEqual(augmented, "/etc:/opt/homebrew/etc:/xcode")
         XCTAssertEqual(Libgit2.searchPath(augmented, adding: ["/etc", "/xcode"]), augmented)
+    }
+
+    func testSearchPathAugmentationAddsARepeatedDirectoryOnce() {
+        // `DEVELOPER_DIR` usually names the standard Xcode or Command Line Tools
+        // directory, which the candidate list then repeats.
+        XCTAssertEqual(Libgit2.searchPath("/etc", adding: ["/x", "/x"]), "/etc:/x")
     }
 
     func testSearchPathAugmentationLeavesAPathAloneWhenThereIsNothingToAdd() {

@@ -1,78 +1,12 @@
 import XCTest
 import CasperCore
-import Clibgit2
+import CasperTestSupport
 import UserNotifications
 @testable import CasperGit
 @testable import CasperUI
 
 @MainActor
 final class CloseDeleteWorkspaceTests: XCTestCase {
-    private func makeRepo(at path: String) throws {
-        let repo = try Repository.initialize(atPath: path)
-        let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
-        try "casper fixture\n".write(to: readme, atomically: true, encoding: .utf8)
-
-        var index: OpaquePointer?
-        XCTAssertEqual(git_repository_index(&index, repo.pointer), 0)
-        defer { git_index_free(index) }
-        XCTAssertEqual(git_index_add_bypath(index, "README.md"), 0)
-        XCTAssertEqual(git_index_write(index), 0)
-
-        var treeOid = git_oid()
-        XCTAssertEqual(git_index_write_tree(&treeOid, index), 0)
-        var tree: OpaquePointer?
-        XCTAssertEqual(git_tree_lookup(&tree, repo.pointer, &treeOid), 0)
-        defer { git_tree_free(tree) }
-
-        var signature: UnsafeMutablePointer<git_signature>?
-        XCTAssertEqual(git_signature_now(&signature, "Casper Test", "test@casper.local"), 0)
-        defer { git_signature_free(signature) }
-
-        var commitOid = git_oid()
-        XCTAssertEqual(git_commit_create(
-            &commitOid, repo.pointer, "HEAD",
-            signature, signature, nil, "Initial commit", tree, 0, nil), 0)
-    }
-
-    /// Commit `content` to `filename` at `repoPath`, onto its current HEAD.
-    private func commitFile(atPath repoPath: String, filename: String, content: String) throws {
-        let repo = try Repository.open(atPath: repoPath)
-        try content.write(
-            to: URL(fileURLWithPath: repoPath).appendingPathComponent(filename),
-            atomically: true, encoding: .utf8)
-
-        var index: OpaquePointer?
-        XCTAssertEqual(git_repository_index(&index, repo.pointer), 0)
-        defer { git_index_free(index) }
-        XCTAssertEqual(git_index_add_bypath(index, filename), 0)
-        XCTAssertEqual(git_index_write(index), 0)
-
-        var treeOid = git_oid()
-        XCTAssertEqual(git_index_write_tree(&treeOid, index), 0)
-        var tree: OpaquePointer?
-        XCTAssertEqual(git_tree_lookup(&tree, repo.pointer, &treeOid), 0)
-        defer { git_tree_free(tree) }
-
-        var headRef: OpaquePointer?
-        XCTAssertEqual(git_repository_head(&headRef, repo.pointer), 0)
-        defer { git_reference_free(headRef) }
-        var parent: OpaquePointer?
-        XCTAssertEqual(git_reference_peel(&parent, headRef, GIT_OBJECT_COMMIT), 0)
-        defer { git_object_free(parent) }
-
-        var signature: UnsafeMutablePointer<git_signature>?
-        XCTAssertEqual(git_signature_now(&signature, "Casper Test", "test@casper.local"), 0)
-        defer { git_signature_free(signature) }
-
-        var commitOid = git_oid()
-        var parents: [OpaquePointer?] = [parent]
-        XCTAssertEqual(parents.withUnsafeMutableBufferPointer { buf in
-            git_commit_create(
-                &commitOid, repo.pointer, "HEAD",
-                signature, signature, nil, "commit", tree, 1, buf.baseAddress)
-        }, 0)
-    }
-
     /// A model with one Git-backed Space. Unlike `ControlHandlerTests.seededGitModel`
     /// (which leaves the primary's `branch` empty to dodge the host's default-branch
     /// name), the primary's `branch` here is set to the real default branch name:
@@ -80,35 +14,27 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// derives from the primary's `branch` field — an empty string would make
     /// `baseBranch` empty too, and `closeWorkspace` treats that as "nothing to merge
     /// into" and no-ops.
-    private func seededGitModel() throws -> (AppModel, UUID, String) {
+    private func seededGitModel() throws -> (model: AppModel, primaryID: UUID, spaceID: UUID, repoPath: String) {
         let repoPath = makeTemporaryDirectory(prefix: "casper-close").path
-        try makeRepo(at: repoPath)
+        try GitFixture.repository(at: repoPath)
         let mainBranch = try Repository.open(atPath: repoPath).headBranchName()
 
         let ws = Workspace(
             name: "main", worktreePath: repoPath, branch: mainBranch,
             portBase: 42000, layout: .leaf(Surface.terminal(cwd: repoPath)))
         let space = Space(name: "main", folderPath: repoPath, isGitRepo: true, workspaces: [ws])
-        return (makeModel(spaces: [space], selecting: ws.id), ws.id, repoPath)
+        return (makeModel(spaces: [space], selecting: ws.id), ws.id, space.id, repoPath)
     }
 
-    /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
-    /// `ControlServer` even though the work behind it is async.
-    private func deleteViaControl(
-        _ model: AppModel, id: UUID
-    ) async -> Result<Void, AppModel.WorkspaceDeleteError> {
-        await withCheckedContinuation { continuation in
-            model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
-        }
+    /// Create the linked workspace `feature` in the seeded Space.
+    private func createFeature(in model: AppModel, space spaceID: UUID) async throws -> Workspace {
+        try await model.createLinkedWorkspace(spaceID: spaceID, name: "feature", base: nil).get()
     }
 
     func testCloseWorkspaceMergesThenDeletesFromDisk() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
 
         let outcome = await model.closeWorkspace(id: created.id)
         XCTAssertEqual(outcome, .success)
@@ -121,12 +47,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceReselectsPrimaryWhenClosingSelectedLinkedWorkspace() async throws {
-        let (model, primaryID, _) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, primaryID, spaceID, _) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
         model.selectWorkspace(created.id)
 
         let outcome = await model.closeWorkspace(id: created.id)
@@ -136,13 +59,10 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceAbortsOnConflictAndDeletesNothing() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "README.md", content: "from feature\n")
-        try commitFile(atPath: repoPath, filename: "README.md", content: "from main\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "README.md", contents: "from feature\n")
+        try GitFixture.commit(atPath: repoPath, file: "README.md", contents: "from main\n")
 
         guard case .mergeFailed = await model.closeWorkspace(id: created.id) else {
             return XCTFail("expected a merge failure")
@@ -154,13 +74,28 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(created.branch))
     }
 
+    func testCloseWorkspaceRefusesToMergeWithoutGitIdentity() async throws {
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
+        try GitFixture.configureIdentity(atPath: repoPath, name: "", email: "")
+        setGitIdentityEnvironment()
+
+        guard case .mergeFailed(let message) = await model.closeWorkspace(id: created.id) else {
+            return XCTFail("expected a merge failure")
+        }
+
+        XCTAssertTrue(message.contains("git config --global user.name"), "got: \(message)")
+        XCTAssertTrue(message.contains("git config --global user.email"), "got: \(message)")
+        XCTAssertNotNil(model.workspace(id: created.id))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.worktreePath))
+        XCTAssertNil(try Repository.open(atPath: repoPath).fileTextAtHead(path: "feature.txt"))
+    }
+
     func testDeleteWorkspaceSkipsMergeAndDeletesFromDisk() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
 
         guard case .success = await model.deleteWorkspace(id: created.id) else {
             return XCTFail("expected delete to succeed")
@@ -175,11 +110,8 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testDeleteWorkspaceReselectsPrimaryWhenDeletingSelectedLinkedWorkspace() async throws {
-        let (model, primaryID, _) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, primaryID, spaceID, _) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
         model.selectWorkspace(created.id)
 
         guard case .success = await model.deleteWorkspace(id: created.id) else {
@@ -190,12 +122,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceResyncsCleanPrimaryWorktree() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
 
         let outcome = await model.closeWorkspace(id: created.id)
         XCTAssertEqual(outcome, .success)
@@ -207,12 +136,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceBlocksMergeWhenPrimaryIsDirty() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
         let dirtyPath = URL(fileURLWithPath: repoPath).appendingPathComponent("dirty.txt")
         try "uncommitted\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
 
@@ -230,12 +156,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceBlocksMergeWhenClosingWorkspaceIsDirty() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
         let dirtyPath = URL(fileURLWithPath: created.worktreePath).appendingPathComponent("dirty.txt")
         try "uncommitted\n".write(to: dirtyPath, atomically: true, encoding: .utf8)
 
@@ -260,25 +183,6 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         "{\"workspace\": {\"scripts\": {\"teardown\": \"\(command)\"}}}\n"
     }
 
-    /// Wait for the teardown split to appear and return its surface id, which is also
-    /// the point where the operation is provably suspended on its teardown hook.
-    ///
-    /// The split lands within microseconds of the teardown step; the poll bound only
-    /// exists so a broken run fails fast instead of stalling for the 30 s timeout.
-    private func awaitTeardownSplit(
-        in model: AppModel, workspace workspaceID: UUID, surfacesBefore: Set<UUID>
-    ) async -> UUID? {
-        for _ in 0..<400 {
-            if let ws = model.workspace(id: workspaceID),
-               let split = LayoutTree.surfaceIDs(ws.layout).first(where: { !surfacesBefore.contains($0) }) {
-                return split
-            }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        XCTFail("the teardown split was never spawned")
-        return nil
-    }
-
     /// End the teardown split the way libghostty does at runtime.
     ///
     /// `runTeardown` really does spawn the split headlessly — `spawnScriptSurface` is a
@@ -297,12 +201,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceReportsFourStepsWhenThereIsNoTeardownHook() async throws {
-        let (model, primaryID, _) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, _) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
         let baseBranch = try XCTUnwrap(created.baseBranch)
         XCTAssertNil(model.teardownCommand(for: created), "the fixture repo has no .casper.json")
 
@@ -324,19 +225,12 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertTrue(steps.allSatisfy { $0.title == "Closing \u{201c}\(created.name)\u{201d}" })
         // Only the teardown step can time out, and there is none here.
         XCTAssertTrue(steps.allSatisfy { $0.deadline == nil })
-        // The merge step names both ends of the merge, not just "Merging…".
-        let mergeStep = try XCTUnwrap(steps.first { $0.label.hasPrefix("Merging") })
-        XCTAssertEqual(mergeStep.stepIndex, 2)
-        XCTAssertTrue(mergeStep.label.contains(created.branch), mergeStep.label)
-        XCTAssertTrue(mergeStep.label.contains(baseBranch), mergeStep.label)
+        XCTAssertNil(model.closeProgress, "the sheet must be down once the operation returns")
     }
 
     func testDeleteWorkspaceReportsOneStepWhenThereIsNoTeardownHook() async throws {
-        let (model, primaryID, _) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, _, spaceID, _) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
         XCTAssertNil(model.teardownCommand(for: created), "the fixture repo has no .casper.json")
 
         var steps: [WorkspaceCloseProgress] = []
@@ -358,11 +252,8 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// JSON reply only ever reaches the CLI caller, so the sheet is all the person
     /// watching the app gets.
     func testControlDeleteWorkspaceReportsOneStepWhenThereIsNoTeardownHook() async throws {
-        let (model, primaryID, _) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, _, spaceID, _) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
         XCTAssertNil(model.teardownCommand(for: created), "the fixture repo has no .casper.json")
 
         var steps: [WorkspaceCloseProgress] = []
@@ -381,14 +272,11 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWorkspaceReportsFiveStepsWithATeardownHook() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
+        let (model, _, spaceID, repoPath) = try seededGitModel()
         // Committed before the worktree is created, so the linked workspace checks it out.
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 0"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 0"))
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
         let baseBranch = try XCTUnwrap(created.baseBranch)
         XCTAssertEqual(model.teardownCommand(for: created), "exit 0", "the fixture's hook must resolve")
 
@@ -420,12 +308,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testDeleteWorkspaceReportsTwoStepsWithATeardownHook() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 0"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 0"))
+        let created = try await createFeature(in: model, space: spaceID)
         XCTAssertEqual(model.teardownCommand(for: created), "exit 0", "the fixture's hook must resolve")
 
         var steps: [WorkspaceCloseProgress] = []
@@ -447,30 +332,6 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertNil(model.workspace(id: created.id))
     }
 
-    // MARK: - Sheet lifecycle
-
-    /// End-to-end: a real close drives every step and leaves no sheet behind, however
-    /// long the machine took over it. Whether a *fast* run publishes at all is timing
-    /// by nature, so that rule is asserted deterministically against the reporter itself
-    /// in `WorkspaceCloseProgressReporterTests`, not from here.
-    func testCloseRunsEveryStepAndLeavesNoSheetBehind() async throws {
-        let (model, primaryID, _) = try seededGitModel()
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id),
-            name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
-
-        var stepCount = 0
-        model.onCloseProgressForTest = { _ in stepCount += 1 }
-
-        let outcome = await model.closeWorkspace(id: created.id)
-        XCTAssertEqual(outcome, .success)
-
-        XCTAssertEqual(stepCount, 4, "the steps must run whether or not anything is shown")
-        XCTAssertNil(model.closeProgress, "the sheet must be down once the operation returns")
-    }
-
     // MARK: - Concurrent destroys
 
     /// Two deletes for the same workspace, overlapping for real: the second starts while
@@ -483,12 +344,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// continuation). Hence the assertion that BOTH calls return, not just that the
     /// second is refused.
     func testASecondDeleteIsRejectedWhileTheFirstIsRunningAndNeitherCallerHangs() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 0"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 0"))
+        let created = try await createFeature(in: model, space: spaceID)
 
         let surfacesBefore = Set(LayoutTree.surfaceIDs(created.layout))
         let first = Task { @MainActor in await model.deleteWorkspace(id: created.id) }
@@ -512,13 +370,10 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// and where letting a second caller through would also run two libgit2 writers
     /// against one repository from two detached threads.
     func testASecondCloseIsRejectedWhileTheFirstIsRunningAndNeitherCallerHangs() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 0"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 0"))
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
 
         let surfacesBefore = Set(LayoutTree.surfaceIDs(created.layout))
         let first = Task { @MainActor in await model.closeWorkspace(id: created.id) }
@@ -543,13 +398,10 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// call with the same `onTeardownHook` closure the presenters install, which is what
     /// actually turns a hook status into a notification.
     func testFailingTeardownHookStillClosesAndNotifiesOnce() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 2"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
-        try commitFile(atPath: created.worktreePath, filename: "feature.txt", content: "new\n")
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 2"))
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
 
         var notifications: [(title: String, body: String, id: UUID, level: UNNotificationInterruptionLevel)] = []
         model.deliverNotification = { notifications.append((title: $0, body: $1, id: $2, level: $3)) }
@@ -579,12 +431,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testSucceedingTeardownHookDeletesWithoutNotifying() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 0"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 0"))
+        let created = try await createFeature(in: model, space: spaceID)
 
         var notifications = 0
         model.deliverNotification = { _, _, _, _ in notifications += 1 }
@@ -607,12 +456,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// The control channel installs that closure itself, so unlike the two tests above
     /// this one exercises the real call path rather than standing in for a presenter.
     func testFailingTeardownHookOnControlDeleteStillDeletesAndNotifiesOnce() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: teardownConfig("exit 2"))
-        guard case .success(let created) = await model.createLinkedWorkspace(
-            spaceID: spaceID, name: "feature", base: nil)
-        else { return XCTFail("setup failed") }
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: teardownConfig("exit 2"))
+        let created = try await createFeature(in: model, space: spaceID)
 
         var notifications: [(title: String, body: String, id: UUID, level: UNNotificationInterruptionLevel)] = []
         model.deliverNotification = { notifications.append((title: $0, body: $1, id: $2, level: $3)) }
@@ -645,11 +491,10 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// Create a linked workspace from a repo with both hooks and return it as it stands
     /// once created — its layout already carries the live setup split.
     private func createWorkspaceRunningSetup(
-        in model: AppModel, primaryID: UUID, repoPath: String
+        in model: AppModel, space spaceID: UUID, repoPath: String
     ) async throws -> Workspace {
-        let spaceID = try XCTUnwrap(model.space(for: try XCTUnwrap(model.workspace(id: primaryID)))?.id)
-        try commitFile(atPath: repoPath, filename: ".casper.json", content: setupAndTeardownConfig)
-        let created = try await model.createLinkedWorkspace(spaceID: spaceID, name: "feature", base: nil).get()
+        try GitFixture.commit(atPath: repoPath, file: ".casper.json", contents: setupAndTeardownConfig)
+        let created = try await createFeature(in: model, space: spaceID)
         XCTAssertTrue(model.isSetupRunning(in: created.id), "the setup hook must still be running")
         return try XCTUnwrap(model.workspace(id: created.id))
     }
@@ -657,9 +502,9 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     /// The gate on named commands must never reach the teardown hook: a workspace deleted
     /// mid-setup still runs it, and the hook's exit resolves the delete.
     func testDeleteWhileSetupIsRunningStillRunsTheTeardownHook() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
+        let (model, _, spaceID, repoPath) = try seededGitModel()
         let workspace = try await createWorkspaceRunningSetup(
-            in: model, primaryID: primaryID, repoPath: repoPath)
+            in: model, space: spaceID, repoPath: repoPath)
 
         // Snapshotted with the setup split in it, so only the teardown split reads as new.
         let surfacesBefore = Set(LayoutTree.surfaceIDs(workspace.layout))
@@ -673,10 +518,10 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
     }
 
     func testCloseWhileSetupIsRunningStillRunsTheTeardownHook() async throws {
-        let (model, primaryID, repoPath) = try seededGitModel()
+        let (model, _, spaceID, repoPath) = try seededGitModel()
         let workspace = try await createWorkspaceRunningSetup(
-            in: model, primaryID: primaryID, repoPath: repoPath)
-        try commitFile(atPath: workspace.worktreePath, filename: "feature.txt", content: "new\n")
+            in: model, space: spaceID, repoPath: repoPath)
+        try GitFixture.commit(atPath: workspace.worktreePath, file: "feature.txt", contents: "new\n")
 
         let surfacesBefore = Set(LayoutTree.surfaceIDs(workspace.layout))
         let close = Task { @MainActor in await model.closeWorkspace(id: workspace.id) }

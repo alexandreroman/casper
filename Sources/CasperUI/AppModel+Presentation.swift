@@ -62,9 +62,25 @@ extension AppModel {
     func presentAddLinkedWorkspacePanel(spaceID: UUID) {
         guard let name = WorkspaceAlerts.askWorkspaceName() else { return }
         Task { @MainActor in
-            let created = await self.addLinkedWorkspace(spaceID: spaceID, name: name)
-            if !created { WorkspaceAlerts.reportCreationFailure(name: name) }
+            await self.createLinkedWorkspaceReportingFailure(spaceID: spaceID, name: name)
         }
+    }
+
+    /// The creation half of `presentAddLinkedWorkspacePanel`, past its modal prompt:
+    /// create the workspace and, when that fails, tell the user why — the very reason
+    /// `createLinkedWorkspace` gives the control channel, such as a repository with no
+    /// commit yet.
+    func createLinkedWorkspaceReportingFailure(spaceID: UUID, name: String) async {
+        if case .failure(let error) = await createLinkedWorkspace(spaceID: spaceID, name: name, base: nil) {
+            Self.reportWorkspaceCreationFailure(error.message)
+        }
+    }
+
+    /// Shows why a workspace could not be created. Production runs an alert; tests
+    /// substitute a closure, for the reason `chooseNewSpaceLocation` is a seam: an
+    /// alert cannot run under XCTest, and what matters is the message it is given.
+    static var reportWorkspaceCreationFailure: @MainActor (_ message: String) -> Void = { message in
+        WorkspaceAlerts.reportFailure(title: "Could not create workspace", message: message)
     }
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
@@ -303,41 +319,36 @@ private enum WorkspaceAlerts {
         }
     }
 
-    static func reportCreationFailure(name: String) {
-        let alert = NSAlert()
-        alert.messageText = "Could not create workspace"
-        alert.informativeText =
-            "\u{201c}\(name)\u{201d} could not be created. A branch or worktree with that name "
-            + "may already exist, or the name is not a valid branch name."
-        alert.runModal()
-    }
-
     /// True when the user confirms the merge-and-close.
     static func confirmMergeAndClose(name: String, branch: String, baseBranch: String) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Merge and Close \u{201c}\(name)\u{201d}?"
-        alert.informativeText = "This merges branch \u{201c}\(branch)\u{201d} into "
-            + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
-            + "This can\u{2019}t be undone."
-        let mergeButton = alert.addButton(withTitle: "Merge and Close")
-        alert.addButton(withTitle: "Cancel")
-        mergeButton.hasDestructiveAction = true
-        mergeButton.keyEquivalent = ""
-        return alert.runModal() == .alertFirstButtonReturn
+        confirmDestructive(
+            message: "Merge and Close \u{201c}\(name)\u{201d}?",
+            informative: "This merges branch \u{201c}\(branch)\u{201d} into "
+                + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
+                + "This can\u{2019}t be undone.",
+            button: "Merge and Close")
     }
 
     /// True when the user confirms the delete.
     static func confirmDelete(name: String, branch: String, dirty: Bool) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Delete \u{201c}\(name)\u{201d}?"
         var text = "This deletes the worktree, its folder on disk, and branch "
             + "\u{201c}\(branch)\u{201d} without merging. This can\u{2019}t be undone."
         if dirty { text += " This workspace has uncommitted changes that will be lost." }
-        alert.informativeText = text
-        let deleteButton = alert.addButton(withTitle: "Delete")
+        return confirmDestructive(
+            message: "Delete \u{201c}\(name)\u{201d}?", informative: text, button: "Delete")
+    }
+
+    /// A destructive confirmation: true when the user picks `button` over Cancel.
+    /// `button` is marked destructive and loses its Return binding, so Cancel stays
+    /// the safe default (see `presentCloseWorkspaceConfirmation`).
+    private static func confirmDestructive(message: String, informative: String, button: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = informative
+        let destructiveButton = alert.addButton(withTitle: button)
         alert.addButton(withTitle: "Cancel")
-        deleteButton.hasDestructiveAction = true
-        deleteButton.keyEquivalent = ""
+        destructiveButton.hasDestructiveAction = true
+        destructiveButton.keyEquivalent = ""
         return alert.runModal() == .alertFirstButtonReturn
     }
 

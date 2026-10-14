@@ -4,6 +4,13 @@ import XCTest
 @testable import CasperCore
 
 final class DebugProtocolTests: XCTestCase {
+    /// An 80×24 grid on a 2× display.
+    private let retinaGeometry = DebugState.Geometry(
+        columns: 80, rows: 24,
+        widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
+        boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
+        contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2)
+
     /// `DebugCommand` is a flat struct with a fully synthesized `Codable`, so a
     /// single round trip over a fixture that populates *every* field covers all
     /// verbs. `Equatable` compares every field, so the one assertion pins them all
@@ -19,17 +26,15 @@ final class DebugProtocolTests: XCTestCase {
     func testResponseWithStateRoundTrip() throws {
         let state = DebugState(surfaces: [
             .init(
-                id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,
-                widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
-                boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
-                contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2),
+                id: "0", title: "casper", workingDirectory: "/tmp", focused: true,
+                geometry: retinaGeometry),
         ])
         let response = DebugResponse.success(state: state)
         let data = try JSONEncoder().encode(response)
         let decoded = try JSONDecoder().decode(DebugResponse.self, from: data)
         XCTAssertEqual(decoded, response)
         XCTAssertTrue(decoded.ok)
-        XCTAssertEqual(decoded.state?.surfaces.first?.columns, 80)
+        XCTAssertEqual(decoded.state?.surfaces.first?.geometry.columns, 80)
     }
 
     func testResponseWithMemoryRoundTrip() throws {
@@ -47,10 +52,7 @@ final class DebugProtocolTests: XCTestCase {
 
     func testSurfaceRoundTripCarriesAgentDetectionFields() throws {
         let surface = DebugState.Surface(
-            id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,
-            widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
-            boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
-            contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2,
+            id: "0", title: "casper", workingDirectory: "/tmp", focused: true, geometry: retinaGeometry,
             agentState: "working", oscTitle: "\u{2807} casper", progressReport: "indeterminate")
         let data = try JSONEncoder().encode(surface)
         let decoded = try JSONDecoder().decode(DebugState.Surface.self, from: data)
@@ -64,16 +66,48 @@ final class DebugProtocolTests: XCTestCase {
     /// encoded before they existed — still decodes.
     func testSurfaceRoundTripWithoutAgentDetectionFields() throws {
         let surface = DebugState.Surface(
-            id: "0", title: "casper", workingDirectory: "/tmp", columns: 80, rows: 24, focused: true,
-            widthPixels: 1600, heightPixels: 960, cellWidthPixels: 20, cellHeightPixels: 40,
-            boundsWidth: 800, boundsHeight: 480, backingWidth: 1600, backingHeight: 960,
-            contentScaleX: 2, contentScaleY: 2, backingScaleFactor: 2)
+            id: "0", title: "casper", workingDirectory: "/tmp", focused: true, geometry: retinaGeometry)
         let data = try JSONEncoder().encode(surface)
         let decoded = try JSONDecoder().decode(DebugState.Surface.self, from: data)
         XCTAssertEqual(decoded, surface)
         XCTAssertNil(decoded.agentState)
         XCTAssertNil(decoded.oscTitle)
         XCTAssertNil(decoded.progressReport)
+    }
+
+    /// `dump-state` prints a surface as flat JSON, and the `debug-casper` skill reads
+    /// those keys (`cellWidthPixels` and the like) by name: the key set is a contract.
+    func testSurfaceEncodesTheFlatDumpStateKeys() throws {
+        let surface = DebugState.Surface(
+            id: "0", title: "casper", workingDirectory: "/tmp", focused: true, geometry: retinaGeometry,
+            agentState: "working", oscTitle: "casper", progressReport: "indeterminate")
+        XCTAssertEqual(try encodedKeys(of: surface), [
+            "agentState", "backingHeight", "backingScaleFactor", "backingWidth", "boundsHeight",
+            "boundsWidth", "cellHeightPixels", "cellWidthPixels", "columns", "contentScaleX",
+            "contentScaleY", "focused", "heightPixels", "id", "oscTitle", "progressReport", "rows",
+            "title", "widthPixels", "workingDirectory",
+        ])
+    }
+
+    /// The optional fields are omitted when nil, not encoded as `null`.
+    func testSurfaceOmitsNilOptionalKeys() throws {
+        let surface = DebugState.Surface(
+            id: "0", title: "casper", workingDirectory: nil, focused: false, geometry: retinaGeometry)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = String(decoding: try encoder.encode(surface), as: UTF8.self)
+        XCTAssertEqual(
+            json,
+            #"{"backingHeight":960,"backingScaleFactor":2,"backingWidth":1600,"boundsHeight":480,"#
+                + #""boundsWidth":800,"cellHeightPixels":40,"cellWidthPixels":20,"columns":80,"#
+                + #""contentScaleX":2,"contentScaleY":2,"focused":false,"heightPixels":960,"id":"0","#
+                + #""rows":24,"title":"casper","widthPixels":1600}"#)
+    }
+
+    private func encodedKeys(of surface: DebugState.Surface) throws -> [String] {
+        let data = try JSONEncoder().encode(surface)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return object.keys.sorted()
     }
 
     func testFailureHelper() {

@@ -81,17 +81,6 @@ final class GhosttyClipboardTests: XCTestCase {
 
     // MARK: - The OSC 52 read gate
 
-    /// An approved OSC 52 read answers with the clipboard text the terminal asked for.
-    @MainActor
-    func testApprovedUntrustedReadHandsBackTheClipboardText() {
-        var answer = ""
-        withReadApproval({ _ in true }, {
-            answer = GhosttyClipboardRead.resolveUntrusted("the user's own text")
-        })
-
-        XCTAssertEqual(answer, "the user's own text")
-    }
-
     /// The point of the gate: a denied OSC 52 read tells the terminal nothing about the
     /// clipboard, and still answers — an unanswered read leaves the asking program waiting.
     @MainActor

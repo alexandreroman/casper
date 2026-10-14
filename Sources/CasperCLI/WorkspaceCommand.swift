@@ -9,6 +9,10 @@ struct WorkspaceCommand: ParsableCommand {
         abstract: "List, identify, create, and delete workspaces.",
         subcommands: [List.self, Current.self, New.self, Delete.self])
 
+    /// The client timeout for the verbs the app answers only after slow work:
+    /// `new` and `delete`, and `diff open`, well beyond the default 5 s.
+    static let slowVerbTimeout: TimeInterval = 35
+
     struct List: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "List all workspaces.")
 
@@ -26,13 +30,13 @@ struct WorkspaceCommand: ParsableCommand {
 
     struct Current: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Print the current workspace id ($CASPER_WORKSPACE_ID).")
+            abstract: "Print the current workspace ($CASPER_WORKSPACE_ID): id, name, branch and path.")
 
         /// The workspace this terminal belongs to. A blank or whitespace-only value
         /// counts as absent — matching `WorkspaceTargetOption.resolvedSelector` — so
         /// `run()` reports the error instead of succeeding with an empty id.
         func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
-            nonBlank(environment["CASPER_WORKSPACE_ID"])
+            nonBlank(environment[CasperEnvironment.workspaceID])
         }
 
         func makeCommand() -> ControlCommand { ControlCommand(verb: .workspaceList) }
@@ -45,7 +49,7 @@ struct WorkspaceCommand: ParsableCommand {
             // the app running, so the standard "Casper is not running" error is fine
             // if the socket is unset/unreachable.
             let response = try sendControl(makeCommand(), retriable: true)
-            let match = response.workspaces?.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
+            let match = response.workspaces?.first { $0.id.matchesCasperID(id) }
             emit(CurrentOut(
                 workspace: match?.id ?? id, name: match?.name,
                 branch: nonEmpty(match?.branch), path: match?.path))
@@ -55,17 +59,23 @@ struct WorkspaceCommand: ParsableCommand {
     struct New: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Create a new Git worktree workspace.")
-        @Argument(help: "New branch name for the worktree.") var branch: String
+        @Argument(help: "New branch name (sanitized into a valid Git ref; the reply echoes it).")
+        var branch: String
         @Option(name: .long, help: "Base ref to fork from (defaults to the space's base branch).")
         var base: String?
-        @Option(name: .long, help: "Command to run in the workspace's initial terminal.") var command: String?
+        @Option(name: .long, parsing: .unconditional, help: "Command to run in the workspace's initial terminal.")
+        var command: String?
         @OptionGroup var target: WorkspaceTargetOption
+
+        func validate() throws {
+            try requestHelpIfHelpFlag(command, of: self)
+        }
 
         func makeCommand() throws -> ControlCommand {
             let branch = try requireNonEmpty(self.branch, "branch name")
             let selector = try requireSelector(target)
             return ControlCommand(
-                verb: .workspaceNew, workspace: selector, branch: branch, base: base,
+                verb: .workspaceNew, workspace: selector, branch: branch, base: nonEmpty(base),
                 command: nonEmpty(command))
         }
 
@@ -75,7 +85,7 @@ struct WorkspaceCommand: ParsableCommand {
             // can exceed the default 5s on a large repo or broad copyFiles.
             // Allow well beyond it — mirroring `workspace delete` — so a slow but
             // successful creation is not misreported as a client-side timeout.
-            let response = try sendControl(makeCommand(), retriable: false, timeout: 35)
+            let response = try sendControl(makeCommand(), retriable: false, timeout: WorkspaceCommand.slowVerbTimeout)
             let info = try requireFirst(response.workspaces, "workspace")
             emit(WorkspaceNewOut(
                 workspace: info.id, name: info.name,
@@ -92,7 +102,7 @@ struct WorkspaceCommand: ParsableCommand {
         // ScriptHookRunner.teardownTimeout) before replying, so allow well beyond the
         // default 5s or a slow teardown would be misreported as a client-side
         // timeout even though the deletion succeeds.
-        var commandTimeout: TimeInterval { 35 }
+        var commandTimeout: TimeInterval { WorkspaceCommand.slowVerbTimeout }
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .workspaceDelete, workspace: try requireSelector(target))
         }

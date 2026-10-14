@@ -44,29 +44,6 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// is noticed promptly.
     private static let tickInterval: TimeInterval = 0.5
 
-    /// The two nested-loop modes AppKit spins on its own: modal sessions
-    /// (`NSModalPanelRunLoopMode`) and menu / drag tracking
-    /// (`NSEventTrackingRunLoopMode`). Spelled as literals because
-    /// `RunLoop.Mode.modalPanel` / `.eventTracking` are declared by AppKit, and
-    /// CasperCore deliberately does not link AppKit. The raw values are part of
-    /// AppKit's public API and have been stable since NeXTSTEP.
-    static let modalPanelRunLoopMode = "NSModalPanelRunLoopMode"
-    private static let eventTrackingRunLoopMode = "NSEventTrackingRunLoopMode"
-
-    /// Run loop modes the acknowledgement block is enqueued for: the common modes
-    /// (normal event processing) plus the two nested-loop modes above. See
-    /// `scheduleAck`.
-    ///
-    /// Built once and shared: `scheduleAck` runs twice a second for the whole
-    /// process lifetime. `nonisolated(unsafe)` because `CFArray` is not `Sendable`
-    /// even though this one is immutable and never handed out.
-    nonisolated(unsafe) private static let ackRunLoopModes: CFArray =
-        [
-            CFRunLoopMode.commonModes.rawValue,
-            modalPanelRunLoopMode as CFString,
-            eventTrackingRunLoopMode as CFString,
-        ] as CFArray
-
     /// Detection state and the injectable seams, guarded by `lock`. The detection
     /// fields are touched from both the timer queue and the (possibly recovered)
     /// main-thread ack block; the seams are written from a test's thread and read
@@ -84,8 +61,8 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         var captureInFlight = false
         var nowProvider = MainThreadHangWatchdog.defaultNowProvider
         var scheduleAck = MainThreadHangWatchdog.defaultScheduleAck
-        var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)?
-        var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)?
+        var captureDispatch: @Sendable (@escaping @Sendable () -> Void) -> Void
+        var capture: @Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void
     }
 
     private let lock: OSAllocatedUnfairLock<State>
@@ -93,14 +70,8 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Dedicated serial queue that owns the timer. Never blocked by the main
     /// thread, so ticks keep firing throughout a hang.
     private let queue = DispatchQueue(label: "com.github.alexandreroman.casper.hang-watchdog")
-    /// Separate queue for the (multi-second) `sample` subprocess so a capture never
-    /// stalls the detection timer.
-    private let captureQueue = DispatchQueue(
-        label: "com.github.alexandreroman.casper.hang-watchdog.capture", qos: .utility)
     /// The active timer, created lazily by `start()`. Confined to `queue`.
     private var timer: DispatchSourceTimer?
-
-    private let onHangCaptured: @Sendable (URL) -> Void
 
     // MARK: Injectable seams (internal, production defaults)
     //
@@ -123,38 +94,32 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         set { lock.withLock { $0.nowProvider = newValue } }
     }
 
-    /// Schedules the per-tick acknowledgement block onto the main thread: it is
-    /// enqueued on the main *run loop*, for `ackRunLoopModes`, so a main thread that
-    /// has stopped turning its run loop simply never runs it.
+    /// Schedules the per-tick acknowledgement block onto the main thread through
+    /// `MainRunLoop.perform`: it is enqueued on the main *run loop*, including its
+    /// modal and tracking modes, so a main thread that has stopped turning its run
+    /// loop simply never runs it.
     ///
-    /// The obvious implementation — and the original one — was
-    /// `DispatchQueue.main.async`, but it cried wolf. Choosing "Check for
-    /// Updates…" makes Sparkle call `-[NSAlert runModal]` from inside a main
-    /// queue block, which spins a nested modal run loop and sits there waiting
-    /// for the user. libdispatch will not re-enter `_dispatch_main_queue_drain`
-    /// from that nested loop, so every queued ack stays stuck behind the alert:
-    /// the gap crossed the threshold and the watchdog sampled a perfectly healthy
-    /// app (captured dump `hang-20260727-115846.txt`, main thread parked in
+    /// `DispatchQueue.main.async` would cry wolf whenever a modal loop runs.
+    /// Choosing "Check for Updates…" makes Sparkle call `-[NSAlert runModal]` from
+    /// inside a main queue block, which spins a nested modal run loop and sits
+    /// there waiting for the user. libdispatch does not re-enter
+    /// `_dispatch_main_queue_drain` from that nested loop, so every queued ack
+    /// would stay stuck behind the alert until the gap crossed the threshold and
+    /// the watchdog sampled a perfectly healthy app (captured dump
+    /// `hang-20260727-115846.txt`, main thread parked in
     /// `-[NSApplication _doModalLoop:peek:]`). Casper's own `runModal()` panels
     /// and alerts in `AppModel+Presentation` and plain menu tracking have the
     /// exact same shape. Run loop blocks carry no such re-entrancy guard: the
     /// nested loop drains them, so acks keep flowing while a modal is up.
     ///
-    /// Accepted trade-off: the watchdog no longer notices "the main dispatch
-    /// queue is not draining" on its own — only "the main thread is not turning
-    /// its run loop at all". So a genuine hang whose signature is a nested loop
-    /// spinning forever while ordinary main queue work starves — a modal session
-    /// or a menu track that never ends — now reads as healthy. That is the price
-    /// of not crying wolf on every alert the user opens. (A hard block, where the
-    /// thread stops servicing any loop, is still caught.)
-    static let defaultScheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = { block in
-        let mainRunLoop = CFRunLoopGetMain()
-        CFRunLoopPerformBlock(mainRunLoop, MainThreadHangWatchdog.ackRunLoopModes, block)
-        // A run loop asleep in `mach_msg` would not notice the block until its
-        // next event — which, on an idle app, may be seconds away and would look
-        // exactly like a hang. Wake it so the ack lands within this tick.
-        CFRunLoopWakeUp(mainRunLoop)
-    }
+    /// Accepted trade-off: the watchdog does not notice "the main dispatch queue
+    /// is not draining" on its own — only "the main thread is not turning its run
+    /// loop at all". So a genuine hang whose signature is a nested loop spinning
+    /// forever while ordinary main queue work starves — a modal session or a menu
+    /// track that never ends — reads as healthy. That is the price of not crying
+    /// wolf on every alert the user opens. A hard block, where the thread stops
+    /// servicing any loop, is caught.
+    static let defaultScheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = MainRunLoop.perform
 
     var scheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void {
         get { lock.withLock { $0.scheduleAck } }
@@ -162,8 +127,8 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     }
 
     /// Dispatches the (blocking) capture work off the detection timer's queue. The
-    /// default uses `captureQueue`; a test runs it inline for determinism.
-    var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)? {
+    /// default uses a dedicated serial queue; a test runs it inline for determinism.
+    var captureDispatch: @Sendable (@escaping @Sendable () -> Void) -> Void {
         get { lock.withLock { $0.captureDispatch } }
         set { lock.withLock { $0.captureDispatch = newValue } }
     }
@@ -171,7 +136,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Performs the capture for a detected hang of `hangDuration`, writing the dump
     /// to `destination`. The default runs `sample`; a test stubs it to record the
     /// call. Set to the real implementation in `init`.
-    var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)? {
+    var capture: @Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void {
         get { lock.withLock { $0.capture } }
         set { lock.withLock { $0.capture = newValue } }
     }
@@ -185,17 +150,20 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         threshold: TimeInterval = 2.0,
         onHangCaptured: @escaping @Sendable (URL) -> Void = { _ in }
     ) {
-        self.onHangCaptured = onHangCaptured
+        // A separate queue for the (multi-second) `sample` subprocess, so a capture
+        // never stalls the detection timer.
+        let captureQueue = DispatchQueue(label: "com.github.alexandreroman.casper.hang-watchdog.capture", qos: .utility)
         // `lastMainAck` starts neutral; `start()` re-baselines it from the clock
         // before the first tick runs, so this value never triggers a phantom hang.
-        self.lock = OSAllocatedUnfairLock(initialState: State(threshold: threshold, lastMainAck: 0))
-        // These two defaults need `self`, so they cannot be State field defaults.
-        self.lock.withLock { state in
-            state.captureDispatch = { [captureQueue] block in captureQueue.async(execute: block) }
-            state.capture = { [weak self] hangDuration, destination in
-                self?.performDefaultCapture(hangDuration: hangDuration, destination: destination)
-            }
-        }
+        let state = State(
+            threshold: threshold,
+            lastMainAck: 0,
+            captureDispatch: { block in captureQueue.async(execute: block) },
+            capture: { hangDuration, destination in
+                Self.performDefaultCapture(
+                    hangDuration: hangDuration, destination: destination, onHangCaptured: onHangCaptured)
+            })
+        self.lock = OSAllocatedUnfairLock(initialState: state)
     }
 
     /// Starts the detection timer. Idempotent, and safe to call from any thread.
@@ -288,17 +256,10 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Runs the capture off the timer queue, then clears the in-flight flag so a
     /// later episode can capture again.
     private func dispatchCapture(hangDuration: TimeInterval) {
-        // `evaluate` already set `captureInFlight`, and only the work block below
-        // clears it. With no dispatcher there is no work block, so clear it here or
-        // the watchdog stays armed-but-mute for the rest of the process's life.
-        guard let captureDispatch else {
-            lock.withLock { $0.captureInFlight = false }
-            return
-        }
         let destination = Self.dumpDestination(at: Date())
         let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
-            self.capture?(hangDuration, destination)
+            self.capture(hangDuration, destination)
             self.lock.withLock { $0.captureInFlight = false }
         }
         captureDispatch(work)
@@ -322,7 +283,9 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
 
     /// Default capture: log a marker first (so we always have a record even if the
     /// subprocess fails), then run `/usr/bin/sample` and confirm the written path.
-    private func performDefaultCapture(hangDuration: TimeInterval, destination: URL) {
+    private static func performDefaultCapture(
+        hangDuration: TimeInterval, destination: URL, onHangCaptured: @Sendable (URL) -> Void
+    ) {
         // Emit the marker BEFORE anything can fail, so the unified log always
         // carries the hang duration and intended dump path even if `sample` never
         // runs. `.fault` makes it stand out in the unified log.

@@ -48,7 +48,7 @@ final class WorkspaceTitleBarRungTests: XCTestCase {
 
     /// Every reported rung is one the ladder mapping knows. Rung `0` is the mapping's
     /// "combination the row never builds" answer, so it fires exactly when
-    /// `WorkspaceTitleBarRow.body` grew a candidate that `TitleBarRung.init` was not
+    /// `WorkspaceTitleBarRow.body` grew a candidate that `TitleBarRung.number` was not
     /// taught — the drift this pins, since the two lists cannot be shared (a
     /// `ViewThatFits` takes each direct child as one candidate).
     func testEveryReportedRungIsOnTheLadder() {

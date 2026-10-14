@@ -27,8 +27,8 @@ here, and the fix requires a disruptive user-driven reboot, not a code change.
 **How to apply:** if a future report says "notification banner + default sound
 plays, but not the custom one," skip signing/code investigation and go straight
 to recommending this System Settings toggle + reboot + reinstall sequence. See
-also [[unusernotificationcenter-unbundled-abort]] for the separate,
-already-fixed "no notification at all" bug (missing bundle id in dev builds).
-Also: `Scripts/bundle-app.sh`/`Makefile`'s release `bundle` target intentionally
-use **unconditional ad-hoc** signing — a real personal "Apple Development"
+[[unusernotificationcenter-unbundled-abort]] for the separate
+no-notification-at-all case (an unbundled binary). Also:
+`Scripts/bundle-app.sh`/`Makefile`'s release `bundle` target intentionally use
+**unconditional ad-hoc** signing — a real personal "Apple Development"
 certificate is not portable to other machines and does not fix this bug.

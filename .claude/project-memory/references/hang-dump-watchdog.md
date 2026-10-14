@@ -6,19 +6,17 @@ type: project
 
 # Main-thread hang watchdog and dump exploitation
 
-Casper intermittently beachballs (spinning wheel, main thread blocked), with no
-reliable reproduction yet. `MainThreadHangWatchdog`
-(`Sources/CasperCore/MainThreadHangWatchdog.swift`, wired in
-`CasperUI/AppDelegate.swift`) is temporary diagnostic scaffolding that catches
-it: a background timer detects the main thread staying unresponsive past a
-threshold (default 2 s) and runs `/usr/bin/sample` against Casper's own pid, so
-the resulting stack dump shows what the main thread is blocked on. The whole
-file and its wiring sit behind `#if DEBUG`, so the shipped app carries none of
-it. The scaffolding is deliberately temporary: it comes out entirely once the
-hang is root-caused **and** the fix is confirmed live, which takes a visible
-real instance: an unbundled debug binary's window counts as not-visible, so a
-headless run exercises none of the UI work a freeze rides on (see
-[[agent-visual-verification-limits]]).
+`MainThreadHangWatchdog` (`Sources/CasperCore/MainThreadHangWatchdog.swift`,
+wired in `CasperUI/AppDelegate.swift`) is diagnostic scaffolding for a UI freeze
+(spinning wheel, main thread blocked): a background timer detects the main
+thread staying unresponsive past a threshold (default 2 s) and runs
+`/usr/bin/sample` against Casper's own pid, so the resulting stack dump shows
+what the main thread is blocked on. The whole file and its wiring sit behind
+`#if DEBUG`, so the shipped app carries none of it. How long it stays wired is
+tracked in `.superpowers/status.md` § Remaining work. Confirming a freeze fixed
+takes a visible real instance: an unbundled debug binary's window counts as
+not-visible, so a headless run exercises none of the UI work a freeze rides on
+(see [[agent-visual-verification-limits]]).
 
 **Why:** a freeze is not a crash — the process stays alive, so macOS writes **no
 crash report**, and the published dSYM (see [[binary-size-budget]]) covers real

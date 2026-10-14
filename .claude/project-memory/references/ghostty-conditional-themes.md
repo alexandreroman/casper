@@ -1,10 +1,10 @@
 ---
-name: "Ghostty conditional themes in embedded libghostty"
+name: "Ghostty conditional themes"
 description: "How libghostty v1.3.1 resolves theme = light:…,dark:…, what the embedder must do on a scheme switch, and its precedence traps"
 type: reference
 ---
 
-# Ghostty conditional themes in embedded libghostty
+# Ghostty conditional themes
 
 Facts about the pinned libghostty v1.3.1 that Casper's light/dark terminal
 rests on (`GhosttyDefaultConfig`, `GhosttyThemeFiles`, `GhosttyConfigBuilder`,

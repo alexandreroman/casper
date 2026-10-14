@@ -1,6 +1,5 @@
 import AppKit
 import CasperGit
-import SwiftUI
 import XCTest
 @testable import CasperUI
 
@@ -15,17 +14,17 @@ final class DiffLineStyleTests: XCTestCase {
 
     /// Resolves `color` under `appearance` to sRGB components, the way AppKit does
     /// at draw time for a dynamic colour.
-    private func components(_ color: Color, in name: NSAppearance.Name) -> [CGFloat] {
+    private func components(_ color: NSColor, in name: NSAppearance.Name) -> [CGFloat] {
         var result: [CGFloat] = []
         NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
-            let resolved = NSColor(color).usingColorSpace(.sRGB)!
+            let resolved = color.usingColorSpace(.sRGB)!
             result = [resolved.redComponent, resolved.greenComponent, resolved.blueComponent]
         }
         return result
     }
 
     private func assertColor(
-        _ color: Color, dark: [CGFloat], light: [CGFloat], file: StaticString = #filePath, line: UInt = #line
+        _ color: NSColor, dark: [CGFloat], light: [CGFloat], file: StaticString = #filePath, line: UInt = #line
     ) {
         for (expected, name) in [(dark, NSAppearance.Name.darkAqua), (light, .aqua)] {
             let actual = components(color, in: name)
@@ -46,22 +45,28 @@ final class DiffLineStyleTests: XCTestCase {
     func testBackgroundsFollowTheAppearance() {
         let lightAddition: [CGFloat] = [0xDA, 0xFB, 0xE1].map { $0 / 255 }
         let lightDeletion: [CGFloat] = [0xFF, 0xEB, 0xE9].map { $0 / 255 }
-        assertColor(DiffLineStyle.background(for: .addition), dark: [0.082, 0.149, 0.024], light: lightAddition)
-        assertColor(DiffLineStyle.background(for: .deletion), dark: [0.188, 0.043, 0.012], light: lightDeletion)
-        XCTAssertEqual(DiffLineStyle.background(for: .context), Color.clear)
+        assertColor(DiffLineStyle.additionBackground, dark: [0.082, 0.149, 0.024], light: lightAddition)
+        assertColor(DiffLineStyle.deletionBackground, dark: [0.188, 0.043, 0.012], light: lightDeletion)
+    }
+
+    /// A changed row is tinted and striped with its own kind's colours; a context
+    /// row is neither.
+    func testRowTintAndAccentFollowTheKind() {
+        XCTAssertEqual(DiffLineStyle.rowTint(for: .addition), DiffLineStyle.additionBackground)
+        XCTAssertEqual(DiffLineStyle.rowTint(for: .deletion), DiffLineStyle.deletionBackground)
+        XCTAssertNil(DiffLineStyle.rowTint(for: .context))
+        XCTAssertEqual(DiffLineStyle.accent(for: .addition), DiffLineStyle.insertionTint)
+        XCTAssertEqual(DiffLineStyle.accent(for: .deletion), DiffLineStyle.deletionTint)
+        XCTAssertNil(DiffLineStyle.accent(for: .context))
     }
 
     /// A conflicted file is the one status the header has to make impossible to
     /// read past, and an unreadable one the one it has to make impossible to mistake
-    /// for a real change. Everything else is chrome, including `unmodified` — which
-    /// is what a conflict used to be labelled before `GitDiffFile.Status` could say
-    /// otherwise.
+    /// for a real change. Everything else is chrome.
     func testConflictedAndUnreadableStandApartFromOrdinaryStatuses() {
         XCTAssertEqual(DiffLineStyle.statusEmphasis(for: .conflicted), .warning(DiffLineStyle.deletionTint))
-        XCTAssertEqual(DiffLineStyle.statusEmphasis(for: .unreadable),
-                       .muted(Color(nsColor: .tertiaryLabelColor)))
-        for status: GitDiffFile.Status in [.added, .deleted, .modified, .renamed, .copied,
-                                           .typechange, .unmodified] {
+        XCTAssertEqual(DiffLineStyle.statusEmphasis(for: .unreadable), .muted(.tertiaryLabelColor))
+        for status: GitDiffFile.Status in [.added, .deleted, .modified, .renamed] {
             XCTAssertEqual(DiffLineStyle.statusEmphasis(for: status), .chrome, "\(status)")
         }
     }

@@ -39,20 +39,23 @@ public final class Repository {
     /// root commit and orphan everything behind it — and it commits the repository
     /// index, which on such a repository need not be the empty tree this promises.
     ///
-    /// Returns **false**, having written nothing, when libgit2 cannot derive a
-    /// committer from the user's configuration (no `user.name` / `user.email`). Casper
-    /// does not invent an identity to commit under: a name the user never chose would
-    /// be in their history forever, which is worse than the unborn HEAD it avoids. The
-    /// caller decides what to say about it.
-    @discardableResult
+    /// The author and committer are the user's own, as `git_signature_default_from_env`
+    /// derives them: `GIT_AUTHOR_*` and `GIT_COMMITTER_*` first, then `user.name` /
+    /// `user.email`. Returns **false**, having written nothing, when neither names
+    /// anyone. Casper does not invent an identity to commit under: a name the user
+    /// never chose would be in their history forever, which is worse than the unborn
+    /// HEAD it avoids. The caller decides what to say about it.
     public func createInitialCommit() throws -> Bool {
         guard isHeadUnborn else { return false }
 
-        var signature: UnsafeMutablePointer<git_signature>?
-        defer { git_signature_free(signature) }  // before the call: free on the throw path too
+        var author: UnsafeMutablePointer<git_signature>?
+        var committer: UnsafeMutablePointer<git_signature>?
+        defer {  // before the call: free on the throw path too
+            git_signature_free(author)
+            git_signature_free(committer)
+        }
         // The one deliberately non-fatal libgit2 failure here, hence no `gitCheck`.
-        guard git_signature_default(&signature, pointer) == 0,
-              let author = signature else { return false }
+        guard git_signature_default_from_env(&author, &committer, pointer) == 0 else { return false }
 
         // The empty tree, written from the index of a repository with nothing staged.
         var index: OpaquePointer?
@@ -70,7 +73,7 @@ public final class Repository {
         // array-based `git_commit_create` with a parent count of 0 — a root commit.
         var commitOid = git_oid()
         try gitCheck(git_commit_create(
-            &commitOid, pointer, "HEAD", author, author, nil,
+            &commitOid, pointer, "HEAD", author, committer, nil,
             Self.initialCommitMessage, treeHandle, 0, nil))
         return true
     }
@@ -113,7 +116,7 @@ public final class Repository {
 
     /// True when the repository has no working directory of its own — a bare
     /// repository (`git init --bare`, `git clone --bare`).
-    public var isBare: Bool {
+    var isBare: Bool {
         git_repository_is_bare(pointer) == 1
     }
 
@@ -202,7 +205,7 @@ public final class Repository {
     }
 
     /// Whether a local branch named `name` exists.
-    public func branchExists(_ name: String) throws -> Bool {
+    func branchExists(_ name: String) throws -> Bool {
         try withLocalBranch(name, ifMissing: false) { _ in true }
     }
 
@@ -245,7 +248,7 @@ public final class Repository {
     /// ignore rules — `.gitignore` at any level, `core.excludesFile`, and
     /// `.git/info/exclude` — evaluated by libgit2 (`git_ignore_path_is_ignored`).
     /// No manual `.gitignore` parsing.
-    public func isPathIgnored(_ path: String) throws -> Bool {
+    func isPathIgnored(_ path: String) throws -> Bool {
         var ignored: Int32 = 0
         try gitCheck(git_ignore_path_is_ignored(&ignored, pointer, path))
         return ignored != 0
@@ -254,14 +257,15 @@ public final class Repository {
     /// Absolute paths of the working directory's immediate child directories that
     /// Git ignores (e.g. `node_modules`, `build`). Used to exclude high-churn
     /// ignored trees from filesystem watching. `.git` is never returned (excluded
-    /// separately). Returns `[]` for a bare repo (no working directory).
+    /// separately). Returns `[]` for a bare repo (no working directory). Best-effort:
+    /// a directory that cannot be listed or checked is simply left out.
     ///
     /// Limitation: a directory Git ignores is returned even if it contains a
     /// *tracked* file (force-added, or tracked before the ignore rule). Excluding
     /// such a directory from watching means edits to that tracked file will not
     /// live-refresh the diff. This is an accepted trade-off to avoid recompute
     /// churn on large ignored trees.
-    public func ignoredTopLevelDirectories() throws -> [String] {
+    public func ignoredTopLevelDirectories() -> [String] {
         guard let workdir = workdirPath else { return [] }
         let fm = FileManager.default
         let workdirURL = URL(fileURLWithPath: workdir)
@@ -337,8 +341,25 @@ public final class Repository {
         let count = git_diff_num_deltas(diff)
         for i in 0..<count {
             var patch: OpaquePointer?
-            try gitCheck(git_patch_from_diff(&patch, diff, i))
-            defer { git_patch_free(patch) }
+            defer { git_patch_free(patch) }  // before the call: free on the failure path too
+            do {
+                try gitCheck(git_patch_from_diff(&patch, diff, i))
+            } catch {
+                // A file the diff lists but cannot load — a mode-000 file passes the
+                // `lstat` that lists it and fails the `open` — has no patch. It costs
+                // only its own content: listed as unreadable, it leaves every other
+                // file's diff intact instead of failing the whole call. Any other patch
+                // failure (a missing blob, a filter error) takes the same path, so the
+                // error is logged rather than lost.
+                guard let deltaPtr = git_diff_get_delta(diff, i) else { continue }
+                let file = Repository.unreadableFile(delta: deltaPtr)
+                gitLog.error("""
+                    patch skipped for \(file.id, privacy: .public): \
+                    \(String(describing: error), privacy: .public)
+                    """)
+                files.append(file)
+                continue
+            }
             let handle = try requireNonNull(patch, "patch")
             // Read the delta back off the patch (not the diff): binary detection
             // reads file content, which only happens once the patch is generated.
@@ -385,6 +406,21 @@ public final class Repository {
         return String(bytes: raw, encoding: .utf8)
     }
 
+    /// Whether the HEAD commit's tree holds `path` as anything but a directory — a
+    /// file, a symlink or a submodule — whatever the working tree now holds there.
+    /// A cheap tree lookup: no file content is read. False when HEAD is unborn.
+    public func isTrackedAtHead(path: String) throws -> Bool {
+        guard let tree = try headTree() else { return false }  // HEAD is unborn
+        defer { git_tree_free(tree) }
+
+        var entry: OpaquePointer?
+        let rc = git_tree_entry_bypath(&entry, tree, path)
+        if rc == GIT_ENOTFOUND.rawValue { return false }
+        try gitCheck(rc)
+        defer { git_tree_entry_free(entry) }
+        return git_tree_entry_type(entry) != GIT_OBJECT_TREE
+    }
+
     /// The HEAD commit's tree, or nil when HEAD is unborn / not found.
     private func headTree() throws -> OpaquePointer? {
         var head: OpaquePointer?
@@ -397,12 +433,26 @@ public final class Repository {
         return obj  // a git_tree*; freed by the caller with git_tree_free
     }
 
+    /// The path of one side of a delta, or "" when libgit2 left it unset.
+    private static func path(of file: git_diff_file) -> String {
+        file.path.map { String(cString: $0) } ?? ""
+    }
+
+    /// A file whose patch could not be generated: its paths, the `unreadable` status,
+    /// and no content.
+    private static func unreadableFile(delta deltaPtr: UnsafePointer<git_diff_delta>) -> GitDiffFile {
+        let delta = deltaPtr.pointee
+        return GitDiffFile(
+            oldPath: path(of: delta.old_file), newPath: path(of: delta.new_file),
+            status: .unreadable, isBinary: false, hunks: [])
+    }
+
     private static func buildFile(
         delta deltaPtr: UnsafePointer<git_diff_delta>, patch: OpaquePointer
     ) throws -> GitDiffFile {
         let delta = deltaPtr.pointee
-        let oldPath = delta.old_file.path.map { String(cString: $0) } ?? ""
-        let newPath = delta.new_file.path.map { String(cString: $0) } ?? ""
+        let oldPath = path(of: delta.old_file)
+        let newPath = path(of: delta.new_file)
         let hunkCount = git_patch_num_hunks(patch)
 
         // Binary detection has two branches:
@@ -452,11 +502,7 @@ public final class Repository {
                     try gitCheck(git_patch_get_line_in_hunk(&linePtr, patch, h, l))
                     if let lp = linePtr, let line = mapLine(lp.pointee) { lines.append(line) }
                 }
-                hunks.append(GitDiffHunk(
-                    header: header,
-                    oldStart: Int(hunk.old_start), oldLines: Int(hunk.old_lines),
-                    newStart: Int(hunk.new_start), newLines: Int(hunk.new_lines),
-                    lines: lines))
+                hunks.append(GitDiffHunk(header: header, lines: lines))
             }
         }
         return GitDiffFile(
@@ -471,21 +517,16 @@ public final class Repository {
         case GIT_DELTA_MODIFIED: return .modified
         // A file with unresolved merge conflicts: `git_diff_tree_to_workdir_with_index`
         // reports the conflicted index entry as its own delta, and its hunks carry the
-        // conflict markers — so it must not read as an unmodified file.
+        // conflict markers — so it must not read as an ordinary modification.
         case GIT_DELTA_CONFLICTED: return .conflicted
-        // A file libgit2 could not read at all (permissions, a vanished path).
+        // Emitted only under `GIT_DIFF_INCLUDE_UNREADABLE`, which `diffWorkdirToHead`
+        // never sets: the unreadable files a diff lists come from a failed patch
+        // generation there (`unreadableFile`), not from this mapping.
         case GIT_DELTA_UNREADABLE: return .unreadable
         // Emitted by the rename pass, `detectRenames`.
         case GIT_DELTA_RENAMED: return .renamed
-        // `.copied` / `.typechange` are mapped for completeness but are unreachable:
-        // `diffWorkdirToHead` never enables copy detection, and libgit2 emits
-        // typechange deltas only under `GIT_DIFF_INCLUDE_TYPECHANGE`, which we never
-        // set.
-        case GIT_DELTA_COPIED: return .copied
-        case GIT_DELTA_TYPECHANGE: return .typechange
-        // GIT_DELTA_UNMODIFIED and GIT_DELTA_IGNORED: neither is emitted unless the
-        // matching include flag is set, and neither is a change to show.
-        default: return .unmodified
+        // Copied, typechange, unmodified and ignored deltas each need a flag Casper never sets.
+        default: return .modified
         }
     }
 

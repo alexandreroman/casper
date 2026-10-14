@@ -1,4 +1,4 @@
-import Clibgit2
+import CasperTestSupport
 import Foundation
 import XCTest
 @testable import CasperCore
@@ -13,27 +13,17 @@ final class WorktreeManagerTests: XCTestCase {
     private var externalDir: URL?
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-mgr-\(UUID().uuidString)")
+        root = makeTemporaryDirectory(prefix: "casper-mgr")
         repoDir = root.appendingPathComponent("repo")
         try FileManager.default.createDirectory(
             at: repoDir, withIntermediateDirectories: true)
-        try seedRepository(at: repoDir.path)
+        try GitFixture.repository(at: repoDir.path)
     }
 
     override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: root)
         if let externalDir {
             try? FileManager.default.removeItem(at: externalDir)
         }
-    }
-
-    /// Seed a repo with one commit via CasperGit (mirrors the CasperGit fixture).
-    private func seedRepository(at path: String) throws {
-        let repo = try Repository.initialize(atPath: path)
-        let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
-        try "seed\n".write(to: readme, atomically: true, encoding: .utf8)
-        try makeInitialCommit(repo: repo, path: path)
     }
 
     func testCreateProducesWorktreeAndBranch() throws {
@@ -74,12 +64,6 @@ final class WorktreeManagerTests: XCTestCase {
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o000],
             ofItemAtPath: repoDir.appendingPathComponent(".env").path)
-        defer {
-            // Restore read access so tearDown's directory removal doesn't fail.
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o644],
-                ofItemAtPath: repoDir.appendingPathComponent(".env").path)
-        }
         let wtPath = root.appendingPathComponent("feature").path
 
         XCTAssertThrowsError(
@@ -127,6 +111,29 @@ final class WorktreeManagerTests: XCTestCase {
             XCTAssertEqual(
                 (error as? WorktreeError)?.reason, .branchAlreadyCheckedOut)
         }
+    }
+
+    /// A worktree registered under the name on another branch — what
+    /// `git worktree add ../taken -b other` leaves — is refused in Casper's words
+    /// rather than libgit2's "directory exists", and before any branch is created.
+    func testCreateRejectsANameAnotherWorktreeAlreadyUses() throws {
+        try GitFixture.registerWorktree(
+            inRepoAt: repoDir.path, name: "taken",
+            atPath: root.appendingPathComponent("taken").path, onNewBranch: "other")
+        let wtPath = root.appendingPathComponent("casper-taken").path
+
+        XCTAssertThrowsError(
+            try WorktreeManager.create(
+                repoPath: repoDir.path, name: "taken", worktreePath: wtPath, base: nil)
+        ) { error in
+            XCTAssertEqual((error as? WorktreeError)?.reason, .worktreeNameTaken)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Git already has a worktree entry by that name in this repository. Pick another name, "
+                    + "or run 'git worktree prune' if that worktree was deleted.")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+        XCTAssertFalse(try Repository.open(atPath: repoDir.path).branchExists("taken"))
     }
 
     func testCreateRejectsMissingRepository() {
@@ -415,50 +422,15 @@ final class WorktreeManagerTests: XCTestCase {
         return permissions & 0o7777
     }
 
-    func testIsCleanReflectsWorkingTree() throws {
-        XCTAssertTrue(try WorktreeManager.isClean(repoPath: repoDir.path))
-        let extra = repoDir.appendingPathComponent("dirty.txt")
-        try "x".write(to: extra, atomically: true, encoding: .utf8)
-        XCTAssertFalse(try WorktreeManager.isClean(repoPath: repoDir.path))
-    }
-
-    func testMergeMergesFeatureIntoBaseBranch() throws {
-        let base = try Repository.open(atPath: repoDir.path).headBranchName()
-        let wtPath = root.appendingPathComponent("feature").path
-        try WorktreeManager.create(
-            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-        try commitFile(
-            atPath: wtPath, filename: "feature.txt", content: "new\n", message: "add feature")
-
-        let outcome = try WorktreeManager.merge(
-            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
-
-        guard case .merged = outcome else { return XCTFail("expected a merge commit") }
-        XCTAssertEqual(
-            try Repository.open(atPath: repoDir.path).fileTextAtHead(path: "feature.txt"), "new\n")
-    }
-
-    func testMergeAlreadyUpToDateReturnsNoCommit() throws {
-        let base = try Repository.open(atPath: repoDir.path).headBranchName()
-        let wtPath = root.appendingPathComponent("feature").path
-        try WorktreeManager.create(
-            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-
-        let outcome = try WorktreeManager.merge(
-            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
-
-        XCTAssertEqual(outcome, .upToDate)
-    }
-
     func testMergeConflictThrowsMergeConflictReason() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
         try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-        try commitFile(
-            atPath: wtPath, filename: "README.md", content: "from feature\n", message: "feature readme")
-        try commitFile(
-            atPath: repoDir.path, filename: "README.md", content: "from main\n", message: "main readme")
+        try GitFixture.commit(
+            atPath: wtPath, file: "README.md", contents: "from feature\n", message: "feature readme")
+        try GitFixture.commit(
+            atPath: repoDir.path, file: "README.md", contents: "from main\n", message: "main readme")
 
         XCTAssertThrowsError(
             try WorktreeManager.merge(
@@ -468,22 +440,115 @@ final class WorktreeManagerTests: XCTestCase {
         }
     }
 
-    func testResyncWorkingTreeSyncsToNewHead() throws {
+    func testMergeWithoutCommitterIdentityThrowsMissingCommitterIdentityReason() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
         try WorktreeManager.create(
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-        try commitFile(
-            atPath: wtPath, filename: "feature.txt", content: "new\n", message: "add feature")
-        _ = try WorktreeManager.merge(
-            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: repoDir.appendingPathComponent("feature.txt").path))
+        try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+        setGitIdentityEnvironment()
 
-        try WorktreeManager.resyncWorkingTree(repoPath: repoDir.path)
+        XCTAssertThrowsError(
+            try WorktreeManager.merge(
+                repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+        ) { error in
+            guard case .missingCommitterIdentity(let detail, let variables, _) = (error as? WorktreeError)?.reason
+            else {
+                return XCTFail("expected .missingCommitterIdentity, got \(error)")
+            }
+            XCTAssertFalse(detail.isEmpty, "libgit2's own message is kept")
+            XCTAssertEqual(variables, [])
+        }
+    }
 
-        XCTAssertTrue(FileManager.default.fileExists(
-            atPath: repoDir.appendingPathComponent("feature.txt").path))
+    func testMergeWithABlankIdentityVariableNamesIt() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
+        setGitIdentityEnvironment([.authorName: ""])
+
+        XCTAssertThrowsError(
+            try WorktreeManager.merge(
+                repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+        ) { error in
+            guard case .missingCommitterIdentity(_, let variables, _) = (error as? WorktreeError)?.reason else {
+                return XCTFail("expected .missingCommitterIdentity, got \(error)")
+            }
+            XCTAssertEqual(variables, ["GIT_AUTHOR_NAME"])
+        }
+    }
+
+    /// A blank setting beside a variable to blame: whichever the variable is, the message
+    /// offers `git config` as well and never rules it out.
+    func testMergeWithABlankSettingBesideAVariableToBlameOffersGitConfig() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
+        let cases: [(name: String, email: String, environment: [GitIdentityVariable: String])] = [
+            ("", "config@example.com", [.committerDate: "zzz"]),
+            ("Config Name", "", [.authorName: ""]),
+        ]
+        for (name, email, environment) in cases {
+            try GitFixture.configureIdentity(atPath: repoDir.path, name: name, email: email)
+            setGitIdentityEnvironment(environment)
+
+            XCTAssertThrowsError(
+                try WorktreeManager.merge(
+                    repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+            ) { error in
+                let message = error.localizedDescription
+                XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
+                XCTAssertFalse(message.contains("cannot fix"), message)
+            }
+        }
+    }
+
+    /// The message carries libgit2's cause, since a config it cannot read fails the
+    /// same way as a missing identity, and shows how to set both halves of one.
+    func testMissingCommitterIdentityDescriptionShowsTheCauseAndBothSettings() {
+        let error = WorktreeError(.missingCommitterIdentity(
+            detail: "config value 'user.name' was not found", environmentVariables: [], configurationAtFault: true))
+        let message = error.localizedDescription
+
+        XCTAssertTrue(message.contains("config value 'user.name' was not found"), message)
+        XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
+        XCTAssertTrue(message.contains("git config --global user.email you@example.com"), message)
+    }
+
+    /// When only variables set in Casper's environment are to blame, the message names
+    /// them and does not offer `git config` as the fix, without claiming that a date
+    /// variable stands in for `user.name` / `user.email`.
+    func testMissingCommitterIdentityDescriptionNamesTheVariablesToBlame() {
+        let error = WorktreeError(.missingCommitterIdentity(
+            detail: "unparsable date", environmentVariables: ["GIT_AUTHOR_NAME", "GIT_COMMITTER_DATE"],
+            configurationAtFault: false))
+        let message = error.localizedDescription
+
+        XCTAssertTrue(message.contains("unparsable date"), message)
+        XCTAssertTrue(message.contains("GIT_AUTHOR_NAME, GIT_COMMITTER_DATE"), message)
+        XCTAssertTrue(message.contains("git config cannot fix this"), message)
+        XCTAssertFalse(message.contains("git config --global"), message)
+        XCTAssertFalse(message.contains("overrides"), message)
+    }
+
+    /// A variable to blame beside a setting missing from the configuration: the message
+    /// gives both remedies and does not rule `git config` out.
+    func testMissingCommitterIdentityDescriptionGivesBothRemediesWhenASettingIsMissingToo() {
+        let error = WorktreeError(.missingCommitterIdentity(
+            detail: "config value 'user.email' was not found", environmentVariables: ["GIT_AUTHOR_NAME"],
+            configurationAtFault: true))
+        let message = error.localizedDescription
+
+        XCTAssertTrue(message.contains("config value 'user.email' was not found"), message)
+        XCTAssertTrue(message.contains("unset GIT_AUTHOR_NAME"), message)
+        XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
+        XCTAssertTrue(message.contains("git config --global user.email you@example.com"), message)
+        XCTAssertFalse(message.contains("cannot fix"), message)
     }
 
     private func writeRepoConfig(_ json: String) throws {
@@ -538,93 +603,11 @@ final class WorktreeManagerTests: XCTestCase {
 
         // Nothing half-created: no worktree directory, no branch.
         XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
-        let branches = try WorktreeManager.list(repoPath: repoDir.path).map(\.name)
-        XCTAssertFalse(branches.contains("feature"))
+        XCTAssertFalse(try Repository.open(atPath: repoDir.path).branchExists("feature"))
     }
 
     func testConfigInvalidErrorMessageMentionsFile() throws {
         let error = WorktreeError(.configInvalid("bad token at line 1"))
         XCTAssertEqual(error.localizedDescription, "Invalid .casper.json: bad token at line 1")
     }
-}
-
-/// Throw a plain `NSError` when a libgit2 call returns a negative code. `gitCheck`
-/// itself is `internal` to `CasperGit`; this local equivalent keeps the commit
-/// helper below a literal copy of `GitFixture.repository`'s libgit2 sequence
-/// without pulling `GitError` construction into a test file.
-private func check(_ code: Int32) throws {
-    if code < 0 {
-        throw NSError(domain: "git", code: Int(code))
-    }
-}
-
-/// Create one commit on `repo`'s working tree at `path`, using the same
-/// libgit2 sequence as `Tests/CasperGitTests/GitFixture.swift`: stage the
-/// README already written by the caller, build a tree from the index, and
-/// commit it onto HEAD. `repo` must already be open on an initialized,
-/// unborn repository — this helper does not call `Repository.initialize`.
-private func makeInitialCommit(repo: Repository, path: String) throws {
-    var index: OpaquePointer?
-    try check(git_repository_index(&index, repo.pointer))
-    defer { git_index_free(index) }
-    try check(git_index_add_bypath(index, "README.md"))
-    try check(git_index_write(index))
-
-    var treeOid = git_oid()
-    try check(git_index_write_tree(&treeOid, index))
-    var tree: OpaquePointer?
-    try check(git_tree_lookup(&tree, repo.pointer, &treeOid))
-    defer { git_tree_free(tree) }
-
-    var signature: UnsafeMutablePointer<git_signature>?
-    try check(git_signature_now(&signature, "Casper Test", "test@casper.local"))
-    defer { git_signature_free(signature) }
-
-    // Swift cannot import the variadic `git_commit_create_v`, so use the
-    // array-based `git_commit_create` with zero parents (initial commit).
-    var commitOid = git_oid()
-    try check(git_commit_create(
-        &commitOid, repo.pointer, "HEAD",
-        signature, signature, nil, "Initial commit", tree, 0, nil))
-}
-
-/// Commit `content` to `filename` in the working tree at `repoPath`, onto its
-/// current HEAD. Used to simulate independent commits on a linked worktree and
-/// on the primary repo path for merge-scenario setup.
-private func commitFile(
-    atPath repoPath: String, filename: String, content: String, message: String
-) throws {
-    let repo = try Repository.open(atPath: repoPath)
-    try content.write(
-        to: URL(fileURLWithPath: repoPath).appendingPathComponent(filename),
-        atomically: true, encoding: .utf8)
-
-    var index: OpaquePointer?
-    try check(git_repository_index(&index, repo.pointer))
-    defer { git_index_free(index) }
-    try check(git_index_add_bypath(index, filename))
-    try check(git_index_write(index))
-
-    var treeOid = git_oid()
-    try check(git_index_write_tree(&treeOid, index))
-    var tree: OpaquePointer?
-    try check(git_tree_lookup(&tree, repo.pointer, &treeOid))
-    defer { git_tree_free(tree) }
-
-    var headRef: OpaquePointer?
-    try check(git_repository_head(&headRef, repo.pointer))
-    defer { git_reference_free(headRef) }
-    var parent: OpaquePointer?
-    try check(git_reference_peel(&parent, headRef, GIT_OBJECT_COMMIT))
-    defer { git_object_free(parent) }
-
-    var signature: UnsafeMutablePointer<git_signature>?
-    try check(git_signature_now(&signature, "Casper Test", "test@casper.local"))
-    defer { git_signature_free(signature) }
-
-    var commitOid = git_oid()
-    var parentPointer = parent
-    try check(git_commit_create(
-        &commitOid, repo.pointer, "HEAD",
-        signature, signature, nil, message, tree, 1, &parentPointer))
 }

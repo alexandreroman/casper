@@ -24,16 +24,14 @@ bundle identifier — a bare executable cannot post a notification at all (see
 1. **Native & performant** — macOS-native UI; GPU-accelerated terminal rendering
    via libghostty.
 2. **Prefer built-in macOS frameworks** over third-party code.
-3. **Minimum dependencies** — only five external deps (GhosttyKit,
-   swift-argument-parser, libgit2 behind the in-house `CasperGit`,
-   HighlightSwift for diff syntax highlighting, and Sparkle for auto-update);
-   everything else uses system frameworks. See [[dependency-policy]] for the
-   full rule, rationale, and the arm64 / `-Osize` build stance.
+3. **Minimum dependencies** — five sanctioned external deps; everything else
+   uses system frameworks. [[dependency-policy]] lists them and carries the
+   rule, the rationale and the arm64 / `-Osize` build stance.
 4. **No notarization.**
 
 ## Locked decisions
 
-- **Embedding:** GhosttyKit / libghostty-spm, **version pinned**, isolated
+- **Embedding:** GhosttyKit / libghostty-spm, **revision pinned**, isolated
   behind the single `CasperGhostty` module (the embedding API is unstable — a
   bump touches only that module). See [[ghosttykit-pin]].
 - **Process model: in-process.** Surfaces and their PTYs live in the Casper
@@ -78,42 +76,53 @@ environment.
 ```text
 Session
  ├─ selectedWorkspaceID: UUID?
- ├─ dismissedAgentReminders: Set<String>  // encoded sorted, so an idle session is byte-stable
- ├─ lastNewSpaceLocation: String?         // parent folder the "New Space…" panel reopens at
- └─ [Space]                          // a folder, Git or not (see themes/space-project.md)
+ ├─ dismissedAgentReminders: Set<String>
+ ├─ lastNewSpaceLocation: String?
+ └─ [Space]                               // a folder, Git or not
      ├─ id, name, folderPath
-     ├─ isGitRepo: Bool                   // runtime-only, never persisted
+     ├─ isGitRepo: Bool                   // runtime-only
      ├─ isCollapsed: Bool
      └─ [Workspace]
          ├─ id, name, kind: primary | linked
          ├─ worktreePath, branch, baseBranch
-         ├─ agentState: working | blocked | idle | done | unknown | error
-         ├─ todos: [Todo{content, status: pending|in_progress|completed}]
-         ├─ pendingNotification: Bool
-         ├─ pendingNotificationMessage: String?   // body of the pending notification
-         ├─ infoMarkdown: String?                 // latest `casper info set` message; transient
-         ├─ infoUnread: Bool                      // drives the info button's pulse; transient
-         ├─ portBase: Int                         // 10-port block; env CASPER_PORT if linked
+         ├─ agentState: AgentState                // transient
+         ├─ todos: [Todo]                         // transient
+         ├─ pendingNotification: Bool             // transient
+         ├─ pendingNotificationMessage: String?   // transient
+         ├─ infoMarkdown: String?                 // transient
+         ├─ infoUnread: Bool                      // transient
+         ├─ portBase: Int                         // 10-port block
          ├─ layout: LayoutNode
-         ├─ inspector: InspectorState             // right panel: collapsed, tab, browser, width
-         ├─ lastUsedEditor: EditorKind?           // vscode | intellijIdea | xcode
-         └─ lastUsedScript: String?               // last `.casper.json` command run here
+         ├─ inspector: InspectorState
+         ├─ lastUsedEditor: EditorKind?           // vscode, intellijIdea, xcode
+         └─ lastUsedScript: String?
 
+AgentState = working | blocked | idle | done | unknown | error
+Todo       = content + status: pending | in_progress | completed
 LayoutNode = Split(orientation, children, ratios) | Leaf(Surface)
 Surface    = id + fontSize: Float? + kind: Terminal(cwd) | Browser(url)
 ```
+
+Runtime-only and transient fields are never persisted. `dismissedAgentReminders`
+encodes sorted, so an idle session is byte-stable. `lastNewSpaceLocation` is the
+parent folder the "New Space…" panel reopens at. `pendingNotificationMessage` is
+the body of the pending notification; `infoMarkdown` holds the latest
+`casper info set` message and `infoUnread` drives the info button's pulse.
+`portBase` is the workspace's 10-port block, exported as `CASPER_PORT` in a
+linked workspace. `inspector` is the right panel: collapsed, tab, browser and
+width. `lastUsedScript` is the last `.casper.json` command run there.
 
 The diff view is **not** a layout-tree surface kind — it lives in the
 per-workspace inspector panel (`Workspace.inspector`), alongside the inspector
 browser. `LayoutNode.tabGroup` survives only as a legacy-decode migration path
 (older `session.json` folds into leaves), not a live case.
 
-The **Space** layer and `kind`/`baseBranch` shipped with CasperUI UI-2
-(`themes/space-project.md`); the once-planned derived `diffStat` is **dropped**
-(decision 2026-07-06). Persistence: `SessionStore` serializes the whole tree to
-`~/Library/Application Support/Casper/session.json` (`Codable`, debounced);
-terminals restart cold, browser/diff surfaces reload their target, `portBase` is
-restored as-is.
+The **Space** layer and `kind`/`baseBranch` are detailed in
+`themes/space-project.md`. Persistence: `SessionStore` writes the tree's
+persisted fields to `~/Library/Application Support/Casper/session.json`;
+terminals restart cold, the inspector browser reloads its URL, `portBase` is
+restored as-is — save coalescing and the transient fields are in
+`themes/core.md` § Design → "`SessionStore`".
 
 ## Risks & mitigations
 

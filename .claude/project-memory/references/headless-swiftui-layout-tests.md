@@ -12,6 +12,11 @@ in `NSHostingView(rootView:)`, call `layoutSubtreeIfNeeded()`, and read
 measurement is synchronous and takes ~2ms. Put such tests in a `@MainActor`
 `XCTestCase`, matching the rest of the UI suite.
 
+One exception needs a window: a SwiftUI `ScrollView`'s document view lays out
+only inside an `NSWindow`, so a test reading geometry under a `ScrollView` hosts
+the `NSHostingView` in an off-screen window that is never ordered in (see
+[[offscreen-host-windows-unordered]] and [[nstextview-caller-sized-frame]]).
+
 **Why:** this does not contradict [[agent-visual-verification-limits]] — that
 note is about *pixels* (screenshots need a screen-recording TCC grant agents
 lack). Geometry is a different thing and needs no permission at all, so the
@@ -66,16 +71,17 @@ the real parent gets and a broken flattening cannot fail the test. Wrap the
 subject in the same `VStack(spacing: 0) { … }` (or equivalent) the shipping call
 site uses.
 
-**A hosted view measures differently on the CI runner than on the development
+**A hosted view measures differently on a CI runner than on the development
 machine**, so a fixture must never depend on an absolute position or on which
 content a given offset lands on. Two divergences are measured, both from the
 same `NSHostingView` sized 480×600:
 
-- the runner shows **legacy scrollbars**, so an `NSScrollView`'s clip view is
+- a CI runner shows **legacy scrollbars**, so an `NSScrollView`'s clip view is
   465 pt wide there against 480 pt locally (overlay scrollers), and its text
   view 407 pt against 422 pt — enough to change where wrapped text breaks;
-- the runner is **macOS 15** while development is on macOS 26, and TextKit's
-  cold layout estimates differ between them — see [[textkit2-layout-geometry]].
+- the `macos-15` CI leg runs a different TextKit than development (macOS 26),
+  and TextKit's cold layout estimates differ between them — see
+  [[textkit2-layout-geometry]].
 
 **How to apply:** build such a fixture so the property under test holds under
 any monotone mapping from offset to content. For "a file boundary must be

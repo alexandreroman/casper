@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 
@@ -114,11 +115,12 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
 
         var grid = ""
         try withRealSurface { view, surface in
-            // Let the shell reach an interactive prompt before typing.
-            settle(0.6)
             surface.sendText("sh \(script.path)")
             settle(0.4)
-            view.keyDown(with: Self.returnKeyEvent())
+            // A Return keystroke as a real keyboard reports it: `sendText("\r")` is the
+            // bulk-text path, which libghostty does not treat as Return, so the typed
+            // command would never run.
+            view.keyDown(with: keyEvent("\r", keyCode: 36))
             // Long enough for the script's own read timeout, plus the main-queue hop the OSC 52
             // prompt is deferred onto.
             settle(4.0)
@@ -166,14 +168,5 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             .appendingPathComponent("casper-osc52-probe-\(UUID().uuidString).sh")
         try script.write(to: url, atomically: true, encoding: .utf8)
         return url
-    }
-
-    /// A Return keystroke as a real keyboard reports it. `sendText("\r")` is the bulk-text
-    /// path, which libghostty does not treat as Return, so the typed command would never run.
-    private static func returnKeyEvent() -> NSEvent {
-        NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-            windowNumber: 0, context: nil, characters: "\r",
-            charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
     }
 }

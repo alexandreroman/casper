@@ -10,16 +10,16 @@ public enum DebugSocketPath {
     /// the default session), so a driver that exports `CASPER_SESSION=dev`
     /// automatically targets `/tmp/casper-debug-dev.sock`.
     public static var `default`: String {
-        let session = SessionIdentity(name: ProcessInfo.processInfo.environment["CASPER_SESSION"])
+        let session = SessionIdentity(name: ProcessInfo.processInfo.environment[CasperEnvironment.session])
             ?? .default
         return resolve(for: session)
     }
 
     /// The debug socket path for `session`: the `CASPER_DEBUG_SOCKET` override
-    /// wins; otherwise the session-derived path. The app (server) passes its
-    /// launch identity here.
-    public static func resolve(for session: SessionIdentity) -> String {
-        ProcessInfo.processInfo.environment["CASPER_DEBUG_SOCKET"] ?? session.debugSocketPath
+    /// wins; otherwise the session-derived path. Dial side only; the sole
+    /// production caller is `default`.
+    static func resolve(for session: SessionIdentity) -> String {
+        ProcessInfo.processInfo.environment[CasperEnvironment.debugSocket] ?? session.debugSocketPath
     }
 
     /// The path the App itself must bind its listener to: always the
@@ -32,23 +32,13 @@ public enum DebugSocketPath {
     }
 }
 
-/// A transport failure on the debug channel.
-public struct DebugSocketError: Error, Equatable {
-    public let reason: String
-    public init(reason: String) { self.reason = reason }
-}
-
-extension DebugSocketError: SocketTransportError {}
-
 extension DebugResponse: SocketFailureResponse {}
 
 /// Listens on a Unix-domain socket for one `DebugCommand` per connection and
 /// writes back one `DebugResponse`.
-public typealias DebugSocketServer =
-    SocketServerEngine<DebugCommand, DebugResponse, DebugSocketError>
+public typealias DebugSocketServer = SocketServerEngine<DebugCommand, DebugResponse>
 
 /// Sends one `DebugCommand` to the app's debug socket and returns the decoded
 /// `DebugResponse`. Synchronous by design: `casper debug` is short-lived.
-public typealias DebugSocketClient =
-    SocketClientEngine<DebugCommand, DebugResponse, DebugSocketError>
+public typealias DebugSocketClient = SocketClientEngine<DebugCommand, DebugResponse>
 #endif

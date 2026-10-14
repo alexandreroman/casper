@@ -12,15 +12,12 @@ import XCTest
 /// SwiftUI a changed input on every tick and defeat any pruning of the subtree.
 @MainActor
 final class PaneTreeInputsTests: XCTestCase {
-    private func makeModel() -> AppModel {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-test-\(UUID().uuidString).json")
+    private func makeTwoPaneModel() -> AppModel {
         let workspace = Workspace(
             name: "main", worktreePath: "/tmp/primary", branch: "main",
             portBase: 42000, layout: Self.twoPaneLayout)
         let space = Space(name: "main", folderPath: "/tmp", isGitRepo: true, workspaces: [workspace])
-        let session = Session(spaces: [space], selectedWorkspaceID: workspace.id)
-        return AppModel(sessionStore: SessionStore(fileURL: url), session: session)
+        return makeModel(spaces: [space], selecting: workspace.id)
     }
 
     private static let twoPaneLayout = LayoutNode.split(
@@ -34,7 +31,7 @@ final class PaneTreeInputsTests: XCTestCase {
     /// The model side of the contract: a detected agent state rewrites the workspace
     /// value, and leaves both things the pane tree is built from untouched.
     func testAgentTickChangesTheWorkspaceButNotItsIdOrLayout() {
-        let model = makeModel()
+        let model = makeTwoPaneModel()
         let before = model.spaces[0].workspaces[0]
 
         model.setDetectedAgentState(.working, for: before.id)
@@ -49,7 +46,7 @@ final class PaneTreeInputsTests: XCTestCase {
     /// workspace yields the same stored properties, which is what lets SwiftUI skip
     /// their bodies.
     func testAgentTickLeavesThePaneViewsStoredPropertiesUnchanged() throws {
-        let model = makeModel()
+        let model = makeTwoPaneModel()
         let before = model.spaces[0].workspaces[0]
 
         model.setDetectedAgentState(.working, for: before.id)
@@ -71,7 +68,7 @@ final class PaneTreeInputsTests: XCTestCase {
     /// comparison, so passing means the properties really are stable rather than
     /// the comparison being blind to them.
     func testTheComparisonCatchesAStoredWorkspace() {
-        let model = makeModel()
+        let model = makeTwoPaneModel()
         let before = model.spaces[0].workspaces[0]
 
         model.setDetectedAgentState(.working, for: before.id)

@@ -18,12 +18,6 @@ public enum LiveObjectCensus {
         public var label: String
         public var live: Int
         public var created: Int
-
-        public init(label: String, live: Int, created: Int) {
-            self.label = label
-            self.live = live
-            self.created = created
-        }
     }
 
     /// A weak slot: the tracked object plus the label it was tracked under. The

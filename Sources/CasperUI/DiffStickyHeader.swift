@@ -11,13 +11,12 @@ import CasperGit
 /// no characters at all — which is what keeps selection and copy free of stray
 /// empty lines.
 ///
-/// It reproduces `pinnedViews: [.sectionHeaders]` exactly. Every band the
-/// viewport shows carries its file's bar, drawn at the band's own position, so a
-/// file's name rides up the viewport inside its band the way an in-flow section
-/// header does. The file owning the top edge holds its bar there instead, and the
-/// band coming up under it pushes that bar out — which is the same statement as
-/// the general one, since the pinned bar is only ever displaced by however much
-/// the incoming band overlaps it.
+/// It behaves as a list's pinned section headers do. Every band the viewport
+/// shows carries its file's bar, drawn at the band's own position, so a file's
+/// name rides up the viewport inside its band. The file owning the top edge holds
+/// its bar there instead, and the band coming up under it pushes that bar out —
+/// which is the same statement as the general one, since the pinned bar is only
+/// ever displaced by however much the incoming band overlaps it.
 final class DiffStickyHeader: NSView {
     /// One bar to draw: which file it describes, and its top edge in this view's
     /// own coordinates. Negative mid-push, when the outgoing bar is on its way out
@@ -233,16 +232,14 @@ final class DiffStickyHeader: NSView {
         }
     }
 
-    /// Draws one bar: path and status on the left, `+N` / `−N` pushed to the right,
-    /// an opaque background, and a hairline along the bottom edge.
+    /// Draws one bar: the path on the left; the status, `+N` and `−N` on the
+    /// right; an opaque background, and a hairline along the bottom edge.
     ///
-    /// Same content, faces and spacing as the row-based renderer's header, and the
-    /// hairline is drawn *inside* the bar rather than under it so a bar occupies
-    /// exactly the band the text flow reserved for it.
+    /// The hairline is drawn *inside* the bar rather than under it so a bar
+    /// occupies exactly the band the text flow reserved for it.
     private func draw(_ labels: Labels, in frame: NSRect) {
-        // Two fills, as the row-based renderer had them: the window background so
-        // the code cannot be read through the bar, and the translucent gray that
-        // sets it apart from the code column.
+        // Two fills: the window background so the code cannot be read through the
+        // bar, and the translucent gray that sets it apart from the code column.
         NSColor.windowBackgroundColor.setFill()
         frame.fill()
         Self.barTint.setFill()
@@ -257,8 +254,7 @@ final class DiffStickyHeader: NSView {
             height: frame.height - Self.hairlineHeight)
 
         // Placed right to left, because the counts and the status are what they
-        // measure and the title takes whatever is left — the flexible frame the
-        // row-based renderer gave it.
+        // measure and the title takes whatever is left.
         var trailing = content.maxX
         for piece in labels.trailing {
             let size = piece.size
@@ -272,9 +268,9 @@ final class DiffStickyHeader: NSView {
                                             width: max(trailing - content.minX, 0), height: size.height))
     }
 
-    /// Centers a piece vertically in the bar, matching the row-based renderer's
-    /// `HStack` — whose default center alignment was itself deliberate, a baseline
-    /// guide there having been one suspect in the layout hang.
+    /// Centers a piece vertically in the bar. The pieces come in three sizes, and
+    /// centring each in the bar's height places them all without per-font
+    /// metrics.
     private func centeredY(of size: NSSize, in content: NSRect) -> CGFloat {
         content.minY + (content.height - size.height) / 2
     }
@@ -283,8 +279,8 @@ final class DiffStickyHeader: NSView {
     private static let itemSpacing: CGFloat = 8
     private static let hairlineHeight: CGFloat = 1
 
-    /// `Color.secondary.opacity(0.12)` over the window background, as the
-    /// row-based renderer stacked them.
+    /// A translucent secondary gray, laid over the window background (see
+    /// `draw(_:in:)`).
     private static let barTint = NSColor.secondaryLabelColor.withAlphaComponent(0.12)
 
     /// Bold monospaced at the system body size, truncating in the middle: a path
@@ -312,12 +308,12 @@ final class DiffStickyHeader: NSView {
         case .warning(let tint):
             return [
                 .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize, weight: .bold),
-                .foregroundColor: NSColor(tint),
+                .foregroundColor: tint,
             ]
         case .muted(let tint):
             return [
                 .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize),
-                .foregroundColor: NSColor(tint),
+                .foregroundColor: tint,
             ]
         }
     }
@@ -328,12 +324,11 @@ final class DiffStickyHeader: NSView {
         .foregroundColor: NSColor.secondaryLabelColor,
     ]
 
-    private static let insertionCountAttributes = countAttributes(NSColor(DiffLineStyle.insertionTint))
-    private static let deletionCountAttributes = countAttributes(NSColor(DiffLineStyle.deletionTint))
+    private static let insertionCountAttributes = countAttributes(DiffLineStyle.insertionTint)
+    private static let deletionCountAttributes = countAttributes(DiffLineStyle.deletionTint)
 
     /// Monospaced digits so `+N` and `−N` keep their width as the counts change,
-    /// bold at the callout size — the row-based renderer's
-    /// `.callout.monospacedDigit().bold()`.
+    /// bold at the 12 pt callout size.
     private static func countAttributes(_ color: NSColor) -> [NSAttributedString.Key: Any] {
         [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .bold),

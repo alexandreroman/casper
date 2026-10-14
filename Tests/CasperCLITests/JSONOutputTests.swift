@@ -1,3 +1,4 @@
+import CasperCore
 import XCTest
 @testable import CasperCLI
 
@@ -11,10 +12,10 @@ final class JSONOutputTests: XCTestCase {
             #"{"status":"blocked","workspace":"W"}"#)
     }
 
-    func testProgressBody() {
+    func testProgressSet() {
         XCTAssertEqual(
             jsonLine(ProgressOut(
-                progress: ProgressBody(total: 3, current: 1, label: "wire"), workspace: "W")),
+                progress: ControlProgressInfo(total: 3, current: 1, label: "wire"), workspace: "W")),
             #"{"progress":{"current":1,"label":"wire","total":3},"workspace":"W"}"#)
     }
 
@@ -23,7 +24,7 @@ final class JSONOutputTests: XCTestCase {
     func testProgressGet() {
         XCTAssertEqual(
             jsonLine(ProgressGetOut(
-                progress: ProgressBody(total: 3, current: 2, label: "wire"), workspace: "W")),
+                progress: ControlProgressInfo(total: 3, current: 2, label: "wire"), workspace: "W")),
             #"{"progress":{"current":2,"label":"wire","total":3},"workspace":"W"}"#)
         XCTAssertEqual(
             jsonLine(ProgressGetOut(progress: nil, workspace: "W")),

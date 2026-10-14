@@ -8,20 +8,22 @@ type: project
 
 `make test` strips `CASPER_CONTROL_SOCKET`, `CASPER_DEBUG_SOCKET`, and
 `CASPER_SESSION` (`env -u ... swift test`) before running the test suite.
-`DebugSocketPath.resolve(for:)`/`.default` (CasperCore) and the control-channel
-dial path in `CasperCLI/ControlClient.swift` read these env vars and let them
-override the session-derived socket path — intentional for the `casper`
-CLI/`casper debug`, but every terminal Casper opens (dev or a bundled
+`DebugSocketPath.resolve(for:)`/`.default` (CasperCore) reads
+`CASPER_DEBUG_SOCKET` and lets it override the session-derived socket path, and
+the control-channel dial path in `CasperCLI/ControlClient.swift` takes its
+socket path from `CASPER_CONTROL_SOCKET` alone — both intentional for the
+`casper` CLI/`casper debug`, but every terminal Casper opens (dev or a bundled
 `Casper.app`, including an unnamed default-session instance) injects
 `CASPER_CONTROL_SOCKET` (and `CASPER_SESSION` for named sessions) via
 `AgentEnvironment.surfaceEnvironment`. Running `swift test` directly inside such
 a terminal (a normal dogfooding workflow for this repo) therefore leaks the live
 instance's real socket path into the test process.
 
-**Why:** without the strip, `swift test --filter SocketPathResolutionTests` run
-inside a terminal opened by a real bundled `Casper.app` fails
-`testDebugResolveNamedSession`, because the ambient `CASPER_DEBUG_SOCKET`
-silently overrides the `SessionIdentity` argument passed to `resolve(for:)`.
+**Why:** without the strip, the env-sensitive assertions silently skip: run
+inside a terminal that exports `CASPER_DEBUG_SOCKET`, `swift test --filter
+SocketPathResolutionTests` skips `testDebugResolveNamedSession`
+(`skipWhenDebugSocketIsOverridden`), because the ambient variable would override
+the `SessionIdentity` argument passed to `resolve(for:)`.
 This only affects *assertions on the resolved path string* — no test binds a
 real listener at that default/session path (every test that opens a real socket
 uses its own UUID-suffixed temp path), so the live socket **file** is never at
@@ -44,5 +46,5 @@ corruption.
   as the *only* line of defense — the Makefile-level fix is the precedent to
   prefer over relying on every test author remembering a guard.
 - See [[app-sessions]] (the analogous collision for live GUI verification, not
-  test runs) and [[domain-cli-control-channel]] (why `CASPER_CONTROL_SOCKET` is
-  injected at all).
+  test runs) and `.superpowers/themes/cli-agents.md` § Agent state & progress
+  (why `CASPER_CONTROL_SOCKET` is injected at all).

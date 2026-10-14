@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import CasperTestSupport
 @testable import CasperUI
 
 @MainActor
@@ -7,7 +8,7 @@ final class TeardownHookRunnerTests: XCTestCase {
     /// A minimal model holding one workspace rooted at `worktreePath`. No Git backing
     /// is needed: resolving the hook only reads `.casper.json` from the worktree.
     private func makeModel(worktreePath: String) -> (AppModel, UUID) {
-        let (model, workspace) = makeSeededModel(worktreePath: worktreePath, portBase: 42000)
+        let (model, workspace) = makeSeededModel(worktreePath: worktreePath)
         return (model, workspace.id)
     }
 
@@ -25,24 +26,6 @@ final class TeardownHookRunnerTests: XCTestCase {
         let space = Space(
             name: "main", folderPath: path, isGitRepo: false, workspaces: [selected, background])
         return (makeModel(spaces: [space], selecting: selected.id), selected.id, background.id)
-    }
-
-    /// Wait for the teardown split to land in `workspaceID` and return its surface id.
-    /// `runTeardown` inserts it synchronously, but the task running it only starts on a
-    /// later main-queue turn; the poll bound exists so a broken run fails in milliseconds
-    /// instead of stalling for the 30 s timeout.
-    private func awaitTeardownSplit(
-        in model: AppModel, workspace workspaceID: UUID, surfacesBefore: Set<UUID>
-    ) async -> UUID? {
-        for _ in 0..<400 {
-            if let ws = model.workspace(id: workspaceID),
-               let split = LayoutTree.surfaceIDs(ws.layout).first(where: { !surfacesBefore.contains($0) }) {
-                return split
-            }
-            try? await Task.sleep(for: .milliseconds(5))
-        }
-        XCTFail("the teardown split was never spawned")
-        return nil
     }
 
     /// No `.casper.json` ⇒ no teardown hook ⇒ `runTeardown` returns without suspending

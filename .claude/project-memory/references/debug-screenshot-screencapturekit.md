@@ -14,11 +14,13 @@ The debug-only `screenshot` verb (`Sources/CasperGhostty/DebugServer.swift`,
 `.macOS(.v15)` and `CLAUDE.md`). At that target `CGWindowListCreateImage` is
 **obsoleted** — a hard compile error, not just a deprecation — so it cannot be
 used. A plain view/bitmap capture can't read a Metal-rendered (libghostty)
-window's pixels, so ScreenCaptureKit is the only correct replacement. The
-migration made `screenshot(window:to:)` `async`, which ripples `async` up
-through its private callers in the same file.
+window's pixels, so ScreenCaptureKit is the only correct replacement.
+`screenshot(window:to:)` is `async`, which ripples `async` up through its
+private callers in the same file.
 
 **How to access:** the `casper debug screenshot <path>` CLI (see the
 `debug-casper` skill) requires the **screen-recording permission**; if a capture
-returns empty or fails, check that permission for the debug binary. Release
+returns empty or fails, check that `Casper-dev.app` holds that permission — the
+grant belongs to the bundle, never to a loose binary
+([[tcc-screen-recording-needs-a-bundle]]). Release
 builds omit this path entirely (`#if DEBUG`).

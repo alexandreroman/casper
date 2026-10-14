@@ -17,8 +17,7 @@ a commit lands, so `diffRevision` never bumps and the diff keeps showing the
 files that were just committed. `logs/HEAD` is appended on every HEAD-moving op
 (commit, checkout, reset, merge, rebase) but is **never** written by
 `git status`/`add`/`diff`, so watching `<gitdir>/logs` catches commits with zero
-event-storm risk. Verified end-to-end: committing a file live clears it from the
-diff and drops the badge count.
+event-storm risk.
 
 **Why the `.git` exclusion on the first watcher:** git's internal writes (index,
 lockfiles on every status/add) are high-frequency enough to keep the watcher

@@ -8,10 +8,10 @@ import XCTest
 /// pixel — plus the gutter's own width, and their tolerance for being drawn before
 /// they are fully configured.
 ///
-/// The rewrite these two views belong to has to be *visually equivalent* to the
-/// row-based renderer it replaces, so what the chrome looks like is a requirement
-/// and not a detail. `ChromeProbe` below makes that assertable without a screen;
-/// read its documentation before adding a case here.
+/// What the chrome looks like is a requirement and not a detail: every tint,
+/// stripe, number and cue sits where the design puts it. `ChromeProbe` below
+/// makes that assertable without a screen; read its documentation before adding
+/// a case here.
 @MainActor
 final class DiffChromeTests: XCTestCase {
     // MARK: - Fixtures
@@ -25,15 +25,7 @@ final class DiffChromeTests: XCTestCase {
 
     /// A one-line file whose line number sets the width its gutter needs.
     private func file(named name: String, widestLineNumber: Int) -> GitDiffFile {
-        let line = GitDiffLine(
-            kind: .addition, content: "x", oldLineNumber: nil, newLineNumber: widestLineNumber)
-        return file(named: name, lines: [line])
-    }
-
-    private func file(named name: String, lines: [GitDiffLine]) -> GitDiffFile {
-        let hunk = GitDiffHunk(header: "@@ -1,\(lines.count) +1,\(lines.count) @@", oldStart: 1,
-                               oldLines: lines.count, newStart: 1, newLines: lines.count, lines: lines)
-        return GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: false, hunks: [hunk])
+        diffFile(name, lines: [diffLine(.addition, "x", new: widestLineNumber)])
     }
 
     /// A narrow file *followed* by a five-digit one, so a gutter sized from the
@@ -62,15 +54,15 @@ final class DiffChromeTests: XCTestCase {
     private func makeMixedDocument() -> DiffDocument {
         let wrapping = (1...30).map { "word\($0)" }.joined(separator: " ")
         let lines = [
-            GitDiffLine(kind: .context, content: "kept", oldLineNumber: 1, newLineNumber: 1),
-            GitDiffLine(kind: .addition, content: "added", oldLineNumber: nil, newLineNumber: 2),
-            GitDiffLine(kind: .deletion, content: "removed", oldLineNumber: 3, newLineNumber: nil),
-            GitDiffLine(kind: .addition, content: wrapping, oldLineNumber: nil, newLineNumber: 4),
-            GitDiffLine(kind: .context, content: "tail", oldLineNumber: 4, newLineNumber: 5),
+            diffLine(.context, "kept", old: 1, new: 1),
+            diffLine(.addition, "added", new: 2),
+            diffLine(.deletion, "removed", old: 3),
+            diffLine(.addition, wrapping, new: 4),
+            diffLine(.context, "tail", old: 4, new: 5),
         ]
         return DiffDocument(diff: GitDiff(files: [
-            file(named: "a.swift", lines: lines),
-            file(named: "b.swift", lines: lines),
+            diffFile("a.swift", lines: lines),
+            diffFile("b.swift", lines: lines),
         ]))
     }
 
@@ -108,26 +100,23 @@ final class DiffChromeTests: XCTestCase {
     // MARK: - Gutter width
 
     /// The gutter's width places the *code* column, and the number column inside
-    /// it, so it is where the rewrite's spacing either matches `DiffLineRow` or
-    /// silently drifts from it. A gutter narrower than the document's widest number
-    /// also clips a digit, and the number it clips is the one a large file needs
-    /// most.
-    func testGutterWidthPlacesTheNumberAndCodeColumnsWhereTheRowRendererDid() throws {
+    /// it, so it is where the diff view's spacing either holds or silently drifts.
+    /// A gutter narrower than the document's widest number also clips a digit, and
+    /// the number it clips is the one a large file needs most.
+    func testGutterWidthPlacesTheNumberAndCodeColumns() throws {
         let surface = makeSurface(document: makeDocument())
-        // Five digits: `FileSpan.gutterWidth` budgets 5 * 9 + 12. Spelled out rather
-        // than read back from `files.map(\.gutterWidth).max()`, which would let the
-        // test agree with the implementation by restating it.
+        // Five digits: `DiffDocument.gutterWidth` budgets 5 * 9 + 12. Spelled out
+        // rather than read back from the document, which would let the test agree
+        // with the implementation by restating it.
         let gutterWidth: CGFloat = 5 * 9 + 12
         // The text view begins where the ruler ends and insets its glyphs by the
         // container's padding, so this sum is where the code's first glyph lands.
         let padding = try XCTUnwrap(surface.textView.textContainer).lineFragmentPadding
         let codeColumn = surface.ruler.ruleThickness + padding
 
-        // `DiffLineRow` laid out a 3 pt stripe, then a `gutterWidth`-wide
-        // right-aligned number, then 8 pt, then the code — whose first character
-        // was the `+`/`-` cue. The cue now has a column of its own at exactly that
-        // offset, so the code starts one cue column further right and every one of
-        // a wrapped line's display rows shares its leading edge.
+        // A 3 pt stripe, a `gutterWidth`-wide right-aligned number, the cue's own
+        // column, 8 pt, then the code — so every one of a wrapped line's display
+        // rows shares the code's leading edge.
         XCTAssertEqual(
             codeColumn,
             DiffGutterRuler.stripeWidth + gutterWidth + DiffGutterRuler.cueColumnWidth
@@ -160,10 +149,9 @@ final class DiffChromeTests: XCTestCase {
     // MARK: - Drawn chrome
 
     /// Every added and deleted row is tinted its own color across the **whole**
-    /// width, well past where the code's glyphs stop — which is what the row-based
-    /// renderer's `.background()` covered and what a `.backgroundColor` text
-    /// attribute could not. Context rows, hunk headers and notes stay on the plain
-    /// background.
+    /// width, well past where the code's glyphs stop — which a `.backgroundColor`
+    /// text attribute could not do. Context rows, hunk headers and notes stay on
+    /// the plain background.
     ///
     /// Rendered through the view's real `draw(_:)` path, so this also pins that
     /// `drawBackground(in:)` still gets called there: TextKit 2 renders text through
@@ -231,9 +219,9 @@ final class DiffChromeTests: XCTestCase {
 
         for y in [probe.top(of: row) + 0.5, probe.bottom(of: row) - 0.5] {
             assertSameColor(probe.codeColor(x: probe.textView.bounds.midX, y: y),
-                            NSColor(DiffLineStyle.background(for: .addition)), "text view at y \(y)")
+                            DiffLineStyle.additionBackground, "text view at y \(y)")
             assertSameColor(probe.gutterColor(x: DiffGutterRuler.stripeWidth / 2, y: y),
-                            NSColor(DiffLineStyle.accent(for: .addition)), "gutter at y \(y)")
+                            DiffLineStyle.insertionTint, "gutter at y \(y)")
         }
 
         // A point above the row belongs to the context row ahead of it: neither view
@@ -271,9 +259,9 @@ final class DiffChromeTests: XCTestCase {
         // the strip's very first pixels carry the row's chrome.
         for y in [stripTop + 0.5, probe.bottom(of: row) - 0.5] {
             assertSameColor(probe.codeColor(x: probe.pastTheGlyphs(of: row), y: y),
-                            NSColor(DiffLineStyle.background(for: .addition)), "text view at y \(y)")
+                            DiffLineStyle.additionBackground, "text view at y \(y)")
             assertSameColor(probe.gutterColor(x: DiffGutterRuler.stripeWidth / 2, y: y),
-                            NSColor(DiffLineStyle.accent(for: .addition)), "gutter at y \(y)")
+                            DiffLineStyle.insertionTint, "gutter at y \(y)")
         }
     }
 
@@ -288,12 +276,12 @@ final class DiffChromeTests: XCTestCase {
         for kind in [GitDiffLine.Kind.addition, .deletion] {
             let row = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == kind })
             assertSameColor(probe.gutterColor(x: insideStripe, y: probe.middle(of: row)),
-                            NSColor(DiffLineStyle.accent(for: kind)), "\(kind) stripe")
+                            try XCTUnwrap(DiffLineStyle.accent(for: kind)), "\(kind) stripe")
             // Immediately past the stripe the gutter carries the row's tint: that is
             // what makes the tint run unbroken under the gutter, as it did when the
             // number lived inside the tinted row.
             assertSameColor(probe.gutterColor(x: pastStripe, y: probe.middle(of: row)),
-                            NSColor(DiffLineStyle.background(for: kind)), "\(kind) tint past the stripe")
+                            try XCTUnwrap(DiffLineStyle.rowTint(for: kind)), "\(kind) tint past the stripe")
         }
 
         let context = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == .context })
@@ -303,9 +291,8 @@ final class DiffChromeTests: XCTestCase {
 
     /// The gutter meets the code column with nothing between them. `NSRulerView`
     /// paints its own chrome around whatever `drawHashMarksAndLabels(in:)` draws, and
-    /// on some releases that includes a hairline along the edge facing the content —
-    /// which the row-based renderer, one view per row, had no way to produce. The
-    /// row's tint has to run all the way to the ruler's last point instead.
+    /// on some releases that includes a hairline along the edge facing the content.
+    /// The row's tint has to run all the way to the ruler's last point instead.
     func testTheGuttersTrailingEdgeCarriesTheRowTintAndNoDivider() throws {
         let probe = try makeProbe(makeMixedDocument())
         let trailingEdge = probe.ruler.ruleThickness - 0.5
@@ -313,7 +300,7 @@ final class DiffChromeTests: XCTestCase {
         for kind in [GitDiffLine.Kind.addition, .deletion] {
             let row = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == kind })
             assertSameColor(probe.gutterColor(x: trailingEdge, y: probe.middle(of: row)),
-                            NSColor(DiffLineStyle.background(for: kind)), "\(kind) row's trailing edge")
+                            try XCTUnwrap(DiffLineStyle.rowTint(for: kind)), "\(kind) row's trailing edge")
         }
         let context = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == .context })
         assertSameColor(probe.gutterColor(x: trailingEdge, y: probe.middle(of: context)),
@@ -321,7 +308,7 @@ final class DiffChromeTests: XCTestCase {
     }
 
     /// The gutter number takes its row's color: the neutral gray on a context row,
-    /// the row's own accent on a changed one — `DiffLineRow.numberColor`'s rule.
+    /// the row's own accent on a changed one.
     ///
     /// Asserted against the color *composited over the row it was drawn on*, not
     /// against the style constant: `contextNumberTint` is a translucent
@@ -336,8 +323,7 @@ final class DiffChromeTests: XCTestCase {
 
         for row in probe.rows where row.isLineStart && probe.document.lines[row.lineIndex].number != nil {
             let kind = try XCTUnwrap(probe.kind(of: row))
-            let tint = kind == .context
-                ? NSColor(DiffLineStyle.contextNumberTint) : NSColor(DiffLineStyle.accent(for: kind))
+            let tint = DiffLineStyle.accent(for: kind) ?? DiffLineStyle.contextNumberTint
             let expected = composite(tint, over: probe.expectedBackground(of: row))
             let ink = probe.numberInk(in: row)
             numbered += 1
@@ -356,27 +342,26 @@ final class DiffChromeTests: XCTestCase {
     }
 
     /// The `+`/`-` is drawn in the gutter's cue column, in its row's accent — and
-    /// a context row's column stays empty, where the cue used to be a space in the
-    /// text.
+    /// a context row's column stays empty.
     ///
-    /// This is the whole reason the cue moved: in the gutter it cannot indent the
-    /// code, so a wrapped line's display rows share one leading edge, and it
-    /// cannot land inside a selection or a copy.
+    /// This is the whole reason the cue lives in the gutter: there it cannot
+    /// indent the code, so a wrapped line's display rows share one leading edge,
+    /// and it cannot land inside a selection or a copy.
     func testChangedRowsDrawTheirCueInTheGutter() throws {
         let probe = try makeProbe(makeMixedDocument())
         var cued = 0
 
         for row in probe.rows where row.isLineStart {
             let ink = probe.cueInk(in: row)
-            // A context row announces nothing — where the cue used to be a space
-            // in its text — and a hunk header or note has no kind at all.
+            // A context row announces nothing, and a hunk header or note has no
+            // kind at all.
             guard let kind = probe.kind(of: row), kind != .context else {
                 XCTAssertLessThan(ink.deviation, 0.02,
                                   "row \(row.lineIndex) must leave its cue column empty")
                 continue
             }
             cued += 1
-            let expected = composite(NSColor(DiffLineStyle.accent(for: kind)),
+            let expected = composite(try XCTUnwrap(DiffLineStyle.accent(for: kind)),
                                      over: probe.expectedBackground(of: row))
 
             XCTAssertGreaterThan(ink.deviation, 0.1, "no cue drawn for row \(row.lineIndex) (\(kind))")
@@ -388,9 +373,9 @@ final class DiffChromeTests: XCTestCase {
     }
 
     /// A wrapped line covers several visual rows but is one line, so its number is
-    /// printed once, on the row that starts it — a rule the row-based renderer got
-    /// for free, one view per line, and this one has to enforce. Its continuation
-    /// rows still carry the tint, so a wrapped addition reads as one unbroken band.
+    /// printed once, on the row that starts it — a rule TextKit's per-row
+    /// fragments leave the gutter to enforce. Its continuation rows still carry
+    /// the tint, so a wrapped addition reads as one unbroken band.
     func testAWrappedLinesNumberIsPrintedOnlyOnItsFirstRow() throws {
         let probe = try makeProbe(makeMixedDocument())
         let rowsByLine = Dictionary(grouping: probe.rows, by: \.lineIndex)
@@ -408,7 +393,7 @@ final class DiffChromeTests: XCTestCase {
                               "continuation row \(offset) must print no number")
             assertSameColor(
                 probe.gutterColor(x: DiffGutterRuler.stripeWidth + 0.5, y: probe.middle(of: row)),
-                NSColor(DiffLineStyle.background(for: kind)),
+                try XCTUnwrap(DiffLineStyle.rowTint(for: kind)),
                 "continuation row \(offset) must keep the row tint")
         }
     }
@@ -454,13 +439,13 @@ final class DiffChromeTests: XCTestCase {
         // that covered the code column would leave the plain background.
         assertSameColor(
             canvas.color(x: codeX, y: rowY),
-            NSColor(DiffLineStyle.background(for: .addition)),
+            DiffLineStyle.additionBackground,
             "the added row's tint, \(codeX - surface.ruler.ruleThickness) pt into the code column")
 
         // And the code itself is on screen: somewhere across the row's glyph span a
         // pixel differs from the tint it sits on. The tint assertion above would still
         // hold with every glyph painted over, which is the symptom a reader reports.
-        let tint = NSColor(DiffLineStyle.background(for: .addition))
+        let tint = DiffLineStyle.additionBackground
         let inked = stride(from: surface.ruler.ruleThickness, to: codeX, by: 0.5).contains { x in
             stride(from: rowY - addition.rect.height / 2, to: rowY + addition.rect.height / 2, by: 0.5)
                 .contains { y in channelDistance(canvas.color(x: x, y: y), tint) > 0.02 }
@@ -679,8 +664,8 @@ final class DiffChromeTests: XCTestCase {
         /// disagree about what a row sits on.
         func expectedBackground(of row: DiffFragmentGeometry.Fragment) -> NSColor {
             switch document.lines[row.lineIndex].kind {
-            case .addition: NSColor(DiffLineStyle.background(for: .addition))
-            case .deletion: NSColor(DiffLineStyle.background(for: .deletion))
+            case .addition: DiffLineStyle.additionBackground
+            case .deletion: DiffLineStyle.deletionBackground
             case .context, .hunkHeader, .note: textView.backgroundColor
             }
         }

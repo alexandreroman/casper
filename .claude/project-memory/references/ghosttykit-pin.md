@@ -1,15 +1,17 @@
 ---
 name: "GhosttyKit / libghostty pin"
-description: "Exact pinned libghostty version, source, checksum, and vendored header for CasperGhostty"
+description: "libghostty revision pin, its source, checksum and vendored header for CasperGhostty; why not the tag"
 type: reference
 ---
 
 # GhosttyKit / libghostty pin
 
 CasperGhostty links libghostty through the third-party binary Swift package
-**`Lakr233/libghostty-spm`, pinned `exact: "1.2.8"`** in `Package.swift`. That
-release ships `GhosttyKit.xcframework` built from upstream Ghostty **`v1.3.1`**
-(commit `332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`), plus Lakr233's own patches.
+**`Lakr233/libghostty-spm`, pinned by `revision:
+"2ef85df0292dc864a857d30963b943e5d5b8dc87"`** in `Package.swift` — the fork's
+`1.2.8` release. That release ships `GhosttyKit.xcframework` built from
+upstream Ghostty **`v1.3.1`** (commit
+`332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`), plus Lakr233's own patches.
 
 - binaryTarget asset: `https://github.com/Lakr233/libghostty-spm/releases/download/storage.1.2.8/GhosttyKit.xcframework.zip`
   checksum `eab8ecf086806acd6c0cfa198635c70e8b711c3a4d449bb0eb79b717b3960e24`
@@ -35,40 +37,31 @@ release ships `GhosttyKit.xcframework` built from upstream Ghostty **`v1.3.1`**
 
 **Why:** the libghostty embedding API is unstable and changes between versions;
 every `ghostty_*` symbol must be written against the exact pinned header, and
-the binary is an opaque third-party artifact that must be trust-verified.
-Pinning `exact:` (not `from:`) prevents a new release from silently shifting the
-ABI.
+the binary is an opaque third-party artifact that must be trust-verified. A
+revision pin names one immutable commit, so neither a new release nor a moved
+tag can shift the ABI.
 
 **How to access:** read `Vendor/ghostty/ghostty.h` for real signatures; re-sync
-with `make vendor`. On any version bump: re-verify the xcframework checksum,
-re-vendor the matching-tag header, diff the xcframework's bundled `ghostty.h`
-against upstream, and update every affected `ghostty_*` call — all confined to
-the `CasperGhostty` module. See [[dependency-policy]].
+with `make vendor`. On any pin bump: pick the new revision from
+`git ls-remote`, re-verify the xcframework checksum, re-vendor the header from
+the new artifact, diff it against the previous one, and update every affected
+`ghostty_*` call — all confined to the `CasperGhostty` module. See
+[[dependency-policy]].
 
-## The upstream `1.2.8` tag and the pinned revision differ
+## Why a revision and not the `1.2.8` tag
 
-`Package.resolved` pins revision `839f269bcd5193d03293cb6717ed2582dde265ef` for
-version `1.2.8`, while the fork's `refs/tags/1.2.8` resolves to
-`2ef85df0292dc864a857d30963b943e5d5b8dc87` — the tag is mutable upstream and has
-been moved. SwiftPM checks the pin against the tag it fetches, so **dependency
-resolution fails before anything compiles** in any checkout without a populated
-`.build`: a fresh clone, a fresh worktree, CI, or anything that clears
-`.build/{repositories,checkouts,artifacts}`.
+The fork's tags are mutable, so a tag pin can shift under Casper without any
+change on this side. The pinned `2ef85df…` is the commit `refs/tags/1.2.8`
+names, and it sits on the fork's `main`. It carries the same tree
+(`32723787e660…`) as `839f269bcd5193d03293cb6717ed2582dde265ef`, the commit
+Casper was first vendored against, so both name the same binary asset, the
+same checksum and the same vendored header. `839f269…` itself sits on no
+upstream branch or tag (only GitHub's `refs/pull/*/head` refs reach it), so it
+is not a revision to pin.
 
-The pin is the thing to keep, not the tag: the checksum and the vendored header
-above both describe `839f269…`, and accepting the re-tagged commit would swap
-the binary out from under them.
+An `exact: "1.2.8"` requirement also makes SwiftPM check the revision recorded
+in `Package.resolved` against the commit the tag names on fetch: once the tag
+moves, a cold cache fails at resolve. A revision pin has no such check to fail.
 
-**How to access:** copy **four** things out of a checkout that already resolved
-(another worktree of the same repo) into the fresh one's `.build/`:
-`repositories/`, `checkouts/`, `artifacts/`, **and `workspace-state.json`**.
-The three directories alone are not enough: the seeded repository mirror still
-reports the moved `1.2.8` tag, so any re-resolution — including
-`swift package resolve --skip-update` — fails on the pin exactly as a clean
-checkout does. `workspace-state.json` is the record that the graph is *already*
-resolved, and with it in place `swift build` proceeds without re-resolving and
-without touching `Package.resolved`. The copied file names absolute artifact
-paths inside the donor checkout, so the donor must still exist on disk.
-
-Verify with `git ls-remote --tags https://github.com/Lakr233/libghostty-spm.git`
-before concluding anything about which revision a tag names today.
+Verify with `git ls-remote https://github.com/Lakr233/libghostty-spm.git`
+before concluding anything about which revision a ref names today.

@@ -1,10 +1,10 @@
 ---
-name: "Asserting that a production path saved the session"
+name: "Asserting the session was saved"
 description: "flushPendingSave() persists unconditionally, so a test that calls it proves the codec, never that the code under test wrote anything"
 type: feedback
 ---
 
-# Asserting that a production path saved the session
+# Asserting the session was saved
 
 `AppModel.flushPendingSave()` calls `persist()` itself before draining the save
 queue. A test that drives some model call, then flushes, then reloads the store
@@ -37,5 +37,13 @@ Git repository since it was adopted — which is exactly what creating a Space a
 a tracked path does. Seeding the fixture with a Space that is already Git-backed
 removes that second writer and leaves the call under test as the only one.
 
+**A debounced save has the same trap.** A test counting `persist()` calls
+through `onPersistForTest` waits for the debounce to fire
+(`await waitUntil { saves == 1 }`) instead of flushing. It also calls
+`flushPendingSave()` *before* installing the counter, so a debounced save the
+fixture's setup left pending cannot fire later and supply the count for a setter
+that schedules nothing.
+
 **How to apply:** before trusting a persistence test, break the save under test
-and watch it fail. A green test that stays green is the signature of both traps.
+and watch it fail. A green test that stays green is the signature of these
+traps.

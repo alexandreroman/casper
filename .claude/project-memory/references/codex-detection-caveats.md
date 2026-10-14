@@ -6,8 +6,8 @@ type: reference
 
 # Codex detection caveats
 
-Five facts about detecting the Casper integration for OpenAI Codex CLI, none of
-them discoverable from this repository alone.
+Facts about detecting the Casper integration for OpenAI Codex CLI, none of them
+discoverable from this repository alone.
 
 **The install layout is confirmed.** Codex installs land in
 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`, so the version comes
@@ -36,14 +36,6 @@ tools write to it (on this machine, a tool called superset, with
 Nor does it hold a Casper marker to look for: the `casper-skills` plugin never
 writes to it. Anyone reaching for this file as a Codex-presence or integration
 signal gets a confident false positive.
-
-**Two plugin ids are in the wild.** The marketplace was renamed after the
-plugin's first local installs, so every pre-rename registry still carries
-`casper@Casper` where a current one carries `casper@casper` —
-`AgentIntegration.legacyPluginID` and `AgentIntegration.pluginID`. The two
-differ by case alone, and both sides of every lookup (JSON object keys, Swift
-`==` on `String`) are case-sensitive, so any move to case-insensitive matching
-would collapse them and lose the only signal distinguishing the two.
 
 **Hook trust is readable from `config.toml`.** Codex hashes non-managed command
 hooks and refuses to run them until the user approves them through `/hooks` in

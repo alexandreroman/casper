@@ -22,9 +22,21 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ControlCommand.self, from: data), command)
     }
 
-    func testVerbRawValuesAreStable() {
-        XCTAssertEqual(ControlCommand.Verb.statusSet.rawValue, "statusSet")
-        XCTAssertEqual(ControlCommand.Verb.workspaceNew.rawValue, "workspaceNew")
+    /// The verbs' wire names are a contract with every client of the control
+    /// socket, so each one is spelled out rather than derived from the enum.
+    func testVerbWireNamesAreStable() {
+        let wireNames = [
+            "statusSet", "statusGet", "progressSet", "progressClear", "progressGet", "notify",
+            "infoSet", "infoClear", "terminalNew", "terminalList", "terminalClose",
+            "browserOpen", "browserLoad", "browserClose", "diffOpen", "diffClose",
+            "workspaceList", "workspaceNew", "workspaceDelete", "run",
+            "browserScreenshot", "browserEval", "browserContent", "browserURL", "browserClick",
+            "browserType", "browserKey", "browserConsole", "browserWait", "browserReload",
+            "browserScrollUp", "browserScrollDown", "browserScrollTop", "browserScrollBottom",
+        ]
+        for name in wireNames {
+            XCTAssertNotNil(ControlCommand.Verb(rawValue: name), "no verb answers to '\(name)'")
+        }
     }
 
     func testResponseFactories() throws {
@@ -43,12 +55,36 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.workspaces, [info])
     }
 
-    func testRunVerbRawValueIsStable() {
-        XCTAssertEqual(ControlCommand.Verb.run.rawValue, "run")
+    func testWorkspaceInfoFromAWorkspaceUsesItsCasperIDAndWorktree() throws {
+        let id = try XCTUnwrap(UUID(uuidString: "ABCDEF01-ABCD-4BCD-8BCD-ABCDEF012345"))
+        let workspace = Workspace(
+            id: id, name: "feat", worktreePath: "/repo-feat", branch: "feat", portBase: 40010,
+            layout: .leaf(Surface.terminal(cwd: "/repo-feat")))
+
+        XCTAssertEqual(
+            ControlWorkspaceInfo(workspace),
+            ControlWorkspaceInfo(
+                id: "abcdef01-abcd-4bcd-8bcd-abcdef012345", name: "feat", branch: "feat",
+                path: "/repo-feat"))
     }
 
-    func testInfoVerbRawValuesAreStable() {
-        XCTAssertEqual(ControlCommand.Verb.infoSet.rawValue, "infoSet")
-        XCTAssertEqual(ControlCommand.Verb.infoClear.rawValue, "infoClear")
+    func testAbsoluteURLRequiresSchemeAndHost() {
+        XCTAssertEqual(ControlCommand.absoluteURL("https://example.com/a")?.host, "example.com")
+        XCTAssertEqual(ControlCommand.absoluteURL("http://localhost:5173")?.port, 5173)
+        XCTAssertNil(ControlCommand.absoluteURL(nil))
+        XCTAssertNil(ControlCommand.absoluteURL(""))
+        XCTAssertNil(ControlCommand.absoluteURL("example.com"))
+        XCTAssertNil(ControlCommand.absoluteURL("/tmp/page.html"))
+        XCTAssertNil(ControlCommand.absoluteURL("file:///tmp/page.html"))
+    }
+
+    func testUnwrappedJSONStringUnwrapsStringButNotOtherTokens() {
+        // `eval --raw`, `content` and `url` unwrap a JSON string to its bare
+        // contents, but leave numbers, booleans, null, and containers as-is.
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("\"My Title\""), "My Title")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("42"), "42")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("true"), "true")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("null"), "null")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("{\"a\":1}"), "{\"a\":1}")
     }
 }

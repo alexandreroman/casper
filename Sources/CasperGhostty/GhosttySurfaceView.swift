@@ -58,10 +58,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // giving up, so a single null does not permanently kill the pane.
     private var surfaceCreationAttempts = 0
     private static let maxSurfaceCreationAttempts = 3
-    // The one retry currently armed, held so a window re-entry can retire it before
-    // restoring the budget. Without that, leaving and re-entering the window inside
-    // the retry delay would leave two independent retry chains running on this view.
-    private var pendingSurfaceRetry: DispatchWorkItem?
+    // Holds the one retry currently armed, so a fresh creation cycle (a window re-entry
+    // or a display change) can retire it before restoring the budget. Without that, a
+    // restart inside the retry delay would leave two independent retry chains running.
+    private let surfaceRetry = Debouncer(delay: 0.25)
     // Shown in place of the terminal when surface creation ultimately fails, so the
     // user gets an explanation instead of a silently blank pane.
     private var errorOverlay: NSView?
@@ -72,9 +72,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private var invalidated = false
 
     // Latest OSC window title libghostty decoded for this surface (the
-    // GHOSTTY_ACTION_SET_TITLE payload), captured per-surface so agent-state
-    // detection can read it. Current Claude Code signals "working" only through
-    // this title (a Braille spinner glyph prefix), no longer via the viewport text.
+    // GHOSTTY_ACTION_SET_TITLE payload), captured per surface for agent-state
+    // detection: a secondary "working" signal (see the agent-state-detection theme).
     private var latestOSCTitle: String?
 
     // Latest OSC 9;4 progress state libghostty decoded for this surface (the
@@ -240,22 +239,19 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // retry a few times and only then surface a visible error. A later re-parent keeps
     // the existing surface (the `surface == nil` guard makes this a no-op then).
     private func createSurfaceIfNeeded() {
-        guard surface == nil, !invalidated, window != nil else { return }
+        guard surface == nil, !invalidated, let window else { return }
         #if DEBUG
         debugTotalSurfaceCreationAttempts += 1
         #endif
         let nsview = Unmanaged.passUnretained(self).toOpaque()
-        // The configuration's `scaleFactor` overwrites libghostty's own, so seed it
-        // from the hosting window: left at the `1.0` default, every surface is born at
-        // 1x on a Retina display and only corrected by the `pushContentScale()` below,
-        // after the first frame has already been rendered at the wrong scale.
-        var configuration = self.configuration
-        configuration.scaleFactor = Double(window?.backingScaleFactor ?? 1.0)
         do {
             // userdata == nsview: libghostty hands this pointer back verbatim to the
-            // clipboard callbacks, letting them recover this view.
+            // clipboard callbacks, letting them recover this view. The scale comes from the
+            // hosting window: born at 1x on a Retina display, the surface would render its
+            // first frame at the wrong scale before the `pushWindowGeometry()` below.
             surface = try GhosttySurface(
-                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview,
+                scaleFactor: Double(window.backingScaleFactor))
             #if DEBUG
             // Censused here rather than from `GhosttySurface.init`: that init is
             // nonisolated (the class is main-thread affine only by contract) and the
@@ -266,10 +262,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             #endif
             // The surface init typed the queued command into the new child (see the
             // ghostty-initial-input-utf8 note). Drop it now that it has run, so no later
-            // creation on this view can replay it. The local copy above is what was just
-            // used, so this cannot cancel the injection that already happened.
-            self.configuration.initialInput = nil
-            cancelPendingSurfaceRetry()
+            // creation on this view can replay it.
+            configuration.initialInput = nil
+            surfaceRetry.cancel()
             surfaceCreationAttempts = 0
             removeErrorOverlay()
             pushWindowGeometry()
@@ -290,28 +285,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             surfaceCreationAttempts += 1
             if surfaceCreationAttempts < Self.maxSurfaceCreationAttempts {
                 // Transient null: retry shortly, as long as the view is still hosted.
-                scheduleSurfaceRetry()
+                // Re-arming replaces any earlier retry, so at most one chain is live.
+                surfaceRetry.schedule { [weak self] in self?.createSurfaceIfNeeded() }
             } else {
                 showErrorOverlay()
             }
         }
-    }
-
-    // Arm the single pending surface-creation retry, replacing any earlier one so at
-    // most one retry chain is ever live for this view.
-    private func scheduleSurfaceRetry() {
-        cancelPendingSurfaceRetry()
-        let retry = DispatchWorkItem { [weak self] in
-            self?.pendingSurfaceRetry = nil
-            self?.createSurfaceIfNeeded()
-        }
-        pendingSurfaceRetry = retry
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: retry)
-    }
-
-    private func cancelPendingSurfaceRetry() {
-        pendingSurfaceRetry?.cancel()
-        pendingSurfaceRetry = nil
     }
 
     // Begin a fresh, bounded creation cycle for a surface that never came up: retire
@@ -320,7 +299,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // This is the only place the budget resets, and only on discrete events — once per
     // window entry and once per display-change notification — so it stays bounded.
     private func restartSurfaceCreation() {
-        cancelPendingSurfaceRetry()
+        surfaceRetry.cancel()
         surfaceCreationAttempts = 0
         removeErrorOverlay()
         createSurfaceIfNeeded()
@@ -409,7 +388,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// that outlives its owner's teardown can never spawn a second child process.
     public func invalidate() {
         invalidated = true
-        cancelPendingSurfaceRetry()
+        surfaceRetry.cancel()
         // Drops the display-wake observers: nothing can recover a surface freed for good.
         updateDisplayWakeObservers()
         surface = nil
@@ -472,6 +451,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // value alone cannot pin the dedup guard — it reads the same whether or not a
     // repeat state was re-pushed — so the count is what a test asserts on.
     private(set) var debugOcclusionPushCount = 0
+
+    // Test seam: how many sizes `pushSize` forwarded to libghostty
+    // (`ghostty_surface_set_size`), which is set-only and not de-duplicated: a repeat of
+    // the same size is invisible, so the count is what a test asserts on.
+    private(set) var debugSizePushCount = 0
 
     func debugRefreshOcclusion() { refreshOcclusion() }
 
@@ -560,22 +544,22 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     /// Inject a mouse position (libghostty top-left coordinates) straight into the
     /// surface, bypassing AppKit event delivery. Used by the `mouse-move` debug
-    /// verb to exercise libghostty's mouse-shape emission in headless tests.
+    /// verb to exercise libghostty's mouse-shape emission.
     public func debugMouseMove(x: Double, y: Double) {
         surface?.sendMousePos(x: x, y: y, mods: ghosttyMods(from: []))
     }
 
     // Combine libghostty's surface readback with this view's own AppKit metrics,
     // so the debug channel can pinpoint content-scale double-counting.
-    public func debugGeometry() -> DebugSurfaceGeometry {
+    public func debugGeometry() -> DebugState.Geometry {
         guard let surface else { return .zero }
-        let g = surface.geometry()
+        let size = ghostty_surface_size(surface.surface)
         let backingBounds = convertToBacking(bounds).size
         let contentScale = convertToBacking(NSSize(width: 1, height: 1))
-        return DebugSurfaceGeometry(
-            columns: g.columns, rows: g.rows,
-            widthPixels: g.widthPixels, heightPixels: g.heightPixels,
-            cellWidthPixels: g.cellWidthPixels, cellHeightPixels: g.cellHeightPixels,
+        return DebugState.Geometry(
+            columns: Int(size.columns), rows: Int(size.rows),
+            widthPixels: Int(size.width_px), heightPixels: Int(size.height_px),
+            cellWidthPixels: Int(size.cell_width_px), cellHeightPixels: Int(size.cell_height_px),
             boundsWidth: Double(bounds.size.width), boundsHeight: Double(bounds.size.height),
             backingWidth: Double(backingBounds.width), backingHeight: Double(backingBounds.height),
             contentScaleX: Double(contentScale.width), contentScaleY: Double(contentScale.height),
@@ -622,6 +606,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         let width = backing.width.isFinite ? max(0, backing.width) : 0
         let height = backing.height.isFinite ? max(0, backing.height) : 0
         surface.setSize(widthPixels: UInt32(width), heightPixels: UInt32(height))
+        #if DEBUG
+        debugSizePushCount += 1
+        #endif
     }
 
     private func pushContentScale() {
@@ -754,17 +741,16 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         })
         // Dragging the window onto another screen can change its backing scale, its
         // refresh rate, or both. Two screens sharing a scale factor change no backing
-        // property, so this is the only notification that reports the move: re-sync the
-        // Metal layer's scale and re-push the display id, or libghostty keeps rendering
-        // for the screen the window just left.
+        // property, and even a scale change does not always call
+        // `viewDidChangeBackingProperties` (ghostty-org/ghostty#2731), so this is the one
+        // notification sure to report the move: re-push everything the window governs, or
+        // libghostty keeps rendering for the screen the window just left. Upstream's
+        // `windowDidChangeScreen` re-pushes the same values, but defers the backing-property
+        // pass to the next main-queue turn; Casper pushes them all at once.
         windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification, object: window, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.syncLayerContentsScale()
-                self?.pushContentScale()
-                self?.pushDisplayID()
-            }
+            MainActor.assumeIsolated { self?.pushWindowGeometry() }
         })
     }
 
@@ -870,23 +856,42 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     }
 
     public override func flagsChanged(with event: NSEvent) {
-        guard let surface else { return }
-        // Mirror Ghostty's reference `SurfaceView_AppKit.flagsChanged`: a modifier
-        // transition is a press only while that modifier is still held, and a release
-        // once it is let go. Map the physical key that toggled to its NSEvent modifier,
-        // then read whether that flag is still set in the event's flags (Ghostty is the
-        // reference).
+        guard let surface,
+              let action = Self.flagsChangedAction(keyCode: event.keyCode, flags: event.modifierFlags)
+        else { return }
+        surface.sendKey(ghosttyKeyEvent(event, action: action))
+    }
+
+    /// Whether the modifier key `keyCode` just went down or came up, given the event's
+    /// `flags`; nil for a key that is not a modifier. Mirrors Ghostty's reference
+    /// `SurfaceView_AppKit.flagsChanged` (Ghostty is the reference). Pure and static so
+    /// it is unit-testable without a running app.
+    static func flagsChangedAction(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> ghostty_input_action_e? {
         let modifier: NSEvent.ModifierFlags
-        switch event.keyCode {
+        switch keyCode {
         case 0x39: modifier = .capsLock       // Caps Lock
         case 0x38, 0x3C: modifier = .shift     // Shift (left/right)
         case 0x3B, 0x3E: modifier = .control   // Control (left/right)
         case 0x3A, 0x3D: modifier = .option    // Option (left/right)
         case 0x37, 0x36: modifier = .command   // Command (left/right)
-        default: return
+        default: return nil
         }
-        let action = event.modifierFlags.contains(modifier) ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
-        surface.sendKey(ghosttyKeyEvent(event, action: action))
+        guard flags.contains(modifier) else { return GHOSTTY_ACTION_RELEASE }
+        // The flag is side-agnostic: releasing a right-hand key while its left twin is
+        // held leaves it set. Only the device-dependent side bit tells that release apart
+        // from a press, and a press reported there would leave libghostty with two presses
+        // and no release for the key. Left-side keys carry no side check, exactly like
+        // upstream `SurfaceView_AppKit.swift`: releasing left Shift while right Shift is held
+        // still reports a press, as in Ghostty.
+        let sideBit: Int32
+        switch keyCode {
+        case 0x3C: sideBit = NX_DEVICERSHIFTKEYMASK
+        case 0x3E: sideBit = NX_DEVICERCTLKEYMASK
+        case 0x3D: sideBit = NX_DEVICERALTKEYMASK
+        case 0x36: sideBit = NX_DEVICERCMDKEYMASK
+        default: return GHOSTTY_ACTION_PRESS
+        }
+        return flags.rawValue & UInt(sideBit) != 0 ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -1021,7 +1026,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // core clears its hover state.
         guard NSEvent.pressedMouseButtons == 0 else { return }
         // Restore the default arrow: the terminal's I-beam must not leak onto sibling
-        // chrome that defines no cursor rect of its own (matches upstream Ghostty).
+        // chrome that defines no cursor rect of its own.
         NSCursor.arrow.set()
         surface?.sendMousePos(x: -1, y: -1, mods: ghosttyMods(from: event.modifierFlags))
     }
@@ -1030,7 +1035,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // `cursorUpdate` is AppKit's own cursor-management hook, invoked as the pointer
         // moves over this tracking area. Setting the cursor here wins over AppKit's
         // default cursor-rect reset (which forces the arrow) that was clobbering the
-        // async `.set()` from `setCursorShape`, so libghostty's I-beam finally sticks.
+        // async `.set()` from `setCursorShape`, so the I-beam finally sticks. Casper's own
+        // mechanism, with `mouseEntered` and the arrow on exit: upstream sets the cursor
+        // through its scroll view's `documentCursor`, and this view is hosted bare (see the
+        // terminal-overlay-cursor note).
         lastCursor.set()
     }
 
@@ -1044,9 +1052,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // We must set the precision bit for trackpad deltas — otherwise libghostty reads
         // precise pixel deltas as line counts and scrolling runs far too fast.
         var mods: Int32 = 0
-        // Precise (trackpad / high-resolution) deltas arrive in points at roughly half
-        // the magnitude of line-based wheel deltas; double them so trackpad and wheel
-        // scrolling feel consistent, matching upstream Ghostty.
+        // Precise (trackpad / high-resolution) deltas are doubled, matching upstream
+        // Ghostty's 2x multiplier, which its source calls subjective: it "feels" better.
         if event.hasPreciseScrollingDeltas {
             deltaX *= 2
             deltaY *= 2
@@ -1072,16 +1079,24 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
     }
 
-    /// Map an `NSEvent.buttonNumber` to libghostty's mouse button. 0→LEFT, 1→RIGHT,
-    /// 2→MIDDLE, 3→FOUR, 4→FIVE; anything else is reported as UNKNOWN. Pure and
-    /// static so it is unit-testable without a running app.
+    /// Map an `NSEvent.buttonNumber` to libghostty's mouse button, with upstream's table
+    /// (`MouseButton.init(fromNSEventButtonNumber:)` in `Ghostty.Input.swift`). Back (3)
+    /// and Forward (4) are X11 buttons 8 and 9: buttons 4 and 5 are the scroll wheel, so
+    /// a mouse-reporting program would read them as scrolling. Anything past 10 is
+    /// reported as UNKNOWN. Pure and static so it is unit-testable without a running app.
     static func ghosttyButton(for buttonNumber: Int) -> ghostty_input_mouse_button_e {
         switch buttonNumber {
         case 0: return GHOSTTY_MOUSE_LEFT
         case 1: return GHOSTTY_MOUSE_RIGHT
         case 2: return GHOSTTY_MOUSE_MIDDLE
-        case 3: return GHOSTTY_MOUSE_FOUR
-        case 4: return GHOSTTY_MOUSE_FIVE
+        case 3: return GHOSTTY_MOUSE_EIGHT  // Back
+        case 4: return GHOSTTY_MOUSE_NINE  // Forward
+        case 5: return GHOSTTY_MOUSE_SIX
+        case 6: return GHOSTTY_MOUSE_SEVEN
+        case 7: return GHOSTTY_MOUSE_FOUR
+        case 8: return GHOSTTY_MOUSE_FIVE
+        case 9: return GHOSTTY_MOUSE_TEN
+        case 10: return GHOSTTY_MOUSE_ELEVEN
         default: return GHOSTTY_MOUSE_UNKNOWN
         }
     }
@@ -1185,10 +1200,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface?.sendText(text)
     }
 
-    // Known limitation (out of v1 scope, not a regression): marked-text composition —
-    // CJK IME and dead-key accents — is intentionally NOT implemented. The methods
-    // below are deliberate no-ops; only committed text (via `insertText` above) is
-    // handled. Full NSTextInputClient marked-text support is deferred to a later plan.
+    // Standing limitation: marked-text composition (preedit) — CJK IME candidates and
+    // dead-key previews — is not drawn inline. The methods below are deliberate no-ops;
+    // only committed text (via `insertText` above) is handled. Upstream feeds
+    // `ghostty_surface_preedit` from `setMarkedText`. Filed in `.superpowers/status.md`
+    // § Remaining work and the terminal theme's Keyboard & clipboard section.
     public func hasMarkedText() -> Bool { false }
     public func markedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
     public func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }

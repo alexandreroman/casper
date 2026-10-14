@@ -9,12 +9,14 @@ type: reference
 Apple compiles `/usr/bin/git` to read its **system** configuration from the
 active developer directory —
 `/Applications/Xcode.app/Contents/Developer/usr/share/git-core/gitconfig`, or
-the Command Line Tools' equivalent. libgit2 searches `/etc` and a package
-manager's prefix instead, so the two disagree about every system-level setting
-a macOS user has. Two of them matter to Casper: `init.defaultBranch` (`git
-init` lands on `main` while a bare `git_repository_init` lands on `master`) and
-`user.name` / `user.email`, which decide whether `git_signature_default`
-resolves an identity at all.
+the Command Line Tools' equivalent. libgit2 searches `/etc` alone instead
+(`git_sysdir_guess_system_dirs` hardcodes it outside Windows, so a Homebrew
+`/opt/homebrew/etc/gitconfig` is never read either), and the two disagree about
+every system-level setting a macOS user has. Two of them matter to Casper:
+`init.defaultBranch` (`git init` lands on `main` while a bare
+`git_repository_init` lands on `master`) and `user.name` / `user.email`, which
+decide whether `git_signature_default_from_env` resolves an identity when no
+`GIT_AUTHOR_*` / `GIT_COMMITTER_*` variable supplies one.
 
 `Libgit2.ensureInit()` narrows the gap once per process, before any repository
 is opened: it reads libgit2's system-level config search path
@@ -34,9 +36,8 @@ searches, and it is read only when no earlier directory holds a `gitconfig`.
 On the common macOS setup — the default system search path is `/etc`, and macOS
 ships no `/etc/gitconfig` — Apple's file becomes the system config, and
 `git_repository_init` moves from `refs/heads/master` onto whatever
-`init.defaultBranch` says. Where `/etc/gitconfig` or a package manager's
-prefixed `gitconfig` **does** exist, that file is read **instead of** Apple's
-and the augmentation changes nothing.
+`init.defaultBranch` says. Where `/etc/gitconfig` **does** exist, that file is
+read **instead of** Apple's and the augmentation changes nothing.
 
 The append order is the deliberate half of the trade: prepending would let
 Apple's file shadow a system config an administrator installed on purpose,

@@ -37,7 +37,7 @@ is laid out straight at its final frame and never follows a SwiftUI
 transition's per-frame offset, so it lags the sliding chrome. The clearest way
 to see it is a SwiftUI `Picker` with `.segmented`, which is an
 `NSSegmentedControl` underneath and lags exactly this way. The tab strip is
-hand-rolled SwiftUI (`InspectorTabSelector` in `WorkspaceDetailView.swift`), and
+hand-rolled SwiftUI (`InspectorTabSelector` in `WorkspaceTitleBar.swift`), and
 the constraint holds regardless because the panel still hosts AppKit content —
 the terminal's Metal layer and `WKWebView`. This mirrors `SplitContainerView`,
 which animates hosted Metal views by frame/offset on always-mounted views for
@@ -76,8 +76,9 @@ right width while answering on only half of it.
 `InspectorState.minWidth` / `defaultWidth` / `maxWidth`; the floor reserved for
 the detail area beside it belongs to the other side of the divider and lives as
 `WorkspaceDetailView.minDetailWidth`. The live
-width is a per-workspace `@State` in `WorkspaceDetailView`, seeded on
-`.onAppear` (re-seeded per workspace because the detail view carries a
-per-workspace `.id`) and persisted **on drag-end only** via
-`AppModel.setInspectorWidth(_:for:)` (clamped, debounced). `InspectorPanel` does
+width is a `@State` in `WorkspaceDetailView` holding the drag's value only —
+`nil` until a drag, falling back to the persisted `workspace.inspector.width` —
+and persisted **on drag-end only** via `AppModel.setInspectorWidth(_:for:)`
+(clamped, debounced). The detail view's per-workspace `.id` keeps one
+workspace's drag from leaking into the next. `InspectorPanel` does
 not measure its own width — it fills whatever `.frame(width:)` it is given.

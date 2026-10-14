@@ -1,19 +1,14 @@
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class RepositoryTests: XCTestCase {
     private var tempDir: URL!
 
-    override func setUpWithError() throws {
-        tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-git-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(
-            at: tempDir, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: tempDir)
+    override func setUp() {
+        super.setUp()
+        tempDir = makeTemporaryDirectory(prefix: "casper-git")
     }
 
     func testInitializeCreatesRepository() throws {
@@ -52,9 +47,9 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(branch.isEmpty)
     }
 
-    /// Record a committer in the repository's **local** config, so
-    /// `git_signature_default` resolves whatever the machine running the suite has (or
-    /// does not have) configured globally.
+    /// Record a committer in the repository's **local** config, so the commit does not
+    /// depend on whatever the machine running the suite has (or does not have)
+    /// configured globally.
     private func configureIdentity(in repo: Repository) throws {
         var config: OpaquePointer?
         defer { git_config_free(config) }  // before the call: free on the throw path too
@@ -67,6 +62,7 @@ final class RepositoryTests: XCTestCase {
         let repo = try Repository.initialize(atPath: tempDir.path)
         try configureIdentity(in: repo)
 
+        XCTAssertTrue(repo.isHeadUnborn)
         XCTAssertTrue(try repo.createInitialCommit())
 
         XCTAssertFalse(repo.isHeadUnborn)
@@ -83,6 +79,35 @@ final class RepositoryTests: XCTestCase {
         defer { git_tree_free(tree) }
         try gitCheck(git_commit_tree(&tree, commit))
         XCTAssertEqual(git_tree_entrycount(tree), 0)
+    }
+
+    /// The environment names an identity the configuration lacks: the author comes from
+    /// `GIT_AUTHOR_*` and the committer from `GIT_COMMITTER_*`, each on its own.
+    func testCreateInitialCommitTakesItsIdentityFromTheEnvironmentWhenTheConfigHasNone() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try GitFixture.configureIdentity(atPath: tempDir.path, name: "", email: "")
+        setGitIdentityEnvironment([
+            .authorName: "Env Author", .authorEmail: "author@env.example",
+            .committerName: "Env Committer", .committerEmail: "committer@env.example",
+        ])
+
+        XCTAssertTrue(try repo.createInitialCommit())
+
+        let identities = try GitFixture.headCommitIdentities(atPath: tempDir.path)
+        XCTAssertEqual(identities.author, "Env Author <author@env.example>")
+        XCTAssertEqual(identities.committer, "Env Committer <committer@env.example>")
+    }
+
+    /// Neither the configuration nor the environment names anyone, and Casper does not
+    /// invent an identity: nothing is written and HEAD stays unborn.
+    func testCreateInitialCommitWritesNothingWithoutAnIdentity() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try GitFixture.configureIdentity(atPath: tempDir.path, name: "", email: "")
+        setGitIdentityEnvironment()
+
+        XCTAssertFalse(try repo.createInitialCommit())
+
+        XCTAssertTrue(repo.isHeadUnborn)
     }
 
     /// The commit is parentless, so writing it onto a branch that already points
@@ -105,15 +130,6 @@ final class RepositoryTests: XCTestCase {
         try gitCheck(git_reference_name_to_id(&oid, repo.pointer, "HEAD"))
         // `git_oid_tostr_s` answers a buffer it reuses, so copy before the next call.
         return String(cString: git_oid_tostr_s(&oid))
-    }
-
-    func testInitializedRepositoryHasAnUnbornHeadUntilItIsCommittedInto() throws {
-        let repo = try Repository.initialize(atPath: tempDir.path)
-        try configureIdentity(in: repo)
-
-        XCTAssertTrue(repo.isHeadUnborn)
-        XCTAssertTrue(try repo.createInitialCommit())
-        XCTAssertFalse(repo.isHeadUnborn)
     }
 
     func testBranchExists() throws {
@@ -162,6 +178,34 @@ final class RepositoryTests: XCTestCase {
             at: tempDir.appendingPathComponent("README.md"))
 
         XCTAssertFalse(try repo.isClean())
+    }
+
+    func testIsTrackedAtHeadFindsACommittedFileEvenOnceDeletedFromDisk() throws {
+        let repo = try repositoryWithASourcesDirectory()
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("README.md"))
+
+        XCTAssertTrue(try repo.isTrackedAtHead(path: "README.md"))
+        XCTAssertTrue(try repo.isTrackedAtHead(path: "Sources/main.swift"))
+    }
+
+    func testIsTrackedAtHeadRefusesAnAbsentPathAndADirectory() throws {
+        let repo = try repositoryWithASourcesDirectory()
+
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "does-not-exist.swift"))
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "Sources/missing.swift"))
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "Sources"))
+    }
+
+    /// A fixture repository whose HEAD also tracks `Sources/main.swift`.
+    private func repositoryWithASourcesDirectory() throws -> Repository {
+        try FileManager.default.createDirectory(
+            at: tempDir.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        return try GitFixture.repository(at: tempDir.path, files: ["Sources/main.swift": "print()\n"])
+    }
+
+    func testIsTrackedAtHeadOnUnbornHeadIsFalse() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "README.md"))
     }
 
     func testRemoteURL() throws {

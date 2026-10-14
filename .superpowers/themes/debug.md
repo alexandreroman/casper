@@ -21,15 +21,26 @@ always-shipping control channel (`ControlSocket.swift`) is built on the same
 `CASPER_DEBUG_SOCKET` only selects the socket *path*, and only on the **dial**
 side (else `CASPER_SESSION` derives it, else the default) — a listener always
 binds the session-derived path (`DebugSocketPath.listenPath(for:)`), ignoring
-the env override outright, see [[socket-listen-vs-dial-path]]. Logging keeps a
-floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
-[[debug-channel-gating]].
+the env override outright, see [[socket-listen-vs-dial-path]].
+
+Logging (through `CasperLog`, see `core.md`) keeps a floor:
+`.notice`/`.error`/`.fault` (and `warning`, an `.error`-level alias) are always
+compiled in, `.debug`/`.info` call sites are gated. `.notice` is the tier for an
+outcome worth reading back from a shipped build, so its call sites are ungated
+by design and deliberately few:
+
+- a diff refresh's shape, logged on every non-empty refresh so that a diff-view
+  freeze names its likely culprit in the last line before the hang;
+- a Space built without an initial commit;
+- a reclaimed worktree directory;
+- a denied untrusted clipboard read or write — dormant in a shipped build,
+  where `approveUntrusted` approves unconditionally (see `../status.md`), so
+  only a test that substitutes the approval can reach it.
+
+See [[debug-channel-gating]].
 
 ## Design
 
-- **`CasperLog`** — a thin `os.Logger` wrapper (subsystem
-  `com.github.alexandreroman.casper`, three categories: `app`, `ghostty`,
-  `debug`).
 - **Control channel** — a bidirectional request/response Unix-domain-socket
   channel (protocol + client in CasperCore; the server is
   `CasperGhostty/DebugServer.swift`, started by CasperUI's `AppDelegate` against
@@ -80,8 +91,18 @@ floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
   directions** (a plain half-close intermittently failed with `ENETDOWN`); an 8
   MB length guard bounds each read.
 - **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot`/`memory` are
-  retriable (up to 4 attempts); every injecting verb and `focus` are **not**
-  (they mutate).
+  retriable; every injecting verb and `focus` are **not** (they mutate). What a
+  retry covers is the shared client's rule, in `core.md` § Design → "Control
+  channel": any `SocketTransportError` before a full reply; a reply timeout
+  never. Each attempt gets its own 5 s timeout, so a failure that arrives late
+  (a connection dropped near the deadline while `screenshot` runs) can stretch
+  a call to about 20 s. The retry is deliberate even though its original cause —
+  an intermittent `ENETDOWN` before any reply byte while `screenshot` ran — may
+  be gone since the server lingers until the client closes. Whether that cause
+  survives is settled by disabling the retry and looping a few hundred
+  `casper debug screenshot` and `casper debug read-text --scrollback` calls
+  against `make dev`, watching for transport errors — see
+  [[socket-idempotent-retry]].
 - Logging emits `debug server listening`, `debug command: <verb>` and
   `debug command failed: <verb> — <reason>`, where `<verb>` is the wire
   `DebugCommand.Verb` rawValue — camelCase (`dumpState`), not the CLI's

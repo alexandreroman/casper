@@ -1,10 +1,10 @@
 ---
-name: "Worktree deletion deletes the directory before pruning metadata"
+name: "Worktree deletion deletes the directory first"
 description: "git_worktree_prune orphans the working tree on read-only entries; delete the dir with FileManager first, then prune metadata-only"
 type: reference
 ---
 
-# Worktree deletion deletes the directory before pruning metadata
+# Worktree deletion deletes the directory first
 
 `WorktreeManager.remove(repoPath:name:worktreePath:)` and
 `WorktreeManager.forceRemoveDirectory(at:)` carry the ordering rule and the

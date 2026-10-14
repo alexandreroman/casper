@@ -17,6 +17,19 @@ CI, test, and documentation-only work is left out.
   `foreground` in your Ghostty configuration applies in both appearances; use
   `theme = light:…,dark:…` for per-appearance colours.
 
+### Changed
+
+- The commits Casper writes — the merge commit of "Merge and Close" and a new
+  Space's first commit — take your Git identity from the `GIT_AUTHOR_*` and
+  `GIT_COMMITTER_*` environment variables Casper itself was started with (by
+  running its executable from a shell, or set with `launchctl setenv` for a
+  Dock launch), and otherwise from `user.name` and `user.email`. When neither
+  names anyone, "Merge and Close" refuses to write the merge commit, says why,
+  and shows the commands that set one, instead of committing as
+  "Casper <casper@localhost>"; when one of those variables is blank or
+  malformed, it names that variable instead, and shows both remedies when your
+  Git configuration is at fault too. Nothing is deleted.
+
 ### Fixed
 
 - A `theme` set in your own Ghostty configuration now applies to Casper's
@@ -27,6 +40,57 @@ CI, test, and documentation-only work is left out.
   the one in a workspace an agent opens with `casper workspace new --command`
   while you are away — now starts on its own once they wake, instead of
   waiting until you select the workspace.
+- A failed workspace creation no longer leaves behind Git state that makes the
+  next attempt under the same name fail with "directory exists".
+- Creating a workspace under a name Git already has a worktree entry for no
+  longer deletes that worktree's folder. The error now says so, and suggests
+  `git worktree prune` when that worktree was deleted, instead of showing Git's
+  "directory exists".
+- "Create Workspace…" now says why a workspace could not be created — for
+  example a repository with no commits yet — instead of a generic guess.
+- A file Casper cannot read no longer blanks the whole diff view; it is listed
+  as unreadable.
+- `casper` commands fail at once instead of hanging for several seconds when
+  Casper quit uncleanly and left its socket behind.
+- A `casper` command that times out, such as a `casper browser` command on a
+  page that does not answer, now fails after its timeout instead of retrying
+  for up to a minute.
+- The opencode integration reminder no longer claims the plugin is missing
+  when `opencode.json` uses Windows line endings and contains a comment.
+- A mouse's Back and Forward buttons reach terminal programs as buttons 8 and
+  9, as in Ghostty, instead of scrolling them. A mouse's other extra buttons
+  reach terminal programs too, numbered as in Ghostty.
+- Releasing a right-hand modifier key (Shift, Control, Option or Command) while
+  the left one is still held now reaches terminal programs as a release, so a
+  program tracking key presses no longer sees that modifier stuck down.
+- Moving the window to a display with a different scale no longer leaves the
+  terminal sized for the previous display until the window is resized.
+- `casper workspace new --base ""` falls back to the space's base branch, as
+  if `--base` were omitted, instead of creating a workspace that cannot be
+  closed.
+- `casper diff open <file>` no longer scrolls to a different changed file that
+  shares the name of an unchanged one.
+- The diff view no longer jumps back to a file requested earlier with
+  `casper diff open` when it is reopened, and no longer jumps to a requested
+  file that only changes later.
+- Files with Windows (CRLF) or classic Mac (CR) line endings, or that start or
+  end with a blank line, get syntax colours in the diff view.
+- `casper browser reload --wait` waits for the reloaded page to finish loading
+  instead of returning before the reload has started.
+- `casper browser screenshot` with `--width`, `--height` or `--url` no longer
+  fails on a page that redirects itself while loading.
+- Text that starts with a dash is accepted as a value: `casper progress set
+  --label`, `casper notify --message`, `casper info set --message`, the
+  `--command` of `casper terminal new` and `casper workspace new`, and
+  `casper browser wait --js` no longer reject "- waiting" or "--force flag" as
+  a missing value. `--help` or `-h` in place of the value shows the command's
+  help.
+- `casper terminal new --working-dir` reports an error for a directory that
+  does not exist, or a file, instead of opening the terminal somewhere else.
+- `casper terminal close` prints the terminal id in lowercase, like every
+  other command, even when it was typed in uppercase.
+- `casper diff open <file>` accepts a file deleted from the worktree, and
+  scrolls the diff to it, instead of answering "file does not exist".
 
 ## [0.1.3] - 2026-10-13
 

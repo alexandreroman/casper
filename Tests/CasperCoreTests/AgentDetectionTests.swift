@@ -119,33 +119,35 @@ final class AgentDetectionTests: XCTestCase {
 
     // MARK: - Rule-set union
 
-    /// Mirrors what `runAgentDetectionTick` does: apply every rule set to the same
-    /// viewport snapshot and keep the most urgent signal.
-    private func unionViewportSignal(_ text: String) -> AgentSignal {
-        AgentSignal.aggregate(AgentDetectionRuleSet.all.map { $0.signal(fromViewport: text) })
-    }
-
     func testUnionClassifiesAnOpencodeWorkingFrameAsWorking() {
         // The regression this union fixes: with only the Claude Code rule set, a
         // running opencode turn read as idle for its whole duration.
-        XCTAssertEqual(unionViewportSignal(opencodeWorkingFooter), .working)
+        XCTAssertEqual(AgentDetectionRuleSet.signal(fromViewport: opencodeWorkingFooter, title: nil), .working)
     }
 
     func testUnionClassifiesAnOpencodePermissionPromptAsBlocked() {
-        XCTAssertEqual(unionViewportSignal(opencodePermissionPrompt), .blocked)
+        XCTAssertEqual(AgentDetectionRuleSet.signal(fromViewport: opencodePermissionPrompt, title: nil), .blocked)
     }
 
     func testUnionStillClassifiesTheOtherAgentsFrames() {
-        XCTAssertEqual(unionViewportSignal("… esc to interrupt"), .working)
-        XCTAssertEqual(unionViewportSignal("Running tools…"), .working)
+        XCTAssertEqual(AgentDetectionRuleSet.signal(fromViewport: "… esc to interrupt", title: nil), .working)
+        XCTAssertEqual(AgentDetectionRuleSet.signal(fromViewport: "Running tools…", title: nil), .working)
         XCTAssertEqual(
-            unionViewportSignal("Do you want to proceed?\n❯ Yes  (esc to cancel)"),
+            AgentDetectionRuleSet.signal(fromViewport: "Do you want to proceed?\n❯ Yes  (esc to cancel)", title: nil),
             .blocked)
     }
 
     func testUnionLeavesAPlainShellIdle() {
-        XCTAssertEqual(unionViewportSignal("alex@host ~/project % "), .idle)
-        XCTAssertEqual(unionViewportSignal(opencodeIdleFooter), .idle)
+        XCTAssertEqual(AgentDetectionRuleSet.signal(fromViewport: "alex@host ~/project % ", title: nil), .idle)
+        XCTAssertEqual(AgentDetectionRuleSet.signal(fromViewport: opencodeIdleFooter, title: nil), .idle)
+    }
+
+    func testUnionReadsTheTitleAlongsideTheViewport() {
+        // A plain shell viewport reads idle; Claude Code's braille spinner in the OSC
+        // title is what lifts the surface to working.
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(fromViewport: "alex@host ~/project % ", title: "\u{2802} Doing something"),
+            .working)
     }
 
     // MARK: - OSC-title matcher

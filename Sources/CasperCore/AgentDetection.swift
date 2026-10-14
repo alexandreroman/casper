@@ -15,25 +15,15 @@ import Foundation
 ///
 /// `absent` means there is no live/readable agent (the matcher never produces
 /// it — only the caller does, when no agent surface exists).
-public enum AgentSignal: String, Equatable, Sendable {
-    case working, blocked, idle, absent
-}
+///
+/// Ordered by urgency through the declaration order, `absent < idle < working <
+/// blocked`, so rolling several surfaces' signals up to the most urgent one is
+/// just a `max`.
+public enum AgentSignal: Int, Comparable, Sendable {
+    case absent, idle, working, blocked
 
-/// Ordered by urgency, `absent < idle < working < blocked`, so rolling several
-/// surfaces' signals up to the most urgent one is just a `max`.
-extension AgentSignal: Comparable {
     public static func < (lhs: AgentSignal, rhs: AgentSignal) -> Bool {
-        lhs.urgency < rhs.urgency
-    }
-
-    /// Higher wins during aggregation.
-    private var urgency: Int {
-        switch self {
-        case .blocked: return 3
-        case .working: return 2
-        case .idle: return 1
-        case .absent: return 0
-        }
+        lhs.rawValue < rhs.rawValue
     }
 }
 
@@ -207,6 +197,23 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     /// quiet on another agent's screen, and the union is what makes the Codex and
     /// opencode rules reachable at runtime at all.
     public static let all: [AgentDetectionRuleSet] = [.claudeCode, .codex, .opencode]
+
+    /// The most urgent signal any rule set in `all` reads from one viewport
+    /// snapshot and, when there is one, the surface's OSC title.
+    ///
+    /// Both text sources arrive as strings the caller fetched once: a detection
+    /// pass replays them across the rule sets rather than re-reading the surface
+    /// for each one.
+    public static func signal(fromViewport text: String, title: String?) -> AgentSignal {
+        var strongest = AgentSignal.absent
+        for rules in all {
+            strongest = max(strongest, rules.signal(fromViewport: text))
+            if let title {
+                strongest = max(strongest, rules.signal(fromTitle: title))
+            }
+        }
+        return strongest
+    }
 }
 
 extension String {

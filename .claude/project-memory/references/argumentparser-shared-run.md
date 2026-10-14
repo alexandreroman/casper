@@ -1,10 +1,10 @@
 ---
-name: "ArgumentParser shared run() via a refining protocol"
+name: "ArgumentParser shared run()"
 description: "A protocol refining ParsableCommand can carry the default run(); Swift picks it over ArgumentParser's own default"
 type: reference
 ---
 
-# ArgumentParser shared run() via a refining protocol
+# ArgumentParser shared run()
 
 Subcommands whose `run()` bodies are identical share one implementation through
 a protocol that refines `ParsableCommand` and provides `run()` in its extension
@@ -20,16 +20,18 @@ touching this — a wrong witness compiles fine and only shows up at runtime as
 the command printing its help text instead of acting:
 
 ```bash
-env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET ./.build/debug/casper notify --message hi
-# {"error":"no target workspace: run inside a Casper terminal or pass --workspace"}
+env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET \
+  ./.build/debug/casper notify --message hi
+# {"error":"no target workspace: run inside a Casper terminal or pass
+# --workspace"}
 ```
 
 Per-command variation rides on a protocol requirement with a default (e.g.
 `var commandTimeout: TimeInterval { get }`, defaulting to `sendControl`'s 5 s).
 It varies two ways. A single conformer overrides it directly — `workspace
-delete` to 35 s, `browser wait` to a value computed from its own `--timeout`. A
-whole family instead conforms to a **further** refining protocol carrying the
-shared value: `BrowserAutomationRefCommand: WorkspaceRefCommand` in
+delete` and `diff open` to 35 s, `browser wait` to a value computed from its own
+`--timeout`. A whole family instead conforms to a **further** refining protocol
+carrying the shared value: `BrowserAutomationRefCommand: WorkspaceRefCommand` in
 `Sources/CasperCLI/BrowserCommand.swift` gives the eight automation verbs their
 15 s in one place. The same most-refined-wins resolution applies, so the chain
 `ParsableCommand` -> `WorkspaceRefCommand` -> `BrowserAutomationRefCommand`

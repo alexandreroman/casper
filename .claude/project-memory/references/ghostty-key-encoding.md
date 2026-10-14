@@ -40,9 +40,10 @@ Ctrl-A wipes the whole line instead of moving to its start, with
 `ghostty_surface_key_is_binding` returns `false`, so this is libghostty's own
 bare-control-character encoding path, not a keybinding collision.
 
-`ghosttyControlComboKeycode(for:)` (with `qwertyLetterKeyCodes`) substitutes the
-letter's QWERTY-position virtual keycode for any `.control` + ASCII-letter (a-z)
-combo; `unshifted_codepoint` stays derived from the real produced character.
+`ghosttyControlComboKeycode(for:baseCharacters:)` (with `qwertyLetterKeyCodes`)
+substitutes the letter's QWERTY-position virtual keycode for any `.control` +
+ASCII-letter (a-z) combo; `unshifted_codepoint` stays derived from the real
+produced character.
 Digits, punctuation, and non-letter Control combos (Ctrl-[, Ctrl-Space, arrows,
 function keys) keep their real `event.keyCode` — no evidence they are affected
 and no safe remap target.
@@ -56,7 +57,9 @@ ctrl` verb (e.g. Ctrl-C over a running `sleep`, confirm SIGINT). Synthetic
 real hardware keycode is what matters), and the debug `send-key` channel
 bypasses `keyDown`/`interpretKeyEvents` entirely, so it cannot exercise that
 path — the real in-process harness in [[ghostty-real-surface-e2e-harness]] does.
-The vendored reference AppKit handler ([[ghostty-is-the-reference]]) carries the
-same `input.keycode = UInt32(keyCode)` pattern, so upstream is unverified, not
-proven safe. See [[debug-channel-gating]] and [[ghostty-layer-contents-scale]]
+Both the libghostty-spm package's own AppKit handler
+(`TerminalKeyEventHandler@AppKit.swift`) and upstream Ghostty's
+`Ghostty.Input.swift` ([[ghostty-is-the-reference]]) pass the raw `keyCode`
+(`input.keycode = UInt32(keyCode)`), so upstream is unverified, not proven
+safe. See [[debug-channel-gating]] and [[ghostty-layer-contents-scale]]
 for other libghostty embedding gotchas.

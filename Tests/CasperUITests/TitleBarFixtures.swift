@@ -5,15 +5,12 @@ import XCTest
 @testable import CasperUI
 
 /// What one hosted layout of the production title-bar row measured.
+///
+/// The host's own reported width is left out: the row's body ends in
+/// `.frame(width:)`, which reports exactly the width it was handed whatever nests
+/// inside it (see the `fixed-frame-swallows-inner-padding` note). These three
+/// channels are what carry the row's own layout.
 struct TitleBarRowLayout {
-    /// The width the host reported to its parent.
-    ///
-    /// Of no use as a measurement of what the row DREW: the row's body ends in
-    /// `.frame(width:)`, which reports exactly the width it was handed whatever nests
-    /// inside it (see the `fixed-frame-swallows-inner-padding` note). The three
-    /// channels below are what carry the row's own layout.
-    let reported: CGFloat
-
     /// The width the badge slot took — `0` on the rungs that drop the badge whole, and
     /// `-1` if the row never laid a badge slot out at all.
     let badge: CGFloat
@@ -75,7 +72,6 @@ extension XCTestCase {
         let host = NSHostingView(rootView: row)
         host.frame = NSRect(x: 0, y: 0, width: width, height: TitleCapsuleMetrics.height)
         host.layoutSubtreeIfNeeded()
-        return TitleBarRowLayout(
-            reported: host.fittingSize.width, badge: badge, ladder: ladder, rungs: rungs)
+        return TitleBarRowLayout(badge: badge, ladder: ladder, rungs: rungs)
     }
 }

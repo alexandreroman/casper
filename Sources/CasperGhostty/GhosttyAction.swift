@@ -1,9 +1,5 @@
+import CasperCore
 import GhosttyKit
-
-/// The direction a new split grows, mapped from `ghostty_action_split_direction_e`.
-public enum GhosttySplitDirection: Equatable, Sendable {
-    case right, down, left, up
-}
 
 /// A libghostty runtime action, decoded from the C `action_cb` callback into a
 /// Swift-native value. This enum carries the app- and window-scoped actions only:
@@ -11,9 +7,11 @@ public enum GhosttySplitDirection: Equatable, Sendable {
 /// layout handler, plus `.openURL`, `.quit` and `.closeWindow` handled by the
 /// AppDelegate's `onAction`. `.render` is decoded but not acted on.
 ///
-/// Surface-scoped actions never reach here: the OSC title, the child exit status,
-/// and mouse shape/visibility are intercepted by `casperGhosttyAction` and
-/// delivered straight to the target view, which is their only consumer.
+/// Surface-scoped actions never reach here: the OSC title, the OSC 9;4 progress
+/// report, the child exit status, and mouse shape/visibility are intercepted by
+/// `casperGhosttyAction` and delivered straight to the target view, which is their
+/// only consumer. `RELOAD_CONFIG` is intercepted there too and answered by the
+/// runtime itself (`GhosttyRuntime.handleReloadConfig`).
 ///
 /// Decoding is total — `decode` maps every remaining tag, unmodeled ones to
 /// `.other`.
@@ -21,7 +19,7 @@ public enum GhosttyAction: Equatable {
     case render
     /// Emitted on cmd+click of a terminal URL; carries the URL to open.
     case openURL(String)
-    case newSplit(GhosttySplitDirection)
+    case newSplit(SplitDirection)
     case newTab
     case newWindow
     case closeTab
@@ -32,7 +30,7 @@ public enum GhosttyAction: Equatable {
     case other(tag: UInt32)
 
     /// Total decode: every tag maps to a case (`.other` for the unmodeled).
-    public static func decode(_ c: ghostty_action_s) -> GhosttyAction {
+    static func decode(_ c: ghostty_action_s) -> GhosttyAction {
         switch c.tag {
         case GHOSTTY_ACTION_RENDER:
             return .render
@@ -63,9 +61,7 @@ public enum GhosttyAction: Equatable {
         return bytes.withMemoryRebound(to: UInt8.self) { String(decoding: $0, as: UTF8.self) }
     }
 
-    private static func direction(
-        _ d: ghostty_action_split_direction_e
-    ) -> GhosttySplitDirection {
+    private static func direction(_ d: ghostty_action_split_direction_e) -> SplitDirection {
         switch d {
         case GHOSTTY_SPLIT_DIRECTION_RIGHT: return .right
         case GHOSTTY_SPLIT_DIRECTION_DOWN: return .down

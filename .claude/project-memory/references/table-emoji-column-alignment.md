@@ -36,7 +36,8 @@ carry the spinner glyphs `◐◑` and `✳`. Both pad by display width.
 ```bash
 python3 -c "
 import unicodedata
-def w(s): return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in s)
+def w(s):
+    return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in s)
 for i, l in enumerate(open('FILE', encoding='utf-8'), 1):
     l = l.rstrip('\n')
     if l.startswith('|'): print(i, [w(c) for c in l.split('|')[1:-1]])

@@ -20,23 +20,24 @@ SwiftPM's default build system (`swiftbuild`) writes that SDK field from the
 Measured with Xcode 27 / Swift 6.4 on a package declaring
 `platforms: [.macOS(.v15)]`, against `MacOSX27.0.sdk`:
 
-| build path | minos | sdk |
-|---|---|---|
-| `swift build` (default `swiftbuild`) | 15.0 | **15.0** |
-| `swift build --build-system native` (deprecated) | 15.0 | 27.0 |
-| `swiftc -target arm64-apple-macosx15.0` | 15.0 | 27.0 |
+| build path                                       | minos | sdk      |
+| ------------------------------------------------ | ----- | -------- |
+| `swift build` (default `swiftbuild`)             | 15.0  | **15.0** |
+| `swift build --build-system native` (deprecated) | 15.0  | 27.0     |
+| `swiftc -target arm64-apple-macosx15.0`          | 15.0  | 27.0     |
 
 So the Makefile pins the field itself, through `SWIFT_PLATFORM_FLAGS`
 (`-Xlinker -platform_version -Xlinker macos -Xlinker $(MACOS_DEPLOYMENT_TARGET)
 -Xlinker $(MACOS_SDK_VERSION)`), carried by both the `build` and the `release`
-target and folded into the exported `SWIFT_RELEASE_FLAGS`. The linker accepts
-the explicit flag over the one SwiftPM supplies without a duplicate warning.
-`MACOS_DEPLOYMENT_TARGET` duplicates `Package.swift`'s `platforms:` and has to
-move with it — as does the standalone fallback in `Scripts/assemble-bundle.sh`,
-which cannot read a Make variable and so carries a third copy of the deployment
-target (`Scripts/bundle-app.sh` holds a fourth, for `actool`). Through `make`
-the exported value always wins; the fallback only serves a direct run of the
-script.
+target. The linker accepts the explicit flag over the one SwiftPM supplies
+without a duplicate warning. The flags never reach `swift build
+--show-bin-path`: the bin dir it prints depends only on the configuration.
+
+Where the deployment target lives, and the one hand-kept copy in
+`Package.swift`, is in the comment above `MACOS_DEPLOYMENT_TARGET` in the
+`Makefile`. `Packaging/Info-dev.plist` carries no `LSMinimumSystemVersion`: the
+dev bundle runs only on the Mac that built it, where dyld enforces the binary's
+`minos` anyway.
 
 **Why:** the deployment floor and the linked SDK are independent — Casper
 targets macOS 15 and must still be *built* against 26+ to get the current

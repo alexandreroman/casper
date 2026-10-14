@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import CasperTestSupport
 
 @testable import CasperCore
 
@@ -9,24 +10,6 @@ import XCTest
 /// stubbed away for the same reason: resolution walks real directories with
 /// `FileManager`, and the developer's own `PATH` must not decide a test.
 final class LoginShellPathTests: XCTestCase {
-    /// The probe seam is `@Sendable`, so a stub needs a `Sendable` place to
-    /// record its calls — a lock-protected box, like `LoginShellPath`'s own
-    /// storage.
-    private final class ProbeRecorder: @unchecked Sendable {
-        private let lock = NSLock()
-        private var invocations: [[String]] = []
-
-        var callCount: Int { lock.withLock { invocations.count } }
-        var argumentLists: [[String]] { lock.withLock { invocations } }
-
-        func record(_ arguments: [String]) {
-            lock.withLock { invocations.append(arguments) }
-        }
-    }
-
-    /// Directories created by `makeExecutable`, removed when the test ends.
-    private var temporaryDirectories: [URL] = []
-
     override func setUp() {
         super.setUp()
         LoginShellPath.resetForTesting()
@@ -36,25 +19,21 @@ final class LoginShellPathTests: XCTestCase {
     override func tearDown() {
         // The caches and the seams are process-wide, so hand them back clean.
         LoginShellPath.resetForTesting()
-        for directory in temporaryDirectories {
-            try? FileManager.default.removeItem(at: directory)
-        }
-        temporaryDirectories = []
         super.tearDown()
     }
 
     /// Installs a probe stub answering `output` for every candidate, and returns
     /// the recorder tracking how often (and with what) it was called.
     @discardableResult
-    private func stubProbe(returning output: String?) -> ProbeRecorder {
+    private func stubProbe(returning output: String?) -> Recorder<[String]> {
         stubProbe { _ in output }
     }
 
     /// Installs a probe stub whose answer depends on the argument list, so a
     /// test can give each flag candidate a different `PATH`.
     @discardableResult
-    private func stubProbe(_ answer: @escaping @Sendable ([String]) -> String?) -> ProbeRecorder {
-        let recorder = ProbeRecorder()
+    private func stubProbe(_ answer: @escaping @Sendable ([String]) -> String?) -> Recorder<[String]> {
+        let recorder = Recorder<[String]>()
         LoginShellPath.shellProbe = { arguments, _ in
             recorder.record(arguments)
             return answer(arguments)
@@ -68,11 +47,7 @@ final class LoginShellPathTests: XCTestCase {
     /// has to be a real file with a real mode — an in-memory path would prove
     /// nothing.
     private func makeExecutable(named command: String) throws -> String {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LoginShellPathTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        temporaryDirectories.append(directory)
-
+        let directory = makeTemporaryDirectory(prefix: "LoginShellPathTests")
         let executable = directory.appendingPathComponent(command)
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
@@ -82,11 +57,9 @@ final class LoginShellPathTests: XCTestCase {
     /// A fresh directory holding a *subdirectory* named `command` — the shape
     /// that `access(X_OK)` alone mistakes for an executable.
     private func makeDirectory(named command: String) throws -> String {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LoginShellPathTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = makeTemporaryDirectory(prefix: "LoginShellPathTests")
         try FileManager.default.createDirectory(
             at: directory.appendingPathComponent(command, isDirectory: true), withIntermediateDirectories: true)
-        temporaryDirectories.append(directory)
         return directory.path
     }
 
@@ -125,7 +98,7 @@ final class LoginShellPathTests: XCTestCase {
 
         XCTAssertEqual(LoginShellPath.resolve(command), "\(bashrcDirectory)/\(command)")
         XCTAssertTrue(
-            recorder.argumentLists.contains(LoginShellPath.interactiveArguments),
+            recorder.values.contains(LoginShellPath.interactiveArguments),
             "the interactive non-login rung is part of the union, not a fallback")
     }
 
@@ -154,7 +127,7 @@ final class LoginShellPathTests: XCTestCase {
         }
 
         XCTAssertEqual(LoginShellPath.resolve(command), "\(interactiveDirectory)/\(command)")
-        XCTAssertEqual(recorder.argumentLists.first, LoginShellPath.interactiveLoginArguments)
+        XCTAssertEqual(recorder.values.first, LoginShellPath.interactiveLoginArguments)
     }
 
     // MARK: - The csh fallback
@@ -170,7 +143,7 @@ final class LoginShellPathTests: XCTestCase {
 
         XCTAssertEqual(LoginShellPath.resolve(command), "\(directory)/\(command)")
         XCTAssertEqual(
-            recorder.argumentLists,
+            recorder.values,
             [
                 LoginShellPath.interactiveLoginArguments,
                 LoginShellPath.interactiveArguments,
@@ -189,7 +162,7 @@ final class LoginShellPathTests: XCTestCase {
         }
 
         XCTAssertNotNil(LoginShellPath.resolve(command))
-        XCTAssertEqual(recorder.argumentLists, LoginShellPath.unionedArgumentCandidates)
+        XCTAssertEqual(recorder.values, LoginShellPath.unionedArgumentCandidates)
     }
 
     // MARK: - Parsing what a shell actually prints
@@ -324,13 +297,13 @@ final class LoginShellPathTests: XCTestCase {
         let recorder = stubProbe(returning: directory)
 
         XCTAssertNotNil(LoginShellPath.resolve(first))
-        let spawnsForTheFirstCommand = recorder.callCount
-        XCTAssertEqual(recorder.argumentLists, LoginShellPath.unionedArgumentCandidates)
+        let spawnsForTheFirstCommand = recorder.values.count
+        XCTAssertEqual(recorder.values, LoginShellPath.unionedArgumentCandidates)
 
         XCTAssertNil(LoginShellPath.resolve(uniqueCommandName()))
         XCTAssertNil(LoginShellPath.resolve(uniqueCommandName()))
 
-        XCTAssertEqual(recorder.callCount, spawnsForTheFirstCommand, "one probe answers every command name")
+        XCTAssertEqual(recorder.values.count, spawnsForTheFirstCommand, "one probe answers every command name")
     }
 
     /// The answer is cached, not just the search path — a resolved command is
@@ -394,7 +367,7 @@ final class LoginShellPathTests: XCTestCase {
     /// `lookupTimeout`. Driven with a short deadline of its own rather than the
     /// real five seconds, which is the only thing the injected one stands in for.
     func testTheDeadlineBoundsTheWholeProbeRatherThanEachRung() {
-        let recorder = ProbeRecorder()
+        let recorder = Recorder<[String]>()
         LoginShellPath.shellProbe = { arguments, deadline in
             recorder.record(arguments)
             // Stands in for a profile that outlasts the probe's deadline.
@@ -407,7 +380,7 @@ final class LoginShellPathTests: XCTestCase {
         LoginShellPath.shellSearchPath(into: LoginShellPath.ComponentsBox(), deadline: .now() + 0.2)
 
         XCTAssertEqual(
-            recorder.argumentLists, [LoginShellPath.interactiveLoginArguments],
+            recorder.values, [LoginShellPath.interactiveLoginArguments],
             "the rungs after the one that ate the deadline are skipped, not started")
     }
 

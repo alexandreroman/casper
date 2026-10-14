@@ -50,8 +50,13 @@ public final class GhosttyRuntime {
         try self.init(themeDirectory: GhosttyThemeFiles.defaultDirectory)
     }
 
-    /// `themeDirectory` is where Casper's theme files are written; tests pass a temporary one.
-    init(themeDirectory: URL) throws {
+    /// `themeDirectory` is where Casper's theme files are written and `loadUserFiles` reads the
+    /// user's own Ghostty config. Tests pass a temporary directory and a loader that reads
+    /// nothing, so a developer's own config cannot change what they observe.
+    init(
+        themeDirectory: URL,
+        loadUserFiles: (ghostty_config_t) -> Void = GhosttyRuntime.loadUserConfigFiles
+    ) throws {
         // Accepted exception to the never-crash policy: a failed process-wide
         // `ghostty_init` leaves libghostty unusable, so there is nothing to recover.
         precondition(ghosttyInitialized, "ghostty_init failed")
@@ -61,14 +66,7 @@ public final class GhosttyRuntime {
         // The user's own config is read after Casper's defaults, so any user setting still wins.
         // Casper's defaults carry its light and dark themes and its clipboard-write policy, and give
         // a user with no Ghostty config at all a sane look rather than libghostty's vanilla gray.
-        guard let config = GhosttyConfigBuilder.makeConfig(themes: themes, loadUserFiles: { config in
-            ghostty_config_load_default_files(config)
-            // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
-            // user's config. Ghostty's own app runs this before finalize; without it, includes are
-            // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
-            // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
-            ghostty_config_load_recursive_files(config)
-        }) else {
+        guard let config = GhosttyConfigBuilder.makeConfig(themes: themes, loadUserFiles: loadUserFiles) else {
             throw GhosttyError(reason: "ghostty_config_new returned null")
         }
 
@@ -88,6 +86,16 @@ public final class GhosttyRuntime {
         }
         self.app = app
         self.config = config
+    }
+
+    /// Loads the user's own Ghostty config files into `config` (see the ghostty-user-config-dirs note).
+    static func loadUserConfigFiles(_ config: ghostty_config_t) {
+        ghostty_config_load_default_files(config)
+        // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
+        // user's config. Ghostty's own app runs this before finalize; without it, includes are
+        // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
+        // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
+        ghostty_config_load_recursive_files(config)
     }
 
     /// Writes Casper's theme files, kept for the app's lifetime (libghostty re-reads them on
@@ -196,10 +204,12 @@ public final class GhosttyRuntime {
 
 // MARK: - C trampolines
 //
-// C function pointers cannot capture Swift context. libghostty passes our
-// `userdata` (the unretained runtime pointer set in the runtime config) to most
-// callbacks; `action_cb` is the exception — its v1.3.1 typedef carries no
-// userdata, so the trampoline recovers the runtime via `ghostty_app_userdata`.
+// C function pointers cannot capture Swift context, so each trampoline recovers it
+// from a pointer libghostty hands back. Only `wakeup_cb` receives the runtime
+// config's `userdata` (the unretained runtime pointer). The clipboard callbacks and
+// `close_surface_cb` receive the per-surface `userdata` (the hosting view, see
+// `clipboardView(from:)`). `action_cb` receives none — its v1.3.1 typedef carries
+// no userdata — so its trampoline recovers the runtime via `ghostty_app_userdata`.
 
 /// `wakeup_cb`: `void (*)(void*)`. May fire off the main thread, so it only
 /// marshals to main before touching the runtime. It captures the opaque pointer
@@ -460,8 +470,8 @@ func casperGhosttyConfirmReadClipboard(
 /// lives for the duration of this call.
 ///
 /// The deferral is `DispatchQueue.main.async` rather than the modal-proof
-/// `CFRunLoopPerformBlock` route (`MainRunLoop.perform`, over in CasperUI): a work item
-/// that waits behind an alert already on screen is the right outcome here — nothing in
+/// `CFRunLoopPerformBlock` route (`MainRunLoop.perform`): a work item that waits
+/// behind an alert already on screen is the right outcome here — nothing in
 /// libghostty is blocked on this write, and the prompt belongs after that dialog, not
 /// stacked on it. What the main queue does guarantee is the part that matters, that
 /// the block cannot run inside the current tick.

@@ -11,8 +11,8 @@ import Foundation
 /// is injectable.
 public enum TerminalLocale {
     /// The environment merged into every terminal surface: a single UTF-8 `LANG`.
-    public static func environment(locale: Locale = .current) -> [String: String] {
-        ["LANG": resolvedLANG(locale: locale)]
+    public static func environment() -> [String: String] {
+        ["LANG": resolvedLANG()]
     }
 
     /// A UTF-8 POSIX `LANG` value derived from `locale` (e.g. `fr_FR.UTF-8`),

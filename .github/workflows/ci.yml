@@ -50,6 +50,11 @@ jobs:
       - name: Print toolchain
         run: swift --version
 
+      # Offline (a stand-in curl plays GitHub) and under a second, so the
+      # release feed update is checked with every build, not only at release.
+      - name: Test appcast update
+        run: Scripts/test-update-appcast.sh
+
       - name: Cache SwiftPM dependencies
         uses: actions/cache@v6
         with:

@@ -199,6 +199,24 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(withoutSize.fontSize)
     }
 
+    func testSurfaceEncodesToStableSessionBytes() throws {
+        // Pins the exact `session.json` bytes of a surface, with the store's
+        // `.sortedKeys` encoder: an unset font size writes no key at all.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let id = try XCTUnwrap(UUID(uuidString: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"))
+
+        let plain = Surface(id: id, kind: .terminal(cwd: "/w"))
+        XCTAssertEqual(
+            String(decoding: try encoder.encode(plain), as: UTF8.self),
+            #"{"id":"0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D","kind":{"terminal":{"cwd":"\/w"}}}"#)
+
+        let sized = Surface(id: id, kind: .terminal(cwd: "/w"), fontSize: 18.5)
+        XCTAssertEqual(
+            String(decoding: try encoder.encode(sized), as: UTF8.self),
+            #"{"fontSize":18.5,"id":"0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D","kind":{"terminal":{"cwd":"\/w"}}}"#)
+    }
+
     func testSurfaceLegacyDecodeWithoutFontSizeDefaultsToNil() throws {
         // A `session.json` written before font-size persistence existed has no
         // `fontSize` key; decoding must default it to nil (libghostty's own
@@ -501,48 +519,28 @@ final class ModelsTests: XCTestCase {
         XCTAssertTrue(Session().dismissedAgentReminders.isEmpty)
     }
 
-    func testSessionLegacyDecodeWithoutDismissedAgentRemindersDefaultsToEmpty() throws {
-        // A `session.json` written before the reminders existed has no
-        // `dismissedAgentReminders` key; decoding must yield an empty set rather
-        // than throw on the missing key.
+    func testSessionLegacyDecodeDefaultsTheFieldsAddedLater() throws {
+        // A `session.json` written before the agent reminders and the creation panel
+        // existed has neither `dismissedAgentReminders` nor `lastNewSpaceLocation`;
+        // decoding must default both rather than throw on the missing keys.
         let json = """
         { "spaces": [ { "id": "\(UUID().uuidString)", "name": "app",
             "folderPath": "/r", "isCollapsed": false, "workspaces": [] } ] }
         """
         let decoded = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
         XCTAssertTrue(decoded.dismissedAgentReminders.isEmpty)
-        XCTAssertEqual(decoded.spaces.first?.name, "app")  // other fields decode normally
-    }
-
-    func testSessionLegacyDecodeWithoutLastNewSpaceLocationDecodesToNil() throws {
-        // A `session.json` written before the creation panel existed has no
-        // `lastNewSpaceLocation` key; decoding must yield nil rather than throw on
-        // the missing key.
-        let json = """
-        { "spaces": [ { "id": "\(UUID().uuidString)", "name": "app",
-            "folderPath": "/r", "isCollapsed": false, "workspaces": [] } ] }
-        """
-        let decoded = try JSONDecoder().decode(Session.self, from: Data(json.utf8))
         XCTAssertNil(decoded.lastNewSpaceLocation)
         XCTAssertEqual(decoded.spaces.first?.name, "app")  // other fields decode normally
     }
 
-    func testLastNewSpaceLocationIsOmittedWhenNil() throws {
-        // `encodeIfPresent`, not `encode`: no remembered location must leave the key
-        // out rather than write `null`. Pinned because both coders are hand-rolled and
-        // "simplifying" this to `encode` would change the on-disk shape.
+    func testNilOptionalSessionFieldsAreOmitted() throws {
+        // `encodeIfPresent`, not `encode`: no remembered location and a nil selection
+        // must leave their keys out rather than write `null`. Pinned because both
+        // coders are hand-rolled and "simplifying" this to `encode` would change the
+        // on-disk shape.
         let data = try JSONEncoder().encode(Session())
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNil(object["lastNewSpaceLocation"])
-        XCTAssertNotNil(object["spaces"])
-    }
-
-    func testSelectedWorkspaceIDIsOmittedWhenNil() throws {
-        // `encodeIfPresent`, not `encode`: a nil selection must leave the key out
-        // rather than write `null`. Pinned because both coders are hand-rolled and
-        // "simplifying" this to `encode` would change the on-disk shape.
-        let data = try JSONEncoder().encode(Session())
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNil(object["selectedWorkspaceID"])
         XCTAssertNotNil(object["spaces"])
     }
@@ -576,16 +574,16 @@ final class ModelsTests: XCTestCase {
         // agents, so an unsorted implementation cannot pass by landing in sorted
         // order by chance.
         let ids = CodingAgent.allCases.map(\.reminderID) + ["zeta", "aider", "mango"]
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]  // matches SessionStore's encoder
+        // The encoder that writes `session.json`; `encode` is pure and writes nothing.
+        let store = SessionStore(fileURL: URL(fileURLWithPath: "/dev/null"))
 
-        let encoded = try encoder.encode(Session(dismissedAgentReminders: Set(ids)))
+        let encoded = try store.encode(Session(dismissedAgentReminders: Set(ids)))
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         XCTAssertEqual(object["dismissedAgentReminders"] as? [String], ids.sorted())
 
         // Two equal sets built from different insertion orders must encode identically.
-        let reversed = try encoder.encode(Session(dismissedAgentReminders: Set(ids.reversed())))
+        let reversed = try store.encode(Session(dismissedAgentReminders: Set(ids.reversed())))
         XCTAssertEqual(encoded, reversed)
     }
 }

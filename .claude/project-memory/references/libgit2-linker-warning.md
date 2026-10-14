@@ -1,10 +1,10 @@
 ---
-name: "libgit2 linker warning is benign, left unsuppressed"
+name: "libgit2 linker warning"
 description: "The macOS-version linker warning from Homebrew's libgit2 dylib is intentionally not suppressed"
 type: reference
 ---
 
-# libgit2 linker warning is benign, left unsuppressed
+# libgit2 linker warning
 
 Every build (`make dev`/`make build`/`make release`) emits:
 `ld: warning: building for macOS-15.0, but linking with dylib
@@ -25,7 +25,8 @@ libgit2 for macOS 15 was rejected as too heavy versus the current
 **How to access:** Confirm the cause with:
 
 ```bash
-otool -l /opt/homebrew/opt/libgit2/lib/libgit2.*.dylib | grep -A4 LC_BUILD_VERSION
+otool -l /opt/homebrew/opt/libgit2/lib/libgit2.*.dylib \
+  | grep -A4 LC_BUILD_VERSION
 ```
 
 See the linking setup in [Package.swift](../../../Package.swift) (`Clibgit2`

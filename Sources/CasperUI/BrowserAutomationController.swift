@@ -1,15 +1,6 @@
 import CasperCore
 import Foundation
 
-/// Error carrying a human-readable reason for a failed `browser` automation op —
-/// a JS runtime error, a snapshot/encode failure, an unwritable path, a timeout.
-/// Thrown by `BrowserCoordinator` and `BrowserCapture` as well, so the reason a
-/// verb failed reaches the CLI without being stringified through a second type.
-struct BrowserOpError: Error, CustomStringConvertible {
-    let message: String
-    var description: String { message }
-}
-
 /// The browser-automation half of the release control channel: every
 /// `casper browser <verb>` op that drives an already-existing browser surface
 /// (screenshot, eval, content, url, click, scroll, type, key, console, wait,
@@ -48,7 +39,7 @@ final class BrowserAutomationController {
 
     /// The single failure for a workspace id that no longer resolves; its text is
     /// part of the CLI's contract.
-    private static let workspaceNotFound = BrowserOpError(message: "workspace not found")
+    private static let workspaceNotFound = OperationError(message: "workspace not found")
 
     /// Resolve the workspace's browser coordinator, run `body` against it, and map
     /// the outcome to a `Result`. Shared by every `controlBrowser*` op so each one
@@ -57,7 +48,7 @@ final class BrowserAutomationController {
     /// reply with no payload.
     private func withBrowserCoordinator<T>(
         _ workspaceID: UUID, _ body: (BrowserCoordinator) async throws -> T
-    ) async -> Result<T, BrowserOpError> {
+    ) async -> Result<T, OperationError> {
         await mapped {
             guard let coordinator = inspectorBrowserCoordinator(in: workspaceID) else {
                 throw Self.workspaceNotFound
@@ -67,30 +58,30 @@ final class BrowserAutomationController {
     }
 
     /// Run `body` and map its outcome to a `Result`, turning any thrown error into a
-    /// `BrowserOpError` — passing one straight through, and stringifying anything
+    /// `OperationError` — passing one straight through, and stringifying anything
     /// else so the reason still reaches the CLI. Every op's error mapping goes
     /// through here, including the sized capture that deliberately drives
     /// `BrowserCapture` instead of a coordinator.
-    private func mapped<T>(_ body: () async throws -> T) async -> Result<T, BrowserOpError> {
+    private func mapped<T>(_ body: () async throws -> T) async -> Result<T, OperationError> {
         do {
             return .success(try await body())
         } catch {
-            return .failure(error as? BrowserOpError ?? BrowserOpError(message: "\(error)"))
+            return .failure(error as? OperationError ?? OperationError(message: "\(error)"))
         }
     }
 
     /// Snapshot the browser page to a PNG at `path`. Returns the path on success.
     ///
-    /// With no `width`/`height`/`url` override this captures the live browser panel
-    /// exactly as before (panel size when mounted, the 1280x800 fallback when
-    /// detached). Any override switches to the dedicated off-screen `BrowserCapture`,
-    /// which renders the target URL at the requested viewport (default 1280x800)
-    /// independent of the panel: the `url` override if given — honoured or the capture
-    /// fails, never silently substituted — else the live browser's committed URL, else
-    /// the surface's persisted URL, failing when none resolves.
+    /// With no `width`/`height`/`url` override this captures the live browser web
+    /// view (panel size when mounted, 1280x800 when detached). Any override switches
+    /// to the dedicated off-screen `BrowserCapture`, which renders the target URL at
+    /// the requested viewport (default 1280x800) independent of the panel: the `url`
+    /// override if given — honoured or the capture fails, never silently substituted
+    /// — else the live browser's committed URL, else the surface's persisted URL,
+    /// failing when none resolves.
     func controlBrowserScreenshot(
         in workspaceID: UUID, to path: String, width: Int? = nil, height: Int? = nil, url: String? = nil
-    ) async -> Result<String, BrowserOpError> {
+    ) async -> Result<String, OperationError> {
         if width == nil, height == nil, url == nil {
             return await withBrowserCoordinator(workspaceID) { coordinator in
                 let png = try await coordinator.snapshot()
@@ -101,7 +92,10 @@ final class BrowserAutomationController {
         return await mapped {
             guard let ws = resolveWorkspace(workspaceID) else { throw Self.workspaceNotFound }
             let target = try resolveScreenshotURL(for: ws, override: url)
-            let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
+            let png = try await BrowserCapture.snapshot(
+                url: target,
+                width: width ?? BrowserCapture.defaultViewport.width,
+                height: height ?? BrowserCapture.defaultViewport.height)
             try await Self.writeScreenshot(png, to: path)
             return path
         }
@@ -122,7 +116,7 @@ final class BrowserAutomationController {
             // this also admits the schemed-but-hostless `data:` URLs automation
             // relies on.
             guard let parsed = URL(string: override), parsed.scheme != nil, parsed != .aboutBlank else {
-                throw BrowserOpError(
+                throw OperationError(
                     message: "cannot capture '\(override)' (expected an absolute URL like https://example.com)")
             }
             return parsed
@@ -139,7 +133,7 @@ final class BrowserAutomationController {
 
     /// The failure for a sized capture with no override and no page to fall back on;
     /// its text is part of the CLI's contract.
-    private static let noPageToCapture = BrowserOpError(
+    private static let noPageToCapture = OperationError(
         message: "no page to capture; open a page or pass --url")
 
     /// Write a screenshot PNG to `path`, mapping a filesystem error to a concise
@@ -151,40 +145,40 @@ final class BrowserAutomationController {
             do {
                 try png.write(to: URL(fileURLWithPath: path))
             } catch {
-                throw BrowserOpError(
+                throw OperationError(
                     message: "cannot write screenshot to '\(path)': \(error.localizedDescription)")
             }
         }.value
     }
 
     /// Evaluate `script` in the browser page. Returns the JSON-serialized result.
-    func controlBrowserEval(_ script: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    func controlBrowserEval(_ script: String, in workspaceID: UUID) async -> Result<String, OperationError> {
         await withBrowserCoordinator(workspaceID) { try await $0.evaluate(script) }
     }
 
     /// Return the page's HTML (`outerHTML` of `selector`'s first match, or of the
     /// whole document when `selector` is nil).
-    func controlBrowserContent(selector: String?, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    func controlBrowserContent(selector: String?, in workspaceID: UUID) async -> Result<String, OperationError> {
         await withBrowserCoordinator(workspaceID) {
             // `evaluate` returns the string JSON-serialized; unwrap it back to the
             // raw HTML so `content` consumers get plain markup, not a quoted string.
-            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.content(selector: selector)))
+            ControlResponse.unwrappedJSONString(try await $0.evaluate(BrowserAutomation.content(selector: selector)))
         }
     }
 
     /// Return the browser page's current URL (`window.location.href`).
-    func controlBrowserURL(in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    func controlBrowserURL(in workspaceID: UUID) async -> Result<String, OperationError> {
         await withBrowserCoordinator(workspaceID) {
             // `evaluate` returns the string JSON-serialized; unwrap it back to the
             // raw URL so `url` consumers get a plain string, not a quoted one.
-            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.currentURL()))
+            ControlResponse.unwrappedJSONString(try await $0.evaluate(BrowserAutomation.currentURL()))
         }
     }
 
     /// Run an input-driving script for its side effect only. The action verbs
     /// (click, scroll, type, key) carry no payload, so their reply is always the
     /// empty string and the script's own result is discarded.
-    private func runAction(_ js: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    private func runAction(_ js: String, in workspaceID: UUID) async -> Result<String, OperationError> {
         await withBrowserCoordinator(workspaceID) {
             _ = try await $0.evaluate(js)
             return ""
@@ -192,24 +186,24 @@ final class BrowserAutomationController {
     }
 
     /// Click the first element matching `selector`.
-    func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    func controlBrowserClick(selector: String, in workspaceID: UUID) async -> Result<String, OperationError> {
         await runAction(BrowserAutomation.click(selector: selector), in: workspaceID)
     }
 
     /// Scroll the browser page one viewport down (`down` true) or up.
-    func controlBrowserScroll(down: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    func controlBrowserScroll(down: Bool, in workspaceID: UUID) async -> Result<String, OperationError> {
         await runAction(BrowserAutomation.scroll(down: down), in: workspaceID)
     }
 
     /// Jump the browser page to the very bottom (`bottom` true) or top.
-    func controlBrowserScrollToEdge(bottom: Bool, in workspaceID: UUID) async -> Result<String, BrowserOpError> {
+    func controlBrowserScrollToEdge(bottom: Bool, in workspaceID: UUID) async -> Result<String, OperationError> {
         await runAction(BrowserAutomation.scrollToEdge(bottom: bottom), in: workspaceID)
     }
 
     /// Type `value` into the first element matching `selector`.
     func controlBrowserType(
         selector: String, value: String, in workspaceID: UUID
-    ) async -> Result<String, BrowserOpError> {
+    ) async -> Result<String, OperationError> {
         await runAction(BrowserAutomation.type(selector: selector, value: value), in: workspaceID)
     }
 
@@ -217,7 +211,7 @@ final class BrowserAutomationController {
     /// focused element when `selector` is nil.
     func controlBrowserKey(
         key: String, selector: String?, in workspaceID: UUID
-    ) async -> Result<String, BrowserOpError> {
+    ) async -> Result<String, OperationError> {
         await runAction(BrowserAutomation.key(key: key, selector: selector), in: workspaceID)
     }
 
@@ -226,7 +220,7 @@ final class BrowserAutomationController {
     /// `clear` is set the whole buffer is drained after snapshotting.
     func controlBrowserConsole(
         level: ConsoleLevel?, clear: Bool, in workspaceID: UUID
-    ) async -> Result<String, BrowserOpError> {
+    ) async -> Result<String, OperationError> {
         await withBrowserCoordinator(workspaceID) { coordinator in
             Self.consoleJSON(coordinator.consoleSnapshot(level: level, clear: clear))
         }
@@ -236,54 +230,36 @@ final class BrowserAutomationController {
     /// names what is awaited, for the timeout message.
     func controlBrowserWait(
         js: String, timeoutMs: Int, description: String, in workspaceID: UUID
-    ) async -> Result<Void, BrowserOpError> {
+    ) async -> Result<Void, OperationError> {
         await withBrowserCoordinator(workspaceID) { coordinator in
             guard await coordinator.waitFor(js: js, timeoutMs: timeoutMs) else {
-                throw BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for \(description)")
+                throw OperationError(message: "timed out after \(timeoutMs)ms waiting for \(description)")
             }
         }
     }
 
-    /// Reload the browser page. When `waitReady`, also block until the document's
-    /// `readyState` is `complete` (or the timeout expires).
+    /// Reload the browser page. When `waitReady`, also wait until the reload
+    /// finishes loading or fails (or the timeout expires).
     func controlBrowserReload(
         waitReady: Bool, timeoutMs: Int, in workspaceID: UUID
-    ) async -> Result<Void, BrowserOpError> {
+    ) async -> Result<Void, OperationError> {
         await withBrowserCoordinator(workspaceID) { coordinator in
-            coordinator.reload()
-            guard waitReady else { return }
-            guard await coordinator.waitFor(js: BrowserAutomation.readyStateCompleteJS(), timeoutMs: timeoutMs) else {
-                throw BrowserOpError(message: "timed out after \(timeoutMs)ms waiting for the page to reload")
+            guard waitReady else {
+                coordinator.reload()
+                return
+            }
+            guard await coordinator.reload(waitingUpTo: timeoutMs) else {
+                throw OperationError(message: "timed out after \(timeoutMs)ms waiting for the page to reload")
             }
         }
     }
-
-    /// Encoder for the console entry array: sorted keys for deterministic output,
-    /// unescaped slashes so embedded URLs stay readable.
-    private static let consoleEncoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return encoder
-    }()
 
     /// Serialize console entries to a JSON array string, falling back to `[]` on the
     /// (never-expected) encoding failure.
     private static func consoleJSON(_ entries: [ConsoleEntry]) -> String {
-        guard let data = try? consoleEncoder.encode(entries),
+        guard let data = try? JSONEncoder().encode(entries),
               let string = String(data: data, encoding: .utf8) else {
             return "[]"
-        }
-        return string
-    }
-
-    /// Decode a single JSON string value (as produced by `BrowserCoordinator`'s
-    /// `evaluate`) back to its plain contents. Falls back to the input unchanged
-    /// when it isn't a JSON string (should not happen for `content`).
-    private static func plainString(fromJSON json: String) -> String {
-        guard let data = json.data(using: .utf8),
-              let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
-              let string = value as? String else {
-            return json
         }
         return string
     }

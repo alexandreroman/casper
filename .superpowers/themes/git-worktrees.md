@@ -10,8 +10,8 @@ binary. We own this surface; it exposes only what Casper needs.
 ## Design
 
 - **`Clibgit2`** — a `.systemLibrary` binding libgit2 via Homebrew + pkg-config
-  (dynamic link; static vendoring deferred to packaging). Build host needs
-  `brew install libgit2 pkgconf`.
+  (dynamic link; `make bundle` embeds the dylib chain with dylibbundler). Build
+  host needs `brew install libgit2 pkgconf`.
 - **`CSigbusGuard`** — a small C target wrapping the three libgit2 calls that
   read memory-mapped working-directory files in a `SIGBUS` guard: the
   working-tree diff and the status walk behind `isClean`
@@ -49,9 +49,17 @@ binary. We own this surface; it exposes only what Casper needs.
   creates a new branch**, named after the worktree, at the resolved base commit
   (`basedOn` — a branch, tag or commit-ish — or HEAD), and only then
   `git_worktree_add`s the worktree checked out to that new branch. An existing
-  branch is never adopted, and a failure after the branch exists rolls both the
-  branch and the admin entry back so retrying the same name is idempotent rather
-  than `GIT_EEXISTS`. Then a plain Ghostty terminal opens in its folder.
+  branch is never adopted, and a failure after the branch exists rolls back the
+  branch and the admin entry it created, so retrying the same name is idempotent
+  rather than `GIT_EEXISTS`. An admin entry that predates the call belongs to
+  another worktree registered under that name and is left untouched, folder
+  included; `WorktreeManager.create` refuses such a name up front
+  (`WorktreeError.Reason.worktreeNameTaken`). The check fires on any entry —
+  a live worktree, one whose folder was deleted without a prune, or a partial
+  leftover — so the message says only that Git already has a worktree entry by
+  that name, and points at `git worktree prune` for a deleted one, rather than
+  showing libgit2's "directory exists". Then a plain Ghostty terminal opens in
+  its folder.
   Cleanliness is read through `git_status_list_new` (`isClean`), and a failure
   at any step is surfaced as a clear UI error, never a crash. There is no
   `git_worktree_validate` wrapper: libgit2 reports the failure directly from the
@@ -64,15 +72,57 @@ binary. We own this surface; it exposes only what Casper needs.
   detected (`git_diff_find_similar`, untracked files included, so a plain `mv`
   pairs up too) within git's default budget of 1000² candidate pairs; a file
   over the diff's 8 MB cap never pairs, and copy detection is off. The pass
-  lives in `Sources/CasperGit/RenameDetection.swift`.
-  (Branch-vs-merge-base line counts were designed for the workspace diff
-  summary, now **dropped** — see `space-project.md`.)
+  lives in `Sources/CasperGit/RenameDetection.swift`. A file the diff lists but
+  cannot open (a mode-000 file) has no patch: it is listed with the
+  `unreadable` status and no hunks, and the rest of the diff is unaffected.
 
 - **Merge — ✅ built.** `Repository.mergeBranchHeadless(…)` performs the
   worktree-free merge behind "Merge and Close Workspace…", returning a
-  `MergeOutcome` and surfacing `MergeConflictError` /
-  `MergeUnrelatedHistoriesError`; `forceCheckoutHead()` is its recovery path.
-  See `Sources/CasperGit/Merge.swift`.
+  `MergeOutcome` and surfacing `MergeConflictError` (an unrelated history is a
+  `GitError` saying so); `forceCheckoutHead()` is its recovery path.
+  The merge commit is written under the user's own Git identity and never an
+  invented one: with no usable identity it throws
+  `MissingCommitterIdentityError` before writing anything.
+  `WorktreeManager.merge` maps both refusals into `WorktreeError`
+  (`.mergeConflict`, `.missingCommitterIdentity`), as it does every libgit2
+  failure, and "Merge and Close" shows the identity one's message — libgit2's
+  cause, then the remedy ("Commit identity" below) — with nothing deleted. The
+  cause matters because a configuration libgit2 cannot read fails the same way
+  as a missing identity. An up-to-date merge writes no commit and
+  needs no identity. See `Sources/CasperGit/Merge.swift`.
+
+- **Commit identity.** Both commits Casper writes — the merge above and a new
+  Space's initial commit (`space-project.md`) — take their author and committer
+  from `git_signature_default_from_env`. Each field is resolved on its own: the
+  author's name and email from `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`, the
+  committer's from `GIT_COMMITTER_NAME` / `GIT_COMMITTER_EMAIL`, falling back
+  to `user.name` / `user.email`, and to `EMAIL` when `user.email` is not set at
+  all; `GIT_AUTHOR_DATE` / `GIT_COMMITTER_DATE` replace the current time. A
+  blank value is refused, not skipped, and unlike `git` libgit2 never guesses a
+  `user@host` address. The environment that counts is the Casper app process's
+  own, never an agent shell's inside a Casper terminal: it holds a shell's
+  variables when that shell runs Casper's executable directly
+  (`Casper.app/Contents/MacOS/casper`, `make dev`, and the tests), while
+  `open`, the Finder and the Dock hand Casper launchd's environment, which
+  `launchctl setenv` extends. A set variable shadows the configuration even
+  when blank, so the refusal message depends on the cause. When variables are
+  to blame — a `GIT_*_NAME` or `GIT_*_EMAIL` libgit2 rejects, or a
+  `GIT_*_DATE` it cannot parse, as listed in
+  `MissingCommitterIdentityError.environmentVariables` — the message names
+  them and says to correct or unset them where Casper is started. Otherwise it
+  names the two `git config` commands, the remedy that works however Casper
+  was launched. It gives both remedies when a variable is to blame and the
+  configuration is at fault as well (`configurationAtFault`), and says
+  `git config` cannot help only when nothing else is to blame. The diagnosis
+  resolves the author and the committer again, each on its own, so a date is
+  blamed only on the side that fails on it, and the configuration only on a
+  side that libgit2 refuses with `GIT_ENOTFOUND` (a `user.name` or
+  `user.email` set nowhere) or that fails on something other than its date
+  with neither of its own name or email variables to blame: a blank or
+  malformed setting, or a configuration libgit2 cannot read. libgit2 records
+  no error for an unparsable date, except the stale "`user.email` was not
+  found" its `EMAIL` fallback leaves behind; a genuine miss returns
+  `GIT_ENOTFOUND` rather than -1, which tells the two apart.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.
@@ -81,5 +131,5 @@ captured in the [[libgit2-swift-interop]] project-memory note.
 
 - `WorktreeManager.remove` prunes a worktree without deleting its branch. Its
   one production caller deletes the branch on the next line, so recreating a
-  same-named workspace works; a second caller that forgets would meet an opaque
+  same-named workspace works; a caller that forgets would meet an opaque
   `.gitFailure`.

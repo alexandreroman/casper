@@ -213,18 +213,17 @@ final class LinkCursorTextView: NSTextView {
 /// I-beam even over links (see the `nstextview-link-cursor-and-selection` project
 /// memory note). `NSTextView` keeps text selection working over that same
 /// `.link` attribute, but — confirmed by hand against the running app — does
-/// *not* show the pointing-hand cursor over a link on its own; an earlier
-/// version of this comment assumed it did, which was wrong. `LinkCursorTextView`
-/// below adds that cursor itself, the way this app's other AppKit chrome over a
-/// terminal already does (see the `terminal-overlay-cursor` project memory
-/// note): a tracking area driving both `cursorUpdate(with:)` and
+/// *not* show the pointing-hand cursor over a link on its own.
+/// `LinkCursorTextView` below adds that cursor itself, the way this app's other
+/// AppKit chrome over a terminal already does (see the `terminal-overlay-cursor`
+/// project memory note): a tracking area driving both `cursorUpdate(with:)` and
 /// `mouseEntered(with:)`, never `push`/`pop` or `addCursorRect`. Do not fold
 /// this view back into a `Text`-based renderer — that would drop both the
 /// cursor and text selection.
 ///
 /// **No enclosing `NSScrollView`.** The panel owns scrolling and padding; this
-/// view lays out at a fixed `width` and its caller sizes it with
-/// `height(for:width:)`.
+/// view lays out at a fixed `width` and its caller sizes it from
+/// `max(height(for:width:), the height reported through onLaidOutHeight)`.
 @MainActor
 struct MarkdownTextView: NSViewRepresentable {
     private let markdown: String
@@ -460,9 +459,10 @@ struct MarkdownTextView: NSViewRepresentable {
         // none of its own — neither an inset nor AppKit's default line-fragment
         // padding, which would otherwise make the rendered width `width` + 10.
         textView.textContainerInset = .zero
-        // Neither axis resizes itself. The caller (`WorkspaceInfoPanel`) measures
-        // the message with `height(for:width:)` and gives this view exactly that
-        // frame, so the view must not compute a frame of its own:
+        // Neither axis resizes itself. The caller (`WorkspaceInfoPanel`) sizes it
+        // from `max(height(for:width:), the height reported through
+        // onLaidOutHeight)` and gives this view exactly that frame, so the view
+        // must not compute a frame of its own:
         // `isVerticallyResizable = true` let AppKit shrink the assigned frame back
         // to the extent of the text it had lazily laid out (TextKit 2 lays out
         // viewport-first), which silently clipped the tail of a long, scrolling

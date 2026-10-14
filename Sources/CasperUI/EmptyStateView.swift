@@ -10,8 +10,16 @@ import SwiftUI
 /// Creating is the prominent one — a user with nothing open is likelier to be
 /// starting something than to be looking for a repo they forgot to add.
 struct EmptyStateView: View {
-    var onNewSpace: () -> Void
-    var onAddFolder: () -> Void
+    let model: AppModel
+
+    // Module-visible so `EmptyStateViewTests` derives the onboarding strip's width
+    // from these rather than from copies of the numbers.
+    /// Each onboarding card's fixed width.
+    static let cardWidth: CGFloat = 200
+    /// The gap between two onboarding cards.
+    static let cardSpacing: CGFloat = 20
+    /// The screen's own padding on every side.
+    static let screenPadding: CGFloat = 48
 
     var body: some View {
         VStack(spacing: 32) {
@@ -35,16 +43,14 @@ struct EmptyStateView: View {
 
             VStack(spacing: 10) {
                 HStack(spacing: 12) {
-                    Button("New Space…", action: onNewSpace)
-                        .controlSize(.large)
-                        .buttonStyle(.borderedProminent)
-                    Button("Add Folder…", action: onAddFolder)
-                        .controlSize(.large)
-                        .buttonStyle(.bordered)
+                    ForEach(SpaceEntryCommand.allCases, id: \.self) { command in
+                        entryButton(for: command)
+                    }
                 }
                 // `fixedSize` keeps the hint on one line: it is a shortcut legend, and
                 // wrapped over two lines it reads as prose. It stays far narrower than
-                // the onboarding strip below, so it never widens the screen.
+                // the onboarding strip below, so it never widens the screen. The keys
+                // spelled here are `SpaceEntryCommand.keyEquivalent`'s; keep them in step.
                 Text("⌘N to create a Space · ⌘O to add a folder")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -54,7 +60,7 @@ struct EmptyStateView: View {
                     .accessibilityLabel("Command N to create a Space, Command O to add a folder")
             }
 
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: Self.cardSpacing) {
                 OnboardingStep(
                     index: 1, systemImage: "folder.badge.plus", title: "Start a Space",
                     detail: "Create a new repo, or adopt one you have.")
@@ -68,7 +74,19 @@ struct EmptyStateView: View {
             .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(48)
+        .padding(Self.screenPadding)
+    }
+
+    /// Creating is the prominent button, adopting merely bordered.
+    @ViewBuilder
+    private func entryButton(for command: SpaceEntryCommand) -> some View {
+        let button = Button(command.title) { command.perform(model: model) }
+            .controlSize(.large)
+        if command == .create {
+            button.buttonStyle(.borderedProminent)
+        } else {
+            button.buttonStyle(.bordered)
+        }
     }
 }
 
@@ -101,7 +119,7 @@ private struct OnboardingStep: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
-        .frame(width: 200, alignment: .leading)
+        .frame(width: EmptyStateView.cardWidth, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)

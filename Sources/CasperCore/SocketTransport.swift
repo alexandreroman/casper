@@ -15,18 +15,34 @@ private let maxSocketFrameBytes = 8 * 1024 * 1024
 /// that never closes cannot leak the connection.
 private let socketReplyLingerTimeout: TimeInterval = 15
 
-/// A transport failure the generic engine can construct without knowing the
-/// concrete error type. Each channel provides its own conforming error struct.
-public protocol SocketTransportError: Error, Equatable {
-    init(reason: String)
+/// How long `SocketServerEngine.start()` waits for its listener to bind before
+/// giving up. A local Unix-domain listener binds near-instantly; the bound only
+/// keeps a listener that never reaches `.ready`/`.failed` from hanging the app.
+private let socketBindTimeout: TimeInterval = 5
+
+/// A transport failure on either socket channel: the exchange never produced a
+/// decoded response (no socket, refused connect, timeout, truncated frame…).
+public struct SocketTransportError: Error, Equatable {
+    public let reason: String
 }
 
-/// A response the generic server can synthesize for protocol-level failures
-/// (undecodable command, no handler, invalid length) without knowing the
-/// concrete response type. Each channel's response already provides `failure`.
+/// A response the generic engine and its callers handle without knowing the
+/// concrete response type: the server synthesizes `failure` for protocol-level
+/// errors (undecodable command, no handler, invalid length), and a client reads
+/// `ok`/`error` to tell a refusal from an answer. Each channel's response
+/// already provides all three.
 public protocol SocketFailureResponse {
+    var ok: Bool { get }
+    var error: String? { get }
     static func failure(_ message: String) -> Self
 }
+
+/// Thrown by `SocketClientEngine.sendOnce` when no reply arrived within the
+/// timeout — typically a server that took the request but has not answered yet.
+/// Kept apart from `SocketTransportError` so `send` never retries it: the
+/// server may still be working on the request, and a resend would queue it a
+/// second time and multiply the caller's wait.
+private struct SocketReplyTimeout: Error {}
 
 /// Accumulator for one framed read, passed by reference through the chain of
 /// `@Sendable` receive callbacks so each arriving chunk appends in place instead
@@ -107,8 +123,7 @@ private func decodeLength(_ header: Data) -> UInt32 {
 /// callbacks are configured before `start()`.
 public final class SocketServerEngine<
     Command: Decodable & Sendable,
-    Response: Encodable & Sendable & SocketFailureResponse,
-    TransportError: SocketTransportError
+    Response: Encodable & Sendable & SocketFailureResponse
 >: @unchecked Sendable {
     /// Lock-guarded server state so `stop()` can tear down cleanly. `stopped`
     /// refuses connections accepted
@@ -138,7 +153,6 @@ public final class SocketServerEngine<
     }
 
     private let socketPath: String
-    private let bindTimeout: TimeInterval
     private let queue: DispatchQueue
     private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
     /// Decoder for incoming command frames, built once per server rather than once
@@ -154,14 +168,12 @@ public final class SocketServerEngine<
     /// Invoked on the server queue if the listener fails.
     public var onFailure: ((Error) -> Void)?
 
-    /// `queueLabel` defaults to a per-channel label derived from the command type
-    /// (e.g. `casper.socket.server.ControlCommand`), so each channel's serial queue
-    /// stays individually identifiable in Instruments and crash reports.
-    public init(socketPath: String, bindTimeout: TimeInterval = 5,
-                queueLabel: String = "casper.socket.server.\(Command.self)") {
+    public init(socketPath: String) {
         self.socketPath = socketPath
-        self.bindTimeout = bindTimeout
-        self.queue = DispatchQueue(label: queueLabel)
+        // A per-channel label derived from the command type (e.g.
+        // `casper.socket.server.ControlCommand`), so each channel's serial queue
+        // stays individually identifiable in Instruments and crash reports.
+        self.queue = DispatchQueue(label: "casper.socket.server.\(Command.self)")
     }
 
     public func start() throws {
@@ -221,9 +233,9 @@ public final class SocketServerEngine<
 
         // Bound the wait so a listener that never reaches `.ready`/`.failed`
         // cannot hang the caller forever.
-        if bound.wait(timeout: .now() + bindTimeout) == .timedOut {
+        if bound.wait(timeout: .now() + socketBindTimeout) == .timedOut {
             abandonListener()
-            throw TransportError(reason: "timed out binding socket at \(socketPath)")
+            throw SocketTransportError(reason: "timed out binding socket at \(socketPath)")
         }
         if let error = bindError.withLock({ $0 }) {
             abandonListener()
@@ -287,10 +299,9 @@ public final class SocketServerEngine<
         }
         connection.start(queue: queue)
         // Read the 4-byte big-endian length header, then exactly that many
-        // payload bytes. No reliance on request EOF anymore. There is
-        // intentionally no idle/read timeout here: this is a local, single-peer
-        // channel; the >8 MB length guard bounds memory, and the client bounds
-        // its own wait with `timeout`.
+        // payload bytes. There is intentionally no idle/read timeout here: this
+        // is a local, single-peer channel; the >8 MB length guard bounds memory,
+        // and the client bounds its own wait with `timeout`.
         // Every callback below cancels the strongly-captured `connection` when the
         // engine is already gone: nothing would untrack or cancel it otherwise, so it
         // would survive to process exit. Cancelling from the connection's own queue
@@ -437,40 +448,51 @@ public final class SocketServerEngine<
 /// Synchronous by design: `casper` CLI invocations are short-lived.
 public enum SocketClientEngine<
     Command: Encodable & Sendable,
-    Response: Decodable & Sendable,
-    TransportError: SocketTransportError
+    Response: Decodable & Sendable
 > {
+    /// How long `send` waits for a reply unless the caller asks otherwise.
+    public static var defaultTimeout: TimeInterval { 5 }
     /// Total attempts when `retriable` is true: the first try plus three retries.
     private static var maxRetriableAttempts: Int { 4 }
     /// Backoff between retries. Short on purpose: a fresh connection usually
-    /// succeeds immediately, so the worst-case added delay stays well under a
-    /// second even after every retry.
+    /// succeeds immediately, so the backoffs add 150 ms at most across every retry.
     private static var retryBackoffMicroseconds: useconds_t { 50_000 }
 
     /// Sends `command` and returns the decoded `Response`.
     ///
-    /// Set `retriable` to true ONLY for idempotent verbs. A transport-level
-    /// failure (`TransportError`) then triggers a bounded retry over a fresh
-    /// connection, which papers over the intermittent cross-process
-    /// `ENETDOWN` seen when a slow handler blocks before any response byte
-    /// arrives. A decoded `Response` — even `ok: false` — is a real answer and
-    /// is returned immediately, never retried, so a mutating verb is never
-    /// applied twice.
+    /// Set `retriable` to true ONLY for idempotent verbs. Any `SocketTransportError`
+    /// before a full reply (a decoded `Response`) then triggers a bounded retry over a
+    /// fresh connection — e.g. a missing or refused socket, a dropped connection, or a
+    /// reply that is absent, truncated or undecodable; a reply timeout never does: it
+    /// throws as soon as it expires. A decoded `Response` — even `ok: false` — is a
+    /// real answer and is returned immediately, never retried, so a mutating verb is
+    /// never applied twice.
     ///
-    /// `queueLabel` defaults to a per-channel label derived from the command type
-    /// (e.g. `casper.socket.client.ControlCommand`), so each channel's serial queue
-    /// stays individually identifiable in Instruments and crash reports.
+    /// Every attempt still gets its own full `timeout`, and a transport failure can
+    /// arrive late — a connection dropped just before the deadline, after a slow
+    /// handler ran. The worst case is about 4 × `timeout` plus the backoffs: 20 s
+    /// at the 5 s default, 60 s for the browser automation verbs' 15 s.
+    ///
+    /// The retry is deliberate (project-memory note `socket-idempotent-retry`).
+    /// Its original cause, an intermittent cross-process `ENETDOWN` before any
+    /// reply byte arrived while a slow handler such as `screenshot` ran, may be
+    /// gone since the server lingers until the client closes, but that is
+    /// unmeasured. Settle it by measurement, not by reading the code: disable it
+    /// and loop a few hundred `casper debug screenshot` and
+    /// `casper debug read-text --scrollback` calls against a `make dev` instance,
+    /// watching for transport errors.
     public static func send(
         _ command: Command, toSocketAt socketPath: String,
-        timeout: TimeInterval = 5, retriable: Bool = false,
-        queueLabel: String = "casper.socket.client.\(Command.self)"
+        timeout: TimeInterval = defaultTimeout, retriable: Bool = false
     ) throws -> Response {
         let maxAttempts = retriable ? maxRetriableAttempts : 1
-        var lastError: TransportError?
+        var lastError: SocketTransportError?
         for attempt in 1...maxAttempts {
             do {
-                return try sendOnce(command, toSocketAt: socketPath, timeout: timeout, queueLabel: queueLabel)
-            } catch let error as TransportError {
+                return try sendOnce(command, toSocketAt: socketPath, timeout: timeout)
+            } catch is SocketReplyTimeout {
+                throw SocketTransportError(reason: "timed out talking to \(socketPath)")
+            } catch let error as SocketTransportError {
                 lastError = error
                 if attempt < maxAttempts {
                     usleep(retryBackoffMicroseconds)
@@ -478,23 +500,24 @@ public enum SocketClientEngine<
             }
         }
         // `maxAttempts >= 1`, so the loop always ran, and it falls through only when
-        // every attempt threw a transport `TransportError` — `lastError` is set.
+        // every attempt threw a `SocketTransportError` — `lastError` is set.
         throw lastError!
     }
 
-    /// One request/response exchange over a single fresh connection. Throws a
-    /// `TransportError` on any transport failure; returns whatever `Response`
-    /// the server delivers, including an `ok: false` one.
+    /// One request/response exchange over a single fresh connection. Throws
+    /// `SocketReplyTimeout` when no reply arrives within `timeout`, a
+    /// `SocketTransportError` on any other transport failure; returns whatever
+    /// `Response` the server delivers, including an `ok: false` one.
     private static func sendOnce(
-        _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval, queueLabel: String
+        _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval
     ) throws -> Response {
         guard FileManager.default.fileExists(atPath: socketPath) else {
-            throw TransportError(reason: "no socket at \(socketPath) (is the GUI running?)")
+            throw SocketTransportError(reason: "no socket at \(socketPath) (is the GUI running?)")
         }
 
         let payload = try JSONEncoder().encode(command)
         guard payload.count <= maxSocketFrameBytes else {
-            throw TransportError(reason: "request too large: \(payload.count) bytes")
+            throw SocketTransportError(reason: "request too large: \(payload.count) bytes")
         }
         // Frame the request with a 4-byte big-endian length prefix so the
         // server reads an exact byte count and never waits for request EOF.
@@ -502,7 +525,8 @@ public enum SocketClientEngine<
 
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         let connection = NWConnection(to: NWEndpoint.unix(path: socketPath), using: params)
-        let queue = DispatchQueue(label: queueLabel)
+        // Per-channel label (e.g. `casper.socket.client.ControlCommand`), as on the server.
+        let queue = DispatchQueue(label: "casper.socket.client.\(Command.self)")
         let done = DispatchSemaphore(value: 0)
         let result = OSAllocatedUnfairLock<Result<Response, Error>?>(initialState: nil)
 
@@ -518,33 +542,32 @@ public enum SocketClientEngine<
         // Read the framed response: a 4-byte big-endian length header, then
         // exactly that many JSON bytes. Success depends only on receiving the
         // full frame — once the bytes are in hand we `finish(.success(...))` and
-        // cancel, and any later `.failed`/receive error is ignored (the server
-        // cancels right after sending, which used to race the client's read and
-        // surface a spurious `ENETDOWN`). `finish` records the first result
-        // only, so that teardown error never overrides the delivered response.
+        // cancel, and any later `.failed`/receive error is ignored: `finish`
+        // records the first result only, so a teardown error never overrides the
+        // delivered response.
         @Sendable func receiveResponse() {
             readExactly(4, on: connection, into: ReadBuffer()) { header in
                 guard let header else {
-                    finish(.failure(TransportError(reason: "no response from \(socketPath)")))
+                    finish(.failure(SocketTransportError(reason: "no response from \(socketPath)")))
                     connection.cancel()
                     return
                 }
                 let length = decodeLength(header)
                 guard length > 0, length <= UInt32(maxSocketFrameBytes) else {
-                    finish(.failure(TransportError(reason: "invalid response length: \(length) bytes")))
+                    finish(.failure(SocketTransportError(reason: "invalid response length: \(length) bytes")))
                     connection.cancel()
                     return
                 }
                 readExactly(Int(length), on: connection, into: ReadBuffer()) { payload in
                     guard let payload else {
-                        finish(.failure(TransportError(reason: "truncated response from \(socketPath)")))
+                        finish(.failure(SocketTransportError(reason: "truncated response from \(socketPath)")))
                         connection.cancel()
                         return
                     }
                     if let response = try? JSONDecoder().decode(Response.self, from: payload) {
                         finish(.success(response))
                     } else {
-                        finish(.failure(TransportError(reason: "undecodable response")))
+                        finish(.failure(SocketTransportError(reason: "undecodable response")))
                     }
                     connection.cancel()
                 }
@@ -561,13 +584,21 @@ public enum SocketClientEngine<
                     content: request,
                     completion: .contentProcessed { error in
                         if let error {
-                            finish(.failure(TransportError(reason: "\(error)")))
+                            finish(.failure(SocketTransportError(reason: "\(error)")))
                             connection.cancel()
                         }
                     })
                 receiveResponse()
+            // On a Unix-domain endpoint `.waiting` means the connect was refused or
+            // the path is unreachable — typically a stale socket file a crashed app
+            // left behind. No path change can cure that, so fail now instead of at
+            // `timeout`.
+            case .waiting(let error):
+                finish(.failure(SocketTransportError(
+                    reason: "cannot connect to \(socketPath): \(error) (is the GUI running?)")))
+                connection.cancel()
             case .failed(let error):
-                finish(.failure(TransportError(reason: "\(error)")))
+                finish(.failure(SocketTransportError(reason: "\(error)")))
                 connection.cancel()
             default:
                 break
@@ -577,12 +608,12 @@ public enum SocketClientEngine<
 
         if done.wait(timeout: .now() + timeout) == .timedOut {
             connection.cancel()
-            throw TransportError(reason: "timed out talking to \(socketPath)")
+            throw SocketReplyTimeout()
         }
         switch result.withLock({ $0 }) {
         case .success(let response): return response
         case .failure(let error): throw error
-        case .none: throw TransportError(reason: "no response from \(socketPath)")
+        case .none: throw SocketTransportError(reason: "no response from \(socketPath)")
         }
     }
 }

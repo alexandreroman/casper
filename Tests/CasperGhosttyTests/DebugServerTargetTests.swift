@@ -38,7 +38,10 @@ final class DebugServerTargetTests: XCTestCase {
             mouseMove: { _, _ in },
             geometry: { .zero },
             focus: {},
-            window: nil)
+            window: nil,
+            agentState: nil,
+            oscTitle: { nil },
+            progressReport: { nil })
     }
 }
 #endif

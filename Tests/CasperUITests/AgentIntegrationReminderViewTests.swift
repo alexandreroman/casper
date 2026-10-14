@@ -26,39 +26,13 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     private static let absurdVersion =
         String(repeating: "9.", count: 200) + "\n" + String(repeating: "x", count: 400)
 
-    private func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
-        model.agentIntegrationProbe = { statuses }
-        model.refreshAgentIntegrations()
-        await model.agentIntegrationTask?.value
-    }
-
-    /// Host the real view and return the size it lays out to.
-    private func layoutSize(for model: AppModel) -> NSSize {
-        measure(AgentIntegrationReminderView(model: model))
-    }
-
-    /// Same, in a sidebar column of the given width.
-    private func layoutSize(for model: AppModel, width: CGFloat) -> NSSize {
-        measure(AgentIntegrationReminderView(model: model).frame(width: width))
-    }
-
-    /// The subject is wrapped the way `SidebarView` wraps it. Its body is a
-    /// `TupleView` of a `Divider` and a `VStack`, which only flattens into a stack —
-    /// hosted bare, `NSHostingView` supplies container semantics of its own and the
-    /// number measured is not the one the sidebar gets.
-    private func measure(_ view: some View) -> NSSize {
-        let host = NSHostingView(rootView: VStack(spacing: 0) { view })
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
-    }
-
     // MARK: - Wording and glyphs
 
     func testMessagesNameTheAgentAndStateTheSituation() {
-        let missing = AppModel.AgentIntegrationReminder(agent: .claudeCode, status: .missing, kind: .actionNeeded)
-        let outdated = AppModel.AgentIntegrationReminder(
+        let missing = AgentIntegrationReminders.Reminder(agent: .claudeCode, status: .missing, kind: .actionNeeded)
+        let outdated = AgentIntegrationReminders.Reminder(
             agent: .claudeCode, status: .outdated(installed: "0.1.0"), kind: .actionNeeded)
-        let trust = AppModel.AgentIntegrationReminder(
+        let trust = AgentIntegrationReminders.Reminder(
             agent: .codex, status: .installedAwaitingHookTrust, kind: .trustNotice)
 
         XCTAssertEqual(AgentIntegrationReminderView.message(for: missing), "Claude Code integration not installed")
@@ -68,7 +42,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     }
 
     func testAnAbsurdVersionIsCappedInTheMessage() {
-        let reminder = AppModel.AgentIntegrationReminder(
+        let reminder = AgentIntegrationReminders.Reminder(
             agent: .claudeCode, status: .outdated(installed: Self.absurdVersion), kind: .actionNeeded)
 
         let message = AgentIntegrationReminderView.message(for: reminder)
@@ -87,7 +61,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     /// A version made only of whitespace has nothing to report, so the line says what
     /// it said before the version was ever shown — never an empty parenthesis.
     func testAnEmptyVersionLeavesTheLineBare() {
-        let reminder = AppModel.AgentIntegrationReminder(
+        let reminder = AgentIntegrationReminders.Reminder(
             agent: .claudeCode, status: .outdated(installed: "  \n "), kind: .actionNeeded)
 
         XCTAssertEqual(AgentIntegrationReminderView.message(for: reminder), "Claude Code integration is outdated")
@@ -110,7 +84,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     /// With no reminders the view must contribute *nothing* to the sidebar's stack.
     /// A stray divider or an unconditional padding would show up as height here.
     func testNoRemindersRenderNothingAtAll() {
-        let size = layoutSize(for: makeModel())
+        let size = layoutSize(for: AgentIntegrationReminderView(model: makeModel()))
 
         XCTAssertEqual(size.height, 0)
         XCTAssertEqual(size.width, 0)
@@ -120,7 +94,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         let model = makeModel()
         await probe(model, [.claudeCode: .missing])
 
-        XCTAssertGreaterThan(layoutSize(for: model).height, 0)
+        XCTAssertGreaterThan(layoutSize(for: AgentIntegrationReminderView(model: model)).height, 0)
     }
 
     /// Every reminder at once, in the narrowest sidebar: the rows must wrap or
@@ -136,7 +110,8 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         ])
         XCTAssertEqual(model.agentIntegrationReminders.count, 3)
 
-        let size = layoutSize(for: model, width: Self.narrowestSidebarWidth)
+        let size = layoutSize(
+            for: AgentIntegrationReminderView(model: model), proposedWidth: Self.narrowestSidebarWidth)
 
         // The load-bearing half: an unbounded label would report its full single-line
         // width here and drag the whole sidebar column open with it.
@@ -159,16 +134,17 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         let absurd = makeModel()
         await probe(absurd, [.claudeCode: .outdated(installed: Self.absurdVersion)])
 
-        let saneWidth = layoutSize(for: sane).width
+        let saneWidth = layoutSize(for: AgentIntegrationReminderView(model: sane)).width
         XCTAssertGreaterThan(saneWidth, 0)
 
+        let absurdView = AgentIntegrationReminderView(model: absurd)
         // Uncapped, the same row reports its whole version on one line — a four-figure
         // width, which is what would drag the sidebar column open behind it. The slack
         // covers the few extra characters a capped version is allowed to add.
-        XCTAssertLessThan(layoutSize(for: absurd).width, saneWidth + 80)
+        XCTAssertLessThan(layoutSize(for: absurdView).width, saneWidth + 80)
         // And inside the column it still wraps rather than pushing it wider.
         XCTAssertEqual(
-            layoutSize(for: absurd, width: Self.narrowestSidebarWidth).width,
+            layoutSize(for: absurdView, proposedWidth: Self.narrowestSidebarWidth).width,
             Self.narrowestSidebarWidth,
             accuracy: 0.5)
     }

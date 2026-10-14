@@ -46,8 +46,11 @@ unit-testable, but not a target of its own.
   capturer shares the `.default()` data store (cookies/localStorage carry),
   hosts the view in an off-screen `NSWindow` at `(-100000,-100000)`, waits for
   `didFinish`, and does a **fresh load** — so the live DOM's client-side state
-  (SPA route, unsaved input) is not reproduced, only the URL's page. Raw
-  dimensions only: no user-agent / devicePixelRatio emulation.
+  (SPA route, unsaved input) is not reproduced, only the URL's page. A load
+  superseded by the page redirecting itself reports as cancelled; the capturer
+  ignores it like the coordinator does (`BrowserCoordinator.isSupersededLoad`)
+  and waits for the successor. Raw dimensions only: no user-agent /
+  devicePixelRatio emulation.
 - **`load <url>` vs `open <url>`:** both point the single inspector browser
   surface at a URL and reuse its cached coordinator, but `open` also
   `setInspectorTab(.browser)` (selects the tab + expands the panel) while `load`
@@ -75,8 +78,14 @@ unit-testable, but not a target of its own.
   deadline. A throwing predicate counts as not-yet-true, so a malformed
   predicate surfaces as a timeout. The CLI sends `selector`+`--visible`/`--gone`
   or `--js`; the app builds the predicate
-  (`BrowserAutomation.presenceJS`/`visibleJS`/`goneJS`/ `readyStateCompleteJS`).
-  CLI socket timeout is `waitTimeout/1000 + 5` to outlive the app deadline.
+  (`BrowserAutomation.presenceJS`/`visibleJS`/`goneJS`). CLI socket timeout is
+  `waitTimeout/1000 + 5` to outlive the app deadline.
+- **`reload --wait`** waits on the reload's navigation, not on a poll:
+  `BrowserCoordinator.reload(waitingUpTo:)` parks a waiter that the next
+  `didFinish` or non-cancelled failure resumes. The old document stays
+  committed, and `complete`, until the new one replaces it, so a `readyState`
+  poll would be answered by the old page. A failed reload settles the wait as
+  done.
 - **Output:** `eval` → `{"result":<json>,…}`; `content` →
   `{"content":"<html>",…}`; `url` → `{"url":"<href>",…}`
   (`window.location.href`); `screenshot` → `{"screenshot":"<path>",…}`; action
@@ -125,8 +134,6 @@ The CLI dials `$CASPER_CONTROL_SOCKET`, whose path comes from
 control socket lands in the per-user Darwin temp dir (`$TMPDIR`, e.g.
 `/var/folders/.../T/casper-control-<session>.sock`), NOT `/tmp`. (The DEBUG
 debug socket is hard-coded to `/tmp`, so the two live in different directories
-under a named session.) A fresh `--session` starts with an empty layout; to
-bootstrap a workspace non-interactively, pre-seed
-`~/Library/Application Support/Casper/session-<name>.json` (a Space + Workspace
-with a real `worktreePath`) before launch — `addSpace` is otherwise GUI-only
-(`NSOpenPanel`).
+under a named session.) To bootstrap a workspace in a fresh session, pre-seed
+its layout file — see the `debug-casper` skill § Seed a space and
+[[app-sessions]].

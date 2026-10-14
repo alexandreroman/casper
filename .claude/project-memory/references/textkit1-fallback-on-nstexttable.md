@@ -1,10 +1,10 @@
 ---
-name: "An NSTextTable drops an NSTextView back to TextKit 1"
+name: "An NSTextTable drops a view back to TextKit 1"
 description: "A view built explicitly on TextKit 2 migrates itself to TextKit 1 once its storage holds an NSTextTable, and the two engines lay the same string out to different heights"
 type: reference
 ---
 
-# An NSTextTable drops an NSTextView back to TextKit 1
+# An NSTextTable drops a view back to TextKit 1
 
 Building the stack by hand — `NSTextContentStorage` → `NSTextLayoutManager` →
 `NSTextContainer`, passed to `NSTextView(frame:textContainer:)` — asks for
