@@ -9,10 +9,9 @@ type: reference
 Casper's minimum toolchain is **Swift 6.2 / Xcode 26**, not Swift 6.0/6.1.
 `Sources/CasperGhostty/GhosttySurfaceView.swift` conforms with a main-actor
 **isolated conformance** — `public final class GhosttySurfaceView: NSView,
-@MainActor NSTextInputClient` — which is Swift 6.2's SE-0470. Older compilers
-reject it with `error: unknown attribute 'MainActor'`, cascading into ~30
-actor-isolation errors on every `NSTextInputClient` method. Swift 6.1 (Xcode
-16.3/16.4) does **not** support it; the feature landed in Swift 6.2.
+@MainActor NSTextInputClient` — which is Swift 6.2's SE-0470. `Package.swift`
+declares `swift-tools-version: 6.2`, so an older toolchain stops before
+compiling anything, with "requires minimum Swift tools version 6.2".
 
 **CI/release pin:** `.github/workflows/ci.yml` and `release.yml` pin
 `maxim-lobanov/setup-xcode@v1` to **`26.3`**. Keep this at Xcode **>= 26** — the
