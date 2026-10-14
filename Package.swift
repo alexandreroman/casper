@@ -4,9 +4,6 @@ import PackageDescription
 let package = Package(
     name: "Casper",
     platforms: [.macOS(.v15)],
-    products: [
-        .executable(name: "casper", targets: ["casper"]),
-    ],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-argument-parser.git",
