@@ -5,7 +5,7 @@ import SwiftUI
 /// the workspace title bar's line, then full-bleed content.
 /// The panel carries no tab control of its own — which tab it shows is chosen
 /// by the title bar's `InspectorTabSelector` and diff badge (see
-/// `WorkspaceDetailView.swift`), which double as the panel's open/close toggle.
+/// `WorkspaceTitleBar.swift`), which double as the panel's open/close toggle.
 /// The Browser view reuses `BrowserSurfaceView` on the workspace's dedicated
 /// inspector surface; the Diff view reuses `DiffSurfaceView` for the working
 /// tree vs HEAD.

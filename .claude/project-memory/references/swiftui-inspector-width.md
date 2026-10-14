@@ -37,7 +37,7 @@ is laid out straight at its final frame and never follows a SwiftUI
 transition's per-frame offset, so it lags the sliding chrome. The clearest way
 to see it is a SwiftUI `Picker` with `.segmented`, which is an
 `NSSegmentedControl` underneath and lags exactly this way. The tab strip is
-hand-rolled SwiftUI (`InspectorTabSelector` in `WorkspaceDetailView.swift`), and
+hand-rolled SwiftUI (`InspectorTabSelector` in `WorkspaceTitleBar.swift`), and
 the constraint holds regardless because the panel still hosts AppKit content —
 the terminal's Metal layer and `WKWebView`. This mirrors `SplitContainerView`,
 which animates hosted Metal views by frame/offset on always-mounted views for

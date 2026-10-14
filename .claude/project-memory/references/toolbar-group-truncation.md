@@ -12,8 +12,9 @@ bar open instead of shortening its text. Every title-bar control lives in a
 single `ToolbarItem(placement: .navigation)` in
 `Sources/CasperUI/WorkspaceDetailView.swift` — title, info chip, diff badge,
 Merge, Run Script, Editor and the inspector selector — and the line limit is
-applied inside it, on the title/info group and on every chip row, alongside the
-one in `Sources/CasperUI/WorkspaceTitleLabel.swift`. The diff badge's `+N`/`−N`
+applied inside it, in `Sources/CasperUI/WorkspaceTitleBar.swift`, on the
+title/info group and on every chip row, alongside the one in
+`Sources/CasperUI/WorkspaceTitleLabel.swift`. The diff badge's `+N`/`−N`
 are single "words" that stack the same way.
 
 **Why:** width is handed out silently, and a `Text` given less than it wants

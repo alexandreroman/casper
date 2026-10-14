@@ -45,15 +45,16 @@ How the row is built on top of these — the safety margin, the capped and
 ratcheted resize undershoot, the single ordered ladder, the sidebar-collapse
 case and the measured chevron rates — is the design in app-ui.md § Title bar.
 
-**How to access:** the row and its constants live in
-`Sources/CasperUI/WorkspaceDetailView.swift`. The chevron is observable without
-a screen-recording grant: an `NSToolbarClippedItemsIndicator` in the window's
-view tree is the reliable signal. Item counts are **not** — SwiftUI's own
-`com.apple.SwiftUI.splitViewSeparator-0` is missing from `visibleItems` at every
-width, chevron or no chevron. Three `#if DEBUG` environment variables measure
-the row from inside the running app — `CASPER_TIERPROBE_WIDTHS`,
-`CASPER_RESIZESTEP` and `CASPER_RESIZETRACE`; their usage and field meanings
-are in the header of `WorkspaceDetailView+ToolbarProbe.swift`.
+**How to access:** the row is `WorkspaceTitleBarRow` in
+`Sources/CasperUI/WorkspaceTitleBar.swift`; its width constants and the heal
+live in `Sources/CasperUI/WorkspaceDetailView.swift`. The chevron is observable
+without a screen-recording grant: an `NSToolbarClippedItemsIndicator` in the
+window's view tree is the reliable signal. Item counts are **not** — SwiftUI's
+own `com.apple.SwiftUI.splitViewSeparator-0` is missing from `visibleItems` at
+every width, chevron or no chevron. Three `#if DEBUG` environment variables
+measure the row from inside the running app — `CASPER_TIERPROBE_WIDTHS`,
+`CASPER_RESIZESTEP` and `CASPER_RESIZETRACE`; their usage and field meanings are
+in the header of `WorkspaceDetailView+ToolbarProbe.swift`.
 
 Related: [[toolbar-item-ignores-max-width]], [[toolbar-group-truncation]],
 [[headless-swiftui-layout-tests]].

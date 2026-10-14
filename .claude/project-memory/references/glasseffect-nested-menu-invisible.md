@@ -17,14 +17,14 @@ visible pill over a plain `HStack` of `Text`.
 **Why:** a native menu control mid-hierarchy interferes with how `.glassEffect`
 composites its material, most likely because the effect assumes a single
 flattened SwiftUI rendering pass and the AppKit-bridged `Menu` breaks that
-assumption. Measured on `WorkspaceDetailView`'s split-button chip: the exact
+assumption. Measured on the title bar's split-button chip: the exact
 construction that renders a solid pill without a `Menu` renders invisible with
 one inside the same `HStack`.
 
 **How to apply:** for any custom SwiftUI toolbar control whose hierarchy
 contains a native `Menu`/`Picker`/other AppKit-bridged control, skip
 `.glassEffect(in:)` and paint the background explicitly. `TitleCapsuleChrome` in
-`Sources/CasperUI/WorkspaceDetailView.swift` — reached through
+`Sources/CasperUI/TitleChipChrome.swift` — reached through
 `.titleCapsule()`, which `diffBadge` and every other chip uses — is the shipped
 form of that: an unconditional fill plus a `strokeBorder` overlay approximating
 the Liquid Glass pill's fill and edge highlight. It is an approximation, not a

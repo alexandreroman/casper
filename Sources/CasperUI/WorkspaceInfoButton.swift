@@ -36,7 +36,7 @@ struct WorkspaceInfoButton: View {
     /// to contribute (confirmed empirically: an `NSHostingView` fitting-size
     /// probe reports exactly the frame's width, never more, no matter what
     /// padding sits inside it). Without a nonzero floor here, the branch
-    /// title's own 4pt trailing inset (set in `WorkspaceDetailView`) would be
+    /// title's own 6pt trailing inset (set in `WorkspaceTitleBarRow`) would be
     /// the only thing separating the title from the diff badge — reads as
     /// cramped.
     static let collapsedWidth: CGFloat = 6
@@ -54,7 +54,7 @@ struct WorkspaceInfoButton: View {
         // (unlike an in-window `if`/`Group`). Driving `opacity`/`scaleEffect`/
         // `frame(width:)` off `visible` below instead is a plain PROPERTY
         // animation, which AppKit-hosted toolbar content animates fine — see
-        // `ScriptToolbarButton` in `WorkspaceDetailView.swift` for the same
+        // `ScriptToolbarButton` in `WorkspaceTitleBar.swift` for the same
         // convention on its own entrance. Do not "simplify" this into a
         // `.transition` + `if let`: the button would then appear and vanish
         // without animating.

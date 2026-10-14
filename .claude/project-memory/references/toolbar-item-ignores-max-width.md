@@ -20,12 +20,12 @@ overflowing the item into its chevron popover.
 
 **How to access:** what works instead is a container with a **definite** width,
 which proposes that width downward: the title bar's row in
-`Sources/CasperUI/WorkspaceDetailView.swift` gets one from
-`.frame(width: rowWidth)`, and the row's `ViewThatFits` steps down its
-candidates as that width falls, with no intermediate layout of any kind between
-the two. `Tests/CasperUITests/WorkspaceToolbarActionsTests.swift` pins the
-selected candidate at a sweep of widths, including the floor where only the
-narrowest one is left.
+`Sources/CasperUI/WorkspaceTitleBar.swift` gets one from `.frame(width:)`, and
+the row's `ViewThatFits` steps down its candidates as that width falls, with no
+intermediate layout of any kind between the two.
+`Tests/CasperUITests/WorkspaceToolbarActionsTests.swift` pins the selected
+candidate at a sweep of widths, including the floor where only the narrowest one
+is left.
 
 Related: [[toolbar-overflows-before-squeezing]], [[toolbar-group-truncation]],
 [[headless-swiftui-layout-tests]].

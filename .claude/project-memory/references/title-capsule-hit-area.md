@@ -12,8 +12,8 @@ chrome), `.titleCapsule()` MUST be applied **inside** the `label:` closure
 (attached to the label content), not chained after `.buttonStyle(...)` on the
 `Button` itself.
 
-The shared `titleCapsule()` helper (a private `View` extension in
-`Sources/CasperUI/WorkspaceDetailView.swift`) adds padding, a background, and a
+The shared `titleCapsule()` helper (a `View` extension in
+`Sources/CasperUI/TitleChipChrome.swift`) adds padding, a background, and a
 `.contentShape(Capsule())`. Like `.plain`, `TitleChipButtonStyle` adds no
 geometry, so the button's hit area is defined by its **label's** shape. If
 `titleCapsule()` is applied outside the button, the capsule is mere decoration
@@ -23,7 +23,7 @@ just the `Image` glyph) — clicking the capsule padding/background does nothing
 **Why:** the failure is silent. The capsule renders exactly right and only the
 click target is wrong, so it survives visual review — typically as a chip whose
 glyph works and whose padding does nothing. `diffBadge` in
-`Sources/CasperUI/WorkspaceDetailView.swift` is the reference for the correct
+`Sources/CasperUI/WorkspaceTitleBar.swift` is the reference for the correct
 shape: `.titleCapsule()` sits inside the `label:` closure, so the whole pill is
 live.
 
@@ -57,7 +57,7 @@ primary action.
 rather than the literal and the whole row moves together.
 
 **How to access:** the pattern lives in
-`Sources/CasperUI/WorkspaceDetailView.swift`; see `diffBadge` for the
+`Sources/CasperUI/WorkspaceTitleBar.swift`; see `diffBadge` for the
 single-button form (capsule inside the label) and `TitleSplitButton` for the
 split-button form (`titleCapsuleShell` + interior padding), which `editorChip`
 and `ScriptToolbarButton` both render.

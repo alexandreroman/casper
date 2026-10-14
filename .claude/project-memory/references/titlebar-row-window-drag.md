@@ -74,7 +74,7 @@ only the feedback lags, measurably — with the gestures removed from the row th
 pressed state is instant.
 
 **How to access:** the row is `WorkspaceTitleBarRow` in
-`Sources/CasperUI/WorkspaceDetailView.swift`. The covering item is observable
+`Sources/CasperUI/WorkspaceTitleBar.swift`. The covering item is observable
 from `lldb -p <pid>` against a debug build without any TCC grant: dump
 `[[[window contentView] superview] _subtreeDescription]` for the viewer's frame,
 and `hitTest:` a point in the bar to see which view answers. Synthetic pointer

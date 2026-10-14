@@ -16,7 +16,7 @@ its own `titleCapsule()` background: the style is inherited from the toolbar
 environment, not from the capsule.
 
 **Why it matters:** title-bar chips are a set. Editor and Run
-(`Sources/CasperUI/WorkspaceDetailView.swift`) are text-bearing, so a
+(`Sources/CasperUI/WorkspaceTitleBar.swift`) are text-bearing, so a
 glyph-only neighbour reads as a different class of control.
 
 **Ordering:** the style modifier goes on the `Label` BEFORE `titleCapsule()`,
