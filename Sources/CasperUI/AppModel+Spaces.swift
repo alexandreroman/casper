@@ -221,10 +221,10 @@ extension AppModel {
     /// Workspace…" work.
     ///
     /// That commit is **not** part of the rollback: it can be skipped (see
-    /// `Repository.createInitialCommit`, which writes nothing when the machine
-    /// configures no committer identity) or fail outright, and either way the
-    /// repository on disk is a valid one that is still worth adopting. Only
-    /// `Repository.initialize` failing and the adoption failing roll anything back.
+    /// `Repository.createInitialCommit`, which writes nothing when neither the
+    /// environment nor the Git configuration names a committer) or fail outright, and
+    /// either way the repository on disk is a valid one that is still worth adopting.
+    /// Only `Repository.initialize` failing and the adoption failing roll anything back.
     ///
     /// A path that is already taken is refused rather than reused: Casper never
     /// deletes or overwrites anything it did not create. The one exception is an
@@ -333,7 +333,7 @@ extension AppModel {
     /// built on it can host a workspace right away.
     ///
     /// Reports only to the log, deliberately: every outcome — the commit written, the
-    /// commit skipped for want of a configured Git identity, or libgit2 refusing it —
+    /// commit skipped for want of a Git identity, or libgit2 refusing it —
     /// leaves a valid repository behind, so none of them is a reason to refuse the
     /// Space or to undo what is already on disk. A Space left on an unborn HEAD is
     /// still a Space; creating a workspace in it is what then says so, in Casper's own
