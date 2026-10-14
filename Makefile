@@ -4,7 +4,7 @@
 # (brew install libgit2 pkgconf) so that CasperGit can link libgit2.
 
 .DEFAULT_GOAL := build
-.PHONY: all build dev test release clean vendor help bundle dist icon memory
+.PHONY: build dev test release clean vendor help bundle dist icon memory
 
 # Version metadata for packaging (overridable by CI). SHORT_VERSION is the
 # marketing version; BUNDLE_VERSION is a monotonic build number.
@@ -83,9 +83,6 @@ dev: build
 # path derivation.
 test:
 	env -u CASPER_CONTROL_SOCKET -u CASPER_DEBUG_SOCKET -u CASPER_SESSION swift test
-
-## all: build then test
-all: build test
 
 ## release: size-optimized release build (arm64)
 release:

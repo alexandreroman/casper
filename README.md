@@ -260,7 +260,6 @@ make help     # list available targets
 make dev      # recompile and launch the app under a per-branch dev session
 make build    # debug build + signed Casper-dev.app bundle
 make test     # run the full test suite
-make all      # build then test
 make release  # size-optimized release build (arm64)
 make bundle   # assemble a self-contained Casper.app (release binary + dylibs)
 make dist     # package Casper.app into a downloadable .zip + .sha256 + dSYM
