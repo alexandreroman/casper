@@ -364,7 +364,8 @@ final class AgentIntegrationTests: XCTestCase {
 
     func testOpencodePluginEntriesMatchesTheExactPackageNameWithOrWithoutAVersion() {
         XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"plugin": ["casper-skills"]}"#), ["casper-skills"])
-        XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"plugin": ["casper-skills@0.2.0"]}"#), ["casper-skills@0.2.0"])
+        XCTAssertEqual(
+            AgentIntegration.opencodePluginEntries(#"{"plugin": ["casper-skills@0.2.0"]}"#), ["casper-skills@0.2.0"])
         XCTAssertEqual(AgentIntegration.opencodePluginEntries(#"{"plugin": ["  casper-skills  "]}"#), ["casper-skills"])
     }
 

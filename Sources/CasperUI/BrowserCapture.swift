@@ -173,8 +173,9 @@ enum BrowserCapture {
 /// Bridges a `WKWebView`'s navigation completion to an `async` waiter. Resumes its
 /// continuation exactly once — on `didFinish` (success), `didFail` /
 /// `didFailProvisionalNavigation` (a clear load error; a superseded load is not
-/// one), or `fail(message:)` (the timeout). `WKNavigationDelegate` is already `@MainActor`, so the callbacks and
-/// the continuation are main-actor-isolated with no data race.
+/// one), or `fail(message:)` (the timeout). `WKNavigationDelegate` is already
+/// `@MainActor`, so the callbacks and the continuation are main-actor-isolated with
+/// no data race.
 @MainActor
 final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     private let url: URL
