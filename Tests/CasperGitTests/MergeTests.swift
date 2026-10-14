@@ -56,7 +56,7 @@ final class MergeTests: XCTestCase {
             XCTAssertNotNil(identityError, "got: \(error)")
             XCTAssertFalse(identityError?.detail.isEmpty ?? true, "libgit2's own message is kept")
             XCTAssertEqual(identityError?.environmentVariables, [], "the configuration is to blame")
-            XCTAssertEqual(identityError?.settingMissing, false, "a blank setting is set")
+            XCTAssertEqual(identityError?.configurationAtFault, true, "a blank setting is at fault")
         }
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }
@@ -119,7 +119,7 @@ final class MergeTests: XCTestCase {
             let identityError = error as? MissingCommitterIdentityError
             XCTAssertEqual(identityError?.environmentVariables, ["GIT_COMMITTER_DATE"], "got: \(error)")
             XCTAssertEqual(identityError?.detail, "unparsable date")
-            XCTAssertEqual(identityError?.settingMissing, false, "EMAIL stands in for user.email")
+            XCTAssertEqual(identityError?.configurationAtFault, false, "EMAIL stands in for user.email")
         }
     }
 
@@ -135,7 +135,35 @@ final class MergeTests: XCTestCase {
         XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
             let identityError = error as? MissingCommitterIdentityError
             XCTAssertEqual(identityError?.environmentVariables, ["GIT_AUTHOR_NAME"], "got: \(error)")
-            XCTAssertEqual(identityError?.settingMissing, true, "got: \(error)")
+            XCTAssertEqual(identityError?.configurationAtFault, true, "got: \(error)")
+        }
+    }
+
+    /// A blank `user.name` fails the author side, which no variable shapes, while the
+    /// committer side fails on its date: the configuration is to blame beside the date.
+    func testMergeRefusalReportsABlankSettingBesideAnUnparsableDate() throws {
+        let (repo, main) = try repositoryWithAFeatureCommit()
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "config@example.com")
+        setGitIdentityEnvironment([.committerDate: "zzz"])
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            let identityError = error as? MissingCommitterIdentityError
+            XCTAssertEqual(identityError?.environmentVariables, ["GIT_COMMITTER_DATE"], "got: \(error)")
+            XCTAssertEqual(identityError?.configurationAtFault, true, "got: \(error)")
+        }
+    }
+
+    /// A blank variable fails the author side, and a blank `user.email` the committer
+    /// side, which no variable shapes: the configuration is to blame beside the variable.
+    func testMergeRefusalReportsABlankSettingBesideABlankVariable() throws {
+        let (repo, main) = try repositoryWithAFeatureCommit()
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "Config Name", email: "")
+        setGitIdentityEnvironment([.authorName: ""])
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            let identityError = error as? MissingCommitterIdentityError
+            XCTAssertEqual(identityError?.environmentVariables, ["GIT_AUTHOR_NAME"], "got: \(error)")
+            XCTAssertEqual(identityError?.configurationAtFault, true, "got: \(error)")
         }
     }
 

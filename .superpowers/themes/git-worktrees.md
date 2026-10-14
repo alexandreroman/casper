@@ -111,15 +111,18 @@ binary. We own this surface; it exposes only what Casper needs.
   `MissingCommitterIdentityError.environmentVariables` — the message names
   them and says to correct or unset them where Casper is started. Otherwise it
   names the two `git config` commands, the remedy that works however Casper
-  was launched. It gives both remedies when a variable is to blame and a
-  setting is missing as well (`settingMissing`: libgit2 returned
-  `GIT_ENOTFOUND` for `user.name` or `user.email`), and says `git config`
-  cannot help only when nothing else is to blame. The diagnosis resolves the
-  author and the committer again, each on its own, so a date is blamed only
-  on the side that fails on it. libgit2 records no error for an unparsable
-  date, except the stale "`user.email` was not found" its `EMAIL` fallback
-  leaves behind; a genuine miss returns `GIT_ENOTFOUND` rather than -1, which
-  tells the two apart.
+  was launched. It gives both remedies when a variable is to blame and the
+  configuration is at fault as well (`configurationAtFault`), and says
+  `git config` cannot help only when nothing else is to blame. The diagnosis
+  resolves the author and the committer again, each on its own, so a date is
+  blamed only on the side that fails on it, and the configuration only on a
+  side that libgit2 refuses with `GIT_ENOTFOUND` (a `user.name` or
+  `user.email` set nowhere) or that fails on something other than its date
+  with neither of its own name or email variables to blame: a blank or
+  malformed setting, or a configuration libgit2 cannot read. libgit2 records
+  no error for an unparsable date, except the stale "`user.email` was not
+  found" its `EMAIL` fallback leaves behind; a genuine miss returns
+  `GIT_ENOTFOUND` rather than -1, which tells the two apart.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.

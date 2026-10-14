@@ -481,11 +481,38 @@ final class WorktreeManagerTests: XCTestCase {
         }
     }
 
+    /// A blank setting beside a variable to blame: whichever the variable is, the message
+    /// offers `git config` as well and never rules it out.
+    func testMergeWithABlankSettingBesideAVariableToBlameOffersGitConfig() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
+        let cases: [(name: String, email: String, environment: [GitIdentityVariable: String])] = [
+            ("", "config@example.com", [.committerDate: "zzz"]),
+            ("Config Name", "", [.authorName: ""]),
+        ]
+        for (name, email, environment) in cases {
+            try GitFixture.configureIdentity(atPath: repoDir.path, name: name, email: email)
+            setGitIdentityEnvironment(environment)
+
+            XCTAssertThrowsError(
+                try WorktreeManager.merge(
+                    repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+            ) { error in
+                let message = error.localizedDescription
+                XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
+                XCTAssertFalse(message.contains("cannot fix"), message)
+            }
+        }
+    }
+
     /// The message carries libgit2's cause, since a config it cannot read fails the
     /// same way as a missing identity, and shows how to set both halves of one.
     func testMissingCommitterIdentityDescriptionShowsTheCauseAndBothSettings() {
         let error = WorktreeError(.missingCommitterIdentity(
-            detail: "config value 'user.name' was not found", environmentVariables: [], settingMissing: true))
+            detail: "config value 'user.name' was not found", environmentVariables: [], configurationAtFault: true))
         let message = error.localizedDescription
 
         XCTAssertTrue(message.contains("config value 'user.name' was not found"), message)
@@ -499,7 +526,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testMissingCommitterIdentityDescriptionNamesTheVariablesToBlame() {
         let error = WorktreeError(.missingCommitterIdentity(
             detail: "unparsable date", environmentVariables: ["GIT_AUTHOR_NAME", "GIT_COMMITTER_DATE"],
-            settingMissing: false))
+            configurationAtFault: false))
         let message = error.localizedDescription
 
         XCTAssertTrue(message.contains("unparsable date"), message)
@@ -514,7 +541,7 @@ final class WorktreeManagerTests: XCTestCase {
     func testMissingCommitterIdentityDescriptionGivesBothRemediesWhenASettingIsMissingToo() {
         let error = WorktreeError(.missingCommitterIdentity(
             detail: "config value 'user.email' was not found", environmentVariables: ["GIT_AUTHOR_NAME"],
-            settingMissing: true))
+            configurationAtFault: true))
         let message = error.localizedDescription
 
         XCTAssertTrue(message.contains("config value 'user.email' was not found"), message)

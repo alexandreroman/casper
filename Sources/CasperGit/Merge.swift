@@ -25,10 +25,13 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
     /// repair what one of these breaks: a name or email variable shadows `user.name` /
     /// `user.email` even when blank, and no setting stands in for a date.
     public let environmentVariables: [String]
-    /// True when a `user.name` or `user.email` that libgit2 needed is set nowhere (for
-    /// the email, with no `EMAIL` either), so `git config` is part of the fix whatever
-    /// `environmentVariables` holds. A blank setting counts as set.
-    public let settingMissing: Bool
+    /// True when Git's configuration is to blame as well, so `git config` is part of the
+    /// fix whatever `environmentVariables` holds. Decided per side: a `user.name` or
+    /// `user.email` that libgit2 needed is set nowhere (for the email, with no `EMAIL`
+    /// either), or the side failed on something other than its date with neither of its
+    /// own name or email variables to blame, so the value libgit2 rejected came from the
+    /// configuration, or the configuration was unreadable.
+    public let configurationAtFault: Bool
 
     /// Diagnose why `git_signature_default_from_env` fails for `repository` by resolving
     /// the author and the committer again, each on its own. Self-contained: it clears
@@ -67,13 +70,33 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
             blamed.append(failure.side.dateVariable)
         }
         environmentVariables = blamed
-        settingMissing = failures.contains { $0.settingMissing }
+        configurationAtFault = failures.contains { Self.blamesTheConfiguration($0, blamedVariables: blamed) }
+    }
+
+    /// Whether `failure` is the configuration's fault: a setting is missing, or the side
+    /// failed on a name or email that none of its own variables supplied.
+    private static func blamesTheConfiguration(_ failure: SideFailure, blamedVariables: [String]) -> Bool {
+        if failure.settingMissing {
+            return true
+        }
+        if failure.unparsableDate {
+            return false
+        }
+        let ownVariableIsBlamed = failure.side.identityVariables.contains { blamedVariables.contains($0) }
+        return !ownVariableIsBlamed
     }
 
     /// One half of a commit's identity. libgit2 resolves each from its own variables.
     private enum Side: CaseIterable {
         case author
         case committer
+
+        var identityVariables: [String] {
+            switch self {
+            case .author: ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL"]
+            case .committer: ["GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]
+            }
+        }
 
         var dateVariable: String {
             switch self {

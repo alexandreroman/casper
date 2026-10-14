@@ -11,7 +11,7 @@ public struct WorktreeError: Error, Equatable, Sendable {
         case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
-        case missingCommitterIdentity(detail: String, environmentVariables: [String], settingMissing: Bool)
+        case missingCommitterIdentity(detail: String, environmentVariables: [String], configurationAtFault: Bool)
         case fileCopyFailed(String)
         case configInvalid(String)
         case gitFailure(String)
@@ -37,9 +37,9 @@ extension WorktreeError: LocalizedError {
             return "The worktree path already exists."
         case .mergeConflict:
             return "The merge could not be completed automatically due to conflicts."
-        case .missingCommitterIdentity(let detail, let environmentVariables, let settingMissing):
+        case .missingCommitterIdentity(let detail, let environmentVariables, let configurationAtFault):
             return Self.missingCommitterIdentityDescription(
-                detail: detail, environmentVariables: environmentVariables, settingMissing: settingMissing)
+                detail: detail, environmentVariables: environmentVariables, configurationAtFault: configurationAtFault)
         case .fileCopyFailed(let message):
             return "Failed to copy workspace files: \(message)"
         case .configInvalid(let message):
@@ -55,7 +55,7 @@ extension WorktreeError {
     /// variables to blame, setting `user.name` / `user.email`, or both. `git config` is
     /// ruled out only when nothing but those variables is to blame.
     private static func missingCommitterIdentityDescription(
-        detail: String, environmentVariables: [String], settingMissing: Bool
+        detail: String, environmentVariables: [String], configurationAtFault: Bool
     ) -> String {
         let cause = "Git has no usable identity to commit the merge as (\(detail))."
         let settings = "user.name and user.email (git config --global user.name \"Your Name\" and "
@@ -67,8 +67,8 @@ extension WorktreeError {
         let variables = environmentVariables.joined(separator: ", ")
         let environmentCause = "Casper was started with \(variables) set in its environment, which libgit2 rejects"
         let environmentRemedy = "Correct or unset \(variables) where Casper is started"
-        if settingMissing {
-            return "\(cause) \(environmentCause), and Git's configuration lacks a setting as well. "
+        if configurationAtFault {
+            return "\(cause) \(environmentCause), and Git's configuration is at fault as well. "
                 + "\(environmentRemedy), set \(settings), restart Casper, then try again."
         }
         return "\(cause) \(environmentCause); git config cannot fix this. "
@@ -358,7 +358,7 @@ public enum WorktreeManager {
         } catch let error as MissingCommitterIdentityError {
             throw WorktreeError(.missingCommitterIdentity(
                 detail: error.detail, environmentVariables: error.environmentVariables,
-                settingMissing: error.settingMissing))
+                configurationAtFault: error.configurationAtFault))
         } catch let error as GitError {
             throw WorktreeError(.gitFailure(error.message))
         }
