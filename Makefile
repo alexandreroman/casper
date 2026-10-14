@@ -110,8 +110,10 @@ dist: bundle
 	ditto -c -k --sequesterRsrc --keepParent Casper.dSYM dist/Casper-$(SHORT_VERSION)-arm64.dSYM.zip
 
 ## clean: remove build artifacts
+# Everything `make build`/`bundle`/`dist` and Scripts/update-appcast.sh write;
+# all of it is gitignored as build or packaging output.
 clean:
-	rm -rf .build $(DEV_APP)
+	rm -rf .build $(DEV_APP) Casper.app Casper.dSYM dist appcast.xml
 
 ## vendor: re-sync vendored files (pinned libghostty header) via Carvel vendir
 vendor:
