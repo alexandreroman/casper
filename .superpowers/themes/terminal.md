@@ -29,8 +29,11 @@ surfaces and PTYs (same model as the Ghostty app).
   `~/Library/Caches/<bundle id>/ghostty-themes/` and they are kept for the
   app's lifetime; a conditional `theme = light:…,dark:…` line references them.
   The defaults load before the user's own Ghostty config, so user settings
-  still win and a user `theme` replaces Casper's (see
-  [[ghostty-config-dir-bundle-id]]).
+  still win and a user `theme` that loads replaces Casper's (see
+  [[ghostty-config-dir-bundle-id]]). One that cannot load (e.g. a named theme
+  without Ghostty's resources dir) is detected by `GhosttyConfigBuilder`, which
+  rebuilds the config with Casper's `theme` line after the user's files, so the
+  built-in themes apply.
 - **`GhosttyActionDispatcher.swift`** — the extensible seam: the
   `GhosttyActionHandler` protocol plus the default `LoggingActionHandler`, which
   claims nothing and logs whatever it is handed as an explicit no-op. (There is

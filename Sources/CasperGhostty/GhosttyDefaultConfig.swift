@@ -9,7 +9,11 @@
 /// because in Ghostty an explicit colour key beats any theme, whichever file set
 /// it: explicit defaults would mask a `theme` in the user's own config. As themes,
 /// they lose to every explicit user key, and a user's own `theme` replaces
-/// Casper's value outright.
+/// Casper's value outright — provided libghostty can load it (an absolute path, or
+/// a name found in `~/.config/ghostty/themes/`). A theme that cannot load, typically
+/// a named one that only Ghostty's own resources dir would resolve, would leave the
+/// terminal on libghostty's vanilla colours, so `GhosttyConfigBuilder` detects it
+/// (`isThemeLoadFailure`) and re-applies `themeLine` after the user's files.
 ///
 /// The defaults are embedded because, on macOS, libghostty resolves the user's
 /// config directory from the running app's bundle identifier
@@ -81,6 +85,21 @@ enum GhosttyDefaultConfig {
 
         """
 
+    /// The conditional `theme` line selecting Casper's light or dark theme file.
+    static func themeLine(_ themes: GhosttyThemeFiles.Paths) -> String {
+        "theme = light:\(themes.light.path),dark:\(themes.dark.path)"
+    }
+
+    /// Whether a libghostty config diagnostic reports a failed `theme` load. libghostty
+    /// (`src/config/theme.zig`) words these as `theme "<name>" not found…`,
+    /// `theme "<name>" cannot include path separators…`, `failed to load theme …` and
+    /// `not reading theme from …`; matching on those shapes keeps unrelated diagnostics
+    /// (unknown fields, compatibility handlers) from triggering the fallback.
+    static func isThemeLoadFailure(_ message: String) -> Bool {
+        let shapes = ["theme \"", "failed to load theme", "not reading theme from"]
+        return shapes.contains { message.contains($0) }
+    }
+
     /// The defaults file's contents. `themes` is nil when the theme files could
     /// not be written; the terminal then keeps libghostty's own colours.
     static func text(themes: GhosttyThemeFiles.Paths?) -> String {
@@ -91,7 +110,7 @@ enum GhosttyDefaultConfig {
 
             """
         if let themes {
-            text += "theme = light:\(themes.light.path),dark:\(themes.dark.path)\n"
+            text += themeLine(themes) + "\n"
         }
         text += """
             # libghostty defaults this to `allow`, under which the write callback is

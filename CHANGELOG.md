@@ -17,7 +17,9 @@ CI, test, and documentation-only work is left out.
 ### Fixed
 
 - A `theme` set in your own Ghostty configuration now applies to Casper's
-  terminals instead of being masked by Casper's built-in colours.
+  terminals when Casper can load it (an absolute path, or a theme in
+  `~/.config/ghostty/themes/`); otherwise Casper keeps its light and dark
+  themes.
 
 ## [0.1.3] - 2026-10-13
 

@@ -47,21 +47,21 @@ public final class GhosttyRuntime {
         // `ghostty_init` leaves libghostty unusable, so there is nothing to recover.
         precondition(ghosttyInitialized, "ghostty_init failed")
 
-        guard let config = ghostty_config_new() else {
+        let themes = Self.writeThemeFiles()
+        // The user's own config is read after Casper's defaults, so any user setting still wins.
+        // This compensates for macOS libghostty keying the Application-Support config dir on the
+        // bundle id (empty for a bundled Casper.app) — without Casper's defaults, the bundle
+        // would fall back to the vanilla gray default.
+        guard let config = GhosttyConfigBuilder.makeConfig(themes: themes, loadUserFiles: { config in
+            ghostty_config_load_default_files(config)
+            // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
+            // user's config. Ghostty's own app runs this before finalize; without it, includes are
+            // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
+            // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
+            ghostty_config_load_recursive_files(config)
+        }) else {
             throw GhosttyError(reason: "ghostty_config_new returned null")
         }
-        // Load Casper's built-in defaults (themes + clipboard policy) *first*, before the
-        // user's own config, so any user setting still wins. This compensates for macOS
-        // libghostty keying the Application-Support config dir on the bundle id (empty for
-        // a bundled Casper.app) — without it, the bundle would fall back to the vanilla gray default.
-        loadEmbeddedDefaults(into: config)
-        ghostty_config_load_default_files(config)
-        // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
-        // user's config. Ghostty's own app runs this before finalize; without it, includes are
-        // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
-        // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
-        ghostty_config_load_recursive_files(config)
-        ghostty_config_finalize(config)
 
         var runtimeConfig = ghostty_runtime_config_s()
         runtimeConfig.userdata = Unmanaged.passUnretained(self).toOpaque()
@@ -81,35 +81,17 @@ public final class GhosttyRuntime {
         self.config = config
     }
 
-    /// Load Casper's built-in defaults (terminal themes and clipboard policy) into `config`.
-    ///
-    /// The theme files are written first and kept for the app's lifetime (libghostty
-    /// re-reads them on every colour-scheme switch). libghostty exposes no
-    /// load-from-string API — only `ghostty_config_load_file` — so the defaults text is
-    /// written to a per-process temp file, loaded, then removed. Never crashes: if the
-    /// theme files can't be written the defaults omit the `theme` line, and if the temp
-    /// file can't be written the defaults are skipped; either way the terminal still
-    /// starts with libghostty's own colours.
-    private func loadEmbeddedDefaults(into config: ghostty_config_t) {
-        let themes: GhosttyThemeFiles.Paths?
+    /// Writes Casper's theme files, kept for the app's lifetime (libghostty re-reads them on
+    /// every colour-scheme switch). Never crashes: nil means the terminal keeps libghostty's
+    /// own colours.
+    private static func writeThemeFiles() -> GhosttyThemeFiles.Paths? {
         do {
-            themes = try GhosttyThemeFiles.write(to: GhosttyThemeFiles.defaultDirectory)
+            return try GhosttyThemeFiles.write(to: GhosttyThemeFiles.defaultDirectory)
         } catch {
             CasperLog.ghostty.warning(
                 "failed to write built-in terminal themes; using libghostty's default colours: \(error)")
-            themes = nil
+            return nil
         }
-        let path = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-default-config-\(ProcessInfo.processInfo.processIdentifier).ghostty")
-        do {
-            try GhosttyDefaultConfig.text(themes: themes).write(to: path, atomically: true, encoding: .utf8)
-        } catch {
-            CasperLog.ghostty.warning("failed to write embedded default config; skipping: \(error)")
-            return
-        }
-        // Remove the temp file once loaded; a cleanup failure is harmless, so ignore it.
-        defer { try? FileManager.default.removeItem(at: path) }
-        ghostty_config_load_file(config, path.path)
     }
 
     /// Test-only constructor: a runtime with no libghostty app, used to exercise
