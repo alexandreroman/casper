@@ -32,6 +32,11 @@ hooks, and
 optional: a few files carry one, most do not, and neither shape breaks the
 suite. See [[debug-channel-gating]] for what that gating protects.
 
+The shared fixtures in `Tests/CasperTestSupport/` are the exception: a regular
+target the test targets depend on, because test targets cannot import one
+another. `swift build -c release` (`make release`) compiles every regular target,
+so that one reaches only public API and never uses `@testable import`.
+
 Tests also run in **GitHub Actions CI** on a `macos-15` / `macos-26` matrix —
 `.github/workflows/ci.yml`. See [[swift-toolchain-floor]] for the required Xcode
 version pin.

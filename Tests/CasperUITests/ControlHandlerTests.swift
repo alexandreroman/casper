@@ -1,6 +1,6 @@
 import XCTest
 import CasperCore
-import Clibgit2
+import CasperTestSupport
 import Observation
 import UserNotifications
 @testable import CasperGit
@@ -13,52 +13,6 @@ final class ControlHandlerTests: XCTestCase {
         return (model, workspace.id)
     }
 
-    /// Initialize a repo at `path` and create one commit on it, via libgit2 only
-    /// (no `git` binary). Inlined from `Tests/CasperGitTests/GitFixture.swift`,
-    /// which this target cannot import: that fixture lives in the CasperGitTests
-    /// target, whereas `CasperUITests` links `CasperGit`/`Clibgit2` directly (see
-    /// Package.swift) without seeing that target's test sources.
-    ///
-    /// `configJSON` commits a `.casper.json` alongside the README. It has to be part of
-    /// the commit, not just written to the working tree, so a linked worktree forked from
-    /// HEAD checks it out and its lifecycle hooks resolve.
-    private func makeRepo(at path: String, configJSON: String? = nil) throws {
-        let repo = try Repository.initialize(atPath: path)
-
-        let readme = URL(fileURLWithPath: path).appendingPathComponent("README.md")
-        try "casper fixture\n".write(to: readme, atomically: true, encoding: .utf8)
-        var committedFiles = ["README.md"]
-        if let configJSON {
-            try configJSON.write(
-                to: URL(fileURLWithPath: path).appendingPathComponent(".casper.json"),
-                atomically: true, encoding: .utf8)
-            committedFiles.append(".casper.json")
-        }
-
-        var index: OpaquePointer?
-        XCTAssertEqual(git_repository_index(&index, repo.pointer), 0)
-        defer { git_index_free(index) }
-        for file in committedFiles {
-            XCTAssertEqual(git_index_add_bypath(index, file), 0)
-        }
-        XCTAssertEqual(git_index_write(index), 0)
-
-        var treeOid = git_oid()
-        XCTAssertEqual(git_index_write_tree(&treeOid, index), 0)
-        var tree: OpaquePointer?
-        XCTAssertEqual(git_tree_lookup(&tree, repo.pointer, &treeOid), 0)
-        defer { git_tree_free(tree) }
-
-        var signature: UnsafeMutablePointer<git_signature>?
-        XCTAssertEqual(git_signature_now(&signature, "Casper Test", "test@casper.local"), 0)
-        defer { git_signature_free(signature) }
-
-        var commitOid = git_oid()
-        XCTAssertEqual(git_commit_create(
-            &commitOid, repo.pointer, "HEAD",
-            signature, signature, nil, "Initial commit", tree, 0, nil), 0)
-    }
-
     /// Seeds a Git-backed model: a real temp repo with one commit, opened as a
     /// Space whose primary workspace's `branch` is left empty. libgit2's default
     /// branch after `initialize` depends on the host's `git config
@@ -66,9 +20,13 @@ final class ControlHandlerTests: XCTestCase {
     /// An empty branch makes `createLinkedWorkspace`'s `base` resolve to `nil`,
     /// which `WorktreeManager.create` always accepts as "fork from HEAD" — the
     /// same outcome without guessing the branch name.
+    ///
+    /// `configJSON` commits a `.casper.json` alongside the README. It has to be part of
+    /// the commit, not just written to the working tree, so a linked worktree forked from
+    /// HEAD checks it out and its lifecycle hooks resolve.
     private func seededGitModel(configJSON: String? = nil) throws -> (AppModel, UUID, String) {
         let repoPath = makeTemporaryDirectory(prefix: "casper-ctrl").path
-        try makeRepo(at: repoPath, configJSON: configJSON)
+        try GitFixture.repository(at: repoPath, files: configJSON.map { [".casper.json": $0] } ?? [:])
 
         let ws = Workspace(
             name: "main", worktreePath: repoPath, branch: "",

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class MergeTests: XCTestCase {
@@ -49,8 +50,8 @@ final class MergeTests: XCTestCase {
         let main = try repo.headBranchName()
         let wtInfo = try repo.addWorktree(
             name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
-        let featureRepo = try Repository.open(atPath: wtInfo.path)
-        try GitFixture.commit(featureRepo, Data("new\n".utf8), to: "feature.txt", message: "add feature")
+        try GitFixture.commit(
+            atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
 
         let outcome = try repo.mergeBranchHeadless("feature", into: main, message: "merge feature")
 
@@ -67,10 +68,11 @@ final class MergeTests: XCTestCase {
         let main = try repo.headBranchName()
         let wtInfo = try repo.addWorktree(
             name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
-        let featureRepo = try Repository.open(atPath: wtInfo.path)
         try GitFixture.commit(
-            featureRepo, Data("from feature\n".utf8), to: "feature.txt", message: "add feature file")
-        try GitFixture.commit(repo, Data("from main\n".utf8), to: "main.txt", message: "add main file")
+            atPath: wtInfo.path, file: "feature.txt", contents: "from feature\n",
+            message: "add feature file")
+        try GitFixture.commit(
+            atPath: repoDir.path, file: "main.txt", contents: "from main\n", message: "add main file")
 
         let outcome = try repo.mergeBranchHeadless("feature", into: main, message: "merge feature")
 
@@ -84,10 +86,11 @@ final class MergeTests: XCTestCase {
         let main = try repo.headBranchName()
         let wtInfo = try repo.addWorktree(
             name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
-        let featureRepo = try Repository.open(atPath: wtInfo.path)
         try GitFixture.commit(
-            featureRepo, Data("from feature\n".utf8), to: "README.md", message: "feature edits readme")
-        try GitFixture.commit(repo, Data("from main\n".utf8), to: "README.md", message: "main edits readme")
+            atPath: wtInfo.path, file: "README.md", contents: "from feature\n",
+            message: "feature edits readme")
+        try GitFixture.commit(
+            atPath: repoDir.path, file: "README.md", contents: "from main\n", message: "main edits readme")
         let beforeOID = try tipOID(repo, branch: main)
 
         XCTAssertThrowsError(
@@ -149,8 +152,8 @@ final class MergeTests: XCTestCase {
         let main = try repo.headBranchName()
         let wtInfo = try repo.addWorktree(
             name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
-        let featureRepo = try Repository.open(atPath: wtInfo.path)
-        try GitFixture.commit(featureRepo, Data("new\n".utf8), to: "feature.txt", message: "add feature")
+        try GitFixture.commit(
+            atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
 
         _ = try repo.mergeBranchHeadless("feature", into: main, message: "merge feature")
         // Confirms the precondition: right after a headless merge, the target's

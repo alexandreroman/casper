@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class DiffTests: XCTestCase {
@@ -202,7 +203,7 @@ final class DiffTests: XCTestCase {
     func testStagedRenameIsOneRenamedFile() throws {
         // `git mv`, spelled out through the index.
         try FileManager.default.moveItem(at: url("README.md"), to: url("NOTES.md"))
-        try GitFixture.stage(repo, adding: ["NOTES.md"], removing: ["README.md"])
+        try GitFixture.stage(atPath: directory.path, adding: ["NOTES.md"], removing: ["README.md"])
 
         let diff = try repo.diffWorkdirToHead()
         XCTAssertEqual(diff.files.count, 1)
@@ -216,7 +217,8 @@ final class DiffTests: XCTestCase {
     }
 
     func testRenameWithAnEditCarriesOnlyTheEdit() throws {
-        try GitFixture.commit(repo, Data(Self.twentyLines.utf8), to: "lines.txt", message: "Add lines")
+        try GitFixture.commit(
+            atPath: directory.path, file: "lines.txt", contents: Self.twentyLines, message: "Add lines")
         try FileManager.default.moveItem(at: url("lines.txt"), to: url("renamed.txt"))
         let edited = Self.twentyLines.replacingOccurrences(of: "line 10\n", with: "line ten\n")
         try edited.write(to: url("renamed.txt"), atomically: true, encoding: .utf8)
@@ -280,9 +282,10 @@ final class DiffTests: XCTestCase {
         // Three deleted sources; the renamed file's is the last one libgit2 visits.
         // With `diff.renameLimit = 1` honoured it would stop after two, and with
         // `diff.renames = false` it would not look at all.
-        try GitFixture.commit(repo, Data("alpha\n".utf8), to: "a.txt", message: "Add a")
-        try GitFixture.commit(repo, Data("bravo\n".utf8), to: "b.txt", message: "Add b")
-        try GitFixture.commit(repo, Data(Self.twentyLines.utf8), to: "c.txt", message: "Add c")
+        try GitFixture.commit(atPath: directory.path, file: "a.txt", contents: "alpha\n", message: "Add a")
+        try GitFixture.commit(atPath: directory.path, file: "b.txt", contents: "bravo\n", message: "Add b")
+        try GitFixture.commit(
+            atPath: directory.path, file: "c.txt", contents: Self.twentyLines, message: "Add c")
         var config: OpaquePointer?
         try gitCheck(git_repository_config(&config, repo.pointer))
         defer { git_config_free(config) }
@@ -339,7 +342,8 @@ final class DiffTests: XCTestCase {
     /// A renamed binary file is flagged binary by libgit2 itself: unlike an added
     /// file, it has a blob on the HEAD side, so `buildFile` needs no fallback for it.
     func testRenamedAndModifiedBinaryFileIsBinary() throws {
-        try GitFixture.commit(repo, Self.binaryBlob, to: "blob.bin", message: "Add a blob")
+        try GitFixture.commit(
+            atPath: directory.path, file: "blob.bin", contents: Self.binaryBlob, message: "Add a blob")
         try FileManager.default.moveItem(at: url("blob.bin"), to: url("moved.bin"))
         var modified = Self.binaryBlob
         modified[100] = 0x42
@@ -357,7 +361,8 @@ final class DiffTests: XCTestCase {
     }
 
     func testPureBinaryRenameIsBinary() throws {
-        try GitFixture.commit(repo, Self.binaryBlob, to: "blob.bin", message: "Add a blob")
+        try GitFixture.commit(
+            atPath: directory.path, file: "blob.bin", contents: Self.binaryBlob, message: "Add a blob")
         try FileManager.default.moveItem(at: url("blob.bin"), to: url("moved.bin"))
 
         let file = try XCTUnwrap(repo.diffWorkdirToHead().files.first)

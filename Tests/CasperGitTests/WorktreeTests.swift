@@ -1,5 +1,6 @@
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class WorktreeTests: XCTestCase {

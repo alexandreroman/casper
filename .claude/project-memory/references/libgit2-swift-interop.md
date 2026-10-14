@@ -7,8 +7,7 @@ type: reference
 # libgit2 Swift interop
 
 Gotchas hit while building `CasperGit` (the `Clibgit2` systemLibrary wrapper
-over libgit2 1.9.x). Relevant to any future CasperGit work (e.g. adding
-`git_diff`).
+over libgit2 1.9.x). Relevant to any future CasperGit work.
 
 - **Variadic `_v` functions are NOT importable by Swift.** Use the array-based
   variant instead. Concretely: `git_commit_create_v(...)` cannot be called from
@@ -29,6 +28,9 @@ over libgit2 1.9.x). Relevant to any future CasperGit work (e.g. adding
   `gitStringArray`). `git_buf` → `git_buf_dispose`; `git_strarray` →
   `git_strarray_dispose`.
 - **Test fixtures build real repos via libgit2 only** (no `git` binary, per
-  dependency policy).
+  dependency policy), in `GitFixture` of the shared `CasperTestSupport` target
+  (`Tests/CasperTestSupport/`). It uses public CasperGit API plus raw Clibgit2,
+  never `@testable import`: it is a regular target, and `swift build -c
+  release` compiles every target, where `@testable` fails to resolve.
 
 See [[dependency-policy]], [[test-toolchain]].

@@ -1,4 +1,5 @@
 import XCTest
+import CasperTestSupport
 @testable import CasperGit
 
 final class IgnoreTests: XCTestCase {

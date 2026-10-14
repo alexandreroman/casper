@@ -64,13 +64,21 @@ let package = Package(
             ]
         ),
         .executableTarget(name: "casper", dependencies: ["CasperCLI", "CasperUI"]),
+        // Fixtures shared by the test targets, which cannot import one another. A
+        // regular target, so `swift build -c release` compiles it too: no
+        // `@testable import` here.
+        .target(
+            name: "CasperTestSupport",
+            dependencies: ["CasperGit", "Clibgit2"],
+            path: "Tests/CasperTestSupport"
+        ),
         .testTarget(
             name: "CasperGitTests",
-            dependencies: ["CasperGit", "Clibgit2"]
+            dependencies: ["CasperGit", "Clibgit2", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperCoreTests",
-            dependencies: ["CasperCore", "Clibgit2"]
+            dependencies: ["CasperCore", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperAgentsTests",
@@ -86,7 +94,10 @@ let package = Package(
         ),
         .testTarget(
             name: "CasperUITests",
-            dependencies: ["CasperUI", "CasperCore", "CasperGhostty", "CasperAgents", "CasperGit", "Clibgit2"]
+            dependencies: [
+                "CasperUI", "CasperCore", "CasperGhostty", "CasperAgents", "CasperGit", "Clibgit2",
+                "CasperTestSupport",
+            ]
         ),
     ]
 )
