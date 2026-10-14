@@ -272,24 +272,8 @@ struct WorkspaceDetailView: View {
                 .flatToolbarItem()
             }
         }
-        .alert("Couldn't Open Editor", isPresented: Binding(
-            get: { model.editorLaunchError != nil },
-            set: { if !$0 { model.editorLaunchError = nil } }
-        )) {
-            // Empty: dismissing the alert flips `isPresented` to false, and that
-            // binding's setter is what clears the error.
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(model.editorLaunchError ?? "")
-        }
-        .alert("Couldn't Run Script", isPresented: Binding(
-            get: { model.scriptRunError != nil },
-            set: { if !$0 { model.scriptRunError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(model.scriptRunError ?? "")
-        }
+        .errorAlert("Couldn't Open Editor", message: Bindable(model).editorLaunchError)
+        .errorAlert("Couldn't Run Script", message: Bindable(model).scriptRunError)
         // Two triggers, because the row can outgrow the bar for two unrelated
         // reasons: the window narrowed, or the CONTENT changed while the window
         // stood still (opening the inspector, a diff summary arriving, a script
@@ -1922,5 +1906,22 @@ private struct AppIcon: View {
     var body: some View {
         Image(nsImage: image)
             .id(colorScheme)
+    }
+}
+
+private extension View {
+    /// An alert titled `title`, up while `message` holds a value: the message and an
+    /// OK button, and dismissing it clears `message`.
+    func errorAlert(_ title: String, message: Binding<String?>) -> some View {
+        alert(title, isPresented: Binding(
+            get: { message.wrappedValue != nil },
+            set: { if !$0 { message.wrappedValue = nil } }
+        )) {
+            // Empty: dismissing the alert flips `isPresented` to false, and that
+            // binding's setter is what clears the error.
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(message.wrappedValue ?? "")
+        }
     }
 }
