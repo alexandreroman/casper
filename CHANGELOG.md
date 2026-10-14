@@ -41,6 +41,8 @@ CI, test, and documentation-only work is left out.
   for up to a minute.
 - The opencode integration reminder no longer claims the plugin is missing
   when `opencode.json` uses Windows line endings and contains a comment.
+- A mouse's Back and Forward buttons reach terminal programs as buttons 8 and
+  9, as in Ghostty, instead of scrolling them.
 
 ## [0.1.3] - 2026-10-13
 

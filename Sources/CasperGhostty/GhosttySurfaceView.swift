@@ -1056,16 +1056,24 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         }
     }
 
-    /// Map an `NSEvent.buttonNumber` to libghostty's mouse button. 0→LEFT, 1→RIGHT,
-    /// 2→MIDDLE, 3→FOUR, 4→FIVE; anything else is reported as UNKNOWN. Pure and
-    /// static so it is unit-testable without a running app.
+    /// Map an `NSEvent.buttonNumber` to libghostty's mouse button, with upstream's table
+    /// (`MouseButton.init(fromNSEventButtonNumber:)` in `Ghostty.Input.swift`). Back (3)
+    /// and Forward (4) are X11 buttons 8 and 9: buttons 4 and 5 are the scroll wheel, so
+    /// a mouse-reporting program would read them as scrolling. Anything past 10 is
+    /// reported as UNKNOWN. Pure and static so it is unit-testable without a running app.
     static func ghosttyButton(for buttonNumber: Int) -> ghostty_input_mouse_button_e {
         switch buttonNumber {
         case 0: return GHOSTTY_MOUSE_LEFT
         case 1: return GHOSTTY_MOUSE_RIGHT
         case 2: return GHOSTTY_MOUSE_MIDDLE
-        case 3: return GHOSTTY_MOUSE_FOUR
-        case 4: return GHOSTTY_MOUSE_FIVE
+        case 3: return GHOSTTY_MOUSE_EIGHT  // Back
+        case 4: return GHOSTTY_MOUSE_NINE  // Forward
+        case 5: return GHOSTTY_MOUSE_SIX
+        case 6: return GHOSTTY_MOUSE_SEVEN
+        case 7: return GHOSTTY_MOUSE_FOUR
+        case 8: return GHOSTTY_MOUSE_FIVE
+        case 9: return GHOSTTY_MOUSE_TEN
+        case 10: return GHOSTTY_MOUSE_ELEVEN
         default: return GHOSTTY_MOUSE_UNKNOWN
         }
     }

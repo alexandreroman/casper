@@ -76,15 +76,22 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertNil(GhosttySurfaceView.cursor(for: GHOSTTY_MOUSE_SHAPE_PROGRESS))
     }
 
-    /// The `NSEvent.buttonNumber`→libghostty-button mapping used by the middle/extra mouse buttons.
+    /// The `NSEvent.buttonNumber`→libghostty-button mapping used by the middle/extra mouse buttons,
+    /// upstream's table: Back (3) and Forward (4) are X11 buttons 8 and 9, since 4 and 5 are the
+    /// scroll wheel a mouse-reporting program would see.
     @MainActor
     func testButtonNumberMapsToGhosttyButton() {
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 0).rawValue, GHOSTTY_MOUSE_LEFT.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 1).rawValue, GHOSTTY_MOUSE_RIGHT.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 2).rawValue, GHOSTTY_MOUSE_MIDDLE.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 3).rawValue, GHOSTTY_MOUSE_FOUR.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 4).rawValue, GHOSTTY_MOUSE_FIVE.rawValue)
-        XCTAssertEqual(GhosttySurfaceView.ghosttyButton(for: 9).rawValue, GHOSTTY_MOUSE_UNKNOWN.rawValue)
+        let expected: [(Int, ghostty_input_mouse_button_e)] = [
+            (0, GHOSTTY_MOUSE_LEFT), (1, GHOSTTY_MOUSE_RIGHT), (2, GHOSTTY_MOUSE_MIDDLE),
+            (3, GHOSTTY_MOUSE_EIGHT), (4, GHOSTTY_MOUSE_NINE), (5, GHOSTTY_MOUSE_SIX),
+            (6, GHOSTTY_MOUSE_SEVEN), (7, GHOSTTY_MOUSE_FOUR), (8, GHOSTTY_MOUSE_FIVE),
+            (9, GHOSTTY_MOUSE_TEN), (10, GHOSTTY_MOUSE_ELEVEN), (11, GHOSTTY_MOUSE_UNKNOWN),
+        ]
+        for (buttonNumber, button) in expected {
+            XCTAssertEqual(
+                GhosttySurfaceView.ghosttyButton(for: buttonNumber).rawValue, button.rawValue,
+                "buttonNumber \(buttonNumber)")
+        }
     }
 
     /// The `NSEvent.Phase`→libghostty-momentum mapping `scrollWheel` packs into the opaque
