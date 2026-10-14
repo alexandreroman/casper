@@ -480,7 +480,7 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testWorkspaceNewBuildsCommand() throws {
-        // The branch is now the required positional subject (not `--branch`).
+        // The branch is the required positional subject.
         let new = try WorkspaceCommand.New.parse(["feature-x", "--base", "main", "--workspace", "primary"])
         XCTAssertEqual(new.branch, "feature-x")
         let command = try new.makeCommand()
