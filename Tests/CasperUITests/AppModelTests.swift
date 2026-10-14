@@ -1387,23 +1387,14 @@ final class AppModelTests: XCTestCase {
     }
     #endif
 
-    /// Full wiring, real libghostty surface: adjusting font size through the
-    /// live view must update the exact matching `Surface` in the model and
-    /// schedule a save — the whole capture path (CasperGhostty's
-    /// `GhosttySurfaceView.onFontSizeChange` -> `AppModel.updateSurfaceFontSize` ->
-    /// CasperCore's `LayoutTree.updateSurface`) exercised together, not just
-    /// unit-by-unit.
-    @MainActor
-    func testLiveFontSizeChangeFlowsFromViewIntoModelAndSchedulesSave() throws {
-        let (model, surfaceID) = try modelWithOneGitWorkspace()
-        model.runtime = try makeIsolatedRuntime()
-        var saves = 0
-        model.onPersistForTest = { saves += 1 }
-
-        let workspace = model.spaces[0].workspaces[0]
-        let surface = LayoutTree.surfaces(workspace.layout).first { $0.id == surfaceID }!
-        let view = try XCTUnwrap(model.surfaceView(for: surface, in: workspace.id))
-
+    /// Host `view` in a borderless window so it creates its real libghostty surface, make
+    /// it first responder, run `body`, and tear the surface down afterwards — the
+    /// `withRealSurface` recipe of `CasperGhosttyTests`, which this target cannot see.
+    ///
+    /// Throws `XCTSkip` when no surface appears: that is an environment block
+    /// (`e2e-surface-creation-flakiness`), not a failure, hence a plain poll rather than
+    /// `waitUntil`.
+    private func withHostedSurface(_ view: GhosttySurfaceView, body: () async throws -> Void) async throws {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
             styleMask: [.borderless], backing: .buffered, defer: false)
@@ -1419,27 +1410,49 @@ final class AppModelTests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(10)
         while view.surface == nil, Date() < deadline {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            try await Task.sleep(for: .milliseconds(50))
         }
         guard view.surface != nil else {
             throw XCTSkip("libghostty could not create a surface in this environment")
         }
-
         XCTAssertTrue(window.makeFirstResponder(view))  // performKeyEquivalent requires it
 
-        // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
-        // ANSI keyboard. A genuine NSEvent, built the same way a real keypress
-        // arrives, so the whole capture path starts where the real one does.
-        let event = try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-            windowNumber: 0, context: nil, characters: "=",
-            charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24))
-        _ = view.performKeyEquivalent(with: event)
-        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        try await body()
+    }
 
-        let updated = LayoutTree.surfaces(model.spaces[0].workspaces[0].layout)
-            .first { $0.id == surfaceID }
-        let updatedFontSize = try XCTUnwrap(updated?.fontSize)
+    /// Full wiring, real libghostty surface: adjusting font size through the
+    /// live view must update the exact matching `Surface` in the model and
+    /// schedule a save — the whole capture path (CasperGhostty's
+    /// `GhosttySurfaceView.onFontSizeChange` -> `AppModel.updateSurfaceFontSize` ->
+    /// CasperCore's `LayoutTree.updateSurface`) exercised together, not just
+    /// unit-by-unit.
+    @MainActor
+    func testLiveFontSizeChangeFlowsFromViewIntoModelAndSchedulesSave() async throws {
+        let (model, surfaceID) = try modelWithOneGitWorkspace()
+        model.runtime = try makeIsolatedRuntime()
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
+        let workspace = model.spaces[0].workspaces[0]
+        let surface = LayoutTree.surfaces(workspace.layout).first { $0.id == surfaceID }!
+        let view = try XCTUnwrap(model.surfaceView(for: surface, in: workspace.id))
+
+        func modelFontSize() -> Float? {
+            LayoutTree.surfaces(model.spaces[0].workspaces[0].layout).first { $0.id == surfaceID }?.fontSize
+        }
+        try await withHostedSurface(view) {
+            // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
+            // ANSI keyboard. A genuine NSEvent, built the same way a real keypress
+            // arrives, so the whole capture path starts where the real one does.
+            let event = try XCTUnwrap(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+                windowNumber: 0, context: nil, characters: "=",
+                charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24))
+            _ = view.performKeyEquivalent(with: event)
+            await waitUntil { modelFontSize() != nil }
+        }
+
+        let updatedFontSize = try XCTUnwrap(modelFontSize())
         XCTAssertGreaterThan(updatedFontSize, 0)
 
         model.flushPendingSave()
@@ -1463,37 +1476,16 @@ final class AppModelTests: XCTestCase {
         let surface = try XCTUnwrap(LayoutTree.surfaces(workspace.layout).first { $0.id == newID })
         let view = try XCTUnwrap(model.surfaceView(for: surface, in: workspace.id))
 
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = view  // triggers viewDidMoveToWindow -> ghostty_surface_new
-        // `invalidate()` frees the libghostty surface while the view is still fully
-        // alive, so no trampoline resolves a mid-deallocation view — the ordering
-        // production teardown relies on (`surface-view-invalidate-before-release`).
-        // Without it the login shell's PTY also outlives the test.
-        defer {
-            view.invalidate()
-            window.contentView = nil
-        }
+        try await withHostedSurface(view) {
+            // How long the shell takes to reach an interactive prompt and consume the
+            // queued command varies with the user's login shell, so poll for the echo.
+            await waitUntil(timeout: 10) { model.surfaceViewportText(newID)?.contains("COMMAND_RAN_") == true }
 
-        // Not `waitUntil`: a surface that never comes up is an environment block
-        // (`e2e-surface-creation-flakiness`), reported as a skip rather than a failure.
-        let deadline = Date().addingTimeInterval(10)
-        while view.surface == nil, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(50))
+            let text = model.surfaceViewportText(newID) ?? ""
+            XCTAssertTrue(
+                text.contains("COMMAND_RAN_"),
+                "expected the opened terminal's command to have run; viewport was:\n\(text)")
         }
-        guard view.surface != nil else {
-            throw XCTSkip("libghostty could not create a surface in this environment")
-        }
-
-        // How long the shell takes to reach an interactive prompt and consume the
-        // queued command varies with the user's login shell, so poll for the echo.
-        await waitUntil(timeout: 10) { model.surfaceViewportText(newID)?.contains("COMMAND_RAN_") == true }
-
-        let text = model.surfaceViewportText(newID) ?? ""
-        XCTAssertTrue(
-            text.contains("COMMAND_RAN_"),
-            "expected the opened terminal's command to have run; viewport was:\n\(text)")
     }
 
     /// A context-menu split can target a pane other than the focused one. The

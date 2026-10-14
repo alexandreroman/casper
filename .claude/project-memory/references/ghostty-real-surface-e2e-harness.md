@@ -53,7 +53,9 @@ runtime, view and window, polls, makes the view first responder, pumps the
 fixed `settle(0.6)` before handing over, and tears the surface down with
 `view.invalidate()` before the window drops it (the ordering
 [[surface-view-invalidate-before-release]] requires). Every real-surface test
-goes through it rather than re-spelling the recipe.
+in that target goes through it rather than re-spelling the recipe.
+`CasperUITests` cannot see it, so `AppModelTests` carries its own one copy,
+`withHostedSurface(_:body:)`, for the tests that host a view the model built.
 
 Its closure parameters are deliberately plain (non-`@MainActor`,
 non-escaping) so they inherit isolation from the `@MainActor` call site: a
