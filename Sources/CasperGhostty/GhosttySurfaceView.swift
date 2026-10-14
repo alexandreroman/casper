@@ -73,7 +73,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     // Latest OSC window title libghostty decoded for this surface (the
     // GHOSTTY_ACTION_SET_TITLE payload), captured per surface for agent-state
-    // detection: a secondary "working" signal (see the agent-state-working-signal note).
+    // detection: a secondary "working" signal (see the agent-state-detection theme).
     private var latestOSCTitle: String?
 
     // Latest OSC 9;4 progress state libghostty decoded for this surface (the
