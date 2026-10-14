@@ -38,7 +38,8 @@ enum GhosttyClipboardWrite {
     /// to the developer's clipboard.
     static func apply(_ text: String, confirm: Bool, to pasteboard: NSPasteboard = .general) {
         if confirm, !approveUntrusted(text) {
-            CasperLog.ghostty.notice("denied an untrusted clipboard write of \(text.count, privacy: .public) characters")
+            CasperLog.ghostty.notice(
+                "denied an untrusted clipboard write of \(text.count, privacy: .public) characters")
             return
         }
         pasteboard.clearContents()
