@@ -29,6 +29,8 @@ CI, test, and documentation-only work is left out.
   "Casper <casper@localhost>"; when one of those variables is blank or
   malformed, it names that variable instead, and shows both remedies when your
   Git configuration is at fault too. Nothing is deleted.
+- Casper expects the casper-skills plugin 0.3.0 or later, and reminds you to
+  update an older one.
 
 ### Fixed
 
@@ -49,7 +51,7 @@ CI, test, and documentation-only work is left out.
 - "Create Workspace…" now says why a workspace could not be created — for
   example a repository with no commits yet — instead of a generic guess.
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
-  as unreadable.
+  as unreadable, and every other file shows as usual, a renamed file included.
 - `casper` commands fail at once instead of hanging for several seconds when
   Casper quit uncleanly and left its socket behind.
 - A `casper` command that times out, such as a `casper browser` command on a
@@ -70,6 +72,13 @@ CI, test, and documentation-only work is left out.
   closed.
 - `casper diff open <file>` no longer scrolls to a different changed file that
   shares the name of an unchanged one.
+- `casper diff open <file>` scrolls to the file when the inspector was
+  collapsed or showing the browser, instead of opening the diff view at the
+  top.
+- The diff view no longer stops short of a file when a refresh makes the diff
+  longer: `casper diff open <file>` on a file that has just changed scrolls all
+  the way to it, and the reader stays on their file when the refresh pushes it
+  past the previous end.
 - The diff view no longer jumps back to a file requested earlier with
   `casper diff open` when it is reopened, and no longer jumps to a requested
   file that only changes later.

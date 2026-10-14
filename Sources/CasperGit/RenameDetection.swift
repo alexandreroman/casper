@@ -25,11 +25,11 @@ extension Repository {
     /// Pair each deleted file in `diff` with a similar added one into a single
     /// `GIT_DELTA_RENAMED` delta, as `git status` does.
     ///
-    /// Best-effort: rename detection only refines the diff, so a failure — an
-    /// untracked target that vanishes or turns unreadable mid-pass — is logged and
-    /// leaves the deltas as they were, deletions and additions, rather than failing
+    /// Best-effort: rename detection only refines the diff, so a failed pass is logged
+    /// and leaves the deltas as they were, deletions and additions, rather than failing
     /// the whole diff. libgit2 compares every pair before rewriting any delta, so a
-    /// failed pass leaves no half-applied renames behind.
+    /// failed pass leaves no half-applied renames behind. A file the pass cannot read
+    /// does not fail it: the metric leaves that one file unpaired.
     static func detectRenames(in diff: OpaquePointer) {
         let (sources, targets) = renameCandidateCounts(in: diff)
         guard isRenameDetectionAffordable(sources: sources, targets: targets) else { return }
@@ -77,8 +77,8 @@ extension Repository {
         rawValue: GIT_HASHSIG_SMART_WHITESPACE.rawValue | GIT_HASHSIG_ALLOW_SMALL_FILES.rawValue)
 
     /// libgit2's default similarity metric, rebuilt on the public `git2/sys/hashsig.h`
-    /// API, except that a file over `maxDiffFileSize` gets no signature — which
-    /// libgit2 reads as "not comparable" and skips.
+    /// API, except that a file over `maxDiffFileSize`, or one it cannot read, gets no
+    /// signature — which libgit2 reads as "not comparable" and skips.
     ///
     /// The default hashes a working-tree file straight off disk with no size cap
     /// (`git_diff_options.max_size` bounds only patch generation), so once any tracked
@@ -93,9 +93,15 @@ extension Repository {
                 var info = stat()
                 if stat(path, &info) == 0, info.st_size > Repository.maxDiffFileSize { return 0 }
                 var signature: OpaquePointer?
-                let code = git_hashsig_create_fromfile(&signature, path, Repository.hashsigOptions)
-                if code == 0 { out.pointee = UnsafeMutableRawPointer(signature) }
-                return code
+                guard git_hashsig_create_fromfile(&signature, path, Repository.hashsigOptions) == 0 else {
+                    // A mode-000 file fails its `open`. Returning the error would end
+                    // the whole pass, so it goes unpaired instead — as libgit2 skips a
+                    // blob it cannot load — and the patch pass logs it as unreadable.
+                    git_error_clear()
+                    return 0
+                }
+                out.pointee = UnsafeMutableRawPointer(signature)
+                return 0
             },
             buffer_signature: { out, _, buffer, length, _ in
                 // A blob out of the object database. It is already loaded by the time

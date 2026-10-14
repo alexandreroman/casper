@@ -147,7 +147,7 @@ enum AgentIntegration {
     /// `!=`: a user whose plugin is *ahead* of this Casper build is simply current,
     /// so shipping a plugin release never forces a Casper release just to stop
     /// Casper nagging everyone who upgraded promptly.
-    static let requiredPluginVersion = "0.2.0"
+    static let requiredPluginVersion = "0.3.0"
 
     /// Base of the integration documentation; `CodingAgent` appends its own anchor.
     static let documentationBaseURL = "https://github.com/alexandreroman/casper-skills"

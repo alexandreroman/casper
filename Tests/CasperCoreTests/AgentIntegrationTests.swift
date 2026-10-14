@@ -67,6 +67,13 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertTrue(AgentIntegration.isOutdated(installed: "0.0.1", required: AgentIntegration.requiredPluginVersion))
     }
 
+    func testRequiredPluginVersionMatchesTheCasperSkills030Release() {
+        let required = AgentIntegration.requiredPluginVersion
+        XCTAssertTrue(AgentIntegration.isOutdated(installed: "0.2.2", required: required))
+        XCTAssertFalse(AgentIntegration.isOutdated(installed: "0.3.0", required: required))
+        XCTAssertFalse(AgentIntegration.isOutdated(installed: "0.3.1", required: required))
+    }
+
     // MARK: - Version comparison
 
     func testIsOutdatedComparesNumerically() {
@@ -74,7 +81,7 @@ final class AgentIntegrationTests: XCTestCase {
         let cases: [(String, String, Bool)] = [
             ("0.2.0", "0.2.0", false),  // equal
             ("0.1.0", "0.2.0", true),  // older
-            ("0.3.0", "0.2.0", false),  // newer than this Casper build
+            ("0.3.0", "0.2.0", false),  // newer than required
             ("0.2", "0.2.0", false),  // missing components are zero
             ("0.2.0", "0.2", false),
             ("0.1", "0.2.0", true),

@@ -74,7 +74,9 @@ binary. We own this surface; it exposes only what Casper needs.
   over the diff's 8 MB cap never pairs, and copy detection is off. The pass
   lives in `Sources/CasperGit/RenameDetection.swift`. A file the diff lists but
   cannot open (a mode-000 file) has no patch: it is listed with the
-  `unreadable` status and no hunks, and the rest of the diff is unaffected.
+  `unreadable` status and no hunks, and the rest of the diff is unaffected —
+  rename detection included, since the similarity metric leaves a file it
+  cannot read unpaired rather than failing the pass.
 
 - **Merge — ✅ built.** `Repository.mergeBranchHeadless(…)` performs the
   worktree-free merge behind "Merge and Close Workspace…", returning a

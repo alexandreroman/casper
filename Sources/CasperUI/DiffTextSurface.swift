@@ -206,9 +206,12 @@ struct DiffTextSurface: NSViewRepresentable {
             containerView = DiffSurfaceContainerView(scrollView: scrollView, stickyHeader: stickyHeader)
             // How many bands the viewport shows depends on its height, so a resize
             // — including the very first one, which lands after SwiftUI has already
-            // pushed a document in — has to re-resolve the bars.
+            // pushed a document in — has to re-resolve the bars. That first resize
+            // is also what lands a scroll target that reached the surface before
+            // it had a viewport.
             //
-            // The forcing variant, and it has to be. This fires from the
+            // `viewportDidChange()` resolves the bars with the forcing variant,
+            // and it has to. This fires from the
             // *container's* own `layout()`, at a point where the viewport it has
             // just tiled reaches further into the document than TextKit's real
             // layout does; every band past that point is cold, and the non-forcing
@@ -220,8 +223,11 @@ struct DiffTextSurface: NSViewRepresentable {
             // Laying out from here is also safe, which is what separates it from
             // the hook below: the pass in progress is this container's, and the
             // text view lays itself out afterwards, so `ensureLayout` re-enters
-            // nothing.
-            containerView.viewportDidChange = { [weak self] in self?.resolveBarsOverTheViewport() }
+            // nothing. A waiting scroll can pull the text view's pass forward
+            // from here, in `scroll(toViewY:)`, but the text view is a
+            // descendant: its pass completes before the bars are resolved, and
+            // the `didLayout` it fires only queues work.
+            containerView.viewportDidChange = { [weak self] in self?.viewportDidChange() }
             // The third thing that invalidates the bars, and the only one the
             // surface does not do to itself: TextKit replacing the estimated
             // geometry the bars were resolved from with real layout. Coalesced, and
@@ -261,29 +267,40 @@ struct DiffTextSurface: NSViewRepresentable {
             // The anchor is read here, immediately before the swap: applying
             // rewrites the whole text storage, so where the reader is has to come
             // off the live surface first.
-            apply(document: rendering.document, restoring: currentAnchor())
-            // In document order, which is the difference between a paint that is
-            // linear in the diff's run count and one that is quadratic — see
-            // `DiffRendering.highlightsInDocumentOrder`.
-            if let storage = textView.textContentStorage?.textStorage {
-                DiffTextAssembly.applyHighlights(
-                    rendering.highlightsInDocumentOrder, in: storage,
-                    document: rendering.document)
-            }
+            apply(
+                document: rendering.document, highlights: rendering.highlightsInDocumentOrder,
+                restoring: currentAnchor())
         }
 
-        /// Replaces the rendered document, putting the reader back where `anchor`
-        /// says they were — at the top when that file has left the diff.
+        /// Replaces the rendered document, painting `highlights` over it and
+        /// putting the reader back where `anchor` says they were — at the top when
+        /// that file has left the diff.
         ///
         /// The ordering is load-bearing, not tidiness. The gutter's width is a
         /// property of the document; a new `ruleThickness` retiles the scroll view,
         /// which changes the text container's width, which rewraps the whole
         /// document. Any `y` computed before that is stale, so the document goes in
         /// and the scroll view tiles *before* the anchor is resolved.
-        func apply(document: DiffDocument, restoring anchor: DiffScrollAnchor?) {
+        ///
+        /// The highlights go on before either. They only set colors, so they
+        /// change no geometry, but painting them invalidates layout; and restoring
+        /// an anchor past the previous document's end lays the text view out, which
+        /// on a large diff covers the whole document. Painted first, they ride
+        /// that pass instead of costing the refresh a second one.
+        ///
+        /// `highlights` must be in document order, which is the difference between
+        /// a paint that is linear in the diff's run count and one that is
+        /// quadratic — see `DiffRendering.highlightsInDocumentOrder`.
+        func apply(
+            document: DiffDocument,
+            highlights: [(fileIndex: Int, highlight: DiffFileHighlight)] = [],
+            restoring anchor: DiffScrollAnchor?
+        ) {
             self.document = document
-            textView.textContentStorage?.textStorage?
-                .setAttributedString(DiffTextAssembly.makeAttributedText(for: document))
+            if let storage = textView.textContentStorage?.textStorage {
+                storage.setAttributedString(DiffTextAssembly.makeAttributedText(for: document))
+                DiffTextAssembly.applyHighlights(highlights, in: storage, document: document)
+            }
             textView.document = document
             // Reflows the column's width itself, from its own setter.
             gutter.document = document
@@ -372,14 +389,39 @@ struct DiffTextSurface: NSViewRepresentable {
         ///
         /// The target is usually far below what TextKit has laid out, which the
         /// forcing `top(ofFileAt:)` settles outright, so the scroll lands within
-        /// this call rather than on a later run-loop turn.
+        /// this call rather than on a later run-loop turn — except on a surface
+        /// with no viewport yet. SwiftUI sizes the hosted view only after
+        /// `updateNSView`, so a target can reach a surface that holds its file
+        /// but is still zero-sized: the case of a surface the request has just
+        /// mounted. The clip view would clamp that scroll to nothing, and the
+        /// text has not wrapped to the panel's width yet, so the file is held and
+        /// scrolled to by the layout that sizes the viewport.
         @discardableResult
         func scroll(toFileID fileID: String) -> Bool {
-            guard let document, let geometry, let fileIndex = document.fileIndex(withID: fileID)
-            else { return false }
-            guard let top = geometry.top(ofFileAt: fileIndex) else { return false }
+            guard let document, let fileIndex = document.fileIndex(withID: fileID) else { return false }
+            guard !clipView.bounds.isEmpty else {
+                fileAwaitingViewport = fileID
+                return true
+            }
+            fileAwaitingViewport = nil
+            guard let geometry, let top = geometry.top(ofFileAt: fileIndex) else { return false }
             scroll(toContainerY: top)
             return true
+        }
+
+        /// A file `scroll(toFileID:)` accepted before the viewport had a size,
+        /// for `viewportDidChange()` to scroll to once it has one.
+        private var fileAwaitingViewport: String?
+
+        /// The container has re-tiled the viewport: lands a scroll that was
+        /// waiting for it to have a size, then re-resolves the pinned bars over
+        /// it. The scroll goes first, so the bars are resolved where it lands.
+        private func viewportDidChange() {
+            if let fileID = fileAwaitingViewport, !clipView.bounds.isEmpty {
+                fileAwaitingViewport = nil
+                scroll(toFileID: fileID)
+            }
+            resolveBarsOverTheViewport()
         }
 
         /// Where the reader is now, for a later `apply(document:restoring:)` to
@@ -419,8 +461,20 @@ struct DiffTextSurface: NSViewRepresentable {
         /// Clamped by the clip view rather than by arithmetic here: a TextKit 2
         /// document's height is an estimate until it is laid out, so the clip view
         /// is the only thing that knows what it can actually show.
+        ///
+        /// It clamps against the text view's frame, which grows to a freshly
+        /// swapped document's height only in the text view's own layout pass. A
+        /// target past the height the frame has so far pulls that pass forward,
+        /// or the scroll would stop at that height: an anchor or a requested file
+        /// the swap pushed below the previous document's end, or a file waiting
+        /// for the viewport's first sizing, when the text view has not yet grown
+        /// past the viewport it was just tiled into. Only then: on a large diff
+        /// the pass lays out the whole document.
         private func scroll(toViewY viewY: CGFloat) {
             let clipView = self.clipView
+            if !clipView.bounds.isEmpty, viewY + clipView.bounds.height > textView.frame.height {
+                textView.layoutSubtreeIfNeeded()
+            }
             let target = NSRect(
                 x: clipView.bounds.origin.x, y: viewY,
                 width: clipView.bounds.width, height: clipView.bounds.height)
@@ -471,7 +525,9 @@ final class DiffSurfaceContainerView: NSView {
     /// The pinned bars are such a thing, and a document can arrive before this
     /// view has ever been sized — SwiftUI pushes it in `updateNSView`, which runs
     /// before the frame it hands down. Without this the bars would stay resolved
-    /// against a zero-height viewport until the reader's first scroll.
+    /// against a zero-height viewport until the reader's first scroll. A scroll
+    /// target that reached the surface in that window is another: it waits for
+    /// this rather than scrolling an empty clip view.
     var viewportDidChange: (@MainActor () -> Void)?
 
     private let scrollView: NSScrollView

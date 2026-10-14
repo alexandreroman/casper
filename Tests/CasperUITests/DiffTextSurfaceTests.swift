@@ -207,6 +207,83 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
     }
 
+    /// SwiftUI pushes the document in `updateNSView` and sizes the view only
+    /// afterwards, so a scroll target can reach a surface that holds its file but
+    /// has no viewport yet — which is when `DiffSurfaceView` asks on a diff view
+    /// that `casper diff open` has just mounted. Scrolled there and then, the clip
+    /// view clamps the target to nothing; the scroll has to land once the
+    /// viewport is laid out instead.
+    func testAScrollRequestedBeforeTheViewportIsSizedLandsOnceItIs() throws {
+        let coordinator = DiffTextSurface.Coordinator()
+        coordinator.render(DiffRendering(
+            revision: 1, document: additionsDocument(fileCount: 4, linesPerFile: 40), highlights: [:]))
+
+        XCTAssertTrue(coordinator.scroll(toFileID: "f2.swift"))
+        coordinator.containerView.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
+        coordinator.containerView.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f2.swift")
+        XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
+    }
+
+    /// A target naming a file only the next diff holds is retried as soon as
+    /// that document reaches a surface that is already sized, before the text
+    /// view's own layout pass has grown it to the new document's height. The
+    /// scroll must not stop short against the previous document's height.
+    func testAScrollRightAfterSwappingInALongerDocumentLandsOnItsFile() throws {
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 1, linesPerFile: 5))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+
+        coordinator.render(DiffRendering(
+            revision: 2, document: additionsDocument(fileCount: 6, linesPerFile: 40), highlights: [:]))
+        XCTAssertTrue(coordinator.scroll(toFileID: "f4.swift"))
+
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f4.swift")
+    }
+
+    /// The reader's anchor is restored within the swap, again before the text
+    /// view's own layout pass: a file pushed far below the previous document's
+    /// end must not leave the reader clamped to that end.
+    func testAnchorSurvivesASwapThatPushesItsFilePastThePreviousEnd() throws {
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 2, linesPerFile: 40))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        coordinator.scroll(toFileID: "f1.swift")
+
+        coordinator.render(DiffRendering(
+            revision: 2, document: additionsDocument(fileCount: 2, linesPerFile: 300), highlights: [:]))
+
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f1.swift")
+    }
+
+    /// Restoring an anchor the swap pushed past the previous end lays the text
+    /// view out, which on a large diff covers the whole document. Painting the
+    /// carried highlights invalidates that layout, so they have to be on the text
+    /// before the pass runs: painted after it, they throw the pass away, and the
+    /// reader's anchor reads back in the wrong file.
+    func testCarriedHighlightsAreOnTheTextWhenARefreshLaysItOut() throws {
+        let (controller, host) = makeHostedSurface(makeWrappingDocument(fileCount: 2, linesPerFile: 40))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        coordinator.scroll(toFileID: "f1.swift")
+        let longer = makeWrappingDocument(fileCount: 2, linesPerFile: 300)
+        let lastSourceLine = try XCTUnwrap(longer.lines.last { $0.diffKind != nil })
+        var paintedAtEachLayoutPass: [Bool] = []
+        let didLayout = coordinator.textView.didLayout
+        coordinator.textView.didLayout = {
+            let color = coordinator.textView.textStorage?.attribute(
+                .foregroundColor, at: lastSourceLine.contentRange.location, effectiveRange: nil)
+            paintedAtEachLayoutPass.append(color as? NSColor == NSColor(Color.purple))
+            didLayout?()
+        }
+
+        coordinator.render(DiffRendering(
+            revision: 2, document: longer, highlights: makeWrappingHighlights(for: longer, linesPerFile: 300)))
+
+        XCTAssertEqual(paintedAtEachLayoutPass, [true],
+                       "the swap lays the text view out once, over the painted highlights")
+        host.layoutSubtreeIfNeeded()
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f1.swift")
+    }
+
     /// A refresh must not throw the reader back to the top: the anchor is read
     /// before the swap and restored after it.
     func testAnchorSurvivesADocumentSwap() throws {

@@ -207,9 +207,10 @@ struct DiffSurfaceView: View {
     }
 
     /// Applies a pending `model.diffScrollTarget` for this workspace, and hands it
-    /// back to the model once it is settled: the scroll landed, or a diff recent
-    /// enough to reflect the request doesn't list the file — a valid but unchanged
-    /// file opens the diff without scrolling.
+    /// back to the model once it is settled: the surface took the scroll (one not
+    /// sized yet lands it on the layout that sizes it), or a diff recent enough to
+    /// reflect the request doesn't list the file — a valid but unchanged file
+    /// opens the diff without scrolling.
     ///
     /// Until then the target stays set, so one that arrives before the surface is
     /// realized — or before the document holding its file has reached it — is
