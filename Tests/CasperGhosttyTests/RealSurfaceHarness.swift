@@ -23,7 +23,7 @@ extension XCTestCase {
         makeView: (GhosttyRuntime) -> GhosttySurfaceView,
         body: (GhosttySurfaceView, GhosttySurface) throws -> Void
     ) throws {
-        let runtime = try GhosttyRuntime()
+        let runtime = try makeIsolatedRuntime()
         let view = makeView(runtime)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -59,6 +59,15 @@ extension XCTestCase {
         try withRealSurface(
             makeView: { GhosttySurfaceView(runtime: $0, configuration: GhosttySurfaceConfiguration()) },
             body: body)
+    }
+
+    /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
+    /// writes its theme files to a per-test temporary directory. A local
+    /// `clipboard-read = allow` or a rebound `super+n` would otherwise change what a test
+    /// observes; CI has no user config, so such a leak would only bite local runs.
+    func makeIsolatedRuntime() throws -> GhosttyRuntime {
+        try GhosttyRuntime(
+            themeDirectory: makeTemporaryDirectory(prefix: "casper-ghostty-themes"), loadUserFiles: { _ in })
     }
 
     /// Pump the main run loop for a fixed duration so libghostty can drain PTY output and

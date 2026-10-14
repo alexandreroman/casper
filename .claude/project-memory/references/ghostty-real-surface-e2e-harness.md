@@ -12,8 +12,12 @@ permission and without the debug-channel bypass (`casper debug send-key` calls
 `ghostty_surface_key` directly, skipping `keyDown`/`interpretKeyEvents` entirely
 — it cannot exercise this class of bug, see [[ghostty-option-as-alt]]):
 
-1. Use a real (non-`.forTesting()`) `GhosttyRuntime()` — `.forTesting()` has
-   `app = nil` and never creates a surface.
+1. Use a real (non-`.forTesting()`) runtime — `.forTesting()` has `app = nil`
+   and never creates a surface. Build it with `makeIsolatedRuntime()`:
+   `GhosttyRuntime(themeDirectory:loadUserFiles:)` with a per-test temp theme
+   directory and a loader that reads nothing, so the developer's own Ghostty
+   config ([[ghostty-user-config-dirs]]) cannot change what the test observes
+   (a local `clipboard-read = allow` disarms the OSC 52 read probe).
 2. Build `GhosttySurfaceView(runtime:configuration:)`, assign it as
    `window.contentView` on a real (can be `.borderless`, off-screen-sized fine)
    `NSWindow` — this triggers `viewDidMoveToWindow` → real

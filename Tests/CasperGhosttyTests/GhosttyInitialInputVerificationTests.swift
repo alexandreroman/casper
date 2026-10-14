@@ -10,7 +10,7 @@ import XCTest
 /// the mechanism `AppModel.surfaceView(for:in:)` relies on to run a terminal's
 /// launch command reliably.
 ///
-/// Runs on the shared `withRealSurface` harness (real `GhosttyRuntime()`, offscreen
+/// Runs on the shared `withRealSurface` harness (real `GhosttyRuntime`, offscreen
 /// `NSWindow`, `XCTSkip` when no surface appears) with a fixed settle rather than
 /// adaptive polling — see the `ghostty-real-surface-e2e-harness` note.
 final class GhosttyInitialInputVerificationTests: XCTestCase {

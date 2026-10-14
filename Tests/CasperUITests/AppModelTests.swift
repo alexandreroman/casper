@@ -14,6 +14,15 @@ final class AppModelTests: XCTestCase {
         model.spaces.first(where: { $0.workspaces.contains(where: { $0.id == id }) })!.id
     }
 
+    /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
+    /// writes its theme files to a per-test temporary directory, so a local config cannot
+    /// change what a test observes. Mirrors `CasperGhosttyTests`' helper of the same name,
+    /// which this target cannot see.
+    private func makeIsolatedRuntime() throws -> GhosttyRuntime {
+        try GhosttyRuntime(
+            themeDirectory: makeTemporaryDirectory(prefix: "casper-ghostty-themes"), loadUserFiles: { _ in })
+    }
+
     /// `path` with symlinks resolved, so a path the model canonicalized compares
     /// equal to the temp-dir path a fixture handed out (`/tmp` vs `/private/tmp`).
     private func resolved(_ path: String) -> String {
@@ -1304,7 +1313,7 @@ final class AppModelTests: XCTestCase {
     /// silently detaches the old view before `resignFirstResponder` would fire).
     func testApplyNewTerminalBlursPreviouslyFocusedSurface() throws {
         let (model, first) = try modelWithOneGitWorkspace()
-        model.runtime = try GhosttyRuntime()
+        model.runtime = try makeIsolatedRuntime()
 
         let workspace = model.spaces[0].workspaces[0]
         let surface = LayoutTree.surfaces(workspace.layout).first { $0.id == first }!
@@ -1324,7 +1333,7 @@ final class AppModelTests: XCTestCase {
     /// push an explicit `false`.
     func testAttachingANonFocusedSurfaceViewBlursIt() throws {
         let (model, first) = try modelWithOneGitWorkspace()
-        model.runtime = try GhosttyRuntime()
+        model.runtime = try makeIsolatedRuntime()
 
         model.applyNewSplit(.right)  // now two surfaces; focus moved to the new one
         let workspace = model.spaces[0].workspaces[0]
@@ -1355,7 +1364,7 @@ final class AppModelTests: XCTestCase {
     /// for the life of the process.
     func testSurfaceViewDoesNotRecreateAViewForAClosedSurface() throws {
         let (model, first) = try modelWithOneGitWorkspace()
-        model.runtime = try GhosttyRuntime()
+        model.runtime = try makeIsolatedRuntime()
         model.applyNewSplit(.right)  // two surfaces; focus moves to the new one
 
         let workspace = model.spaces[0].workspaces[0]
@@ -1387,7 +1396,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testLiveFontSizeChangeFlowsFromViewIntoModelAndSchedulesSave() throws {
         let (model, surfaceID) = try modelWithOneGitWorkspace()
-        model.runtime = try GhosttyRuntime()
+        model.runtime = try makeIsolatedRuntime()
         var saves = 0
         model.onPersistForTest = { saves += 1 }
 
@@ -1444,7 +1453,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testOpenTerminalWithCommandRunsItInTheRealShell() async throws {
         let (model, _) = try modelWithOneGitWorkspace()
-        model.runtime = try GhosttyRuntime()
+        model.runtime = try makeIsolatedRuntime()
         let workspaceID = model.spaces[0].workspaces[0].id
 
         let info = try XCTUnwrap(
@@ -1492,7 +1501,7 @@ final class AppModelTests: XCTestCase {
     /// anchor, otherwise the focused pane keeps a solid caret while focus moves.
     func testApplySplitFromNonFocusedSurfaceBlursTheFocusedSurface() throws {
         let (model, first) = try modelWithOneGitWorkspace()
-        model.runtime = try GhosttyRuntime()
+        model.runtime = try makeIsolatedRuntime()
 
         // Split once so there are two surfaces; focus moves to the new one.
         model.applyNewSplit(.right)

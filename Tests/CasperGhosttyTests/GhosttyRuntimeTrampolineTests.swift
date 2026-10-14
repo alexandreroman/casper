@@ -103,7 +103,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     /// plumbing, not an app action. Pushing the stored config must not crash.
     func testReloadConfigTrampolineClaimsWithoutReachingOnAction() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        let runtime = try GhosttyRuntime()
+        let runtime = try makeIsolatedRuntime()
         var received: [GhosttyAction] = []
         runtime.onAction = { received.append($0) }
         var target = ghostty_target_s()
@@ -123,7 +123,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     @MainActor
     func testSetColorSchemeOnLiveAppAnswersReloadsWithoutReachingOnAction() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        let runtime = try GhosttyRuntime()
+        let runtime = try makeIsolatedRuntime()
         var received: [GhosttyAction] = []
         runtime.onAction = { received.append($0) }
 
@@ -143,7 +143,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     func testSetColorSchemeRewritesPurgedThemeFiles() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
         let directory = makeTemporaryDirectory(prefix: "casper-runtime-themes")
-        let runtime = try GhosttyRuntime(themeDirectory: directory)
+        let runtime = try GhosttyRuntime(themeDirectory: directory, loadUserFiles: { _ in })
         let paths = GhosttyThemeFiles.Paths(
             light: directory.appendingPathComponent("casper-light"),
             dark: directory.appendingPathComponent("casper-dark"))
