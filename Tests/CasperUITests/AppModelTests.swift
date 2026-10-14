@@ -1233,8 +1233,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testApplyWatcherVisibilityIsNoOpWhenUnchanged() {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)  // isWindowVisible defaults to true
+        let model = makeModel()  // isWindowVisible defaults to true
         let revisionBefore = model.diffRevision
         // No transition (still visible), so the guard blocks both calls.
         model.applyWatcherVisibility()
