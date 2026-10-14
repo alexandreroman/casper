@@ -182,11 +182,11 @@ final class DiffGutterRuler: NSRulerView {
             guard let kind = line.diffKind else { continue }
             let band = rulerBand(ofRow: row.rect)
 
-            if let tint = DiffTextView.rowTint(for: kind) {
+            if let tint = DiffLineStyle.rowTint(for: kind) {
                 tint.setFill()
                 band.fill()
             }
-            if let stripe = Self.stripeColor(for: kind) {
+            if let stripe = DiffLineStyle.accent(for: kind) {
                 stripe.setFill()
                 NSRect(x: band.minX, y: band.minY, width: Self.stripeWidth, height: band.height).fill()
             }
@@ -352,8 +352,8 @@ final class DiffGutterRuler: NSRulerView {
         kind == .addition ? additionCueAttributes : deletionCueAttributes
     }
 
-    private static let additionCueAttributes = makeCueAttributes(color: additionAccent)
-    private static let deletionCueAttributes = makeCueAttributes(color: deletionAccent)
+    private static let additionCueAttributes = makeCueAttributes(color: DiffLineStyle.insertionTint)
+    private static let deletionCueAttributes = makeCueAttributes(color: DiffLineStyle.deletionTint)
 
     /// The cue keeps the **code** face, at the code's size: it used to be the
     /// line's first character and reads as the same mark it always did, only in a
@@ -369,9 +369,9 @@ final class DiffGutterRuler: NSRulerView {
         return style.copy() as! NSParagraphStyle
     }()
 
-    private static let additionNumberAttributes = makeNumberAttributes(color: additionAccent)
-    private static let deletionNumberAttributes = makeNumberAttributes(color: deletionAccent)
-    private static let contextNumberAttributes = makeNumberAttributes(color: contextNumberColor)
+    private static let additionNumberAttributes = makeNumberAttributes(color: DiffLineStyle.insertionTint)
+    private static let deletionNumberAttributes = makeNumberAttributes(color: DiffLineStyle.deletionTint)
+    private static let contextNumberAttributes = makeNumberAttributes(color: DiffLineStyle.contextNumberTint)
 
     private static func makeNumberAttributes(color: NSColor) -> [NSAttributedString.Key: Any] {
         [.font: numberFont, .foregroundColor: color, .paragraphStyle: rightAligned]
@@ -398,20 +398,4 @@ final class DiffGutterRuler: NSRulerView {
         style.lineBreakMode = .byClipping
         return style.copy() as! NSParagraphStyle
     }()
-
-    /// The accent stripe's color, or `nil` for a context row — whose
-    /// `DiffLineStyle.accent(for:)` is `Color.clear`, so there is nothing to paint.
-    private static func stripeColor(for kind: GitDiffLine.Kind) -> NSColor? {
-        switch kind {
-        case .addition: additionAccent
-        case .deletion: deletionAccent
-        case .context: nil
-        }
-    }
-
-    /// Converted once, not once per row per frame: `NSColor(_:)` allocates a
-    /// dynamic catalog color each time.
-    private static let additionAccent = NSColor(DiffLineStyle.accent(for: .addition))
-    private static let deletionAccent = NSColor(DiffLineStyle.accent(for: .deletion))
-    private static let contextNumberColor = NSColor(DiffLineStyle.contextNumberTint)
 }

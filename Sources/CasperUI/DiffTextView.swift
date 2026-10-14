@@ -67,7 +67,7 @@ final class DiffTextView: NSTextView {
 
         for row in geometry.fragments(in: dirtyRect.offsetBy(dx: 0, dy: -containerY)) {
             guard let kind = document.lines[row.lineIndex].diffKind,
-                  let tint = Self.rowTint(for: kind)
+                  let tint = DiffLineStyle.rowTint(for: kind)
             else { continue }
             tint.setFill()
             // Rows straddling `dirtyRect`'s edges come back at full height on
@@ -77,24 +77,4 @@ final class DiffTextView: NSTextView {
                 .fill()
         }
     }
-
-    /// The tint behind one diff row, or `nil` when there is nothing to paint.
-    ///
-    /// Shared with `DiffGutterRuler`, which fills the same band across its own
-    /// width so the tint runs unbroken under the gutter: one function, so the two
-    /// halves of a row cannot come out different colors. `nil` for a context row,
-    /// whose `DiffLineStyle.background(for:)` is `Color.clear` — as it is for the
-    /// hunk headers and notes that have no diff kind at all.
-    static func rowTint(for kind: GitDiffLine.Kind) -> NSColor? {
-        switch kind {
-        case .addition: additionTint
-        case .deletion: deletionTint
-        case .context: nil
-        }
-    }
-
-    /// `NSColor(_:)` allocates a dynamic catalog color, and this runs once per
-    /// visible row per frame, so the two tints are converted once instead.
-    private static let additionTint = NSColor(DiffLineStyle.background(for: .addition))
-    private static let deletionTint = NSColor(DiffLineStyle.background(for: .deletion))
 }

@@ -312,12 +312,12 @@ final class DiffStickyHeader: NSView {
         case .warning(let tint):
             return [
                 .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize, weight: .bold),
-                .foregroundColor: NSColor(tint),
+                .foregroundColor: tint,
             ]
         case .muted(let tint):
             return [
                 .font: NSFont.systemFont(ofSize: DiffTextAssembly.chromeFontSize),
-                .foregroundColor: NSColor(tint),
+                .foregroundColor: tint,
             ]
         }
     }
@@ -328,8 +328,8 @@ final class DiffStickyHeader: NSView {
         .foregroundColor: NSColor.secondaryLabelColor,
     ]
 
-    private static let insertionCountAttributes = countAttributes(NSColor(DiffLineStyle.insertionTint))
-    private static let deletionCountAttributes = countAttributes(NSColor(DiffLineStyle.deletionTint))
+    private static let insertionCountAttributes = countAttributes(DiffLineStyle.insertionTint)
+    private static let deletionCountAttributes = countAttributes(DiffLineStyle.deletionTint)
 
     /// Monospaced digits so `+N` and `−N` keep their width as the counts change,
     /// bold at the callout size — the row-based renderer's

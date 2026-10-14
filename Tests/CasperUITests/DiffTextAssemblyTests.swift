@@ -64,7 +64,7 @@ final class DiffTextAssemblyTests: XCTestCase {
                            NSColor.labelColor, "offset \(offset)")
         }
         XCTAssertNotEqual(attribute(.foregroundColor, at: span.range.location, in: storage) as? NSColor,
-                          NSColor(DiffLineStyle.accent(for: .addition)))
+                          DiffLineStyle.insertionTint)
     }
 
     func testCodeLinesCarryTheCodeFont() {

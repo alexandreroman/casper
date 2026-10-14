@@ -230,9 +230,9 @@ final class DiffChromeTests: XCTestCase {
 
         for y in [probe.top(of: row) + 0.5, probe.bottom(of: row) - 0.5] {
             assertSameColor(probe.codeColor(x: probe.textView.bounds.midX, y: y),
-                            NSColor(DiffLineStyle.background(for: .addition)), "text view at y \(y)")
+                            DiffLineStyle.additionBackground, "text view at y \(y)")
             assertSameColor(probe.gutterColor(x: DiffGutterRuler.stripeWidth / 2, y: y),
-                            NSColor(DiffLineStyle.accent(for: .addition)), "gutter at y \(y)")
+                            DiffLineStyle.insertionTint, "gutter at y \(y)")
         }
 
         // A point above the row belongs to the context row ahead of it: neither view
@@ -270,9 +270,9 @@ final class DiffChromeTests: XCTestCase {
         // the strip's very first pixels carry the row's chrome.
         for y in [stripTop + 0.5, probe.bottom(of: row) - 0.5] {
             assertSameColor(probe.codeColor(x: probe.pastTheGlyphs(of: row), y: y),
-                            NSColor(DiffLineStyle.background(for: .addition)), "text view at y \(y)")
+                            DiffLineStyle.additionBackground, "text view at y \(y)")
             assertSameColor(probe.gutterColor(x: DiffGutterRuler.stripeWidth / 2, y: y),
-                            NSColor(DiffLineStyle.accent(for: .addition)), "gutter at y \(y)")
+                            DiffLineStyle.insertionTint, "gutter at y \(y)")
         }
     }
 
@@ -287,12 +287,12 @@ final class DiffChromeTests: XCTestCase {
         for kind in [GitDiffLine.Kind.addition, .deletion] {
             let row = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == kind })
             assertSameColor(probe.gutterColor(x: insideStripe, y: probe.middle(of: row)),
-                            NSColor(DiffLineStyle.accent(for: kind)), "\(kind) stripe")
+                            try XCTUnwrap(DiffLineStyle.accent(for: kind)), "\(kind) stripe")
             // Immediately past the stripe the gutter carries the row's tint: that is
             // what makes the tint run unbroken under the gutter, as it did when the
             // number lived inside the tinted row.
             assertSameColor(probe.gutterColor(x: pastStripe, y: probe.middle(of: row)),
-                            NSColor(DiffLineStyle.background(for: kind)), "\(kind) tint past the stripe")
+                            try XCTUnwrap(DiffLineStyle.rowTint(for: kind)), "\(kind) tint past the stripe")
         }
 
         let context = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == .context })
@@ -312,7 +312,7 @@ final class DiffChromeTests: XCTestCase {
         for kind in [GitDiffLine.Kind.addition, .deletion] {
             let row = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == kind })
             assertSameColor(probe.gutterColor(x: trailingEdge, y: probe.middle(of: row)),
-                            NSColor(DiffLineStyle.background(for: kind)), "\(kind) row's trailing edge")
+                            try XCTUnwrap(DiffLineStyle.rowTint(for: kind)), "\(kind) row's trailing edge")
         }
         let context = try XCTUnwrap(probe.rows.first { probe.kind(of: $0) == .context })
         assertSameColor(probe.gutterColor(x: trailingEdge, y: probe.middle(of: context)),
@@ -335,8 +335,7 @@ final class DiffChromeTests: XCTestCase {
 
         for row in probe.rows where row.isLineStart && probe.document.lines[row.lineIndex].number != nil {
             let kind = try XCTUnwrap(probe.kind(of: row))
-            let tint = kind == .context
-                ? NSColor(DiffLineStyle.contextNumberTint) : NSColor(DiffLineStyle.accent(for: kind))
+            let tint = DiffLineStyle.accent(for: kind) ?? DiffLineStyle.contextNumberTint
             let expected = composite(tint, over: probe.expectedBackground(of: row))
             let ink = probe.numberInk(in: row)
             numbered += 1
@@ -375,7 +374,7 @@ final class DiffChromeTests: XCTestCase {
                 continue
             }
             cued += 1
-            let expected = composite(NSColor(DiffLineStyle.accent(for: kind)),
+            let expected = composite(try XCTUnwrap(DiffLineStyle.accent(for: kind)),
                                      over: probe.expectedBackground(of: row))
 
             XCTAssertGreaterThan(ink.deviation, 0.1, "no cue drawn for row \(row.lineIndex) (\(kind))")
@@ -407,7 +406,7 @@ final class DiffChromeTests: XCTestCase {
                               "continuation row \(offset) must print no number")
             assertSameColor(
                 probe.gutterColor(x: DiffGutterRuler.stripeWidth + 0.5, y: probe.middle(of: row)),
-                NSColor(DiffLineStyle.background(for: kind)),
+                try XCTUnwrap(DiffLineStyle.rowTint(for: kind)),
                 "continuation row \(offset) must keep the row tint")
         }
     }
@@ -453,13 +452,13 @@ final class DiffChromeTests: XCTestCase {
         // that covered the code column would leave the plain background.
         assertSameColor(
             canvas.color(x: codeX, y: rowY),
-            NSColor(DiffLineStyle.background(for: .addition)),
+            DiffLineStyle.additionBackground,
             "the added row's tint, \(codeX - surface.ruler.ruleThickness) pt into the code column")
 
         // And the code itself is on screen: somewhere across the row's glyph span a
         // pixel differs from the tint it sits on. The tint assertion above would still
         // hold with every glyph painted over, which is the symptom a reader reports.
-        let tint = NSColor(DiffLineStyle.background(for: .addition))
+        let tint = DiffLineStyle.additionBackground
         let inked = stride(from: surface.ruler.ruleThickness, to: codeX, by: 0.5).contains { x in
             stride(from: rowY - addition.rect.height / 2, to: rowY + addition.rect.height / 2, by: 0.5)
                 .contains { y in channelDistance(canvas.color(x: x, y: y), tint) > 0.02 }
@@ -678,8 +677,8 @@ final class DiffChromeTests: XCTestCase {
         /// disagree about what a row sits on.
         func expectedBackground(of row: DiffFragmentGeometry.Fragment) -> NSColor {
             switch document.lines[row.lineIndex].kind {
-            case .addition: NSColor(DiffLineStyle.background(for: .addition))
-            case .deletion: NSColor(DiffLineStyle.background(for: .deletion))
+            case .addition: DiffLineStyle.additionBackground
+            case .deletion: DiffLineStyle.deletionBackground
             case .context, .hunkHeader, .note: textView.backgroundColor
             }
         }

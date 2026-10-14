@@ -1051,8 +1051,8 @@ struct WorkspaceTitleBarRow: View {
     /// The badge's two counters.
     private func diffCounters(_ summary: (insertions: Int, deletions: Int)) -> some View {
         HStack(spacing: 5) {
-            Text("+\(summary.insertions)").foregroundStyle(DiffLineStyle.insertionTint.opacity(0.9))
-            Text("−\(summary.deletions)").foregroundStyle(DiffLineStyle.deletionTint.opacity(0.9))
+            Text("+\(summary.insertions)").foregroundStyle(Color(nsColor: DiffLineStyle.insertionTint).opacity(0.9))
+            Text("−\(summary.deletions)").foregroundStyle(Color(nsColor: DiffLineStyle.deletionTint).opacity(0.9))
         }
         .font(.body.monospacedDigit().bold())
     }
