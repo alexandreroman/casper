@@ -472,12 +472,13 @@ public struct Session: Codable, Equatable, Sendable {
     /// relaunch. Optional, so an absent key (legacy `session.json` files) decodes
     /// to nil.
     public var selectedWorkspaceID: UUID?
-    /// `CodingAgent.reminderID` values of the coding agents whose integration
-    /// reminder the user dismissed. One entry per agent, so dismissing one reminder
-    /// leaves the others showing. Deliberately `Set<String>` rather than a set of
-    /// agent enum cases: the persisted file then survives an agent being added,
-    /// renamed, or dropped — an id matching no known agent is simply ignored instead
-    /// of failing the whole session decode.
+    /// Keys of the coding-agent integration reminders the user dismissed: an agent's
+    /// `CodingAgent.reminderID` for its action-needed reminder, and that id plus a
+    /// `-trust` suffix for its hook-trust notice. Each reminder has its own key, so
+    /// dismissing one leaves the others showing. Deliberately `Set<String>` rather
+    /// than a set of agent enum cases: the persisted file then survives an agent
+    /// being added, renamed, or dropped — an id matching no known agent is simply
+    /// ignored instead of failing the whole session decode.
     public var dismissedAgentReminders: Set<String>
     /// The **parent** directory the user last created a Space in — the folder that
     /// holds the new Space, not the Space itself — so the creation panel reopens
