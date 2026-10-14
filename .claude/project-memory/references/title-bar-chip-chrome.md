@@ -13,7 +13,7 @@ neutral palette only: `Color.secondary.opacity(0.15)` at rest, `0.28` under
 the pointer and `0.40` while pressed (`TitleChipFeedback` holds the three
 steps). `TitleCapsuleChrome` never touches the label's foreground style, so
 every chip keeps the tint it sets for itself (the diff badge's green/red
-counters, the title chip's secondary glyph).
+counters, the selector's primary and secondary glyphs).
 
 ## The inspector tabs are one segmented control
 
@@ -29,9 +29,8 @@ Three states are visible, and the third is what makes the exclusivity legible:
 the panel open on Diff, open on Browser, or collapsed — collapsed draws no
 indicator at all, leaving a plain neutral capsule.
 
-Hover belongs to the shell as a whole (`titleCapsuleShell(interactive: true)`,
-matching the Run / Editor pills); a per-segment hover fill would fight the
-sliding indicator.
+Hover belongs to the shell as a whole (`titleCapsuleShell()`, matching the Run
+/ Editor pills); a per-segment hover fill would fight the sliding indicator.
 
 The segments are glyph-only (`Image(systemName:)`, no visible text); their one
 `help` string serves as both the tooltip and the `.accessibilityLabel`.

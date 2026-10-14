@@ -37,14 +37,13 @@ put `.titleCapsule()` inside a single label — there are two controls, and
 primary `Label`'s glyph/text is clickable (the exact "Run Script only clickable
 on the icon" bug). No child can reach into the capsule's outer padding.
 
-Fix: split the helper. `titleCapsuleShell(filled:interactive:)` applies
-everything except the horizontal padding (the height frame, background, border
-overlay, `.contentShape(Capsule())`); `titleCapsule(filled:interactive:)` =
-`.padding(.horizontal, TitleCapsuleMetrics.horizontalInset)` +
-`titleCapsuleShell`. (`interactive: true` adds the hover highlight for chips
-that are buttons.) Split buttons finish the `HStack` with
-`.titleCapsuleShell()` and move the interior geometry INSIDE each control's
-label: on the primary button's label add
+Fix: split the helper. `titleCapsuleShell()` applies everything except the
+horizontal padding (the height frame, background, border overlay,
+`.contentShape(Capsule())`, the hover highlight and the pressed look);
+`titleCapsule()` is `titleCapsuleShell()` behind
+`.padding(.horizontal, TitleCapsuleMetrics.horizontalInset)`. Split buttons
+finish the `HStack` with `.titleCapsuleShell()` and move the interior geometry
+INSIDE each control's label: on the primary button's label add
 `.padding(.leading, TitleCapsuleMetrics.horizontalInset)`,
 `.padding(.trailing, 4)`, `.frame(maxHeight: .infinity)`,
 `.contentShape(Rectangle())` (never `maxWidth: .infinity` — the button must stay

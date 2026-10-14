@@ -52,11 +52,10 @@ The row itself carries **no** gesture and **no** `contentShape`, and the
 branch/Space title carries `.allowsHitTesting(false)`. A click on a chip hits
 only the chip; a click anywhere inert — the title, the spacer, the gaps, the
 info button's collapsed slot — falls through to the layer. The title needs the
-opt-out because its capsule shell gives it a `contentShape(Capsule())`, and a
-row-level `contentShape` would likewise make the row the hit target and starve
-the layer. Any other hit-testable background on the row (the DEBUG
-`TitleBarRungReporter`) must stay `.allowsHitTesting(false)` for the same
-reason.
+opt-out because its text takes the clicks that land on it, and a row-level
+`contentShape` would likewise make the row the hit target and starve the layer.
+Any other hit-testable background on the row (the DEBUG `TitleBarRungReporter`)
+must stay `.allowsHitTesting(false)` for the same reason.
 
 Placement is what protects the chips. A gesture on an **ancestor** of the chips
 takes part in every chip click, whatever its priority: a plain one delays the

@@ -354,23 +354,22 @@ longer does are recorded in `../status.md` § Superseded designs.
   cannot disagree.
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
-  and a hairline border, plus a hover highlight for the interactive ones and a
-  pressed state past it — the fill steps further and the pill shrinks slightly,
-  fill alone under Reduce Motion — that one button style reports to the shell
-  whether the shell sits inside the button's label or around it. Glass
-  was rejected because it renders nearly invisible on a chip embedding a
-  borderless `Menu` (see [[glasseffect-nested-menu-invisible]]), and the fill is
-  the same neutral step in both palettes — **no accent colour and no state tint
-  anywhere**, so a Delete chip is not red (see [[title-bar-chip-chrome]]). The
-  interior padding lives **inside** each control's label, never on the shell, so
-  the whole pill is clickable rather than just the glyph
-  ([[title-capsule-hit-area]]); `Label`s pin `.titleAndIcon` because the toolbar
-  environment otherwise resolves them icon-only and drops the title
-  ([[toolbar-label-style]]). The title capsule itself is chrome-less: it is not
-  a control, so it takes the shared metrics without the pill — and every label
-  in the row is pinned to one line, because a group with no line limit **wraps**
-  mid-word once it is proposed less than its ideal width, and inside a
-  fixed-height capsule a second line has nowhere to go
+  and a hairline border, plus a hover highlight and a pressed state past it —
+  the fill steps further and the pill shrinks slightly, fill alone under Reduce
+  Motion — that one button style reports to the shell whether the shell sits
+  inside the button's label or around it. Glass was rejected because it renders
+  nearly invisible on a chip embedding a borderless `Menu` (see
+  [[glasseffect-nested-menu-invisible]]), and the fill is the same neutral step
+  in both palettes — **no accent colour and no state tint anywhere**, so a
+  Delete chip is not red (see [[title-bar-chip-chrome]]). The interior padding
+  lives **inside** each control's label, never on the shell, so the whole pill
+  is clickable rather than just the glyph ([[title-capsule-hit-area]]); `Label`s
+  pin `.titleAndIcon` because the toolbar environment otherwise resolves them
+  icon-only and drops the title ([[toolbar-label-style]]). The title capsule
+  itself is chrome-less: it is not a control, so it takes the shared metrics
+  without the pill — and every label in the row is pinned to one line, because a
+  group with no line limit **wraps** mid-word once it is proposed less than its
+  ideal width, and inside a fixed-height capsule a second line has nowhere to go
   ([[toolbar-group-truncation]]).
 
   **Every glyph-only chip measures exactly the same**, the `⋯` chip being the
