@@ -192,11 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// tap select the originating workspace before bringing Casper to the front.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Guard on the workspace still existing: `selectWorkspace` sets the selection
-        // unconditionally, so tapping a notification for a since-deleted workspace
-        // would otherwise leave a dangling selection.
-        if let workspaceID = UUID(uuidString: response.notification.request.identifier),
-           AppModel.shared.workspace(id: workspaceID) != nil {
+        // A since-deleted workspace's id is safe to pass: `selectWorkspace` ignores an id
+        // that resolves to no workspace.
+        if let workspaceID = UUID(uuidString: response.notification.request.identifier) {
             AppModel.shared.selectWorkspace(workspaceID)
         }
         NSApp.activate(ignoringOtherApps: true)

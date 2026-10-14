@@ -1020,8 +1020,14 @@ final class AppModel {
     /// URL field). `surfaceIDs(...).first` is the depth-first, top-left surface.
     /// `focusActiveSurfaceView()` covers the already-attached case; a freshly
     /// mounted terminal's `onAttach` covers the not-yet-attached case. When `id` is
-    /// nil or resolves to no workspace, only the selection changes.
+    /// nil, only the selection changes. An id that resolves to no workspace — a
+    /// notification tapped after its workspace was deleted — changes nothing, so the
+    /// selection can never dangle (see the workspace-selection-invariant note).
     func selectWorkspace(_ id: UUID?) {
+        // Resolved once for the whole body: nothing below inserts or removes a Space or a
+        // workspace (`revealSpace` only flips `isCollapsed`), so the index stays valid.
+        let at = id.flatMap { locate($0) }
+        if id != nil, at == nil { return }
         // Re-selecting the workspace that is already selected is an ordinary call —
         // tapping its sidebar row, or a notification raised for it. The rest of the body
         // still matters there: it is how the attention bubble clears and how a `done`
@@ -1031,9 +1037,7 @@ final class AppModel {
         selectedWorkspaceID = id
         // Re-arm before the early return so a nil/non-Git selection stops the watcher.
         reconfigureWorktreeWatcher()
-        // Resolved once for the whole body: nothing below inserts or removes a Space or a
-        // workspace (`revealSpace` only flips `isCollapsed`), so the index stays valid.
-        guard let id, let at = locate(id) else { return }
+        guard let id, let at else { return }
         if changed { refreshNamedCommands(for: id) }
         // A selected workspace must be visible: reveal its owning Space.
         revealSpace(at: at.space)

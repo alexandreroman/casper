@@ -306,6 +306,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(try store.load().selectedWorkspaceID, ws2.id)
     }
 
+    /// An id that resolves to no workspace — a notification tapped after its workspace
+    /// was deleted — must not become the selection: the invariant holds without every
+    /// caller validating first.
+    func testSelectingAnUnknownWorkspaceLeavesTheSelectionUntouched() {
+        let (session, ws1, _, _, _) = twoWorkspaceSession()
+        let model = makeModel(spaces: session.spaces, selecting: ws1.id)
+
+        model.selectWorkspace(UUID())
+
+        XCTAssertEqual(model.selectedWorkspaceID, ws1.id)
+        assertSelectionValidOrNil(model)
+    }
+
     /// The selection invariant: it must be nil or resolve to a live workspace,
     /// never dangle at a removed id.
     private func assertSelectionValidOrNil(_ model: AppModel) {
