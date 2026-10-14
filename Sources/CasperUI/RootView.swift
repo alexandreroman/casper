@@ -302,16 +302,6 @@ enum WindowFloor {
             // held open by whatever the last workspace needed.
             floor = .zero
         }
-        #if DEBUG
-        CasperLog.app.debug(
-            """
-            TIERPROBE WINDOWFLOOR sidebar=\(metrics?.sidebarWidth ?? -1, privacy: .public) \
-            inspector=\(metrics?.inspectorSlice ?? -1, privacy: .public) \
-            content=\(window.contentRect(forFrameRect: window.frame).height, privacy: .public) \
-            layout=\(window.contentLayoutRect.height, privacy: .public) \
-            floor=\(floor.width, privacy: .public)x\(floor.height, privacy: .public)
-            """)
-        #endif
         // BOTH minimums, because SwiftUI owns one of them: a `WindowGroup` recomputes
         // `contentMinSize` from its content on every view update and writes it back —
         // measured at 228 x 142, which credits the sidebar 28 pt when it is really
