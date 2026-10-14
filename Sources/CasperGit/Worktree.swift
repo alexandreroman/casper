@@ -47,23 +47,26 @@ extension Repository {
             return try worktreeInfo(fromPointer: handle, name: name)
         } catch {
             // Roll back so retrying the same name is idempotent instead of
-            // failing with GIT_EEXISTS. Prune unconditionally: `git_worktree_add`
-            // can write the on-disk admin entry and still fail with a NULL
-            // out-pointer (a partial failure where `worktree == nil`), so gating
-            // the prune on `worktree != nil` would leak that orphaned entry.
-            // `pruneWorktree` re-looks-up by name, and its throw is swallowed by
-            // `try?`. The `defer`s still free the handles; this clears the on-disk
-            // worktree and the refdb branch.
-            try? pruneWorktree(name: name)
-            // libgit2 creates the admin directory first and only writes its
-            // `gitdir`/`commondir`/`HEAD` files after creating the worktree path,
-            // so a failure in between (the path already exists) leaves a partial
-            // entry the lookup above rejects with a generic error rather than
-            // GIT_ENOTFOUND, and the prune never removes it. libgit2 creates that
-            // directory exclusively, so if it is new it belongs to this call. The
-            // worktree path is left alone: if it pre-existed, it is someone else's.
-            if !adminEntryExisted && FileManager.default.fileExists(atPath: adminPath) {
-                try? FileManager.default.removeItem(atPath: adminPath)
+            // failing with GIT_EEXISTS. Only what this call created is undone:
+            // libgit2 creates the admin directory exclusively, as its first write,
+            // so an entry that existed before the call belongs to another worktree
+            // registered under the same name — pruning it would delete that
+            // worktree's folder — and the failed call created nothing to undo.
+            if !adminEntryExisted {
+                // Gated on the admin entry, not on `worktree != nil`:
+                // `git_worktree_add` can write the entry and still fail with a NULL
+                // out-pointer. `pruneWorktree` re-looks-up by name, and its throw is
+                // swallowed by `try?`. The `defer`s still free the handles.
+                try? pruneWorktree(name: name)
+                // libgit2 only writes the entry's `gitdir`/`commondir`/`HEAD` files
+                // after creating the worktree path, so a failure in between (the
+                // path already exists) leaves a partial entry the lookup rejects
+                // with a generic error rather than GIT_ENOTFOUND, and the prune
+                // never removes it. The worktree path is left alone: if it
+                // pre-existed, it is someone else's.
+                if FileManager.default.fileExists(atPath: adminPath) {
+                    try? FileManager.default.removeItem(atPath: adminPath)
+                }
             }
             // Branch-delete result is intentionally ignored: rollback is
             // best-effort and the original `error` is what we re-throw, so we

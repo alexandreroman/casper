@@ -29,6 +29,8 @@ CI, test, and documentation-only work is left out.
   waiting until you select the workspace.
 - Creating a workspace again under a name whose previous creation failed no
   longer fails with "directory exists".
+- Creating a workspace whose name matches an existing Git worktree no longer
+  deletes that worktree's folder.
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
   as unreadable.
 - `casper` commands fail at once instead of hanging for several seconds when

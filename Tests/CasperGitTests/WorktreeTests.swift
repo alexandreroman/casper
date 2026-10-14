@@ -89,6 +89,23 @@ final class WorktreeTests: XCTestCase {
         XCTAssertNoThrow(try repo.addWorktree(name: "blocked", atPath: retryPath, basedOn: nil))
     }
 
+    /// A worktree registered under the name but checked out on another branch — what
+    /// `git worktree add ../taken -b other` leaves — is not this call's to roll back.
+    func testFailedAddLeavesAForeignWorktreeOfTheSameNameIntact() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let foreignPath = root.appendingPathComponent("taken").path
+        try addWorktree(to: repo, name: "taken", atPath: foreignPath, onNewBranch: "other")
+        let foreignFile = URL(fileURLWithPath: foreignPath).appendingPathComponent("precious.txt")
+        try "uncommitted work".write(to: foreignFile, atomically: true, encoding: .utf8)
+
+        let casperPath = root.appendingPathComponent("casper-taken").path
+        XCTAssertThrowsError(try repo.addWorktree(name: "taken", atPath: casperPath, basedOn: nil))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: foreignFile.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: repo.commonDirPath + "worktrees/taken"))
+        XCTAssertFalse(try repo.branchExists("taken"))
+    }
+
     /// The common directory is the repository's identity: a linked worktree reports
     /// the SAME one as its main working tree, even though their git dirs differ.
     func testWorktreeSharesCommonDirWithMainWorkingTree() throws {
@@ -117,5 +134,24 @@ final class WorktreeTests: XCTestCase {
 
         XCTAssertEqual(try repo.worktreeNames(), [])
         XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+    }
+
+    /// Register a worktree whose name and branch differ, which `addWorktree` never does.
+    private func addWorktree(
+        to repo: Repository, name: String, atPath path: String, onNewBranch branch: String
+    ) throws {
+        var commit: OpaquePointer?
+        defer { git_object_free(commit) }
+        try gitCheck(git_revparse_single(&commit, repo.pointer, "HEAD^{commit}"))
+        var branchRef: OpaquePointer?
+        defer { git_reference_free(branchRef) }
+        try gitCheck(git_branch_create(&branchRef, repo.pointer, branch, commit, 0))
+
+        var options = git_worktree_add_options()
+        try gitCheck(git_worktree_add_options_init(&options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
+        options.ref = branchRef
+        var worktree: OpaquePointer?
+        defer { git_worktree_free(worktree) }
+        try gitCheck(git_worktree_add(&worktree, repo.pointer, name, path, &options))
     }
 }
