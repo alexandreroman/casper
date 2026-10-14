@@ -44,7 +44,6 @@ public final class Repository {
     /// does not invent an identity to commit under: a name the user never chose would
     /// be in their history forever, which is worse than the unborn HEAD it avoids. The
     /// caller decides what to say about it.
-    @discardableResult
     public func createInitialCommit() throws -> Bool {
         guard isHeadUnborn else { return false }
 
@@ -113,7 +112,7 @@ public final class Repository {
 
     /// True when the repository has no working directory of its own — a bare
     /// repository (`git init --bare`, `git clone --bare`).
-    public var isBare: Bool {
+    var isBare: Bool {
         git_repository_is_bare(pointer) == 1
     }
 
@@ -202,7 +201,7 @@ public final class Repository {
     }
 
     /// Whether a local branch named `name` exists.
-    public func branchExists(_ name: String) throws -> Bool {
+    func branchExists(_ name: String) throws -> Bool {
         try withLocalBranch(name, ifMissing: false) { _ in true }
     }
 
@@ -245,7 +244,7 @@ public final class Repository {
     /// ignore rules — `.gitignore` at any level, `core.excludesFile`, and
     /// `.git/info/exclude` — evaluated by libgit2 (`git_ignore_path_is_ignored`).
     /// No manual `.gitignore` parsing.
-    public func isPathIgnored(_ path: String) throws -> Bool {
+    func isPathIgnored(_ path: String) throws -> Bool {
         var ignored: Int32 = 0
         try gitCheck(git_ignore_path_is_ignored(&ignored, pointer, path))
         return ignored != 0

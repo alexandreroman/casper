@@ -8,9 +8,7 @@ public enum MergeOutcome: Equatable, Sendable {
 
 /// Thrown when a headless merge can't be resolved automatically. Nothing is
 /// written to the repository when this is thrown.
-public struct MergeConflictError: Error, Equatable, Sendable {
-    public init() {}
-}
+public struct MergeConflictError: Error, Equatable, Sendable {}
 
 extension Repository {
     /// Merge local branch `branchName` into local branch `targetBranch`,

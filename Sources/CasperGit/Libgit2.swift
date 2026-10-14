@@ -118,11 +118,6 @@ enum Libgit2 {
 public struct GitError: Error, Equatable, Sendable {
     public let code: Int32
     public let message: String
-
-    public init(code: Int32, message: String) {
-        self.code = code
-        self.message = message
-    }
 }
 
 extension GitError: LocalizedError {
