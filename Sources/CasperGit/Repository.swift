@@ -474,11 +474,7 @@ public final class Repository {
                     try gitCheck(git_patch_get_line_in_hunk(&linePtr, patch, h, l))
                     if let lp = linePtr, let line = mapLine(lp.pointee) { lines.append(line) }
                 }
-                hunks.append(GitDiffHunk(
-                    header: header,
-                    oldStart: Int(hunk.old_start), oldLines: Int(hunk.old_lines),
-                    newStart: Int(hunk.new_start), newLines: Int(hunk.new_lines),
-                    lines: lines))
+                hunks.append(GitDiffHunk(header: header, lines: lines))
             }
         }
         return GitDiffFile(

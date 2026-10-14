@@ -27,10 +27,7 @@ final class DiffCopyTests: XCTestCase {
         DiffDocument(diff: GitDiff(files: [
             GitDiffFile(
                 oldPath: "a.swift", newPath: "a.swift", status: .modified, isBinary: false,
-                hunks: [GitDiffHunk(
-                    header: "@@ -1,\(lines.count) +1,\(lines.count) @@",
-                    oldStart: 1, oldLines: lines.count,
-                    newStart: 1, newLines: lines.count, lines: lines)]),
+                hunks: [GitDiffHunk(header: "@@ -1,\(lines.count) +1,\(lines.count) @@", lines: lines)]),
         ]))
     }
 

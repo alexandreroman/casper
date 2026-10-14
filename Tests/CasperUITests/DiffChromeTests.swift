@@ -31,8 +31,7 @@ final class DiffChromeTests: XCTestCase {
     }
 
     private func file(named name: String, lines: [GitDiffLine]) -> GitDiffFile {
-        let hunk = GitDiffHunk(header: "@@ -1,\(lines.count) +1,\(lines.count) @@", oldStart: 1,
-                               oldLines: lines.count, newStart: 1, newLines: lines.count, lines: lines)
+        let hunk = GitDiffHunk(header: "@@ -1,\(lines.count) +1,\(lines.count) @@", lines: lines)
         return GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: false, hunks: [hunk])
     }
 

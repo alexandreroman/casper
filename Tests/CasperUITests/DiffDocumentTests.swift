@@ -15,8 +15,7 @@ final class DiffDocumentTests: XCTestCase {
     }
 
     private func hunk(header: String = "@@ -1,2 +1,2 @@", _ lines: [GitDiffLine]) -> GitDiffHunk {
-        GitDiffHunk(header: header, oldStart: 1, oldLines: lines.count, newStart: 1,
-                    newLines: lines.count, lines: lines)
+        GitDiffHunk(header: header, lines: lines)
     }
 
     private func file(

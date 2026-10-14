@@ -9,8 +9,7 @@ import XCTest
 @MainActor
 final class DiffTextAssemblyTests: XCTestCase {
     private func document(_ lines: [GitDiffLine], paths: [String] = ["a.swift"]) -> DiffDocument {
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: lines.count,
-                               newStart: 1, newLines: lines.count, lines: lines)
+        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", lines: lines)
         return DiffDocument(diff: GitDiff(files: paths.map { path in
             GitDiffFile(oldPath: path, newPath: path, status: .modified,
                         isBinary: false, hunks: [hunk])
@@ -84,8 +83,7 @@ final class DiffTextAssemblyTests: XCTestCase {
     /// Chrome mirrors the row-based renderer exactly: `.caption` for both, but
     /// monospaced for the positional hunk header and proportional for the notes.
     func testChromeLinesCarryTheCaptionSizedFontsAndTheDimColor() {
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: 1,
-                               newStart: 1, newLines: 1,
+        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@",
                                lines: [GitDiffLine(kind: .context, content: "x",
                                                    oldLineNumber: 1, newLineNumber: 1)])
         let doc = DiffDocument(diff: GitDiff(files: [

@@ -17,9 +17,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
         let lines = (1...lineCount).map {
             GitDiffLine(kind: .addition, content: "line \($0)", oldLineNumber: nil, newLineNumber: $0)
         }
-        let hunk = GitDiffHunk(header: "@@ -1,\(lineCount) +1,\(lineCount) @@",
-                               oldStart: 1, oldLines: lineCount,
-                               newStart: 1, newLines: lineCount, lines: lines)
+        let hunk = GitDiffHunk(header: "@@ -1,\(lineCount) +1,\(lineCount) @@", lines: lines)
         return GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: false, hunks: [hunk])
     }
 
@@ -101,8 +99,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// the first may print a gutter number.
     func testWrappedLineYieldsOneLineStartAndSeveralFragments() throws {
         let long = (1...80).map { "word\($0)" }.joined(separator: " ")
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@", oldStart: 1, oldLines: 1,
-                               newStart: 1, newLines: 1,
+        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@",
                                lines: [GitDiffLine(kind: .addition, content: long,
                                                    oldLineNumber: nil, newLineNumber: 1)])
         let document = DiffDocument(diff: GitDiff(files: [

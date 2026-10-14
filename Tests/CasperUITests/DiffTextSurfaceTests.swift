@@ -19,9 +19,7 @@ final class DiffTextSurfaceTests: XCTestCase {
                 GitDiffLine(kind: .addition, content: "line \($0)",
                             oldLineNumber: nil, newLineNumber: $0)
             }
-            let hunk = GitDiffHunk(header: "@@ -1,\(linesPerFile) +1,\(linesPerFile) @@",
-                                   oldStart: 1, oldLines: linesPerFile,
-                                   newStart: 1, newLines: linesPerFile, lines: lines)
+            let hunk = GitDiffHunk(header: "@@ -1,\(linesPerFile) +1,\(linesPerFile) @@", lines: lines)
             return GitDiffFile(oldPath: "f\(index).swift", newPath: "f\(index).swift",
                                status: .modified, isBinary: false, hunks: [hunk])
         }
@@ -42,9 +40,7 @@ final class DiffTextSurfaceTests: XCTestCase {
                             content: "line \(lineNumber) " + String(repeating: "wrapping content ", count: 12),
                             oldLineNumber: nil, newLineNumber: lineNumber)
             }
-            let hunk = GitDiffHunk(header: "@@ -1,\(linesPerFile) +1,\(linesPerFile) @@",
-                                   oldStart: 1, oldLines: linesPerFile,
-                                   newStart: 1, newLines: linesPerFile, lines: lines)
+            let hunk = GitDiffHunk(header: "@@ -1,\(linesPerFile) +1,\(linesPerFile) @@", lines: lines)
             return GitDiffFile(oldPath: "f\(index).swift", newPath: "f\(index).swift",
                                status: .modified, isBinary: false, hunks: [hunk])
         }
