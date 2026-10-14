@@ -43,11 +43,11 @@ surfaces and PTYs (same model as the Ghostty app).
   `theme = light:…,dark:…`. A theme that cannot load (e.g. a named theme
   without Ghostty's resources dir) is detected by `GhosttyConfigBuilder`, which
   rebuilds the config with Casper's `theme` line after the user's files, so the
-  built-in themes apply and a warning is logged. Detection has limits: libghostty
-  finalizes in its default light state, so only the light side of a conditional
-  user theme is checked at startup (a dark side that cannot load shows
-  libghostty's default colours), and the warning also fires if Casper's own
-  theme files fail to load.
+  built-in themes apply and a warning is logged. Detection has limits:
+  libghostty finalizes in its default light state, so only the light side of a
+  conditional user theme is checked at startup (a dark side that cannot load
+  shows libghostty's default colours), and the warning also fires if Casper's
+  own theme files fail to load.
 - **`GhosttyActionDispatcher.swift`** — the extensible seam: the
   `GhosttyActionHandler` protocol plus the default `LoggingActionHandler`, which
   claims nothing and logs whatever it is handed as an explicit no-op. (There is
