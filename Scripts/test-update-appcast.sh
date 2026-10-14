@@ -59,18 +59,46 @@ count() {
     grep -c "$1" "$2" || true
 }
 
+count_blank_lines() {
+    grep -c '^[[:space:]]*$' "$1" || true
+}
+
 # A feed already published by an earlier attempt of the same release: the item
-# for build 42 sits on top of the one for build 41.
+# for build 42 sits on top of the one for build 41. The items have the shape of
+# the real published feed, a blank line after each one included.
+ITEMS="$WORK/items.xml"
+cat > "$ITEMS" <<'XML'
+    <item>
+      <title>Casper 1.0.0</title>
+      <link>https://h/o/r/releases/tag/v1.0.0</link>
+      <sparkle:version>42</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 12 Oct 2026 09:00:00 +0000</pubDate>
+      <description><![CDATA[<h2>Casper 1.0.0</h2><p>Release notes.</p>]]></description>
+      <enclosure url="https://h/o/r/releases/download/v1.0.0/a.zip"
+                 length="1"
+                 type="application/octet-stream"
+                 sparkle:edSignature="sig" />
+    </item>
+
+    <item>
+      <title>Casper 0.9.0</title>
+      <link>https://h/o/r/releases/tag/v0.9.0</link>
+      <sparkle:version>41</sparkle:version>
+      <sparkle:shortVersionString>0.9.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 05 Oct 2026 09:00:00 +0000</pubDate>
+      <description><![CDATA[<h2>Casper 0.9.0</h2><p>Release notes.</p>]]></description>
+      <enclosure url="https://h/o/r/releases/download/v0.9.0/a.zip"
+                 length="1"
+                 type="application/octet-stream"
+                 sparkle:edSignature="sig" />
+    </item>
+
+XML
 FEED="$WORK/published.xml"
-sed -e 's|    <!-- ITEMS -->|&\
-    <item>\
-      <title>Casper 1.0.0</title>\
-      <sparkle:version>42</sparkle:version>\
-    </item>\
-    <item>\
-      <title>Casper 0.9.0</title>\
-      <sparkle:version>41</sparkle:version>\
-    </item>|' "$ROOT/Packaging/appcast-template.xml" > "$FEED"
+sed -e "/<!-- ITEMS -->/r $ITEMS" "$ROOT/Packaging/appcast-template.xml" > "$FEED"
 
 echo "==> a re-run replaces the item of its own build"
 REPO="$WORK/rerun"
@@ -79,6 +107,8 @@ FAKE_CURL_FEED="$FEED" run_update "$REPO"
 [ "$(count '<sparkle:version>42<' "$REPO/appcast.xml")" = 1 ] || fail "build 42 is listed more than once"
 [ "$(count '<sparkle:version>41<' "$REPO/appcast.xml")" = 1 ] || fail "the item for build 41 was lost"
 [ "$(count '<!-- ITEMS -->' "$REPO/appcast.xml")" = 1 ] || fail "the ITEMS marker is missing or doubled"
+[ "$(count_blank_lines "$REPO/appcast.xml")" = "$(count_blank_lines "$FEED")" ] \
+    || fail "the re-run left the replaced item's blank separator behind"
 xmllint --noout "$REPO/appcast.xml" || fail "the re-run feed is not well-formed XML"
 
 echo "==> the first release seeds the feed from the template"

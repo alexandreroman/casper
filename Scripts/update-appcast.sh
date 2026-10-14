@@ -63,7 +63,8 @@ EOF
 # Replace the single marker with the new item (safe literal replace via python3).
 # A re-run of a published release fetches a feed that already lists this build,
 # so any item carrying the same sparkle:version goes first: the insert stays
-# idempotent instead of doubling the item.
+# idempotent instead of doubling the item. The blank line that follows every
+# item in the feed goes with it, or each re-run would add one more.
 ITEM="$ITEM" BUNDLE_VERSION="$BUNDLE_VERSION" python3 - "$OUT" <<'PY'
 import os, re, sys
 path = sys.argv[1]
@@ -79,7 +80,7 @@ def drop_same_build(match):
     return match.group(0)
 
 
-xml = re.sub(r"[ \t]*<item>.*?</item>\n?", drop_same_build, xml, flags=re.DOTALL)
+xml = re.sub(r"[ \t]*<item>.*?</item>[ \t]*\n?(?:[ \t]*\n)?", drop_same_build, xml, flags=re.DOTALL)
 marker = "    <!-- ITEMS -->"
 found = xml.count(marker)
 if found != 1:
