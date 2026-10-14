@@ -52,6 +52,16 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(ControlCommand.Verb.infoClear.rawValue, "infoClear")
     }
 
+    func testAbsoluteURLRequiresSchemeAndHost() {
+        XCTAssertEqual(ControlCommand.absoluteURL("https://example.com/a")?.host, "example.com")
+        XCTAssertEqual(ControlCommand.absoluteURL("http://localhost:5173")?.port, 5173)
+        XCTAssertNil(ControlCommand.absoluteURL(nil))
+        XCTAssertNil(ControlCommand.absoluteURL(""))
+        XCTAssertNil(ControlCommand.absoluteURL("example.com"))
+        XCTAssertNil(ControlCommand.absoluteURL("/tmp/page.html"))
+        XCTAssertNil(ControlCommand.absoluteURL("file:///tmp/page.html"))
+    }
+
     func testUnwrappedJSONStringUnwrapsStringButNotOtherTokens() {
         // `eval --raw`, `content` and `url` unwrap a JSON string to its bare
         // contents, but leave numbers, booleans, null, and containers as-is.

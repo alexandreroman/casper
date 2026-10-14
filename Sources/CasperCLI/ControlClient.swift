@@ -64,7 +64,7 @@ func requireSelector(_ option: WorkspaceTargetOption) throws -> String {
 /// by every verb that takes a URL, so they all refuse the same inputs with the
 /// same wording.
 func requireAbsoluteURL(_ url: String) throws {
-    guard let parsed = URL(string: url), parsed.scheme != nil, parsed.host != nil else {
+    guard ControlCommand.absoluteURL(url) != nil else {
         throw exitWithError("invalid url '\(url)' (expected an absolute URL like https://example.com)")
     }
 }

@@ -108,13 +108,13 @@ final class ControlServer {
             reply(Self.ack(model.controlCloseTerminal(in: id, terminalID: command.target), workspace: id,
                            failure: "no terminal '\(command.target ?? "")' in this workspace")); return
         case .browserOpen:
-            guard let url = Self.parsedURL(command.url) else {
+            guard let url = ControlCommand.absoluteURL(command.url) else {
                 reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
             reply(Self.ack(model.controlOpenBrowser(url: url, in: id), workspace: id,
                            failure: "cannot open browser")); return
         case .browserLoad:
-            guard let url = Self.parsedURL(command.url) else {
+            guard let url = ControlCommand.absoluteURL(command.url) else {
                 reply(.failure("invalid url: \(command.url ?? "nil")")); return
             }
             reply(Self.ack(model.controlLoadBrowser(url: url, in: id), workspace: id,
@@ -251,13 +251,6 @@ final class ControlServer {
         Task { @MainActor in
             reply(Self.browserReply(await op(), workspace: id))
         }
-    }
-
-    /// The `--url` argument, accepted only as an absolute URL: a bare path or any
-    /// string without both a scheme and a host is rejected rather than loaded.
-    private static func parsedURL(_ raw: String?) -> URL? {
-        guard let raw, let url = URL(string: raw), url.scheme != nil, url.host != nil else { return nil }
-        return url
     }
 
     /// The acknowledgement a workspace-scoped command replies with: the workspace id

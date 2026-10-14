@@ -55,6 +55,14 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     /// wait` sizes its socket timeout from the same value.
     public static let defaultWaitTimeoutMs = 5000
 
+    /// `raw` as a URL the browser verbs accept: absolute, with both a scheme and a
+    /// host. Anything else — a bare path, a relative reference, nil — is nil, so
+    /// the CLI and the app refuse the same inputs.
+    public static func absoluteURL(_ raw: String?) -> URL? {
+        guard let raw, let url = URL(string: raw), url.scheme != nil, url.host != nil else { return nil }
+        return url
+    }
+
     public var verb: Verb
     public var workspace: String?   // target selector: workspace id or name (nil = app's selected)
     public var state: String?       // statusSet: AgentState raw value
