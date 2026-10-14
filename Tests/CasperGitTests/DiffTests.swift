@@ -295,32 +295,25 @@ final class DiffTests: XCTestCase {
         XCTAssertEqual(statuses, ["deleted:a.txt", "deleted:b.txt", "renamed:c.txt"])
     }
 
-    func testFailedRenamePassLeavesTheDeltasUnpaired() throws {
-        // Rename detection is best-effort: a target it cannot read mid-pass costs the
-        // pairing, not the diff. Drives the rename pass directly, so the target can
-        // turn unreadable between the listing and the hashing. A target unreadable from
-        // the start is another case: `diffWorkdirToHead` lists it as `unreadable`
-        // (`testUnreadableFileIsListedWithoutFailingTheDiff`).
-        try FileManager.default.removeItem(at: url("README.md"))
-        try writeReadmeLookalike(to: "unreadable.txt", size: 64)
+    func testUnreadableFileLeavesOtherRenamesDetected() throws {
+        // A target the similarity pass cannot open costs only its own pairing: the
+        // rename beside it is still found, and the file is still listed as unreadable.
+        try XCTSkipIf(geteuid() == 0, "root reads a mode-000 file regardless")
+        try GitFixture.commit(
+            atPath: directory.path, file: "oldname.swift", contents: Self.twentyLines, message: "Add oldname")
+        try FileManager.default.moveItem(at: url("oldname.swift"), to: url("newname.swift"))
+        let lockedPath = url("locked.txt").path
+        // Under 128 bytes, so the size-ratio check never spares it the hashing.
+        try "hidden\n".write(toFile: lockedPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: lockedPath)
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: lockedPath)
+        }
 
-        var tree: OpaquePointer?
-        try gitCheck(git_revparse_single(&tree, repo.pointer, "HEAD^{tree}"))
-        defer { git_object_free(tree) }
-        var options = git_diff_options()
-        try gitCheck(git_diff_options_init(&options, UInt32(GIT_DIFF_OPTIONS_VERSION)))
-        options.flags = GIT_DIFF_INCLUDE_UNTRACKED.rawValue
-        var diff: OpaquePointer?
-        try gitCheck(git_diff_tree_to_workdir_with_index(&diff, repo.pointer, tree, &options))
-        defer { git_diff_free(diff) }
+        let files = try repo.diffWorkdirToHead().files
 
-        // Readable when the diff listed it, locked by the time its content is hashed.
-        let unreadablePath = url("unreadable.txt").path
-        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: unreadablePath)
-        Repository.detectRenames(in: try XCTUnwrap(diff))
-
-        let statuses = (0..<git_diff_num_deltas(diff)).map { git_diff_get_delta(diff, $0)?.pointee.status }
-        XCTAssertEqual(statuses, [GIT_DELTA_DELETED, GIT_DELTA_UNTRACKED])
+        XCTAssertEqual(files.map { "\($0.status):\($0.newPath)" }, ["unreadable:locked.txt", "renamed:newname.swift"])
+        XCTAssertEqual(files.last?.oldPath, "oldname.swift")
     }
 
     func testRenameBudgetFollowsGitsDefaultRenameLimit() {

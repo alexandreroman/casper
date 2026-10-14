@@ -51,7 +51,7 @@ CI, test, and documentation-only work is left out.
 - "Create Workspace…" now says why a workspace could not be created — for
   example a repository with no commits yet — instead of a generic guess.
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
-  as unreadable.
+  as unreadable, and every other file shows as usual, a renamed file included.
 - `casper` commands fail at once instead of hanging for several seconds when
   Casper quit uncleanly and left its socket behind.
 - A `casper` command that times out, such as a `casper browser` command on a
