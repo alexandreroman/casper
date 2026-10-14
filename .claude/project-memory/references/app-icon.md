@@ -64,7 +64,6 @@ used (Apple dropped support for it in Xcode 26.1).
   deployment target. It compiles into a **temp
   dir and copies only `Assets.car`** — actool also emits its own low-res
   `AppIcon.icns`, which would otherwise clobber the hand-crafted high-res one.
-  The step no-ops (icns-only) when `AppIcon.icon` is absent.
 - Dev build stays `.icns`-only (no `.icon`).
 
 **Why:** the icon is a native macOS one whose form encodes Casper's essence —
