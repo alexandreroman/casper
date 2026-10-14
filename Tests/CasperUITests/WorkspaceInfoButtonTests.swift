@@ -18,8 +18,7 @@ import CasperCore
 @MainActor
 final class WorkspaceInfoButtonTests: XCTestCase {
     /// The seeded model, plus its workspace re-read after `markdown` (when given)
-    /// is published via `controlSetInfo` — the same path a real `casper info set`
-    /// takes, so the workspace starts unread.
+    /// is published via `controlSetInfo`.
     private func seeded(markdown: String?) -> (AppModel, Workspace) {
         let (model, seed) = makeSeededModel()
         if let markdown {
