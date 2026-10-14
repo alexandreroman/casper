@@ -84,8 +84,8 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         var captureInFlight = false
         var nowProvider = MainThreadHangWatchdog.defaultNowProvider
         var scheduleAck = MainThreadHangWatchdog.defaultScheduleAck
-        var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)?
-        var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)?
+        var captureDispatch: @Sendable (@escaping @Sendable () -> Void) -> Void
+        var capture: @Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void
     }
 
     private let lock: OSAllocatedUnfairLock<State>
@@ -93,14 +93,8 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Dedicated serial queue that owns the timer. Never blocked by the main
     /// thread, so ticks keep firing throughout a hang.
     private let queue = DispatchQueue(label: "com.github.alexandreroman.casper.hang-watchdog")
-    /// Separate queue for the (multi-second) `sample` subprocess so a capture never
-    /// stalls the detection timer.
-    private let captureQueue = DispatchQueue(
-        label: "com.github.alexandreroman.casper.hang-watchdog.capture", qos: .utility)
     /// The active timer, created lazily by `start()`. Confined to `queue`.
     private var timer: DispatchSourceTimer?
-
-    private let onHangCaptured: @Sendable (URL) -> Void
 
     // MARK: Injectable seams (internal, production defaults)
     //
@@ -162,8 +156,8 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     }
 
     /// Dispatches the (blocking) capture work off the detection timer's queue. The
-    /// default uses `captureQueue`; a test runs it inline for determinism.
-    var captureDispatch: (@Sendable (@escaping @Sendable () -> Void) -> Void)? {
+    /// default uses a dedicated serial queue; a test runs it inline for determinism.
+    var captureDispatch: @Sendable (@escaping @Sendable () -> Void) -> Void {
         get { lock.withLock { $0.captureDispatch } }
         set { lock.withLock { $0.captureDispatch = newValue } }
     }
@@ -171,7 +165,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Performs the capture for a detected hang of `hangDuration`, writing the dump
     /// to `destination`. The default runs `sample`; a test stubs it to record the
     /// call. Set to the real implementation in `init`.
-    var capture: (@Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void)? {
+    var capture: @Sendable (_ hangDuration: TimeInterval, _ destination: URL) -> Void {
         get { lock.withLock { $0.capture } }
         set { lock.withLock { $0.capture = newValue } }
     }
@@ -185,17 +179,20 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         threshold: TimeInterval = 2.0,
         onHangCaptured: @escaping @Sendable (URL) -> Void = { _ in }
     ) {
-        self.onHangCaptured = onHangCaptured
+        // A separate queue for the (multi-second) `sample` subprocess, so a capture
+        // never stalls the detection timer.
+        let captureQueue = DispatchQueue(label: "com.github.alexandreroman.casper.hang-watchdog.capture", qos: .utility)
         // `lastMainAck` starts neutral; `start()` re-baselines it from the clock
         // before the first tick runs, so this value never triggers a phantom hang.
-        self.lock = OSAllocatedUnfairLock(initialState: State(threshold: threshold, lastMainAck: 0))
-        // These two defaults need `self`, so they cannot be State field defaults.
-        self.lock.withLock { state in
-            state.captureDispatch = { [captureQueue] block in captureQueue.async(execute: block) }
-            state.capture = { [weak self] hangDuration, destination in
-                self?.performDefaultCapture(hangDuration: hangDuration, destination: destination)
-            }
-        }
+        let state = State(
+            threshold: threshold,
+            lastMainAck: 0,
+            captureDispatch: { block in captureQueue.async(execute: block) },
+            capture: { hangDuration, destination in
+                Self.performDefaultCapture(
+                    hangDuration: hangDuration, destination: destination, onHangCaptured: onHangCaptured)
+            })
+        self.lock = OSAllocatedUnfairLock(initialState: state)
     }
 
     /// Starts the detection timer. Idempotent, and safe to call from any thread.
@@ -288,17 +285,10 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// Runs the capture off the timer queue, then clears the in-flight flag so a
     /// later episode can capture again.
     private func dispatchCapture(hangDuration: TimeInterval) {
-        // `evaluate` already set `captureInFlight`, and only the work block below
-        // clears it. With no dispatcher there is no work block, so clear it here or
-        // the watchdog stays armed-but-mute for the rest of the process's life.
-        guard let captureDispatch else {
-            lock.withLock { $0.captureInFlight = false }
-            return
-        }
         let destination = Self.dumpDestination(at: Date())
         let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
-            self.capture?(hangDuration, destination)
+            self.capture(hangDuration, destination)
             self.lock.withLock { $0.captureInFlight = false }
         }
         captureDispatch(work)
@@ -322,7 +312,9 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
 
     /// Default capture: log a marker first (so we always have a record even if the
     /// subprocess fails), then run `/usr/bin/sample` and confirm the written path.
-    private func performDefaultCapture(hangDuration: TimeInterval, destination: URL) {
+    private static func performDefaultCapture(
+        hangDuration: TimeInterval, destination: URL, onHangCaptured: @Sendable (URL) -> Void
+    ) {
         // Emit the marker BEFORE anything can fail, so the unified log always
         // carries the hang duration and intended dump path even if `sample` never
         // runs. `.fault` makes it stand out in the unified log.
