@@ -44,13 +44,11 @@
     <string>https://github.com/alexandreroman/casper/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>+y5n3ii5Xyp19iA26QmYeNbkXNyFqoePDqftYz6kTWE=</string>
-    <!-- Check daily in the background; the user still confirms every install
-         (SUAutomaticallyUpdate is deliberately left unset/false). Setting this
-         explicitly also suppresses Sparkle's first-launch "check automatically?"
-         prompt. -->
+    <!-- Check daily in the background (Sparkle's default interval); the user
+         still confirms every install (SUAutomaticallyUpdate is deliberately
+         left unset/false). Setting this explicitly also suppresses Sparkle's
+         first-launch "check automatically?" prompt. -->
     <key>SUEnableAutomaticChecks</key>
     <true/>
-    <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
 </dict>
 </plist>
