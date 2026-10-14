@@ -79,9 +79,10 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `SocketTransportError` serves both channels; a refused connect — the stale
   socket file a crashed instance leaves — fails the client at once rather than
   at its timeout; a retriable verb gets up to 4 attempts, each with its own
-  timeout: it retries a transport failure — a refused or dropped connection, a
-  reply that never arrives whole — but never an attempt that timed out waiting
-  for the reply, so a late failure can stretch a call to about 4 × its timeout;
+  timeout: it retries any `SocketTransportError` before a full reply — e.g. a
+  missing or refused socket, a dropped connection, a truncated or undecodable
+  reply; a reply timeout never — so a late failure can stretch a call to about
+  4 × its timeout;
   the retry is deliberate, see [[socket-idempotent-retry]]), plus the pure CLI
   helpers `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`.
   Concurrency discipline for the socket classes is in

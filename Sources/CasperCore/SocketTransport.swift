@@ -460,13 +460,13 @@ public enum SocketClientEngine<
 
     /// Sends `command` and returns the decoded `Response`.
     ///
-    /// Set `retriable` to true ONLY for idempotent verbs. A transport-level
-    /// failure (`SocketTransportError`) then triggers a bounded retry over a fresh
-    /// connection: a refused or dropped connection, or a reply that never arrives
-    /// whole (none at all, truncated, undecodable). A decoded `Response` — even
-    /// `ok: false` — is a real answer and is returned immediately, never retried,
-    /// so a mutating verb is never applied twice. Nor is an attempt that timed out
-    /// waiting for the reply: it throws as soon as it expires.
+    /// Set `retriable` to true ONLY for idempotent verbs. Any `SocketTransportError`
+    /// before a full reply (a decoded `Response`) then triggers a bounded retry over a
+    /// fresh connection — e.g. a missing or refused socket, a dropped connection, or a
+    /// reply that is absent, truncated or undecodable; a reply timeout never does: it
+    /// throws as soon as it expires. A decoded `Response` — even `ok: false` — is a
+    /// real answer and is returned immediately, never retried, so a mutating verb is
+    /// never applied twice.
     ///
     /// Every attempt still gets its own full `timeout`, and a transport failure can
     /// arrive late — a connection dropped just before the deadline, after a slow
