@@ -17,7 +17,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
     private func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
         model.agentIntegrationProbe = { statuses }
         model.refreshAgentIntegrations()
-        await model.agentIntegrationTask?.value
+        await model.agentReminders.task?.value
     }
 
     private func remindedAgents(_ model: AppModel) -> [CodingAgent] {
@@ -26,7 +26,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
 
     /// The published line for one agent, looked up the way the sidebar row does —
     /// dismissal is keyed by the line, not by the agent.
-    private func reminder(_ model: AppModel, _ agent: CodingAgent) throws -> AppModel.AgentIntegrationReminder {
+    private func reminder(_ model: AppModel, _ agent: CodingAgent) throws -> AgentIntegrationReminders.Reminder {
         try XCTUnwrap(model.agentIntegrationReminders.first { $0.agent == agent })
     }
 
@@ -322,7 +322,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
         // Nothing has been probed, so there is nothing to *re*fresh: the first probe pays
         // the cold login-shell cost and belongs to the launch path. That is also what
         // keeps every test driving this tick off the real machine.
-        XCTAssertNil(model.agentIntegrationTask)
+        XCTAssertNil(model.agentReminders.task)
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
     }
 
@@ -335,7 +335,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
         model.agentIntegrationProbe = { healthy }
         model.runAgentDetectionTick()
 
-        XCTAssertNil(model.agentIntegrationTask)
+        XCTAssertNil(model.agentReminders.task)
         XCTAssertEqual(remindedAgents(model), [.claudeCode])
     }
 
@@ -351,7 +351,7 @@ final class AgentIntegrationReminderTests: XCTestCase {
         let healthy: [CodingAgent: AgentIntegrationStatus] = [.claudeCode: .installed]
         model.agentIntegrationProbe = { healthy }
         model.runAgentDetectionTick()
-        await model.agentIntegrationTask?.value
+        await model.agentReminders.task?.value
 
         XCTAssertTrue(model.agentIntegrationReminders.isEmpty)
     }
@@ -359,28 +359,28 @@ final class AgentIntegrationReminderTests: XCTestCase {
     // MARK: - The staleness interval
 
     func testAModelThatHasNeverProbedHasNothingToRefresh() {
-        XCTAssertFalse(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: nil, now: Date()))
+        XCTAssertFalse(AgentIntegrationReminders.shouldRefresh(lastProbeAt: nil, now: Date()))
     }
 
     func testAResultYoungerThanTheIntervalIsStillFresh() {
         let now = Date()
-        let justInside = now.addingTimeInterval(-AppModel.agentIntegrationProbeInterval + 1)
-        XCTAssertFalse(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: justInside, now: now))
+        let justInside = now.addingTimeInterval(-AgentIntegrationReminders.probeInterval + 1)
+        XCTAssertFalse(AgentIntegrationReminders.shouldRefresh(lastProbeAt: justInside, now: now))
     }
 
     func testAResultAtOrPastTheIntervalIsStale() {
         let now = Date()
-        let atBoundary = now.addingTimeInterval(-AppModel.agentIntegrationProbeInterval)
-        XCTAssertTrue(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: atBoundary, now: now))
+        let atBoundary = now.addingTimeInterval(-AgentIntegrationReminders.probeInterval)
+        XCTAssertTrue(AgentIntegrationReminders.shouldRefresh(lastProbeAt: atBoundary, now: now))
 
-        let wellPast = now.addingTimeInterval(-AppModel.agentIntegrationProbeInterval - 1)
-        XCTAssertTrue(AppModel.shouldRefreshAgentIntegrations(lastProbeAt: wellPast, now: now))
+        let wellPast = now.addingTimeInterval(-AgentIntegrationReminders.probeInterval - 1)
+        XCTAssertTrue(AgentIntegrationReminders.shouldRefresh(lastProbeAt: wellPast, now: now))
     }
 
     func testTheIntervalIsMeasuredInSecondsNotMinutes() {
         // The loop the user watches is "install it, watch the line go". Minutes of
         // staleness break it, and every probe after the first is a handful of `stat`
         // calls — there is nothing to buy by rationing them.
-        XCTAssertLessThanOrEqual(AppModel.agentIntegrationProbeInterval, 30)
+        XCTAssertLessThanOrEqual(AgentIntegrationReminders.probeInterval, 30)
     }
 }

@@ -331,7 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// release the Dock bounce the user just answered, and re-probe the agent
     /// integrations — the user may have installed or updated a plugin in the app
     /// they just came back from. Stale-checked, so a Cmd-Tab storm probes at most
-    /// once per `AppModel.agentIntegrationProbeInterval`; the detection tick applies
+    /// once per `AgentIntegrationReminders.probeInterval`; the detection tick applies
     /// the same check on its own cadence, which covers an install done *inside*
     /// Casper, where the app never resigns active at all.
     func applicationDidBecomeActive(_ notification: Notification) {

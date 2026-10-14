@@ -585,7 +585,7 @@ UI for that whole time.
 pays the cold cost. Afterwards a **staleness check** rides the existing agent
 detection tick: each pass calls `refreshAgentIntegrationsIfStale()`, which
 re-probes once the last result is older than
-`AppModel.agentIntegrationProbeInterval` — **five seconds**. It is a freshness
+`AgentIntegrationReminders.probeInterval` — **five seconds**. It is a freshness
 horizon, not a rate limiter: nothing is being protected from load, the answer is
 simply not trusted past that age. The cadence is affordable precisely because of
 the `LoginShellPath` cache above: every probe after the first spawns nothing at
@@ -595,11 +595,11 @@ still probes at most once per interval.
 
 Three rules hold the cadence together:
 
-- **A tick never starts the *first* probe.** `shouldRefreshAgentIntegrations`
-  answers `false` for a nil `lastProbeAt`: with no earlier result there is
-  nothing to *re*fresh, and paying the cold login-shell cost stays the launch
-  path's job. It also keeps every unit test that drives the detection tick off
-  the real filesystem.
+- **A tick never starts the *first* probe.**
+  `AgentIntegrationReminders.shouldRefresh` answers `false` for a nil
+  `lastProbeAt`: with no earlier result there is nothing to *re*fresh, and
+  paying the cold login-shell cost stays the launch path's job. It also keeps
+  every unit test that drives the detection tick off the real filesystem.
 - **Seconds are what close the loop.** The expected way to install an
   integration is a `plugin install` command typed *in a Casper terminal*, which
   never resigns the app active — so activation alone fires no event at all, and

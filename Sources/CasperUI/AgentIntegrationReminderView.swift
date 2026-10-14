@@ -47,7 +47,7 @@ struct AgentIntegrationReminderView: View {
     /// line still names the installed version, bounded by
     /// `maxDisplayedVersionLength`: it is the one detail that makes a nag someone
     /// believes is wrong diagnosable from a screenshot.
-    static func message(for reminder: AppModel.AgentIntegrationReminder) -> String {
+    static func message(for reminder: AgentIntegrationReminders.Reminder) -> String {
         let name = reminder.agent.displayName
         switch reminder.kind {
         case .trustNotice:
@@ -83,7 +83,7 @@ struct AgentIntegrationReminderView: View {
 
     /// The leading glyph. The two kinds must not look alike — one says "there is
     /// something for you to do", the other "this is set up, one step from active".
-    static func symbolName(for kind: AppModel.AgentIntegrationReminder.Kind) -> String {
+    static func symbolName(for kind: AgentIntegrationReminders.Reminder.Kind) -> String {
         switch kind {
         // Advisory rather than destructive: the triangle carries "worth your
         // attention" without the red an actual error would need.
@@ -102,7 +102,7 @@ struct AgentIntegrationReminderView: View {
 /// rather than by tuning `contentShape`.
 private struct AgentIntegrationReminderRow: View {
     let model: AppModel
-    let reminder: AppModel.AgentIntegrationReminder
+    let reminder: AgentIntegrationReminders.Reminder
 
     @State private var isHovered = false
     @State private var isDismissHovered = false

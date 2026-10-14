@@ -26,7 +26,7 @@ final class SidebarIconSlotTests: XCTestCase {
 
     /// The reminder kinds, one per glyph. Read back through the production function so
     /// a change there reaches this test rather than being duplicated.
-    private static let reminderKinds: [AppModel.AgentIntegrationReminder.Kind] =
+    private static let reminderKinds: [AgentIntegrationReminders.Reminder.Kind] =
         [.actionNeeded, .trustNotice]
 
     /// A title held constant across the footer rows under test, so the only thing that
@@ -35,7 +35,7 @@ final class SidebarIconSlotTests: XCTestCase {
 
     /// An agent status producing each reminder kind, and with it the reminder glyph.
     private static func status(
-        for kind: AppModel.AgentIntegrationReminder.Kind
+        for kind: AgentIntegrationReminders.Reminder.Kind
     ) -> AgentIntegrationStatus {
         switch kind {
         case .actionNeeded: return .missing
@@ -113,14 +113,14 @@ final class SidebarIconSlotTests: XCTestCase {
     /// production view driven by the production probe — a single reminder, so the
     /// view's width is that one row's width.
     private func reminderMessageOffset(
-        for kind: AppModel.AgentIntegrationReminder.Kind
+        for kind: AgentIntegrationReminders.Reminder.Kind
     ) async -> CGFloat {
         let model = makeModel()
         // Resolved here rather than inside the probe: the probe runs off the main actor.
         let statuses: [CodingAgent: AgentIntegrationStatus] = [.claudeCode: Self.status(for: kind)]
         model.agentIntegrationProbe = { statuses }
         model.refreshAgentIntegrations()
-        await model.agentIntegrationTask?.value
+        await model.agentReminders.task?.value
         guard let reminder = model.agentIntegrationReminders.first,
               model.agentIntegrationReminders.count == 1, reminder.kind == kind else {
             XCTFail("expected exactly one \(kind) reminder")

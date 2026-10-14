@@ -29,7 +29,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     private func probe(_ model: AppModel, _ statuses: [CodingAgent: AgentIntegrationStatus]) async {
         model.agentIntegrationProbe = { statuses }
         model.refreshAgentIntegrations()
-        await model.agentIntegrationTask?.value
+        await model.agentReminders.task?.value
     }
 
     /// Host the real view and return the size it lays out to.
@@ -55,10 +55,10 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     // MARK: - Wording and glyphs
 
     func testMessagesNameTheAgentAndStateTheSituation() {
-        let missing = AppModel.AgentIntegrationReminder(agent: .claudeCode, status: .missing, kind: .actionNeeded)
-        let outdated = AppModel.AgentIntegrationReminder(
+        let missing = AgentIntegrationReminders.Reminder(agent: .claudeCode, status: .missing, kind: .actionNeeded)
+        let outdated = AgentIntegrationReminders.Reminder(
             agent: .claudeCode, status: .outdated(installed: "0.1.0"), kind: .actionNeeded)
-        let trust = AppModel.AgentIntegrationReminder(
+        let trust = AgentIntegrationReminders.Reminder(
             agent: .codex, status: .installedAwaitingHookTrust, kind: .trustNotice)
 
         XCTAssertEqual(AgentIntegrationReminderView.message(for: missing), "Claude Code integration not installed")
@@ -68,7 +68,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     }
 
     func testAnAbsurdVersionIsCappedInTheMessage() {
-        let reminder = AppModel.AgentIntegrationReminder(
+        let reminder = AgentIntegrationReminders.Reminder(
             agent: .claudeCode, status: .outdated(installed: Self.absurdVersion), kind: .actionNeeded)
 
         let message = AgentIntegrationReminderView.message(for: reminder)
@@ -87,7 +87,7 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
     /// A version made only of whitespace has nothing to report, so the line says what
     /// it said before the version was ever shown — never an empty parenthesis.
     func testAnEmptyVersionLeavesTheLineBare() {
-        let reminder = AppModel.AgentIntegrationReminder(
+        let reminder = AgentIntegrationReminders.Reminder(
             agent: .claudeCode, status: .outdated(installed: "  \n "), kind: .actionNeeded)
 
         XCTAssertEqual(AgentIntegrationReminderView.message(for: reminder), "Claude Code integration is outdated")

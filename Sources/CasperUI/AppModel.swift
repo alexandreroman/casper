@@ -2220,20 +2220,6 @@ final class AppModel {
         dismissed: restoredAgentReminderDismissals,
         persist: { [weak self] in self?.persist() })
 
-    /// One sidebar reminder line. Spelled `AppModel.AgentIntegrationReminder` by the
-    /// views and the tests, so the name stays put now that the type lives in its own file.
-    typealias AgentIntegrationReminder = AgentIntegrationReminders.Reminder
-
-    /// How long a probe result stays fresh before a stale check re-runs one.
-    nonisolated static var agentIntegrationProbeInterval: TimeInterval {
-        AgentIntegrationReminders.probeInterval
-    }
-
-    /// Whether a stale check should re-probe.
-    nonisolated static func shouldRefreshAgentIntegrations(lastProbeAt: Date?, now: Date) -> Bool {
-        AgentIntegrationReminders.shouldRefresh(lastProbeAt: lastProbeAt, now: now)
-    }
-
     /// Probes each agent's integration. Injectable so tests never spawn a login shell
     /// or read the real home directory.
     var agentIntegrationProbe: @Sendable () -> [CodingAgent: AgentIntegrationStatus] {
@@ -2244,22 +2230,19 @@ final class AppModel {
     /// The agents the sidebar should currently remind about, in `CodingAgent.allCases`
     /// order. Observed through `agentReminders`, so a probe landing after the sidebar
     /// has rendered still re-renders it.
-    var agentIntegrationReminders: [AgentIntegrationReminder] { agentReminders.reminders }
-
-    /// The in-flight probe, if any — the seam a test awaits after triggering one.
-    var agentIntegrationTask: Task<Void, Never>? { agentReminders.task }
+    var agentIntegrationReminders: [AgentIntegrationReminders.Reminder] { agentReminders.reminders }
 
     /// Probe now, whatever the last result's age (the launch probe).
     func refreshAgentIntegrations() { agentReminders.refresh() }
 
-    /// Re-probe if the last result is older than `agentIntegrationProbeInterval`.
+    /// Re-probe if the last result is older than `AgentIntegrationReminders.probeInterval`.
     func refreshAgentIntegrationsIfStale() { agentReminders.refreshIfStale() }
 
     /// The user opened a reminder's documentation, so an install is imminent.
     func agentReminderDocumentationOpened() { agentReminders.documentationOpened() }
 
     /// Dismiss one reminder line, permanently as far as this problem is concerned.
-    func dismissAgentReminder(_ reminder: AgentIntegrationReminder) {
+    func dismissAgentReminder(_ reminder: AgentIntegrationReminders.Reminder) {
         agentReminders.dismiss(reminder)
     }
 
