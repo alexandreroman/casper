@@ -58,9 +58,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // giving up, so a single null does not permanently kill the pane.
     private var surfaceCreationAttempts = 0
     private static let maxSurfaceCreationAttempts = 3
-    // Holds the one retry currently armed, so a window re-entry can retire it before
-    // restoring the budget. Without that, leaving and re-entering the window inside
-    // the retry delay would leave two independent retry chains running on this view.
+    // Holds the one retry currently armed, so a fresh creation cycle (a window re-entry
+    // or a display change) can retire it before restoring the budget. Without that, a
+    // restart inside the retry delay would leave two independent retry chains running.
     private let surfaceRetry = Debouncer(delay: 0.25)
     // Shown in place of the terminal when surface creation ultimately fails, so the
     // user gets an explanation instead of a silently blank pane.
