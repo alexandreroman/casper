@@ -313,7 +313,7 @@ struct BrowserCommand: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Reload the browser page, optionally waiting for it to finish loading.")
 
-        @Flag(name: .long, help: "Also wait until the page finishes loading (readyState complete).")
+        @Flag(name: .long, help: "Also wait until the reloaded page finishes loading (or fails to load).")
         var wait = false
         @OptionGroup var target: WorkspaceTargetOption
 
