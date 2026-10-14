@@ -1,5 +1,4 @@
 import Clibgit2
-import Foundation
 
 /// The result of `Repository.mergeBranchHeadless`.
 public enum MergeOutcome: Equatable, Sendable {
@@ -16,13 +15,6 @@ public struct MergeConflictError: Error, Equatable, Sendable {}
 /// chose would sit in their history forever. Nothing is written to the
 /// repository when this is thrown.
 public struct MissingCommitterIdentityError: Error, Equatable, Sendable {}
-
-extension MissingCommitterIdentityError: LocalizedError {
-    public var errorDescription: String? {
-        "No Git identity is configured. Set user.name and user.email "
-            + "(git config --global user.name \"Your Name\"), then try again."
-    }
-}
 
 extension Repository {
     /// Merge local branch `branchName` into local branch `targetBranch`,

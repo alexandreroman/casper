@@ -440,6 +440,22 @@ final class WorktreeManagerTests: XCTestCase {
         }
     }
 
+    func testMergeWithoutCommitterIdentityThrowsMissingCommitterIdentityReason() throws {
+        let base = try Repository.open(atPath: repoDir.path).headBranchName()
+        let wtPath = root.appendingPathComponent("feature").path
+        try WorktreeManager.create(
+            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
+        try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+
+        XCTAssertThrowsError(
+            try WorktreeManager.merge(
+                repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
+        ) { error in
+            XCTAssertEqual((error as? WorktreeError)?.reason, .missingCommitterIdentity, "got: \(error)")
+        }
+    }
+
     private func writeRepoConfig(_ json: String) throws {
         try json.write(
             to: repoDir.appendingPathComponent(".casper.json"),

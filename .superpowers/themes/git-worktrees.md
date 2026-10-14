@@ -83,9 +83,12 @@ binary. We own this surface; it exposes only what Casper needs.
   The merge commit is written under the user's own Git identity
   (`git_signature_default`) and never an invented one: with no usable
   `user.name`/`user.email` it throws `MissingCommitterIdentityError` before
-  writing anything, and "Merge and Close" shows its message — set the
-  identity, then try again — with nothing deleted. An up-to-date merge writes
-  no commit and needs no identity. See `Sources/CasperGit/Merge.swift`.
+  writing anything. `WorktreeManager.merge` maps both refusals into
+  `WorktreeError` (`.mergeConflict`, `.missingCommitterIdentity`), as it does
+  every libgit2 failure, and "Merge and Close" shows the identity one's
+  message — set the identity, then try again — with nothing deleted. An
+  up-to-date merge writes no commit and needs no identity. See
+  `Sources/CasperGit/Merge.swift`.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.

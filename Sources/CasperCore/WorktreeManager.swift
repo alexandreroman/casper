@@ -3,25 +3,26 @@ import Foundation
 
 /// A worktree-creation failure expressed in Casper's own vocabulary, so the UI
 /// never sees a raw libgit2 code.
-struct WorktreeError: Error, Equatable, Sendable {
-    enum Reason: Equatable, Sendable {
+public struct WorktreeError: Error, Equatable, Sendable {
+    public enum Reason: Equatable, Sendable {
         case repositoryNotFound
         case repositoryHasNoCommits
         case branchAlreadyCheckedOut
         case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
+        case missingCommitterIdentity
         case fileCopyFailed(String)
         case configInvalid(String)
         case gitFailure(String)
     }
 
-    let reason: Reason
+    public let reason: Reason
     init(_ reason: Reason) { self.reason = reason }
 }
 
 extension WorktreeError: LocalizedError {
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch reason {
         case .repositoryNotFound:
             return "Repository not found."
@@ -36,6 +37,9 @@ extension WorktreeError: LocalizedError {
             return "The worktree path already exists."
         case .mergeConflict:
             return "The merge could not be completed automatically due to conflicts."
+        case .missingCommitterIdentity:
+            return "No Git identity is configured. Set user.name and user.email "
+                + "(git config --global user.name \"Your Name\"), then try again."
         case .fileCopyFailed(let message):
             return "Failed to copy workspace files: \(message)"
         case .configInvalid(let message):
@@ -314,9 +318,9 @@ public enum WorktreeManager {
     /// Merge `branch` into `targetBranch` in the repository at `repoPath`,
     /// writing a merge commit and advancing `targetBranch`. Throws
     /// `WorktreeError(.mergeConflict)` when the merge can't be resolved
-    /// automatically, and lets CasperGit's `MissingCommitterIdentityError` through
-    /// as is, for the caller to tell apart — nothing is written to the repository
-    /// in either case.
+    /// automatically, and `WorktreeError(.missingCommitterIdentity)` when the user's
+    /// Git configuration names no one to commit as — nothing is written to the
+    /// repository in either case.
     public static func merge(
         repoPath: String, branch: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -325,6 +329,8 @@ public enum WorktreeManager {
             return try repo.mergeBranchHeadless(branch, into: targetBranch, message: message)
         } catch is MergeConflictError {
             throw WorktreeError(.mergeConflict)
+        } catch is MissingCommitterIdentityError {
+            throw WorktreeError(.missingCommitterIdentity)
         } catch let error as GitError {
             throw WorktreeError(.gitFailure(error.message))
         }

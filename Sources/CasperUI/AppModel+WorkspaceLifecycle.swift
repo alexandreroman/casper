@@ -1,5 +1,4 @@
 import CasperCore
-import CasperGit
 import Foundation
 
 /// The workspace close/delete lifecycle: the off-main-actor git hop, the progress
@@ -210,7 +209,7 @@ extension AppModel {
                     repoPath: repoPath, branch: branch, into: baseBranch,
                     message: "Merge branch '\(branch)' into \(baseBranch)")
             }
-        } catch let error as MissingCommitterIdentityError {
+        } catch let error as WorktreeError where error.reason == .missingCommitterIdentity {
             return .mergeFailed(message: "\(error.localizedDescription) Nothing was deleted.")
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
