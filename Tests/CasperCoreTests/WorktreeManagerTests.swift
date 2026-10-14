@@ -453,7 +453,7 @@ final class WorktreeManagerTests: XCTestCase {
             try WorktreeManager.merge(
                 repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
         ) { error in
-            guard case .missingCommitterIdentity(let detail, let variables) = (error as? WorktreeError)?.reason
+            guard case .missingCommitterIdentity(let detail, let variables, _) = (error as? WorktreeError)?.reason
             else {
                 return XCTFail("expected .missingCommitterIdentity, got \(error)")
             }
@@ -474,7 +474,7 @@ final class WorktreeManagerTests: XCTestCase {
             try WorktreeManager.merge(
                 repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
         ) { error in
-            guard case .missingCommitterIdentity(_, let variables) = (error as? WorktreeError)?.reason else {
+            guard case .missingCommitterIdentity(_, let variables, _) = (error as? WorktreeError)?.reason else {
                 return XCTFail("expected .missingCommitterIdentity, got \(error)")
             }
             XCTAssertEqual(variables, ["GIT_AUTHOR_NAME"])
@@ -485,7 +485,7 @@ final class WorktreeManagerTests: XCTestCase {
     /// same way as a missing identity, and shows how to set both halves of one.
     func testMissingCommitterIdentityDescriptionShowsTheCauseAndBothSettings() {
         let error = WorktreeError(.missingCommitterIdentity(
-            detail: "config value 'user.name' was not found", environmentVariables: []))
+            detail: "config value 'user.name' was not found", environmentVariables: [], settingMissing: true))
         let message = error.localizedDescription
 
         XCTAssertTrue(message.contains("config value 'user.name' was not found"), message)
@@ -493,16 +493,35 @@ final class WorktreeManagerTests: XCTestCase {
         XCTAssertTrue(message.contains("git config --global user.email you@example.com"), message)
     }
 
-    /// A variable set in Casper's environment shadows `user.name` / `user.email`, so the
-    /// message names it and does not offer `git config` as the fix.
+    /// When only variables set in Casper's environment are to blame, the message names
+    /// them and does not offer `git config` as the fix, without claiming that a date
+    /// variable stands in for `user.name` / `user.email`.
     func testMissingCommitterIdentityDescriptionNamesTheVariablesToBlame() {
         let error = WorktreeError(.missingCommitterIdentity(
-            detail: "unparsable date", environmentVariables: ["GIT_AUTHOR_NAME", "GIT_COMMITTER_DATE"]))
+            detail: "unparsable date", environmentVariables: ["GIT_AUTHOR_NAME", "GIT_COMMITTER_DATE"],
+            settingMissing: false))
         let message = error.localizedDescription
 
         XCTAssertTrue(message.contains("unparsable date"), message)
         XCTAssertTrue(message.contains("GIT_AUTHOR_NAME, GIT_COMMITTER_DATE"), message)
+        XCTAssertTrue(message.contains("git config cannot fix this"), message)
         XCTAssertFalse(message.contains("git config --global"), message)
+        XCTAssertFalse(message.contains("overrides"), message)
+    }
+
+    /// A variable to blame beside a setting missing from the configuration: the message
+    /// gives both remedies and does not rule `git config` out.
+    func testMissingCommitterIdentityDescriptionGivesBothRemediesWhenASettingIsMissingToo() {
+        let error = WorktreeError(.missingCommitterIdentity(
+            detail: "config value 'user.email' was not found", environmentVariables: ["GIT_AUTHOR_NAME"],
+            settingMissing: true))
+        let message = error.localizedDescription
+
+        XCTAssertTrue(message.contains("config value 'user.email' was not found"), message)
+        XCTAssertTrue(message.contains("unset GIT_AUTHOR_NAME"), message)
+        XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
+        XCTAssertTrue(message.contains("git config --global user.email you@example.com"), message)
+        XCTAssertFalse(message.contains("cannot fix"), message)
     }
 
     private func writeRepoConfig(_ json: String) throws {

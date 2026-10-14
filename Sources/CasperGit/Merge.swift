@@ -21,10 +21,14 @@ public struct MergeConflictError: Error, Equatable, Sendable {}
 public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
     public let detail: String
     /// The identity variables set in the process environment that the refusal is
-    /// blamed on, empty when the configuration is to blame. A set variable shadows
-    /// `user.name` / `user.email` even when blank, so `git config` cannot repair what
-    /// one of these breaks.
+    /// blamed on, empty when only the configuration is to blame. `git config` cannot
+    /// repair what one of these breaks: a name or email variable shadows `user.name` /
+    /// `user.email` even when blank, and no setting stands in for a date.
     public let environmentVariables: [String]
+    /// True when a `user.name` or `user.email` that libgit2 needed is set nowhere (for
+    /// the email, with no `EMAIL` either), so `git config` is part of the fix whatever
+    /// `environmentVariables` holds. A blank setting counts as set.
+    public let settingMissing: Bool
 
     /// Diagnose why `git_signature_default_from_env` fails for `repository` by resolving
     /// the author and the committer again, each on its own. Self-contained: it clears
@@ -63,6 +67,7 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
             blamed.append(failure.side.dateVariable)
         }
         environmentVariables = blamed
+        settingMissing = failures.contains { $0.settingMissing }
     }
 
     /// One half of a commit's identity. libgit2 resolves each from its own variables.
@@ -83,6 +88,8 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
         let side: Side
         let detail: String
         let unparsableDate: Bool
+        /// libgit2 returns GIT_ENOTFOUND only for a `user.name` or `user.email` set nowhere.
+        let settingMissing: Bool
     }
 
     /// Resolve `side` alone, as `git_signature_default_from_env` does; nil when it resolves.
@@ -107,9 +114,11 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
             && lastError?.message.map { String(cString: $0) } == "config value 'user.email' was not found"
         let dateIsSet = environmentValue(side.dateVariable) != nil
         if dateIsSet && (recordedNoError || recordedOnlyTheEmailFallback) {
-            return SideFailure(side: side, detail: "unparsable date", unparsableDate: true)
+            return SideFailure(side: side, detail: "unparsable date", unparsableDate: true, settingMissing: false)
         }
-        return SideFailure(side: side, detail: lastErrorMessage(code: code), unparsableDate: false)
+        return SideFailure(
+            side: side, detail: lastErrorMessage(code: code), unparsableDate: false,
+            settingMissing: code == GIT_ENOTFOUND.rawValue)
     }
 
     /// `variable`'s value as libgit2 reads it (`getenv`), even when blank; nil when unset.

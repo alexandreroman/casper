@@ -27,7 +27,8 @@ CI, test, and documentation-only work is left out.
   names anyone, "Merge and Close" refuses to write the merge commit, says why,
   and shows the commands that set one, instead of committing as
   "Casper <casper@localhost>"; when one of those variables is blank or
-  malformed, it names that variable instead. Nothing is deleted.
+  malformed, it names that variable instead, and shows both remedies when a
+  setting is missing too. Nothing is deleted.
 
 ### Fixed
 

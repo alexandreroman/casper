@@ -11,7 +11,7 @@ public struct WorktreeError: Error, Equatable, Sendable {
         case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
-        case missingCommitterIdentity(detail: String, environmentVariables: [String])
+        case missingCommitterIdentity(detail: String, environmentVariables: [String], settingMissing: Bool)
         case fileCopyFailed(String)
         case configInvalid(String)
         case gitFailure(String)
@@ -37,16 +37,9 @@ extension WorktreeError: LocalizedError {
             return "The worktree path already exists."
         case .mergeConflict:
             return "The merge could not be completed automatically due to conflicts."
-        case .missingCommitterIdentity(let detail, let environmentVariables) where environmentVariables.isEmpty:
-            return "Git has no usable identity to commit the merge as (\(detail)). Set user.name and "
-                + "user.email (git config --global user.name \"Your Name\" and git config --global "
-                + "user.email you@example.com), then try again."
-        case .missingCommitterIdentity(let detail, let environmentVariables):
-            let variables = environmentVariables.joined(separator: ", ")
-            return "Git has no usable identity to commit the merge as (\(detail)). Casper was started with "
-                + "\(variables) set in its environment, which overrides user.name and user.email, so "
-                + "git config cannot fix this. Correct or unset \(variables) where Casper is started, "
-                + "restart Casper, then try again."
+        case .missingCommitterIdentity(let detail, let environmentVariables, let settingMissing):
+            return Self.missingCommitterIdentityDescription(
+                detail: detail, environmentVariables: environmentVariables, settingMissing: settingMissing)
         case .fileCopyFailed(let message):
             return "Failed to copy workspace files: \(message)"
         case .configInvalid(let message):
@@ -54,6 +47,32 @@ extension WorktreeError: LocalizedError {
         case .gitFailure(let message):
             return "Git error: \(message)"
         }
+    }
+}
+
+extension WorktreeError {
+    /// The refusal's cause, then every remedy it needs: correcting the environment
+    /// variables to blame, setting `user.name` / `user.email`, or both. `git config` is
+    /// ruled out only when nothing but those variables is to blame.
+    private static func missingCommitterIdentityDescription(
+        detail: String, environmentVariables: [String], settingMissing: Bool
+    ) -> String {
+        let cause = "Git has no usable identity to commit the merge as (\(detail))."
+        let settings = "user.name and user.email (git config --global user.name \"Your Name\" and "
+            + "git config --global user.email you@example.com)"
+        if environmentVariables.isEmpty {
+            return "\(cause) Set \(settings), then try again."
+        }
+
+        let variables = environmentVariables.joined(separator: ", ")
+        let environmentCause = "Casper was started with \(variables) set in its environment, which libgit2 rejects"
+        let environmentRemedy = "Correct or unset \(variables) where Casper is started"
+        if settingMissing {
+            return "\(cause) \(environmentCause), and Git's configuration lacks a setting as well. "
+                + "\(environmentRemedy), set \(settings), restart Casper, then try again."
+        }
+        return "\(cause) \(environmentCause); git config cannot fix this. "
+            + "\(environmentRemedy), restart Casper, then try again."
     }
 }
 
@@ -338,7 +357,8 @@ public enum WorktreeManager {
             throw WorktreeError(.mergeConflict)
         } catch let error as MissingCommitterIdentityError {
             throw WorktreeError(.missingCommitterIdentity(
-                detail: error.detail, environmentVariables: error.environmentVariables))
+                detail: error.detail, environmentVariables: error.environmentVariables,
+                settingMissing: error.settingMissing))
         } catch let error as GitError {
             throw WorktreeError(.gitFailure(error.message))
         }
