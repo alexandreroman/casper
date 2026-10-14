@@ -58,8 +58,8 @@ CI, test, and documentation-only work is left out.
 - The diff view no longer jumps back to a file requested earlier with
   `casper diff open` when it is reopened, and no longer jumps to a requested
   file that only changes later.
-- Files with Windows (CRLF) line endings, or that start or end with a blank
-  line, get syntax colours in the diff view.
+- Files with Windows (CRLF) or classic Mac (CR) line endings, or that start or
+  end with a blank line, get syntax colours in the diff view.
 - `casper browser reload --wait` waits for the reloaded page to finish loading
   instead of returning before the reload has started.
 - `casper browser screenshot` with `--width`, `--height` or `--url` no longer
