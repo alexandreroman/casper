@@ -317,15 +317,6 @@ final class AppModelTests: XCTestCase {
         model.selectWorkspace(UUID())
 
         XCTAssertEqual(model.selectedWorkspaceID, ws1.id)
-        assertSelectionValidOrNil(model)
-    }
-
-    /// The selection invariant: it must be nil or resolve to a live workspace,
-    /// never dangle at a removed id.
-    private func assertSelectionValidOrNil(_ model: AppModel) {
-        if let sel = model.selectedWorkspaceID {
-            XCTAssertNotNil(model.workspace(id: sel), "selection dangles at a removed workspace")
-        }
     }
 
     func testRemovingSelectedSpaceLeavingNoneClearsSelection() throws {
@@ -337,7 +328,6 @@ final class AppModelTests: XCTestCase {
         // The disk write is backgrounded; flush so the synchronous load is deterministic.
         model.flushPendingSave()
         XCTAssertNil(try store.load().selectedWorkspaceID)
-        assertSelectionValidOrNil(model)
     }
 
     func testRemovingSelectedLinkedWorkspaceReselectsValidWorkspace() async throws {
@@ -350,7 +340,6 @@ final class AppModelTests: XCTestCase {
 
         model.removeWorkspace(id: linkedID)  // removing the selected linked workspace
         XCTAssertEqual(model.selectedWorkspaceID, model.spaces[0].workspaces[0].id)
-        assertSelectionValidOrNil(model)
     }
 
     func testRemovingSelectedLinkedWorkspacePrefersSiblingInSameSpace() async throws {

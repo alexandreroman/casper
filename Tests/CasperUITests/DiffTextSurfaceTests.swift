@@ -182,10 +182,10 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertFalse(textView.isEditable)
     }
 
-    /// Copy must yield clean code: gutter numbers live in the ruler, so they can
-    /// never enter the pasteboard, and the reserved header band is spacing
-    /// rather than characters.
-    func testCopiedTextCarriesNoGutterNumbersOrBlankBandLines() throws {
+    /// The reserved header band between files is spacing rather than characters, so
+    /// copying across a file boundary yields no empty line. That the copy carries no
+    /// gutter number or cue is `DiffCopyTests`' subject.
+    func testCopiedTextCarriesNoBlankBandLines() throws {
         let document = makeDocument(fileCount: 2, linesPerFile: 3)
         let (controller, _) = makeHostedSurface(document)
         let textView = try XCTUnwrap(controller.coordinator?.textView)
@@ -199,9 +199,6 @@ final class DiffTextSurfaceTests: XCTestCase {
 
         XCTAssertFalse(lines.isEmpty)
         XCTAssertFalse(lines.contains(""), "a reserved band must not copy as an empty line")
-        for line in lines where line.hasPrefix("+") {
-            XCTAssertEqual(String(line.dropFirst()).prefix(4), "line")
-        }
     }
 
     func testScrollToFileMovesTheClipViewToThatFile() throws {

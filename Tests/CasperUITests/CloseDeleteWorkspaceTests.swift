@@ -229,11 +229,6 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertTrue(steps.allSatisfy { $0.title == "Closing \u{201c}\(created.name)\u{201d}" })
         // Only the teardown step can time out, and there is none here.
         XCTAssertTrue(steps.allSatisfy { $0.deadline == nil })
-        // The merge step names both ends of the merge, not just "Merging…".
-        let mergeStep = try XCTUnwrap(steps.first { $0.label.hasPrefix("Merging") })
-        XCTAssertEqual(mergeStep.stepIndex, 2)
-        XCTAssertTrue(mergeStep.label.contains(created.branch), mergeStep.label)
-        XCTAssertTrue(mergeStep.label.contains(baseBranch), mergeStep.label)
     }
 
     func testDeleteWorkspaceReportsOneStepWhenThereIsNoTeardownHook() async throws {

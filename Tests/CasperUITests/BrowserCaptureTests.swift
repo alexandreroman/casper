@@ -56,12 +56,10 @@ final class BrowserCaptureTests: XCTestCase {
         XCTAssertFalse(png.isEmpty, "expected a non-empty PNG")
 
         let bitmap = try XCTUnwrap(NSBitmapImageRep(data: png), "PNG did not decode")
-        XCTAssertGreaterThan(bitmap.pixelsWide, 0)
         XCTAssertEqual(bitmap.pixelsWide % width, 0, "pixel width should be an integer multiple of the viewport width")
 
         let scale = bitmap.pixelsWide / width
         XCTAssertGreaterThanOrEqual(scale, 1)
-        XCTAssertEqual(bitmap.pixelsWide, width * scale)
         XCTAssertEqual(bitmap.pixelsHigh, height * scale, "width and height must share the same backing scale")
     }
 }
