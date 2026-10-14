@@ -82,13 +82,17 @@ final class AgentDetectionTests: XCTestCase {
     }
 
     /// Captures the message (body) and interruption level a detected transition
-    /// into `state` passes to `deliverNotification`, failing if it delivers more
-    /// than once. Returns nil when nothing is delivered. The workspace is left
-    /// unfocused (window not key) so delivery is not suppressed by the focus check.
+    /// from `initial` into `state` passes to `deliverNotification`, failing if it
+    /// delivers more than once. Returns nil when nothing is delivered. The workspace
+    /// is left unfocused (window not key) so delivery is not suppressed by the focus
+    /// check. `initial` is applied before the capture is installed, so only the
+    /// transition under test is counted.
     private func deliveredNotification(
-        forDetected state: AgentState) -> (body: String, level: UNNotificationInterruptionLevel)? {
+        forDetected state: AgentState,
+        from initial: AgentState = .idle) -> (body: String, level: UNNotificationInterruptionLevel)? {
         let (model, workspace) = makeSeededModel()
         model.isWindowKey = { false }  // unfocused → delivery not suppressed
+        model.setDetectedAgentState(initial, for: workspace.id)
         var delivered: [(body: String, level: UNNotificationInterruptionLevel)] = []
         model.deliverNotification = { _, body, _, level in delivered.append((body, level)) }
         model.setDetectedAgentState(state, for: workspace.id)
@@ -118,8 +122,10 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertNil(deliveredNotification(forDetected: .working))
     }
 
+    /// A seeded workspace already starts idle, so this drives a real working → idle
+    /// transition: a same-state write would stop at the change guard.
     func testDetectedIdleDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .idle))
+        XCTAssertNil(deliveredNotification(forDetected: .idle, from: .working))
     }
 
     func testDetectedUnknownDeliversNothing() {
