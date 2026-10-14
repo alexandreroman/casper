@@ -8,7 +8,7 @@ type: reference
 
 CasperGhostty links libghostty through the third-party binary Swift package
 **`Lakr233/libghostty-spm`, pinned by `revision:
-"839f269bcd5193d03293cb6717ed2582dde265ef"`** in `Package.swift` — the fork's
+"2ef85df0292dc864a857d30963b943e5d5b8dc87"`** in `Package.swift` — the fork's
 `1.2.8` release. That release ships `GhosttyKit.xcframework` built from
 upstream Ghostty **`v1.3.1`** (commit
 `332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28`), plus Lakr233's own patches.
@@ -50,18 +50,18 @@ the new artifact, diff it against the previous one, and update every affected
 
 ## Why a revision and not the `1.2.8` tag
 
-The fork's tags are mutable: `refs/tags/1.2.8` names
-`2ef85df0292dc864a857d30963b943e5d5b8dc87`, a rewritten copy of the release
-commit, while the checksum and the vendored header above were taken from
-`839f269…`. An `exact: "1.2.8"` requirement makes SwiftPM check the recorded
-revision against the tag it fetches, so a cold cache fails at resolve.
+The fork's tags are mutable, so a tag pin can shift under Casper without any
+change on this side. The pinned `2ef85df…` is the commit `refs/tags/1.2.8`
+names, and it sits on the fork's `main`. It carries the same tree
+(`32723787e660…`) as `839f269bcd5193d03293cb6717ed2582dde265ef`, the commit
+Casper was first vendored against, so both name the same binary asset, the
+same checksum and the same vendored header. `839f269…` itself sits on no
+upstream branch or tag (only GitHub's `refs/pull/*/head` refs reach it), so it
+is not a revision to pin.
 
-`2ef85df…` and `839f269…` carry the same tree (`32723787e660…`), so they name
-the same binary asset and checksum. `839f269…` sits on no upstream branch or
-tag; only GitHub's `refs/pull/*/head` refs reach it. SwiftPM's repository
-mirror fetches `+refs/*:refs/*`, so a fresh clone with an empty cache still
-resolves it. If those refs ever stop reaching it, `2ef85df…` (on `main`) is a
-drop-in revision with identical contents.
+An `exact: "1.2.8"` requirement also makes SwiftPM check the revision recorded
+in `Package.resolved` against the commit the tag names on fetch: once the tag
+moves, a cold cache fails at resolve. A revision pin has no such check to fail.
 
 Verify with `git ls-remote https://github.com/Lakr233/libghostty-spm.git`
 before concluding anything about which revision a ref names today.
