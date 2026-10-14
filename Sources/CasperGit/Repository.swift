@@ -489,7 +489,7 @@ public final class Repository {
         case GIT_DELTA_MODIFIED: return .modified
         // A file with unresolved merge conflicts: `git_diff_tree_to_workdir_with_index`
         // reports the conflicted index entry as its own delta, and its hunks carry the
-        // conflict markers — so it must not read as an unmodified file.
+        // conflict markers — so it must not read as an ordinary modification.
         case GIT_DELTA_CONFLICTED: return .conflicted
         // Emitted only under `GIT_DIFF_INCLUDE_UNREADABLE`, which `diffWorkdirToHead`
         // never sets: the unreadable files a diff lists come from a failed patch
@@ -497,15 +497,8 @@ public final class Repository {
         case GIT_DELTA_UNREADABLE: return .unreadable
         // Emitted by the rename pass, `detectRenames`.
         case GIT_DELTA_RENAMED: return .renamed
-        // `.copied` / `.typechange` are mapped for completeness but are unreachable:
-        // `diffWorkdirToHead` never enables copy detection, and libgit2 emits
-        // typechange deltas only under `GIT_DIFF_INCLUDE_TYPECHANGE`, which we never
-        // set.
-        case GIT_DELTA_COPIED: return .copied
-        case GIT_DELTA_TYPECHANGE: return .typechange
-        // GIT_DELTA_UNMODIFIED and GIT_DELTA_IGNORED: neither is emitted unless the
-        // matching include flag is set, and neither is a change to show.
-        default: return .unmodified
+        // Copied, typechange, unmodified and ignored deltas each need a flag Casper never sets.
+        default: return .modified
         }
     }
 

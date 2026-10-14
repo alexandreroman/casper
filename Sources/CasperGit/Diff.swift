@@ -36,8 +36,7 @@ public struct GitDiff: Equatable, Sendable {
 
 public struct GitDiffFile: Equatable, Sendable, Identifiable {
     public enum Status: String, Sendable {
-        case added, deleted, modified, renamed, copied, typechange
-        case conflicted, unreadable, unmodified
+        case added, deleted, modified, renamed, conflicted, unreadable
     }
     public let oldPath: String
     public let newPath: String

@@ -122,7 +122,7 @@ enum DiffLineStyle {
         switch status {
         case .conflicted: return .warning(deletionTint)
         case .unreadable: return .muted(Color(nsColor: .tertiaryLabelColor))
-        case .added, .deleted, .modified, .renamed, .copied, .typechange, .unmodified: return .chrome
+        case .added, .deleted, .modified, .renamed: return .chrome
         }
     }
 
