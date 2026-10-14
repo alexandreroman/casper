@@ -810,6 +810,9 @@ struct WorkspaceTitleBarRow: View {
     #endif
 
     var body: some View {
+        // Resolved once per body pass rather than per title: `model.space(for:)` scans
+        // every Space's workspaces, and `ViewThatFits` builds all six rungs below.
+        let space = model.space(for: workspace)
         // ONE ordered list for everything that yields. Every element that can give
         // way is a column of this table, and each rung gives up exactly one thing:
         //
@@ -839,12 +842,12 @@ struct WorkspaceTitleBarRow: View {
         // proposal — it changes how a rung looks, never which rung is chosen — so it
         // is not a second ladder.
         ViewThatFits(in: .horizontal) {
-            rung(title: .spaceAndBranch, badge: true, chips: .full)
-            rung(title: .spaceAndBranch, badge: false, chips: .full)
-            rung(title: .branchOnly, badge: false, chips: .full)
-            rung(title: .branchOnly, badge: false, chips: .mergeGlyph)
-            rung(title: .branchOnly, badge: false, chips: .folded)
-            rung(title: .branchOnly, badge: false, chips: .minimal)
+            rung(title: .spaceAndBranch, badge: true, chips: .full, space: space)
+            rung(title: .spaceAndBranch, badge: false, chips: .full, space: space)
+            rung(title: .branchOnly, badge: false, chips: .full, space: space)
+            rung(title: .branchOnly, badge: false, chips: .mergeGlyph, space: space)
+            rung(title: .branchOnly, badge: false, chips: .folded, space: space)
+            rung(title: .branchOnly, badge: false, chips: .minimal, space: space)
         }
         // Giving the row a definite width is also what drives the ladder: it hands it
         // a real proposal, which a toolbar item on its own never does.
@@ -937,14 +940,14 @@ struct WorkspaceTitleBarRow: View {
     }
 
     /// One rung, laid out left to right: title, badge, then the chips at the trailing
-    /// edge.
+    /// edge. `space` is the workspace's owning Space, which names the title.
     private func rung(
         title titleForm: WorkspaceTitleLabel.Form, badge: Bool,
-        chips: WorkspaceToolbarActions.Density
+        chips: WorkspaceToolbarActions.Density, space: Space?
     ) -> some View {
         HStack(spacing: 0) {
             HStack(spacing: 0) {
-                title(titleForm)
+                title(titleForm, space: space)
                 WorkspaceInfoButton(model: model, workspace: workspace)
             }
             // A group proposed less than its ideal width must truncate, never wrap:
@@ -1004,12 +1007,8 @@ struct WorkspaceTitleBarRow: View {
         #endif
     }
 
-    private func title(_ form: WorkspaceTitleLabel.Form) -> some View {
-        // Resolve the owning Space once — `model.space(for:)` scans every Space's
-        // workspaces, so both the git-backed flag and the name derive from this
-        // single lookup rather than scanning the model twice per body pass.
-        let space = model.space(for: workspace)
-        return WorkspaceTitleLabel(
+    private func title(_ form: WorkspaceTitleLabel.Form, space: Space?) -> some View {
+        WorkspaceTitleLabel(
             isGitRepo: space?.isGitRepo ?? false,
             spaceName: space?.name ?? workspace.name,
             branchLabel: workspace.branchLabel,
