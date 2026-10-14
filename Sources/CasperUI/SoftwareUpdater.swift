@@ -40,7 +40,9 @@ final class SoftwareUpdater {
     func start() {
         guard controller == nil else { return }
         guard isEnabled else {
+            #if DEBUG
             CasperLog.app.info("software updates off: bundle declares no SUFeedURL/SUPublicEDKey pair")
+            #endif
             return
         }
         controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)

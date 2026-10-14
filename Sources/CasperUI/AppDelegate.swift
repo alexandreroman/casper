@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         let debug = DebugServer(socketPath: DebugSocketPath.listenPath(for: AppModel.shared.sessionIdentity),
                                 provider: AppModel.shared)
         do { try debug.start(); self.debugServer = debug }
-        catch { CasperLog.debug.error("debug server failed to start: \(String(describing: error))") }
+        catch { CasperLog.debug.failure("debug server failed to start", error) }
         #endif
 
         // Bare SPM executable launched from a terminal: macOS does not foreground
