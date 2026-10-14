@@ -30,7 +30,8 @@ char, `[A-Za-z0-9._-]` limit:
 
 ```bash
 make build
-branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null \
+  | tr -c 'A-Za-z0-9' '-' | cut -c1-16)
 export CASPER_SESSION="test-${branch:-x}-$$"   # e.g. test-my-feature-51377
 ```
 
@@ -46,21 +47,27 @@ not persisted; it is re-probed from `folderPath` at load, so the folder must
 actually be Git-backed:
 
 ```bash
-REPO=$(mktemp -d); REPO=$(cd "$REPO" && pwd -P)   # canonical path (avoids /tmp symlink)
+# Canonical path, so the /tmp symlink never shows up in the layout.
+REPO=$(mktemp -d); REPO=$(cd "$REPO" && pwd -P)
 git -C "$REPO" init -q -b main
 git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 SP=$(uuidgen); WS=$(uuidgen); SURF=$(uuidgen); BROW=$(uuidgen)
-mkdir -p "$HOME/Library/Application Support/Casper"
-cat > "$HOME/Library/Application Support/Casper/session-$CASPER_SESSION.json" <<JSON
+DIR="$HOME/Library/Application Support/Casper"
+mkdir -p "$DIR"
+cat > "$DIR/session-$CASPER_SESSION.json" <<JSON
 {
   "spaces": [{
     "id": "$SP", "name": "test", "folderPath": "$REPO", "isCollapsed": false,
     "workspaces": [{
       "id": "$WS", "name": "test", "worktreePath": "$REPO", "branch": "main",
       "portBase": 47000, "kind": "primary",
-      "layout": { "leaf": { "_0": { "id": "$SURF", "kind": { "terminal": { "cwd": "$REPO" } } } } },
+      "layout": { "leaf": { "_0": {
+        "id": "$SURF", "kind": { "terminal": { "cwd": "$REPO" } }
+      } } },
       "inspector": { "collapsed": true, "tab": "diff", "width": 780,
-        "browser": { "id": "$BROW", "kind": { "browser": { "url": "about:blank" } } } }
+        "browser": {
+          "id": "$BROW", "kind": { "browser": { "url": "about:blank" } }
+        } }
     }]
   }],
   "selectedWorkspaceID": "$WS"
@@ -78,7 +85,8 @@ injected and the `casper` CLI works when driven via `send-text`.
 ### Launch
 
 ```bash
-Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
+Casper-dev.app/Contents/MacOS/casper --session "$CASPER_SESSION" \
+  >"/tmp/casper-$CASPER_SESSION.out" 2>&1 &
 until [ -S "/tmp/casper-debug-$CASPER_SESSION.sock" ]; do sleep 0.2; done
 ```
 
@@ -187,7 +195,8 @@ there is **no** numeric-index form, so `--target 0` /
 UUID from `dump-state` instead:
 
 ```bash
-WS=$(.build/debug/casper debug dump-state | sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
+WS=$(.build/debug/casper debug dump-state \
+  | sed -n 's/.*"id" : "\([^"]*\)".*/\1/p' | head -1)
 .build/debug/casper debug read-text --target "$WS"
 .build/debug/casper debug focus "$WS"          # changes UI focus (not retried)
 ```
@@ -220,18 +229,18 @@ unset CASPER_SESSION
   `--socket <path>`, defaulting to `$CASPER_DEBUG_SOCKET`, else the
   `$CASPER_SESSION`-derived path, else `/tmp/casper-debug.sock`):
 
-  | Verb                                   | Notes                                              |
-  | -------------------------------------- | -------------------------------------------------- |
-  | `dump-state`                           | Prints every exposed surface as JSON. No `--target`. |
-  | `memory`                               | Process memory, the live-object census and named collection sizes. No `--target`. |
-  | `read-text [--scrollback] [--target]`  | Viewport text, or the full screen with `--scrollback`. |
-  | `send-text <text> [--enter] [--target]`| Injects text; `--enter` submits with Return.       |
-  | `send-keys <text> [--target]`          | Types the text as real per-character key events.   |
-  | `send-key <char> [--mods …] [--target]`| One key event; `--mods` takes `ctrl`, `cmd`, `opt`, `shift`, repeatable (`--mods ctrl shift`). |
-  | `send-action <name> [--target]`        | Fires a libghostty keybinding action, e.g. `copy_to_clipboard`. |
-  | `mouse-move <x> <y> [--target]`        | Injects a mouse position in libghostty top-left coordinates. |
-  | `screenshot <path> [--target]`         | Writes a PNG of the app window.                    |
-  | `focus <id>`                           | Gives UI focus to a surface. The id is a **required positional**, not `--target`. |
+  | Verb                                    | Notes                                                                                          |
+  | --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+  | `dump-state`                            | Prints every exposed surface as JSON. No `--target`.                                           |
+  | `memory`                                | Process memory, the live-object census and named collection sizes. No `--target`.              |
+  | `read-text [--scrollback] [--target]`   | Viewport text, or the full screen with `--scrollback`.                                         |
+  | `send-text <text> [--enter] [--target]` | Injects text; `--enter` submits with Return.                                                   |
+  | `send-keys <text> [--target]`           | Types the text as real per-character key events.                                               |
+  | `send-key <char> [--mods …] [--target]` | One key event; `--mods` takes `ctrl`, `cmd`, `opt`, `shift`, repeatable (`--mods ctrl shift`). |
+  | `send-action <name> [--target]`         | Fires a libghostty keybinding action, e.g. `copy_to_clipboard`.                                |
+  | `mouse-move <x> <y> [--target]`         | Injects a mouse position in libghostty top-left coordinates.                                   |
+  | `screenshot <path> [--target]`          | Writes a PNG of the app window.                                                                |
+  | `focus <id>`                            | Gives UI focus to a surface. The id is a **required positional**, not `--target`.              |
 
 - `read-text` returns the terminal contents as plain text — prefer it over
   screenshots for asserting terminal output.
