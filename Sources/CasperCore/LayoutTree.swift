@@ -205,7 +205,7 @@ public enum LayoutTree {
         direction: GhosttySplitDirectionLike
     ) -> (LayoutNode, focus: UUID)? {
         guard surfaceID != targetID else { return nil }
-        guard let source = surface(node, id: surfaceID) else { return nil }
+        guard let source = firstSurface(in: node, where: { $0.id == surfaceID }) else { return nil }
 
         let (reduced, _) = closeSurface(node, surface: surfaceID)
         guard let reduced, contains(reduced, id: targetID) else { return nil }
@@ -255,37 +255,25 @@ public enum LayoutTree {
     /// first match instead of materializing every id like `surfaceIDs`, so it is
     /// cheap enough for the render path.
     public static func contains(_ node: LayoutNode, id: UUID) -> Bool {
-        switch node {
-        case .leaf(let surface):
-            return surface.id == id
-        case .split(_, let children, _):
-            return children.contains { contains($0, id: id) }
-        }
+        firstSurface(in: node, where: { $0.id == id }) != nil
     }
 
     /// The id of the first surface in visual (depth-first) order, or `nil` for an
-    /// empty subtree. Stops at the first leaf instead of materializing every id
-    /// like `surfaceIDs`.
+    /// empty subtree.
     private static func firstSurfaceID(_ node: LayoutNode) -> UUID? {
-        switch node {
-        case .leaf(let surface):
-            return surface.id
-        case .split(_, let children, _):
-            for child in children {
-                if let id = firstSurfaceID(child) { return id }
-            }
-            return nil
-        }
+        firstSurface(in: node, where: { _ in true })?.id
     }
 
-    /// The `Surface` value with `id` from the tree, or `nil` if absent.
-    private static func surface(_ node: LayoutNode, id: UUID) -> Surface? {
+    /// The first surface in visual (depth-first) order that satisfies `match`, or
+    /// `nil` when none does. Stops at the first match instead of materializing
+    /// every surface like `surfaces`.
+    private static func firstSurface(in node: LayoutNode, where match: (Surface) -> Bool) -> Surface? {
         switch node {
         case .leaf(let surface):
-            return surface.id == id ? surface : nil
+            return match(surface) ? surface : nil
         case .split(_, let children, _):
             for child in children {
-                if let found = surface(child, id: id) { return found }
+                if let found = firstSurface(in: child, where: match) { return found }
             }
             return nil
         }
