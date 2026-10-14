@@ -1428,7 +1428,7 @@ final class AppModel {
 
     /// Split the given surface with a new terminal in `direction` (the pane
     /// context-menu action; always creates a terminal).
-    func applySplit(from surfaceID: UUID, direction: GhosttySplitDirectionLike) {
+    func applySplit(from surfaceID: UUID, direction: SplitDirection) {
         guard let at = locateSurface(surfaceID) else { return }
         applySplit(at: at, from: surfaceID, direction: direction)
     }
@@ -1436,7 +1436,7 @@ final class AppModel {
     /// Split the focused terminal in `direction` (the View menu's Split items). Those
     /// items are always enabled in the menu — never greyed — so the action itself is
     /// the gate: it does nothing unless a terminal is focused.
-    func applyNewSplit(_ direction: GhosttySplitDirectionLike) {
+    func applyNewSplit(_ direction: SplitDirection) {
         guard let focus = focusedSurfaceID, let at = locateFocusedTerminal() else { return }
         applySplit(at: at, from: focus, direction: direction)
     }
@@ -1444,7 +1444,7 @@ final class AppModel {
     /// The one implementation behind every "add a terminal by splitting" action, for a
     /// caller that has already located the workspace holding `surfaceID`.
     private func applySplit(
-        at: WorkspaceIndex, from surfaceID: UUID, direction: GhosttySplitDirectionLike
+        at: WorkspaceIndex, from surfaceID: UUID, direction: SplitDirection
     ) {
         let (orientation, side) = LayoutTree.orientationAndSide(for: direction)
         insertSurfaceBySplitting(

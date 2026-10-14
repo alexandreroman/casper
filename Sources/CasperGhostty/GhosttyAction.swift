@@ -1,9 +1,5 @@
+import CasperCore
 import GhosttyKit
-
-/// The direction a new split grows, mapped from `ghostty_action_split_direction_e`.
-public enum GhosttySplitDirection: Equatable, Sendable {
-    case right, down, left, up
-}
 
 /// A libghostty runtime action, decoded from the C `action_cb` callback into a
 /// Swift-native value. This enum carries the app- and window-scoped actions only:
@@ -21,7 +17,7 @@ public enum GhosttyAction: Equatable {
     case render
     /// Emitted on cmd+click of a terminal URL; carries the URL to open.
     case openURL(String)
-    case newSplit(GhosttySplitDirection)
+    case newSplit(SplitDirection)
     case newTab
     case newWindow
     case closeTab
@@ -63,9 +59,7 @@ public enum GhosttyAction: Equatable {
         return bytes.withMemoryRebound(to: UInt8.self) { String(decoding: $0, as: UTF8.self) }
     }
 
-    private static func direction(
-        _ d: ghostty_action_split_direction_e
-    ) -> GhosttySplitDirection {
+    private static func direction(_ d: ghostty_action_split_direction_e) -> SplitDirection {
         switch d {
         case GHOSTTY_SPLIT_DIRECTION_RIGHT: return .right
         case GHOSTTY_SPLIT_DIRECTION_DOWN: return .down

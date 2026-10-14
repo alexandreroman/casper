@@ -85,9 +85,9 @@ public enum LayoutTree {
         return .split(orientation: orientation, children: children, ratios: currentRatios)
     }
 
-    /// Map a Ghostty split direction to an orientation and insertion side.
+    /// Map a split direction to an orientation and insertion side.
     public static func orientationAndSide(
-        for direction: GhosttySplitDirectionLike
+        for direction: SplitDirection
     ) -> (LayoutNode.Orientation, InsertSide) {
         switch direction {
         case .right: return (.horizontal, .after)
@@ -202,7 +202,7 @@ public enum LayoutTree {
     /// id missing from the tree (before or after removal).
     public static func move(
         _ node: LayoutNode, surfaceID: UUID, toTarget targetID: UUID,
-        direction: GhosttySplitDirectionLike
+        direction: SplitDirection
     ) -> (LayoutNode, focus: UUID)? {
         guard surfaceID != targetID else { return nil }
         guard let source = firstSurface(in: node, where: { $0.id == surfaceID }) else { return nil }
@@ -220,7 +220,7 @@ public enum LayoutTree {
         case top, bottom, left, right
 
         /// The split direction a drop in this zone relocates the pane along.
-        public var direction: GhosttySplitDirectionLike {
+        public var direction: SplitDirection {
             switch self {
             case .top: return .up
             case .bottom: return .down
@@ -288,6 +288,7 @@ public enum LayoutTree {
     }
 }
 
-/// Direction abstraction so CasperCore's `LayoutTree` does not depend on
-/// CasperGhostty. CasperUI maps `GhosttySplitDirection` onto this.
-public enum GhosttySplitDirectionLike: Equatable { case right, down, left, up }
+/// The direction a new split grows, or a moved pane lands, relative to its
+/// target. CasperGhostty decodes libghostty's `ghostty_action_split_direction_e`
+/// straight onto it.
+public enum SplitDirection: Equatable, Sendable { case right, down, left, up }

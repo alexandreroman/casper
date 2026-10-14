@@ -93,7 +93,7 @@ struct PaneMenuItem {
     /// dispatch through the responder chain), so on a browser/diff pane they act on
     /// the focused terminal rather than the pane itself.
     static func groups(model: AppModel, surfaceID: UUID) -> [[PaneMenuItem]] {
-        func split(_ title: String, _ systemImage: String, _ direction: GhosttySplitDirectionLike) -> PaneMenuItem {
+        func split(_ title: String, _ systemImage: String, _ direction: SplitDirection) -> PaneMenuItem {
             // `weak`: the AppKit menu outlives the click that built it.
             PaneMenuItem(title: title, systemImage: systemImage) { [weak model] in
                 model?.applySplit(from: surfaceID, direction: direction)
