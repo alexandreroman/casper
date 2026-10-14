@@ -58,8 +58,6 @@ CI, test, and documentation-only work is left out.
 - The diff view no longer jumps back to a file requested earlier with
   `casper diff open` when it is reopened, and no longer jumps to a requested
   file that only changes later.
-- The diff view no longer stays out of date when it reappears after being
-  hidden in the middle of an update.
 - Files with Windows (CRLF) line endings, or that start or end with a blank
   line, get syntax colours in the diff view.
 - `casper browser reload --wait` waits for the reloaded page to finish loading
