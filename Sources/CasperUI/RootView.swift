@@ -24,10 +24,10 @@ struct RootView: View {
                             min: TerminalHostMetrics.sidebarColumnMinimum, ideal: 290, max: 400)
                 } detail: {
                     if let id = model.selectedWorkspaceID, let workspace = model.workspace(id: id) {
-                        // Give the detail a per-workspace identity so its `@State
-                        // inspectorWidth` re-seeds from this workspace's persisted
-                        // `inspector.width` on `.onAppear`; without it, one workspace's
-                        // dragged width would carry across a switch.
+                        // Give the detail a per-workspace identity so its `@State`
+                        // starts fresh on every switch: a dragged `inspectorWidth`
+                        // would otherwise carry across to the next workspace, which
+                        // reads its own persisted `inspector.width` until a drag.
                         WorkspaceDetailView(model: model, workspace: workspace)
                             .id(id)
                     } else {

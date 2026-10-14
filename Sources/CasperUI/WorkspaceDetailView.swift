@@ -16,10 +16,11 @@ struct WorkspaceDetailView: View {
     /// stale value, and cancelled on disappear so none outlives this view.
     @State private var diffSummaryTask: Task<Void, Never>?
 
-    /// Live inspector width, seeded per-workspace on appear (the detail view has
-    /// a per-workspace `.id`, so this resets on every workspace switch) and
-    /// persisted on drag-end. Held locally so the divider drag never mutates
-    /// observed model state mid-layout.
+    /// The divider drag's live inspector width, and `nil` until a drag — the panel
+    /// reads the persisted `workspace.inspector.width` until then. Persisted on
+    /// drag-end and held locally so the drag never mutates observed model state
+    /// mid-layout. The per-workspace `.id` `RootView` gives this view is what keeps
+    /// one workspace's drag from leaking into the next.
     @State private var inspectorWidth: Double?
 
     /// True for the length of a divider drag, which suspends `publish`.
@@ -137,7 +138,7 @@ struct WorkspaceDetailView: View {
     /// `resizeUndershoot` is for, on top of this.
     static let safetyMargin: CGFloat = 24
 
-    /// Narrowest row worth mounting. The `⋯` chip alone measures 34 pt, so below
+    /// Narrowest row worth mounting. The `⋯` chip alone measures 38 pt, so below
     /// this there is nothing left to draw — and at such a width the detail area is
     /// a sliver anyway (a 320 pt window leaves it 22 pt beside the sidebar).
     ///
@@ -154,7 +155,7 @@ struct WorkspaceDetailView: View {
     /// pass of 562 pt, which subtracted whole drove the row to `minimumRowWidth`.
     ///
     /// 40 pt is twice the fastest ordinary pass (measured: 5–20 pt) and just under one
-    /// `⋯` chip plus its gap (34 + `chipGap` = 42), so it absorbs every pass the
+    /// `⋯` chip plus its gap (38 + `chipGap` = 46), so it absorbs every pass the
     /// anticipation is meant for while never withholding more than about one chip's
     /// worth of width. Past that the cure is worse than the disease: for a jump too
     /// large to anticipate the right outcome is the single frame of chevron
@@ -274,10 +275,11 @@ struct WorkspaceDetailView: View {
         }
         .errorAlert("Couldn't Open Editor", message: Bindable(model).editorLaunchError)
         .errorAlert("Couldn't Run Script", message: Bindable(model).scriptRunError)
-        // Two triggers, because the row can outgrow the bar for two unrelated
-        // reasons: the window narrowed, or the CONTENT changed while the window
-        // stood still (opening the inspector, a diff summary arriving, a script
-        // appearing). `rowWidth` catches only the first.
+        // Re-runs AppKit's fit check whenever the width the row declares moves. The
+        // inspector trigger is a deliberate safety net, not a second cause: the row's
+        // definite `.frame(width:)` keeps its content from changing the width AppKit
+        // measures (`testTogglingTheInspectorDoesNotChangeWhatTheRowLaysOut`), and an
+        // inspector that makes `WindowFloor` grow the window moves `rowWidth` anyway.
         .onChange(of: rowWidth) { _, _ in Self.healToolbarOverflow() }
         .onChange(of: workspace.inspector) { _, _ in Self.healToolbarOverflow() }
         // Late on the way in, early on the way out — see `isFullScreen`. A flip moves
@@ -648,7 +650,7 @@ struct WorkspaceDetailView: View {
     }
 
     /// The first visible toolbar-bearing window, which is the only one Casper has: there
-    /// is no New Window command (`MenuCommands` replaces `.newItem` with Space) and both
+    /// is no New Window command (`CasperCommands` replaces `.newItem` with Space) and both
     /// auxiliary `NSWindow`s are borderless and never ordered on-screen — the same
     /// argument `performTitleBarDoubleClickAction` is written out against. `NSApp.windows`
     /// is documented unordered, so "first" is how the one match is found, not a ranking
@@ -745,9 +747,10 @@ struct WorkspaceDetailView: View {
 extension NSWindow {
     /// Whether the toolbar is currently showing its clipped-items chevron.
     ///
-    /// Shared by the floor's self-healing retry and by the title bar's measurement
-    /// harness (`WorkspaceDetailView+ToolbarProbe.swift`), which reports it as the
-    /// one reliable signal that the row has been pushed into the overflow popover.
+    /// Shared by the toolbar overflow heal (`healToolbarOverflow`) and by the title
+    /// bar's measurement harness (`WorkspaceDetailView+ToolbarProbe.swift`), which
+    /// reports it as the one reliable signal that the row has been pushed into the
+    /// overflow popover.
     ///
     /// Read off the view tree because AppKit publishes no API for it, and
     /// `NSToolbar.visibleItems` cannot stand in: SwiftUI's own split-view separator
@@ -765,24 +768,10 @@ extension NSWindow {
 
 /// The whole title bar, laid out in one row of a known width.
 ///
-/// It is one view because it is one `ToolbarItem` (see the toolbar's own comment),
-/// and it decides its own order of sacrifice as that width shrinks. Ranked by
-/// layout priority, highest first:
-///
-/// 1. **the title group** (`2`) — the workspace's identity, which never drops. It
-///    degrades on its own terms instead: the Space name goes whole, then the branch
-///    middle-truncates.
-/// 2. **the chips** (`1`) — they step down their own four-tier ladder rather than
-///    disappear (see `WorkspaceToolbarActions`).
-/// 3. **the diff badge** (`0`) — the first thing to go, before the chips even lose
-///    their text. It is informational where the chips are actions, which is the
-///    trade this ranking encodes.
-/// 4. **the spacer** (`-1`) — below the badge on purpose: at an equal priority it
-///    would swallow the room the badge needs and the badge would never appear.
-///
-/// The priorities are what make that order real, and they are independent of the
-/// order the elements are written in — the badge still renders in its usual place,
-/// between the info chip and the chips.
+/// It is one view because it is one `ToolbarItem` (see the toolbar's own comment).
+/// As that width shrinks, the row degrades along ONE ordered ladder — the diff badge
+/// first, then the Space name, then the chip labels, and never the branch — spelled
+/// out in `body` and in app-ui.md § Title bar.
 struct WorkspaceTitleBarRow: View {
     let model: AppModel
     let workspace: Workspace
@@ -907,7 +896,7 @@ struct WorkspaceTitleBarRow: View {
     /// Run the title bar's configured double-click action on the key window.
     ///
     /// The key window is this row's window: Casper has no New Window command
-    /// (`MenuCommands` replaces `.newItem` with Space), and both auxiliary
+    /// (`CasperCommands` replaces `.newItem` with Space), and both auxiliary
     /// `NSWindow`s are borderless and never ordered on-screen. A sheet is the one
     /// other thing that takes key, which the guard below turns away.
     private func performTitleBarDoubleClickAction() {
@@ -1236,7 +1225,7 @@ struct WorkspaceToolbarActions: View {
     /// buttons' `.borderlessButton`, so the capsule can live INSIDE the label and
     /// the whole pill stays clickable (see the `title-capsule-hit-area` note). A
     /// borderless menu ignores its label's height and keeps its click target on
-    /// the bare glyph, which measured 20×14 against this chip's 34×36. The button
+    /// the bare glyph, which measured 20×14 against this chip's 38×36. The button
     /// menu style draws its label through the button style in the environment, so
     /// this chip also gets the same pressed look as its neighbours. The chrome
     /// stays the explicit fill + hairline border — never glass, which renders
@@ -1482,9 +1471,7 @@ private struct TitleSplitButton<PrimaryLabel: View, MenuContent: View>: View {
 }
 
 /// The "Run Script" toolbar split-button. It holds no state of its own; it stays a
-/// separate view to keep the toolbar item's body readable and to scope the script
-/// observation reads (`namedCommands`, `resolvedScript`) to the chip that draws
-/// them.
+/// separate view to keep the toolbar item's body readable.
 private struct ScriptToolbarButton: View {
     let model: AppModel
     let workspace: Workspace
@@ -1586,9 +1573,9 @@ enum TitleCapsuleMetrics {
     /// The slot every glyph-only chip reserves for its glyph.
     ///
     /// Fixed on purpose: SF Symbols carry different intrinsic widths, so chips sized
-    /// to their content come out uneven — measured, `arrow.triangle.merge` and
-    /// `play.fill` are 12 pt against `trash` and `globe` at 15 and
-    /// `square.and.pencil` at 16. A row of glyph-only chips is a row of identical
+    /// to their content come out uneven — measured, the five symbols that sit in it
+    /// are `arrow.triangle.merge` and `plusminus` at 12 pt, `ellipsis` at 14, and
+    /// `trash` and `globe` at 15. A row of glyph-only chips is a row of identical
     /// pills; one wider than its neighbours reads as a different KIND of control
     /// rather than as the same control shortened. The slot makes them identical by
     /// construction rather than by two symbols happening to agree.
@@ -1841,9 +1828,8 @@ private extension Comparable {
 }
 
 private extension ToolbarContent {
-    /// Removes the automatic macOS 26 "Liquid Glass" capsule background that wraps
-    /// toolbar item content, so the diff badge can draw its OWN distinct glass
-    /// capsule instead of merging into the branch capsule's shared glass.
+    /// Removes the shared glass background macOS 26 draws around a toolbar item, so
+    /// only the chips' own capsules show.
     @ToolbarContentBuilder
     func flatToolbarItem() -> some ToolbarContent {
         if #available(macOS 26.0, *) {

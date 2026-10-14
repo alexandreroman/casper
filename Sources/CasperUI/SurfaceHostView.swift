@@ -12,9 +12,10 @@ struct SurfaceHostView: View {
     let workspaceID: UUID
     let surface: Surface
     /// Whether this pane can be dragged (and is a drop target): true only when the
-    /// workspace has more than one pane, as a lone pane has nowhere to move.
-    /// Resolved once per workspace by `WorkspaceDetailView` and threaded down, so
-    /// no pane walks the layout tree on its own body pass.
+    /// workspace has more than one pane, as a lone pane has nowhere to move. Decided
+    /// structurally by the parent — `false` for the root leaf, `true` under any split
+    /// (see `LayoutNodeView.canDragPanes`) — so no pane walks the layout tree on its
+    /// own body pass.
     let canDrag: Bool
 
     /// Measured pane size, feeding the drop delegate's zone computation.

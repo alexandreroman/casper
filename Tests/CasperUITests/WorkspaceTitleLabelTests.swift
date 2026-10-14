@@ -6,9 +6,9 @@ import XCTest
 ///
 /// The label has no logic to unit-test — it is a pure function of its three
 /// inputs — but it does have one hard geometric contract: it lives in the
-/// leading toolbar group, which the toolbar proposes an arbitrarily small width
-/// once the trailing chips have taken their share of a narrow window, and it
-/// must answer that by truncating rather than wrapping. Left unbounded it wraps
+/// title-bar row, whose rungs propose it whatever width the badge and the chips
+/// leave over, arbitrarily small at a narrow window, and it must answer that by
+/// truncating rather than wrapping. Left unbounded it wraps
 /// mid-word instead, stacking "casper / docs" onto two or three lines and
 /// pushing the whole title bar open. Every test below therefore measures the
 /// hosted label's *height* across a sweep of hostile widths and pins it to the
