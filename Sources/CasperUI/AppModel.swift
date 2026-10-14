@@ -1997,8 +1997,8 @@ final class AppModel {
     }
 
     /// Probe a folder for Git backing using CasperGit. Static so it holds no
-    /// state; returns nil for a non-Git folder (accepted by the UI-1 design — see
-    /// `.superpowers/themes/app-ui.md` § Sub-projects).
+    /// state; returns nil for a non-Git folder, which opens as a degenerate Space
+    /// (see `.superpowers/themes/space-project.md` § Space — the project level).
     /// Uses `Repository.open`, an exact-path open, rather than `discover`,
     /// which walks up to parent directories — a Space must root at the
     /// folder the user picked, not at an ancestor repository.

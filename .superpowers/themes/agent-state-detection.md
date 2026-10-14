@@ -2,7 +2,7 @@
 
 **Modules:** CasperGhostty, CasperCore, CasperUI · **Status:** ◐ built —
 detection (working/blocked/idle) is live and verified, and `blocked`/`done`
-transitions now raise notifications (see "Notifications"); the process-exit
+transitions raise notifications (see "Notifications"); the process-exit
 `done`/`error` path is **not** implemented (by decision, not for lack of support
 — see "Process lifecycle") · **Code:** `Sources/CasperGhostty/`,
 `Sources/CasperCore/`, `Sources/CasperUI/`
@@ -15,13 +15,13 @@ whenever the agent uses it.
 
 ## Goal
 
-Casper already carries `Workspace.agentState`, but today it only changes when an
-agent explicitly calls `casper status set …`. An agent that never reports leaves
-the workspace stuck at its default. This theme adds a second, implicit producer
-of `agentState`: Casper owns the surface and its PTY, so it can read the visible
-terminal grid and infer what the agent is doing. The whole consumer side (the
-transient `agentState` field, the sidebar, later `UserNotifications`) is reused
-unchanged — this theme only adds the detection source.
+`Workspace.agentState` has two producers. The first is an agent explicitly
+calling `casper status set …`; an agent that never reports would leave the
+workspace at its default. Detection is the second, implicit producer: Casper
+owns the surface and its PTY, so it reads the visible terminal grid and infers
+what the agent is doing. The consumer side — the transient `agentState` field,
+the sidebar, the notifications — is shared by both producers; this theme covers
+the detection source.
 
 ## Model: `AgentState`
 
@@ -180,7 +180,11 @@ records what was **measured**, not what was assumed — captured by running the
 agent under `script -q` with `TERM_PROGRAM=ghostty` and
 `TERM_PROGRAM_VERSION=1.3.1` (the values a Casper terminal sets) and grepping
 the raw file for `ESC]9;4;` and `ESC]0;`. Re-run that capture before trusting
-any row after an agent upgrade.
+any row after an agent upgrade. Against the live app, `casper debug dump-state`
+reports `agentState` (what detection concluded, which the sidebar icon renders),
+`oscTitle` and `progressReport` for the exposed surface, and
+`casper debug read-text` gives the viewport — together they diagnose a detection
+failure with no temporary logging.
 
 | Agent               | OSC 9;4 progress                                            | OSC title                                                             | Viewport affordance                                                                                  |
 | ------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -207,7 +211,7 @@ Two consequences worth stating outright:
   explicit CLI path (`casper status set …`, driven by the plugin's own hooks).
 - **Adding a source that no agent owns changes every terminal, not just an
   agent's.** Any command that reports OSC 9;4 progress — a package manager, a
-  download — now reads as `working` for its workspace. That is defensible
+  download — reads as `working` for its workspace. That is defensible
   ("something is running") and is the same generality that makes the signal
   worth depending on, but it is a behaviour change for plain shell panes too.
 
@@ -291,20 +295,20 @@ it.
   see: an agent that dispatches background subagents and ends its turn to let
   them run leaves a viewport at rest — no interrupt affordance, OSC 9;4;0 —
   which the resolver reads as `idle` and then `done` within a couple of ticks.
-  While `working` was released, an explicit one survived under a second, and no
-  agent could report "still busy, look elsewhere for why".
+  Were `working` to release the latch, an explicit one would survive under a
+  second, and no agent could report "still busy, look elsewhere for why".
 - `idle` and `unknown` **release** it: both mean "nothing to say about this
   workspace", so the scraper takes back over.
 - The `Stop` hook still reports `done` precisely; selecting that workspace then
   collapses the explicit `done` back to `idle` (next section).
-- The latch is **not persisted** — it resets to `detection` on load, like the
-  agent state it guards.
+- The latch is **not persisted** — the set starts empty on load, like the agent
+  state it guards.
 
 **What a latched `working` costs.** Detection is suppressed for as long as it
 holds, so a `blocked` the viewport *could* have matched (a permission prompt) is
 not detected there — a hook-driven session reports blocked through its
 notification hook instead, which is the path that already carries it. And a
-stale `working` no longer self-heals from the terminal: an agent killed between
+stale `working` does not self-heal from the terminal: an agent killed between
 its `UserPromptSubmit` hook and the matching `Stop` leaves the workspace
 `working`. What ends it is the session boundary — the plugin's SessionEnd hook
 reports `done`, its SessionStart reports `idle` (a release), and the latch never
@@ -330,22 +334,19 @@ state end. Both halves are built — the plugin maps `turn-end` to
 `done` and `error` are in the `AgentState` model, but there is **no detected
 producer** for them, by decision. The obvious source — a process-exit event
 (`GHOSTTY_ACTION_SHOW_CHILD_EXITED`) mapping exit `0 → done` / `≠0 → error` —
-was implemented and then **removed**, because it only makes sense for an
-*agent-as-command* surface and that scenario does not exist in Casper today:
+is deliberately not wired, because it only makes sense for an
+*agent-as-command* surface, and Casper has none:
 
-**`--command` does not create an agent-as-command surface.** It was believed
-that the embedded libghostty simply didn't honor a surface's `command` at all;
-that turned out to be wrong — the pinned fork (`libghostty-spm`, a
-sandbox/host-managed-oriented fork) does run it, but via a hardcoded
-`bash -l -c "exec <command>"` that ignored the user's real shell. The shipped
-fix (`terminal new --command`) runs reliably, but deliberately types the text
-into the already-spawned login shell via `ghostty_surface_text` — not `exec`'d,
-and using neither the `command` nor the `initial_input` config field — so it
-does not replace the shell process. See [[ghostty-initial-input-utf8]]. Agents
-therefore still always run **inside a shell** (the user types `claude`, or
-`--command claude` types it for them); the shell survives when the agent exits,
-and no agent-scoped exit event is available. See the CasperGhostty note in
-`cli-agents.md`.
+**`--command` does not create an agent-as-command surface.** The pinned fork
+(`libghostty-spm`, a sandbox/host-managed-oriented fork) execs a surface's
+`command` through a hardcoded `bash -l -c "exec <command>"`, ignoring the user's
+real shell. `terminal new --command` therefore deliberately types the text into
+the already-spawned login shell via `ghostty_surface_text` — not `exec`'d, and
+using neither the `command` nor the `initial_input` config field — so it does
+not replace the shell process. See [[ghostty-initial-input-utf8]]. Agents always
+run **inside a shell** (the user types `claude`, or `--command claude` types it
+for them); the shell survives when the agent exits, and no agent-scoped exit
+event is available. See the CasperGhostty note in `cli-agents.md`.
 
 Given the shell-hosted reality:
 - **`done`** is still produced by the resolver's own `working → idle` derivation
@@ -357,10 +358,7 @@ Given the shell-hosted reality:
   injected `reportSetupFailure` closure →
   `AppModel.setDetectedAgentState(.error, …)`).
   Acceptable until there's a real scraped signal for it.
-- **Authority release** for terminal-observable states is immediate: the CLI
-  removes their latch — `idle` and `unknown` only, since `working` joined the
-  latching states. `working`, `blocked`, `done`, and `error` remain
-  authoritative until their state is explicitly changed or the app reloads.
+- **Authority release** — see § Authority: explicit CLI vs detection.
 
 ## Aggregation (per-workspace)
 
@@ -408,25 +406,26 @@ state lives only at the workspace level.
   since nothing there knows which agent runs in the surface), aggregates all the
   signals, runs the resolver, and writes
   `agentState` via `setDetectedAgentState` unless the workspace is under
-  explicit authority. `controlSetAgentState` latches `working`, `blocked`,
-  `done`, and `error`; only `idle` and `unknown` release the latch. The sidebar
+  explicit authority (§ Authority: explicit CLI vs detection). The sidebar
   status icon lives on `WorkspaceRow` (monochrome outline SF Symbols in the
   chevron column, animated `working`).
 
 ### Notifications
 
 `setDetectedAgentState` raises a notification on a transition into an attention
-state — `blocked` → `"Waiting for your input"`, `done` → `"Done"`,
-`error` → `"Something went wrong"` — by
-calling `controlRaiseNotification(message:for:)`, the same mechanism `casper
-notify` uses. This is what makes notification + sidebar-dot support work **with
-no Claude Code hook**: it is driven purely by Casper's own OSC/viewport scraping
-rather than an explicit CLI call. The write is edge-triggered (the "only on
-change" guard), so a steady detection stream notifies once per transition, and
-`controlRaiseNotification`'s focus semantics still apply: **a focused workspace
-gets neither** — the same `!focused` guard covers the sidebar dot and the macOS
-notification, so nothing is raised for the workspace the user is already looking
-at.
+state — `blocked` → `"Waiting for your input"`, `done` → `"Done"`, `error` →
+`"Something went wrong"` — by calling `controlRaiseNotification(message:for:)`,
+the same mechanism `casper notify` uses. This is what makes notification +
+sidebar-dot support work **with no Claude Code hook**: it is driven purely by
+Casper's own OSC/viewport scraping rather than an explicit CLI call. The write
+is edge-triggered (the "only on change" guard), so a steady detection stream
+notifies once per transition, and `controlRaiseNotification`'s focus semantics
+still apply: **a focused workspace gets neither** — the same `!focused` guard
+covers the sidebar dot and the macOS notification, so nothing is raised for the
+workspace the user is already looking at. A `done` notification is `.passive` —
+a silent addition to Notification Center, with no banner and no sound — while
+`blocked` and `error` post `.active` ones with the sound
+(`AppModel.interruptionLevel(for:)`).
 
 That guard carries a second condition: a **per-workspace de-dup cooldown**.
 `controlRaiseNotification` records `lastNotifiedAt[workspaceID]` on every

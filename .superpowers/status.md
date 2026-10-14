@@ -97,11 +97,11 @@ authority latch. Agent *integration* detection reports, per agent, whether its
 CLI and the Casper plugin are present, current and approved, and reminds in the
 sidebar — detect-and-link only, never writing another tool's configuration.
 
-**Attention.** `blocked`/`done`/`error` raise a notification (`done` passive,
-the other two active) with a per-workspace cooldown, a Dock bounce that lasts
-until activation, and a Dock badge counting unread workspaces. The workspace
-info panel renders `casper info set` Markdown through a native TextKit path,
-with links routed to the workspace's own browser unless ⌘ is held.
+**Attention.** `blocked`/`done`/`error` raise a notification with a
+per-workspace cooldown, a Dock bounce that lasts until activation, and a Dock
+badge counting unread workspaces. The workspace info panel renders
+`casper info set` Markdown through a native TextKit path, with links routed to
+the workspace's own browser unless ⌘ is held.
 
 **Packaging.** Sparkle auto-update against an EdDSA-signed appcast, the
 `.github/workflows/release.yml` tag workflow publishing the `.app`, its
@@ -127,7 +127,7 @@ non-selected workspaces.
 2. **Agent-state detection deferrals** — a `.render`-driven trigger in place of
    the timer poll, option-B timeout authority release, per-surface status, and a
    real `error` signal alongside the agent-as-command `done`/`error` path. Those
-   four, and four open questions — starting with whether current Codex still
+   four, and three open questions — starting with whether current Codex still
    prints an interrupt affordance at all — are specified in
    `themes/agent-state-detection.md` § Deferred / out of scope and
    § Open questions.
@@ -138,13 +138,12 @@ non-selected workspaces.
    only setup that produced the freeze; the main-thread hang watchdog filed in
    [`architecture.md`](architecture.md) § Risks & mitigations stays wired until
    it has. See [[nstextstorage-attribute-run-order]].
-4. **Standing limitations** — `WorktreeManager.remove` prunes a worktree without
-   deleting its branch; its one production caller deletes the branch on the next
-   line, so this only bites a second caller. The terminal draws no marked text
-   (preedit): IME candidates and dead-key previews are not shown inline, while
-   committed text works — see `themes/terminal.md` § Keyboard & clipboard. The
-   unpinned libgit2 is filed as a risk in [`architecture.md`](architecture.md)
-   § Risks & mitigations.
+4. **Standing limitations** — `WorktreeManager.remove` leaves the branch; see
+   `themes/git-worktrees.md` § Standing limitations. The terminal draws no
+   marked text (preedit): IME candidates and dead-key previews are not shown
+   inline, while committed text works — see `themes/terminal.md` § Keyboard &
+   clipboard. The unpinned libgit2 is filed as a risk in
+   [`architecture.md`](architecture.md) § Risks & mitigations.
 
 Two visual passes still need a human, since agents cannot screenshot the SwiftUI
 chrome: the `.casper.json` setup/teardown split lifecycle, and the info panel's
@@ -166,26 +165,3 @@ hover, pulse, link-cursor and link-routing behaviour. See
   the shipped `--command` fix types into the existing login shell rather than
   exec'ing, so it does not create one. See `themes/agent-state-detection.md`
   § Process lifecycle.
-
-## Superseded designs
-
-These designs survive in `themes/` as history rather than as-built, recorded
-here so a reader who meets the old wording knows which way it went. A fourth,
-the Space `+/−` divergence badge, is retained for the record in
-`themes/space-project.md` and filed under [Decided against](#decided-against).
-
-- **Tabs → tmux panes.** UI-3's tabbed surface model, its tab bar and
-  `insertTab` are gone; `LayoutNode` is `split | leaf`, every pane holds one
-  surface, and `tabGroup` survives only as a legacy decoding key. The two
-  follow-ups the tab bar carried — terminal-derived tab shades and a per-tab ⌘N
-  — went with it; moving between the things a tab used to hold is ⌘1–⌘9 over
-  **workspaces**, and ⌘N opens "New Space…".
-- **`.diff` and `.browser` layout leaves → the inspector panel.** The `.diff`
-  surface kind was removed outright and `.browser` is reachable only through
-  `Workspace.inspector.browser`; splits always create a terminal. Browser panes
-  therefore do not exist, which retires the "WebKit swallows the pane
-  right-click" follow-up.
-- **Per-line SwiftUI diff rows → one TextKit 2 document.** The computation, the
-  live refresh and the reading experience are unchanged; selection and copy are
-  new. `DiffFileView`, `DiffLineRow`, `DiffFileHeaderBar` and `DiffFileMetrics`
-  are gone.

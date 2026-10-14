@@ -87,7 +87,7 @@ captured in the [[libgit2-swift-interop]] project-memory note.
 
 ## Standing limitations
 
-- `WorktreeManager.remove` prunes a worktree without deleting its branch. Both
-  production callers delete the branch on the next line, so recreating a
+- `WorktreeManager.remove` prunes a worktree without deleting its branch. Its
+  one production caller deletes the branch on the next line, so recreating a
   same-named workspace works; a caller that forgets would meet an opaque
   `.gitFailure`.

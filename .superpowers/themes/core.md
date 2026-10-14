@@ -52,21 +52,23 @@ The pure-Swift, UI-free core. Fully unit-tested.
   hand out different blocks to their first workspaces — a mitigation, not strict
   isolation.
 - **`SessionStore`** — `Codable` + `FileManager` persistence; self-heals a
-  corrupt layout file. It carries **no debounce of its own** — every call
-  writes. The coalescing lives one layer up, in CasperUI's `AppModel`, whose
-  `scheduleSave()` re-arms a 0.5 s `Debouncer` around `persist()`. Only the few
-  high-frequency edits take that path (a committed browser URL, an inspector
-  width or split ratio being dragged, a font-size change); the great majority of
-  save sites call `persist()` directly, and `flushPendingSave()` cancels the
-  pending timer and writes at once for quit-safety. The layout file is
-  `session.json` by default, or `session-<name>.json` when the app is launched
-  with `--session <name>` — a **DEBUG-only** flag, since `SessionIdentity.parse`
-  ignores the argument outright in a release build (see [[app-sessions]]) — so a
-  named session never clobbers the default instance's layout. The **six**
-  transient runtime fields (`agentState`, `todos`, `pendingNotification`,
-  `pendingNotificationMessage`, `infoMarkdown`, `infoUnread`) are intentionally
-  **not** persisted: `Workspace`'s hand-rolled coders neither write nor read
-  them, so they reset on load.
+  layout file it cannot decode by moving it aside to a sibling `.corrupt` file,
+  kept for diagnostics, and starting from an empty `Session`. It carries **no
+  debounce of its own** — every call writes. The coalescing lives one layer up,
+  in CasperUI's `AppModel`, whose `scheduleSave()` re-arms a 0.5 s `Debouncer`
+  around `persist()`. Only the few high-frequency edits take that path (a
+  committed browser URL, an inspector width or split ratio being dragged, a
+  font-size change); the great majority of save sites call `persist()` directly,
+  and `flushPendingSave()` cancels the pending timer and writes at once for
+  quit-safety. The layout file is `session.json` by default, or
+  `session-<name>.json` when the app is launched with `--session <name>` — a
+  **DEBUG-only** flag, since `SessionIdentity.parse` ignores the argument
+  outright in a release build (see [[app-sessions]]) — so a named session never
+  clobbers the default instance's layout. The **six** transient runtime fields
+  (`agentState`, `todos`, `pendingNotification`, `pendingNotificationMessage`,
+  `infoMarkdown`, `infoUnread`) are intentionally **not** persisted:
+  `Workspace`'s hand-rolled coders neither write nor read them, so they reset on
+  load.
 - **Control channel** — `ControlProtocol.swift` (the `ControlCommand` /
   `ControlResponse` wire types) + `ControlSocket.swift` (the release Unix-domain
   server/client, declared as the `ControlSocketServer` / `ControlSocketClient`
@@ -114,12 +116,8 @@ The pure-Swift, UI-free core. Fully unit-tested.
     CasperUI's watcher refreshes and lifecycle resumes and the hang watchdog's
     liveness ack all ride it; see [[main-run-loop-hop]].
   - **`LoginShellPath`** — probes the user's shell for its `PATH` once per
-    process, then resolves command names against it in Swift. Casper's own
-    environment lacks that `PATH` because it is launched from Finder/Dock, and
-    only an *interactive* shell sources the rc file where a great many users
-    actually build it — `.zshrc` for zsh, and `.bashrc`, which bash reads only
-    for an interactive **non-login** shell. Hence a union of rungs rather than
-    one invocation; see [[shell-path-resolution]] and `cli-agents.md`.
+    process, then resolves command names against it in Swift; the design is in
+    `cli-agents.md` and [[shell-path-resolution]].
   - **`SpaceName`** / **`IdentifierFormatting`** — display-name derivation for a
     Space, and `UUID.casperID`, the lowercase canonical external form every id
     Casper emits uses.
@@ -128,13 +126,13 @@ The pure-Swift, UI-free core. Fully unit-tested.
   (`DebugSocketPath` and the server/client typealiases over the same
   `SocketTransport`). See `debug.md` and [[debug-channel-gating]].
 - **`CasperLog`** — the `os.Logger` facade: one subsystem, the `debug-casper`
-  skill's filter key, split into categories. `.error`/`.fault` calls ship in
-  release; verbose `.debug`/`.info` call sites are wrapped in `#if DEBUG`.
+  skill's filter key, split into categories. `.notice`/`.error`/`.fault` calls
+  ship in release; verbose `.debug`/`.info` call sites are wrapped in
+  `#if DEBUG`.
 - **`LiveObjectCensus`** / **`ProcessMemory`** — **DEBUG-only**, the weak-ref
   live-object census and the process footprint behind `casper debug memory`
   (see `debug.md` and [[memory-observability]]).
 - **`MainThreadHangWatchdog`** — **DEBUG-only** freeze diagnosis: it detects a
   blocked main thread and, on the first stall of an episode, spawns
-  `/usr/bin/sample`. The whole file compiles out of release. It stays wired
-  until the hang it diagnoses is confirmed fixed live — see
+  `/usr/bin/sample`. The whole file compiles out of release. See
   [[hang-dump-watchdog]].

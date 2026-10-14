@@ -113,11 +113,11 @@ claims four of the seam's five actions. Three of them — `newSplit`, `newTab`,
 `newWindow`, has no layout meaning in a single-window app, so it is remapped
 onto the nearest honest equivalent and opens the New Space panel; it is the one
 case deferred to the next main-loop turn rather than run inline, because its
-modal `NSSavePanel` must not hold libghostty's tick open. **Tabs are gone**:
-`LayoutNode` is `split | leaf`, rendered by CasperUI's own `SplitContainerView`,
-and `newTab` maps to a right split. `close_surface_cb` is wired, so Ctrl-D or
-`exit` closes the pane via `GhosttySurfaceView.onClose`. See `app-ui.md`
-§ Design → "Layout composition".
+modal `NSSavePanel` must not hold libghostty's tick open. `LayoutNode` is
+`split | leaf`, rendered by CasperUI's own `SplitContainerView`, and `newTab`
+maps to a right split. `close_surface_cb` is wired, so Ctrl-D or `exit` closes
+the pane via `GhosttySurfaceView.onClose`. See `app-ui.md` § Design → "Layout
+composition".
 
 ## Standing caveat
 
