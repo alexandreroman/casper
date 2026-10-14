@@ -27,6 +27,8 @@ CI, test, and documentation-only work is left out.
   the one in a workspace an agent opens with `casper workspace new --command`
   while you are away — now starts on its own once they wake, instead of
   waiting until you select the workspace.
+- Creating a workspace again under a name whose previous creation failed no
+  longer fails with "directory exists".
 
 ## [0.1.3] - 2026-10-13
 

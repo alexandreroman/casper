@@ -1,4 +1,5 @@
 import Clibgit2
+import Foundation
 
 /// Value description of a git worktree.
 public struct WorktreeInfo: Equatable, Sendable {
@@ -32,6 +33,8 @@ extension Repository {
         var options = git_worktree_add_options()
         try gitCheck(git_worktree_add_options_init(
             &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
+        let adminPath = commonDirPath + "worktrees/" + name
+        let adminEntryExisted = FileManager.default.fileExists(atPath: adminPath)
 
         // Create the branch at that commit.
         var branchRef: OpaquePointer?
@@ -53,11 +56,20 @@ extension Repository {
             // can write the on-disk admin entry and still fail with a NULL
             // out-pointer (a partial failure where `worktree == nil`), so gating
             // the prune on `worktree != nil` would leak that orphaned entry.
-            // `pruneWorktree` re-looks-up by name and throws GIT_ENOTFOUND —
-            // swallowed by `try?` — when nothing is registered, so it is a safe
-            // no-op when there is nothing to prune. The `defer`s still free the
-            // handles; this clears the on-disk worktree and the refdb branch.
+            // `pruneWorktree` re-looks-up by name, and its throw is swallowed by
+            // `try?`. The `defer`s still free the handles; this clears the on-disk
+            // worktree and the refdb branch.
             try? pruneWorktree(name: name)
+            // libgit2 creates the admin directory first and only writes its
+            // `gitdir`/`commondir`/`HEAD` files after creating the worktree path,
+            // so a failure in between (the path already exists) leaves a partial
+            // entry the lookup above rejects with a generic error rather than
+            // GIT_ENOTFOUND, and the prune never removes it. libgit2 creates that
+            // directory exclusively, so if it is new it belongs to this call. The
+            // worktree path is left alone: if it pre-existed, it is someone else's.
+            if !adminEntryExisted && FileManager.default.fileExists(atPath: adminPath) {
+                try? FileManager.default.removeItem(atPath: adminPath)
+            }
             // Branch-delete result is intentionally ignored: rollback is
             // best-effort and the original `error` is what we re-throw, so we
             // must not let a cleanup failure mask it.

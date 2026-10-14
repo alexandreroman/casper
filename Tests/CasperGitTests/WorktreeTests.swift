@@ -64,7 +64,7 @@ final class WorktreeTests: XCTestCase {
         XCTAssertTrue(try repo.isBranchCheckedOut("from-base"))
     }
 
-    func testAddWorktreeRollsBackBranchWhenAddFails() throws {
+    func testAddWorktreeRollsBackBranchAndAdminEntryWhenAddFails() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let wtPath = root.appendingPathComponent("blocked").path
 
@@ -82,6 +82,11 @@ final class WorktreeTests: XCTestCase {
         // The branch created before the failed add must have been rolled back,
         // so the operation stays idempotent and retryable.
         XCTAssertFalse(try repo.branchExists("blocked"))
+        // So must the partial admin entry libgit2 created before the failure, or a
+        // retry under the same name fails with "directory exists".
+        XCTAssertFalse(FileManager.default.fileExists(atPath: repo.commonDirPath + "worktrees/blocked"))
+        let retryPath = root.appendingPathComponent("blocked-2").path
+        XCTAssertNoThrow(try repo.addWorktree(name: "blocked", atPath: retryPath, basedOn: nil))
     }
 
     /// The common directory is the repository's identity: a linked worktree reports
