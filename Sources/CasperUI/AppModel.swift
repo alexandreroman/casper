@@ -1590,19 +1590,14 @@ final class AppModel {
         }
     }
 
-    /// Borderless window parked far off-screen (mirrors `BrowserCapture`), sized so
-    /// hosted surfaces get valid dimensions. It is deliberately never ordered on-screen:
-    /// hosting a surface only needs a non-nil `window` (see
-    /// `GhosttySurfaceView.viewDidMoveToWindow`), whereas an ordered window parked at
-    /// -100_000 joins Mission Control's layout — its bounding box then spans ~101,000 px
-    /// and every real window is scaled to nothing. Staying out of the on-screen list also
-    /// means it can never become key and steal keyboard focus, and its surfaces read as
-    /// occluded, so libghostty pauses their render thread (the PTY still runs).
+    /// The off-screen host window (`NSWindow.offscreenHost`) the background surfaces
+    /// live in, sized so they get valid dimensions. A surface only needs a non-nil
+    /// `window` to come up (see `GhosttySurfaceView.viewDidMoveToWindow`); hosted here,
+    /// it reads as occluded, so libghostty pauses its render thread while the PTY runs.
     private func makeBackgroundSurfaceNursery() -> NSWindow {
-        let frame = NSRect(x: -100_000, y: -100_000, width: 800, height: 600)
-        let window = NSWindow(
-            contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
-        window.contentView = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        let size = NSSize(width: 800, height: 600)
+        let window = NSWindow.offscreenHost(size: size)
+        window.contentView = NSView(frame: NSRect(origin: .zero, size: size))
         backgroundSurfaceNursery = window
         return window
     }

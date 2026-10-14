@@ -7,7 +7,8 @@ type: project
 # Off-screen host windows stay out of the on-screen list
 
 Casper hosts views that must lay out and run without being visible in borderless
-`NSWindow`s parked far off-screen at `(-100_000, -100_000)`:
+`NSWindow`s parked far off-screen at `(-100_000, -100_000)`, all built by
+`NSWindow.offscreenHost(size:)` (`Sources/CasperUI/OffscreenHostWindow.swift`):
 
 - `AppModel.makeBackgroundSurfaceNursery()` — the background surface nursery
   (see [[background-surface-nursery]]).
