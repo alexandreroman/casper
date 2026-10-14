@@ -1193,8 +1193,9 @@ final class AppModel {
 
     /// The debounced watcher callback shared by both worktree watchers: hop to the
     /// main actor and, after the debounce window, drive `handleSelectedWorktreeChange`.
-    /// The hop goes through the run loop rather than the main queue so a modal panel
-    /// standing when a change lands cannot hold it back (see `MainRunLoop`).
+    /// The run-loop hop lets `schedule` run while a modal panel is up, but the 200 ms
+    /// debounce itself rides the main queue, so the `diffRevision` bump lands once the
+    /// panel closes — an accepted delay (`main-run-loop-hop` § Caveat: delayed hops).
     private func makeWorktreeChangeHandler() -> @Sendable () -> Void {
         { [weak self] in
             MainRunLoop.perform {
