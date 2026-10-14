@@ -40,10 +40,9 @@ public struct DebugSurfaceHandle {
         geometry: @escaping () -> DebugState.Geometry,
         focus: @escaping () -> Void,
         window: NSWindow?,
-        // Defaulted so construction sites that don't care about detection keep compiling.
-        agentState: String? = nil,
-        oscTitle: @escaping () -> String? = { nil },
-        progressReport: @escaping () -> String? = { nil }
+        agentState: String?,
+        oscTitle: @escaping () -> String?,
+        progressReport: @escaping () -> String?
     ) {
         self.id = id
         self.title = title
