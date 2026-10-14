@@ -90,9 +90,10 @@ rpath_entries() {
         | awk '/ cmd LC_RPATH$/ {in_rpath = 1; next} in_rpath && / path / {print $2; in_rpath = 0}'
 }
 
-# The first entry pointing at Contents/Frameworks, exactly as it is stored —
-# dylibbundler writes a trailing slash and the Makefile's dev bundle does not,
-# while `-delete_rpath` matches the stored string literally.
+# The first entry pointing at Contents/Frameworks, exactly as it is stored.
+# dylibbundler stores each entry with a trailing slash, and `-delete_rpath`
+# matches the stored string literally, so the entry is matched
+# slash-insensitively and deleted as stored.
 frameworks_rpath() {
     rpath_entries | awk -v want="$RPATH" '{
         normalized = $0
