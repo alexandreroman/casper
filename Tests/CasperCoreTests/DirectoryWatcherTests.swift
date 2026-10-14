@@ -1,16 +1,13 @@
 import os
 import XCTest
+import CasperTestSupport
 @testable import CasperCore
 
 final class DirectoryWatcherTests: XCTestCase {
     // Best-effort integration test: FSEvents delivery timing is inherently
     // asynchronous and can make this mildly flaky, hence the generous timeout.
     func testFiresOnFileCreation() throws {
-        let fileManager = FileManager.default
-        let dir = fileManager.temporaryDirectory
-            .appendingPathComponent("casper-watcher-\(UUID().uuidString)")
-        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: dir) }
+        let dir = makeTemporaryDirectory(prefix: "casper-watcher")
 
         let expectation = expectation(description: "onChange fires")
         expectation.assertForOverFulfill = false
@@ -34,11 +31,7 @@ final class DirectoryWatcherTests: XCTestCase {
     /// that queue, or teardown deadlocks. Calling `stop()` from the callback
     /// reproduces exactly that situation.
     func testStopFromTheCallbackQueueDoesNotDeadlock() throws {
-        let fileManager = FileManager.default
-        let dir = fileManager.temporaryDirectory
-            .appendingPathComponent("casper-watcher-\(UUID().uuidString)")
-        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: dir) }
+        let dir = makeTemporaryDirectory(prefix: "casper-watcher")
 
         let returned = expectation(description: "stop() returns from the callback queue")
         returned.assertForOverFulfill = false

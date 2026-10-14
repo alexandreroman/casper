@@ -9,14 +9,9 @@ final class MergeTests: XCTestCase {
     private var repoDir: URL!
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-merge-\(UUID().uuidString)")
+        root = makeTemporaryDirectory(prefix: "casper-merge")
         repoDir = root.appendingPathComponent("repo")
         try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: root)
     }
 
     /// The tip commit OID (hex string) of local branch `name`.

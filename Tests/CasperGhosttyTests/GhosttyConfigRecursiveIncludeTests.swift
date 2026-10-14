@@ -1,6 +1,7 @@
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 @testable import CasperGhostty
 
 /// Proves that `ghostty_config_load_recursive_files` is what resolves `config-file`
@@ -17,8 +18,7 @@ final class GhosttyConfigRecursiveIncludeTests: XCTestCase {
     /// Baseline: loading only the top-level file (no recursive pass) leaves the
     /// `config-file` include unprocessed, so the include's bad key raises no diagnostic.
     func testIncludeIsIgnoredWithoutRecursiveLoad() throws {
-        let files = try TempConfigFiles()
-        defer { files.cleanUp() }
+        let files = try TempConfigFiles(in: makeTemporaryDirectory(prefix: "casper-ghostty-config"))
 
         let config = try XCTUnwrap(ghostty_config_new())
         defer { ghostty_config_free(config) }
@@ -35,8 +35,7 @@ final class GhosttyConfigRecursiveIncludeTests: XCTestCase {
     /// With the recursive pass, the `config-file` include is followed and its invalid
     /// key produces a diagnostic — exactly the behavior `GhosttyRuntime` depends on.
     func testIncludeIsProcessedWithRecursiveLoad() throws {
-        let files = try TempConfigFiles()
-        defer { files.cleanUp() }
+        let files = try TempConfigFiles(in: makeTemporaryDirectory(prefix: "casper-ghostty-config"))
 
         let config = try XCTUnwrap(ghostty_config_new())
         defer { ghostty_config_free(config) }
@@ -52,26 +51,17 @@ final class GhosttyConfigRecursiveIncludeTests: XCTestCase {
     }
 }
 
-/// A throwaway temp directory holding a main config that includes a second file whose
-/// only setting is deliberately invalid, so processing the include is observable.
+/// A main config in `directory` that includes a second file whose only setting is
+/// deliberately invalid, so processing the include is observable.
 private struct TempConfigFiles {
-    let directory: URL
     let mainPath: String
 
-    init() throws {
-        directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("casper-ghostty-config-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
+    init(in directory: URL) throws {
         let includeURL = directory.appendingPathComponent("include.ghostty")
         try "this-key-does-not-exist-xyz = 1\n".write(to: includeURL, atomically: true, encoding: .utf8)
 
         let mainURL = directory.appendingPathComponent("main.ghostty")
         try "config-file = \(includeURL.path)\n".write(to: mainURL, atomically: true, encoding: .utf8)
         mainPath = mainURL.path
-    }
-
-    func cleanUp() {
-        try? FileManager.default.removeItem(at: directory)
     }
 }

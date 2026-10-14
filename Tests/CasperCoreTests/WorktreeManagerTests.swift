@@ -13,8 +13,7 @@ final class WorktreeManagerTests: XCTestCase {
     private var externalDir: URL?
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-mgr-\(UUID().uuidString)")
+        root = makeTemporaryDirectory(prefix: "casper-mgr")
         repoDir = root.appendingPathComponent("repo")
         try FileManager.default.createDirectory(
             at: repoDir, withIntermediateDirectories: true)
@@ -22,7 +21,6 @@ final class WorktreeManagerTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: root)
         if let externalDir {
             try? FileManager.default.removeItem(at: externalDir)
         }

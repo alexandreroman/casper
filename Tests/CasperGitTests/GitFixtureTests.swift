@@ -6,10 +6,7 @@ import XCTest
 
 final class GitFixtureTests: XCTestCase {
     func testFixtureCreatesRepoWithOneCommit() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-fixture-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let dir = makeTemporaryDirectory(prefix: "casper-fixture")
 
         let repo = try GitFixture.repository(at: dir.path)
 

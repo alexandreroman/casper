@@ -6,15 +6,9 @@ import CasperTestSupport
 final class RepositoryTests: XCTestCase {
     private var tempDir: URL!
 
-    override func setUpWithError() throws {
-        tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-git-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(
-            at: tempDir, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: tempDir)
+    override func setUp() {
+        super.setUp()
+        tempDir = makeTemporaryDirectory(prefix: "casper-git")
     }
 
     func testInitializeCreatesRepository() throws {

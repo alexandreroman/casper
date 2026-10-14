@@ -1,5 +1,6 @@
 import XCTest
 import Clibgit2
+import CasperTestSupport
 @testable import CasperGit
 
 final class Libgit2Tests: XCTestCase {
@@ -64,9 +65,7 @@ final class Libgit2Tests: XCTestCase {
             throw XCTSkip("Apple's gitconfig sets no init.defaultBranch on this machine")
         }
 
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-libgit2-\(UUID().uuidString)")
-        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let directory = makeTemporaryDirectory(prefix: "casper-libgit2")
         let repository = try Repository.initialize(atPath: directory.path)
 
         XCTAssertEqual(try repository.headBranchName(), expected)

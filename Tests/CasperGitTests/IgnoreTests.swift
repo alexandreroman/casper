@@ -4,10 +4,7 @@ import CasperTestSupport
 
 final class IgnoreTests: XCTestCase {
     func testIgnoredTopLevelDirectories() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-ignore-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let dir = makeTemporaryDirectory(prefix: "casper-ignore")
 
         let repo = try GitFixture.repository(at: dir.path)
 

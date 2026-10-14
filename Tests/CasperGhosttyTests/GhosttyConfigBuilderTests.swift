@@ -1,6 +1,7 @@
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 @testable import CasperGhostty
 
 /// The config build sequence's theme fallback: a user theme that loads replaces
@@ -11,13 +12,7 @@ final class GhosttyConfigBuilderTests: XCTestCase {
 
     override func setUpWithError() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-builder-tests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    }
-
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: directory)
+        directory = makeTemporaryDirectory(prefix: "casper-builder-tests")
     }
 
     // MARK: - Fallback

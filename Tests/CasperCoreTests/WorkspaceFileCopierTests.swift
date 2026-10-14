@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import CasperTestSupport
 @testable import CasperCore
 
 final class WorkspaceFileCopierTests: XCTestCase {
@@ -8,22 +9,18 @@ final class WorkspaceFileCopierTests: XCTestCase {
     private var destinationDir: URL!
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-copier-\(UUID().uuidString)")
+        root = makeTemporaryDirectory(prefix: "casper-copier")
         sourceDir = root.appendingPathComponent("source")
         destinationDir = root.appendingPathComponent("destination")
         try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
         // Some tests strip all permissions off a source file; restore write access
-        // before recursive removal so cleanup itself doesn't fail.
-        if let sourceDir {
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o755], ofItemAtPath: sourceDir.path)
+        // before the recursive removal so cleanup itself doesn't fail. Teardown
+        // blocks run last-registered-first, so this one precedes the removal.
+        let sourcePath = sourceDir.path
+        addTeardownBlock {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourcePath)
         }
-        try? FileManager.default.removeItem(at: root)
     }
 
     private func write(_ content: String, to relativePath: String, in dir: URL) throws {

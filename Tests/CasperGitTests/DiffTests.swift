@@ -12,15 +12,12 @@ final class DiffTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-diff-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        directory = makeTemporaryDirectory(prefix: "casper-diff")
         repo = try GitFixture.repository(at: directory.path)
     }
 
     override func tearDownWithError() throws {
         repo = nil
-        try? FileManager.default.removeItem(at: directory)
         directory = nil
         try super.tearDownWithError()
     }

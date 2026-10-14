@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import CasperTestSupport
 @testable import CasperCLI
 
 final class InfoCommandTests: XCTestCase {
@@ -12,10 +13,8 @@ final class InfoCommandTests: XCTestCase {
     }
 
     func testSetReadsMarkdownFromFile() throws {
-        let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("info-\(UUID().uuidString).md")
+        let url = makeTemporaryDirectory(prefix: "casper-info").appendingPathComponent("info.md")
         try "## Ready\n- <http://localhost:8080>\n".write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
 
         let set = try InfoCommand.Set.parse(["--file", url.path, "--workspace", "feature"])
         XCTAssertEqual(try set.resolveMarkdown(), "## Ready\n- <http://localhost:8080>\n")
@@ -92,11 +91,9 @@ final class InfoCommandTests: XCTestCase {
     }
 
     func testSetRejectsOversizedFile() throws {
-        let url = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("info-\(UUID().uuidString).md")
+        let url = makeTemporaryDirectory(prefix: "casper-info").appendingPathComponent("info.md")
         let oversized = String(repeating: "a", count: ControlCommand.infoMessageMaxBytes + 1)
         try oversized.write(to: url, atomically: true, encoding: .utf8)
-        defer { try? FileManager.default.removeItem(at: url) }
 
         let set = try InfoCommand.Set.parse(["--file", url.path, "--workspace", "feature"])
         XCTAssertThrowsError(try set.resolveMarkdown())

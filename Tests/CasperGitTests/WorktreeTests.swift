@@ -8,15 +8,9 @@ final class WorktreeTests: XCTestCase {
     private var repoDir: URL!
 
     override func setUpWithError() throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("casper-wt-\(UUID().uuidString)")
+        root = makeTemporaryDirectory(prefix: "casper-wt")
         repoDir = root.appendingPathComponent("repo")
-        try FileManager.default.createDirectory(
-            at: repoDir, withIntermediateDirectories: true)
-    }
-
-    override func tearDownWithError() throws {
-        try? FileManager.default.removeItem(at: root)
+        try FileManager.default.createDirectory(at: repoDir, withIntermediateDirectories: true)
     }
 
     func testAddWorktreeCreatesBranchAndDirectory() throws {

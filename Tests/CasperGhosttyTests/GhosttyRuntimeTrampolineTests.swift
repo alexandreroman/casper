@@ -1,6 +1,7 @@
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 @testable import CasperGhostty
 
 final class GhosttyRuntimeTrampolineTests: XCTestCase {
@@ -141,9 +142,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     @MainActor
     func testSetColorSchemeRewritesPurgedThemeFiles() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-runtime-themes-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = makeTemporaryDirectory(prefix: "casper-runtime-themes")
         let runtime = try GhosttyRuntime(themeDirectory: directory)
         let paths = GhosttyThemeFiles.Paths(
             light: directory.appendingPathComponent("casper-light"),

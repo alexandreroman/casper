@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import CasperTestSupport
 @testable import CasperUI
 
 @MainActor

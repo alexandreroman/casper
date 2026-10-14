@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 @testable import CasperGhostty
 
 /// Casper's built-in colours reach libghostty as two theme files behind one
@@ -13,12 +14,7 @@ final class GhosttyDefaultConfigTests: XCTestCase {
 
     override func setUpWithError() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
-        directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-theme-tests-\(UUID().uuidString)")
-    }
-
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: directory)
+        directory = makeTemporaryDirectory(prefix: "casper-theme-tests")
     }
 
     func testDefaultsCarryOnlyTheThemeLineAndClipboardPolicy() throws {

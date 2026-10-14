@@ -3,7 +3,8 @@ import XCTest
 import CasperCore
 @testable import CasperUI
 
-/// Fixtures shared by every test case in this target.
+/// Fixtures shared by every test case in this target. The ones every test target
+/// shares — `makeTemporaryDirectory` and `GitFixture` — live in CasperTestSupport.
 ///
 /// `SessionStore` writes a real file and `AppModel` saves through it on a
 /// background queue, so seeding a model always leaves something behind on disk —
@@ -18,21 +19,6 @@ extension XCTestCase {
             .appendingPathComponent("casper-test-\(UUID().uuidString).json")
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return (SessionStore(fileURL: url), url)
-    }
-
-    /// A fresh temp directory on disk, removed after the test. `prefix` only makes
-    /// a stranded directory traceable back to the suite that made it.
-    ///
-    /// It sits one level inside a container that teardown removes, because Casper
-    /// puts a linked worktree *beside* its repository: deleting the repo directory
-    /// alone would leave every worktree a test created behind.
-    func makeTemporaryDirectory(prefix: String = "casper-test") -> URL {
-        let name = "\(prefix)-\(UUID().uuidString)"
-        let container = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-        let dir = container.appendingPathComponent(name)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: container) }
-        return dir
     }
 
     /// An `AppModel` over `spaces`, with `selected` as the current workspace.

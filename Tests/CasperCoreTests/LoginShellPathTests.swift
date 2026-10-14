@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import CasperTestSupport
 
 @testable import CasperCore
 
@@ -24,9 +25,6 @@ final class LoginShellPathTests: XCTestCase {
         }
     }
 
-    /// Directories created by `makeExecutable`, removed when the test ends.
-    private var temporaryDirectories: [URL] = []
-
     override func setUp() {
         super.setUp()
         LoginShellPath.resetForTesting()
@@ -36,10 +34,6 @@ final class LoginShellPathTests: XCTestCase {
     override func tearDown() {
         // The caches and the seams are process-wide, so hand them back clean.
         LoginShellPath.resetForTesting()
-        for directory in temporaryDirectories {
-            try? FileManager.default.removeItem(at: directory)
-        }
-        temporaryDirectories = []
         super.tearDown()
     }
 
@@ -68,11 +62,7 @@ final class LoginShellPathTests: XCTestCase {
     /// has to be a real file with a real mode — an in-memory path would prove
     /// nothing.
     private func makeExecutable(named command: String) throws -> String {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LoginShellPathTests-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        temporaryDirectories.append(directory)
-
+        let directory = makeTemporaryDirectory(prefix: "LoginShellPathTests")
         let executable = directory.appendingPathComponent(command)
         try Data("#!/bin/sh\nexit 0\n".utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
@@ -82,11 +72,9 @@ final class LoginShellPathTests: XCTestCase {
     /// A fresh directory holding a *subdirectory* named `command` — the shape
     /// that `access(X_OK)` alone mistakes for an executable.
     private func makeDirectory(named command: String) throws -> String {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("LoginShellPathTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = makeTemporaryDirectory(prefix: "LoginShellPathTests")
         try FileManager.default.createDirectory(
             at: directory.appendingPathComponent(command, isDirectory: true), withIntermediateDirectories: true)
-        temporaryDirectories.append(directory)
         return directory.path
     }
 

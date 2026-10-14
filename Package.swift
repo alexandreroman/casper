@@ -86,11 +86,11 @@ let package = Package(
         ),
         .testTarget(
             name: "CasperCLITests",
-            dependencies: ["CasperCLI", "CasperCore"]
+            dependencies: ["CasperCLI", "CasperCore", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperGhosttyTests",
-            dependencies: ["CasperGhostty"]
+            dependencies: ["CasperGhostty", "CasperTestSupport"]
         ),
         .testTarget(
             name: "CasperUITests",
