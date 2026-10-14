@@ -58,10 +58,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // giving up, so a single null does not permanently kill the pane.
     private var surfaceCreationAttempts = 0
     private static let maxSurfaceCreationAttempts = 3
-    // The one retry currently armed, held so a window re-entry can retire it before
+    // Holds the one retry currently armed, so a window re-entry can retire it before
     // restoring the budget. Without that, leaving and re-entering the window inside
     // the retry delay would leave two independent retry chains running on this view.
-    private var pendingSurfaceRetry: DispatchWorkItem?
+    private let surfaceRetry = Debouncer(delay: 0.25)
     // Shown in place of the terminal when surface creation ultimately fails, so the
     // user gets an explanation instead of a silently blank pane.
     private var errorOverlay: NSView?
@@ -269,7 +269,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             // creation on this view can replay it. The local copy above is what was just
             // used, so this cannot cancel the injection that already happened.
             self.configuration.initialInput = nil
-            cancelPendingSurfaceRetry()
+            surfaceRetry.cancel()
             surfaceCreationAttempts = 0
             removeErrorOverlay()
             pushWindowGeometry()
@@ -290,28 +290,12 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             surfaceCreationAttempts += 1
             if surfaceCreationAttempts < Self.maxSurfaceCreationAttempts {
                 // Transient null: retry shortly, as long as the view is still hosted.
-                scheduleSurfaceRetry()
+                // Re-arming replaces any earlier retry, so at most one chain is live.
+                surfaceRetry.schedule { [weak self] in self?.createSurfaceIfNeeded() }
             } else {
                 showErrorOverlay()
             }
         }
-    }
-
-    // Arm the single pending surface-creation retry, replacing any earlier one so at
-    // most one retry chain is ever live for this view.
-    private func scheduleSurfaceRetry() {
-        cancelPendingSurfaceRetry()
-        let retry = DispatchWorkItem { [weak self] in
-            self?.pendingSurfaceRetry = nil
-            self?.createSurfaceIfNeeded()
-        }
-        pendingSurfaceRetry = retry
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: retry)
-    }
-
-    private func cancelPendingSurfaceRetry() {
-        pendingSurfaceRetry?.cancel()
-        pendingSurfaceRetry = nil
     }
 
     // Begin a fresh, bounded creation cycle for a surface that never came up: retire
@@ -320,7 +304,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // This is the only place the budget resets, and only on discrete events — once per
     // window entry and once per display-change notification — so it stays bounded.
     private func restartSurfaceCreation() {
-        cancelPendingSurfaceRetry()
+        surfaceRetry.cancel()
         surfaceCreationAttempts = 0
         removeErrorOverlay()
         createSurfaceIfNeeded()
@@ -409,7 +393,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// that outlives its owner's teardown can never spawn a second child process.
     public func invalidate() {
         invalidated = true
-        cancelPendingSurfaceRetry()
+        surfaceRetry.cancel()
         // Drops the display-wake observers: nothing can recover a surface freed for good.
         updateDisplayWakeObservers()
         surface = nil
