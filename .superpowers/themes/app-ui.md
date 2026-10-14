@@ -15,6 +15,13 @@ longer does are recorded in `../status.md` § Superseded designs.
 
 ## Design
 
+- **Appearance** — the app follows the system Light/Dark appearance; nothing
+  forces one. `AppDelegate` observes `NSApp.effectiveAppearance` and forwards it
+  through `AppModel.applyColorScheme(dark:)` to libghostty (the app and every
+  live terminal view, the background nursery's included). The scheme is also set
+  before `model.runtime` is assigned, so the first surface is born on the right
+  side. Diff colours are dynamic and syntax highlighting re-runs on a scheme
+  change.
 - **Sidebar** — one row per workspace, grouped by repository (the Space, see
   `space-project.md`). A row (`WorkspaceRow.swift`) leads with a fixed-width
   agent-state slot holding a **monochrome SF Symbol**: `working` a continuously

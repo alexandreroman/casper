@@ -23,6 +23,16 @@ public final class GhosttyRuntime {
     /// only for the test-only `forTesting()` runtime, which creates no app.
     private(set) var app: ghostty_app_t?
 
+    /// The finalized, unconditioned config the app was created from. Kept alive because
+    /// libghostty re-derives the conditional (light/dark) config from it on every
+    /// `RELOAD_CONFIG`; `ghostty_app_new` does not take ownership. Nil for the test-only
+    /// `forTesting()` runtime. Freed in `deinit`, after the app.
+    private var config: ghostty_config_t?
+
+    /// Where the theme files were written at startup; `setColorScheme` rewrites them there.
+    /// Nil for the test-only `forTesting()` runtime.
+    private let themeDirectory: URL?
+
     /// Invoked on the main thread with each decoded runtime action.
     public var onAction: ((GhosttyAction) -> Void)?
 
@@ -36,27 +46,31 @@ public final class GhosttyRuntime {
 
     /// Build a runtime and create the libghostty app with the runtime callbacks.
     /// Throws `GhosttyError` if config creation or app creation fails.
-    public init() throws {
+    public convenience init() throws {
+        try self.init(themeDirectory: GhosttyThemeFiles.defaultDirectory)
+    }
+
+    /// `themeDirectory` is where Casper's theme files are written; tests pass a temporary one.
+    init(themeDirectory: URL) throws {
         // Accepted exception to the never-crash policy: a failed process-wide
         // `ghostty_init` leaves libghostty unusable, so there is nothing to recover.
         precondition(ghosttyInitialized, "ghostty_init failed")
 
-        guard let config = ghostty_config_new() else {
+        self.themeDirectory = themeDirectory
+        let themes = Self.writeThemeFiles(to: themeDirectory)
+        // The user's own config is read after Casper's defaults, so any user setting still wins.
+        // Casper's defaults carry its light and dark themes and its clipboard-write policy, and give
+        // a user with no Ghostty config at all a sane look rather than libghostty's vanilla gray.
+        guard let config = GhosttyConfigBuilder.makeConfig(themes: themes, loadUserFiles: { config in
+            ghostty_config_load_default_files(config)
+            // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
+            // user's config. Ghostty's own app runs this before finalize; without it, includes are
+            // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
+            // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
+            ghostty_config_load_recursive_files(config)
+        }) else {
             throw GhosttyError(reason: "ghostty_config_new returned null")
         }
-        defer { ghostty_config_free(config) }
-        // Load Casper's built-in default theme *first*, before the user's own config,
-        // so any user setting still wins. This compensates for macOS libghostty keying
-        // the Application-Support config dir on the bundle id (empty for a bundled
-        // Casper.app) — without it, the bundle would fall back to the vanilla gray default.
-        loadEmbeddedDefaults(into: config)
-        ghostty_config_load_default_files(config)
-        // Resolve `config-file` includes (e.g. an `?auto/theme.ghostty` theme) pulled in by the
-        // user's config. Ghostty's own app runs this before finalize; without it, includes are
-        // silently ignored. We deliberately skip `ghostty_config_load_cli_args`: Casper owns its
-        // own argument parsing (swift-argument-parser), so its subcommand args are not ghostty config.
-        ghostty_config_load_recursive_files(config)
-        ghostty_config_finalize(config)
 
         var runtimeConfig = ghostty_runtime_config_s()
         runtimeConfig.userdata = Unmanaged.passUnretained(self).toOpaque()
@@ -69,29 +83,25 @@ public final class GhosttyRuntime {
         runtimeConfig.close_surface_cb = casperGhosttyCloseSurface
 
         guard let app = ghostty_app_new(&runtimeConfig, config) else {
+            ghostty_config_free(config)
             throw GhosttyError(reason: "ghostty_app_new returned null")
         }
         self.app = app
+        self.config = config
     }
 
-    /// Load Casper's built-in default terminal theme into `config`.
-    ///
-    /// libghostty exposes no load-from-string API — only `ghostty_config_load_file`
-    /// — so the embedded config is written to a per-process temp file, loaded, then
-    /// removed. Never crashes: if the temp file can't be written, the embedded
-    /// default is skipped and the terminal still starts with libghostty's default.
-    private func loadEmbeddedDefaults(into config: ghostty_config_t) {
-        let path = FileManager.default.temporaryDirectory
-            .appendingPathComponent("casper-default-config-\(ProcessInfo.processInfo.processIdentifier).ghostty")
+    /// Writes Casper's theme files, kept for the app's lifetime (libghostty re-reads them on
+    /// every colour-scheme switch). Never crashes: nil means the terminal keeps libghostty's
+    /// own colours.
+    @discardableResult
+    private static func writeThemeFiles(to directory: URL) -> GhosttyThemeFiles.Paths? {
         do {
-            try GhosttyDefaultConfig.text.write(to: path, atomically: true, encoding: .utf8)
+            return try GhosttyThemeFiles.write(to: directory)
         } catch {
-            CasperLog.ghostty.warning("failed to write embedded default config; skipping: \(error)")
-            return
+            CasperLog.ghostty.warning(
+                "failed to write built-in terminal themes; using libghostty's default colours: \(error)")
+            return nil
         }
-        // Remove the temp file once loaded; a cleanup failure is harmless, so ignore it.
-        defer { try? FileManager.default.removeItem(at: path) }
-        ghostty_config_load_file(config, path.path)
     }
 
     /// Test-only constructor: a runtime with no libghostty app, used to exercise
@@ -102,6 +112,7 @@ public final class GhosttyRuntime {
 
     private init(uninitialized: ()) {
         self.app = nil
+        self.themeDirectory = nil
     }
 
     /// Drain libghostty's pending work. Main thread only; no-op without an app.
@@ -116,6 +127,39 @@ public final class GhosttyRuntime {
     public func setAppFocus(_ focused: Bool) {
         guard let app else { return }
         ghostty_app_set_focus(app, focused)
+    }
+
+    /// Tells libghostty which side of a conditional (`light:…,dark:…`) config is
+    /// live. The app call covers surfaces created from now on; each existing surface
+    /// keeps its own conditional state and only switches through its own call, so
+    /// every live surface must be passed in — off-screen ones included. No-op
+    /// without an app (the test-only runtime).
+    ///
+    /// The theme files are rewritten first: they live in `~/Library/Caches`, which a cleaner
+    /// may empty while Casper runs, and libghostty re-reads the selected file on every switch.
+    /// A failed rewrite is only logged, as the switch still works if the files survived.
+    @MainActor
+    public func setColorScheme(dark: Bool, surfaces: [GhosttySurfaceView]) {
+        guard let app, let themeDirectory else { return }
+        Self.writeThemeFiles(to: themeDirectory)
+        ghostty_app_set_color_scheme(app, dark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+        for surface in surfaces { surface.setColorScheme(dark: dark) }
+    }
+
+    /// Answers libghostty's `RELOAD_CONFIG`, which a colour-scheme change raises
+    /// (soft) and after which libghostty pushes nothing on its own: hand the stored,
+    /// unconditioned config back to the target, which re-derives its light or dark
+    /// side from its own conditional state. Casper never reloads config from disk,
+    /// so a non-soft request is answered the same way. Always claimed.
+    func handleReloadConfig(target: ghostty_target_s) -> Bool {
+        guard let app, let config else { return true }
+        switch target.tag {
+        case GHOSTTY_TARGET_SURFACE:
+            if let surface = target.target.surface { ghostty_surface_update_config(surface, config) }
+        default:
+            ghostty_app_update_config(app, config)
+        }
+        return true
     }
 
     /// Decode a raw libghostty action and route it to `onAction`. Called by the
@@ -146,6 +190,7 @@ public final class GhosttyRuntime {
     // class of hazard one level down, freeing a surface while its view is still alive.
     deinit {
         if let app { ghostty_app_free(app) }
+        if let config { ghostty_config_free(config) }
     }
 }
 
@@ -176,7 +221,9 @@ func casperGhosttyWakeup(_ userdata: UnsafeMutableRawPointer?) {
 
 /// `action_cb`: `bool (*)(ghostty_app_t, ghostty_target_s, ghostty_action_s)`.
 /// No userdata argument, so recover the runtime from the app handle. Always
-/// invoked on the main thread by libghostty during a `ghostty_app_tick`.
+/// invoked on the main thread: usually during a `ghostty_app_tick`, but `RELOAD_CONFIG`
+/// also arrives synchronously and re-entrantly from `ghostty_app_set_color_scheme` and
+/// `ghostty_surface_set_color_scheme`, i.e. from inside `GhosttyRuntime.setColorScheme`.
 func casperGhosttyAction(
     _ app: ghostty_app_t?,
     _ target: ghostty_target_s,
@@ -243,6 +290,12 @@ func casperGhosttyAction(
             MainActor.assumeIsolated { view.reportChildExit(code) }
         }
         return true
+    case GHOSTTY_ACTION_RELOAD_CONFIG:
+        // Plumbing, not an app action: answered by pushing the stored config back to
+        // the target, so it never reaches `handleAction` / `onAction`.
+        guard let app, let userdata = ghostty_app_userdata(app) else { return false }
+        let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(userdata).takeUnretainedValue()
+        return runtime.handleReloadConfig(target: target)
     default:
         break
     }

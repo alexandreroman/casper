@@ -1,4 +1,6 @@
 import AppKit
+import HighlightSwift
+import SwiftUI
 import XCTest
 
 @testable import CasperUI
@@ -73,5 +75,12 @@ final class DiffHighlighterTests: XCTestCase {
         // the `Sendable` requirement sits on the attribute key and `NSFont` is not
         // `Sendable`. `DiffHighlighter.droppingFonts(_:)` strips it the same way.
         XCTAssertNil(NSAttributedString(highlighted).attribute(.font, at: 0, effectiveRange: nil))
+    }
+
+    /// The palette follows the appearance: GitHub's light theme for `.light`, its
+    /// dark one for `.dark`.
+    func testColorsFollowTheColorScheme() {
+        XCTAssertEqual(DiffHighlighter.colors(for: .light), .light(.github))
+        XCTAssertEqual(DiffHighlighter.colors(for: .dark), .dark(.github))
     }
 }

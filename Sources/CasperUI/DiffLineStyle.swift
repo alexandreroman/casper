@@ -6,10 +6,27 @@ import SwiftUI
 /// declarative.
 enum DiffLineStyle {
     /// Accent hues for the leading stripe, the +/- prefix, the gutter line
-    /// number, and the +N -N stat badges. Sampled from Claude Code's own diff
-    /// rendering so Casper's diff view reads the same way.
-    static let insertionTint = Color(red: 0.529, green: 0.757, blue: 0.388)
-    static let deletionTint = Color(red: 0.725, green: 0.416, blue: 0.369)
+    /// number, and the +N -N stat badges. The dark values are sampled from
+    /// Claude Code's own diff rendering so Casper's diff view reads the same way;
+    /// the light ones come from GitHub's diff.
+    static let insertionTint = adaptive(
+        dark: NSColor(srgbRed: 0.529, green: 0.757, blue: 0.388, alpha: 1), light: srgb(0x1A7F37))
+    static let deletionTint = adaptive(
+        dark: NSColor(srgbRed: 0.725, green: 0.416, blue: 0.369, alpha: 1), light: srgb(0xCF222E))
+
+    /// A colour that resolves to `dark` under a dark appearance and `light`
+    /// otherwise, at draw time — so the cached `NSColor`s the diff renderer holds
+    /// follow a live system switch without being rebuilt.
+    private static func adaptive(dark: NSColor, light: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.isDark ? dark : light
+        })
+    }
+
+    private static func srgb(_ hex: UInt32) -> NSColor {
+        NSColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
 
     /// Concrete gutter line-number color for context lines, sitting beside
     /// `accent(for:)` so all three number tints are named in one place. A plain
@@ -54,15 +71,19 @@ enum DiffLineStyle {
         }
     }
 
-    /// Solid, saturated row background — sampled from Claude Code's own diff
-    /// rendering (not derived from the accent tint, which is too pale at any
-    /// reasonable opacity to match). The app is dark-only
-    /// (`AppDelegate.swift` forces `.darkAqua`), so there is no light-mode
-    /// variant to maintain.
+    private static let additionBackground = adaptive(
+        dark: NSColor(srgbRed: 0.082, green: 0.149, blue: 0.024, alpha: 1), light: srgb(0xDAFBE1))
+    private static let deletionBackground = adaptive(
+        dark: NSColor(srgbRed: 0.188, green: 0.043, blue: 0.012, alpha: 1), light: srgb(0xFFEBE9))
+
+    /// Solid, saturated row background (not derived from the accent tint, which
+    /// is too pale at any reasonable opacity to match). The dark values are
+    /// sampled from Claude Code's own diff rendering, the light ones from
+    /// GitHub's diff.
     static func background(for kind: GitDiffLine.Kind) -> Color {
         switch kind {
-        case .addition: return Color(red: 0.082, green: 0.149, blue: 0.024)
-        case .deletion: return Color(red: 0.188, green: 0.043, blue: 0.012)
+        case .addition: return additionBackground
+        case .deletion: return deletionBackground
         case .context: return Color.clear
         }
     }

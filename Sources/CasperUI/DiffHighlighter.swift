@@ -73,6 +73,12 @@ enum DiffHighlighter {
     /// highlighting through its `HLJS` actor and bounds memory (measured ~7.5× less).
     private static let highlighter = Highlight()
 
+    /// The highlight palette for `colorScheme`. Its colours are baked into the
+    /// returned text, so a scheme change means highlighting again.
+    static func colors(for colorScheme: ColorScheme) -> HighlightColors {
+        colorScheme == .dark ? .dark(.github) : .light(.github)
+    }
+
     /// Highlights `text` as a whole (full-file context matters, so lines are
     /// never highlighted in isolation) and returns one `AttributedString` per
     /// source line, indexable by 1-based line number.
@@ -82,17 +88,19 @@ enum DiffHighlighter {
     /// `resourceBundleReady`), highlighting throws, or the resulting line count
     /// does not match `text`'s — in every such case the caller falls back to
     /// neutral text.
-    static func highlightedLines(of text: String, forPath path: String) async -> [AttributedString]? {
+    ///
+    /// The palette follows `colorScheme` (see `colors(for:)`).
+    static func highlightedLines(
+        of text: String, forPath path: String, colorScheme: ColorScheme
+    ) async -> [AttributedString]? {
         guard let language = language(forPath: path), !text.isEmpty, resourceBundleReady else {
             return nil
         }
 
-        // The app forces global dark appearance, so the diff view is always dark.
-        let colors: HighlightColors = .dark(.github)
-
         let highlighted: AttributedString
         do {
-            highlighted = try await highlighter.attributedText(text, language: language, colors: colors)
+            highlighted = try await highlighter.attributedText(
+                text, language: language, colors: colors(for: colorScheme))
         } catch {
             return nil
         }

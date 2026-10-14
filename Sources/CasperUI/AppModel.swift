@@ -418,6 +418,14 @@ final class AppModel {
         surfaceViews[surfaceID] as? GhosttySurfaceView
     }
 
+    /// Forwards the app's appearance to libghostty: the app itself, and every
+    /// terminal view alive — the background nursery's included, whose off-screen
+    /// windows never see an appearance change of their own. No-op before the runtime
+    /// exists.
+    func applyColorScheme(dark: Bool) {
+        runtime?.setColorScheme(dark: dark, surfaces: surfaceViews.values.compactMap { $0 as? GhosttySurfaceView })
+    }
+
     #if DEBUG
     /// Cache size for the debug memory census (`debugMemoryCounters`). An accessor
     /// rather than widened visibility, so the cache itself stays private — see the
@@ -1554,7 +1562,7 @@ final class AppModel {
         // silently refill the slot for a surface that no longer exists, and nothing
         // prunes it afterwards: every closed terminal would leak a `GhosttySurfaceView`
         // (with its process-wide key-up monitor) for the life of the process. The
-        // departing pane renders `Color.black` for the nil and then disappears.
+        // departing pane renders the text background colour for the nil and then disappears.
         // Deliberately below the cache-hit return above, so a live pane's every-render
         // call never pays for this walk — only genuine creation does.
         guard LayoutTree.contains(workspace.layout, id: surface.id) else { return nil }

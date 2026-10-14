@@ -349,6 +349,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         surface = nil
     }
 
+    /// Tells this surface which side of the conditional theme is live; no-op without a surface.
+    public func setColorScheme(dark: Bool) {
+        surface?.setColorScheme(dark: dark)
+    }
+
     /// The current visible viewport text (no scrollback), or nil if the surface
     /// isn't live. Used by agent-state detection — see
     /// `.superpowers/themes/agent-state-detection.md`.

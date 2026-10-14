@@ -1241,7 +1241,7 @@ struct WorkspaceToolbarActions: View {
     @ViewBuilder
     private func editorLabel(_ kind: EditorKind) -> some View {
         if let icon = EditorLauncher.icon(for: kind) {
-            Label { Text(kind.displayName) } icon: { Image(nsImage: icon) }
+            Label { Text(kind.displayName) } icon: { AppIcon(image: icon) }
         } else {
             Text(kind.displayName)
         }
@@ -1791,7 +1791,7 @@ private struct TitleCapsuleChrome: ViewModifier {
             .animation(TitleChipFeedback.animation) { chrome in
                 chrome
                     .background(fill, in: Capsule())
-                    .overlay(showsChrome ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
+                    .overlay(showsChrome ? Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5) : nil)
                     .scaleEffect(scale)
             }
             // Past the scale, so the hit shape stays the full-size capsule: a chip
@@ -1905,5 +1905,22 @@ private extension ToolbarContent {
         } else {
             self
         }
+    }
+}
+
+/// An application icon that redraws when the appearance switches.
+///
+/// The light/dark variant of an app icon comes from the system icon style and is
+/// resolved when the image is drawn. SwiftUI rasterizes `Image(nsImage:)` once and
+/// never redraws it for a system switch, so the icon would keep its first variant.
+/// Keying the view on `colorScheme` (which flips at the same moment, as Casper
+/// follows the system appearance) forces a fresh render.
+private struct AppIcon: View {
+    let image: NSImage
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Image(nsImage: image)
+            .id(colorScheme)
     }
 }

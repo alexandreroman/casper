@@ -1,3 +1,4 @@
+import AppKit
 import CasperGit
 import SwiftUI
 import XCTest
@@ -12,14 +13,41 @@ final class DiffLineStyleTests: XCTestCase {
         XCTAssertNil(DiffLineStyle.cue(for: .context))
     }
 
-    func testTintsMatchClaudeCodeReference() {
-        XCTAssertEqual(DiffLineStyle.insertionTint, Color(red: 0.529, green: 0.757, blue: 0.388))
-        XCTAssertEqual(DiffLineStyle.deletionTint, Color(red: 0.725, green: 0.416, blue: 0.369))
+    /// Resolves `color` under `appearance` to sRGB components, the way AppKit does
+    /// at draw time for a dynamic colour.
+    private func components(_ color: Color, in name: NSAppearance.Name) -> [CGFloat] {
+        var result: [CGFloat] = []
+        NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+            let resolved = NSColor(color).usingColorSpace(.sRGB)!
+            result = [resolved.redComponent, resolved.greenComponent, resolved.blueComponent]
+        }
+        return result
     }
 
-    func testBackgroundIsASolidSaturatedColor() {
-        XCTAssertEqual(DiffLineStyle.background(for: .addition), Color(red: 0.082, green: 0.149, blue: 0.024))
-        XCTAssertEqual(DiffLineStyle.background(for: .deletion), Color(red: 0.188, green: 0.043, blue: 0.012))
+    private func assertColor(
+        _ color: Color, dark: [CGFloat], light: [CGFloat], file: StaticString = #filePath, line: UInt = #line
+    ) {
+        for (expected, name) in [(dark, NSAppearance.Name.darkAqua), (light, .aqua)] {
+            let actual = components(color, in: name)
+            for (a, e) in zip(actual, expected) {
+                XCTAssertEqual(a, e, accuracy: 0.002, "\(name.rawValue)", file: file, line: line)
+            }
+        }
+    }
+
+    /// Dark keeps the values sampled from Claude Code's diff; light uses GitHub's.
+    func testTintsFollowTheAppearance() {
+        let lightInsertion: [CGFloat] = [0x1A, 0x7F, 0x37].map { $0 / 255 }
+        let lightDeletion: [CGFloat] = [0xCF, 0x22, 0x2E].map { $0 / 255 }
+        assertColor(DiffLineStyle.insertionTint, dark: [0.529, 0.757, 0.388], light: lightInsertion)
+        assertColor(DiffLineStyle.deletionTint, dark: [0.725, 0.416, 0.369], light: lightDeletion)
+    }
+
+    func testBackgroundsFollowTheAppearance() {
+        let lightAddition: [CGFloat] = [0xDA, 0xFB, 0xE1].map { $0 / 255 }
+        let lightDeletion: [CGFloat] = [0xFF, 0xEB, 0xE9].map { $0 / 255 }
+        assertColor(DiffLineStyle.background(for: .addition), dark: [0.082, 0.149, 0.024], light: lightAddition)
+        assertColor(DiffLineStyle.background(for: .deletion), dark: [0.188, 0.043, 0.012], light: lightDeletion)
         XCTAssertEqual(DiffLineStyle.background(for: .context), Color.clear)
     }
 

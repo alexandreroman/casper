@@ -17,6 +17,7 @@ import SwiftUI
 struct DiffSurfaceView: View {
     let model: AppModel
     let workspace: Workspace
+    @Environment(\.colorScheme) private var colorScheme
     /// The last computed diff, kept so a refresh can recognise a byte-identical
     /// recompute and skip all content work.
     @State private var diff: GitDiff?
@@ -52,6 +53,12 @@ struct DiffSurfaceView: View {
             // exactly where the cancelled one stopped.
             .onAppear { if loaded { startHighlighting() } else { refresh() } }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
+            // Highlight colours are baked into the text storage, and
+            // `applyHighlight` only writes the colours a highlight carries, so
+            // repainting over the old storage could leave stale runs of the other
+            // palette. Rebuilding the document from scratch with an emptied cache
+            // carries nothing over, and `startHighlighting()` re-runs every file.
+            .onChange(of: colorScheme) { _, _ in rehighlightForColorScheme() }
             .onChange(of: model.diffScrollTarget) { _, _ in applyPendingScroll() }
             // A target can name a file that only the freshly computed diff has, and
             // the surface only holds that diff once SwiftUI has pushed the new
@@ -147,6 +154,21 @@ struct DiffSurfaceView: View {
         }
     }
 
+    /// Starts over on fresh text storage with no highlights, then highlights every
+    /// file again with the current colour scheme.
+    ///
+    /// Not a `refresh()`: that short-circuits on an unchanged diff, which is
+    /// exactly the case here. The current document is reused as is — only its
+    /// carried highlights change — under a bumped revision so the surface swaps
+    /// its storage.
+    private func rehighlightForColorScheme() {
+        highlightCache = [:]
+        if let current = rendering {
+            rendering = DiffRendering(revision: current.revision + 1, document: current.document, highlights: [:])
+        }
+        startHighlighting()
+    }
+
     /// Flattening a diff into the renderer's model walks every line of every file,
     /// so it runs off the main actor; `DiffDocument` is `Sendable` and crosses
     /// back.
@@ -238,6 +260,9 @@ struct DiffSurfaceView: View {
             return
         }
         let carried = highlightCache
+        // Captured before the `Task`, which must not read the environment off the
+        // main actor, and fixed for the whole pass: a scheme change restarts it.
+        let colorScheme = colorScheme
         // Resolved once, and used for both what to read and what to loop over, so
         // the two can't disagree. The index rides along because
         // `prunedToRenderedLines(ofFileAt:in:)` needs the file's place in the
@@ -271,8 +296,8 @@ struct DiffSurfaceView: View {
                 let newText = texts.worktree.removeValue(forKey: file.newPath)
                 let oldText = texts.head.removeValue(forKey: file.oldPath)
 
-                let newLines = await highlight(newText, path: file.newPath)
-                let oldLines = await highlight(oldText, path: file.oldPath)
+                let newLines = await highlight(newText, path: file.newPath, colorScheme: colorScheme)
+                let oldLines = await highlight(oldText, path: file.oldPath, colorScheme: colorScheme)
                 if Task.isCancelled { return }
 
                 // Published per file (rather than batched) so coloring still appears
@@ -297,10 +322,10 @@ struct DiffSurfaceView: View {
     /// Highlights one file's text, or returns nil when absent. The library trims
     /// trailing whitespace, so a single trailing newline is stripped first to
     /// keep its line count aligned with the source.
-    private func highlight(_ text: String?, path: String) async -> [AttributedString]? {
+    private func highlight(_ text: String?, path: String, colorScheme: ColorScheme) async -> [AttributedString]? {
         guard let text else { return nil }
         let trimmed = text.hasSuffix("\n") ? String(text.dropLast()) : text
-        return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path)
+        return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path, colorScheme: colorScheme)
     }
 }
 

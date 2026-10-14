@@ -51,6 +51,12 @@ final class GhosttySurface {
         ghostty_surface_set_content_scale(surface, x, y)
     }
 
+    /// Tell libghostty which side of a conditional (`light:…,dark:…`) config this
+    /// surface renders; libghostty then raises a surface-targeted `RELOAD_CONFIG`.
+    func setColorScheme(dark: Bool) {
+        ghostty_surface_set_color_scheme(surface, dark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+    }
+
     func setFocus(_ focused: Bool) {
         ghostty_surface_set_focus(surface, focused)
     }
