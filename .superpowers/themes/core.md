@@ -13,12 +13,12 @@ The pure-Swift, UI-free core. Fully unit-tested.
 - **`LayoutTree`** — the pure engine behind the tmux-style pane layout:
   `split`, `closeSurface`, `move`, `dropZone`, `updateRatios`, `updateSurface`,
   `orientationAndSide`, `contains`, plus the read-only walks `forEachSurface`,
-  `surfaceIDs` and `surfaces`. The
-  detection tick runs on **`forEachSurface`** every pass, deliberately not on
-  `surfaces(_:)`: the latter materializes a throwaway array of full `Surface`
-  values — browser URLs and all — for every workspace, four times a second.
-  Heavily tested, and the reason pane restructuring needs no UI state (see
-  `app-ui.md` § Design → "Layout composition").
+  `surfaceIDs` and `surfaces`. The detection tick runs on **`forEachSurface`**
+  every pass, deliberately not on `surfaces(_:)`: the latter materializes a
+  throwaway array of full `Surface` values — browser URLs and all — for every
+  workspace, four times a second. Heavily tested, and the reason pane
+  restructuring needs no UI state (see `app-ui.md` § Design → "Layout
+  composition").
 - **Agent state** — `Workspace.agentState` (an `AgentState` enum) and its
   `todos` have **two** producers. The control-channel handlers
   (`casper status set` / `progress set`) write the fields directly and are
@@ -84,10 +84,12 @@ The pure-Swift, UI-free core. Fully unit-tested.
   socket paths so a dev/test instance runs beside the user's real one. A `nil`
   name is the default session, whose paths stay byte-for-byte the historical
   ones. See [[app-sessions]] and [[socket-listen-vs-dial-path]].
-- **`CasperEnvironment`** — the names of the `CASPER_*` environment variables,
-  spelled once for the side that writes them (CasperAgents'
-  `AgentEnvironment`) and the sides that read them (the CLI, `DebugSocketPath`).
-  The names are a contract with the agent plugins and never change.
+- **`CasperEnvironment`** — the `CASPER_*` names shared between the side that
+  writes them and the side that reads them, spelled once: the terminal
+  environment (CasperAgents' `AgentEnvironment`) and the CLI, or the debug
+  driver and `DebugSocketPath`. The names are a contract with the agent plugins
+  and never change. A debug knob with a single reader (the hang watchdog's, the
+  toolbar probe's) stays a literal next to that reader.
 - **`RepoConfig`** — the per-repository `.casper.json` loader/validator, with
   `WorkspaceFileCopier` seeding its `copyFiles` patterns into a new worktree.
   The design decisions live in `cli-agents.md` § Design → "Per-repository
