@@ -1696,12 +1696,6 @@ final class AppModel {
         persist()
     }
 
-    /// Explicitly set the inspector's collapsed state (the panel's collapse button).
-    func setInspectorCollapsed(_ collapsed: Bool, for workspaceID: UUID) {
-        guard mutate(workspaceID, { $0.inspector.collapsed = collapsed }) else { return }
-        persist()
-    }
-
     /// Resolves which editor a click should launch: an explicit `kind` (from
     /// picking a dropdown row) wins, else the workspace's remembered default,
     /// else the first detected editor. Pure and side-effect-free so it is

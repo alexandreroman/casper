@@ -527,9 +527,10 @@ extension AppModel {
     /// Collapse `workspaceID`'s inspector when `tab` is the active one; leave it
     /// alone otherwise. Returns false only when the workspace is unknown.
     private func collapseInspector(ifTabIs tab: InspectorTab, in workspaceID: UUID) -> Bool {
-        guard let ws = workspace(id: workspaceID) else { return false }
-        if ws.inspector.tab == tab {
-            setInspectorCollapsed(true, for: workspaceID)
+        guard let at = locate(workspaceID) else { return false }
+        if workspace(at: at).inspector.tab == tab {
+            updateWorkspace(at: at) { $0.inspector.collapsed = true }
+            persist()
         }
         return true
     }

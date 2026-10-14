@@ -1681,8 +1681,8 @@ final class AppModelTests: XCTestCase {
     func testToggleInspectorTabExpandsCollapsesAndSwitches() {
         let (model, _) = modelWithOnePlainWorkspace()
         let wsID = model.spaces[0].workspaces[0].id
-        // Start collapsed → first toggle expands onto the diff tab.
-        model.setInspectorCollapsed(true, for: wsID)
+        // A fresh inspector starts collapsed → first toggle expands onto the diff tab.
+        XCTAssertTrue(model.spaces[0].workspaces[0].inspector.collapsed)
         model.toggleInspectorTab(.diff, for: wsID)
         XCTAssertFalse(model.spaces[0].workspaces[0].inspector.collapsed)
         XCTAssertEqual(model.spaces[0].workspaces[0].inspector.tab, .diff)
@@ -1696,16 +1696,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].inspector.tab, .diff)
     }
 
-    func testSetInspectorCollapsedSetsAndPersists() {
+    func testCloseBrowserCollapsesAndPersists() {
         let (model, _) = modelWithOnePlainWorkspace()
         let wsID = model.spaces[0].workspaces[0].id
+        model.setInspectorTab(.browser, for: wsID)
         var saves = 0
         model.onPersistForTest = { saves += 1 }
-        model.setInspectorCollapsed(false, for: wsID)
-        XCTAssertFalse(model.spaces[0].workspaces[0].inspector.collapsed)
-        model.setInspectorCollapsed(true, for: wsID)
+        model.controlCloseBrowser(in: wsID)
         XCTAssertTrue(model.spaces[0].workspaces[0].inspector.collapsed)
-        XCTAssertEqual(saves, 2)
+        XCTAssertEqual(saves, 1)
     }
 
     func testSetInspectorWidthClampsAndPersistsPerWorkspace() {
