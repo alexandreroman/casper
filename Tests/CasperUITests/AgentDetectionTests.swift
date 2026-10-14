@@ -86,7 +86,8 @@ final class AgentDetectionTests: XCTestCase {
     /// delivers more than once. Returns nil when nothing is delivered. The workspace
     /// is left unfocused (window not key) so delivery is not suppressed by the focus
     /// check. `initial` is applied before the capture is installed, so only the
-    /// transition under test is counted.
+    /// transition under test is counted. `initial` must be a silent state: a notifying
+    /// one would arm `notificationCooldown` and hide the delivery under test.
     private func deliveredNotification(
         forDetected state: AgentState,
         from initial: AgentState = .idle) -> (body: String, level: UNNotificationInterruptionLevel)? {
