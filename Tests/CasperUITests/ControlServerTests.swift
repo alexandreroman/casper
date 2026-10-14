@@ -40,55 +40,80 @@ final class ControlServerTests: XCTestCase {
     }
 
     /// `ControlServer.handle` delivers its response through an `@Sendable` reply
-    /// closure. Every verb these tests exercise replies synchronously on the main
-    /// actor, so this helper captures that single response and returns it. The box
-    /// is `@unchecked Sendable` only to satisfy the `@Sendable` reply signature —
-    /// the write always happens synchronously on this actor.
-    private func handleSync(_ server: ControlServer, _ command: ControlCommand) -> ControlResponse {
+    /// closure. This helper covers only the verbs that reply synchronously on the
+    /// main actor: it captures that single response and returns it. A verb that
+    /// replies from a `Task` — `diff open`, `workspace new`, the browser automation
+    /// verbs — has not replied yet when `handle` returns, so it fails the test here;
+    /// use `handleAsync` for those. The box is `@unchecked Sendable` only to satisfy
+    /// the `@Sendable` reply signature — the write always happens on this actor.
+    private func handleSync(_ server: ControlServer, _ command: ControlCommand) throws -> ControlResponse {
         final class Box: @unchecked Sendable { var response: ControlResponse? }
         let box = Box()
         server.handle(command) { box.response = $0 }
-        return box.response!
+        return try XCTUnwrap(box.response, "\(command.verb) did not reply synchronously; use handleAsync")
     }
 
     func testStatusSetDispatch() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "blocked"))
         XCTAssertTrue(response.ok)
     }
 
     func testStatusSetRejectsUnknownState() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .statusSet, workspace: id.uuidString, state: "bogus"))
         XCTAssertFalse(response.ok)
     }
 
     func testUnresolvableTargetFails() throws {
         let (server, _) = try seededServer()
-        let response = handleSync(server, ControlCommand(verb: .diffOpen, workspace: "ghost"))
+        let response = try handleSync(server, ControlCommand(verb: .diffOpen, workspace: "ghost"))
         XCTAssertFalse(response.ok)
         XCTAssertNotNil(response.error)
     }
 
+    /// `diff open` replies from a `Task`, once any diff read is done, so its reply
+    /// has to be awaited. It must still come exactly once, with the workspace id.
+    func testDiffOpenRepliesOnceAsynchronouslyWithTheWorkspace() async throws {
+        let (server, id) = try seededServer()
+        final class Replies: @unchecked Sendable { var responses: [ControlResponse] = [] }
+        let replies = Replies()
+        let replied = expectation(description: "diff open replied")
+        // A second reply must fail the count below, not abort the run.
+        replied.assertForOverFulfill = false
+
+        server.handle(ControlCommand(verb: .diffOpen, workspace: id.uuidString)) { response in
+            replies.responses.append(response)
+            replied.fulfill()
+        }
+        await fulfillment(of: [replied], timeout: 5)
+
+        XCTAssertEqual(replies.responses.count, 1)
+        let response = try XCTUnwrap(replies.responses.first)
+        XCTAssertTrue(response.ok, "got: \(response.error ?? "nil")")
+        XCTAssertEqual(response.workspace, id.casperID)
+        XCTAssertEqual(model?.workspace(id: id)?.inspector.tab, .diff)
+    }
+
     func testWorkspaceListDispatch() throws {
         let (server, _) = try seededServer()
-        let response = handleSync(server, ControlCommand(verb: .workspaceList))
+        let response = try handleSync(server, ControlCommand(verb: .workspaceList))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspaces?.count, 1)
     }
 
     func testBrowserCloseDispatch() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(server, ControlCommand(verb: .browserClose, workspace: id.uuidString))
+        let response = try handleSync(server, ControlCommand(verb: .browserClose, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspace, id.casperID)
     }
 
     func testBrowserLoadDispatch() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "https://example.com"))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspace, id.casperID)
@@ -96,7 +121,7 @@ final class ControlServerTests: XCTestCase {
 
     func testBrowserLoadRejectsInvalidURL() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "not-a-url"))
         XCTAssertFalse(response.ok)
         XCTAssertNotNil(response.error)
@@ -114,13 +139,13 @@ final class ControlServerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff)
         XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, true)
 
-        let load = handleSync(
+        let load = try handleSync(
             server, ControlCommand(verb: .browserLoad, workspace: id.uuidString, url: "https://example.com"))
         XCTAssertTrue(load.ok)
         XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff, "load must not switch the tab")
         XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, true, "load must not expand the panel")
 
-        let open = handleSync(
+        let open = try handleSync(
             server, ControlCommand(verb: .browserOpen, workspace: id.uuidString, url: "https://example.com"))
         XCTAssertTrue(open.ok)
         XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .browser, "open selects the browser tab")
@@ -129,7 +154,7 @@ final class ControlServerTests: XCTestCase {
 
     func testDiffCloseDispatch() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(server, ControlCommand(verb: .diffClose, workspace: id.uuidString))
+        let response = try handleSync(server, ControlCommand(verb: .diffClose, workspace: id.uuidString))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(response.workspace, id.casperID)
     }
@@ -137,7 +162,7 @@ final class ControlServerTests: XCTestCase {
     func testInfoSetRoutesToTheModel() throws {
         let (server, id) = try seededServer()
         let model = try XCTUnwrap(self.model)
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .infoSet, workspace: id.uuidString, message: "## Ready"))
         XCTAssertTrue(response.ok)
         XCTAssertEqual(model.workspace(id: id)?.infoMarkdown, "## Ready")
@@ -145,7 +170,7 @@ final class ControlServerTests: XCTestCase {
 
     func testInfoSetWithoutMessageFails() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(server, ControlCommand(verb: .infoSet, workspace: id.uuidString))
+        let response = try handleSync(server, ControlCommand(verb: .infoSet, workspace: id.uuidString))
         XCTAssertFalse(response.ok)
     }
 
@@ -155,7 +180,7 @@ final class ControlServerTests: XCTestCase {
     /// panel.
     func testInfoSetWithWhitespaceOnlyMessageFails() throws {
         let (server, id) = try seededServer()
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .infoSet, workspace: id.uuidString, message: "   \n\t "))
         XCTAssertFalse(response.ok)
     }
@@ -168,7 +193,7 @@ final class ControlServerTests: XCTestCase {
         let model = try XCTUnwrap(self.model)
         let oversized = String(repeating: "a", count: ControlCommand.infoMessageMaxBytes + 1)
 
-        let response = handleSync(
+        let response = try handleSync(
             server, ControlCommand(verb: .infoSet, workspace: id.uuidString, message: oversized))
 
         XCTAssertFalse(response.ok)
@@ -180,7 +205,7 @@ final class ControlServerTests: XCTestCase {
         let model = try XCTUnwrap(self.model)
         model.controlSetInfo(markdown: "## Ready", for: id)
 
-        _ = handleSync(server, ControlCommand(verb: .infoClear, workspace: id.uuidString))
+        _ = try handleSync(server, ControlCommand(verb: .infoClear, workspace: id.uuidString))
 
         XCTAssertNil(model.workspace(id: id)?.infoMarkdown)
     }
