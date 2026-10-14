@@ -7,7 +7,7 @@ struct CasperApp: App {
     var body: some Scene {
         WindowGroup {
             // No window minimum here: the floor is derived from the content by
-            // `WindowFloor` (see app-ui.md § Window floor).
+            // `WindowFloor` (see app-ui.md § Design → "Window floor").
             RootView(model: model)
         }
         // Casper owns its entire menu bar through SwiftUI `.commands` (see

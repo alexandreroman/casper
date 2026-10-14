@@ -62,9 +62,10 @@ final class AppModel {
     var lastNewSpaceLocation: String?
 
     /// Observable revision token bumped when the selected workspace's folder
-    /// changes on disk, and by `requestDiffScroll`. The diff badge and diff
-    /// surface re-pull on its change, giving them a live refresh without knowing
-    /// about the filesystem watcher.
+    /// changes on disk, by `requestDiffScroll`, and once when the window becomes
+    /// visible again (`isWindowVisible`). The diff badge and diff surface re-pull
+    /// on its change, giving them a live refresh without knowing about the
+    /// filesystem watcher.
     private(set) var diffRevision = 0
 
     /// Observable revision token bumped when the selected workspace's
@@ -2117,9 +2118,7 @@ final class AppModel {
                 let signals = terminalIDs.compactMap { id -> AgentSignal? in
                     guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
                     // Every rule set is applied, because nothing here knows which agent runs
-                    // in this surface. The two text sources are read once here and replayed
-                    // across the rule sets — re-fetching them per rule set would triple the
-                    // cost of the pass for no gain.
+                    // in this surface.
                     let textual = AgentDetectionRuleSet.signal(fromViewport: text, title: surfaceOSCTitle(id))
                     let progress = surfaceProgressReport(id).map(AgentSignal.init(progress:)) ?? .absent
                     // Roll the sources together. The OSC 9;4 progress report is the primary

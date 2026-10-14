@@ -99,26 +99,26 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// modal and tracking modes, so a main thread that has stopped turning its run
     /// loop simply never runs it.
     ///
-    /// The obvious implementation — and the original one — was
-    /// `DispatchQueue.main.async`, but it cried wolf. Choosing "Check for
-    /// Updates…" makes Sparkle call `-[NSAlert runModal]` from inside a main
-    /// queue block, which spins a nested modal run loop and sits there waiting
-    /// for the user. libdispatch will not re-enter `_dispatch_main_queue_drain`
-    /// from that nested loop, so every queued ack stays stuck behind the alert:
-    /// the gap crossed the threshold and the watchdog sampled a perfectly healthy
-    /// app (captured dump `hang-20260727-115846.txt`, main thread parked in
+    /// `DispatchQueue.main.async` would cry wolf whenever a modal loop runs.
+    /// Choosing "Check for Updates…" makes Sparkle call `-[NSAlert runModal]` from
+    /// inside a main queue block, which spins a nested modal run loop and sits
+    /// there waiting for the user. libdispatch does not re-enter
+    /// `_dispatch_main_queue_drain` from that nested loop, so every queued ack
+    /// would stay stuck behind the alert until the gap crossed the threshold and
+    /// the watchdog sampled a perfectly healthy app (captured dump
+    /// `hang-20260727-115846.txt`, main thread parked in
     /// `-[NSApplication _doModalLoop:peek:]`). Casper's own `runModal()` panels
     /// and alerts in `AppModel+Presentation` and plain menu tracking have the
     /// exact same shape. Run loop blocks carry no such re-entrancy guard: the
     /// nested loop drains them, so acks keep flowing while a modal is up.
     ///
-    /// Accepted trade-off: the watchdog no longer notices "the main dispatch
-    /// queue is not draining" on its own — only "the main thread is not turning
-    /// its run loop at all". So a genuine hang whose signature is a nested loop
-    /// spinning forever while ordinary main queue work starves — a modal session
-    /// or a menu track that never ends — now reads as healthy. That is the price
-    /// of not crying wolf on every alert the user opens. (A hard block, where the
-    /// thread stops servicing any loop, is still caught.)
+    /// Accepted trade-off: the watchdog does not notice "the main dispatch queue
+    /// is not draining" on its own — only "the main thread is not turning its run
+    /// loop at all". So a genuine hang whose signature is a nested loop spinning
+    /// forever while ordinary main queue work starves — a modal session or a menu
+    /// track that never ends — reads as healthy. That is the price of not crying
+    /// wolf on every alert the user opens. A hard block, where the thread stops
+    /// servicing any loop, is caught.
     static let defaultScheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = MainRunLoop.perform
 
     var scheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void {

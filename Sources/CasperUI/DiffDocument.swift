@@ -317,7 +317,7 @@ struct DiffDocument: Sendable, Equatable {
     ///
     /// The substitution is deliberately 1:1 and length-preserving — each of
     /// those scalars is a single UTF-16 code unit, and so is a space. Two things
-    /// depend on that: the caller's `prefixLength`/`suffixLength` arithmetic
+    /// depend on that: the caller's `suffixLength` arithmetic
     /// stays valid without recomputation, and `DiffTextAssembly`'s highlight
     /// guard (highlighted length must equal `contentRange.length`) keeps
     /// matching, so an affected line still gets its syntax colors instead of

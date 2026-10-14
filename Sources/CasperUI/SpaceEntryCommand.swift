@@ -4,7 +4,7 @@ import SwiftUI
 /// already exists. The Space menu, the sidebar footer and the empty state all render
 /// this one description, so their titles, symbols and actions cannot drift apart —
 /// and since each site lists `allCases`, they cannot disagree on the order either
-/// (app-ui.md § Ways into a Space).
+/// (app-ui.md § Design → "Ways into a Space").
 enum SpaceEntryCommand: CaseIterable {
     case create
     case adopt

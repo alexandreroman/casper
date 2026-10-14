@@ -297,10 +297,9 @@ extension AppModel {
             .map(ControlWorkspaceInfo.init)
     }
 
-    /// Open a new terminal in `workspaceID` by splitting its top-left surface.
-    /// Mirrors the New Terminal split (`applyNewTerminal`), but targeted at an arbitrary
-    /// (non-selected) workspace, and allows overriding the working directory
-    /// (defaults to the workspace's worktree) and running a command.
+    /// Open a new terminal in any workspace, selected or not, by splitting its top-left
+    /// surface and stacking the new terminal below it. The working directory defaults to
+    /// the workspace's worktree, and `command` runs in the new terminal.
     @discardableResult
     func controlOpenTerminal(
         in workspaceID: UUID, command: String? = nil, cwd: String? = nil
