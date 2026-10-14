@@ -78,12 +78,14 @@ The pure-Swift, UI-free core. Fully unit-tested.
   malformed peer cannot force an unbounded allocation; one
   `SocketTransportError` serves both channels; a refused connect — the stale
   socket file a crashed instance leaves — fails the client at once rather than
-  at its timeout; a retriable verb gets up to 4 attempts but retries only a
-  failed connection, never an attempt that timed out waiting for the reply — a
-  deliberate, bounded-cost retry, see [[socket-idempotent-retry]]),
-  plus the pure CLI helpers
-  `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`. Concurrency
-  discipline for the socket classes is in [[swift6-network-concurrency]].
+  at its timeout; a retriable verb gets up to 4 attempts, each with its own
+  timeout: it retries a transport failure — a refused or dropped connection, a
+  reply that never arrives whole — but never an attempt that timed out waiting
+  for the reply, so a late failure can stretch a call to about 4 × its timeout;
+  the retry is deliberate, see [[socket-idempotent-retry]]), plus the pure CLI
+  helpers `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`.
+  Concurrency discipline for the socket classes is in
+  [[swift6-network-concurrency]].
 - **`SessionIdentity`** — the name that suffixes a session's layout file and
   socket paths so a dev/test instance runs beside the user's real one. A `nil`
   name is the default session, whose paths stay byte-for-byte the historical

@@ -455,28 +455,30 @@ public enum SocketClientEngine<
     /// Total attempts when `retriable` is true: the first try plus three retries.
     private static var maxRetriableAttempts: Int { 4 }
     /// Backoff between retries. Short on purpose: a fresh connection usually
-    /// succeeds immediately, so the worst-case added delay stays well under a
-    /// second even after every retry.
+    /// succeeds immediately, so the backoffs add 150 ms at most across every retry.
     private static var retryBackoffMicroseconds: useconds_t { 50_000 }
 
     /// Sends `command` and returns the decoded `Response`.
     ///
     /// Set `retriable` to true ONLY for idempotent verbs. A transport-level
     /// failure (`SocketTransportError`) then triggers a bounded retry over a fresh
-    /// connection. A decoded `Response` — even `ok: false` — is a real answer and
-    /// is returned immediately, never retried, so a mutating verb is never
-    /// applied twice. Nor is an attempt that timed out waiting for the reply: it
-    /// throws as soon as it expires, so the caller waits `timeout`, not a
-    /// multiple of it.
+    /// connection: a refused or dropped connection, or a reply that never arrives
+    /// whole (none at all, truncated, undecodable). A decoded `Response` — even
+    /// `ok: false` — is a real answer and is returned immediately, never retried,
+    /// so a mutating verb is never applied twice. Nor is an attempt that timed out
+    /// waiting for the reply: it throws as soon as it expires.
     ///
-    /// The retry is deliberate. Its original cause, an intermittent cross-process
-    /// `ENETDOWN` before any reply byte arrived while a slow handler such as
-    /// `screenshot` ran, may be gone since the server lingers until the client
-    /// closes, but that is unmeasured. It stays because its cost is bounded: it
-    /// fires only on a transport failure reported before the timeout, never after
-    /// one, so it adds at most three 50 ms backoffs and three fast-failing
-    /// attempts. Settle it by measurement, not by reading the code: disable it and
-    /// loop a few hundred `casper debug screenshot` and
+    /// Every attempt still gets its own full `timeout`, and a transport failure can
+    /// arrive late — a connection dropped just before the deadline, after a slow
+    /// handler ran. The worst case is about 4 × `timeout` plus the backoffs: 20 s
+    /// at the 5 s default, 60 s for the browser automation verbs' 15 s.
+    ///
+    /// The retry is deliberate (project-memory note `socket-idempotent-retry`).
+    /// Its original cause, an intermittent cross-process `ENETDOWN` before any
+    /// reply byte arrived while a slow handler such as `screenshot` ran, may be
+    /// gone since the server lingers until the client closes, but that is
+    /// unmeasured. Settle it by measurement, not by reading the code: disable it
+    /// and loop a few hundred `casper debug screenshot` and
     /// `casper debug read-text --scrollback` calls against a `make dev` instance,
     /// watching for transport errors.
     public static func send(
