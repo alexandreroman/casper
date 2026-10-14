@@ -62,8 +62,9 @@ final class AppModel {
     var lastNewSpaceLocation: String?
 
     /// Observable revision token bumped when the selected workspace's folder
-    /// changes on disk. The diff badge and diff surface re-pull on its change,
-    /// giving them a live refresh without knowing about the filesystem watcher.
+    /// changes on disk, and by `requestDiffScroll`. The diff badge and diff
+    /// surface re-pull on its change, giving them a live refresh without knowing
+    /// about the filesystem watcher.
     private(set) var diffRevision = 0
 
     /// Observable revision token bumped when the selected workspace's
@@ -109,27 +110,47 @@ final class AppModel {
     /// before any failure alert, so an `NSAlert` never stacks on a live sheet.
     var closeProgress: WorkspaceCloseProgress?
 
-    /// A one-shot request to scroll a workspace's diff view to a file. `nonce`
-    /// makes repeated requests for the same file distinct so the view re-scrolls.
+    /// A one-shot request to scroll a workspace's diff view to a file, held until
+    /// the view settles it through `consumeDiffScrollTarget(_:)`.
     struct DiffScrollTarget: Equatable {
         let workspaceID: UUID
+        /// A worktree-relative path, matched against `GitDiffFile.id` exactly.
         let file: String
-        let nonce: Int
+        /// The `diffRevision` the request bumped to. A diff computed at this
+        /// revision or later reflects the disk as of the request; one computed
+        /// earlier may predate the file's change.
+        let diffRevision: Int
+
+        /// Whether a diff computed at `revision` settles this target without a
+        /// scroll: it is recent enough to reflect the request, and it does not list
+        /// the file. `files` is nil when that diff couldn't be computed.
+        func isUnreachable(inDiffListing files: [GitDiffFile]?, computedAt revision: Int) -> Bool {
+            guard revision >= diffRevision else { return false }
+            let listed = files?.contains { $0.id == file } ?? false
+            return !listed
+        }
     }
-    /// Set by `requestDiffScroll` / read by `DiffSurfaceView`. Observable so the
-    /// view reacts; not part of any persisted model.
+    /// Set by `requestDiffScroll`, read and cleared by `DiffSurfaceView`.
+    /// Observable so the view reacts; not part of any persisted model.
     private(set) var diffScrollTarget: DiffScrollTarget?
-    @ObservationIgnored private var diffScrollNonce = 0
 
     // Reached from AppModel+Control.swift.
     /// Ask `DiffSurfaceView` to scroll `workspaceID`'s diff to `file`.
     ///
-    /// The nonce bump and the target write belong together: the nonce is what
-    /// makes a repeated request for the same file a *distinct* target value, so
-    /// the view re-scrolls instead of ignoring an unchanged one.
+    /// Bumps `diffRevision` so the view computes a diff that holds the file even
+    /// when its change is still inside the watcher's debounce window. The bump
+    /// also makes a repeated request for the same file a distinct target value.
     func requestDiffScroll(workspaceID: UUID, file: String) {
-        diffScrollNonce += 1
-        diffScrollTarget = DiffScrollTarget(workspaceID: workspaceID, file: file, nonce: diffScrollNonce)
+        diffRevision += 1
+        diffScrollTarget = DiffScrollTarget(workspaceID: workspaceID, file: file, diffRevision: diffRevision)
+    }
+
+    /// Clears `target` once the diff view has settled it — scrolled to its file,
+    /// or found a fresh diff that doesn't list it. A newer request that replaced
+    /// `target` in the meantime stays in place.
+    func consumeDiffScrollTarget(_ target: DiffScrollTarget) {
+        guard diffScrollTarget == target else { return }
+        diffScrollTarget = nil
     }
 
     /// FSEvents watcher for the selected workspace's worktree, or nil when

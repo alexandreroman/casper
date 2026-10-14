@@ -162,6 +162,10 @@ longer does are recorded in `../status.md` § Superseded designs.
   line is a prefix of the real one. Syntax colors are applied progressively per
   file (HighlightSwift), **color attributes only**, so a highlight landing
   mid-scroll cannot change a line height and shift the text under the reader.
+  A `casper diff open <file>` scroll request is one-shot: the view clears it
+  once the scroll lands, or once a diff computed after the request does not
+  list the file (matched by exact worktree-relative path), so an unchanged file
+  opens the diff without scrolling and a remount never scrolls again.
 - **Browser** — a `WKWebView` surface (address bar with bare-host
   normalization, back/forward/reload), aimed at previewing a `localhost:PORT`
   app started by the agent. No Chromium.

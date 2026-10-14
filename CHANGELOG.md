@@ -55,6 +55,9 @@ CI, test, and documentation-only work is left out.
   closed.
 - `casper diff open <file>` no longer scrolls to a different changed file that
   shares the name of an unchanged one.
+- The diff view no longer jumps back to a file requested earlier with
+  `casper diff open` when it is reopened, and no longer jumps to a requested
+  file that only changes later.
 
 ## [0.1.3] - 2026-10-13
 

@@ -302,14 +302,15 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(first.workspaceID, id)
         XCTAssertEqual(first.file, "README.md")
 
-        // A repeat request for the same file must produce a fresh nonce so the
-        // view re-scrolls even though the file argument is unchanged.
+        // Once the view has settled the first request, a repeat for the same file
+        // must set a target again so the view re-scrolls.
+        model.consumeDiffScrollTarget(first)
         guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
             return XCTFail("expected success")
         }
         let second = try XCTUnwrap(model.diffScrollTarget)
         XCTAssertEqual(second.file, "README.md")
-        XCTAssertNotEqual(second.nonce, first.nonce)
+        XCTAssertGreaterThan(second.diffRevision, first.diffRevision)
     }
 
     func testOpenDiffWithMissingFileFails() throws {

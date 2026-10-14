@@ -21,6 +21,10 @@ struct DiffSurfaceView: View {
     /// The last computed diff, kept so a refresh can recognise a byte-identical
     /// recompute and skip all content work.
     @State private var diff: GitDiff?
+    /// The `model.diffRevision` `diff` was computed at, or nil before the first
+    /// refresh lands. Tells a scroll target whether `diff` is recent enough to
+    /// settle it.
+    @State private var loadedDiffRevision: Int?
     @State private var loaded = false
     /// What the surface renders, built from `diff`. Handed to `DiffTextSurface`
     /// as a property so the first paint doesn't depend on the surface already
@@ -34,9 +38,6 @@ struct DiffSurfaceView: View {
     /// The in-flight `refresh()` compute, cancelled before starting a new one so a
     /// rapid sequence of `diffRevision` bumps can't assign results out of order.
     @State private var refreshTask: Task<Void, Never>?
-    /// Nonce of the last `model.diffScrollTarget` this view acted on, so a target
-    /// is applied once (not re-applied on every unrelated body re-evaluation).
-    @State private var appliedScrollNonce = 0
     /// The handle onto the AppKit surface. Its coordinator stays nil until SwiftUI
     /// realizes the representable — one layout pass after the body that first
     /// shows it — so every call through it has to tolerate nil.
@@ -115,6 +116,8 @@ struct DiffSurfaceView: View {
         // flash): `content` shows the last value until it's reassigned below.
         refreshTask?.cancel()
         refreshTask = Task { @MainActor in
+            // Read in the same main-actor turn as `computeDiff`'s own cache key.
+            let computedAtRevision = model.diffRevision
             let newDiff = await model.diffService.computeDiff(for: workspace)
             if Task.isCancelled { return }
             // Dedup redundant refreshes: on an active worktree an FSEvents watcher
@@ -125,12 +128,14 @@ struct DiffSurfaceView: View {
             // content work; only a pending scroll target (which can arrive
             // independent of a content change) still needs applying.
             if loaded, newDiff == diff {
+                loadedDiffRevision = computedAtRevision
                 applyPendingScroll()
                 return
             }
             let newDocument = await Self.makeDocument(for: newDiff)
             if Task.isCancelled { return }
             diff = newDiff
+            loadedDiffRevision = computedAtRevision
             // Read here rather than before the awaits above: the previous
             // highlight task keeps publishing into the cache until
             // `startHighlighting()` cancels it below, and a snapshot taken
@@ -151,6 +156,9 @@ struct DiffSurfaceView: View {
             logDiffShape(of: newDocument, computeMs: computeMs)
             loaded = true
             startHighlighting()
+            // Settles a target this diff lacks. One it holds waits for the surface
+            // to take the new `rendering`: `onChange(of: rendering?.revision)`.
+            applyPendingScroll()
         }
     }
 
@@ -198,22 +206,26 @@ struct DiffSurfaceView: View {
             """)
     }
 
-    /// Apply a pending `model.diffScrollTarget` for this workspace once its file
-    /// exists in the loaded diff. Idempotent via `appliedScrollNonce`, so it can
-    /// be called both when the target changes and when the diff finishes loading.
+    /// Applies a pending `model.diffScrollTarget` for this workspace, and hands it
+    /// back to the model once it is settled: the scroll landed, or a diff recent
+    /// enough to reflect the request doesn't list the file — a valid but unchanged
+    /// file opens the diff without scrolling.
     ///
-    /// The nonce is consumed only once the surface has actually scrolled, so a
-    /// target that arrives before the surface is realized — or before the document
-    /// holding its file has reached it — is applied by a later call rather than
-    /// being silently swallowed.
+    /// Until then the target stays set, so one that arrives before the surface is
+    /// realized — or before the document holding its file has reached it — is
+    /// applied by a later call rather than being silently swallowed. Clearing it
+    /// once settled is what keeps it one-shot: this view unmounts on collapse, on
+    /// a switch to the Browser tab and on a workspace switch, and a target still
+    /// set on remount would scroll the reader back to it, or to its file when that
+    /// file changes later.
     private func applyPendingScroll() {
-        guard let coordinator = controller.coordinator,
-              let target = model.diffScrollTarget,
-              target.workspaceID == workspace.id,
-              target.nonce != appliedScrollNonce,
-              diff?.files.contains(where: { $0.id == target.file }) == true else { return }
-        guard coordinator.scroll(toFileID: target.file) else { return }
-        appliedScrollNonce = target.nonce
+        guard let target = model.diffScrollTarget, target.workspaceID == workspace.id else { return }
+        if controller.coordinator?.scroll(toFileID: target.file) == true {
+            model.consumeDiffScrollTarget(target)
+        } else if let loadedDiffRevision,
+                  target.isUnreachable(inDiffListing: diff?.files, computedAt: loadedDiffRevision) {
+            model.consumeDiffScrollTarget(target)
+        }
     }
 
     /// The highlights that survive a rebuild.
