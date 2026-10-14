@@ -330,13 +330,10 @@ struct DiffSurfaceView: View {
         }
     }
 
-    /// Highlights one file's text, or returns nil when absent. The library trims
-    /// trailing whitespace, so a single trailing newline is stripped first to
-    /// keep its line count aligned with the source.
+    /// Highlights one file's text, or returns nil when absent.
     private func highlight(_ text: String?, path: String, colorScheme: ColorScheme) async -> [AttributedString]? {
         guard let text else { return nil }
-        let trimmed = text.hasSuffix("\n") ? String(text.dropLast()) : text
-        return await DiffHighlighter.highlightedLines(of: trimmed, forPath: path, colorScheme: colorScheme)
+        return await DiffHighlighter.highlightedLines(of: text, forPath: path, colorScheme: colorScheme)
     }
 }
 

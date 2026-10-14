@@ -20,6 +20,13 @@ carried into AppKit text. The working recipe for both lives in
   every highlighted line. HighlightSwift also removes `.font` itself before
   converting, which is why nothing downstream has to strip fonts to keep a
   uniform monospaced face.
+- **HighlightSwift's output is not line-aligned with its input.** It trims
+  `.whitespacesAndNewlines` off both ends of the text before building its HTML,
+  and the HTML import turns every CRLF (and a lone CR) into an LF, so blank
+  lines at either end of a file are missing from the output.
+  `DiffHighlighter.lines(fromLibraryOutput:alignedTo:)` puts them back as empty
+  lines; `DiffHighlighterTests` rebuilds the library's output shape (trim,
+  `<pre><code>`, HTML import, drop the last character) without JavaScript.
 - **`AttributedString.utf16` requires macOS 26.** Casper's floor is macOS 15
   (see [[swift-toolchain-floor]]), so a run's UTF-16 length is measured with
   `UTF16.width` over the run slice's `unicodeScalars`.

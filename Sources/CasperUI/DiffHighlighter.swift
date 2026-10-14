@@ -85,9 +85,9 @@ enum DiffHighlighter {
     ///
     /// Returns `nil` when the language is unknown, the text is empty, the
     /// HighlightSwift resource bundle cannot be made available (see
-    /// `resourceBundleReady`), highlighting throws, or the resulting line count
-    /// does not match `text`'s — in every such case the caller falls back to
-    /// neutral text.
+    /// `resourceBundleReady`), highlighting throws, or the output cannot be lined
+    /// up with `text`'s lines (see `lines(fromLibraryOutput:alignedTo:)`) — in
+    /// every such case the caller falls back to neutral text.
     ///
     /// The palette follows `colorScheme` (see `colors(for:)`).
     static func highlightedLines(
@@ -97,27 +97,57 @@ enum DiffHighlighter {
             return nil
         }
 
+        let source = normalizingLineEndings(text)
         let highlighted: AttributedString
         do {
             highlighted = try await highlighter.attributedText(
-                text, language: language, colors: colors(for: colorScheme))
+                source, language: language, colors: colors(for: colorScheme))
         } catch {
             return nil
         }
+        return lines(fromLibraryOutput: highlighted, alignedTo: source)
+    }
 
-        // Safety net: only hand back a per-line array the caller can index by
-        // line number; any mismatch (e.g. the library trimming edge
-        // whitespace) falls back to neutral rather than misaligning colors.
-        //
-        // Counted over **scalars**, matching how `splitLines` cuts: a CRLF pair
-        // is a single `Character` that equals neither "\n" nor "\r\n" when
-        // compared against a "\n" literal, so counting characters answers 1 for
-        // a whole CRLF file — the guard below then fails and the file silently
-        // renders with no colors at all.
-        let lines = splitLines(highlighted)
-        guard lines.count == 1 + text.unicodeScalars.lazy.filter({ $0 == "\n" }).count else {
-            return nil
-        }
+    /// `text` with every CRLF line ending turned into a bare LF.
+    ///
+    /// The library's HTML import does this to whatever it highlights, while the
+    /// diff's own lines arrive with their CR already stripped
+    /// (`Repository.mapLine`), so doing it up front keeps the lines the library
+    /// returns the same length as the diff's, whichever path the library takes.
+    static func normalizingLineEndings(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+    }
+
+    /// Lines HighlightSwift's output up with the source it highlighted: one
+    /// element per line of `source`, indexable by line number, or `nil` when the
+    /// two cannot be lined up — the caller then falls back to neutral text rather
+    /// than misaligning colors.
+    ///
+    /// The library trims whitespace and newlines off both ends of the text before
+    /// highlighting it, so its output starts at the first line with visible text
+    /// and stops at the last. The blank lines trimmed off the start come back as
+    /// empty elements ahead of it, and the end is padded with empty elements up to
+    /// the source's line count. A first or last line that also lost edge spaces
+    /// then fails `DiffTextAssembly.applyHighlight`'s per-line length check and
+    /// stays neutral on its own.
+    ///
+    /// Line feeds are counted over **scalars**, matching how `splitLines` cuts: a
+    /// CRLF pair is a single `Character`, which a `"\n"` literal never equals.
+    ///
+    /// Not `private`, for the same reason as `splitLines`: `DiffHighlighterTests`
+    /// drives it with the shape the library produces.
+    static func lines(
+        fromLibraryOutput highlighted: AttributedString, alignedTo source: String
+    ) -> [AttributedString]? {
+        let sourceLineCount = 1 + source.unicodeScalars.lazy.filter { $0 == "\n" }.count
+        let trimmedLeadingLineCount = source.unicodeScalars
+            .prefix { CharacterSet.whitespacesAndNewlines.contains($0) }
+            .lazy.filter { $0 == "\n" }.count
+
+        var lines = Array(repeating: AttributedString(), count: trimmedLeadingLineCount)
+        lines += splitLines(highlighted)
+        guard lines.count <= sourceLineCount else { return nil }
+        lines += Array(repeating: AttributedString(), count: sourceLineCount - lines.count)
         return lines
     }
 

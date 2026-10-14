@@ -58,6 +58,8 @@ CI, test, and documentation-only work is left out.
 - The diff view no longer jumps back to a file requested earlier with
   `casper diff open` when it is reopened, and no longer jumps to a requested
   file that only changes later.
+- Files with Windows (CRLF) line endings, or that start or end with a blank
+  line, get syntax colours in the diff view.
 
 ## [0.1.3] - 2026-10-13
 
