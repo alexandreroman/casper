@@ -645,13 +645,14 @@ longer does are recorded in `../status.md` § Superseded designs.
   `AppModel.browserCoordinators` by `Surface.id`, so the page and its history
   survive the inspector collapsing and switching tabs.
 
-  Its URL is persisted from **both** ends. The address bar writes it, and so
-  does the page: `BrowserCoordinator` reports every committed navigation through
+  Its URL is persisted through **one** path, whoever navigates — the address
+  bar or the page itself: `BrowserCoordinator` reports every navigation through
   `onCommitURL`, wired by `AppModel.browserCoordinator(for:)` to
   `AppModel.setBrowserURL`, which no-ops when the stored URL already matches so
-  a page load cannot thrash `session.json`. Covered by
-  `Tests/CasperUITests/BrowserURLSyncTests.swift`. Same-document navigations
-  need KVO rather than the navigation delegate — see
+  a page load cannot thrash `session.json`. An address-bar `load` changes the
+  web view's `url` inside the call, so the report lands before it returns.
+  Covered by `Tests/CasperUITests/BrowserURLSyncTests.swift`. Same-document
+  navigations need KVO rather than the navigation delegate — see
   [[webkit-page-driven-navigation]].
 - **UI-5 — ✅ built.** A read-only diff surface over CasperGit's
   `diffWorkdirToHead()`: per-file sections (path + status, binary and unreadable

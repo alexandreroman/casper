@@ -12,7 +12,7 @@ struct BrowserSurfaceView: View {
 
     var body: some View {
         if let coordinator = model.browserCoordinator(for: surface) {
-            BrowserSurfaceContentView(model: model, surface: surface, coordinator: coordinator)
+            BrowserSurfaceContentView(surface: surface, coordinator: coordinator)
         } else {
             Color(nsColor: .textBackgroundColor)  // not a browser surface
         }
@@ -61,7 +61,6 @@ struct BrowserSurfaceView: View {
 /// and navigation buttons re-render as the web view commits navigations. Split
 /// out so `@ObservedObject` subscribes to the externally cached coordinator.
 private struct BrowserSurfaceContentView: View {
-    let model: AppModel
     let surface: Surface
     @ObservedObject var coordinator: BrowserCoordinator
 
@@ -114,10 +113,12 @@ private struct BrowserSurfaceContentView: View {
         }
     }
 
+    /// Load the typed address. Persisting it is the coordinator's job: `load` changes
+    /// the web view's URL inside the call, and the KVO sync reports it through
+    /// `onCommitURL` before `load` returns.
     private func navigate() {
         guard let url = BrowserSurfaceView.normalize(coordinator.address) else { return }
         coordinator.load(url)
-        model.setBrowserURL(surface.id, url)
     }
 
     private var externalURL: URL? {

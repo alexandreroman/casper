@@ -1649,7 +1649,7 @@ final class AppModel {
     @ObservationIgnored private(set) lazy var diffService = DiffService(
         currentRevision: { [weak self] in self?.diffRevision ?? 0 })
 
-    /// Rewrite a browser surface's persisted URL (address-bar navigation).
+    /// Rewrite a browser surface's persisted URL, from its coordinator's `onCommitURL`.
     /// Browsers live exclusively in each workspace's inspector, so this matches the
     /// surface against the inspector browsers alone — there is no layout-tree search.
     ///

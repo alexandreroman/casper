@@ -118,6 +118,26 @@ final class BrowserURLSyncTests: XCTestCase {
         XCTAssertTrue(coordinator.address.hasSuffix("page1.html"), coordinator.address)
     }
 
+    // MARK: Address-bar navigation
+
+    /// What lets the address bar persist nothing itself: `load` changes `webView.url`
+    /// inside the call, so the KVO observation reports the URL through `onCommitURL` —
+    /// the path that persists it — before `load` returns and before any network I/O,
+    /// which is why no server is needed.
+    func testLoadReportsTheURLBeforeReturning() async throws {
+        let coordinator = BrowserCoordinator(url: .aboutBlank)
+        await wait("the placeholder about:blank load never committed") {
+            coordinator.webView.url != nil
+        }
+        var reported: [URL] = []
+        coordinator.onCommitURL = { reported.append($0) }
+        let url = try XCTUnwrap(URL(string: "http://localhost:1/x"))
+
+        coordinator.load(url)
+
+        XCTAssertEqual(reported.last, url)
+    }
+
     // MARK: Helpers
 
     /// A coordinator showing a real document at `baseAddress`, ready to be scripted.
