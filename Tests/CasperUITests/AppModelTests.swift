@@ -35,15 +35,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.selectedWorkspaceID)
     }
 
-    func testAddWorkspaceAppendsSelectsAndPersists() throws {
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store)
+    func testAddSpaceAppendsAndSelects() {
+        let model = makeModel()
         model.addSpace(folderURL: URL(fileURLWithPath: "/tmp/plain"), probe: { _ in nil })
         XCTAssertEqual(model.allWorkspaces.count, 1)
         XCTAssertEqual(model.selectedWorkspaceID, model.allWorkspaces[0].id)
-        // The disk write is backgrounded; flush so the synchronous load is deterministic.
-        model.flushPendingSave()
-        XCTAssertEqual(try store.load().spaces.flatMap(\.workspaces).count, 1)
     }
 
     func testAddedWorkspacesGetDistinctPortBlocks() {
@@ -296,14 +292,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.spaces[0].isCollapsed)
     }
 
-    func testSelectWorkspacePersistsSelectionAcrossReload() throws {
-        let (session, _, _, ws2, _) = twoWorkspaceSession()
-        let (store, _) = makeTemporarySessionStore()
-        let model = makeModel(store: store, session: session)
+    /// The fixture's Space is not Git-backed and its folder does not exist, so the
+    /// watcher re-arm cannot promote it and write a save of its own: the one counted
+    /// here is `selectWorkspace`'s.
+    func testSelectWorkspaceSavesOnce() {
+        let (session, ws1, _, ws2, _) = twoWorkspaceSession()
+        let model = makeModel(spaces: session.spaces, selecting: ws1.id)
+        var saves = 0
+        model.onPersistForTest = { saves += 1 }
+
         model.selectWorkspace(ws2.id)
-        // The disk write is backgrounded; flush so the synchronous load is deterministic.
-        model.flushPendingSave()
-        XCTAssertEqual(try store.load().selectedWorkspaceID, ws2.id)
+
+        XCTAssertEqual(model.selectedWorkspaceID, ws2.id)
+        XCTAssertEqual(saves, 1)
     }
 
     /// An id that resolves to no workspace — a notification tapped after its workspace
@@ -1493,6 +1494,7 @@ final class AppModelTests: XCTestCase {
         let (model, surfaceID) = try modelWithOneGitWorkspace()
         model.runtime = try makeIsolatedRuntime()
         var saves = 0
+        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
         model.onPersistForTest = { saves += 1 }
 
         let workspace = model.spaces[0].workspaces[0]
@@ -1517,8 +1519,8 @@ final class AppModelTests: XCTestCase {
         let updatedFontSize = try XCTUnwrap(modelFontSize())
         XCTAssertGreaterThan(updatedFontSize, 0)
 
-        model.flushPendingSave()
-        XCTAssertGreaterThanOrEqual(saves, 1)
+        // Debounced: wait for its own fire, since a flush would persist regardless.
+        await waitUntil { saves == 1 }
     }
 
     /// Full wiring, real libghostty surface: a terminal opened with `--command`
@@ -1721,11 +1723,12 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].inspector.width, InspectorState.minWidth)
     }
 
-    func testSetBrowserURLWritesBackToInspectorBrowserWhenNotInLayout() {
+    func testSetBrowserURLWritesBackToInspectorBrowserWhenNotInLayout() async {
         let (model, _) = modelWithOnePlainWorkspace()
         let inspectorBrowserID = model.spaces[0].workspaces[0].inspector.browser.id
         let layoutBefore = model.spaces[0].workspaces[0].layout
         var saves = 0
+        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
         model.onPersistForTest = { saves += 1 }
 
         let url = URL(string: "http://localhost:8080")!
@@ -1739,10 +1742,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces[0].inspector.browser.id, inspectorBrowserID)
         // The layout tree is untouched: the write-back hit the inspector browser only.
         XCTAssertEqual(model.spaces[0].workspaces[0].layout, layoutBefore)
-        // setBrowserURL persists via the debounced scheduleSave(); flush it so the
-        // save fires synchronously instead of after the 0.5s debounce delay.
-        model.flushPendingSave()
-        XCTAssertEqual(saves, 1)
+        // Debounced: wait for its own fire, since a flush would persist regardless.
+        await waitUntil { saves == 1 }
     }
 
     // MARK: - Open in Editor
@@ -1841,9 +1842,10 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.surfaceConfiguration(for: workspace, terminal: unsized).fontSize, 0)
     }
 
-    func testUpdateSurfaceFontSizeUpdatesLayoutAndSchedulesSave() {
+    func testUpdateSurfaceFontSizeUpdatesLayoutAndSchedulesSave() async {
         let (model, surfaceID) = modelWithOnePlainWorkspace()
         var saves = 0
+        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
         model.onPersistForTest = { saves += 1 }
 
         model.updateSurfaceFontSize(surfaceID, size: 20)
@@ -1852,8 +1854,8 @@ final class AppModelTests: XCTestCase {
             .first { $0.id == surfaceID }
         XCTAssertEqual(surface?.fontSize, 20)
 
-        model.flushPendingSave()  // debounced; flush so the assertion is deterministic
-        XCTAssertEqual(saves, 1)
+        // Debounced: wait for its own fire, since a flush would persist regardless.
+        await waitUntil { saves == 1 }
     }
 
     func testUpdateSurfaceFontSizeUnknownSurfaceIsNoOp() {
@@ -1873,9 +1875,10 @@ final class AppModelTests: XCTestCase {
         return (model, model.spaces[0].workspaces[0].id)
     }
 
-    func testSetSplitRatiosUpdatesTargetWorkspaceAndSchedulesSave() {
+    func testSetSplitRatiosUpdatesTargetWorkspaceAndSchedulesSave() async {
         let (model, wsID) = modelWithTwoPaneSplit()
         var saves = 0
+        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
         model.onPersistForTest = { saves += 1 }
 
         model.setSplitRatios(at: [], ratios: [0.25, 0.75], for: wsID)
@@ -1885,8 +1888,8 @@ final class AppModelTests: XCTestCase {
         }
         XCTAssertEqual(ratios, [0.25, 0.75])
 
-        model.flushPendingSave()  // debounced; flush so the assertion is deterministic
-        XCTAssertGreaterThanOrEqual(saves, 1)
+        // Debounced: wait for its own fire, since a flush would persist regardless.
+        await waitUntil { saves == 1 }
     }
 
     func testSetSplitRatiosNonPositiveSumIsNoOp() {
