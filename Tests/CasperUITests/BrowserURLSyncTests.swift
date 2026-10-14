@@ -24,10 +24,7 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = try await makeLoadedCoordinator()
 
         _ = try await coordinator.evaluate("history.pushState({}, '', '/routed')")
-        await wait("pushState did not update the address") {
-            coordinator.address == Self.routedAddress
-        }
-        XCTAssertEqual(coordinator.address, Self.routedAddress)
+        await waitUntil(timeout: 10) { coordinator.address == Self.routedAddress }
         // pushState pushes a back-forward entry, so Back must light up as well.
         XCTAssertTrue(coordinator.canGoBack)
     }
@@ -36,26 +33,17 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = try await makeLoadedCoordinator()
 
         _ = try await coordinator.evaluate("history.replaceState({}, '', '/routed')")
-        await wait("replaceState did not update the address") {
-            coordinator.address == Self.routedAddress
-        }
-        XCTAssertEqual(coordinator.address, Self.routedAddress)
+        await waitUntil(timeout: 10) { coordinator.address == Self.routedAddress }
     }
 
     func testHashChangesUpdateAddress() async throws {
         let coordinator = try await makeLoadedCoordinator(body: "<a id='jump' href='#anchor'>jump</a>")
 
         _ = try await coordinator.evaluate("location.hash = '#assigned'")
-        await wait("assigning location.hash did not update the address") {
-            coordinator.address == Self.baseAddress + "#assigned"
-        }
-        XCTAssertEqual(coordinator.address, Self.baseAddress + "#assigned")
+        await waitUntil(timeout: 10) { coordinator.address == Self.baseAddress + "#assigned" }
 
         _ = try await coordinator.evaluate("document.getElementById('jump').click()")
-        await wait("clicking an in-page anchor did not update the address") {
-            coordinator.address == Self.baseAddress + "#anchor"
-        }
-        XCTAssertEqual(coordinator.address, Self.baseAddress + "#anchor")
+        await waitUntil(timeout: 10) { coordinator.address == Self.baseAddress + "#anchor" }
     }
 
     /// Moves *between two routed entries*, so the traversal stays inside the one
@@ -66,24 +54,16 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = try await makeLoadedCoordinator()
         _ = try await coordinator.evaluate("history.pushState({}, '', '/routed')")
         _ = try await coordinator.evaluate("history.pushState({}, '', '/routed-again')")
-        await wait("pushState did not update the address") {
-            coordinator.address == Self.nextRoutedAddress
-        }
+        await waitUntil(timeout: 10) { coordinator.address == Self.nextRoutedAddress }
 
         // A script that moves history loses its own reply, so the result is ignored
         // here; the address is what the assertions are about.
         _ = try? await coordinator.evaluate("history.back()")
-        await wait("history.back() did not restore the previous address") {
-            coordinator.address == Self.routedAddress
-        }
-        XCTAssertEqual(coordinator.address, Self.routedAddress)
+        await waitUntil(timeout: 10) { coordinator.address == Self.routedAddress }
         XCTAssertTrue(coordinator.canGoForward)
 
         _ = try? await coordinator.evaluate("history.forward()")
-        await wait("history.forward() did not re-apply the later address") {
-            coordinator.address == Self.nextRoutedAddress
-        }
-        XCTAssertEqual(coordinator.address, Self.nextRoutedAddress)
+        await waitUntil(timeout: 10) { coordinator.address == Self.nextRoutedAddress }
     }
 
     // MARK: Full navigations the page triggers
@@ -94,28 +74,20 @@ final class BrowserURLSyncTests: XCTestCase {
     func testPageDrivenFullNavigationsUpdateAddress() async throws {
         let directory = try makeTwoPageSite()
         let coordinator = BrowserCoordinator(url: .aboutBlank)
-        await wait("the placeholder about:blank load never committed") {
-            coordinator.webView.url != nil
-        }
+        await waitUntil(timeout: 10) { coordinator.webView.url != nil }
         let firstPage = directory.appendingPathComponent("page1.html")
         coordinator.webView.loadFileURL(firstPage, allowingReadAccessTo: directory)
-        await wait("the first page never committed") { coordinator.address.hasSuffix("page1.html") }
+        await waitUntil(timeout: 10) { coordinator.address.hasSuffix("page1.html") }
         let documentReady = await coordinator.waitFor(
             js: "location.href.endsWith('page1.html')", timeoutMs: 10_000)
         XCTAssertTrue(documentReady, "the document never took on its file URL")
 
         // A script that navigates away loses its own reply, so the result is ignored.
         _ = try? await coordinator.evaluate("location.href = 'page2.html'")
-        await wait("assigning location.href did not update the address") {
-            coordinator.address.hasSuffix("page2.html")
-        }
-        XCTAssertTrue(coordinator.address.hasSuffix("page2.html"), coordinator.address)
+        await waitUntil(timeout: 10) { coordinator.address.hasSuffix("page2.html") }
 
         _ = try? await coordinator.evaluate("document.getElementById('back').click()")
-        await wait("clicking a link did not update the address") {
-            coordinator.address.hasSuffix("page1.html")
-        }
-        XCTAssertTrue(coordinator.address.hasSuffix("page1.html"), coordinator.address)
+        await waitUntil(timeout: 10) { coordinator.address.hasSuffix("page1.html") }
     }
 
     // MARK: Address-bar navigation
@@ -126,9 +98,7 @@ final class BrowserURLSyncTests: XCTestCase {
     /// which is why no server is needed.
     func testLoadReportsTheURLBeforeReturning() async throws {
         let coordinator = BrowserCoordinator(url: .aboutBlank)
-        await wait("the placeholder about:blank load never committed") {
-            coordinator.webView.url != nil
-        }
+        await waitUntil(timeout: 10) { coordinator.webView.url != nil }
         var reported: [URL] = []
         coordinator.onCommitURL = { reported.append($0) }
         let url = try XCTUnwrap(URL(string: "http://localhost:1/x"))
@@ -145,14 +115,11 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = BrowserCoordinator(url: .aboutBlank)
         // `init` issues its own about:blank load. Let it commit first, otherwise it
         // commits *after* the document below and leaves the page on about:blank.
-        await wait("the placeholder about:blank load never committed") {
-            coordinator.webView.url != nil
-        }
+        await waitUntil(timeout: 10) { coordinator.webView.url != nil }
 
         coordinator.webView.loadHTMLString(
             "<html><body>\(body)</body></html>", baseURL: URL(string: Self.baseAddress)!)
-        await wait("the test document never committed") { coordinator.address == Self.baseAddress }
-        XCTAssertEqual(coordinator.address, Self.baseAddress)
+        await waitUntil(timeout: 10) { coordinator.address == Self.baseAddress }
 
         // The document adopts the base URL a beat after the web view's `url` commits;
         // scripting history before that is blocked as a change from about:blank, so
@@ -171,26 +138,5 @@ final class BrowserURLSyncTests: XCTestCase {
         try "<html><body><a id='back' href='page1.html'>back</a></body></html>"
             .write(to: directory.appendingPathComponent("page2.html"), atomically: true, encoding: .utf8)
         return directory
-    }
-
-    /// Poll `condition` until it holds, giving up after 10 s. The web view drives
-    /// these updates off the run loop with no single callback to await, so polling
-    /// — rather than a fixed sleep — is what keeps this deterministic. A timeout is
-    /// reported by `fulfillment`; the caller asserts the value afterwards so the
-    /// failure shows what it actually saw.
-    private func wait(_ message: String, until condition: @escaping @MainActor () -> Bool) async {
-        let reached = expectation(description: message)
-        reached.assertForOverFulfill = false
-        let poller = Task { @MainActor in
-            while !Task.isCancelled {
-                if condition() {
-                    reached.fulfill()
-                    return
-                }
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-        }
-        await fulfillment(of: [reached], timeout: 10)
-        poller.cancel()
     }
 }
