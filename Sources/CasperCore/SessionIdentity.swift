@@ -59,7 +59,7 @@ public struct SessionIdentity: Sendable, Equatable {
     /// ignoring any `--session` argument. No `--session` → the default session.
     /// `--session` with no value throws `.missingValue`; a present-but-invalid
     /// name throws `.invalidName`.
-    public static func parse(arguments: [String]) throws -> SessionIdentity {
+    public static func parse(arguments: [String]) throws(ParseError) -> SessionIdentity {
 #if DEBUG
         var iterator = arguments.dropFirst().makeIterator()
         while let arg = iterator.next() {
