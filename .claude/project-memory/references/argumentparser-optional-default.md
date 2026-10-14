@@ -9,12 +9,13 @@ type: reference
 ## The trap
 
 Constructing a `ParsableCommand`/`ParsableArguments` struct DIRECTLY (e.g.
-`var s = StatusCommand.Set(); s.state = "x"`) and reading a property-wrapper
-field aborts with `Can't read a value from a parsable argument definition.`
+`var s = StatusCommand.Set(); s.state = .blocked`) and reading a
+property-wrapper field aborts with
+`Can't read a value from a parsable argument definition.`
 
 The tempting "fix" — a custom `init()` that assigns the wrapped values
-(`init() { self.workspace = nil }`, `self.state = ""`, etc.) — makes direct
-construction work in tests but **crashes real parsing**. Assigning an
+(`init() { self.workspace = nil }`, `self.state = .blocked`, etc.) — makes
+direct construction work in tests but **crashes real parsing**. Assigning an
 `@Option`/`@Argument`/`@OptionGroup` wrapped value puts the wrapper into a
 "resolved value" state; when ArgumentParser later reads the argument
 *definition* during `.parse()` / `.main()` it aborts:
@@ -31,12 +32,13 @@ tests that use direct construction pass and hide it, because they never call
 ## The correct approach
 
 1. Give a `ParsableCommand`/`ParsableArguments` **no** custom `init()` that
-   assigns wrapped values. Let ArgumentParser synthesize the init. Keep inline
-   defaults on the declaration (`var total: Int = 0`, `var workspace: String?`).
+   assigns wrapped values. Let ArgumentParser synthesize the init, and keep any
+   default on the declaration itself (`var raw = false`,
+   `var name: String = "run"`).
 2. Test via the supported parse path, never direct construction + field poking:
    ```swift
-   let cmd = try StatusCommand.Set.parse(["waiting", "--workspace", "feature"])
-   XCTAssertEqual(try cmd.makeCommand().state, "waiting")
+   let cmd = try StatusCommand.Set.parse(["blocked", "--workspace", "feature"])
+   XCTAssertEqual(try cmd.makeCommand().state, "blocked")
    // validation: parse valid argv with a bad semantic value, assert it throws
    let bad = try ProgressCommand.Set.parse(
        ["--total","2","--current","5","--label","x","--workspace","f"])

@@ -26,6 +26,10 @@ so an explicitly empty value stays absent and the verb falls back to its
 default. Absolutizing `""` would instead answer the CLI's own working
 directory, turning a caller's "no path" into a real and wrong one.
 
+The exception is `diff open <file>`: a worktree-relative path, resolved by the
+app against the target workspace's worktree (`WorkspaceFilePath`), so it is
+sent as typed. That is what keeps it meaningful with `--workspace <other>`.
+
 Tests pin this through `.parse([...])` + `makeCommand()` — see
 [[argumentparser-optional-default]] for why direct construction is not an
 option.

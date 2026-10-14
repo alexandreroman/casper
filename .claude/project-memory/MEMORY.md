@@ -28,7 +28,7 @@
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline
 - [FSEvents DirectoryWatcher gotchas](references/fsevents-directory-watcher.md) — no IgnoreSelf, canonicalize paths, stop() barriers off-queue only
 - [Diff refresh uses two FSEvents watchers](references/diff-refresh-two-watchers.md) — a worktree watcher plus a reflog one, so a commit refreshes
-- [Domain CLI and control channel](references/domain-cli-control-channel.md) — JSON shapes and key conventions; non-zero error exits; no hooks
+- [Domain CLI and control channel](references/domain-cli-control-channel.md) — per-verb behavior the CLI theme leaves out; adding a verb
 - [ArgumentParser Optional default](references/argumentparser-optional-default.md) — a custom `init()` assigning wrapped values crashes `.parse()`
 - [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
 - [App sessions (--session)](references/app-sessions.md) — DEBUG-only `--session <name>` isolates layout, sockets and env
