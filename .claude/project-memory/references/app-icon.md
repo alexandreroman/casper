@@ -53,9 +53,6 @@ used (Apple dropped support for it in Xcode 26.1).
   Background = the body gradient set as a fill in the GUI; two foreground layers
   = the terminal marks (`Assets/terminal.svg`) and the sparkle
   (`Assets/sparkle.svg`).
-- The layer sources live in `Packaging/AppIcon/AppIcon.icon/Assets/`, the single
-  place they are authored: Icon Composer imports SVG directly — no PNG
-  rasterization step — and writes the layers back there byte-identical.
 - `Scripts/bundle-app.sh` compiles `AppIcon.icon` with **`xcrun actool`** into
   `Contents/Resources/Assets.car`. That needs Xcode 26 **and a macOS 26 host**:
   on macOS 15, Xcode 26.3's actool crashes (`IBPlatformToolFailureException`,
@@ -81,15 +78,18 @@ body, brighter sparkle) and check **Clear** — the sparkle silhouette has to re
 as monochrome. Save the whole package (`icon.json` + `Assets/`) to
 `Packaging/AppIcon/AppIcon.icon` and commit it. Treat `icon.json`'s schema as
 undocumented and version-sensitive: re-author through Icon Composer rather than
-editing it by hand.
+editing it by hand. The layer sources in
+`Packaging/AppIcon/AppIcon.icon/Assets/` are the single place they are authored:
+Icon Composer imports SVG directly, with no PNG rasterization step, and writes
+the layers back there byte-identical. Re-authoring therefore means editing
+`Assets/*.svg`, re-importing them into Icon Composer and committing the updated
+`AppIcon.icon`.
 
 **How to apply:** for the `.icns`, edit `icon.svg`, then run `make icon`, which
 rebuilds **both** `AppIcon.icns` (from `icon.svg`) and `AppIconDev.icns` (from
 `icon-dev.svg`); never hand-edit an `.icns`. `iconutil` requires the iconset
-directory name to end in
-`.iconset` (the script renders into `<tmp>/AppIcon.iconset`, not the bare
-`mktemp -d`). For the Liquid Glass icon, edit `AppIcon.icon/Assets/*.svg`,
-re-import them into Icon Composer, and commit the updated `AppIcon.icon`; verify
+directory name to end in `.iconset` (the script renders into
+`<tmp>/AppIcon.iconset`, not the bare `mktemp -d`). Verify the Liquid Glass icon
 with `assetutil --info` on the compiled `Assets.car` and `plutil` on the
 bundle's `Info.plist`. See [[ghosttykit-pin]] and [[ghostty-is-the-reference]]
 for the Ghostty relationship, and [[test-toolchain]] for the Xcode requirement.
