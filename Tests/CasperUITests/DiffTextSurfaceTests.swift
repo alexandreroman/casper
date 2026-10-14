@@ -207,6 +207,25 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
     }
 
+    /// SwiftUI pushes the document in `updateNSView` and sizes the view only
+    /// afterwards, so a scroll target can reach a surface that holds its file but
+    /// has no viewport yet — which is when `DiffSurfaceView` asks on a panel that
+    /// `casper diff open` has just expanded. Scrolled there and then, the clip
+    /// view clamps the target to nothing; the scroll has to land once the
+    /// viewport is laid out instead.
+    func testAScrollRequestedBeforeTheViewportIsSizedLandsOnceItIs() throws {
+        let coordinator = DiffTextSurface.Coordinator()
+        coordinator.render(DiffRendering(
+            revision: 1, document: additionsDocument(fileCount: 4, linesPerFile: 40), highlights: [:]))
+
+        XCTAssertTrue(coordinator.scroll(toFileID: "f2.swift"))
+        coordinator.containerView.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
+        coordinator.containerView.layoutSubtreeIfNeeded()
+
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f2.swift")
+        XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
+    }
+
     /// A refresh must not throw the reader back to the top: the anchor is read
     /// before the swap and restored after it.
     func testAnchorSurvivesADocumentSwap() throws {

@@ -32,21 +32,31 @@ feedback path the whole TextKit rewrite exists to remove.
   fresh storage from base attributes only.
 - **Events stay on `DiffSurfaceController`.** A scroll target and a file's
   syntax colors finishing are events, not state; they tolerate a nil coordinator
-  and are retried. `Coordinator.scroll(toFileID:)` returns whether it landed.
-  `DiffSurfaceView` clears `AppModel.diffScrollTarget` through
-  `consumeDiffScrollTarget(_:)` once the scroll lands, or once a diff computed
-  at the target's `diffRevision` or later lacks the file. A target naming a
-  file that only the freshly computed diff holds therefore survives until the
-  document reaches the surface, and a settled one cannot fire again when the
-  view remounts (collapse, Browser tab, workspace switch).
+  and are retried. `Coordinator.scroll(toFileID:)` returns whether the surface
+  took the scroll: it lands at once, or — on a surface not sized yet — on the
+  layout that sizes it (see the next bullet). `DiffSurfaceView` clears
+  `AppModel.diffScrollTarget` through `consumeDiffScrollTarget(_:)` once the
+  surface takes it, or once a diff computed at the target's `diffRevision` or
+  later lacks the file. A target naming a file that only the freshly computed
+  diff holds therefore survives until the document reaches the surface, and a
+  settled one cannot fire again when the view remounts (collapse, Browser tab,
+  workspace switch).
 - **SwiftUI sizes the hosted view *after* `updateNSView`.** A document can
   therefore arrive while the container is still zero-sized, which silently
   resolves anything viewport-derived against an empty viewport — for the pinned
   file header that means no bars until the reader's first scroll.
   `DiffSurfaceContainerView.viewportDidChange` fires from `layout()` and re-runs
   `Coordinator.resolveBarsOverTheViewport()` for exactly this reason. Any future
-  viewport-derived state needs the same hook.
+  viewport-derived state needs the same hook. A scroll target is one: a
+  `casper diff open` that expands a collapsed panel mounts the surface, and its
+  target reaches the realized coordinator before the first sizing pass, when
+  the clip view clamps any scroll to the top. The coordinator holds the file
+  and the same hook lands it — after laying the text view out, because the text
+  view grows to the document's height only in its own layout, which runs after
+  the container's.
 
 `Tests/CasperUITests/DiffTextSurfaceTests.swift` pins the scenario: a document
 that exists *before* the surface is realized must render on
 `layoutSubtreeIfNeeded()` alone, with no imperative call.
+`Tests/CasperUITests/DiffSurfaceViewScrollTests.swift` pins the scroll target
+end to end, through the real `InspectorPanel` expanding from collapsed.

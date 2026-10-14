@@ -206,9 +206,12 @@ struct DiffTextSurface: NSViewRepresentable {
             containerView = DiffSurfaceContainerView(scrollView: scrollView, stickyHeader: stickyHeader)
             // How many bands the viewport shows depends on its height, so a resize
             // — including the very first one, which lands after SwiftUI has already
-            // pushed a document in — has to re-resolve the bars.
+            // pushed a document in — has to re-resolve the bars. That first resize
+            // is also what lands a scroll target that reached the surface before
+            // it had a viewport.
             //
-            // The forcing variant, and it has to be. This fires from the
+            // `viewportDidChange()` resolves the bars with the forcing variant,
+            // and it has to. This fires from the
             // *container's* own `layout()`, at a point where the viewport it has
             // just tiled reaches further into the document than TextKit's real
             // layout does; every band past that point is cold, and the non-forcing
@@ -220,8 +223,9 @@ struct DiffTextSurface: NSViewRepresentable {
             // Laying out from here is also safe, which is what separates it from
             // the hook below: the pass in progress is this container's, and the
             // text view lays itself out afterwards, so `ensureLayout` re-enters
-            // nothing.
-            containerView.viewportDidChange = { [weak self] in self?.resolveBarsOverTheViewport() }
+            // nothing — the same holds for the forcing `top(ofFileAt:)` behind a
+            // waiting scroll.
+            containerView.viewportDidChange = { [weak self] in self?.viewportDidChange() }
             // The third thing that invalidates the bars, and the only one the
             // surface does not do to itself: TextKit replacing the estimated
             // geometry the bars were resolved from with real layout. Coalesced, and
@@ -372,14 +376,45 @@ struct DiffTextSurface: NSViewRepresentable {
         ///
         /// The target is usually far below what TextKit has laid out, which the
         /// forcing `top(ofFileAt:)` settles outright, so the scroll lands within
-        /// this call rather than on a later run-loop turn.
+        /// this call rather than on a later run-loop turn — except on a surface
+        /// with no viewport yet. SwiftUI sizes the hosted view only after
+        /// `updateNSView`, so a target can reach a surface that holds its file
+        /// but is still zero-sized: the case of a panel `casper diff open` has
+        /// just expanded. The clip view would clamp that scroll to nothing, and
+        /// the text has not wrapped to the panel's width yet, so the file is held
+        /// and scrolled to by the layout that sizes the viewport.
         @discardableResult
         func scroll(toFileID fileID: String) -> Bool {
-            guard let document, let geometry, let fileIndex = document.fileIndex(withID: fileID)
-            else { return false }
-            guard let top = geometry.top(ofFileAt: fileIndex) else { return false }
+            guard let document, let fileIndex = document.fileIndex(withID: fileID) else { return false }
+            guard !clipView.bounds.isEmpty else {
+                fileAwaitingViewport = fileID
+                return true
+            }
+            fileAwaitingViewport = nil
+            guard let geometry, let top = geometry.top(ofFileAt: fileIndex) else { return false }
             scroll(toContainerY: top)
             return true
+        }
+
+        /// A file `scroll(toFileID:)` accepted before the viewport had a size,
+        /// for `viewportDidChange()` to scroll to once it has one.
+        private var fileAwaitingViewport: String?
+
+        /// The container has re-tiled the viewport: lands a scroll that was
+        /// waiting for it to have a size, then re-resolves the pinned bars over
+        /// it. The scroll goes first, so the bars are resolved where it lands.
+        ///
+        /// The text view is laid out ahead of its turn for that scroll. It grows
+        /// to the document's height only in its own layout, which runs after
+        /// this container's, so until then it is no taller than the viewport it
+        /// was just tiled into — and the clip view clamps a scroll to the top.
+        private func viewportDidChange() {
+            if let fileID = fileAwaitingViewport, !clipView.bounds.isEmpty {
+                fileAwaitingViewport = nil
+                textView.layoutSubtreeIfNeeded()
+                scroll(toFileID: fileID)
+            }
+            resolveBarsOverTheViewport()
         }
 
         /// Where the reader is now, for a later `apply(document:restoring:)` to
@@ -471,7 +506,9 @@ final class DiffSurfaceContainerView: NSView {
     /// The pinned bars are such a thing, and a document can arrive before this
     /// view has ever been sized — SwiftUI pushes it in `updateNSView`, which runs
     /// before the frame it hands down. Without this the bars would stay resolved
-    /// against a zero-height viewport until the reader's first scroll.
+    /// against a zero-height viewport until the reader's first scroll. A scroll
+    /// target that reached the surface in that window is another: it waits for
+    /// this rather than scrolling an empty clip view.
     var viewportDidChange: (@MainActor () -> Void)?
 
     private let scrollView: NSScrollView

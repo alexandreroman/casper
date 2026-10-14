@@ -192,9 +192,11 @@ depends on Ghostty layout composition (`terminal.md`).
   file (HighlightSwift), **color attributes only**, so a highlight landing
   mid-scroll cannot change a line height and shift the text under the reader.
   A `casper diff open <file>` scroll request is one-shot: the view clears it
-  once the scroll lands, or once a diff computed after the request does not
-  list the file (matched by exact worktree-relative path), so an unchanged file
-  opens the diff without scrolling and a remount never scrolls again.
+  once the surface takes the scroll, or once a diff computed after the request
+  does not list the file (matched by exact worktree-relative path), so an
+  unchanged file opens the diff without scrolling and a remount never scrolls
+  again. A surface the request has just mounted — the panel was collapsed —
+  holds the scroll until the layout that first sizes its viewport.
 
   The document carries per-file sections (path + status, binary and unreadable
   files noted), hunk headers, and code rows tinted by kind (green addition / red
