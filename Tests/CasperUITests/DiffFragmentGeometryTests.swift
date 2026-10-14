@@ -14,18 +14,14 @@ final class DiffFragmentGeometryTests: XCTestCase {
     // MARK: - Fixtures
 
     private func codeFile(named name: String, lines lineCount: Int) -> GitDiffFile {
-        let lines = (1...lineCount).map {
-            GitDiffLine(kind: .addition, content: "line \($0)", oldLineNumber: nil, newLineNumber: $0)
-        }
-        let hunk = GitDiffHunk(header: "@@ -1,\(lineCount) +1,\(lineCount) @@", lines: lines)
-        return GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: false, hunks: [hunk])
+        diffFile(name, lines: additionLines(lineCount))
     }
 
     /// A file whose whole rendering is a single `.note` paragraph. `DiffDocument`
     /// guarantees these exist — a binary file, or one the line budget emptied —
     /// and they lay out in `DiffTextAssembly.noteFont`, not the code font.
     private func binaryFile(named name: String) -> GitDiffFile {
-        GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: true, hunks: [])
+        diffFile(name, lines: [], isBinary: true)
     }
 
     private func makeDocument(fileCount: Int, linesPerFile: Int) -> DiffDocument {
@@ -99,12 +95,8 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// the first may print a gutter number.
     func testWrappedLineYieldsOneLineStartAndSeveralFragments() throws {
         let long = (1...80).map { "word\($0)" }.joined(separator: " ")
-        let hunk = GitDiffHunk(header: "@@ -1,1 +1,1 @@",
-                               lines: [GitDiffLine(kind: .addition, content: long,
-                                                   oldLineNumber: nil, newLineNumber: 1)])
         let document = DiffDocument(diff: GitDiff(files: [
-            GitDiffFile(oldPath: "a.swift", newPath: "a.swift", status: .modified,
-                        isBinary: false, hunks: [hunk]),
+            diffFile("a.swift", lines: [diffLine(.addition, long, new: 1)]),
         ]))
         let geometry = try makeGeometry(document)
 

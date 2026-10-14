@@ -25,14 +25,7 @@ final class DiffChromeTests: XCTestCase {
 
     /// A one-line file whose line number sets the width its gutter needs.
     private func file(named name: String, widestLineNumber: Int) -> GitDiffFile {
-        let line = GitDiffLine(
-            kind: .addition, content: "x", oldLineNumber: nil, newLineNumber: widestLineNumber)
-        return file(named: name, lines: [line])
-    }
-
-    private func file(named name: String, lines: [GitDiffLine]) -> GitDiffFile {
-        let hunk = GitDiffHunk(header: "@@ -1,\(lines.count) +1,\(lines.count) @@", lines: lines)
-        return GitDiffFile(oldPath: name, newPath: name, status: .modified, isBinary: false, hunks: [hunk])
+        diffFile(name, lines: [diffLine(.addition, "x", new: widestLineNumber)])
     }
 
     /// A narrow file *followed* by a five-digit one, so a gutter sized from the
@@ -61,15 +54,15 @@ final class DiffChromeTests: XCTestCase {
     private func makeMixedDocument() -> DiffDocument {
         let wrapping = (1...30).map { "word\($0)" }.joined(separator: " ")
         let lines = [
-            GitDiffLine(kind: .context, content: "kept", oldLineNumber: 1, newLineNumber: 1),
-            GitDiffLine(kind: .addition, content: "added", oldLineNumber: nil, newLineNumber: 2),
-            GitDiffLine(kind: .deletion, content: "removed", oldLineNumber: 3, newLineNumber: nil),
-            GitDiffLine(kind: .addition, content: wrapping, oldLineNumber: nil, newLineNumber: 4),
-            GitDiffLine(kind: .context, content: "tail", oldLineNumber: 4, newLineNumber: 5),
+            diffLine(.context, "kept", old: 1, new: 1),
+            diffLine(.addition, "added", new: 2),
+            diffLine(.deletion, "removed", old: 3),
+            diffLine(.addition, wrapping, new: 4),
+            diffLine(.context, "tail", old: 4, new: 5),
         ]
         return DiffDocument(diff: GitDiff(files: [
-            file(named: "a.swift", lines: lines),
-            file(named: "b.swift", lines: lines),
+            diffFile("a.swift", lines: lines),
+            diffFile("b.swift", lines: lines),
         ]))
     }
 

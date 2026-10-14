@@ -14,16 +14,9 @@ import XCTest
 @MainActor
 final class DiffTextSurfaceTests: XCTestCase {
     private func makeDocument(fileCount: Int, linesPerFile: Int = 20) -> DiffDocument {
-        let files = (0..<fileCount).map { index in
-            let lines = (1...linesPerFile).map {
-                GitDiffLine(kind: .addition, content: "line \($0)",
-                            oldLineNumber: nil, newLineNumber: $0)
-            }
-            let hunk = GitDiffHunk(header: "@@ -1,\(linesPerFile) +1,\(linesPerFile) @@", lines: lines)
-            return GitDiffFile(oldPath: "f\(index).swift", newPath: "f\(index).swift",
-                               status: .modified, isBinary: false, hunks: [hunk])
-        }
-        return DiffDocument(diff: GitDiff(files: files))
+        DiffDocument(diff: GitDiff(files: (0..<fileCount).map {
+            diffFile("f\($0).swift", lines: additionLines(linesPerFile))
+        }))
     }
 
     /// The same shape as `makeDocument`, with content lines long enough to wrap
@@ -34,17 +27,8 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// a fixture built on it tells an estimate-derived position apart from a
     /// settled one by hundreds of points instead of by a rounding error.
     private func makeWrappingDocument(fileCount: Int, linesPerFile: Int) -> DiffDocument {
-        let files = (0..<fileCount).map { index in
-            let lines = (1...linesPerFile).map { lineNumber in
-                GitDiffLine(kind: .addition,
-                            content: "line \(lineNumber) " + String(repeating: "wrapping content ", count: 12),
-                            oldLineNumber: nil, newLineNumber: lineNumber)
-            }
-            let hunk = GitDiffHunk(header: "@@ -1,\(linesPerFile) +1,\(linesPerFile) @@", lines: lines)
-            return GitDiffFile(oldPath: "f\(index).swift", newPath: "f\(index).swift",
-                               status: .modified, isBinary: false, hunks: [hunk])
-        }
-        return DiffDocument(diff: GitDiff(files: files))
+        let lines = additionLines(linesPerFile) { "line \($0) " + String(repeating: "wrapping content ", count: 12) }
+        return DiffDocument(diff: GitDiff(files: (0..<fileCount).map { diffFile("f\($0).swift", lines: lines) }))
     }
 
     /// A surface hosted at a realistic panel size, laid out once, taking its
@@ -295,13 +279,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// A file id matches exactly or not at all: `casper diff open README.md` on an
     /// unchanged root `README.md` must not land on a changed `docs/README.md`.
     func testAFileIDNeverMatchesANestedFileOfTheSameName() throws {
-        let files = ["a.swift", "docs/README.md"].map { path in
-            let lines = (1...40).map {
-                GitDiffLine(kind: .addition, content: "line \($0)", oldLineNumber: nil, newLineNumber: $0)
-            }
-            return GitDiffFile(oldPath: path, newPath: path, status: .modified, isBinary: false,
-                               hunks: [GitDiffHunk(header: "@@ -1,40 +1,40 @@", lines: lines)])
-        }
+        let files = ["a.swift", "docs/README.md"].map { diffFile($0, lines: additionLines(40)) }
         let (controller, _) = makeHostedSurface(DiffDocument(diff: GitDiff(files: files)))
         let coordinator = try XCTUnwrap(controller.coordinator)
         let before = coordinator.clipView.bounds.origin.y

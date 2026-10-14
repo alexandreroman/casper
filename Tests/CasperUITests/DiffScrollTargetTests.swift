@@ -10,7 +10,7 @@ import XCTest
 @MainActor
 final class DiffScrollTargetTests: XCTestCase {
     private func file(_ path: String) -> GitDiffFile {
-        GitDiffFile(oldPath: path, newPath: path, status: .modified, isBinary: false, hunks: [])
+        diffFile(path, lines: [])
     }
 
     func testConsumingTheTargetClearsIt() throws {
