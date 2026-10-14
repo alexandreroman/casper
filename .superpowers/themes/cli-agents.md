@@ -125,7 +125,8 @@ new verb:
   is a failure, so neither may look like one to a script.
 
 Every id Casper emits — in this JSON, and in the injected `$CASPER_WORKSPACE_ID`
-— is **lowercase**, its canonical external form (`UUID.casperID`); `--workspace`
+— is **lowercase**, its canonical external form (`UUID.casperID`), an id echoed
+back from the caller's own input (`terminal close <id>`) included; `--workspace`
 matches an id **case-insensitively**, so an uppercase id from an older build
 still resolves (a workspace *name* still matches exactly). Persisted state is
 unaffected: `session.json` keeps Swift's native `Codable` UUID encoding.

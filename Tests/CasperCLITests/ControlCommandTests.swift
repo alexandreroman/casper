@@ -180,12 +180,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(command.workspace, "feature")
     }
 
-    func testTerminalCloseBuildsCommand() throws {
-        let uuid = UUID().uuidString
-        let close = try TerminalCommand.Close.parse([uuid, "--workspace", "f"])
+    func testTerminalCloseBuildsCommandWithTheCanonicalId() throws {
+        // An id typed in uppercase is sent, and echoed, in its canonical
+        // lowercase form, like every id Casper emits.
+        let close = try TerminalCommand.Close.parse(["ABCDEF01-ABCD-4BCD-8BCD-ABCDEF012345", "--workspace", "f"])
         let command = try close.makeCommand()
         XCTAssertEqual(command.verb, .terminalClose)
-        XCTAssertEqual(command.target, uuid)
+        XCTAssertEqual(command.target, "abcdef01-abcd-4bcd-8bcd-abcdef012345")
         XCTAssertEqual(command.workspace, "f")
     }
 

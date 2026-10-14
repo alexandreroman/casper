@@ -78,13 +78,20 @@ struct TerminalCommand: ParsableCommand {
         @OptionGroup var target: WorkspaceTargetOption
 
         func makeCommand() throws -> ControlCommand {
-            let id = try requireNonEmpty(self.id, "terminal id")
-            return ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: id)
+            ControlCommand(verb: .terminalClose, workspace: try requireSelector(target), target: try canonicalID())
         }
 
         func run() throws {
             let r = try sendControl(makeCommand(), retriable: false)
-            emit(TerminalCloseOut(terminal: id, workspace: r.workspaceRef))
+            emit(TerminalCloseOut(terminal: try canonicalID(), workspace: r.workspaceRef))
+        }
+
+        /// The id in its canonical lowercase form (`UUID.casperID`), so the echo
+        /// reads like every other id Casper emits. A string that is not a UUID is
+        /// passed through as typed, for the app to reject.
+        private func canonicalID() throws -> String {
+            let id = try requireNonEmpty(self.id, "terminal id")
+            return UUID(uuidString: id)?.casperID ?? id
         }
     }
 }
