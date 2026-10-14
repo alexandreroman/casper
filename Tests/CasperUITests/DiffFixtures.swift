@@ -1,4 +1,5 @@
 import CasperGit
+@testable import CasperUI
 
 // Shared by the diff suites: the diff-model values their documents are built
 // from, so each suite spells out only what makes its own fixture distinctive.
@@ -23,4 +24,13 @@ func diffFile(
 /// number.
 func additionLines(_ count: Int, content: (Int) -> String = { "line \($0)" }) -> [GitDiffLine] {
     (1...count).map { diffLine(.addition, content($0), new: $0) }
+}
+
+/// `fileCount` files named `f0.swift`, `f1.swift`, …, each holding `linesPerFile`
+/// addition lines built by `content`.
+func additionsDocument(
+    fileCount: Int, linesPerFile: Int, content: (Int) -> String = { "line \($0)" }
+) -> DiffDocument {
+    let lines = additionLines(linesPerFile, content: content)
+    return DiffDocument(diff: GitDiff(files: (0..<fileCount).map { diffFile("f\($0).swift", lines: lines) }))
 }

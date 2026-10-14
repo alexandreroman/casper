@@ -13,13 +13,7 @@ import XCTest
 /// non-converging layout, and a future reader must not mistake it for that.
 @MainActor
 final class DiffTextSurfaceTests: XCTestCase {
-    private func makeDocument(fileCount: Int, linesPerFile: Int = 20) -> DiffDocument {
-        DiffDocument(diff: GitDiff(files: (0..<fileCount).map {
-            diffFile("f\($0).swift", lines: additionLines(linesPerFile))
-        }))
-    }
-
-    /// The same shape as `makeDocument`, with content lines long enough to wrap
+    /// The same shape as `additionsDocument`, with content lines long enough to wrap
     /// several times at the hosted width.
     ///
     /// Wrapping is what makes TextKit's *estimated* height for a line it has not
@@ -27,8 +21,9 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// a fixture built on it tells an estimate-derived position apart from a
     /// settled one by hundreds of points instead of by a rounding error.
     private func makeWrappingDocument(fileCount: Int, linesPerFile: Int) -> DiffDocument {
-        let lines = additionLines(linesPerFile) { "line \($0) " + String(repeating: "wrapping content ", count: 12) }
-        return DiffDocument(diff: GitDiff(files: (0..<fileCount).map { diffFile("f\($0).swift", lines: lines) }))
+        additionsDocument(fileCount: fileCount, linesPerFile: linesPerFile) {
+            "line \($0) " + String(repeating: "wrapping content ", count: 12)
+        }
     }
 
     /// A surface hosted at a realistic panel size, laid out once, taking its
@@ -54,7 +49,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// calls the coordinator, and nothing here relies on `.onAppear` running after
     /// `makeCoordinator()` — an ordering SwiftUI does not document.
     func testRealizingTheSurfaceRendersADocumentThatAlreadyExists() throws {
-        let document = makeDocument(fileCount: 3)
+        let document = additionsDocument(fileCount: 3, linesPerFile: 20)
 
         let (controller, _) = makeHostedSurface(document)
 
@@ -69,13 +64,13 @@ final class DiffTextSurfaceTests: XCTestCase {
     func testAnUpdateSwapsTheDocumentAndKeepsTheReadersPlace() throws {
         let controller = DiffSurfaceController()
         let host = NSHostingView(rootView: hostedSurface(
-            controller, revision: 1, document: makeDocument(fileCount: 4, linesPerFile: 40)))
+            controller, revision: 1, document: additionsDocument(fileCount: 4, linesPerFile: 40)))
         host.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
         host.layoutSubtreeIfNeeded()
         let coordinator = try XCTUnwrap(controller.coordinator)
         coordinator.scroll(toFileID: "f2.swift")
 
-        let refreshed = makeDocument(fileCount: 4, linesPerFile: 41)
+        let refreshed = additionsDocument(fileCount: 4, linesPerFile: 41)
         host.rootView = hostedSurface(controller, revision: 2, document: refreshed)
         host.layoutSubtreeIfNeeded()
 
@@ -96,7 +91,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// accessor `render(_:)` consumes. Fourteen files, because that is what makes a
     /// Dictionary's hash order essentially never document order by accident.
     func testCarriedHighlightsArePaintedInDocumentOrder() throws {
-        let document = makeDocument(fileCount: 14, linesPerFile: 2)
+        let document = additionsDocument(fileCount: 14, linesPerFile: 2)
         // Two files left unhighlighted — highlighting is progressive, so a swap
         // routinely carries over fewer files than the diff has — plus one naming a
         // file that has left the diff, which is what a highlight finishing just
@@ -125,7 +120,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// is not bought by dropping the highlights on the floor. Order-independent by
     /// construction: what it checks is that every file named got painted.
     func testHighlightsPaintedInDocumentOrderStillReachEveryFile() throws {
-        let document = makeDocument(fileCount: 14, linesPerFile: 2)
+        let document = additionsDocument(fileCount: 14, linesPerFile: 2)
         let purpleLines = (1...2).map { index -> AttributedString in
             var line = AttributedString("line \(index)")
             // The AppKit scope, explicitly: `DiffHighlighter` bridges its runs with
@@ -157,7 +152,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     }
 
     func testSurfaceComposesAndTakesTheDocument() throws {
-        let document = makeDocument(fileCount: 3)
+        let document = additionsDocument(fileCount: 3, linesPerFile: 20)
         let (controller, _) = makeHostedSurface(document)
         let coordinator = try XCTUnwrap(controller.coordinator)
 
@@ -175,7 +170,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// Selection and copy are a goal of this work, so the view must be
     /// selectable and not editable.
     func testTextIsSelectableButNotEditable() throws {
-        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 1))
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 1, linesPerFile: 20))
         let textView = try XCTUnwrap(controller.coordinator?.textView)
 
         XCTAssertTrue(textView.isSelectable)
@@ -186,7 +181,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// copying across a file boundary yields no empty line. That the copy carries no
     /// gutter number or cue is `DiffCopyTests`' subject.
     func testCopiedTextCarriesNoBlankBandLines() throws {
-        let document = makeDocument(fileCount: 2, linesPerFile: 3)
+        let document = additionsDocument(fileCount: 2, linesPerFile: 3)
         let (controller, _) = makeHostedSurface(document)
         let textView = try XCTUnwrap(controller.coordinator?.textView)
 
@@ -202,7 +197,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     }
 
     func testScrollToFileMovesTheClipViewToThatFile() throws {
-        let document = makeDocument(fileCount: 4, linesPerFile: 40)
+        let document = additionsDocument(fileCount: 4, linesPerFile: 40)
         let (controller, _) = makeHostedSurface(document)
         let coordinator = try XCTUnwrap(controller.coordinator)
 
@@ -215,24 +210,24 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// A refresh must not throw the reader back to the top: the anchor is read
     /// before the swap and restored after it.
     func testAnchorSurvivesADocumentSwap() throws {
-        let document = makeDocument(fileCount: 4, linesPerFile: 40)
+        let document = additionsDocument(fileCount: 4, linesPerFile: 40)
         let (controller, host) = makeHostedSurface(document)
         let coordinator = try XCTUnwrap(controller.coordinator)
         coordinator.scroll(toFileID: "f2.swift")
         let anchor = try XCTUnwrap(coordinator.currentAnchor())
 
-        coordinator.apply(document: makeDocument(fileCount: 4, linesPerFile: 41), restoring: anchor)
+        coordinator.apply(document: additionsDocument(fileCount: 4, linesPerFile: 41), restoring: anchor)
         host.layoutSubtreeIfNeeded()
 
         XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f2.swift")
     }
 
     func testAnchorFallsBackToTheTopWhenItsFileLeavesTheDiff() throws {
-        let (controller, host) = makeHostedSurface(makeDocument(fileCount: 4, linesPerFile: 40))
+        let (controller, host) = makeHostedSurface(additionsDocument(fileCount: 4, linesPerFile: 40))
         let coordinator = try XCTUnwrap(controller.coordinator)
         coordinator.scroll(toFileID: "f3.swift")
 
-        coordinator.apply(document: makeDocument(fileCount: 1, linesPerFile: 5),
+        coordinator.apply(document: additionsDocument(fileCount: 1, linesPerFile: 5),
                           restoring: DiffScrollAnchor(fileID: "f3.swift", offsetInFile: 10))
         host.layoutSubtreeIfNeeded()
 
@@ -240,7 +235,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     }
 
     func testHighlightReachesTheStorageWithoutChangingTheText() throws {
-        let document = makeDocument(fileCount: 1, linesPerFile: 3)
+        let document = additionsDocument(fileCount: 1, linesPerFile: 3)
         let (controller, _) = makeHostedSurface(document)
         let coordinator = try XCTUnwrap(controller.coordinator)
         let highlighted = (1...3).map { index -> AttributedString in
@@ -263,7 +258,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// `DiffSurfaceView` keys "apply this target later" off exactly that, so a
     /// target naming a file only the next diff has isn't swallowed.
     func testUnknownFileIDsAreIgnored() throws {
-        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 1))
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 1, linesPerFile: 20))
         let coordinator = try XCTUnwrap(controller.coordinator)
         let before = coordinator.clipView.bounds.origin.y
 
@@ -296,7 +291,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// Asserting `paragraphSpacingBefore == headerBandHeight + interFileGap` in the
     /// assembly is a tautology that cannot catch either.
     func testThePinnedBarDrawsExactlyTheReservedBandHeight() throws {
-        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 3, linesPerFile: 40))
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 3, linesPerFile: 40))
         let coordinator = try XCTUnwrap(controller.coordinator)
 
         // Parked at the top, so the first file's bar is pinned and nothing pushes.
@@ -313,7 +308,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// outgoing bar slides up to `d - headerBandHeight` and the incoming one draws
     /// at `d`. Read back off the overlay's own pixels, since it is drawing code.
     func testTheIncomingFilePushesTheOutgoingBarOut() throws {
-        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 3, linesPerFile: 40))
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 3, linesPerFile: 40))
         let coordinator = try XCTUnwrap(controller.coordinator)
         let band = DiffTextAssembly.headerBandHeight
         let distance = (band / 2).rounded()
@@ -345,7 +340,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// the screen with the pinned bar of the file above — two bars at once, neither
     /// clipped nor doubled, which is what pinned sections show today.
     func testAFileBarRidesUpInsideItsOwnBandUntilItPins() throws {
-        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 3, linesPerFile: 40))
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 3, linesPerFile: 40))
         let coordinator = try XCTUnwrap(controller.coordinator)
         let band = DiffTextAssembly.headerBandHeight
 
@@ -377,7 +372,7 @@ final class DiffTextSurfaceTests: XCTestCase {
     /// one-line files several bands share the screen at once, which is where "one
     /// bar per visible band" is a different statement from "one bar, maybe two".
     func testEveryBandOnScreenCarriesItsOwnBar() throws {
-        let document = makeDocument(fileCount: 12, linesPerFile: 1)
+        let document = additionsDocument(fileCount: 12, linesPerFile: 1)
         let (controller, _) = makeHostedSurface(document)
         let coordinator = try XCTUnwrap(controller.coordinator)
         let geometry = try XCTUnwrap(coordinator.geometry)
@@ -424,9 +419,9 @@ final class DiffTextSurfaceTests: XCTestCase {
     func testResolvingTheBarsLaysOutNothingBeyondTheViewport() throws {
         // Hosted on a trivial document and then swapped, with no layout pass after
         // the swap: exactly where a refresh leaves the surface.
-        let (controller, _) = makeHostedSurface(makeDocument(fileCount: 1, linesPerFile: 1))
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 1, linesPerFile: 1))
         let coordinator = try XCTUnwrap(controller.coordinator)
-        coordinator.apply(document: makeDocument(fileCount: 2, linesPerFile: 1500), restoring: nil)
+        coordinator.apply(document: additionsDocument(fileCount: 2, linesPerFile: 1500), restoring: nil)
         let layoutManager = try XCTUnwrap(coordinator.textView.textLayoutManager)
         let viewportHeight = coordinator.clipView.bounds.height
         // Enough for the viewport and for TextKit overshooting it by a row or two,
