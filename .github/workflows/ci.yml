@@ -51,7 +51,7 @@ jobs:
         run: swift --version
 
       # Offline (a stand-in curl plays GitHub) and under a second, so the
-      # release feed update is checked on every change, not only at release.
+      # release feed update is checked with every build, not only at release.
       - name: Test appcast update
         run: Scripts/test-update-appcast.sh
 
