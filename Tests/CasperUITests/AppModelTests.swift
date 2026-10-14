@@ -1406,9 +1406,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(view.debugLastFocusValue, false)
     }
 
-    #if DEBUG
-    // Gated because `debugSurfaceViewCount` is, so `swift test -c release` still
-    // compiles this file.
     /// Closing a pane must not leave a cached view behind. When SwiftUI tears the
     /// pane down it evaluates the departing `SurfaceHostView`'s body one last time,
     /// and that body still holds the `Surface` value captured when the pane tree was
@@ -1441,7 +1438,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.surfaceView(for: closing, in: workspace.id))
         XCTAssertEqual(model.debugSurfaceViewCount, 1)
     }
-    #endif
 
     /// Host `view` in a borderless window so it creates its real libghostty surface, make
     /// it first responder, run `body`, and tear the surface down afterwards — the
@@ -1757,7 +1753,8 @@ final class AppModelTests: XCTestCase {
         // Pick a remembered editor that is available but not availableEditors.first, so
         // this stays distinguishable from the "falls back to first available" test case.
         guard let remembered = model.availableEditors.dropFirst().first else {
-            throw XCTSkip("need at least two available editors to distinguish lastUsedEditor from availableEditors.first")
+            throw XCTSkip(
+                "need at least two available editors to distinguish lastUsedEditor from availableEditors.first")
         }
         var workspace = model.spaces[0].workspaces[0]
         workspace.lastUsedEditor = remembered

@@ -211,8 +211,6 @@ final class ControlHandlerTests: XCTestCase {
         await waitUntil { coordinator.address != firstCommitted }
     }
 
-    /// Polls `condition` on the main actor until it holds or `timeout` elapses,
-    /// yielding between checks so pending `WKWebView` navigation callbacks can run.
     func testCloseBrowserCollapsesWhenBrowserTabActive() throws {
         let (model, id) = seededModel()
         let url = URL(string: "https://example.com")!

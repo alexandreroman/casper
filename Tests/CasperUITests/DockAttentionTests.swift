@@ -125,10 +125,9 @@ private final class DockAttentionSpy: DockAttentionPresenting {
 @MainActor
 final class DockAttentionTests: XCTestCase {
     /// A model seeded with one Git-less Space holding a primary and two linked
-    /// workspaces, mirroring `AgentDetectionTests.seededModel`: the seeded `Session`
-    /// is passed straight to the initializer (a bare `AppModel(sessionStore:)` starts
-    /// empty). The two linked workspaces are what the badge counts across, and being
-    /// linked is also what makes them removable.
+    /// workspaces. The seeded `Session` is passed straight to the initializer (a bare
+    /// `AppModel(sessionStore:)` starts empty). The two linked workspaces are what the
+    /// badge counts across, and being linked is also what makes them removable.
     private func seededModel() -> (AppModel, DockAttentionSpy, UUID, UUID) {
         let primary = Workspace(
             name: "main", worktreePath: "/wt", branch: "main", portBase: 43000,
