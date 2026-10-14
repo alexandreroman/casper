@@ -7,8 +7,8 @@ type: reference
 # MainRunLoop is the shared modal-proof main-thread hop
 
 `Sources/CasperCore/MainRunLoop.swift` is Casper's one route for "run this on
-the main thread, on a later turn of its run loop", shared by every module above
-CasperCore and by `MainThreadHangWatchdog` inside it:
+the main thread, on a later turn of its run loop", shared by CasperUI and by
+`MainThreadHangWatchdog` inside CasperCore:
 
 ```swift
 MainRunLoop.perform { /* runs on the main thread, off the current turn */ }

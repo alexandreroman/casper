@@ -106,7 +106,8 @@ The pure-Swift, UI-free core. Fully unit-tested.
     `Repository` or SwiftUI. Gotchas in [[fsevents-directory-watcher]].
   - **`Debouncer`** — a main-actor coalescing timer: each `schedule` cancels the
     pending work and re-arms, so a burst fires once. It is what CasperUI's
-    `AppModel` drives its session-save and diff-refresh debounces with.
+    `AppModel` drives its session-save and diff-refresh debounces with, and
+    CasperGhostty's `GhosttySurfaceView` its 0.25 s surface-creation retry.
   - **`MainRunLoop`** — the modal-proof main-thread hop: `perform` enqueues a
     block on the main run loop, modal and tracking modes included, so it runs
     while an alert, panel or menu is up, where the main dispatch queue starves.
