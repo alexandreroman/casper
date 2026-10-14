@@ -141,7 +141,7 @@ longer does are recorded in `../status.md` § Superseded designs.
   tested: `split` (which inserts a flat sibling when the parent's orientation
   already matches, rather than nesting a second split), `closeSurface`, `move`
   (relocate a leaf elsewhere in the tree), and `dropZone` (map a point inside a
-  pane to the edge-or-centre zone a drag would land in). The last two back pane
+  pane to the nearest-edge zone a drag would land in). The last two back pane
   **drag-and-drop** — `PaneDragAndDrop.swift` owns the grip, the drag session
   and the drop overlay, surfaced by `SurfaceHostView`/`SplitContainerView`; see
   [[intra-app-drag-pasteboard-type]]. There is no `insertTab` operation: tabs
@@ -179,8 +179,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   through `Workspace.inspector.browser`: splits always create a terminal
   (`PaneContextMenu`), there is no "New browser" menu item anywhere, and
   `AppModel.surfaceView(for:in:)` returns a view only for `case .terminal` — so
-  a `.browser` leaf that did reach the layout tree would render as the black
-  fallback rectangle `SurfaceHostView` paints when no view resolves. Such a leaf
+  a `.browser` leaf that did reach the layout tree would render as the
+  `textBackgroundColor` placeholder `SurfaceHostView` paints when no view
+  resolves. Such a leaf
   survives only as a legacy `session.json` decode; nothing in the app creates
   one.
 
@@ -379,7 +380,7 @@ longer does are recorded in `../status.md` § Superseded designs.
   from changing width the moment Option swaps it to Delete — `trash` and
   `arrow.triangle.merge` do not measure alike, and a chip that jumps under a
   stationary pointer breaks the same intent the shared-identity `Button` exists
-  to protect. The editor's app icon renders into that slot too.
+  to protect.
 
   The **diff badge** renders whenever the diff lists at least one file — a
   rename-only or mode-only change shows `+0 −0` — and is hidden for a clean

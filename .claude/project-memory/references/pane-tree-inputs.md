@@ -6,10 +6,11 @@ type: feedback
 
 # Pane views are threaded by workspace id and layout
 
-`WorkspaceDetailView` and every view below it — `LayoutNodeView`,
+The views below `WorkspaceDetailView` — `LayoutNodeView`,
 `SplitContainerView`, `SurfaceHostView` — take the workspace's **id** (`UUID`)
 and the pieces of its **layout** they render. A `Workspace` value never becomes
-a stored property of a pane view.
+a stored property of a pane view: `WorkspaceDetailView` holds the `Workspace`
+and is the boundary that threads `workspace.id` and `workspace.layout` down.
 
 **Why:** `Workspace` is `Equatable` and carries the transient agent fields
 (`agentState`, `todos`, `pendingNotification`, `pendingNotificationMessage`,
@@ -29,8 +30,8 @@ agent fields.
 
 **How to apply:** thread ids down the pane tree and resolve values as late as
 possible, under the early return that the common path takes. When a pane view
-needs something derived from the workspace, pass that derived value (as
-`canDragPanes` does) rather than the workspace it came from. An `@Observable`
+needs something derived from the workspace, pass that derived value rather
+than the workspace it came from. An `@Observable`
 read placed above a cache-hit return subscribes the caller to everything that
 property touches, so ordering is part of the contract, not a style choice.
 

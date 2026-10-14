@@ -35,7 +35,7 @@ one-line baseline. Removing `.lineLimit(1)` moves those heights to
 32/64/112/304, so the assertion has teeth (see
 [[headless-swiftui-layout-tests]]).
 
-Graceful degradation under the line limit: wrap the candidates in
-`ViewThatFits(in: .horizontal)` ordered widest-first, so *context* (the Space
-name) is dropped whole rather than truncated to an ellipsis stub while
-*identity* (the branch) survives and middle-truncates only as a last resort.
+Graceful degradation under the line limit: *context* (the Space name) is
+dropped whole by the row's single ladder (`WorkspaceTitleBarRow`), never by the
+label, rather than truncated to an ellipsis stub, while *identity* (the branch)
+survives and middle-truncates only as a last resort.

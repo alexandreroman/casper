@@ -20,11 +20,11 @@ SwiftPM's default build system (`swiftbuild`) writes that SDK field from the
 Measured with Xcode 27 / Swift 6.4 on a package declaring
 `platforms: [.macOS(.v15)]`, against `MacOSX27.0.sdk`:
 
-| build path | minos | sdk |
-|---|---|---|
-| `swift build` (default `swiftbuild`) | 15.0 | **15.0** |
-| `swift build --build-system native` (deprecated) | 15.0 | 27.0 |
-| `swiftc -target arm64-apple-macosx15.0` | 15.0 | 27.0 |
+| build path                                       | minos | sdk      |
+| ------------------------------------------------ | ----- | -------- |
+| `swift build` (default `swiftbuild`)             | 15.0  | **15.0** |
+| `swift build --build-system native` (deprecated) | 15.0  | 27.0     |
+| `swiftc -target arm64-apple-macosx15.0`          | 15.0  | 27.0     |
 
 So the Makefile pins the field itself, through `SWIFT_PLATFORM_FLAGS`
 (`-Xlinker -platform_version -Xlinker macos -Xlinker $(MACOS_DEPLOYMENT_TARGET)

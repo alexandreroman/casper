@@ -37,10 +37,10 @@ The segments are glyph-only (`Image(systemName:)`, no visible text); their one
 
 Each segment reserves a fixed glyph slot (`TitleCapsuleMetrics.glyphSlotWidth`)
 inside its 10pt horizontal insets, so both halves are the same width by
-construction. SF Symbols carry different intrinsic widths —
-`arrow.triangle.merge` and `play.fill` measure 12 pt against `trash` and `globe`
-at 15 and `square.and.pencil` at 16 — and content-sized segments therefore come
-out lopsided and resize the sliding indicator as it moves. The slot goes
+construction. SF Symbols carry different intrinsic widths — of the five that
+sit in a glyph slot, `arrow.triangle.merge` and `plusminus` measure 12 pt,
+`ellipsis` 14, and `trash` and `globe` 15 — and content-sized segments therefore
+come out lopsided and resize the sliding indicator as it moves. The slot goes
 *inside* the padding — see [[fixed-frame-swallows-inner-padding]] — so the
 insets still widen the segment and the whole half stays clickable. The resulting
 geometry is pinned by `InspectorTabSelectorTests`.
