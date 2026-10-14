@@ -8,6 +8,7 @@ struct WorktreeError: Error, Equatable, Sendable {
         case repositoryNotFound
         case repositoryHasNoCommits
         case branchAlreadyCheckedOut
+        case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
         case fileCopyFailed(String)
@@ -28,6 +29,8 @@ extension WorktreeError: LocalizedError {
             return "This repository has no commits yet. Make a first commit before creating a workspace."
         case .branchAlreadyCheckedOut:
             return "That branch is already checked out in another worktree."
+        case .worktreeNameTaken:
+            return "Another Git worktree of this repository already uses that name."
         case .worktreePathExists:
             return "The worktree path already exists."
         case .mergeConflict:
@@ -86,6 +89,14 @@ public enum WorktreeManager {
         }
         if (try? repo.isBranchCheckedOut(name)) == true {
             throw WorktreeError(.branchAlreadyCheckedOut)
+        }
+        // libgit2 names the worktree's admin entry after it and creates the entry
+        // exclusively, so a name another worktree holds — `git worktree add <path> -b
+        // <other-branch>` registers one — fails with a raw "directory exists". The
+        // entry is what collides, so the entry is what is checked: the worktree listing
+        // skips a half-written one that would collide all the same.
+        if FileManager.default.fileExists(atPath: repo.commonDirPath + "worktrees/" + name) {
+            throw WorktreeError(.worktreeNameTaken)
         }
         if FileManager.default.fileExists(atPath: worktreePath) {
             throw WorktreeError(.worktreePathExists)

@@ -110,6 +110,29 @@ public enum GitFixture {
         }
     }
 
+    /// Register a worktree `name` at `path`, checked out on a new branch `branch` cut
+    /// from HEAD — a worktree whose name and branch differ, which CasperGit's
+    /// `addWorktree` never makes but `git worktree add <path> -b <branch>` does.
+    public static func registerWorktree(
+        inRepoAt repoPath: String, name: String, atPath path: String, onNewBranch branch: String
+    ) throws {
+        try withRepository(atPath: repoPath) { repo in
+            var commit: OpaquePointer?
+            defer { git_object_free(commit) }
+            try check(git_revparse_single(&commit, repo, "HEAD^{commit}"))
+            var branchRef: OpaquePointer?
+            defer { git_reference_free(branchRef) }
+            try check(git_branch_create(&branchRef, repo, branch, commit, 0))
+
+            var options = git_worktree_add_options()
+            try check(git_worktree_add_options_init(&options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
+            options.ref = branchRef
+            var worktree: OpaquePointer?
+            defer { git_worktree_free(worktree) }
+            try check(git_worktree_add(&worktree, repo, name, path, &options))
+        }
+    }
+
     private static func write(_ contents: Data, to file: String, inRepoAt repoPath: String) throws {
         try contents.write(to: URL(fileURLWithPath: repoPath).appendingPathComponent(file))
     }

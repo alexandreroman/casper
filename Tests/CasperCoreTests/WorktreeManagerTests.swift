@@ -119,6 +119,28 @@ final class WorktreeManagerTests: XCTestCase {
         }
     }
 
+    /// A worktree registered under the name on another branch — what
+    /// `git worktree add ../taken -b other` leaves — is refused in Casper's words
+    /// rather than libgit2's "directory exists", and before any branch is created.
+    func testCreateRejectsANameAnotherWorktreeAlreadyUses() throws {
+        try GitFixture.registerWorktree(
+            inRepoAt: repoDir.path, name: "taken",
+            atPath: root.appendingPathComponent("taken").path, onNewBranch: "other")
+        let wtPath = root.appendingPathComponent("casper-taken").path
+
+        XCTAssertThrowsError(
+            try WorktreeManager.create(
+                repoPath: repoDir.path, name: "taken", worktreePath: wtPath, base: nil)
+        ) { error in
+            XCTAssertEqual((error as? WorktreeError)?.reason, .worktreeNameTaken)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Another Git worktree of this repository already uses that name.")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
+        XCTAssertFalse(try Repository.open(atPath: repoDir.path).branchExists("taken"))
+    }
+
     func testCreateRejectsMissingRepository() {
         XCTAssertThrowsError(
             try WorktreeManager.create(
