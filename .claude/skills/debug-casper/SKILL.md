@@ -240,9 +240,10 @@ unset CASPER_SESSION
   not a surface), and `focus` demands an explicit positional id. The other
   seven default to the focused surface — falling back to the first — when
   `--target` is omitted.
-- Only the selected workspace's focused/first surface is ever exposed — see
-  "What the harness can (and cannot) see". To exercise a specific pane or
-  workspace, select/arrange it in the UI first.
+- Only the selected workspace's first pane in the view hierarchy, not
+  necessarily the focused one, is ever exposed — see "What the harness can
+  (and cannot) see". To exercise a specific pane or workspace, select/arrange
+  it in the UI first.
 - This is a DEBUG-only channel. A `make release` (`swift build -c release`)
   binary omits the socket server and the `casper debug` subcommand entirely.
 - `--target <id>` addresses a surface without changing focus; `focus <id>`
