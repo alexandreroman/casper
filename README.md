@@ -335,7 +335,7 @@ unsigned feed would be rejected by every installed copy. See the note
 [`sparkle-eddsa-key.md`](./.claude/project-memory/references/sparkle-eddsa-key.md).
 Re-running a release replaces that build's feed item instead of adding a second
 one; `Scripts/test-update-appcast.sh` checks the feed update offline, with a
-stand-in `curl`.
+stand-in `curl`, and CI runs it on every change.
 
 ## Architecture
 
