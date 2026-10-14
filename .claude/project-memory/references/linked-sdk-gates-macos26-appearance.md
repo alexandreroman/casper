@@ -29,14 +29,12 @@ Measured with Xcode 27 / Swift 6.4 on a package declaring
 So the Makefile pins the field itself, through `SWIFT_PLATFORM_FLAGS`
 (`-Xlinker -platform_version -Xlinker macos -Xlinker $(MACOS_DEPLOYMENT_TARGET)
 -Xlinker $(MACOS_SDK_VERSION)`), carried by both the `build` and the `release`
-target and folded into the exported `SWIFT_RELEASE_FLAGS`. The linker accepts
-the explicit flag over the one SwiftPM supplies without a duplicate warning.
-`MACOS_DEPLOYMENT_TARGET` duplicates `Package.swift`'s `platforms:` and has to
-move with it — as does the standalone fallback in `Scripts/assemble-bundle.sh`,
-which cannot read a Make variable and so carries a third copy of the deployment
-target (`Scripts/bundle-app.sh` holds a fourth, for `actool`). Through `make`
-the exported value always wins; the fallback only serves a direct run of the
-script.
+target. The linker accepts the explicit flag over the one SwiftPM supplies
+without a duplicate warning. `MACOS_DEPLOYMENT_TARGET` duplicates
+`Package.swift`'s `platforms:` and has to move with it — as does
+`Scripts/bundle-app.sh`, which holds a third copy, for `actool`. The flags never
+reach `swift build --show-bin-path`: the bin dir it prints depends only on the
+configuration.
 
 **Why:** the deployment floor and the linked SDK are independent — Casper
 targets macOS 15 and must still be *built* against 26+ to get the current

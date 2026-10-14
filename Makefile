@@ -23,15 +23,6 @@ MACOS_DEPLOYMENT_TARGET := 15.0
 MACOS_SDK_VERSION := $(shell xcrun --show-sdk-version)
 SWIFT_PLATFORM_FLAGS := -Xlinker -platform_version -Xlinker macos \
 	-Xlinker $(MACOS_DEPLOYMENT_TARGET) -Xlinker $(MACOS_SDK_VERSION)
-export SWIFT_PLATFORM_FLAGS
-
-# Flags for the shipped release build. Exported so Scripts/bundle-app.sh runs
-# `swift build -c release --show-bin-path` with the very same flags and can
-# never resolve a build directory other than the one `make release` filled.
-# An override has to carry $(SWIFT_PLATFORM_FLAGS) along, or the release loses the
-# Liquid Glass appearance explained above.
-SWIFT_RELEASE_FLAGS ?= -Xswiftc -Osize $(SWIFT_PLATFORM_FLAGS)
-export SWIFT_RELEASE_FLAGS
 
 # Per-branch dev session name: sanitize the current branch to SessionIdentity's
 # charset ([A-Za-z0-9._-], max 32 chars) so two worktrees on different branches
@@ -91,7 +82,7 @@ all: build test
 
 ## release: size-optimized release build (arm64)
 release:
-	swift build -c release $(SWIFT_RELEASE_FLAGS)
+	swift build -c release -Xswiftc -Osize $(SWIFT_PLATFORM_FLAGS)
 
 ## bundle: assemble a self-contained Casper.app (release binary + bundled dylibs)
 bundle: release
