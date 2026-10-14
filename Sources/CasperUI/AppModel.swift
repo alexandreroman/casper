@@ -418,6 +418,14 @@ final class AppModel {
         surfaceViews[surfaceID] as? GhosttySurfaceView
     }
 
+    /// Forwards the app's appearance to libghostty: the app itself, and every
+    /// terminal view alive — the background nursery's included, whose off-screen
+    /// windows never see an appearance change of their own. No-op before the runtime
+    /// exists.
+    func applyColorScheme(dark: Bool) {
+        runtime?.setColorScheme(dark: dark, surfaces: surfaceViews.values.compactMap { $0 as? GhosttySurfaceView })
+    }
+
     #if DEBUG
     /// Cache size for the debug memory census (`debugMemoryCounters`). An accessor
     /// rather than widened visibility, so the cache itself stays private — see the

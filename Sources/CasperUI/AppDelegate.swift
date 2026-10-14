@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private static let spaceMenuTitle = "Space"
 
     private var controlServer: ControlServer?
+    private var appearanceObservation: NSKeyValueObservation?
     private var keyWindowObserver: NSObjectProtocol?
     private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
     // `NSMenu.delegate` is weak, so the App-menu proxy needs an owner here.
@@ -34,12 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = AppModel.shared
-        // Force the app-wide appearance to dark regardless of the system Light/Dark
-        // setting. This covers all SwiftUI chrome and AppKit surfaces (menus, panels,
-        // Open/Save dialogs). The Ghostty terminal is Metal-rendered with its own
-        // palette, so it is unaffected.
-        NSApp.appearance = NSAppearance(named: .darkAqua)
-
         let shortcutMonitor = WorkspaceShortcutKeyMonitor(model: model)
         shortcutMonitor.start()
         workspaceShortcutMonitor = shortcutMonitor
@@ -80,7 +75,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
                 default: break
                 }
             }
+            // The scheme is set BEFORE `model.runtime` for the same reason the env inputs
+            // above are: that assignment unblocks surface creation, and libghostty's
+            // conditional state starts out light, so a first surface born earlier
+            // would draw its first frame with the light palette under a dark system.
+            runtime.setColorScheme(dark: NSApp.effectiveAppearance.isDark, surfaces: [])
             model.runtime = runtime
+            // One app-level observer suffices: Casper is single-window and its
+            // appearance is app-wide. This mirrors upstream Ghostty's `AppDelegate`.
+            // KVO fires on the main thread for system appearance changes, so the
+            // closure can assume main-actor isolation.
+            appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak model] app, _ in
+                MainActor.assumeIsolated {
+                    model?.applyColorScheme(dark: app.effectiveAppearance.isDark)
+                }
+            }
             runtime.actionHandler = LayoutActionHandler(model: model)
             // Terminal-scraping agent-state detection is GUI-only, so start its
             // timer here (never from `AppModel.init`, which also runs in tests).

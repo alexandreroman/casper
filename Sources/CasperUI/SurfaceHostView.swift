@@ -88,7 +88,7 @@ struct SurfaceHostView: View {
             // final body pass after `applyCloseSurface` removed `surface` from the
             // layout: `surfaceView(for:in:)` refuses to build a view for a surface the
             // layout no longer holds, and this frame is the last one drawn.
-            Color.black
+            Color(nsColor: .textBackgroundColor)
         }
     }
 

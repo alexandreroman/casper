@@ -1791,7 +1791,7 @@ private struct TitleCapsuleChrome: ViewModifier {
             .animation(TitleChipFeedback.animation) { chrome in
                 chrome
                     .background(fill, in: Capsule())
-                    .overlay(showsChrome ? Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5) : nil)
+                    .overlay(showsChrome ? Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5) : nil)
                     .scaleEffect(scale)
             }
             // Past the scale, so the hit shape stays the full-size capsule: a chip
