@@ -204,29 +204,8 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertEqual(AgentIntegration.parseClaudeRegistry(Data(json.utf8))?.version, "0.2.0")
     }
 
-    /// A genuine pre-rename registry entry, copied verbatim off a real machine —
-    /// `installPath` and `gitCommitSha` included — so the legacy path is proved
-    /// against the shape Claude Code actually writes, not a tidied-up stand-in.
-    private let legacyClaudeRegistry = #"""
-        {
-          "version": 2,
-          "plugins": {
-            "casper@Casper": [
-              {
-                "scope": "user",
-                "installPath": "/Users/alex/.claude/plugins/cache/Casper/casper/0.1.0",
-                "version": "0.1.0",
-                "installedAt": "2026-07-07T13:04:49.792Z",
-                "lastUpdated": "2026-07-07T13:04:49.792Z",
-                "gitCommitSha": "17fd..."
-              }
-            ]
-          }
-        }
-        """#
-
     func testParseClaudeRegistryMatchesTheLegacyPluginID() {
-        let registration = AgentIntegration.parseClaudeRegistry(Data(legacyClaudeRegistry.utf8))
+        let registration = AgentIntegration.parseClaudeRegistry(Data(legacyClaudeRegistry(version: "0.1.0").utf8))
         XCTAssertEqual(registration, .init(version: "0.1.0", usesLegacyPluginID: true))
     }
 
