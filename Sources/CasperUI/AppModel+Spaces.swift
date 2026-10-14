@@ -542,24 +542,6 @@ extension AppModel {
         space?.firstOrderedWorkspaceID ?? spaces.first?.firstOrderedWorkspaceID
     }
 
-    /// Prune every transient, non-persisted map keyed by a workspace being
-    /// removed, so a long-lived session with workspace churn doesn't accumulate
-    /// dead entries. Called from both `removeWorkspace` (linked drop) and
-    /// `removeSpace` (whole-Space discard) so the two teardown paths can't drift.
-    private func pruneTransientState(for ws: Workspace) {
-        explicitAuthority.remove(ws.id)
-        agentResolvers[ws.id] = nil
-        namedCommandsCache[ws.id] = nil
-        namedCommandsStamps[ws.id] = nil
-        watcherPathsCache[ws.id] = nil
-        lastNotifiedAt[ws.id] = nil
-        // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
-        // is cleared — the workspace is being dropped outright here, so there is nothing
-        // left for the destroy to prune), and the setup-running flag and per-surface
-        // setup tags of a workspace removed while its setup split is live.
-        scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
-    }
-
     // Reached from AppModel.swift.
     /// Release everything a workspace being dropped from the model still holds: its
     /// reserved port block, its cached surface views — the inspector browser lives
@@ -577,6 +559,16 @@ extension AppModel {
     func retire(_ ws: Workspace) {
         portAllocator.release(ws.portBase)
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
-        pruneTransientState(for: ws)
+        explicitAuthority.remove(ws.id)
+        agentResolvers[ws.id] = nil
+        namedCommandsCache[ws.id] = nil
+        namedCommandsStamps[ws.id] = nil
+        watcherPathsCache[ws.id] = nil
+        lastNotifiedAt[ws.id] = nil
+        // The workspace's lifecycle-hook state: its teardown once-latch (resumed as it
+        // is cleared — the workspace is being dropped outright here, so there is nothing
+        // left for the destroy to prune), and the setup-running flag and per-surface
+        // setup tags of a workspace removed while its setup split is live.
+        scriptHooks.forget(surfaceIDs: LayoutTree.surfaceIDs(ws.layout), workspaceID: ws.id)
     }
 }

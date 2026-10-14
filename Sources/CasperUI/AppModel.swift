@@ -1137,7 +1137,7 @@ final class AppModel {
     /// `armWorktreeWatcher` runs on every ⌘1…9 selection and every window-occlusion
     /// transition. The answer only moves when the Space's Git backing flips or its
     /// `.gitignore` changes, both of which land in `handleSelectedWorktreeChange`,
-    /// which drops the entry. Pruned with the workspace by `pruneTransientState`.
+    /// which drops the entry. Pruned with the workspace by `retire`.
     private func watcherPaths(for ws: Workspace, isGitRepo: Bool) -> WatcherPaths {
         if let cached = watcherPathsCache[ws.id] { return cached }
         let path = ws.worktreePath
