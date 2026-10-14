@@ -1486,7 +1486,7 @@ final class AppModelTests: XCTestCase {
         let (model, surfaceID) = try modelWithOneGitWorkspace()
         model.runtime = try makeIsolatedRuntime()
         var saves = 0
-        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
+        model.flushPendingSave()  // no save the fixture left pending can supply the count
         model.onPersistForTest = { saves += 1 }
 
         let workspace = model.spaces[0].workspaces[0]
@@ -1720,7 +1720,7 @@ final class AppModelTests: XCTestCase {
         let inspectorBrowserID = model.spaces[0].workspaces[0].inspector.browser.id
         let layoutBefore = model.spaces[0].workspaces[0].layout
         var saves = 0
-        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
+        model.flushPendingSave()  // no save the fixture left pending can supply the count
         model.onPersistForTest = { saves += 1 }
 
         let url = URL(string: "http://localhost:8080")!
@@ -1838,7 +1838,7 @@ final class AppModelTests: XCTestCase {
     func testUpdateSurfaceFontSizeUpdatesLayoutAndSchedulesSave() async {
         let (model, surfaceID) = modelWithOnePlainWorkspace()
         var saves = 0
-        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
+        model.flushPendingSave()  // no save the fixture left pending can supply the count
         model.onPersistForTest = { saves += 1 }
 
         model.updateSurfaceFontSize(surfaceID, size: 20)
@@ -1871,7 +1871,7 @@ final class AppModelTests: XCTestCase {
     func testSetSplitRatiosUpdatesTargetWorkspaceAndSchedulesSave() async {
         let (model, wsID) = modelWithTwoPaneSplit()
         var saves = 0
-        model.flushPendingSave()  // drain the fixture's own save so it cannot supply the count
+        model.flushPendingSave()  // no save the fixture left pending can supply the count
         model.onPersistForTest = { saves += 1 }
 
         model.setSplitRatios(at: [], ratios: [0.25, 0.75], for: wsID)
