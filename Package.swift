@@ -9,9 +9,11 @@ let package = Package(
             url: "https://github.com/apple/swift-argument-parser.git",
             from: "1.5.0"
         ),
+        // Pinned by revision, not by tag: upstream moved its `1.2.8` tag. This
+        // revision is the 1.2.8 release Casper is built and vendored against.
         .package(
             url: "https://github.com/Lakr233/libghostty-spm.git",
-            exact: "1.2.8"
+            revision: "839f269bcd5193d03293cb6717ed2582dde265ef"
         ),
         .package(
             url: "https://github.com/appstefan/HighlightSwift.git",

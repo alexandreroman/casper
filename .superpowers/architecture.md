@@ -31,7 +31,7 @@ bundle identifier — a bare executable cannot post a notification at all (see
 
 ## Locked decisions
 
-- **Embedding:** GhosttyKit / libghostty-spm, **version pinned**, isolated
+- **Embedding:** GhosttyKit / libghostty-spm, **revision pinned**, isolated
   behind the single `CasperGhostty` module (the embedding API is unstable — a
   bump touches only that module). See [[ghosttykit-pin]].
 - **Process model: in-process.** Surfaces and their PTYs live in the Casper

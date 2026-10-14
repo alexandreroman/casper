@@ -1,5 +1,5 @@
 {
-  "originHash" : "db0ab299981311b4b13bd19c6238bb730b339b543e2c7aaf531c696824cd7c2a",
+  "originHash" : "f7a58f9f4b5c5b016239e6fc6c17c1a6c494d2c1a8e7a79d56834aa4af3ae52c",
   "pins" : [
     {
       "identity" : "highlightswift",
@@ -15,8 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Lakr233/libghostty-spm.git",
       "state" : {
-        "revision" : "839f269bcd5193d03293cb6717ed2582dde265ef",
-        "version" : "1.2.8"
+        "revision" : "839f269bcd5193d03293cb6717ed2582dde265ef"
       }
     },
     {
