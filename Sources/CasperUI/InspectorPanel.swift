@@ -4,8 +4,8 @@ import SwiftUI
 /// The right-side inspector panel for a workspace: a top separator continuing
 /// the workspace title bar's line, then full-bleed content.
 /// The panel carries no tab control of its own — which tab it shows is chosen
-/// by the title bar's Diff and Browser chips (see `WorkspaceDetailView`), which
-/// double as the panel's open/close toggle.
+/// by the title bar's `InspectorTabSelector` and diff badge (see
+/// `WorkspaceDetailView.swift`), which double as the panel's open/close toggle.
 /// The Browser view reuses `BrowserSurfaceView` on the workspace's dedicated
 /// inspector surface; the Diff view reuses `DiffSurfaceView` for the working
 /// tree vs HEAD.
@@ -23,7 +23,7 @@ struct InspectorPanel: View {
     let workspace: Workspace
 
     var body: some View {
-        // The panel no longer owns its width: `WorkspaceDetailView`'s custom
+        // The panel does not own its width: `WorkspaceDetailView`'s custom
         // resizable divider sets it via `.frame(width:)`, so the panel simply
         // fills whatever width it is given.
         VStack(spacing: 0) {
