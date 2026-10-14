@@ -321,30 +321,34 @@ private enum WorkspaceAlerts {
 
     /// True when the user confirms the merge-and-close.
     static func confirmMergeAndClose(name: String, branch: String, baseBranch: String) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Merge and Close \u{201c}\(name)\u{201d}?"
-        alert.informativeText = "This merges branch \u{201c}\(branch)\u{201d} into "
-            + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
-            + "This can\u{2019}t be undone."
-        let mergeButton = alert.addButton(withTitle: "Merge and Close")
-        alert.addButton(withTitle: "Cancel")
-        mergeButton.hasDestructiveAction = true
-        mergeButton.keyEquivalent = ""
-        return alert.runModal() == .alertFirstButtonReturn
+        confirmDestructive(
+            message: "Merge and Close \u{201c}\(name)\u{201d}?",
+            informative: "This merges branch \u{201c}\(branch)\u{201d} into "
+                + "\u{201c}\(baseBranch)\u{201d}, then deletes the worktree and its folder on disk. "
+                + "This can\u{2019}t be undone.",
+            button: "Merge and Close")
     }
 
     /// True when the user confirms the delete.
     static func confirmDelete(name: String, branch: String, dirty: Bool) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = "Delete \u{201c}\(name)\u{201d}?"
         var text = "This deletes the worktree, its folder on disk, and branch "
             + "\u{201c}\(branch)\u{201d} without merging. This can\u{2019}t be undone."
         if dirty { text += " This workspace has uncommitted changes that will be lost." }
-        alert.informativeText = text
-        let deleteButton = alert.addButton(withTitle: "Delete")
+        return confirmDestructive(
+            message: "Delete \u{201c}\(name)\u{201d}?", informative: text, button: "Delete")
+    }
+
+    /// A destructive confirmation: true when the user picks `button` over Cancel.
+    /// `button` is marked destructive and loses its Return binding, so Cancel stays
+    /// the safe default (see `presentCloseWorkspaceConfirmation`).
+    private static func confirmDestructive(message: String, informative: String, button: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = informative
+        let destructiveButton = alert.addButton(withTitle: button)
         alert.addButton(withTitle: "Cancel")
-        deleteButton.hasDestructiveAction = true
-        deleteButton.keyEquivalent = ""
+        destructiveButton.hasDestructiveAction = true
+        destructiveButton.keyEquivalent = ""
         return alert.runModal() == .alertFirstButtonReturn
     }
 
