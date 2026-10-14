@@ -1716,6 +1716,7 @@ final class AppModelTests: XCTestCase {
 
         let url = URL(string: "http://localhost:8080")!
         model.setBrowserURL(inspectorBrowserID, url)  // id lives outside the layout tree
+        XCTAssertEqual(saves, 0, "the save is debounced, not written synchronously")
 
         guard case .browser(let newURL) =
             model.spaces[0].workspaces[0].inspector.browser.kind else {
@@ -1833,6 +1834,7 @@ final class AppModelTests: XCTestCase {
         model.onPersistForTest = { saves += 1 }
 
         model.updateSurfaceFontSize(surfaceID, size: 20)
+        XCTAssertEqual(saves, 0, "the save is debounced, not written synchronously")
 
         let surface = LayoutTree.surfaces(model.spaces[0].workspaces[0].layout)
             .first { $0.id == surfaceID }
@@ -1866,6 +1868,7 @@ final class AppModelTests: XCTestCase {
         model.onPersistForTest = { saves += 1 }
 
         model.setSplitRatios(at: [], ratios: [0.25, 0.75], for: wsID)
+        XCTAssertEqual(saves, 0, "the save is debounced, not written synchronously")
 
         guard case .split(_, _, let ratios) = model.spaces[0].workspaces[0].layout else {
             return XCTFail("workspace layout must remain a split")
