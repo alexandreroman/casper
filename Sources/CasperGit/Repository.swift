@@ -253,14 +253,15 @@ public final class Repository {
     /// Absolute paths of the working directory's immediate child directories that
     /// Git ignores (e.g. `node_modules`, `build`). Used to exclude high-churn
     /// ignored trees from filesystem watching. `.git` is never returned (excluded
-    /// separately). Returns `[]` for a bare repo (no working directory).
+    /// separately). Returns `[]` for a bare repo (no working directory). Best-effort:
+    /// a directory that cannot be listed or checked is simply left out.
     ///
     /// Limitation: a directory Git ignores is returned even if it contains a
     /// *tracked* file (force-added, or tracked before the ignore rule). Excluding
     /// such a directory from watching means edits to that tracked file will not
     /// live-refresh the diff. This is an accepted trade-off to avoid recompute
     /// churn on large ignored trees.
-    public func ignoredTopLevelDirectories() throws -> [String] {
+    public func ignoredTopLevelDirectories() -> [String] {
         guard let workdir = workdirPath else { return [] }
         let fm = FileManager.default
         let workdirURL = URL(fileURLWithPath: workdir)

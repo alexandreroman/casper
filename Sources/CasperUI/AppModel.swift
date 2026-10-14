@@ -1154,7 +1154,7 @@ final class AppModel {
         if isGitRepo {
             exclusions.append(path + "/.git")
             if let repo {
-                exclusions.append(contentsOf: (try? repo.ignoredTopLevelDirectories()) ?? [])
+                exclusions.append(contentsOf: repo.ignoredTopLevelDirectories())
             }
         }
         // FSEventStreamSetExclusionPaths accepts at most 8 paths; .git stays first.

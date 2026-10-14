@@ -111,7 +111,7 @@ public enum WorktreeManager {
         // `node_modules` costs a syscall per entry and can never yield a match worth
         // seeding. A failure here only loses the pruning, so the copy still runs.
         let ignoredTrees = Set(
-            ((try? repo.ignoredTopLevelDirectories()) ?? []).map {
+            repo.ignoredTopLevelDirectories().map {
                 URL(fileURLWithPath: $0).lastPathComponent
             })
 
