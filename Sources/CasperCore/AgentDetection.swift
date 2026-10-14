@@ -15,25 +15,15 @@ import Foundation
 ///
 /// `absent` means there is no live/readable agent (the matcher never produces
 /// it — only the caller does, when no agent surface exists).
-public enum AgentSignal: String, Equatable, Sendable {
-    case working, blocked, idle, absent
-}
+///
+/// Ordered by urgency through the declaration order, `absent < idle < working <
+/// blocked`, so rolling several surfaces' signals up to the most urgent one is
+/// just a `max`.
+public enum AgentSignal: Int, Comparable, Sendable {
+    case absent, idle, working, blocked
 
-/// Ordered by urgency, `absent < idle < working < blocked`, so rolling several
-/// surfaces' signals up to the most urgent one is just a `max`.
-extension AgentSignal: Comparable {
     public static func < (lhs: AgentSignal, rhs: AgentSignal) -> Bool {
-        lhs.urgency < rhs.urgency
-    }
-
-    /// Higher wins during aggregation.
-    private var urgency: Int {
-        switch self {
-        case .blocked: return 3
-        case .working: return 2
-        case .idle: return 1
-        case .absent: return 0
-        }
+        lhs.rawValue < rhs.rawValue
     }
 }
 
