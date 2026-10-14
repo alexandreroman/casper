@@ -25,13 +25,12 @@ final class WorkspaceShortcutKeyMonitor {
 
     private let model: AppModel
     private let tracker: CommandHoldTracker
-    // `nonisolated(unsafe)` is safe here: both are only ever mutated from
+    // `nonisolated(unsafe)` is safe here: it is only ever mutated from
     // `start()` on the main actor, and by the time `deinit` runs no other
     // reference to the object exists, so there's no concurrent access to race
-    // with. This lets `deinit` read them without a main-actor hop — avoiding
+    // with. This lets `deinit` read it without a main-actor hop — avoiding
     // the `isolated deinit` back-deployment shim that SIGABRTs on the CI runner.
     nonisolated(unsafe) private var eventMonitor: Any?
-    nonisolated(unsafe) private var resignActiveObserver: NSObjectProtocol?
 
     init(model: AppModel, holdDuration: TimeInterval = 0.25) {
         self.model = model
@@ -52,31 +51,22 @@ final class WorkspaceShortcutKeyMonitor {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
             self?.handle(event) ?? event
         }
-
-        // A local monitor only sees events while Casper is the key app: if the
-        // user holds Cmd until hints reveal, then Cmd+Tabs away while still
-        // physically holding it, the release `flagsChanged` never reaches us.
-        // Force the tracker back to released as soon as we lose active status
-        // so the hints don't stay stuck visible indefinitely.
-        resignActiveObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.tracker.commandKeyUp()
-                // Same reasoning for Option: Cmd+Tabbing away while holding it
-                // would otherwise leave the chip stuck on Delete.
-                self?.setOptionKeyHeld(false)
-            }
-        }
     }
 
     deinit {
         if let eventMonitor {
             NSEvent.removeMonitor(eventMonitor)
         }
-        if let resignActiveObserver {
-            NotificationCenter.default.removeObserver(resignActiveObserver)
-        }
+    }
+
+    /// Forces ⌘ and ⌥ back to released, hiding the shortcut hints and turning the
+    /// Delete chip back into Merge. Called by `AppDelegate` when Casper resigns
+    /// active: a local monitor only sees events while Casper is the key app, so if
+    /// the user Cmd-Tabs away while still holding a modifier, its release never
+    /// reaches `handle(_:)`.
+    func releaseModifiers() {
+        tracker.commandKeyUp()
+        setOptionKeyHeld(false)
     }
 
     /// Returns the event to let it keep propagating, or `nil` to consume it

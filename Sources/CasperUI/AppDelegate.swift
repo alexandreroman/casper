@@ -15,7 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     private var controlServer: ControlServer?
     private var appearanceObservation: NSKeyValueObservation?
     private var keyWindowObserver: NSObjectProtocol?
-    private var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
+    /// Internal, not private, so tests can install a monitor over their own model.
+    var workspaceShortcutMonitor: WorkspaceShortcutKeyMonitor?
     // `NSMenu.delegate` is weak, so the App-menu proxy needs an owner here.
     private var appMenuDelegateProxy: AppMenuDelegateProxy?
     #if DEBUG
@@ -340,12 +341,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         AppModel.shared.refreshAgentIntegrationsIfStale()
     }
 
+    func applicationDidResignActive(_ notification: Notification) {
+        resignActive(model: AppModel.shared)
+    }
+
     /// Tell libghostty the app lost focus. Complementary to occlusion — this does
     /// not pause rendering, only quiets focus-driven work. Also releases the Dock
-    /// bounce, so nothing an active Casper may have requested outlives its activation.
-    func applicationDidResignActive(_ notification: Notification) {
-        AppModel.shared.runtime?.setAppFocus(false)
-        AppModel.shared.releaseDockBounce()
+    /// bounce, so nothing an active Casper may have requested outlives its activation,
+    /// and any ⌘ or ⌥ the shortcut monitor still believes held.
+    ///
+    /// Takes the model rather than reading `AppModel.shared`, which loads the real
+    /// session, so tests can drive it.
+    func resignActive(model: AppModel) {
+        model.runtime?.setAppFocus(false)
+        model.releaseDockBounce()
+        workspaceShortcutMonitor?.releaseModifiers()
     }
 }
 

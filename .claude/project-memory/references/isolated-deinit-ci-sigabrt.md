@@ -24,8 +24,7 @@ reference to the object exists, so there is no concurrent access to race with.
 `nonisolated(unsafe)` and use a plain `deinit`. This is proven in the codebase:
 `Debouncer` (`Sources/CasperCore/Debouncer.swift`, `pending`) and
 `WorkspaceShortcutKeyMonitor`
-(`Sources/CasperUI/WorkspaceShortcutKeyMonitor.swift`,
-`eventMonitor`/`resignActiveObserver`) both use this pattern. Ensure the touched
-API is itself thread-safe (e.g. `DispatchWorkItem.cancel()`,
-`NSEvent.removeMonitor`). Related: [[swift6-network-concurrency]],
-[[mainactor-isolated-delegate-conformance]].
+(`Sources/CasperUI/WorkspaceShortcutKeyMonitor.swift`, `eventMonitor`) both use
+this pattern. Ensure the touched API is itself thread-safe (e.g.
+`DispatchWorkItem.cancel()`, `NSEvent.removeMonitor`). Related:
+[[swift6-network-concurrency]], [[mainactor-isolated-delegate-conformance]].
