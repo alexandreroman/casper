@@ -324,16 +324,16 @@ extension AppModel {
     /// queued command would never run: its surface would get no `GhosttySurfaceView` and
     /// no PTY, which for a `teardown` hook means no child-exit and a full 30 s timeout on
     /// every delete of an unselected workspace. Bring the pending surfaces up off-screen
-    /// here, once, for both callers. The workspace is re-fetched because the one resolved
-    /// above predates the split and does not carry the new surface.
+    /// here, once, for both callers. The workspace is read after the split so it carries
+    /// the new surface.
     func insertTerminal(_ surface: Surface, in workspaceID: UUID, command: String?) -> Bool {
         guard let at = locate(workspaceID),
               let anchor = LayoutTree.surfaceIDs(workspace(at: at).layout).first else { return false }
         if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
-        if command != nil, selectedWorkspaceID != workspaceID, let refreshed = workspace(id: workspaceID) {
-            materializePendingSurfacesOffscreen(in: refreshed)
+        if command != nil, selectedWorkspaceID != workspaceID {
+            materializePendingSurfacesOffscreen(in: workspace(at: at))
         }
         return true
     }
