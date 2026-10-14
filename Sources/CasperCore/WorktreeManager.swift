@@ -95,7 +95,7 @@ public enum WorktreeManager {
         // <other-branch>` registers one — fails with a raw "directory exists". The
         // entry is what collides, so the entry is what is checked: the worktree listing
         // skips a half-written one that would collide all the same.
-        if FileManager.default.fileExists(atPath: repo.commonDirPath + "worktrees/" + name) {
+        if FileManager.default.fileExists(atPath: repo.worktreeAdminPath(named: name)) {
             throw WorktreeError(.worktreeNameTaken)
         }
         if FileManager.default.fileExists(atPath: worktreePath) {

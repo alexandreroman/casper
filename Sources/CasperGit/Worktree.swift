@@ -8,6 +8,15 @@ public struct WorktreeInfo: Equatable, Sendable {
 }
 
 extension Repository {
+    /// Where Git keeps the admin entry of the worktree named `name`:
+    /// `<common dir>/worktrees/<name>`. The entry exists whenever Git has a
+    /// worktree registered under that name — even one whose folder is gone, or a
+    /// half-written one the worktree listing skips — and `git worktree add`
+    /// refuses the name while it does.
+    public func worktreeAdminPath(named name: String) -> String {
+        commonDirPath + "worktrees/" + name
+    }
+
     /// Create a worktree named `name` at `path`, checked out to a new branch
     /// (also named `name`) based on `basedOn` (a branch/tag/commit-ish) or HEAD.
     public func addWorktree(
@@ -28,7 +37,7 @@ extension Repository {
         var options = git_worktree_add_options()
         try gitCheck(git_worktree_add_options_init(
             &options, UInt32(GIT_WORKTREE_ADD_OPTIONS_VERSION)))
-        let adminPath = commonDirPath + "worktrees/" + name
+        let adminPath = worktreeAdminPath(named: name)
         let adminEntryExisted = FileManager.default.fileExists(atPath: adminPath)
 
         // Create the branch at that commit.
