@@ -47,9 +47,10 @@ correctness argument in the hooks code rests on this. Corollaries, do not break:
   down mid-tick detaches sibling panes (the exact hazard `close_surface_cb`
   defers). setup-success relies on the deferred `close_surface_cb` to close its
   split; teardown defers its continuation resume — and so the prune it triggers
-  — via `DispatchQueue.main.async` (+ `MainActor`) in `finishTeardown`. Resuming
-  a continuation already enqueues rather than running inline, but the explicit
-  hop is what makes that guarantee independent of Swift scheduling details.
+  — via `MainRunLoop.perform` in `finishTeardown` (see [[main-run-loop-hop]]).
+  Resuming a continuation already enqueues rather than running inline, but the
+  explicit hop is what makes that guarantee independent of Swift scheduling
+  details.
 - **setup guards in `applyCloseSurface`:** a still-tagged `.setup` surface is
   never torn down by an early close (its fate is the exit code); a FAILED setup
   arms `keptFailedSetupSurfaces` to swallow the one shell-exit close so the pane

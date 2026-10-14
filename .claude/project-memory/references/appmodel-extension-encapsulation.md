@@ -9,8 +9,12 @@ type: project
 `AppModel` is split across `AppModel.swift` and four extension files:
 `AppModel+Spaces.swift`, `AppModel+WorkspaceLifecycle.swift`,
 `AppModel+Control.swift` and `AppModel+Presentation.swift` — the last one reads
-model state as much as the others do, so it is bound by the same rule. Swift's
-`private` is file-scoped, so a member the extensions touch has to be at least
+model state as much as the others do, so it is bound by the same rule. Three
+more files extend it too: `MenuCommands.swift`, `PaneContextMenu.swift` and the
+DEBUG-only `DebugSurfaceBridge.swift`, which reads `browserCoordinators`,
+`pendingInitialInput`, `watcherPathsCache`, `namedCommandsCache` and
+`agentResolvers` — part of why those stay internal. Swift's `private` is
+file-scoped, so a member any of these extensions touches has to be at least
 internal — which costs the read-only-from-outside invariant on a stored
 property.
 
