@@ -94,13 +94,16 @@ final class DiffTests: XCTestCase {
 
     func testDeletedFileIsDeletion() throws {
         try FileManager.default.removeItem(at: directory.appendingPathComponent("README.md"))
-        let file = try repo.diffWorkdirToHead().files.first { $0.oldPath == "README.md" }
-        XCTAssertEqual(file?.status, .deleted)
+        let file = try XCTUnwrap(repo.diffWorkdirToHead().files.first { $0.oldPath == "README.md" })
+        XCTAssertEqual(file.status, .deleted)
         // libgit2 mirrors `old_file.path` into `new_file.path` for a deletion (the two
         // only diverge for a rename), so a deletion still has a usable display path and
         // `GitDiffFile.id` never has to fall back to `oldPath`.
-        XCTAssertEqual(file?.newPath, "README.md")
-        XCTAssertTrue((file?.hunks.flatMap(\.lines) ?? []).allSatisfy { $0.kind == .deletion })
+        XCTAssertEqual(file.newPath, "README.md")
+        // The content first: `allSatisfy` alone passes on an empty list.
+        let lines = file.hunks.flatMap(\.lines)
+        XCTAssertEqual(lines.map(\.content), ["casper fixture"])
+        XCTAssertTrue(lines.allSatisfy { $0.kind == .deletion })
     }
 
     /// A file libgit2 lists but cannot open (mode 000) has no patch. It must cost
