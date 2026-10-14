@@ -221,9 +221,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
     }
 
-    func testCloseBrowserNoOpsWhenDiffTabActive() throws {
+    func testCloseBrowserNoOpsWhenDiffTabActive() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id) else {
+        guard case .success = await model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
         XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
@@ -239,9 +239,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(model.controlCloseBrowser(in: UUID()))
     }
 
-    func testCloseDiffCollapsesWhenDiffTabActive() throws {
+    func testCloseDiffCollapsesWhenDiffTabActive() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id) else {
+        guard case .success = await model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
         XCTAssertFalse(try XCTUnwrap(model.workspace(id: id)).inspector.collapsed)
@@ -267,9 +267,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(model.controlCloseDiff(in: UUID()))
     }
 
-    func testOpenDiffSelectsInspectorTab() throws {
+    func testOpenDiffSelectsInspectorTab() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id) else {
+        guard case .success = await model.controlOpenDiff(in: id) else {
             return XCTFail("expected success")
         }
         XCTAssertNil(model.diffScrollTarget)
@@ -277,11 +277,11 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.inspector.collapsed, false)
     }
 
-    func testOpenDiffWithExistingFileSetsScrollTarget() throws {
+    func testOpenDiffWithExistingFileSetsScrollTarget() async throws {
         // `makeRepo` writes a real `README.md` into the fixture worktree, so the
         // on-disk existence check passes for it.
         let (model, id, _) = try seededGitModel()
-        guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
+        guard case .success = await model.controlOpenDiff(in: id, file: "README.md") else {
             return XCTFail("expected success")
         }
         let first = try XCTUnwrap(model.diffScrollTarget)
@@ -291,7 +291,7 @@ final class ControlHandlerTests: XCTestCase {
         // Once the view has settled the first request, a repeat for the same file
         // must set a target again so the view re-scrolls.
         model.consumeDiffScrollTarget(first)
-        guard case .success = model.controlOpenDiff(in: id, file: "README.md") else {
+        guard case .success = await model.controlOpenDiff(in: id, file: "README.md") else {
             return XCTFail("expected success")
         }
         let second = try XCTUnwrap(model.diffScrollTarget)
@@ -299,9 +299,22 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertGreaterThan(second.diffRevision, first.diffRevision)
     }
 
-    func testOpenDiffWithMissingFileFails() throws {
+    /// A file deleted from the worktree is gone from disk, yet the diff lists it
+    /// as a deletion — so it is a valid target to scroll to.
+    func testOpenDiffWithDeletedFileListedInTheDiffSetsScrollTarget() async throws {
+        let (model, id, repoPath) = try seededGitModel()
+        try FileManager.default.removeItem(atPath: repoPath + "/README.md")
+
+        guard case .success = await model.controlOpenDiff(in: id, file: "README.md") else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(model.diffScrollTarget?.file, "README.md")
+        XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff)
+    }
+
+    func testOpenDiffWithMissingFileFails() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .failure(let error) = model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
+        guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
             return XCTFail("expected failure")
         }
         XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
@@ -311,13 +324,13 @@ final class ControlHandlerTests: XCTestCase {
     /// A directory resolves and exists, and the worktree root's relative path is the
     /// empty string — which matches no `GitDiffFile.id`. Accepting one would report
     /// success and then scroll nowhere, so it has to fail like a missing file.
-    func testOpenDiffWithDirectoryFails() throws {
+    func testOpenDiffWithDirectoryFails() async throws {
         let (model, id, repoPath) = try seededGitModel()
         try FileManager.default.createDirectory(
             atPath: repoPath + "/Sources", withIntermediateDirectories: true)
 
         for directory in [".", "Sources"] {
-            guard case .failure(let error) = model.controlOpenDiff(in: id, file: directory) else {
+            guard case .failure(let error) = await model.controlOpenDiff(in: id, file: directory) else {
                 return XCTFail("expected '\(directory)' to be refused")
             }
             XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
@@ -325,9 +338,9 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertNil(model.diffScrollTarget)
     }
 
-    func testOpenDiffWithEscapingFileFails() throws {
+    func testOpenDiffWithEscapingFileFails() async throws {
         let (model, id, _) = try seededGitModel()
-        guard case .failure(let error) = model.controlOpenDiff(in: id, file: "../escape.txt") else {
+        guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "../escape.txt") else {
             return XCTFail("expected failure")
         }
         XCTAssertTrue(error.message.contains("outside the workspace"), "got: \(error.message)")

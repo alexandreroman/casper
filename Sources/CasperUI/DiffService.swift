@@ -53,15 +53,7 @@ final class DiffService {
         }
 
         let path = workspace.worktreePath
-        let task = Task.detached(priority: .userInitiated) { () -> GitDiff? in
-            do {
-                let repo = try Repository.open(atPath: path)
-                return try repo.diffWorkdirToHead()
-            } catch {
-                CasperLog.app.failure("diff failed", error)
-                return nil
-            }
-        }
+        let task = Task.detached(priority: .userInitiated) { Self.readDiff(ofWorktreeAt: path) }
         inFlightDiff = (workspace.id, revision, task)
         let diff = await task.value
 
@@ -74,6 +66,27 @@ final class DiffService {
             inFlightDiff = nil
         }
         return diff
+    }
+
+    /// The workspace's working-tree-vs-HEAD diff read from disk right now, bypassing
+    /// the cache and the in-flight walk: either may predate a change the worktree
+    /// watcher has not reported yet. Nil when the workspace is not Git-backed or the
+    /// diff fails.
+    func freshDiff(for workspace: Workspace) async -> GitDiff? {
+        let path = workspace.worktreePath
+        return await Task.detached(priority: .userInitiated) { Self.readDiff(ofWorktreeAt: path) }.value
+    }
+
+    /// Opens its own `Repository`, so it runs off the main actor without one
+    /// crossing an actor boundary; only the `Sendable` `GitDiff` comes back.
+    private nonisolated static func readDiff(ofWorktreeAt path: String) -> GitDiff? {
+        do {
+            let repo = try Repository.open(atPath: path)
+            return try repo.diffWorkdirToHead()
+        } catch {
+            CasperLog.app.failure("diff failed", error)
+            return nil
+        }
     }
 
     /// The workspace's working-tree-vs-HEAD line counts, or nil when there is nothing

@@ -123,10 +123,15 @@ final class ControlServer {
             reply(Self.ack(model.controlCloseBrowser(in: id), workspace: id,
                            failure: "cannot close browser")); return
         case .diffOpen:
-            switch model.controlOpenDiff(in: id, file: command.target) {
-            case .success: reply(.success(workspace: id.casperID)); return
-            case .failure(let error): reply(.failure(error.message)); return
+            // A file missing from disk is checked against a fresh diff, read off the
+            // main actor, so the reply waits for it.
+            Task { @MainActor in
+                switch await model.controlOpenDiff(in: id, file: command.target) {
+                case .success: reply(.success(workspace: id.casperID))
+                case .failure(let error): reply(.failure(error.message))
+                }
             }
+            return
         case .diffClose:
             reply(Self.ack(model.controlCloseDiff(in: id), workspace: id,
                            failure: "cannot close diff")); return

@@ -412,6 +412,10 @@ casper workspace delete                      # destroy worktree + branch
 casper run test                              # run a .casper.json command
 ```
 
+`casper diff open <file>` takes a path relative to the workspace's worktree
+root (or absolute); a file deleted from the worktree is accepted when the diff
+lists it.
+
 `casper progress get` prints `{"progress":null}` when no bar is up. `casper run`
 runs a named `.casper.json` command in a split; without a name it runs the one
 named `run`.

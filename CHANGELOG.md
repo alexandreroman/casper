@@ -75,6 +75,8 @@ CI, test, and documentation-only work is left out.
   does not exist, or a file, instead of opening the terminal somewhere else.
 - `casper terminal close` prints the terminal id in lowercase, like every
   other command, even when it was typed in uppercase.
+- `casper diff open <file>` accepts a file deleted from the worktree, and
+  scrolls the diff to it, instead of answering "file does not exist".
 
 ## [0.1.3] - 2026-10-13
 

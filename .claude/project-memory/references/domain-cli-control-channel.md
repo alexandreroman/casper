@@ -27,9 +27,11 @@ records. The control channel (`casper <domain> <verb>` over
 - `diff open [<file>]` opens the diff view and scrolls to `<file>`, a path
   relative to the target workspace's worktree root (or absolute), resolved
   app-side rather than against the shell's directory. It matches a diff file id
-  by its exact worktree-relative path. The file must exist on disk **and** be
-  inside the worktree, else an error (`WorkspaceFilePath` containment +
-  existence check). A valid but unchanged file opens the diff without
+  by its exact worktree-relative path. The file must be inside the worktree
+  (`WorkspaceFilePath` containment) **and** either exist on disk or be listed
+  by a fresh diff — a file deleted from the worktree — else an error. Only a
+  path missing from disk pays for that diff read, so the reply waits on it
+  (the handler is `async`). A valid but unchanged file opens the diff without
   scrolling.
 - `workspace new` takes the new branch name as a **required positional**, never
   an option; `--base` and `--command` are its only verb-specific options.

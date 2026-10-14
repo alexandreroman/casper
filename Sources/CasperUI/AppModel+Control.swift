@@ -476,36 +476,52 @@ extension AppModel {
 
     /// Open `workspaceID`'s diff view (select the diff tab, expand the inspector).
     /// When `file` is given, validate it against the workspace's worktree — it
-    /// must resolve INSIDE the worktree and exist on disk — then request the view
-    /// scroll to its worktree-relative path (matching `GitDiffFile.id`). Mirrors
-    /// `controlOpenBrowser`, but returns a `Result` so an invalid file surfaces as
-    /// a control-channel error instead of a silent no-op.
-    func controlOpenDiff(in workspaceID: UUID, file: String? = nil) -> Result<Void, OperationError> {
+    /// must resolve INSIDE the worktree and be a file on disk or one the diff
+    /// lists (a deletion) — then request the view scroll to its worktree-relative
+    /// path (matching `GitDiffFile.id`). Mirrors `controlOpenBrowser`, but returns
+    /// a `Result` so an invalid file surfaces as a control-channel error instead
+    /// of a silent no-op.
+    func controlOpenDiff(in workspaceID: UUID, file: String? = nil) async -> Result<Void, OperationError> {
         guard let at = locate(workspaceID) else {
             return .failure(OperationError(message: "workspace not found"))
         }
-        let worktree = workspace(at: at).worktreePath
+        let workspace = workspace(at: at)
         // Resolved first: an invalid file must fail without having opened anything.
         var scrollTarget: String?
         if let file, !file.isEmpty {
-            guard let resolved = WorkspaceFilePath.resolve(file, inWorktree: worktree) else {
+            guard let resolved = WorkspaceFilePath.resolve(file, inWorktree: workspace.worktreePath) else {
                 return .failure(OperationError(message: "file is outside the workspace: \(file)"))
             }
-            // A directory is rejected, not just a missing path: `WorkspaceFilePath`
-            // resolves the worktree root itself, whose relative path is "", which
-            // matches no `GitDiffFile.id` and would scroll nowhere while reporting
-            // success.
-            guard FileManager.default.fileExists(atPath: resolved),
-                  !Self.directoryExists(atPath: resolved) else {
+            let relativePath = WorkspaceFilePath.relative(resolved, toWorktree: workspace.worktreePath)
+            guard await isDiffScrollTarget(resolved, relativePath: relativePath, in: workspace) else {
                 return .failure(OperationError(message: "file does not exist: \(file)"))
             }
-            scrollTarget = WorkspaceFilePath.relative(resolved, toWorktree: worktree)
+            // The diff read may have suspended long enough for the workspace to go.
+            guard locate(workspaceID) != nil else {
+                return .failure(OperationError(message: "workspace not found"))
+            }
+            scrollTarget = relativePath
         }
         setInspectorTab(.diff, for: workspaceID)
         if let scrollTarget {
             requestDiffScroll(workspaceID: workspaceID, file: scrollTarget)
         }
         return .success(())
+    }
+
+    /// Whether `diff open` can scroll to `resolvedPath`: a file on disk, or a file
+    /// deleted from the worktree that a fresh diff lists. A directory is refused:
+    /// `WorkspaceFilePath` resolves the worktree root itself, whose relative path
+    /// is "", which matches no `GitDiffFile.id` and would scroll nowhere while
+    /// reporting success.
+    private func isDiffScrollTarget(
+        _ resolvedPath: String, relativePath: String, in workspace: Workspace
+    ) async -> Bool {
+        if FileManager.default.fileExists(atPath: resolvedPath) {
+            return !Self.directoryExists(atPath: resolvedPath)
+        }
+        let diff = await diffService.freshDiff(for: workspace)
+        return diff?.files.contains { $0.id == relativePath } ?? false
     }
 
     /// Collapse the inspector if `workspaceID`'s active tab is `.browser`.
