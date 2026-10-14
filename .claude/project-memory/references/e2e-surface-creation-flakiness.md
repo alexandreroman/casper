@@ -1,6 +1,6 @@
 ---
 name: "e2e surface creation flakiness"
-description: "ghostty_surface_new can return null in some automation sessions, blocking casper debug e2e checks even on unchanged code; wake the display and poll before declaring it blocked"
+description: "ghostty_surface_new returns null with every display asleep, blocking casper debug e2e checks on unchanged code; wake the display and poll"
 type: reference
 ---
 
@@ -16,10 +16,19 @@ returned null")` on every launch. `NSApplication` still starts and
 `ghostty_surface_new` call fails, so the process stays alive with a window that
 never gets a `contentView` surface.
 
-**This is environmental, not necessarily a code regression.** The failure tracks
-the display being asleep / the WindowServer connection being idle in a long
-unattended run; it is not explained by display sleep state alone, an active
-login session, a stray process holding the socket, or a bad user Ghostty config.
+**This is environmental, not necessarily a code regression.** The confirmed
+mechanism is **no active display**: with every display asleep,
+`CGGetActiveDisplayList` reports zero displays, and libghostty's renderer init
+(window-vsync on) fails to create its `CVDisplayLink`. The unified log then
+shows `CVDisplayLinkCreateWithCGDisplays error -6661 due to invalid display
+count (0)` followed by `embedded_window: error initializing surface
+err=error.OutOfMemory` (libghostty maps every CVReturn failure to OutOfMemory).
+Check for those two lines first; a failure without them has another cause.
+`GhosttySurfaceView` restarts a bounded creation cycle on
+`NSWorkspace.screensDidWakeNotification` and
+`NSApplication.didChangeScreenParametersNotification`, so a view that failed
+while the displays slept recovers once they wake — see
+[[display-sleep-surface-creation]].
 Before concluding a change broke surface creation, `git stash` to the last
 known-good commit, rebuild, and relaunch — an identical failure on unmodified
 code confirms it is environmental.

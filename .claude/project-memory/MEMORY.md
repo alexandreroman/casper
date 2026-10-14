@@ -42,7 +42,7 @@
 - [Command key-ups need a local monitor](references/ghostty-command-keyup-monitor.md) — AppKit withholds ⌘ keyUp; a monitor sends the release
 - [libghostty keybinds shadow the main menu](references/ghostty-keybinds-shadow-the-main-menu.md) — a bound ⌘ combo never reaches the menu item
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
-- [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — `ghostty_surface_new` can return null; wake the display and poll
+- [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — null surfaces with displays asleep; wake and poll
 - [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
 - [OSC 52 clipboard writes](references/osc52-clipboard-write-policy.md) — untrusted writes land unprompted; the dormant prompt, the accepted risk
 - [OSC 52 clipboard reads](references/osc52-clipboard-read-policy.md) — untrusted reads answered unprompted; `confirmed: true` skips the callback
@@ -94,6 +94,7 @@
 - [SIGBUS guard around libgit2 diff](references/sigbus-guard-diff.md) — an mmap-truncation SIGBUS becomes a graceful throw
 - [App icon design and generation pipeline](references/app-icon.md) — SVG → `.icns`, plus a `.icon` → Assets.car (macOS 26 host)
 - [Background surface nursery](references/background-surface-nursery.md) — unselected workspaces have no live PTY, so queued work needs it
+- [Terminal surfaces need an active display](references/display-sleep-surface-creation.md) — retry on display wake; no vsync-less creation
 - [Off-screen host windows stay unordered](references/offscreen-host-windows-unordered.md) — ordering an off-screen window wrecks Mission Control
 - [HighlightSwift Highlight() must be reused](references/highlightswift-shared-instance.md) — each one is a new JSContext; reuse the shared instance
 - [Headless teardown-hook tests](references/headless-teardown-hook-tests.md) — drive `handleScriptSurfaceExit` for the child exit in XCTest
