@@ -61,12 +61,12 @@ extension AppModel {
     /// Shared by the
     /// `casper workspace delete` control-channel verb and the sidebar's "Merge and
     /// Close Workspace…"/"Delete Workspace…" actions.
-    private func pruneWorkspaceFromDisk(id workspaceID: UUID) async -> Result<Void, WorkspaceDeleteError> {
+    private func pruneWorkspaceFromDisk(id workspaceID: UUID) async -> Result<Void, OperationError> {
         guard let at = locate(workspaceID) else {
-            return .failure(WorkspaceDeleteError(message: "workspace not found"))
+            return .failure(OperationError(message: "workspace not found"))
         }
         guard workspace(at: at).kind == .linked else {
-            return .failure(WorkspaceDeleteError(message: "cannot delete the primary workspace"))
+            return .failure(OperationError(message: "cannot delete the primary workspace"))
         }
         let repoPath = spaces[at.space].folderPath
         let branch = workspace(at: at).branch
@@ -86,7 +86,7 @@ extension AppModel {
                 try WorktreeManager.deleteBranch(repoPath: repoPath, name: branch)
             }
         } catch {
-            return .failure(WorkspaceDeleteError(message: "delete failed: \(error)"))
+            return .failure(OperationError(message: "delete failed: \(error)"))
         }
         removeWorkspace(id: workspaceID)   // back on the main actor: drops from UI, releases port, discards views
         return .success(())
@@ -102,7 +102,7 @@ extension AppModel {
     /// explanation — hence the sheet. And the hook's outcome is not part of the reply at
     /// all, so without the notification a broken teardown would only ever reach the log.
     func controlDeleteWorkspace(
-        id workspaceID: UUID, completion: @escaping (Result<Void, WorkspaceDeleteError>) -> Void
+        id workspaceID: UUID, completion: @escaping (Result<Void, OperationError>) -> Void
     ) {
         Task { @MainActor in
             // Read up front: by the time the hook's status comes back the workspace is
@@ -133,15 +133,15 @@ extension AppModel {
     private func deleteLinkedWorkspace(
         id workspaceID: UUID,
         onTeardownHook: @MainActor (TeardownHookStatus) -> Void,
-        nonLinkedFallback: () async -> Result<Void, WorkspaceDeleteError>
-    ) async -> Result<Void, WorkspaceDeleteError> {
+        nonLinkedFallback: () async -> Result<Void, OperationError>
+    ) async -> Result<Void, OperationError> {
         guard let ws = workspace(id: workspaceID), ws.kind == .linked else {
             return await nonLinkedFallback()
         }
         // Claim the workspace synchronously, before the first `await` below: see
         // `closingWorkspaces`.
         guard closingWorkspaces.insert(workspaceID).inserted else {
-            return .failure(WorkspaceDeleteError(message: "deletion already in progress"))
+            return .failure(OperationError(message: "deletion already in progress"))
         }
         defer { closingWorkspaces.remove(workspaceID) }
         // Resolved once, up front: it decides the step count AND is what `runTeardown`
@@ -277,9 +277,9 @@ extension AppModel {
     func deleteWorkspace(
         id workspaceID: UUID,
         onTeardownHook: @MainActor (TeardownHookStatus) -> Void = { _ in }
-    ) async -> Result<Void, WorkspaceDeleteError> {
+    ) async -> Result<Void, OperationError> {
         await deleteLinkedWorkspace(id: workspaceID, onTeardownHook: onTeardownHook) {
-            .failure(WorkspaceDeleteError(message: "workspace not found"))
+            .failure(OperationError(message: "workspace not found"))
         }
     }
 }

@@ -290,18 +290,13 @@ extension AppModel {
     /// selection.
     func controlCreateWorkspace(
         inSpaceOf workspaceID: UUID, branch: String, base: String?, command: String? = nil
-    ) async -> Result<ControlWorkspaceInfo, WorkspaceCreationError> {
+    ) async -> Result<ControlWorkspaceInfo, OperationError> {
         guard let ws = workspace(id: workspaceID), let space = space(for: ws) else {
-            return .failure(WorkspaceCreationError(message: "no target workspace"))
+            return .failure(OperationError(message: "no target workspace"))
         }
         return await createLinkedWorkspace(
             spaceID: space.id, name: branch, base: base, command: command, select: false)
             .map { ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
-    }
-
-    /// Why a `casper run <name>` request could not launch a command.
-    struct ControlRunError: Error, Equatable {
-        let message: String
     }
 
     /// Open a new terminal in `workspaceID` by splitting its top-left surface.
@@ -381,32 +376,32 @@ extension AppModel {
     /// workspace's `setup` hook is still running — the one gate every entry point
     /// (toolbar, menus, `casper run`) goes through. The `teardown` hook does not:
     /// it runs through `runTeardown`, so closing a workspace mid-setup still runs it.
-    func controlRun(name: String?, in workspaceID: UUID) -> Result<ControlTerminalInfo, ControlRunError> {
+    func controlRun(name: String?, in workspaceID: UUID) -> Result<ControlTerminalInfo, OperationError> {
         guard let ws = workspace(id: workspaceID) else {
-            return .failure(ControlRunError(message: "workspace not found"))
+            return .failure(OperationError(message: "workspace not found"))
         }
         guard !isSetupRunning(in: workspaceID) else {
-            return .failure(ControlRunError(message: "the setup script is still running; wait for it to finish"))
+            return .failure(OperationError(message: "the setup script is still running; wait for it to finish"))
         }
         let requested = name ?? "run"
         let config: RepoConfig
         do {
             guard let loaded = try RepoConfig.load(fromRepoRoot: ws.worktreePath) else {
-                return .failure(ControlRunError(message: "no .casper.json in this workspace"))
+                return .failure(OperationError(message: "no .casper.json in this workspace"))
             }
             config = loaded
         } catch let error as RepoConfigError {
-            return .failure(ControlRunError(message: "Invalid .casper.json: \(error.reason)"))
+            return .failure(OperationError(message: "Invalid .casper.json: \(error.reason)"))
         } catch {
-            return .failure(ControlRunError(message: error.localizedDescription))
+            return .failure(OperationError(message: error.localizedDescription))
         }
         switch config.resolveRunCommand(requested) {
         case .denied(let message):
-            return .failure(ControlRunError(message: message))
+            return .failure(OperationError(message: message))
         case .command(let command):
             let wrappedCommand = ScriptHookRunner.subshellWrappedScriptCommand(command)
             guard let info = controlOpenTerminal(in: workspaceID, command: wrappedCommand) else {
-                return .failure(ControlRunError(message: "cannot open terminal"))
+                return .failure(OperationError(message: "cannot open terminal"))
             }
             return .success(info)
         }
@@ -489,16 +484,16 @@ extension AppModel {
     /// scroll to its worktree-relative path (matching `GitDiffFile.id`). Mirrors
     /// `controlOpenBrowser`, but returns a `Result` so an invalid file surfaces as
     /// a control-channel error instead of a silent no-op.
-    func controlOpenDiff(in workspaceID: UUID, file: String? = nil) -> Result<Void, DiffOpenError> {
+    func controlOpenDiff(in workspaceID: UUID, file: String? = nil) -> Result<Void, OperationError> {
         guard let at = locate(workspaceID) else {
-            return .failure(DiffOpenError(message: "workspace not found"))
+            return .failure(OperationError(message: "workspace not found"))
         }
         let worktree = workspace(at: at).worktreePath
         // Resolved first: an invalid file must fail without having opened anything.
         var scrollTarget: String?
         if let file, !file.isEmpty {
             guard let resolved = WorkspaceFilePath.resolve(file, inWorktree: worktree) else {
-                return .failure(DiffOpenError(message: "file is outside the workspace: \(file)"))
+                return .failure(OperationError(message: "file is outside the workspace: \(file)"))
             }
             // A directory is rejected, not just a missing path: `WorkspaceFilePath`
             // resolves the worktree root itself, whose relative path is "", which
@@ -506,7 +501,7 @@ extension AppModel {
             // success.
             guard FileManager.default.fileExists(atPath: resolved),
                   !Self.directoryExists(atPath: resolved) else {
-                return .failure(DiffOpenError(message: "file does not exist: \(file)"))
+                return .failure(OperationError(message: "file does not exist: \(file)"))
             }
             scrollTarget = WorkspaceFilePath.relative(resolved, toWorktree: worktree)
         }

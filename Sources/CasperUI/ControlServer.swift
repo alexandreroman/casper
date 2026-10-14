@@ -246,7 +246,7 @@ final class ControlServer {
     private func replyWhenReady(
         workspace id: UUID,
         reply: @escaping @Sendable (ControlResponse) -> Void,
-        _ op: @escaping @MainActor () async -> Result<String, BrowserOpError>
+        _ op: @escaping @MainActor () async -> Result<String, OperationError>
     ) {
         Task { @MainActor in
             reply(Self.browserReply(await op(), workspace: id))
@@ -283,7 +283,7 @@ final class ControlServer {
     /// payload (eval result / HTML / screenshot path, empty for action verbs) in
     /// `text`; failure carries the error message.
     private static func browserReply(
-        _ result: Result<String, BrowserOpError>, workspace id: UUID
+        _ result: Result<String, OperationError>, workspace id: UUID
     ) -> ControlResponse {
         switch result {
         case .success(let text): return .success(text: text, workspace: id.casperID)

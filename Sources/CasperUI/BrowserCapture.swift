@@ -28,7 +28,7 @@ enum BrowserCapture {
     /// Render `url` off-screen at `width`×`height` and return a PNG of the resulting
     /// viewport. The capture shares the default website data store
     /// (cookies/localStorage) with the live browser so authenticated pages render.
-    /// Throws `BrowserOpError` on a load failure, timeout, or render/encode
+    /// Throws `OperationError` on a load failure, timeout, or render/encode
     /// failure. The PNG is at the display's backing scale, matching the live
     /// `BrowserCoordinator.snapshot` path.
     static func snapshot(url: URL, width: Int, height: Int) async throws -> Data {
@@ -97,7 +97,7 @@ enum BrowserCapture {
     static func snapshotPNG(of webView: WKWebView) async throws -> Data {
         let image = try await webView.takeSnapshot(configuration: WKSnapshotConfiguration())
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-            throw BrowserOpError(message: "failed to render page snapshot")
+            throw OperationError(message: "failed to render page snapshot")
         }
         // Only `takeSnapshot` needs the main actor. Re-encoding the raw buffer (1280x800
         // at the backing scale, i.e. ~4 MB of pixels) is pure CPU work that would
@@ -115,7 +115,7 @@ enum BrowserCapture {
         let bitmap = NSBitmapImageRep(cgImage: image)
         bitmap.size = size
         guard let png = bitmap.representation(using: .png, properties: [:]) else {
-            throw BrowserOpError(message: "failed to encode snapshot as PNG")
+            throw OperationError(message: "failed to encode snapshot as PNG")
         }
         return png
     }
@@ -233,7 +233,7 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
 
     /// Resume the waiter with a failure — used by the timeout.
     func fail(message: String) {
-        settle(.failure(BrowserOpError(message: message)))
+        settle(.failure(OperationError(message: message)))
     }
 
     private func settle(_ result: Result<Void, Error>) {
@@ -244,7 +244,7 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     }
 
     private func loadFailure(_ error: Error) {
-        settle(.failure(BrowserOpError(
+        settle(.failure(OperationError(
             message: "failed to load \(url.absoluteString) for capture: \(error.localizedDescription)")))
     }
 

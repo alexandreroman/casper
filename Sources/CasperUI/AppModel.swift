@@ -861,7 +861,7 @@ final class AppModel {
     func createLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?, command: String? = nil,
         select: Bool = true
-    ) async -> Result<Workspace, WorkspaceCreationError> {
+    ) async -> Result<Workspace, OperationError> {
         let plan: LinkedWorkspacePlan
         switch planLinkedWorkspace(spaceID: spaceID, name: name, base: baseOverride) {
         case .failure(let error): return .failure(error)
@@ -908,15 +908,15 @@ final class AppModel {
     /// and a `stat` per candidate.
     private func planLinkedWorkspace(
         spaceID: UUID, name: String, base baseOverride: String?
-    ) -> Result<LinkedWorkspacePlan, WorkspaceCreationError> {
+    ) -> Result<LinkedWorkspacePlan, OperationError> {
         guard let si = spaces.firstIndex(where: { $0.id == spaceID }) else {
-            return .failure(WorkspaceCreationError(message: "space not found"))
+            return .failure(OperationError(message: "space not found"))
         }
         guard spaces[si].isGitRepo else {
-            return .failure(WorkspaceCreationError(message: "space is not a Git repository"))
+            return .failure(OperationError(message: "space is not a Git repository"))
         }
         guard let branch = GitBranchName.sanitize(name) else {
-            return .failure(WorkspaceCreationError(message: "invalid branch name: \(name)"))
+            return .failure(OperationError(message: "invalid branch name: \(name)"))
         }
         let folder = spaces[si].folderPath
         let base = baseOverride ?? (spaces[si].primaryWorkspace?.branch ?? "")
@@ -927,7 +927,7 @@ final class AppModel {
         let portBase: Int
         do { portBase = try portAllocator.allocate() } catch {
             CasperLog.app.failure("cannot add workspace: no free port block", error)
-            return .failure(WorkspaceCreationError(message: "no free port block"))
+            return .failure(OperationError(message: "no free port block"))
         }
         // The editor carries over from the currently-active workspace (nil is fine — it
         // keeps the same resolved default), read here rather than after the checkout so
@@ -942,22 +942,22 @@ final class AppModel {
     /// so a failed attempt cannot leak one.
     private func worktreeCreationError(
         _ error: Error, releasing plan: LinkedWorkspacePlan
-    ) -> WorkspaceCreationError {
+    ) -> OperationError {
         portAllocator.release(plan.portBase)
         CasperLog.app.failure("worktree creation failed", error)
-        return WorkspaceCreationError(message: error.localizedDescription)
+        return OperationError(message: error.localizedDescription)
     }
 
     /// Fold a finished checkout into the model: append the workspace, queue its initial
     /// command, take the selection when asked, and run the repo's `setup` hook.
     private func adoptLinkedWorkspace(
         _ plan: LinkedWorkspacePlan, command: String?, select: Bool
-    ) -> Result<Workspace, WorkspaceCreationError> {
+    ) -> Result<Workspace, OperationError> {
         // The Space can be discarded while the checkout runs. The worktree left on disk
         // is inert — nothing in the model points at it — so the failure is honest.
         guard let si = spaces.firstIndex(where: { $0.id == plan.spaceID }) else {
             portAllocator.release(plan.portBase)
-            return .failure(WorkspaceCreationError(message: "space not found"))
+            return .failure(OperationError(message: "space not found"))
         }
         var ws = WorkspaceFactory.makeLinkedWorkspace(
             name: plan.branch, worktreePath: plan.worktreePath, branch: plan.branch,
@@ -2027,21 +2027,6 @@ final class AppModel {
     /// `path` with `.`, `..` and a trailing slash resolved away, symlinks left alone.
     private static func standardizedPath(_ path: String) -> String {
         URL(fileURLWithPath: path).standardizedFileURL.path
-    }
-
-    /// Error carrying a human-readable reason for a failed workspace creation.
-    struct WorkspaceCreationError: Error {
-        let message: String
-    }
-
-    /// Error carrying a human-readable reason for a rejected `diff open` request.
-    struct DiffOpenError: Error {
-        let message: String
-    }
-
-    /// Error carrying a human-readable reason for a rejected `workspace delete`.
-    struct WorkspaceDeleteError: Error {
-        let message: String
     }
 
     /// The outcome of `closeWorkspace(id:)`, distinguishing a merge failure (nothing

@@ -66,7 +66,7 @@ extension XCTestCase {
     /// Await `controlDeleteWorkspace`, which keeps a completion-based shape for
     /// `ControlServer` even though the work behind it is async.
     @MainActor
-    func deleteViaControl(_ model: AppModel, id: UUID) async -> Result<Void, AppModel.WorkspaceDeleteError> {
+    func deleteViaControl(_ model: AppModel, id: UUID) async -> Result<Void, OperationError> {
         await withCheckedContinuation { continuation in
             model.controlDeleteWorkspace(id: id) { continuation.resume(returning: $0) }
         }
