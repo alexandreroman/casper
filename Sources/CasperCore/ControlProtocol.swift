@@ -1,3 +1,5 @@
+import Foundation
+
 /// A single command sent from the `casper` CLI to the running app over the
 /// release control socket. One flat struct (not an enum with associated values)
 /// keeps the JSON wire form trivial and stable across the CLI/app boundary —
@@ -261,5 +263,18 @@ public struct ControlResponse: Codable, Equatable, Sendable {
 
     public static func failure(_ message: String) -> ControlResponse {
         ControlResponse(ok: false, error: message)
+    }
+
+    /// Unwrap a JSON-serialized page value, as the browser's `evaluate` produces it:
+    /// a top-level JSON string becomes its bare contents (no surrounding quotes),
+    /// while every other JSON token (number, bool, null, object, array) — or text
+    /// that is not JSON at all — comes back verbatim. The app unwraps `content` and
+    /// `url` with it; the CLI unwraps `eval --raw` the same way, so all three agree.
+    public static func unwrappedJSONString(_ json: String) -> String {
+        guard let value = try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed]),
+              let string = value as? String else {
+            return json
+        }
+        return string
     }
 }

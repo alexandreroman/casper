@@ -51,4 +51,14 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(ControlCommand.Verb.infoSet.rawValue, "infoSet")
         XCTAssertEqual(ControlCommand.Verb.infoClear.rawValue, "infoClear")
     }
+
+    func testUnwrappedJSONStringUnwrapsStringButNotOtherTokens() {
+        // `eval --raw`, `content` and `url` unwrap a JSON string to its bare
+        // contents, but leave numbers, booleans, null, and containers as-is.
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("\"My Title\""), "My Title")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("42"), "42")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("true"), "true")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("null"), "null")
+        XCTAssertEqual(ControlResponse.unwrappedJSONString("{\"a\":1}"), "{\"a\":1}")
+    }
 }

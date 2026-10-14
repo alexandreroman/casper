@@ -128,7 +128,7 @@ struct BrowserCommand: ParsableCommand {
             let response = try sendControl(makeCommand(), retriable: false, timeout: automationTimeout)
             let value = response.text ?? "null"
             emitResult(
-                raw: raw, plain: unwrappedRawValue(value),
+                raw: raw, plain: ControlResponse.unwrappedJSONString(value),
                 json: jsonLine(key: "result", json: value, fallback: NSNull(), workspace: response.workspaceRef))
         }
     }

@@ -251,8 +251,9 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     }
 
     /// Serialize an `evaluateJavaScript` result to a JSON string. `nil`/`NSNull`
-    /// (the JS `undefined`/`null`) become `"null"`.
-    private static func jsonString(from value: Any?) -> String {
+    /// (the JS `undefined`/`null`) become `"null"`. `BrowserAutomation` reuses it to
+    /// quote strings into the scripts it builds.
+    nonisolated static func jsonString(from value: Any?) -> String {
         guard let value, !(value is NSNull) else { return "null" }
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
               let string = String(data: data, encoding: .utf8) else {

@@ -281,16 +281,6 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(line, "{\"result\":{\"a\":1},\"workspace\":\"w\"}")
     }
 
-    func testBrowserEvalRawUnwrapsStringButNotOtherTokens() {
-        // `eval --raw` unwraps a JSON string to its bare contents for shell piping,
-        // but leaves numbers, booleans, null, and containers as-is.
-        XCTAssertEqual(unwrappedRawValue("\"My Title\""), "My Title")
-        XCTAssertEqual(unwrappedRawValue("42"), "42")
-        XCTAssertEqual(unwrappedRawValue("true"), "true")
-        XCTAssertEqual(unwrappedRawValue("null"), "null")
-        XCTAssertEqual(unwrappedRawValue("{\"a\":1}"), "{\"a\":1}")
-    }
-
     func testBrowserContentBuildsCommand() throws {
         let content = try BrowserCommand.Content.parse(["--selector", "main", "--workspace", "feature"])
         let command = try content.makeCommand()

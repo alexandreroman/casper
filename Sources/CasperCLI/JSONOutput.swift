@@ -35,18 +35,6 @@ func emitResult(raw: Bool, plain: @autoclosure () -> String, json: @autoclosure 
     print(raw ? plain() : json())
 }
 
-/// Unwrap a JSON-serialized value for `--raw` shell piping: a top-level JSON
-/// string prints as its bare contents (no surrounding quotes), while every other
-/// JSON token (number, bool, null, object, array) prints verbatim. Mirrors the
-/// app-side `content` unwrap so `eval --raw` and `content --raw` behave alike.
-func unwrappedRawValue(_ json: String) -> String {
-    guard let value = try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed]),
-          let string = value as? String else {
-        return json
-    }
-    return string
-}
-
 /// Build `{"<key>":<json>,"workspace":"<id>"}` from a payload the app already
 /// serialized. `json` is re-parsed so it embeds as a real JSON token instead of an
 /// escaped string — `Codable` can't emit raw JSON — falling back to `fallback`

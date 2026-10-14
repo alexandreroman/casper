@@ -171,7 +171,7 @@ final class BrowserAutomationController {
         await withBrowserCoordinator(workspaceID) {
             // `evaluate` returns the string JSON-serialized; unwrap it back to the
             // raw HTML so `content` consumers get plain markup, not a quoted string.
-            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.content(selector: selector)))
+            ControlResponse.unwrappedJSONString(try await $0.evaluate(BrowserAutomation.content(selector: selector)))
         }
     }
 
@@ -180,7 +180,7 @@ final class BrowserAutomationController {
         await withBrowserCoordinator(workspaceID) {
             // `evaluate` returns the string JSON-serialized; unwrap it back to the
             // raw URL so `url` consumers get a plain string, not a quoted one.
-            Self.plainString(fromJSON: try await $0.evaluate(BrowserAutomation.currentURL()))
+            ControlResponse.unwrappedJSONString(try await $0.evaluate(BrowserAutomation.currentURL()))
         }
     }
 
@@ -261,32 +261,12 @@ final class BrowserAutomationController {
         }
     }
 
-    /// Encoder for the console entry array: sorted keys for deterministic output,
-    /// unescaped slashes so embedded URLs stay readable.
-    private static let consoleEncoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return encoder
-    }()
-
     /// Serialize console entries to a JSON array string, falling back to `[]` on the
     /// (never-expected) encoding failure.
     private static func consoleJSON(_ entries: [ConsoleEntry]) -> String {
-        guard let data = try? consoleEncoder.encode(entries),
+        guard let data = try? JSONEncoder().encode(entries),
               let string = String(data: data, encoding: .utf8) else {
             return "[]"
-        }
-        return string
-    }
-
-    /// Decode a single JSON string value (as produced by `BrowserCoordinator`'s
-    /// `evaluate`) back to its plain contents. Falls back to the input unchanged
-    /// when it isn't a JSON string (should not happen for `content`).
-    private static func plainString(fromJSON json: String) -> String {
-        guard let data = json.data(using: .utf8),
-              let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
-              let string = value as? String else {
-            return json
         }
         return string
     }
