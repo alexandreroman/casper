@@ -14,13 +14,6 @@ final class WorkspaceFileCopierTests: XCTestCase {
         destinationDir = root.appendingPathComponent("destination")
         try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: destinationDir, withIntermediateDirectories: true)
-        // Some tests strip all permissions off a source file; restore write access
-        // before the recursive removal so cleanup itself doesn't fail. Teardown
-        // blocks run last-registered-first, so this one precedes the removal.
-        let sourcePath = sourceDir.path
-        addTeardownBlock {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourcePath)
-        }
     }
 
     private func write(_ content: String, to relativePath: String, in dir: URL) throws {

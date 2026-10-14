@@ -86,7 +86,6 @@ final class DiffTests: XCTestCase {
                 to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
         }
         let paths = try repo.diffWorkdirToHead().files.map { $0.newPath }
-        XCTAssertEqual(paths, paths.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
         XCTAssertEqual(paths, ["apple.txt", "mango.txt", "zebra.txt"])
     }
 
@@ -113,7 +112,6 @@ final class DiffTests: XCTestCase {
         let secretPath = url("secret.txt").path
         try "hidden\n".write(toFile: secretPath, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: secretPath)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: secretPath) }
 
         let files = try repo.diffWorkdirToHead().files
 
@@ -319,7 +317,6 @@ final class DiffTests: XCTestCase {
         // Readable when the diff listed it, locked by the time its content is hashed.
         let unreadablePath = url("unreadable.txt").path
         try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: unreadablePath)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: unreadablePath) }
         Repository.detectRenames(in: try XCTUnwrap(diff))
 
         let statuses = (0..<git_diff_num_deltas(diff)).map { git_diff_get_delta(diff, $0)?.pointee.status }

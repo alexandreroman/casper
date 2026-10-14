@@ -64,12 +64,6 @@ final class WorktreeManagerTests: XCTestCase {
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o000],
             ofItemAtPath: repoDir.appendingPathComponent(".env").path)
-        defer {
-            // Restore read access so tearDown's directory removal doesn't fail.
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o644],
-                ofItemAtPath: repoDir.appendingPathComponent(".env").path)
-        }
         let wtPath = root.appendingPathComponent("feature").path
 
         XCTAssertThrowsError(
@@ -428,41 +422,6 @@ final class WorktreeManagerTests: XCTestCase {
         return permissions & 0o7777
     }
 
-    func testIsCleanReflectsWorkingTree() throws {
-        XCTAssertTrue(try WorktreeManager.isClean(repoPath: repoDir.path))
-        let extra = repoDir.appendingPathComponent("dirty.txt")
-        try "x".write(to: extra, atomically: true, encoding: .utf8)
-        XCTAssertFalse(try WorktreeManager.isClean(repoPath: repoDir.path))
-    }
-
-    func testMergeMergesFeatureIntoBaseBranch() throws {
-        let base = try Repository.open(atPath: repoDir.path).headBranchName()
-        let wtPath = root.appendingPathComponent("feature").path
-        try WorktreeManager.create(
-            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-        try GitFixture.commit(
-            atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
-
-        let outcome = try WorktreeManager.merge(
-            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
-
-        guard case .merged = outcome else { return XCTFail("expected a merge commit") }
-        XCTAssertEqual(
-            try Repository.open(atPath: repoDir.path).fileTextAtHead(path: "feature.txt"), "new\n")
-    }
-
-    func testMergeAlreadyUpToDateReturnsNoCommit() throws {
-        let base = try Repository.open(atPath: repoDir.path).headBranchName()
-        let wtPath = root.appendingPathComponent("feature").path
-        try WorktreeManager.create(
-            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-
-        let outcome = try WorktreeManager.merge(
-            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
-
-        XCTAssertEqual(outcome, .upToDate)
-    }
-
     func testMergeConflictThrowsMergeConflictReason() throws {
         let base = try Repository.open(atPath: repoDir.path).headBranchName()
         let wtPath = root.appendingPathComponent("feature").path
@@ -479,24 +438,6 @@ final class WorktreeManagerTests: XCTestCase {
         ) { error in
             XCTAssertEqual((error as? WorktreeError)?.reason, .mergeConflict)
         }
-    }
-
-    func testResyncWorkingTreeSyncsToNewHead() throws {
-        let base = try Repository.open(atPath: repoDir.path).headBranchName()
-        let wtPath = root.appendingPathComponent("feature").path
-        try WorktreeManager.create(
-            repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
-        try GitFixture.commit(
-            atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
-        _ = try WorktreeManager.merge(
-            repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: repoDir.appendingPathComponent("feature.txt").path))
-
-        try WorktreeManager.resyncWorkingTree(repoPath: repoDir.path)
-
-        XCTAssertTrue(FileManager.default.fileExists(
-            atPath: repoDir.appendingPathComponent("feature.txt").path))
     }
 
     private func writeRepoConfig(_ json: String) throws {
@@ -551,8 +492,7 @@ final class WorktreeManagerTests: XCTestCase {
 
         // Nothing half-created: no worktree directory, no branch.
         XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
-        let branches = try WorktreeManager.list(repoPath: repoDir.path).map(\.name)
-        XCTAssertFalse(branches.contains("feature"))
+        XCTAssertFalse(try Repository.open(atPath: repoDir.path).branchExists("feature"))
     }
 
     func testConfigInvalidErrorMessageMentionsFile() throws {

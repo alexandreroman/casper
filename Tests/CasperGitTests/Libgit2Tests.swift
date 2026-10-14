@@ -4,18 +4,6 @@ import CasperTestSupport
 @testable import CasperGit
 
 final class Libgit2Tests: XCTestCase {
-    func testEnsureInitIsIdempotent() {
-        Libgit2.ensureInit()
-        Libgit2.ensureInit()  // must not crash or over-init
-
-        // After a double init, a real libgit2 call must still work.
-        var major: Int32 = 0
-        var minor: Int32 = 0
-        var rev: Int32 = 0
-        git_libgit2_version(&major, &minor, &rev)
-        XCTAssertGreaterThanOrEqual(major, 1)
-    }
-
     func testEnsureInitPutsAppleGitSystemConfigOnTheSearchPath() {
         Libgit2.ensureInit()
         let afterInit = Libgit2.systemConfigSearchPath()

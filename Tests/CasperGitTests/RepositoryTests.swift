@@ -62,6 +62,7 @@ final class RepositoryTests: XCTestCase {
         let repo = try Repository.initialize(atPath: tempDir.path)
         try configureIdentity(in: repo)
 
+        XCTAssertTrue(repo.isHeadUnborn)
         XCTAssertTrue(try repo.createInitialCommit())
 
         XCTAssertFalse(repo.isHeadUnborn)
@@ -100,15 +101,6 @@ final class RepositoryTests: XCTestCase {
         try gitCheck(git_reference_name_to_id(&oid, repo.pointer, "HEAD"))
         // `git_oid_tostr_s` answers a buffer it reuses, so copy before the next call.
         return String(cString: git_oid_tostr_s(&oid))
-    }
-
-    func testInitializedRepositoryHasAnUnbornHeadUntilItIsCommittedInto() throws {
-        let repo = try Repository.initialize(atPath: tempDir.path)
-        try configureIdentity(in: repo)
-
-        XCTAssertTrue(repo.isHeadUnborn)
-        XCTAssertTrue(try repo.createInitialCommit())
-        XCTAssertFalse(repo.isHeadUnborn)
     }
 
     func testBranchExists() throws {

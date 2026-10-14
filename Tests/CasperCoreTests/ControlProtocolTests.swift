@@ -22,9 +22,21 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(ControlCommand.self, from: data), command)
     }
 
-    func testVerbRawValuesAreStable() {
-        XCTAssertEqual(ControlCommand.Verb.statusSet.rawValue, "statusSet")
-        XCTAssertEqual(ControlCommand.Verb.workspaceNew.rawValue, "workspaceNew")
+    /// The verbs' wire names are a contract with every client of the control
+    /// socket, so each one is spelled out rather than derived from the enum.
+    func testVerbWireNamesAreStable() {
+        let wireNames = [
+            "statusSet", "statusGet", "progressSet", "progressClear", "progressGet", "notify",
+            "infoSet", "infoClear", "terminalNew", "terminalList", "terminalClose",
+            "browserOpen", "browserLoad", "browserClose", "diffOpen", "diffClose",
+            "workspaceList", "workspaceNew", "workspaceDelete", "run",
+            "browserScreenshot", "browserEval", "browserContent", "browserURL", "browserClick",
+            "browserType", "browserKey", "browserConsole", "browserWait", "browserReload",
+            "browserScrollUp", "browserScrollDown", "browserScrollTop", "browserScrollBottom",
+        ]
+        for name in wireNames {
+            XCTAssertNotNil(ControlCommand.Verb(rawValue: name), "no verb answers to '\(name)'")
+        }
     }
 
     func testResponseFactories() throws {
@@ -41,15 +53,6 @@ final class ControlProtocolTests: XCTestCase {
         let data = try JSONEncoder().encode(ControlResponse.success(workspaces: [info]))
         let decoded = try JSONDecoder().decode(ControlResponse.self, from: data)
         XCTAssertEqual(decoded.workspaces, [info])
-    }
-
-    func testRunVerbRawValueIsStable() {
-        XCTAssertEqual(ControlCommand.Verb.run.rawValue, "run")
-    }
-
-    func testInfoVerbRawValuesAreStable() {
-        XCTAssertEqual(ControlCommand.Verb.infoSet.rawValue, "infoSet")
-        XCTAssertEqual(ControlCommand.Verb.infoClear.rawValue, "infoClear")
     }
 
     func testAbsoluteURLRequiresSchemeAndHost() {
