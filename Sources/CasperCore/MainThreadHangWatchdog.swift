@@ -44,29 +44,6 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// is noticed promptly.
     private static let tickInterval: TimeInterval = 0.5
 
-    /// The two nested-loop modes AppKit spins on its own: modal sessions
-    /// (`NSModalPanelRunLoopMode`) and menu / drag tracking
-    /// (`NSEventTrackingRunLoopMode`). Spelled as literals because
-    /// `RunLoop.Mode.modalPanel` / `.eventTracking` are declared by AppKit, and
-    /// CasperCore deliberately does not link AppKit. The raw values are part of
-    /// AppKit's public API and have been stable since NeXTSTEP.
-    static let modalPanelRunLoopMode = "NSModalPanelRunLoopMode"
-    private static let eventTrackingRunLoopMode = "NSEventTrackingRunLoopMode"
-
-    /// Run loop modes the acknowledgement block is enqueued for: the common modes
-    /// (normal event processing) plus the two nested-loop modes above. See
-    /// `scheduleAck`.
-    ///
-    /// Built once and shared: `scheduleAck` runs twice a second for the whole
-    /// process lifetime. `nonisolated(unsafe)` because `CFArray` is not `Sendable`
-    /// even though this one is immutable and never handed out.
-    nonisolated(unsafe) private static let ackRunLoopModes: CFArray =
-        [
-            CFRunLoopMode.commonModes.rawValue,
-            modalPanelRunLoopMode as CFString,
-            eventTrackingRunLoopMode as CFString,
-        ] as CFArray
-
     /// Detection state and the injectable seams, guarded by `lock`. The detection
     /// fields are touched from both the timer queue and the (possibly recovered)
     /// main-thread ack block; the seams are written from a test's thread and read
@@ -117,9 +94,10 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
         set { lock.withLock { $0.nowProvider = newValue } }
     }
 
-    /// Schedules the per-tick acknowledgement block onto the main thread: it is
-    /// enqueued on the main *run loop*, for `ackRunLoopModes`, so a main thread that
-    /// has stopped turning its run loop simply never runs it.
+    /// Schedules the per-tick acknowledgement block onto the main thread through
+    /// `MainRunLoop.perform`: it is enqueued on the main *run loop*, including its
+    /// modal and tracking modes, so a main thread that has stopped turning its run
+    /// loop simply never runs it.
     ///
     /// The obvious implementation — and the original one — was
     /// `DispatchQueue.main.async`, but it cried wolf. Choosing "Check for
@@ -141,14 +119,7 @@ public final class MainThreadHangWatchdog: @unchecked Sendable {
     /// or a menu track that never ends — now reads as healthy. That is the price
     /// of not crying wolf on every alert the user opens. (A hard block, where the
     /// thread stops servicing any loop, is still caught.)
-    static let defaultScheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = { block in
-        let mainRunLoop = CFRunLoopGetMain()
-        CFRunLoopPerformBlock(mainRunLoop, MainThreadHangWatchdog.ackRunLoopModes, block)
-        // A run loop asleep in `mach_msg` would not notice the block until its
-        // next event — which, on an idle app, may be seconds away and would look
-        // exactly like a hang. Wake it so the ack lands within this tick.
-        CFRunLoopWakeUp(mainRunLoop)
-    }
+    static let defaultScheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void = MainRunLoop.perform
 
     var scheduleAck: @Sendable (@escaping @Sendable () -> Void) -> Void {
         get { lock.withLock { $0.scheduleAck } }

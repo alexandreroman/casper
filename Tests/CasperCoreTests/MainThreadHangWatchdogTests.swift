@@ -114,7 +114,7 @@ final class MainThreadHangWatchdogTests: XCTestCase {
         let scheduleAck = MainThreadHangWatchdog().scheduleAck  // the real default, not a stub
         let acked = Flag()
 
-        let keepAlive = addKeepAliveTimer(forModes: [.init(MainThreadHangWatchdog.modalPanelRunLoopMode)])
+        let keepAlive = addKeepAliveTimer(forModes: [.init(MainRunLoop.modalPanelMode)])
         defer { keepAlive.invalidate() }
 
         DispatchQueue.global().async { scheduleAck { acked.set() } }
@@ -189,7 +189,7 @@ private final class Flag: @unchecked Sendable {
 }
 
 /// AppKit's `NSModalPanelRunLoopMode`, as the `CFRunLoopMode` the pump takes.
-private let modalPanelMode = CFRunLoopMode(rawValue: MainThreadHangWatchdog.modalPanelRunLoopMode as CFString)
+private let modalPanelMode = CFRunLoopMode(rawValue: MainRunLoop.modalPanelMode as CFString)
 
 /// Turns the main run loop in `mode` — and only in `mode` — in short slices,
 /// until `condition` holds or the budget runs out. Returns whether it held.

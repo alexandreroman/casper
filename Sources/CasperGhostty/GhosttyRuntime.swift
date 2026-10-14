@@ -460,8 +460,8 @@ func casperGhosttyConfirmReadClipboard(
 /// lives for the duration of this call.
 ///
 /// The deferral is `DispatchQueue.main.async` rather than the modal-proof
-/// `CFRunLoopPerformBlock` route (`MainRunLoop.perform`, over in CasperUI): a work item
-/// that waits behind an alert already on screen is the right outcome here — nothing in
+/// `CFRunLoopPerformBlock` route (`MainRunLoop.perform`): a work item that waits
+/// behind an alert already on screen is the right outcome here — nothing in
 /// libghostty is blocked on this write, and the prompt belongs after that dialog, not
 /// stacked on it. What the main queue does guarantee is the part that matters, that
 /// the block cannot run inside the current tick.

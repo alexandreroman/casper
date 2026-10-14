@@ -105,6 +105,11 @@ The pure-Swift, UI-free core. Fully unit-tested.
   - **`Debouncer`** — a main-actor coalescing timer: each `schedule` cancels the
     pending work and re-arms, so a burst fires once. It is what CasperUI's
     `AppModel` drives its session-save and diff-refresh debounces with.
+  - **`MainRunLoop`** — the modal-proof main-thread hop: `perform` enqueues a
+    block on the main run loop, modal and tracking modes included, so it runs
+    while an alert, panel or menu is up, where the main dispatch queue starves.
+    CasperUI's watcher refreshes and lifecycle resumes and the hang watchdog's
+    liveness ack all ride it; see [[main-run-loop-hop]].
   - **`LoginShellPath`** — probes the user's shell for its `PATH` once per
     process, then resolves command names against it in Swift. Casper's own
     environment lacks that `PATH` because it is launched from Finder/Dock, and
