@@ -23,7 +23,7 @@ struct DiffSurfaceView: View {
     @State private var diff: GitDiff?
     /// The `model.diffRevision` `diff` was computed at, or nil before the first
     /// refresh lands. Tells a scroll target whether `diff` is recent enough to
-    /// settle it.
+    /// settle it, and a reappearing view whether `diff` is still current.
     @State private var loadedDiffRevision: Int?
     @State private var loaded = false
     /// What the surface renders, built from `diff`. Handed to `DiffTextSurface`
@@ -52,7 +52,18 @@ struct DiffSurfaceView: View {
             // which on a quiet worktree never comes. Already-highlighted files
             // are skipped by `highlightCache`, so the resumed pass picks up
             // exactly where the cancelled one stopped.
-            .onAppear { if loaded { startHighlighting() } else { refresh() } }
+            //
+            // `.onDisappear` also cancelled any refresh in flight, so a diff
+            // older than `diffRevision` is recomputed rather than resumed: left
+            // as is, it would stay stale until the next bump, and a scroll target
+            // that refresh was meant to settle would stay pending with it.
+            .onAppear {
+                if loadedDiffRevision == model.diffRevision {
+                    startHighlighting()
+                } else {
+                    refresh()
+                }
+            }
             .onChange(of: model.diffRevision) { _, _ in refresh() }
             // Highlight colours are baked into the text storage, and
             // `applyHighlight` only writes the colours a highlight carries, so
