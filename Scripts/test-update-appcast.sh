@@ -45,7 +45,7 @@ make_repo() {
     local repo="$1"
     mkdir -p "$repo/Scripts" "$repo/Packaging"
     cp "$ROOT/Scripts/update-appcast.sh" "$repo/Scripts/"
-    cp "$ROOT/Packaging/appcast-template.xml" "$repo/Packaging/"
+    cp "$ROOT/Packaging/appcast-template.xml" "$ROOT/Packaging/Info.plist" "$repo/Packaging/"
 }
 
 # Runs update-appcast.sh for build 42 (version 1.0.0) inside the given repo.
@@ -86,6 +86,9 @@ REPO="$WORK/first"
 make_repo "$REPO"
 run_update "$REPO"
 [ "$(count '<item>' "$REPO/appcast.xml")" = 1 ] || fail "the seeded feed does not hold exactly one item"
+MINIMUM="$(plutil -extract LSMinimumSystemVersion raw "$ROOT/Packaging/Info.plist")"
+[ "$(count "<sparkle:minimumSystemVersion>$MINIMUM<" "$REPO/appcast.xml")" = 1 ] \
+    || fail "the item does not carry Info.plist's LSMinimumSystemVersion ($MINIMUM)"
 xmllint --noout "$REPO/appcast.xml" || fail "the seeded feed is not well-formed XML"
 
 if [ "$FAILURES" -ne 0 ]; then

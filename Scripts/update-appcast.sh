@@ -19,6 +19,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="${GITHUB_REPOSITORY:-alexandreroman/casper}"
 OUT="$ROOT/appcast.xml"
 PUBDATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+# The release bundle's own deployment target, so the feed never offers an update
+# to a macOS the app would refuse to launch on.
+MINIMUM_SYSTEM_VERSION="$(plutil -extract LSMinimumSystemVersion raw "$ROOT/Packaging/Info.plist")"
 # The human-readable release page for this version, derived from the enclosure
 # URL: .../releases/download/<tag>/<file> -> .../releases/tag/<tag>.
 ASSET_DIR="${ZIP_URL%/*}"
@@ -46,7 +49,7 @@ IFS= read -r -d '' ITEM <<EOF || true
       <link>${RELEASE_URL}</link>
       <sparkle:version>${BUNDLE_VERSION}</sparkle:version>
       <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:minimumSystemVersion>${MINIMUM_SYSTEM_VERSION}</sparkle:minimumSystemVersion>
       <pubDate>${PUBDATE}</pubDate>
       <description><![CDATA[<h2>Casper ${SHORT_VERSION}</h2><p><a href="${RELEASE_URL}">Read the full release notes on GitHub</a>.</p>]]></description>
       <enclosure url="${ZIP_URL}" length="${ZIP_LEN}" type="application/octet-stream" sparkle:edSignature="${ED_SIGNATURE}" />

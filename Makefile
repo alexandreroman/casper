@@ -17,9 +17,16 @@ BUNDLE_VERSION ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 # the Liquid Glass appearance only to apps whose linked SDK is 26 or newer, and
 # without the explicit -platform_version below the app silently falls back to the
 # legacy pre-26 appearance (hard black borders, a shorter title bar) with nothing
-# in the build output to say so. MACOS_DEPLOYMENT_TARGET must stay in step with
-# Package.swift's `platforms: [.macOS(.v15)]`.
-MACOS_DEPLOYMENT_TARGET := 15.0
+# in the build output to say so.
+#
+# Packaging/Info.plist's LSMinimumSystemVersion is the deployment target every
+# packaging step reads (this Makefile, Scripts/bundle-app.sh's actool pass and
+# the appcast's minimumSystemVersion). It must stay in step with Package.swift's
+# `platforms: [.macOS(.v15)]`, the one copy a manifest cannot read from a plist.
+MACOS_DEPLOYMENT_TARGET := $(shell plutil -extract LSMinimumSystemVersion raw Packaging/Info.plist)
+ifeq ($(MACOS_DEPLOYMENT_TARGET),)
+$(error could not read LSMinimumSystemVersion from Packaging/Info.plist)
+endif
 MACOS_SDK_VERSION := $(shell xcrun --show-sdk-version)
 SWIFT_PLATFORM_FLAGS := -Xlinker -platform_version -Xlinker macos \
 	-Xlinker $(MACOS_DEPLOYMENT_TARGET) -Xlinker $(MACOS_SDK_VERSION)

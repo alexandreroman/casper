@@ -42,12 +42,13 @@ if [ -d "$ICON_SRC" ]; then
     # Take only Assets.car; the icns and partial plist are intentionally dropped.
     ICON_OUT="$TMP/iconout"
     mkdir -p "$ICON_OUT"
+    DEPLOYMENT_TARGET="$(plutil -extract LSMinimumSystemVersion raw "$APP/Contents/Info.plist")"
     xcrun actool "$ICON_SRC" \
         --compile "$ICON_OUT" \
         --app-icon AppIcon --include-all-app-icons \
         --output-partial-info-plist "$TMP/actool-partial.plist" \
         --platform macosx --target-device mac \
-        --minimum-deployment-target 15.0 \
+        --minimum-deployment-target "$DEPLOYMENT_TARGET" \
         --errors --warnings --notices --output-format human-readable-text
     if [ ! -f "$ICON_OUT/Assets.car" ]; then
         echo "error: actool did not produce Assets.car" >&2
