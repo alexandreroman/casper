@@ -138,19 +138,23 @@ enum DiffHighlighter {
     /// two cannot be lined up — the caller then falls back to neutral text rather
     /// than misaligning colors.
     ///
-    /// The library trims whitespace and newlines off both ends of the text before
-    /// highlighting it, so its output starts at the first line with visible text
-    /// and stops at the last. The blank lines trimmed off the start come back as
-    /// empty elements ahead of it, and the end is padded with empty elements up to
-    /// the source's line count. A first or last line that also lost edge spaces
-    /// then fails `DiffTextAssembly.applyHighlight`'s per-line length check and
-    /// stays neutral on its own.
+    /// The library trims whitespace and newlines off both ends of highlight.js's
+    /// HTML, not of the text, so its output starts at the first line with visible
+    /// text and usually stops at the last; whitespace a grammar wrapped in an edge
+    /// span is out of the trim's reach and survives. The blank lines trimmed off
+    /// the start come back as empty elements ahead of the output, and the end is
+    /// padded with empty elements up to the source's line count. A first or last
+    /// line that lost edge spaces then fails `DiffTextAssembly.applyHighlight`'s
+    /// per-line length check and stays neutral on its own.
     ///
     /// That trim is the only change the output may carry: its text must be the
-    /// trimmed source exactly. Any other change — a CR the HTML import turned
-    /// into a line break, a dropped NUL, edge newlines a grammar wrapped in a
-    /// span the trim cannot reach — can move a line break, and a line count
-    /// that still agrees would paint colors on the wrong lines.
+    /// trimmed source followed by, at most, the start of the source's trailing
+    /// whitespace. Whitespace kept at the trailing edge sits exactly where the
+    /// source has it, so its line breaks only stand in for some of the padding.
+    /// Any other change — a CR the HTML import turned into a line break, a dropped
+    /// NUL, leading newlines kept in a span and then counted again as trimmed —
+    /// can move a line break, and a line count that still agrees would paint
+    /// colors on the wrong lines.
     ///
     /// Line feeds are counted over **scalars**, matching how `splitLines` cuts: a
     /// CRLF pair is a single `Character`, which a `"\n"` literal never equals.
@@ -160,13 +164,15 @@ enum DiffHighlighter {
     static func lines(
         fromLibraryOutput highlighted: AttributedString, alignedTo source: String
     ) -> [AttributedString]? {
-        guard String(highlighted.characters) == source.trimmingCharacters(in: .whitespacesAndNewlines) else {
+        let output = String(highlighted.characters)
+        let leadingWhitespace = source.unicodeScalars.prefix { CharacterSet.whitespacesAndNewlines.contains($0) }
+        let sourceAfterLeadingWhitespace = String(source.unicodeScalars[leadingWhitespace.endIndex...])
+        let trimmedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard sourceAfterLeadingWhitespace.hasPrefix(output), output.hasPrefix(trimmedSource) else {
             return nil
         }
         let sourceLineCount = 1 + source.unicodeScalars.lazy.filter { $0 == "\n" }.count
-        let trimmedLeadingLineCount = source.unicodeScalars
-            .prefix { CharacterSet.whitespacesAndNewlines.contains($0) }
-            .lazy.filter { $0 == "\n" }.count
+        let trimmedLeadingLineCount = leadingWhitespace.lazy.filter { $0 == "\n" }.count
 
         var lines = Array(repeating: AttributedString(), count: trimmedLeadingLineCount)
         lines += splitLines(highlighted)

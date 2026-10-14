@@ -55,11 +55,18 @@ final class DiffHighlighterTests: XCTestCase {
 
     /// What HighlightSwift hands back for `source`, built the way its
     /// `Highlight.request` builds it, minus the JavaScript pass whose spans only
-    /// add colors: the text trimmed of edge whitespace and newlines, wrapped in
-    /// `<pre><code>`, imported as HTML — which turns a CRLF into a bare LF — and
-    /// stripped of the newline the import appends.
+    /// add colors. See `libraryOutput(forHighlightedHTML:)`.
     private func libraryOutput(for source: String) throws -> AttributedString {
-        let html = "<pre><code>" + source.trimmingCharacters(in: .whitespacesAndNewlines) + "</code></pre>"
+        try libraryOutput(forHighlightedHTML: source)
+    }
+
+    /// What HighlightSwift hands back for `html`, the markup highlight.js made of
+    /// a file: that markup trimmed of edge whitespace and newlines — the spans
+    /// keep whatever whitespace sits inside them — wrapped in `<pre><code>`,
+    /// imported as HTML — which turns a CRLF into a bare LF — and stripped of the
+    /// newline the import appends.
+    private func libraryOutput(forHighlightedHTML highlightedHTML: String) throws -> AttributedString {
+        let html = "<pre><code>" + highlightedHTML.trimmingCharacters(in: .whitespacesAndNewlines) + "</code></pre>"
         let imported = try NSAttributedString(
             data: Data(html.utf8),
             options: [
@@ -94,6 +101,31 @@ final class DiffHighlighterTests: XCTestCase {
             DiffHighlighter.lines(fromLibraryOutput: libraryOutput(for: source), alignedTo: source))
 
         XCTAssertEqual(lines.map(text), ["", "", "let a = 1", "let b = 2", "", ""])
+    }
+
+    /// A comment running to the end of the file takes the line's trailing spaces
+    /// into its span, where the library's trim cannot reach them: the last line
+    /// keeps them, and still lines up.
+    func testTrailingSpacesKeptInASpanLineUp() throws {
+        let source = "let a = 1 // c  "
+        let html = #"let a = <span class="hljs-number">1</span> <span class="hljs-comment">// c  </span>"#
+
+        let lines = try XCTUnwrap(
+            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(forHighlightedHTML: html), alignedTo: source))
+
+        XCTAssertEqual(lines.map(text), ["let a = 1 // c  "])
+    }
+
+    /// A construct left open to the end of the file takes its trailing newlines
+    /// into its span: they come back as the blank lines they are, not as padding.
+    func testTrailingNewlinesKeptInASpanLineUp() throws {
+        let source = "/* open\n\n"
+        let html = "<span class=\"hljs-comment\">/* open\n\n</span>"
+
+        let lines = try XCTUnwrap(
+            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(forHighlightedHTML: html), alignedTo: source))
+
+        XCTAssertEqual(lines.map(text), ["/* open", "", ""])
     }
 
     /// More lines than the source has cannot be lined up with it, so the file
