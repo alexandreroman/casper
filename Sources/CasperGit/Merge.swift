@@ -10,11 +10,15 @@ public enum MergeOutcome: Equatable, Sendable {
 /// written to the repository when this is thrown.
 public struct MergeConflictError: Error, Equatable, Sendable {}
 
-/// Thrown when the user's Git configuration yields no committer identity
-/// (`user.name` / `user.email`). Casper never invents one: a name the user never
-/// chose would sit in their history forever. Nothing is written to the
-/// repository when this is thrown.
-public struct MissingCommitterIdentityError: Error, Equatable, Sendable {}
+/// Thrown when the user's Git configuration yields no committer identity:
+/// `user.name` or `user.email` unset or blank, or a configuration libgit2 cannot
+/// read (an `includeIf` condition it does not support, say). `detail` is libgit2's
+/// own message, the only thing telling those apart. Casper never invents an
+/// identity: a name the user never chose would sit in their history forever.
+/// Nothing is written to the repository when this is thrown.
+public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
+    public let detail: String
+}
 
 extension Repository {
     /// Merge local branch `branchName` into local branch `targetBranch`,
@@ -116,12 +120,13 @@ extension Repository {
     }
 
     /// The merge commit's author and committer: the user's configured identity.
-    /// Any failure to derive one — `user.name` or `user.email` unset or blank —
-    /// throws `MissingCommitterIdentityError`, as `createInitialCommit` declines.
+    /// Any failure to derive one throws `MissingCommitterIdentityError`, as
+    /// `createInitialCommit` declines.
     private func mergeSignature() throws -> UnsafeMutablePointer<git_signature> {
         var signature: UnsafeMutablePointer<git_signature>?
-        guard git_signature_default(&signature, pointer) == 0, let signature else {
-            throw MissingCommitterIdentityError()
+        let code = git_signature_default(&signature, pointer)
+        guard code == 0, let signature else {
+            throw MissingCommitterIdentityError(detail: lastErrorMessage(code: code))
         }
         return signature
     }

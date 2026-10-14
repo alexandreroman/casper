@@ -20,8 +20,9 @@ CI, test, and documentation-only work is left out.
 ### Changed
 
 - "Merge and Close" refuses to write the merge commit when no Git identity
-  (`user.name` and `user.email`) is configured, and says how to set one,
-  instead of committing as "Casper <casper@localhost>". Nothing is deleted.
+  (`user.name` and `user.email`) can be read, says why, and shows the commands
+  that set one, instead of committing as "Casper <casper@localhost>". Nothing
+  is deleted.
 
 ### Fixed
 

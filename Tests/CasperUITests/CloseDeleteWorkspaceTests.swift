@@ -84,7 +84,8 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
             return XCTFail("expected a merge failure")
         }
 
-        XCTAssertTrue(message.contains("user.name"), "got: \(message)")
+        XCTAssertTrue(message.contains("git config --global user.name"), "got: \(message)")
+        XCTAssertTrue(message.contains("git config --global user.email"), "got: \(message)")
         XCTAssertNotNil(model.workspace(id: created.id))
         XCTAssertTrue(FileManager.default.fileExists(atPath: created.worktreePath))
         XCTAssertNil(try Repository.open(atPath: repoPath).fileTextAtHead(path: "feature.txt"))

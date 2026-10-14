@@ -51,7 +51,9 @@ final class MergeTests: XCTestCase {
         let beforeOID = try tipOID(repo, branch: main)
 
         XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
-            XCTAssertTrue(error is MissingCommitterIdentityError, "got: \(error)")
+            let identityError = error as? MissingCommitterIdentityError
+            XCTAssertNotNil(identityError, "got: \(error)")
+            XCTAssertFalse(identityError?.detail.isEmpty ?? true, "libgit2's own message is kept")
         }
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }

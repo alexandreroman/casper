@@ -209,10 +209,11 @@ extension AppModel {
                     repoPath: repoPath, branch: branch, into: baseBranch,
                     message: "Merge branch '\(branch)' into \(baseBranch)")
             }
-        } catch let error as WorktreeError where error.reason == .missingCommitterIdentity {
-            return .mergeFailed(message: "\(error.localizedDescription) Nothing was deleted.")
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
+            if let error = error as? WorktreeError, case .missingCommitterIdentity = error.reason {
+                return .mergeFailed(message: "\(error.localizedDescription) Nothing was deleted.")
+            }
             return .mergeFailed(
                 message: "The merge into \u{201c}\(baseBranch)\u{201d} could not be completed "
                     + "automatically. Resolve it manually (e.g. in a terminal), then try again. "

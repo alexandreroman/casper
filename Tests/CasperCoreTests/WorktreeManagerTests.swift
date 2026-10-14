@@ -452,8 +452,22 @@ final class WorktreeManagerTests: XCTestCase {
             try WorktreeManager.merge(
                 repoPath: repoDir.path, branch: "feature", into: base, message: "merge feature")
         ) { error in
-            XCTAssertEqual((error as? WorktreeError)?.reason, .missingCommitterIdentity, "got: \(error)")
+            guard case .missingCommitterIdentity(let detail) = (error as? WorktreeError)?.reason else {
+                return XCTFail("expected .missingCommitterIdentity, got \(error)")
+            }
+            XCTAssertFalse(detail.isEmpty, "libgit2's own message is kept")
         }
+    }
+
+    /// The message carries libgit2's cause, since a config it cannot read fails the
+    /// same way as a missing identity, and shows how to set both halves of one.
+    func testMissingCommitterIdentityDescriptionShowsTheCauseAndBothSettings() {
+        let error = WorktreeError(.missingCommitterIdentity("config value 'user.name' was not found"))
+        let message = error.localizedDescription
+
+        XCTAssertTrue(message.contains("config value 'user.name' was not found"), message)
+        XCTAssertTrue(message.contains("git config --global user.name \"Your Name\""), message)
+        XCTAssertTrue(message.contains("git config --global user.email you@example.com"), message)
     }
 
     private func writeRepoConfig(_ json: String) throws {

@@ -11,7 +11,7 @@ public struct WorktreeError: Error, Equatable, Sendable {
         case worktreeNameTaken
         case worktreePathExists
         case mergeConflict
-        case missingCommitterIdentity
+        case missingCommitterIdentity(String)
         case fileCopyFailed(String)
         case configInvalid(String)
         case gitFailure(String)
@@ -37,9 +37,10 @@ extension WorktreeError: LocalizedError {
             return "The worktree path already exists."
         case .mergeConflict:
             return "The merge could not be completed automatically due to conflicts."
-        case .missingCommitterIdentity:
-            return "No Git identity is configured. Set user.name and user.email "
-                + "(git config --global user.name \"Your Name\"), then try again."
+        case .missingCommitterIdentity(let detail):
+            return "Git has no usable identity to commit the merge as (\(detail)). Set user.name and "
+                + "user.email (git config --global user.name \"Your Name\" and git config --global "
+                + "user.email you@example.com), then try again."
         case .fileCopyFailed(let message):
             return "Failed to copy workspace files: \(message)"
         case .configInvalid(let message):
@@ -329,8 +330,8 @@ public enum WorktreeManager {
             return try repo.mergeBranchHeadless(branch, into: targetBranch, message: message)
         } catch is MergeConflictError {
             throw WorktreeError(.mergeConflict)
-        } catch is MissingCommitterIdentityError {
-            throw WorktreeError(.missingCommitterIdentity)
+        } catch let error as MissingCommitterIdentityError {
+            throw WorktreeError(.missingCommitterIdentity(error.detail))
         } catch let error as GitError {
             throw WorktreeError(.gitFailure(error.message))
         }

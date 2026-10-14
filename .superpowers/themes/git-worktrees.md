@@ -86,8 +86,13 @@ binary. We own this surface; it exposes only what Casper needs.
   writing anything. `WorktreeManager.merge` maps both refusals into
   `WorktreeError` (`.mergeConflict`, `.missingCommitterIdentity`), as it does
   every libgit2 failure, and "Merge and Close" shows the identity one's
-  message — set the identity, then try again — with nothing deleted. An
-  up-to-date merge writes no commit and needs no identity. See
+  message — libgit2's cause, then the two `git config` commands to set the
+  identity — with nothing deleted. The cause matters because a configuration
+  libgit2 cannot read fails the same way as a missing identity.
+  `git_signature_default` reads the configuration only: unlike `git`, it
+  ignores `GIT_COMMITTER_*` and `EMAIL` and never guesses a `user@host`
+  address, so a machine where `git commit` gets by on those is still refused.
+  An up-to-date merge writes no commit and needs no identity. See
   `Sources/CasperGit/Merge.swift`.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are

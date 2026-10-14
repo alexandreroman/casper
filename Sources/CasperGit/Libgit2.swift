@@ -136,13 +136,16 @@ extension GitError: LocalizedError {
 @discardableResult
 func gitCheck(_ code: Int32) throws -> Int32 {
     guard code < 0 else { return code }
-    let message: String
+    throw GitError(code: code, message: lastErrorMessage(code: code))
+}
+
+/// libgit2's thread-local message for the failure `code` reports, or one naming
+/// the code when libgit2 left none.
+func lastErrorMessage(code: Int32) -> String {
     if let last = git_error_last(), let cString = last.pointee.message {
-        message = String(cString: cString)
-    } else {
-        message = "libgit2 error \(code)"
+        return String(cString: cString)
     }
-    throw GitError(code: code, message: message)
+    return "libgit2 error \(code)"
 }
 
 /// Unwrap a pointer libgit2 promised on success. A non-negative return code with
