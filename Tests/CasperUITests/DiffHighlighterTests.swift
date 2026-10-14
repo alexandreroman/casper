@@ -102,6 +102,27 @@ final class DiffHighlighterTests: XCTestCase {
         XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: try attributed([("a\nb\nc", nil)]), alignedTo: "a\nb"))
     }
 
+    /// The HTML import turns a lone CR into a line break of its own, which the
+    /// diff does not have: output whose text is anything but the trimmed source
+    /// cannot be lined up with it, even when the line counts happen to agree.
+    func testOutputThatIsNotTheTrimmedSourceIsRejected() throws {
+        let source = "let a = 1\rlet b = 2\nlet c = 3\n"
+
+        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: try libraryOutput(for: source), alignedTo: source))
+    }
+
+    /// The diff shows a lone CR as a space on the line it sits in, so the text to
+    /// highlight does the same, and every line keeps its colors and its index.
+    func testALoneCRLinesUpAsASpace() throws {
+        let source = DiffHighlighter.normalizingLineEndings("let a = 1\rlet b = 2\nlet c = 3\n")
+        XCTAssertEqual(source, "let a = 1 let b = 2\nlet c = 3\n")
+
+        let lines = try XCTUnwrap(
+            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(for: source), alignedTo: source))
+
+        XCTAssertEqual(lines.map(text), ["let a = 1 let b = 2", "let c = 3", ""])
+    }
+
     /// A run's color survives the cut, read from the AppKit scope the library
     /// fills.
     func testColorsSurviveTheSplit() throws {

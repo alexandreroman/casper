@@ -24,11 +24,16 @@ alignment).
   monospaced face.
 - **HighlightSwift's output is not line-aligned with its input.** It trims
   `.whitespacesAndNewlines` off both ends of the text before building its HTML,
-  and the HTML import turns every CRLF (and a lone CR) into an LF, so blank
-  lines at either end of a file are missing from the output.
-  `DiffHighlighter.lines(fromLibraryOutput:alignedTo:)` puts them back as empty
-  lines; `DiffHighlighterTests` rebuilds the library's output shape (trim,
-  `<pre><code>`, HTML import, drop the last character) without JavaScript.
+  so blank lines at either end of a file are missing from the output, and the
+  HTML import turns every CRLF and every lone CR into an LF.
+  `DiffHighlighter.normalizingLineEndings` therefore hands it a CRLF as an LF
+  and a lone CR as a space, the way `DiffDocument` shows it.
+  `DiffHighlighter.lines(fromLibraryOutput:alignedTo:)` puts the trimmed blank
+  lines back as empty lines, and returns `nil` — the file stays neutral — unless
+  the output's text is exactly the trimmed source: a matching line count alone
+  can still hide a moved line break. `DiffHighlighterTests` rebuilds the
+  library's output shape (trim, `<pre><code>`, HTML import, drop the last
+  character) without JavaScript.
 - **`AttributedString.utf16` requires macOS 26.** Casper's floor is macOS 15
   (see [[swift-toolchain-floor]]), so a run's UTF-16 length is measured with
   `UTF16.width` over the run slice's `unicodeScalars`.

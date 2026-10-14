@@ -292,7 +292,10 @@ struct DiffDocument: Sendable, Equatable {
     }
 
     /// Every scalar TextKit starts a new paragraph on.
-    private static let paragraphSeparators: Set<Unicode.Scalar> = [
+    ///
+    /// Not `private`: `DiffHighlighter.normalizingLineEndings` flattens the
+    /// same set, so that highlighted lines stay the diff's lines.
+    static let paragraphSeparators: Set<Unicode.Scalar> = [
         "\u{000A}",  // LINE FEED
         "\u{000B}",  // LINE TABULATION
         "\u{000C}",  // FORM FEED

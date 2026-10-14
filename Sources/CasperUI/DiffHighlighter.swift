@@ -109,14 +109,28 @@ enum DiffHighlighter {
         return lines(fromLibraryOutput: highlighted, alignedTo: source)
     }
 
-    /// `text` with every CRLF line ending turned into a bare LF.
+    /// `text` with its line breaks matched to the diff's lines: every CRLF turned
+    /// into a bare LF, and every other paragraph separator — a lone CR above all —
+    /// into a space.
     ///
-    /// The library's HTML import does this to whatever it highlights, while the
-    /// diff's own lines arrive with their CR already stripped
-    /// (`Repository.mapLine`), so doing it up front keeps the lines the library
-    /// returns the same length as the diff's, whichever path the library takes.
+    /// The diff's own lines arrive with a CRLF's CR already stripped
+    /// (`Repository.mapLine`), and Git cuts lines at LF alone, so `DiffDocument`
+    /// shows any other separator as a space on the line it sits in
+    /// (`DiffDocument.paragraphSeparators`). The library's HTML import would
+    /// instead turn a lone CR into a line break of its own, shifting every later
+    /// line. Doing both up front keeps the lines the library returns the diff's
+    /// lines, at the diff's lengths.
     static func normalizingLineEndings(_ text: String) -> String {
-        text.replacingOccurrences(of: "\r\n", with: "\n")
+        let withBareLineFeeds = text.replacingOccurrences(of: "\r\n", with: "\n")
+        // Scalar by scalar: the separators are scalars, and a `Character` can
+        // hold more than one of them.
+        var normalized = String.UnicodeScalarView()
+        normalized.reserveCapacity(withBareLineFeeds.unicodeScalars.count)
+        for scalar in withBareLineFeeds.unicodeScalars {
+            let isSeparatorInsideALine = scalar != "\n" && DiffDocument.paragraphSeparators.contains(scalar)
+            normalized.append(isSeparatorInsideALine ? " " : scalar)
+        }
+        return String(normalized)
     }
 
     /// Lines HighlightSwift's output up with the source it highlighted: one
@@ -132,6 +146,12 @@ enum DiffHighlighter {
     /// then fails `DiffTextAssembly.applyHighlight`'s per-line length check and
     /// stays neutral on its own.
     ///
+    /// That trim is the only change the output may carry: its text must be the
+    /// trimmed source exactly. Any other change — a CR the HTML import turned
+    /// into a line break, a dropped NUL, edge newlines a grammar wrapped in a
+    /// span the trim cannot reach — can move a line break, and a line count
+    /// that still agrees would paint colors on the wrong lines.
+    ///
     /// Line feeds are counted over **scalars**, matching how `splitLines` cuts: a
     /// CRLF pair is a single `Character`, which a `"\n"` literal never equals.
     ///
@@ -140,6 +160,9 @@ enum DiffHighlighter {
     static func lines(
         fromLibraryOutput highlighted: AttributedString, alignedTo source: String
     ) -> [AttributedString]? {
+        guard String(highlighted.characters) == source.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return nil
+        }
         let sourceLineCount = 1 + source.unicodeScalars.lazy.filter { $0 == "\n" }.count
         let trimmedLeadingLineCount = source.unicodeScalars
             .prefix { CharacterSet.whitespacesAndNewlines.contains($0) }
@@ -147,7 +170,6 @@ enum DiffHighlighter {
 
         var lines = Array(repeating: AttributedString(), count: trimmedLeadingLineCount)
         lines += splitLines(highlighted)
-        guard lines.count <= sourceLineCount else { return nil }
         lines += Array(repeating: AttributedString(), count: sourceLineCount - lines.count)
         return lines
     }
