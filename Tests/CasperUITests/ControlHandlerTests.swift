@@ -2,7 +2,6 @@ import XCTest
 import CasperCore
 import CasperTestSupport
 import Observation
-import UserNotifications
 @testable import CasperGit
 @testable import CasperUI
 
@@ -856,50 +855,6 @@ final class ControlHandlerTests: XCTestCase {
         model.isWindowKey = { true }             // app returns to foreground
         model.clearNotificationForFocusedWorkspace()
         XCTAssertNil(model.workspace(id: id)?.pendingNotificationMessage)
-    }
-
-    /// Captures the message (body) and interruption level a detected transition
-    /// into `state` passes to `deliverNotification`. Returns nil when nothing is
-    /// delivered. The workspace is left unfocused (window not key) so delivery is
-    /// not suppressed by the focus check.
-    private func deliveredNotification(
-        forDetected state: AgentState) -> (body: String, level: UNNotificationInterruptionLevel)? {
-        let (model, id) = seededModel()
-        model.isWindowKey = { false }  // unfocused → delivery not suppressed
-        var captured: (String, UNNotificationInterruptionLevel)?
-        model.deliverNotification = { _, body, _, level in captured = (body, level) }
-        model.setDetectedAgentState(state, for: id)
-        return captured.map { (body: $0.0, level: $0.1) }
-    }
-
-    func testDetectedBlockedDeliversActiveNotification() throws {
-        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .blocked))
-        XCTAssertEqual(delivered.body, "Waiting for your input")
-        XCTAssertEqual(delivered.level, .active)
-    }
-
-    func testDetectedDoneDeliversPassiveNotification() throws {
-        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .done))
-        XCTAssertEqual(delivered.body, "Done")
-        XCTAssertEqual(delivered.level, .passive)
-    }
-
-    func testDetectedErrorDeliversActiveNotification() throws {
-        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .error))
-        XCTAssertEqual(delivered.body, "Something went wrong")
-        XCTAssertEqual(delivered.level, .active)
-    }
-
-    func testDetectedWorkingDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .working))
-    }
-
-    func testDetectedIdleDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .idle))
-    }
-
-    func testDetectedUnknownDeliversNothing() {
-        XCTAssertNil(deliveredNotification(forDetected: .unknown))
     }
 
     func testDedupCooldownSuppressesSecondRapidNotification() {

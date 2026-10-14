@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import UserNotifications
 @testable import CasperUI
 
 @MainActor
@@ -80,31 +81,49 @@ final class AgentDetectionTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.pendingNotification, true)
     }
 
-    /// A detected transition into `done` likewise fires a notification.
-    func testDetectedDoneDeliversNotification() {
+    /// Captures the message (body) and interruption level a detected transition
+    /// into `state` passes to `deliverNotification`, failing if it delivers more
+    /// than once. Returns nil when nothing is delivered. The workspace is left
+    /// unfocused (window not key) so delivery is not suppressed by the focus check.
+    private func deliveredNotification(
+        forDetected state: AgentState) -> (body: String, level: UNNotificationInterruptionLevel)? {
         let (model, workspace) = makeSeededModel()
-        let id = workspace.id
-        model.isWindowKey = { false }
-        var delivered: [(title: String, body: String)] = []
-        model.deliverNotification = { title, body, _, _ in delivered.append((title, body)) }
-
-        model.setDetectedAgentState(.done, for: id)
-
-        XCTAssertEqual(delivered.count, 1)
-        XCTAssertEqual(delivered.first?.body, "Done")
+        model.isWindowKey = { false }  // unfocused → delivery not suppressed
+        var delivered: [(body: String, level: UNNotificationInterruptionLevel)] = []
+        model.deliverNotification = { _, body, _, level in delivered.append((body, level)) }
+        model.setDetectedAgentState(state, for: workspace.id)
+        XCTAssertLessThanOrEqual(delivered.count, 1, "one transition delivers at most one notification")
+        return delivered.first
     }
 
-    /// Non-attention states (`working`, `idle`) never notify.
-    func testDetectedWorkingOrIdleDoesNotNotify() {
-        let (model, workspace) = makeSeededModel()
-        let id = workspace.id
-        var delivered = 0
-        model.deliverNotification = { _, _, _, _ in delivered += 1 }
+    func testDetectedBlockedDeliversActiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .blocked))
+        XCTAssertEqual(delivered.body, "Waiting for your input")
+        XCTAssertEqual(delivered.level, .active)
+    }
 
-        model.setDetectedAgentState(.working, for: id)
-        model.setDetectedAgentState(.idle, for: id)
+    func testDetectedDoneDeliversPassiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .done))
+        XCTAssertEqual(delivered.body, "Done")
+        XCTAssertEqual(delivered.level, .passive)
+    }
 
-        XCTAssertEqual(delivered, 0, "working/idle must not raise a notification")
+    func testDetectedErrorDeliversActiveNotification() throws {
+        let delivered = try XCTUnwrap(deliveredNotification(forDetected: .error))
+        XCTAssertEqual(delivered.body, "Something went wrong")
+        XCTAssertEqual(delivered.level, .active)
+    }
+
+    func testDetectedWorkingDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .working))
+    }
+
+    func testDetectedIdleDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .idle))
+    }
+
+    func testDetectedUnknownDeliversNothing() {
+        XCTAssertNil(deliveredNotification(forDetected: .unknown))
     }
 
     /// The "only on change" guard means a repeated same-state write notifies once.

@@ -14,7 +14,7 @@ import CasperCore
 /// drive a real click or hover-dwell through `NSHostingView` in this codebase
 /// (see `headless-swiftui-layout-tests`), so `reveal()`'s call into
 /// `AppModel.markInfoSeen(for:)` is not exercised through the button itself —
-/// only the model primitive it relies on is pinned below.
+/// only the model primitive it relies on is pinned, by `ControlHandlerTests`.
 @MainActor
 final class WorkspaceInfoButtonTests: XCTestCase {
     /// The seeded model, plus its workspace re-read after `markdown` (when given)
@@ -48,18 +48,5 @@ final class WorkspaceInfoButtonTests: XCTestCase {
 
         XCTAssertEqual(size.width, WorkspaceInfoButton.iconSlotWidth, accuracy: 0.5)
         XCTAssertGreaterThan(size.height, 0)
-    }
-
-    /// NOT a test of `WorkspaceInfoButton` — it never constructs one. `reveal()`
-    /// calls exactly this AppModel method, but nothing here drives `reveal()`
-    /// itself (no headless click/hover), so this only pins the primitive: after
-    /// `controlSetInfo` starts a workspace unread, `markInfoSeen` clears it.
-    func testMarkInfoSeenClearsTheUnreadFlagThatRevealRelinquishes() {
-        let (model, workspace) = seeded(markdown: "## Ready")
-        XCTAssertTrue(model.workspace(id: workspace.id)?.infoUnread ?? false)
-
-        model.markInfoSeen(for: workspace.id)
-
-        XCTAssertFalse(model.workspace(id: workspace.id)?.infoUnread ?? true)
     }
 }

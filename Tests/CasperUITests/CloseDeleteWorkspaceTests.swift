@@ -207,6 +207,7 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertTrue(steps.allSatisfy { $0.title == "Closing \u{201c}\(created.name)\u{201d}" })
         // Only the teardown step can time out, and there is none here.
         XCTAssertTrue(steps.allSatisfy { $0.deadline == nil })
+        XCTAssertNil(model.closeProgress, "the sheet must be down once the operation returns")
     }
 
     func testDeleteWorkspaceReportsOneStepWhenThereIsNoTeardownHook() async throws {
@@ -311,27 +312,6 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertEqual(steps.map(\.stepCount), [2, 2])
         XCTAssertEqual(steps.map { $0.deadline != nil }, [true, false])
         XCTAssertNil(model.workspace(id: created.id))
-    }
-
-    // MARK: - Sheet lifecycle
-
-    /// End-to-end: a real close drives every step and leaves no sheet behind, however
-    /// long the machine took over it. Whether a *fast* run publishes at all is timing
-    /// by nature, so that rule is asserted deterministically against the reporter itself
-    /// in `WorkspaceCloseProgressReporterTests`, not from here.
-    func testCloseRunsEveryStepAndLeavesNoSheetBehind() async throws {
-        let (model, _, spaceID, _) = try seededGitModel()
-        let created = try await createFeature(in: model, space: spaceID)
-        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
-
-        var stepCount = 0
-        model.onCloseProgressForTest = { _ in stepCount += 1 }
-
-        let outcome = await model.closeWorkspace(id: created.id)
-        XCTAssertEqual(outcome, .success)
-
-        XCTAssertEqual(stepCount, 4, "the steps must run whether or not anything is shown")
-        XCTAssertNil(model.closeProgress, "the sheet must be down once the operation returns")
     }
 
     // MARK: - Concurrent destroys

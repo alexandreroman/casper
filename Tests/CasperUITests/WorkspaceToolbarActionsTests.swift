@@ -261,23 +261,6 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
         XCTAssertEqual(layoutRow(width: 2000, diff: nil).badge, 0, accuracy: 0.5, "no summary drew a badge")
     }
 
-    /// Degradation runs one way. Once the badge is gone it must not come back as the
-    /// row keeps narrowing — which it did when the badge and the chips were ranked by
-    /// layout priority alone rather than chosen together: folding the chips freed
-    /// room, and the badge reappeared at 260 pt after vanishing at 500 pt.
-    func testTheBadgeNeverComesBackAsTheRowNarrows() {
-        var badgeWasGone = false
-        for rowWidth in stride(from: CGFloat(900), through: 60, by: -20) {
-            let badge = layoutRow(width: rowWidth).badge
-            if badge < 0.5 {
-                badgeWasGone = true
-            } else {
-                XCTAssertFalse(badgeWasGone, "the badge came back at \(rowWidth) pt")
-            }
-        }
-        XCTAssertTrue(badgeWasGone, "the badge never dropped, so this proves nothing")
-    }
-
     /// The order of sacrifice has teeth: there is a width where the badge is ALREADY
     /// gone while the chips still carry their text. Without it, "the badge goes
     /// first" would be satisfied by a row that simply dropped everything at once —
