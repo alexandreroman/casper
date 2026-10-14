@@ -15,14 +15,11 @@ import XCTest
 /// measurable headlessly (see `headless-swiftui-layout-tests`).
 @MainActor
 final class EmptyStateViewTests: XCTestCase {
-    /// `OnboardingStep`'s fixed card width, the strip's spacing and the screen's own
-    /// padding — mirrored from `EmptyStateView` so a failure below reads as "the hint
-    /// outgrew the strip" rather than as an unexplained number.
-    private static let cardWidth: CGFloat = 200
-    private static let cardSpacing: CGFloat = 20
-    private static let screenPadding: CGFloat = 48
+    /// Three cards, the two gaps between them and the screen's padding on both
+    /// sides, so a failure below reads as "the hint outgrew the strip" rather than
+    /// as an unexplained number.
     private static let onboardingStripWidth: CGFloat =
-        3 * cardWidth + 2 * cardSpacing + 2 * screenPadding
+        3 * EmptyStateView.cardWidth + 2 * EmptyStateView.cardSpacing + 2 * EmptyStateView.screenPadding
 
     /// The invariant is one-sided: the onboarding strip is meant to be the widest
     /// element, so nothing above it — the `.fixedSize()` hint in particular — may

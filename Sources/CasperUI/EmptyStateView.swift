@@ -12,6 +12,15 @@ import SwiftUI
 struct EmptyStateView: View {
     let model: AppModel
 
+    // Module-visible so `EmptyStateViewTests` derives the onboarding strip's width
+    // from these rather than from copies of the numbers.
+    /// Each onboarding card's fixed width.
+    static let cardWidth: CGFloat = 200
+    /// The gap between two onboarding cards.
+    static let cardSpacing: CGFloat = 20
+    /// The screen's own padding on every side.
+    static let screenPadding: CGFloat = 48
+
     var body: some View {
         VStack(spacing: 32) {
             VStack(spacing: 16) {
@@ -50,7 +59,7 @@ struct EmptyStateView: View {
                     .accessibilityLabel("Command N to create a Space, Command O to add a folder")
             }
 
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: Self.cardSpacing) {
                 OnboardingStep(
                     index: 1, systemImage: "folder.badge.plus", title: "Start a Space",
                     detail: "Create a new repo, or adopt one you have.")
@@ -64,7 +73,7 @@ struct EmptyStateView: View {
             .padding(.top, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(48)
+        .padding(Self.screenPadding)
     }
 
     /// Creating is the prominent button, adopting merely bordered.
@@ -109,7 +118,7 @@ private struct OnboardingStep: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
-        .frame(width: 200, alignment: .leading)
+        .frame(width: EmptyStateView.cardWidth, alignment: .leading)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
