@@ -18,7 +18,7 @@ final class AppearanceTests: XCTestCase {
     func testApplyColorSchemeForwardsToTheRuntime() throws {
         let directory = makeTemporaryDirectory(prefix: "casper-appearance-themes")
         let model = makeModel()
-        model.runtime = try GhosttyRuntime(themeDirectory: directory, loadUserFiles: { _ in })
+        model.runtime = try makeIsolatedRuntime(themeDirectory: directory)
         try FileManager.default.removeItem(at: directory)
 
         model.applyColorScheme(dark: true)

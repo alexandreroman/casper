@@ -1,6 +1,8 @@
 import Foundation
 import XCTest
 import CasperCore
+@testable import CasperGhostty
+import CasperTestSupport
 @testable import CasperUI
 
 /// Fixtures shared by every test case in this target. The ones every test target
@@ -19,6 +21,17 @@ extension XCTestCase {
             .appendingPathComponent("casper-test-\(UUID().uuidString).json")
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return (SessionStore(fileURL: url), url)
+    }
+
+    /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
+    /// writes its theme files to `themeDirectory`, a per-test temporary directory unless
+    /// the caller passes the one it inspects, so a local config cannot change what a test
+    /// observes. Mirrors `CasperGhosttyTests`' helper of the same name, which this target
+    /// cannot see.
+    func makeIsolatedRuntime(themeDirectory: URL? = nil) throws -> GhosttyRuntime {
+        try GhosttyRuntime(
+            themeDirectory: themeDirectory ?? makeTemporaryDirectory(prefix: "casper-ghostty-themes"),
+            loadUserFiles: { _ in })
     }
 
     /// An `AppModel` over `spaces`, with `selected` as the current workspace.

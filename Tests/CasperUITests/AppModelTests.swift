@@ -14,15 +14,6 @@ final class AppModelTests: XCTestCase {
         model.spaces.first(where: { $0.workspaces.contains(where: { $0.id == id }) })!.id
     }
 
-    /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
-    /// writes its theme files to a per-test temporary directory, so a local config cannot
-    /// change what a test observes. Mirrors `CasperGhosttyTests`' helper of the same name,
-    /// which this target cannot see.
-    private func makeIsolatedRuntime() throws -> GhosttyRuntime {
-        try GhosttyRuntime(
-            themeDirectory: makeTemporaryDirectory(prefix: "casper-ghostty-themes"), loadUserFiles: { _ in })
-    }
-
     /// `path` with symlinks resolved, so a path the model canonicalized compares
     /// equal to the temp-dir path a fixture handed out (`/tmp` vs `/private/tmp`).
     private func resolved(_ path: String) -> String {
