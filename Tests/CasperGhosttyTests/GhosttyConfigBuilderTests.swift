@@ -37,9 +37,13 @@ final class GhosttyConfigBuilderTests: XCTestCase {
         XCTAssertEqual(background(of: config), [0x12, 0x34, 0x56])
     }
 
+    /// libghostty's conditional state starts light, so a fresh config resolves to the light
+    /// theme's background. With no theme failure the builder keeps its first config, so the
+    /// diagnostics are those of Casper's own defaults and theme files: there must be none.
     func testWithoutUserThemeCasperLightApplies() throws {
         let config = try build(user: nil)
         defer { ghostty_config_free(config) }
+        XCTAssertEqual(ghostty_config_diagnostics_count(config), 0)
         XCTAssertEqual(background(of: config), contentBackgroundBytes(for: .aqua))
     }
 
