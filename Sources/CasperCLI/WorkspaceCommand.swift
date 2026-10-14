@@ -69,7 +69,7 @@ struct WorkspaceCommand: ParsableCommand {
             let branch = try requireNonEmpty(self.branch, "branch name")
             let selector = try requireSelector(target)
             return ControlCommand(
-                verb: .workspaceNew, workspace: selector, branch: branch, base: base,
+                verb: .workspaceNew, workspace: selector, branch: branch, base: nonEmpty(base),
                 command: nonEmpty(command))
         }
 

@@ -60,6 +60,12 @@ exception: it answers "which workspace is *this* terminal", so it reads the env
 var only and takes no target option — outside a Casper terminal it errors
 rather than defaulting to something.
 
+**An empty option value means "not given".** Every optional value goes through
+`nonEmpty` in `makeCommand()`, so `--base ""`, `--command ""` or
+`--working-dir ""` behaves exactly as if the option were omitted — an empty
+`--base` falls back to the space's base branch rather than reaching the app as
+a blank ref.
+
 **Transport.** Each command sends a `ControlCommand` over the Unix domain socket
 named by `$CASPER_CONTROL_SOCKET` and reads back a `ControlResponse`. With that
 variable unset the CLI exits with a "Casper is not running" error rather than

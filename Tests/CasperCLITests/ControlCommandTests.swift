@@ -503,6 +503,14 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertNil(command.command)
     }
 
+    func testWorkspaceNewTreatsEmptyBaseAsNil() throws {
+        // An empty base means "no base given": the app then falls back to the
+        // space's base branch instead of recording an empty one.
+        let new = try WorkspaceCommand.New.parse(["feature-x", "--base", "", "--workspace", "primary"])
+        let command = try new.makeCommand()
+        XCTAssertNil(command.base)
+    }
+
     func testWorkspaceNewRequiresBranch() {
         // The branch is a required positional; ArgumentParser rejects its absence at parse time.
         XCTAssertThrowsError(try WorkspaceCommand.New.parse(["--workspace", "primary"]))

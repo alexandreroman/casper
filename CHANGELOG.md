@@ -46,6 +46,9 @@ CI, test, and documentation-only work is left out.
 - Releasing a right-hand modifier key (Shift, Control, Option or Command) while
   the left one is still held now reaches terminal programs as a release, so a
   program tracking key presses no longer sees that modifier stuck down.
+- `casper workspace new --base ""` falls back to the space's base branch, as
+  if `--base` were omitted, instead of creating a workspace that cannot be
+  closed.
 
 ## [0.1.3] - 2026-10-13
 
