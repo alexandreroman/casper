@@ -9,7 +9,10 @@ surfaces and PTYs (same model as the Ghostty app).
 ## Design
 
 - **`GhosttyRuntime`** — app lifecycle + C runtime callbacks + the wakeup→tick
-  pump that drives libghostty's event loop.
+  pump that drives libghostty's event loop. It keeps its finalized config alive
+  and answers `RELOAD_CONFIG` with `ghostty_app_update_config` /
+  `ghostty_surface_update_config`; `setColorScheme(dark:surfaces:)` sets the
+  app's colour scheme and every live surface's.
 - **`GhosttyAction`** — a pure decoder for libghostty action tags (fully
   tested).
 - **`GhosttySurface`** (+ `GhosttySurfaceConfiguration`) — the surface handle

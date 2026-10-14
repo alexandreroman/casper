@@ -23,6 +23,12 @@ public final class GhosttyRuntime {
     /// only for the test-only `forTesting()` runtime, which creates no app.
     private(set) var app: ghostty_app_t?
 
+    /// The finalized, unconditioned config the app was created from. Kept alive because
+    /// libghostty re-derives the conditional (light/dark) config from it on every
+    /// `RELOAD_CONFIG`; `ghostty_app_new` does not take ownership. Nil for the test-only
+    /// `forTesting()` runtime. Freed in `deinit`, after the app.
+    private var config: ghostty_config_t?
+
     /// Invoked on the main thread with each decoded runtime action.
     public var onAction: ((GhosttyAction) -> Void)?
 
@@ -44,7 +50,6 @@ public final class GhosttyRuntime {
         guard let config = ghostty_config_new() else {
             throw GhosttyError(reason: "ghostty_config_new returned null")
         }
-        defer { ghostty_config_free(config) }
         // Load Casper's built-in defaults (themes + clipboard policy) *first*, before the
         // user's own config, so any user setting still wins. This compensates for macOS
         // libghostty keying the Application-Support config dir on the bundle id (empty for
@@ -69,9 +74,11 @@ public final class GhosttyRuntime {
         runtimeConfig.close_surface_cb = casperGhosttyCloseSurface
 
         guard let app = ghostty_app_new(&runtimeConfig, config) else {
+            ghostty_config_free(config)
             throw GhosttyError(reason: "ghostty_app_new returned null")
         }
         self.app = app
+        self.config = config
     }
 
     /// Load Casper's built-in defaults (terminal themes and clipboard policy) into `config`.
@@ -129,6 +136,34 @@ public final class GhosttyRuntime {
         ghostty_app_set_focus(app, focused)
     }
 
+    /// Tells libghostty which side of a conditional (`light:…,dark:…`) config is
+    /// live. The app call covers surfaces created from now on; each existing surface
+    /// keeps its own conditional state and only switches through its own call, so
+    /// every live surface must be passed in — off-screen ones included. No-op
+    /// without an app (the test-only runtime).
+    @MainActor
+    public func setColorScheme(dark: Bool, surfaces: [GhosttySurfaceView]) {
+        guard let app else { return }
+        ghostty_app_set_color_scheme(app, dark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+        for surface in surfaces { surface.setColorScheme(dark: dark) }
+    }
+
+    /// Answers libghostty's `RELOAD_CONFIG`, which a colour-scheme change raises
+    /// (soft) and after which libghostty pushes nothing on its own: hand the stored,
+    /// unconditioned config back to the target, which re-derives its light or dark
+    /// side from its own conditional state. Casper never reloads config from disk,
+    /// so a non-soft request is answered the same way. Always claimed.
+    func handleReloadConfig(target: ghostty_target_s) -> Bool {
+        guard let app, let config else { return true }
+        switch target.tag {
+        case GHOSTTY_TARGET_SURFACE:
+            if let surface = target.target.surface { ghostty_surface_update_config(surface, config) }
+        default:
+            ghostty_app_update_config(app, config)
+        }
+        return true
+    }
+
     /// Decode a raw libghostty action and route it to `onAction`. Called by the
     /// `action_cb` trampoline on the main thread; returns `true` to tell
     /// libghostty the action was consumed.
@@ -157,6 +192,7 @@ public final class GhosttyRuntime {
     // class of hazard one level down, freeing a surface while its view is still alive.
     deinit {
         if let app { ghostty_app_free(app) }
+        if let config { ghostty_config_free(config) }
     }
 }
 
@@ -254,6 +290,12 @@ func casperGhosttyAction(
             MainActor.assumeIsolated { view.reportChildExit(code) }
         }
         return true
+    case GHOSTTY_ACTION_RELOAD_CONFIG:
+        // Plumbing, not an app action: answered by pushing the stored config back to
+        // the target, so it never reaches `handleAction` / `onAction`.
+        guard let app, let userdata = ghostty_app_userdata(app) else { return false }
+        let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(userdata).takeUnretainedValue()
+        return runtime.handleReloadConfig(target: target)
     default:
         break
     }

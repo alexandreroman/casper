@@ -82,6 +82,32 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
             XCTAssertTrue(casperGhosttyAction(nil, target, action), "tag \(tag.rawValue) must be consumed")
         }
     }
+
+    /// libghostty answers a colour-scheme change with a soft `RELOAD_CONFIG` and
+    /// pushes nothing itself; the runtime must claim it. Without an app (the
+    /// test-only runtime) there is no config to push, and claiming must not crash.
+    func testReloadConfigIsClaimedWithoutAnApp() {
+        let runtime = GhosttyRuntime.forTesting()
+        var target = ghostty_target_s()
+        target.tag = GHOSTTY_TARGET_APP
+        XCTAssertTrue(runtime.handleReloadConfig(target: target))
+    }
+
+    /// It is never forwarded to `onAction`: it is plumbing, not an app action.
+    func testReloadConfigDoesNotReachOnAction() {
+        let runtime = GhosttyRuntime.forTesting()
+        var received: GhosttyAction?
+        runtime.onAction = { received = $0 }
+        var target = ghostty_target_s()
+        target.tag = GHOSTTY_TARGET_APP
+        _ = runtime.handleReloadConfig(target: target)
+        XCTAssertNil(received)
+    }
+
+    @MainActor
+    func testSetColorSchemeWithoutAnAppIsANoOp() {
+        GhosttyRuntime.forTesting().setColorScheme(dark: true, surfaces: [])
+    }
 }
 
 /// Stub `GhosttyActionHandler` that claims exactly one action, for testing
