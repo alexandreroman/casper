@@ -24,7 +24,9 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = try await makeLoadedCoordinator()
 
         _ = try await coordinator.evaluate("history.pushState({}, '', '/routed')")
+        // pushState updates the address to the routed URL.
         await waitUntil(timeout: 10) { coordinator.address == Self.routedAddress }
+        XCTAssertEqual(coordinator.address, Self.routedAddress)
         // pushState pushes a back-forward entry, so Back must light up as well.
         XCTAssertTrue(coordinator.canGoBack)
     }
@@ -33,17 +35,23 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = try await makeLoadedCoordinator()
 
         _ = try await coordinator.evaluate("history.replaceState({}, '', '/routed')")
+        // replaceState updates the address to the routed URL.
         await waitUntil(timeout: 10) { coordinator.address == Self.routedAddress }
+        XCTAssertEqual(coordinator.address, Self.routedAddress)
     }
 
     func testHashChangesUpdateAddress() async throws {
         let coordinator = try await makeLoadedCoordinator(body: "<a id='jump' href='#anchor'>jump</a>")
 
         _ = try await coordinator.evaluate("location.hash = '#assigned'")
+        // Assigning location.hash appends the fragment to the address.
         await waitUntil(timeout: 10) { coordinator.address == Self.baseAddress + "#assigned" }
+        XCTAssertEqual(coordinator.address, Self.baseAddress + "#assigned")
 
         _ = try await coordinator.evaluate("document.getElementById('jump').click()")
+        // Clicking an in-page anchor swaps the fragment in the address.
         await waitUntil(timeout: 10) { coordinator.address == Self.baseAddress + "#anchor" }
+        XCTAssertEqual(coordinator.address, Self.baseAddress + "#anchor")
     }
 
     /// Moves *between two routed entries*, so the traversal stays inside the one
@@ -54,16 +62,21 @@ final class BrowserURLSyncTests: XCTestCase {
         let coordinator = try await makeLoadedCoordinator()
         _ = try await coordinator.evaluate("history.pushState({}, '', '/routed')")
         _ = try await coordinator.evaluate("history.pushState({}, '', '/routed-again')")
+        // Both pushStates land, leaving the address on the later routed URL.
         await waitUntil(timeout: 10) { coordinator.address == Self.nextRoutedAddress }
 
         // A script that moves history loses its own reply, so the result is ignored
         // here; the address is what the assertions are about.
         _ = try? await coordinator.evaluate("history.back()")
+        // history.back() restores the earlier routed URL.
         await waitUntil(timeout: 10) { coordinator.address == Self.routedAddress }
+        XCTAssertEqual(coordinator.address, Self.routedAddress)
         XCTAssertTrue(coordinator.canGoForward)
 
         _ = try? await coordinator.evaluate("history.forward()")
+        // history.forward() re-applies the later routed URL.
         await waitUntil(timeout: 10) { coordinator.address == Self.nextRoutedAddress }
+        XCTAssertEqual(coordinator.address, Self.nextRoutedAddress)
     }
 
     // MARK: Full navigations the page triggers
@@ -74,9 +87,11 @@ final class BrowserURLSyncTests: XCTestCase {
     func testPageDrivenFullNavigationsUpdateAddress() async throws {
         let directory = try makeTwoPageSite()
         let coordinator = BrowserCoordinator(url: .aboutBlank)
+        // The placeholder about:blank load commits.
         await waitUntil(timeout: 10) { coordinator.webView.url != nil }
         let firstPage = directory.appendingPathComponent("page1.html")
         coordinator.webView.loadFileURL(firstPage, allowingReadAccessTo: directory)
+        // The first page commits.
         await waitUntil(timeout: 10) { coordinator.address.hasSuffix("page1.html") }
         let documentReady = await coordinator.waitFor(
             js: "location.href.endsWith('page1.html')", timeoutMs: 10_000)
@@ -84,10 +99,14 @@ final class BrowserURLSyncTests: XCTestCase {
 
         // A script that navigates away loses its own reply, so the result is ignored.
         _ = try? await coordinator.evaluate("location.href = 'page2.html'")
+        // Assigning location.href navigates to the second page.
         await waitUntil(timeout: 10) { coordinator.address.hasSuffix("page2.html") }
+        XCTAssertTrue(coordinator.address.hasSuffix("page2.html"), coordinator.address)
 
         _ = try? await coordinator.evaluate("document.getElementById('back').click()")
+        // Clicking the link navigates back to the first page.
         await waitUntil(timeout: 10) { coordinator.address.hasSuffix("page1.html") }
+        XCTAssertTrue(coordinator.address.hasSuffix("page1.html"), coordinator.address)
     }
 
     // MARK: Address-bar navigation
@@ -98,6 +117,7 @@ final class BrowserURLSyncTests: XCTestCase {
     /// which is why no server is needed.
     func testLoadReportsTheURLBeforeReturning() async throws {
         let coordinator = BrowserCoordinator(url: .aboutBlank)
+        // The placeholder about:blank load commits.
         await waitUntil(timeout: 10) { coordinator.webView.url != nil }
         var reported: [URL] = []
         coordinator.onCommitURL = { reported.append($0) }
@@ -119,6 +139,7 @@ final class BrowserURLSyncTests: XCTestCase {
 
         coordinator.webView.loadHTMLString(
             "<html><body>\(body)</body></html>", baseURL: URL(string: Self.baseAddress)!)
+        // The test document commits at the base address.
         await waitUntil(timeout: 10) { coordinator.address == Self.baseAddress }
 
         // The document adopts the base URL a beat after the web view's `url` commits;
