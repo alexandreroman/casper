@@ -50,7 +50,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
 
         // Per-surface env inputs.
         model.casperDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
-            ?? (CommandLine.arguments.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path })
 
         // Release control socket: the `casper` CLI's command channel, distinct
         // from the DEBUG-only debug channel below — this one ships in release.
