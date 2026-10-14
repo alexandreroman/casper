@@ -379,10 +379,10 @@ struct DiffTextSurface: NSViewRepresentable {
         /// this call rather than on a later run-loop turn — except on a surface
         /// with no viewport yet. SwiftUI sizes the hosted view only after
         /// `updateNSView`, so a target can reach a surface that holds its file
-        /// but is still zero-sized: the case of a panel `casper diff open` has
-        /// just expanded. The clip view would clamp that scroll to nothing, and
-        /// the text has not wrapped to the panel's width yet, so the file is held
-        /// and scrolled to by the layout that sizes the viewport.
+        /// but is still zero-sized: the case of a surface the request has just
+        /// mounted. The clip view would clamp that scroll to nothing, and the
+        /// text has not wrapped to the panel's width yet, so the file is held and
+        /// scrolled to by the layout that sizes the viewport.
         @discardableResult
         func scroll(toFileID fileID: String) -> Bool {
             guard let document, let fileIndex = document.fileIndex(withID: fileID) else { return false }

@@ -3,6 +3,7 @@ import CasperCore
 import CasperTestSupport
 import Foundation
 import SwiftUI
+import WebKit
 import XCTest
 
 @testable import CasperUI
@@ -24,6 +25,24 @@ final class DiffSurfaceViewScrollTests: XCTestCase {
         let (model, workspaceID) = try makeModelWithChangedFiles()
         let host = hostInspectorPanel(model: model, workspaceID: workspaceID)
         XCTAssertEqual(model.workspace(id: workspaceID)?.inspector.collapsed, true)
+
+        guard case .success = await model.controlOpenDiff(in: workspaceID, file: targetFile) else {
+            return XCTFail("expected success")
+        }
+        await settle(host) { model.diffScrollTarget == nil }
+
+        XCTAssertNil(model.diffScrollTarget, "the target must be settled")
+        XCTAssertEqual(fileAtViewportTop(in: host), targetFile)
+    }
+
+    /// The same path from the other side: an expanded panel showing the Browser
+    /// tab mounts no diff view either, so switching it to the Diff tab mounts a
+    /// fresh one whose surface is handed the target before it is sized.
+    func testOpeningAFileFromTheBrowserTabScrollsToIt() async throws {
+        let (model, workspaceID) = try makeModelWithChangedFiles()
+        let host = hostInspectorPanel(model: model, workspaceID: workspaceID)
+        model.setInspectorTab(.browser, for: workspaceID)
+        await settle(host) { firstDescendant(WKWebView.self, in: host) != nil }
 
         guard case .success = await model.controlOpenDiff(in: workspaceID, file: targetFile) else {
             return XCTFail("expected success")

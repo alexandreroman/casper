@@ -48,15 +48,16 @@ feedback path the whole TextKit rewrite exists to remove.
   `DiffSurfaceContainerView.viewportDidChange` fires from `layout()` and re-runs
   `Coordinator.resolveBarsOverTheViewport()` for exactly this reason. Any future
   viewport-derived state needs the same hook. A scroll target is one: a
-  `casper diff open` that expands a collapsed panel mounts the surface, and its
-  target reaches the realized coordinator before the first sizing pass, when
-  the clip view clamps any scroll to the top. The coordinator holds the file
-  and the same hook lands it — after laying the text view out, because the text
-  view grows to the document's height only in its own layout, which runs after
-  the container's.
+  `casper diff open` that expands a collapsed panel or leaves the Browser tab
+  mounts a surface, and its target reaches the realized coordinator before the
+  first sizing pass, when the clip view clamps any scroll to the top. The
+  coordinator holds the file and the same hook lands it — after laying the text
+  view out, because the text view grows to the document's height only in its
+  own layout, which runs after the container's.
 
 `Tests/CasperUITests/DiffTextSurfaceTests.swift` pins the scenario: a document
 that exists *before* the surface is realized must render on
 `layoutSubtreeIfNeeded()` alone, with no imperative call.
 `Tests/CasperUITests/DiffSurfaceViewScrollTests.swift` pins the scroll target
-end to end, through the real `InspectorPanel` expanding from collapsed.
+end to end, through the real `InspectorPanel` expanding from collapsed and
+switching from the Browser tab.

@@ -195,8 +195,8 @@ depends on Ghostty layout composition (`terminal.md`).
   once the surface takes the scroll, or once a diff computed after the request
   does not list the file (matched by exact worktree-relative path), so an
   unchanged file opens the diff without scrolling and a remount never scrolls
-  again. A surface the request has just mounted — the panel was collapsed —
-  holds the scroll until the layout that first sizes its viewport.
+  again. A surface the request has just mounted holds the scroll until the
+  layout that first sizes its viewport.
 
   The document carries per-file sections (path + status, binary and unreadable
   files noted), hunk headers, and code rows tinted by kind (green addition / red

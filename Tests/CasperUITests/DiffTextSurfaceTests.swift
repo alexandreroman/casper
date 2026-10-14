@@ -209,8 +209,8 @@ final class DiffTextSurfaceTests: XCTestCase {
 
     /// SwiftUI pushes the document in `updateNSView` and sizes the view only
     /// afterwards, so a scroll target can reach a surface that holds its file but
-    /// has no viewport yet — which is when `DiffSurfaceView` asks on a panel that
-    /// `casper diff open` has just expanded. Scrolled there and then, the clip
+    /// has no viewport yet — which is when `DiffSurfaceView` asks on a diff view
+    /// that `casper diff open` has just mounted. Scrolled there and then, the clip
     /// view clamps the target to nothing; the scroll has to land once the
     /// viewport is laid out instead.
     func testAScrollRequestedBeforeTheViewportIsSizedLandsOnceItIs() throws {
