@@ -116,8 +116,9 @@ final class DiffHighlighterTests: XCTestCase {
         XCTAssertEqual(lines.map(text), ["let a = 1 // c  "])
     }
 
-    /// A construct left open to the end of the file takes its trailing newlines
-    /// into its span: they come back as the blank lines they are, not as padding.
+    /// A construct left open to the end of the file takes trailing newlines into its
+    /// span, where the trim cannot reach them: the output keeps some of the source's
+    /// trailing newlines, and still lines up.
     func testTrailingNewlinesKeptInASpanLineUp() throws {
         let source = "/* open\n\n"
         let html = "<span class=\"hljs-comment\">/* open\n\n</span>"

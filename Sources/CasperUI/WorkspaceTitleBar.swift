@@ -4,10 +4,10 @@ import SwiftUI
 
 /// The whole title bar, laid out in one row of a known width.
 ///
-/// It is one view because it is one `ToolbarItem` (see the toolbar's own comment).
-/// As that width shrinks, the row degrades along ONE ordered ladder — the diff badge
-/// first, then the Space name, then the chip labels, and never the branch — spelled
-/// out in `body` and in app-ui.md § Title bar.
+/// It is one view because it is one `ToolbarItem` (see the `.toolbar` comment in
+/// `WorkspaceDetailView`). As that width shrinks, the row degrades along ONE ordered
+/// ladder — the diff badge first, then the Space name, then the chip labels, and
+/// never the branch — spelled out in `body` and in app-ui.md § Title bar.
 struct WorkspaceTitleBarRow: View {
     let model: AppModel
     let workspace: Workspace
