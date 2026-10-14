@@ -28,8 +28,8 @@ enum Libgit2 {
     /// Apple compiles `git` to look for its system config in the active developer
     /// directory (`<developer dir>/usr/share/git-core/gitconfig`), which is where a
     /// macOS user's `init.defaultBranch`, `user.name` and friends commonly live.
-    /// libgit2 searches `/etc` and the package manager's prefix instead, so without
-    /// this it has no way of reaching the file the very `git` the user runs reads.
+    /// libgit2 searches `/etc` instead, so without this it has no way of reaching
+    /// the file the very `git` the user runs reads.
     ///
     /// **Known limitation:** an Xcode installed at a non-standard path with no
     /// `DEVELOPER_DIR` set in the environment is not found. Resolution stays inside
@@ -60,9 +60,8 @@ enum Libgit2 {
     /// the default search path is `/etc`, and macOS ships no `/etc/gitconfig` — that
     /// makes Apple's file the system config, which is what moves a bare
     /// `git_repository_init` from `refs/heads/master` onto whatever
-    /// `init.defaultBranch` says. Where `/etc/gitconfig` or a package manager's
-    /// prefixed `gitconfig` does exist, that file is read **instead of** Apple's and
-    /// this call changes nothing.
+    /// `init.defaultBranch` says. Where `/etc/gitconfig` exists, that file is read
+    /// **instead of** Apple's and this call changes nothing.
     ///
     /// The append order is the deliberate half of that trade: prepending would let
     /// Apple's file shadow a system config an administrator installed on purpose,

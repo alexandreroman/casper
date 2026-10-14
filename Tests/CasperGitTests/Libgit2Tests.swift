@@ -20,8 +20,8 @@ final class Libgit2Tests: XCTestCase {
         let afterInit = Libgit2.systemConfigSearchPath()
 
         let searched = Set((afterInit ?? "").split(separator: ":").map(String.init))
-        // libgit2 always searches somewhere of its own (`/etc`, a package prefix), so an
-        // empty path would mean the augmentation clobbered it instead of extending it.
+        // libgit2 always searches somewhere of its own (`/etc`), so an empty path would
+        // mean the augmentation clobbered it instead of extending it.
         XCTAssertFalse(searched.isEmpty)
         // Machine-dependent by nature: a machine with neither Xcode nor the Command Line
         // Tools installed discovers nothing, and then there is nothing to have been added.
