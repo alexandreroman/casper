@@ -91,7 +91,9 @@ enum Libgit2 {
     /// it to its own result is a no-op.
     static func searchPath(_ current: String, adding directories: [String]) -> String {
         var listed = current.split(separator: ":").map(String.init)
-        listed.append(contentsOf: directories.filter { !listed.contains($0) })
+        for directory in directories where !listed.contains(directory) {
+            listed.append(directory)
+        }
         return listed.joined(separator: ":")
     }
 

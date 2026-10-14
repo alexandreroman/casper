@@ -95,6 +95,12 @@ final class Libgit2Tests: XCTestCase {
         XCTAssertEqual(Libgit2.searchPath(augmented, adding: ["/etc", "/xcode"]), augmented)
     }
 
+    func testSearchPathAugmentationAddsARepeatedDirectoryOnce() {
+        // `DEVELOPER_DIR` usually names the standard Xcode or Command Line Tools
+        // directory, which the candidate list then repeats.
+        XCTAssertEqual(Libgit2.searchPath("/etc", adding: ["/x", "/x"]), "/etc:/x")
+    }
+
     func testSearchPathAugmentationLeavesAPathAloneWhenThereIsNothingToAdd() {
         // The machine with neither Xcode nor the Command Line Tools: nothing is
         // discovered, and libgit2's own search path must stand untouched.
