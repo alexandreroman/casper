@@ -53,7 +53,9 @@ feedback path the whole TextKit rewrite exists to remove.
   first sizing pass, when the clip view clamps any scroll to the top. The
   coordinator holds the file and the same hook lands it — after laying the text
   view out, because the text view grows to the document's height only in its
-  own layout, which runs after the container's.
+  own layout, which runs after the container's. The same lag clamps a scroll
+  right after a document swap on a sized surface, so `scroll(toViewY:)` lays
+  the text view out first whenever the target lies past its current height.
 
 `Tests/CasperUITests/DiffTextSurfaceTests.swift` pins the scenario: a document
 that exists *before* the surface is realized must render on

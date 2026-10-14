@@ -75,6 +75,10 @@ CI, test, and documentation-only work is left out.
 - `casper diff open <file>` scrolls to the file when the inspector was
   collapsed or showing the browser, instead of opening the diff view at the
   top.
+- The diff view no longer stops short of a file when a refresh makes the diff
+  longer: `casper diff open <file>` on a file that has just changed scrolls all
+  the way to it, and the reader stays on their file when the refresh pushes it
+  past the previous end.
 - The diff view no longer jumps back to a file requested earlier with
   `casper diff open` when it is reopened, and no longer jumps to a requested
   file that only changes later.

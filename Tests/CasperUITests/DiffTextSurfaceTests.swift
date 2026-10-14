@@ -226,6 +226,35 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
     }
 
+    /// A target naming a file only the next diff holds is retried as soon as
+    /// that document reaches a surface that is already sized, before the text
+    /// view's own layout pass has grown it to the new document's height. The
+    /// scroll must not stop short against the previous document's height.
+    func testAScrollRightAfterSwappingInALongerDocumentLandsOnItsFile() throws {
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 1, linesPerFile: 5))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+
+        coordinator.render(DiffRendering(
+            revision: 2, document: additionsDocument(fileCount: 6, linesPerFile: 40), highlights: [:]))
+        XCTAssertTrue(coordinator.scroll(toFileID: "f4.swift"))
+
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f4.swift")
+    }
+
+    /// The reader's anchor is restored within the swap, again before the text
+    /// view's own layout pass: a file pushed far below the previous document's
+    /// end must not leave the reader clamped to that end.
+    func testAnchorSurvivesASwapThatPushesItsFilePastThePreviousEnd() throws {
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 2, linesPerFile: 40))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        coordinator.scroll(toFileID: "f1.swift")
+
+        coordinator.render(DiffRendering(
+            revision: 2, document: additionsDocument(fileCount: 2, linesPerFile: 300), highlights: [:]))
+
+        XCTAssertEqual(coordinator.currentAnchor()?.fileID, "f1.swift")
+    }
+
     /// A refresh must not throw the reader back to the top: the anchor is read
     /// before the swap and restored after it.
     func testAnchorSurvivesADocumentSwap() throws {

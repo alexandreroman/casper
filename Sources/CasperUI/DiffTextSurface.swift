@@ -456,8 +456,18 @@ struct DiffTextSurface: NSViewRepresentable {
         /// Clamped by the clip view rather than by arithmetic here: a TextKit 2
         /// document's height is an estimate until it is laid out, so the clip view
         /// is the only thing that knows what it can actually show.
+        ///
+        /// It clamps against the text view's frame, which grows to a freshly
+        /// swapped document's height only in the text view's own layout pass. A
+        /// target past the height the frame has so far — an anchor or a requested
+        /// file the swap pushed below the previous document's end — pulls that
+        /// pass forward, or the scroll would stop at that end. Only then: on a
+        /// large diff the pass lays out the whole document.
         private func scroll(toViewY viewY: CGFloat) {
             let clipView = self.clipView
+            if !clipView.bounds.isEmpty, viewY + clipView.bounds.height > textView.frame.height {
+                textView.layoutSubtreeIfNeeded()
+            }
             let target = NSRect(
                 x: clipView.bounds.origin.x, y: viewY,
                 width: clipView.bounds.width, height: clipView.bounds.height)
