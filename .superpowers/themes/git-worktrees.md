@@ -64,7 +64,9 @@ binary. We own this surface; it exposes only what Casper needs.
   detected (`git_diff_find_similar`, untracked files included, so a plain `mv`
   pairs up too) within git's default budget of 1000² candidate pairs; a file
   over the diff's 8 MB cap never pairs, and copy detection is off. The pass
-  lives in `Sources/CasperGit/RenameDetection.swift`.
+  lives in `Sources/CasperGit/RenameDetection.swift`. A file the diff lists but
+  cannot open (a mode-000 file) has no patch: it is listed with the
+  `unreadable` status and no hunks, and the rest of the diff is unaffected.
   (Branch-vs-merge-base line counts were designed for the workspace diff
   summary, now **dropped** — see `space-project.md`.)
 

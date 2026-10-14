@@ -29,6 +29,8 @@ CI, test, and documentation-only work is left out.
   waiting until you select the workspace.
 - Creating a workspace again under a name whose previous creation failed no
   longer fails with "directory exists".
+- A file Casper cannot read no longer blanks the whole diff view; it is listed
+  as unreadable.
 
 ## [0.1.3] - 2026-10-13
 

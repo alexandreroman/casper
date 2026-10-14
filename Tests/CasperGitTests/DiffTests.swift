@@ -103,6 +103,27 @@ final class DiffTests: XCTestCase {
         XCTAssertTrue((file?.hunks.flatMap(\.lines) ?? []).allSatisfy { $0.kind == .deletion })
     }
 
+    /// A file libgit2 lists but cannot open (mode 000) has no patch. It must cost
+    /// only its own content: it is listed as unreadable, and every other change in
+    /// the worktree still diffs.
+    func testUnreadableFileIsListedWithoutFailingTheDiff() throws {
+        try XCTSkipIf(geteuid() == 0, "root reads a mode-000 file regardless")
+        try "casper CHANGED\n".write(to: url("README.md"), atomically: true, encoding: .utf8)
+        let secretPath = url("secret.txt").path
+        try "hidden\n".write(toFile: secretPath, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: secretPath)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: secretPath) }
+
+        let files = try repo.diffWorkdirToHead().files
+
+        XCTAssertEqual(files.map(\.newPath), ["README.md", "secret.txt"])
+        XCTAssertEqual(files[0].status, .modified)
+        XCTAssertFalse(files[0].hunks.isEmpty)
+        XCTAssertEqual(files[1].status, .unreadable)
+        XCTAssertFalse(files[1].isBinary)
+        XCTAssertTrue(files[1].hunks.isEmpty)
+    }
+
     func testUnbornHeadDiffsWholeTreeAsAdded() throws {
         // A repository of its own: an unborn HEAD is the point here, and the shared
         // fixture already carries a commit.

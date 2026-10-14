@@ -197,6 +197,19 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(span.status, .conflicted)
     }
 
+    /// An unreadable file has no hunks for a reason other than an unchanged content,
+    /// so it must not claim "No content changes".
+    func testUnreadableFileRendersACouldNotBeReadNote() throws {
+        let document = DiffDocument(diff: GitDiff(files: [
+            file(status: .unreadable, []),
+        ]))
+
+        XCTAssertEqual(document.lines.map(\.kind), [.note])
+        let note = try XCTUnwrap(document.lines.first)
+        XCTAssertEqual(text(document, note.range), "File could not be read")
+        XCTAssertEqual(document.files.first?.status, .unreadable)
+    }
+
     // MARK: - Truncation
 
     func testLongLineIsTruncatedAndMarkedUnhighlightable() {

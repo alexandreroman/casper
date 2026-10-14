@@ -164,6 +164,8 @@ struct DiffDocument: Sendable, Equatable {
 
             if file.isBinary {
                 append("Binary file", kind: .note, fileIndex: fileIndex)
+            } else if file.status == .unreadable {
+                append("File could not be read", kind: .note, fileIndex: fileIndex)
             } else {
                 for hunk in file.hunks {
                     let allowance = min(remainingInFile, remainingTotal)

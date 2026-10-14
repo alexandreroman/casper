@@ -337,8 +337,16 @@ public final class Repository {
         let count = git_diff_num_deltas(diff)
         for i in 0..<count {
             var patch: OpaquePointer?
-            try gitCheck(git_patch_from_diff(&patch, diff, i))
-            defer { git_patch_free(patch) }
+            defer { git_patch_free(patch) }  // before the call: free on the failure path too
+            guard git_patch_from_diff(&patch, diff, i) >= 0 else {
+                // A file the diff lists but cannot load — a mode-000 file passes the
+                // `lstat` that lists it and fails the `open` — has no patch. It costs
+                // only its own content: listed as unreadable, it leaves every other
+                // file's diff intact instead of failing the whole call.
+                guard let deltaPtr = git_diff_get_delta(diff, i) else { continue }
+                files.append(Repository.unreadableFile(delta: deltaPtr))
+                continue
+            }
             let handle = try requireNonNull(patch, "patch")
             // Read the delta back off the patch (not the diff): binary detection
             // reads file content, which only happens once the patch is generated.
@@ -397,12 +405,26 @@ public final class Repository {
         return obj  // a git_tree*; freed by the caller with git_tree_free
     }
 
+    /// The path of one side of a delta, or "" when libgit2 left it unset.
+    private static func path(of file: git_diff_file) -> String {
+        file.path.map { String(cString: $0) } ?? ""
+    }
+
+    /// A file whose patch could not be generated: its paths, the `unreadable` status,
+    /// and no content.
+    private static func unreadableFile(delta deltaPtr: UnsafePointer<git_diff_delta>) -> GitDiffFile {
+        let delta = deltaPtr.pointee
+        return GitDiffFile(
+            oldPath: path(of: delta.old_file), newPath: path(of: delta.new_file),
+            status: .unreadable, isBinary: false, hunks: [])
+    }
+
     private static func buildFile(
         delta deltaPtr: UnsafePointer<git_diff_delta>, patch: OpaquePointer
     ) throws -> GitDiffFile {
         let delta = deltaPtr.pointee
-        let oldPath = delta.old_file.path.map { String(cString: $0) } ?? ""
-        let newPath = delta.new_file.path.map { String(cString: $0) } ?? ""
+        let oldPath = path(of: delta.old_file)
+        let newPath = path(of: delta.new_file)
         let hunkCount = git_patch_num_hunks(patch)
 
         // Binary detection has two branches:
@@ -473,7 +495,9 @@ public final class Repository {
         // reports the conflicted index entry as its own delta, and its hunks carry the
         // conflict markers — so it must not read as an unmodified file.
         case GIT_DELTA_CONFLICTED: return .conflicted
-        // A file libgit2 could not read at all (permissions, a vanished path).
+        // Emitted only under `GIT_DIFF_INCLUDE_UNREADABLE`, which `diffWorkdirToHead`
+        // never sets: the unreadable files a diff lists come from a failed patch
+        // generation there (`unreadableFile`), not from this mapping.
         case GIT_DELTA_UNREADABLE: return .unreadable
         // Emitted by the rename pass, `detectRenames`.
         case GIT_DELTA_RENAMED: return .renamed
