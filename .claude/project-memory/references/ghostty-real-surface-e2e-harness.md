@@ -22,7 +22,8 @@ permission and without the debug-channel bypass (`casper debug send-key` calls
    `window.contentView` on a real (can be `.borderless`, off-screen-sized fine)
    `NSWindow` — this triggers `viewDidMoveToWindow` → real
    `ghostty_surface_new`.
-3. Poll `view.surface != nil` for up to ~10s on the RunLoop;
+3. Poll `view.surface != nil` on the RunLoop until the view's bounded creation
+   retries are spent (~0.5 s; the harness allows 1 s), and
    `throw XCTSkip(...)` if it never appears (the documented
    [[e2e-surface-creation-flakiness]], environmental — running the suite with
    the display awake, e.g. under `caffeinate -u`, is what makes these tests

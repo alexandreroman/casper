@@ -42,8 +42,11 @@ extension XCTestCase {
             window.contentView = nil
         }
 
-        // Surface creation can transiently return null and retry; poll until it lands.
-        let deadline = Date().addingTimeInterval(10)
+        // Surface creation can transiently return null and retry; poll until it lands. The
+        // view tries at once and then at most twice more, 0.25 s apart
+        // (`GhosttySurfaceView.maxSurfaceCreationAttempts`), before giving up until its next
+        // window entry, so polling past ~0.5 s would only delay the skip.
+        let deadline = Date().addingTimeInterval(1)
         while view.surface == nil, Date() < deadline {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }

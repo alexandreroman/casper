@@ -1408,7 +1408,10 @@ final class AppModelTests: XCTestCase {
             window.contentView = nil
         }
 
-        let deadline = Date().addingTimeInterval(10)
+        // The view tries at once and then at most twice more, 0.25 s apart
+        // (`GhosttySurfaceView.maxSurfaceCreationAttempts`), before giving up until its next
+        // window entry, so polling past ~0.5 s would only delay the skip.
+        let deadline = Date().addingTimeInterval(1)
         while view.surface == nil, Date() < deadline {
             try await Task.sleep(for: .milliseconds(50))
         }
