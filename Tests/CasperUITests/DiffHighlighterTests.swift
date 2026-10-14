@@ -27,7 +27,7 @@ final class DiffHighlighterTests: XCTestCase {
     private func attributed(_ segments: [(String, NSColor?)]) throws -> AttributedString {
         let source = NSMutableAttributedString()
         for (text, color) in segments {
-            var attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11)]
+            var attributes: [NSAttributedString.Key: Any] = [:]
             if let color { attributes[.foregroundColor] = color }
             source.append(NSAttributedString(string: text, attributes: attributes))
         }
@@ -102,20 +102,14 @@ final class DiffHighlighterTests: XCTestCase {
         XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: try attributed([("a\nb\nc", nil)]), alignedTo: "a\nb"))
     }
 
-    /// The diff view applies its own uniform monospaced face, so a highlight may
-    /// carry colors and nothing else — a font riding along would resize a line
-    /// and shift the text under a reader mid-scroll.
-    func testColorsSurviveAndFontsDoNot() throws {
+    /// A run's color survives the cut, read from the AppKit scope the library
+    /// fills.
+    func testColorsSurviveTheSplit() throws {
         let lines = DiffHighlighter.splitLines(try attributed([("keyword", .systemPink)]))
         let highlighted = try XCTUnwrap(lines.first)
 
         let run = try XCTUnwrap(highlighted.runs.first)
         XCTAssertEqual(run.attributes.appKit.foregroundColor, .systemPink)
-        // The font is read through the untyped AppKit key on a bridged
-        // `NSAttributedString`: the typed `run.attributes.appKit.font` warns, because
-        // the `Sendable` requirement sits on the attribute key and `NSFont` is not
-        // `Sendable`. `DiffHighlighter.droppingFonts(_:)` strips it the same way.
-        XCTAssertNil(NSAttributedString(highlighted).attribute(.font, at: 0, effectiveRange: nil))
     }
 
     /// The palette follows the appearance: GitHub's light theme for `.light`, its

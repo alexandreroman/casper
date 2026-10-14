@@ -2,10 +2,11 @@ import HighlightSwift
 import SwiftUI
 
 /// Pure syntax-highlighting helper for the diff view. It turns a full file's
-/// text into one colored `AttributedString` per source line, carrying only
-/// foreground colors so the diff view can apply its own monospaced font
-/// uniformly. Highlighting runs off the main actor and never propagates
-/// errors — callers fall back to neutral text when this returns `nil`.
+/// text into one colored `AttributedString` per source line; the diff view reads
+/// nothing but their foreground colors (`DiffTextAssembly.applyHighlight`), so its
+/// own monospaced font applies uniformly. Highlighting runs off the main actor
+/// and never propagates errors — callers fall back to neutral text when this
+/// returns `nil`.
 enum DiffHighlighter {
     /// Maps a file path's extension to a highlight.js language alias, or `nil`
     /// when the extension is unknown (the caller then renders neutral text; no
@@ -152,8 +153,8 @@ enum DiffHighlighter {
     }
 
     /// Splits an attributed string into one element per "\n"-delimited line,
-    /// preserving each run's attributes but dropping the font so only colors
-    /// remain. Empty segments are kept so blank lines stay aligned.
+    /// preserving each run's attributes. Empty segments are kept so blank lines
+    /// stay aligned.
     ///
     /// Sliced straight out of `attributed` rather than rebuilt from `String`
     /// segments: this runs over a whole file's worth of runs, and going through
@@ -166,46 +167,16 @@ enum DiffHighlighter {
     /// the toolchain's `usr/bin` there), so `DiffHighlighterTests` pins the
     /// split — line endings above all — on this directly.
     static func splitLines(_ attributed: AttributedString) -> [AttributedString] {
-        let fontless = droppingFonts(attributed)
         var lines: [AttributedString] = []
-        var lineStart = fontless.startIndex
+        var lineStart = attributed.startIndex
 
         // Scalar by scalar, so a "\r\n" — one `Character`, two scalars — cuts at
         // its LF the way the source text's own line count does.
-        for index in fontless.unicodeScalars.indices where fontless.unicodeScalars[index] == "\n" {
-            lines.append(AttributedString(fontless[lineStart..<index]))
-            lineStart = fontless.unicodeScalars.index(after: index)
+        for index in attributed.unicodeScalars.indices where attributed.unicodeScalars[index] == "\n" {
+            lines.append(AttributedString(attributed[lineStart..<index]))
+            lineStart = attributed.unicodeScalars.index(after: index)
         }
-        lines.append(AttributedString(fontless[lineStart..<fontless.endIndex]))
+        lines.append(AttributedString(attributed[lineStart..<attributed.endIndex]))
         return lines
-    }
-
-    /// `attributed` with the font dropped from every run, in both scopes, so the
-    /// diff view's own uniform monospaced face survives.
-    ///
-    /// Both scopes, because a bare `font` is ambiguous with AppKit and SwiftUI
-    /// both in scope and resolves to whichever one the compiler picks — which is
-    /// how a font meant to be dropped stays on.
-    ///
-    /// The AppKit face goes out through `NSAttributedString` rather than through
-    /// `appKit.font = nil`: every typed reference to that key — read, write or
-    /// transform — instantiates a generic requiring `NSFont: Sendable`, a
-    /// conformance AppKit marks unavailable. `NSAttributedString.Key.font` is a
-    /// plain name wrapper with no such requirement. The bridge is lossless for
-    /// what reaches here: HighlightSwift's output is itself decoded with
-    /// `including: \.appKit` (which nests the Foundation scope), so every
-    /// attribute survives the round trip.
-    ///
-    /// Done once for the whole string rather than per line, which also keeps
-    /// slicing down to the substring copy it always wanted to be.
-    private static func droppingFonts(_ attributed: AttributedString) -> AttributedString {
-        var stripped = attributed
-        stripped.swiftUI.font = nil
-
-        let bridged = NSMutableAttributedString(stripped)
-        bridged.removeAttribute(.font, range: NSRange(location: 0, length: bridged.length))
-        // Decoding only throws when a value's type disagrees with the scope's, which
-        // cannot happen for a string this very function just encoded from that scope.
-        return (try? AttributedString(bridged, including: \.appKit)) ?? stripped
     }
 }

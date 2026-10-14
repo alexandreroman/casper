@@ -106,7 +106,7 @@
 - [NSRulerView draws outside its own bounds](references/nsrulerview-unclipped-drawing.md) — nothing clips its draw rects; clip in `draw(_:)`
 - [TextKit 2 layout geometry gotchas](references/textkit2-layout-geometry.md) — spacing lives inside layoutFragmentFrame; probes cost more
 - [Diff surface data flow](references/diff-surface-data-flow.md) — a revision-keyed property carries the document; events use the controller
-- [AttributedString interop limits](references/attributedstring-interop-limits.md) — AppKit-scope colors; `.utf16` needs macOS 26
+- [AttributedString interop limits](references/attributedstring-interop-limits.md) — AppKit-scope colors; edge trim; `.utf16` needs macOS 26
 - [NSTextStorage attribute writes go in ascending order](references/nstextstorage-attribute-run-order.md) — out-of-order writes go quadratic
 - [Rendering-only marks belong outside the text storage](references/rendering-marks-outside-the-text-storage.md) — in the text they poison selection
 - [Sticky bars have three invalidation paths](references/sticky-bar-resolution-paths.md) — the anchor restore re-resolves them off the scroll path

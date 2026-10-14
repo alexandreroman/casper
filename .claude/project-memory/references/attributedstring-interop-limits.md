@@ -1,6 +1,6 @@
 ---
 name: "AttributedString interop limits"
-description: "HighlightSwift emits AppKit-scope attributes on macOS, AttributedString.utf16 needs macOS 26, and the AppKit scope can only be edited through NSAttributedString"
+description: "HighlightSwift emits AppKit-scope attributes on macOS and trims both ends of its input; AttributedString.utf16 needs macOS 26"
 type: reference
 ---
 
@@ -8,9 +8,10 @@ type: reference
 
 ## Carrying HighlightSwift output into AppKit
 
-Two properties of `AttributedString` bound how HighlightSwift's output can be
-carried into AppKit text. The working recipe for both lives in
-`Sources/CasperUI/DiffTextAssembly.swift`.
+Three properties bound how HighlightSwift's output can be carried into AppKit
+text. The working recipe lives in `Sources/CasperUI/DiffTextAssembly.swift`
+(scope and run lengths) and `Sources/CasperUI/DiffHighlighter.swift` (line
+alignment).
 
 - **HighlightSwift returns AppKit-scope attributes on macOS.** Its
   `attributedTextFromData` ends in
@@ -18,8 +19,9 @@ carried into AppKit text. The working recipe for both lives in
   an `NSColor` under `run.attributes.appKit.foregroundColor`. The SwiftUI scope
   is empty: `run.attributes.swiftUI.foregroundColor` is `nil` for every run of
   every highlighted line. HighlightSwift also removes `.font` itself before
-  converting, which is why nothing downstream has to strip fonts to keep a
-  uniform monospaced face.
+  converting, and `DiffTextAssembly.applyHighlight` copies nothing but
+  `appKit.foregroundColor`, so nothing strips fonts to keep a uniform
+  monospaced face.
 - **HighlightSwift's output is not line-aligned with its input.** It trims
   `.whitespacesAndNewlines` off both ends of the text before building its HTML,
   and the HTML import turns every CRLF (and a lone CR) into an LF, so blank
@@ -50,30 +52,3 @@ toolchain's `usr/bin`, so HighlightSwift's resource bundle cannot be found and
 `import SwiftUI` for `Color`-typed literals to resolve, and that
 `NSColor.purple` and `NSColor(Color.purple)` are different colors.
 
-## Editing the AppKit scope goes through `NSAttributedString`
-
-Four constraints hold on this toolchain, each established by `swiftc -typecheck`
-probes and runtime checks:
-
-- **`AttributedString` has no `removeAttribute` / `removeAttributes`.** Both
-  names resolve only to the `AttributeContainer` dynamic-member subscript and
-  fail to type-check.
-- **The `Sendable` requirement sits on the attribute *key*, not on the write.**
-  Every typed reference to `AttributeScopes.AppKitAttributes.FontAttribute`
-  warns — writing `nil`, a plain read (`_ = line.appKit.font`) and subscripting
-  by key type alike. `transformingAttributes(FontKey.self) { $0.value = nil }`
-  is a hard **error**, not a warning.
-- **`@preconcurrency import AppKit` does not suppress it.** It changes nothing.
-- **`including: \.swiftUI` is not a superset of `including: \.appKit`.**
-  Decoding an `NSAttributedString` through the SwiftUI scope leaves
-  `run.attributes.appKit.foregroundColor` nil, so it cannot substitute for the
-  AppKit decode. The reverse nesting does hold: `including: \.appKit` nests the
-  Foundation scope (a `.link` survives), and an `AttributedString` →
-  `NSMutableAttributedString` → `AttributedString(including: \.appKit)` round
-  trip is lossless for AppKit-scope input, colors and links intact.
-
-**How to apply:** strip an AppKit-scope attribute with the untyped
-`NSAttributedString.Key` (e.g. `.font`) on a bridged `NSMutableAttributedString`
-and decode the result back with `including: \.appKit`, which keeps the
-`Sendable` check out of it. `droppingFonts(_:)` in
-`Sources/CasperUI/DiffHighlighter.swift` is the working example.
