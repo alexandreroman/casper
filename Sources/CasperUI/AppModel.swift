@@ -675,7 +675,7 @@ final class AppModel {
         spaces.map { ($0, $0.isCollapsed ? [] : $0.orderedWorkspaces) }
     }
 
-    /// Maps eligible workspaces to their `Cmd+N` shortcut (1-9), numbering
+    /// Maps eligible workspaces to their ⌘1–⌘9 shortcut, numbering
     /// `spacesWithVisibleWorkspaces()` in order. The single definition of the
     /// numbering: the sidebar hint labels and `selectWorkspace(atShortcutNumber:)` both
     /// go through it, on the same input, so the two can never drift apart.
@@ -692,12 +692,12 @@ final class AppModel {
         return numbers
     }
 
-    /// The `Cmd+N` shortcut numbers for the sidebar as it currently stands.
+    /// The ⌘1–⌘9 shortcut numbers for the sidebar as it currently stands.
     var workspaceShortcutNumbers: [UUID: Int] {
         Self.shortcutNumbers(for: spacesWithVisibleWorkspaces())
     }
 
-    /// Whether the sidebar should show the `Cmd+N` shortcut hint in place of
+    /// Whether the sidebar should show the ⌘1–⌘9 shortcut hint in place of
     /// the notification bubble. Set by `WorkspaceShortcutKeyMonitor` while
     /// Cmd is held past the reveal delay.
     var showWorkspaceShortcutHints: Bool = false

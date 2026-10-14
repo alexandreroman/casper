@@ -101,7 +101,7 @@ struct CasperCommands: Commands {
             }
             CommandGroup(replacing: .textEditing) {}
             // Format menu removed: emptying `.textFormatting` drops its items; the
-            // resulting empty stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
+            // resulting empty stub is stripped in AppDelegate.stripEmptyTopLevelMenus(in:).
             CommandGroup(replacing: .textFormatting) {}
         }
 
@@ -131,7 +131,7 @@ struct CasperCommands: Commands {
         CommandGroup(replacing: .toolbar) {}
 
         // Help menu removed: emptying `.help` drops its items; the resulting empty
-        // stub is stripped in AppDelegate.stripEmptyTopLevelMenus().
+        // stub is stripped in AppDelegate.stripEmptyTopLevelMenus(in:).
         CommandGroup(replacing: .help) {}
     }
 

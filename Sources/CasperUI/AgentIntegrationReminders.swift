@@ -9,8 +9,8 @@ import Observation
 /// `AgentIntegrationProbe`); this is only the wiring: run the probe off the main
 /// actor, fold the dismissals in, and publish an ordered list the sidebar can render.
 /// Casper never repairs an agent's configuration — see
-/// `.superpowers/themes/agent-state-detection.md` and the agent-integration policy:
-/// detect and remind, nothing more.
+/// `.superpowers/themes/cli-agents.md` § Reminders in the sidebar and the
+/// agent-integration policy: detect and remind, nothing more.
 ///
 /// Owned by `AppModel`, which forwards the sidebar's and the tests' entry points here
 /// and injects its own `persist` — the same shape `ScriptHookRunner` and
@@ -102,7 +102,7 @@ final class AgentIntegrationReminders {
     /// `reminders` is the published projection.
     @ObservationIgnored private var statuses: [CodingAgent: AgentIntegrationStatus] = [:]
 
-    /// `CodingAgent.reminderID` values the user has dismissed. Mirrors
+    /// `Reminder.dismissalKey` values the user has dismissed. Mirrors
     /// `Session.dismissedAgentReminders`: seeded from the loaded session and written
     /// back by every `persist`.
     @ObservationIgnored private(set) var dismissed: Set<String>

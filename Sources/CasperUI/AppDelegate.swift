@@ -5,8 +5,8 @@ import Foundation
 import UserNotifications
 
 /// Carries lifecycle work that a SwiftUI `App` scene does not express: start the
-/// control server, set the AppKit menu, and save on terminate. Shares the one
-/// `AppModel` with the SwiftUI scene via `AppModel.shared`.
+/// control server, apply the AppKit menu-bar fixups, and save on terminate. Shares
+/// the one `AppModel` with the SwiftUI scene via `AppModel.shared`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate {
     /// Visible title of the standard File menu — see `renameFileMenu(in:)`.
@@ -143,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
         }
 
         // Debug channel for the `debug-casper` harness. Compiled out of release
-        // builds entirely — see the `nm` gating check in the task report.
+        // builds entirely — see the `debug-channel-gating` memory note.
         #if DEBUG
         let debug = DebugServer(socketPath: DebugSocketPath.listenPath(for: AppModel.shared.sessionIdentity),
                                 provider: AppModel.shared)
@@ -161,8 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// every `UNNotificationRequest`, so this is what makes `casper notify` visible.
     private func setupNotifications() {
         // `UNUserNotificationCenter.current()` aborts (does not no-op) when the
-        // process has no bundle identifier — e.g. the bare `swift run` executable
-        // under `make dev`. Same guard the `deliverNotification` closure uses.
+        // process has no bundle identifier — e.g. `swift run` or a raw
+        // `.build/debug/casper` launch. Same guard the `deliverNotification` closure uses.
         guard Bundle.main.bundleIdentifier != nil else { return }
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
@@ -437,7 +437,7 @@ private final class AppMenuDelegateProxy: NSObject, NSMenuDelegate {
 /// during those openings shows Services present and expanded. The item was removed
 /// every single time, always too late to matter. The two hooks are kept as a safety
 /// net for re-injections that happen with no menu open (they also feed
-/// `stripEmptyTopLevelMenus()` a final menu), but the removal that the user
+/// `stripEmptyTopLevelMenus(in:)` a final menu), but the removal that the user
 /// actually sees is the one driven from `AppMenuDelegateProxy.menuNeedsUpdate(_:)`,
 /// which AppKit calls immediately before displaying the menu.
 ///

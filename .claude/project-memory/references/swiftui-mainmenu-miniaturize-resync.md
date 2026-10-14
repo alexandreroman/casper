@@ -9,9 +9,10 @@ type: reference
 Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands`
 in `Sources/CasperUI/MenuCommands.swift`, wired via `CasperApp.body`'s
 `.commands { CasperCommands(model: model) }`). File ← `.newItem`, Edit ←
-`.pasteboard`, View ← `.sidebar`; App/Window use SwiftUI defaults. The File
-slot's menu is titled **"Space"** on the bar — see "Renaming the File menu"
-below; every other placement's visible title is the standard one. Edit
+`.pasteboard`, View ← `.sidebar`; App ← SwiftUI defaults plus the additive
+Check for Updates… group after `.appInfo`; Window uses SwiftUI defaults. The
+File slot's menu is titled **"Space"** on the bar — see "Renaming the File
+menu" below; every other placement's visible title is the standard one. Edit
 Copy/Paste/Select All carry no target —
 `NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)` routes
 through the responder chain to the focused `GhosttySurfaceView` (and to text
@@ -51,7 +52,7 @@ this app — express menus in `.commands`. One genuine SwiftUI limitation remain
 `CommandGroup(replacing: .textFormatting)` / `.help` leaves the empty "Format" /
 "Help" title on the bar (confirmed via Apple Developer Forums; there is no clean
 official fix). Casper strips those empty stubs in a shared
-`stripEmptyTopLevelMenus()` helper called from **both**
+`stripEmptyTopLevelMenus(in:)` helper called from **both**
 `AppDelegate.applicationWillUpdate(_:)` **and** `applicationDidUpdate(_:)`,
 which removes every empty top-level menu (`item.submenu?.numberOfItems == 0`).
 

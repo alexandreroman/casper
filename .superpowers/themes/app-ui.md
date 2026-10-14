@@ -100,9 +100,9 @@ longer does are recorded in `../status.md` § Superseded designs.
 
   One structural consequence: `AppDelegate.renameFileMenu(in:)` recognizes the
   standard File menu by its submenu's **first item title**, in order to retitle
-  it **Space**. That marker is `CasperCommands.newSpaceTitle` — whichever
-  command leads the `.newItem` group is the first item, so putting one ahead of
-  "Add Folder…" moves the marker onto it.
+  it **Space**. That marker is `CasperCommands.newSpaceTitle`, which must stay
+  the first item of the `.newItem` group: a command placed ahead of New Space…
+  breaks the rename unless the constant names it instead.
 - **Dock attention** — the sidebar dot's out-of-app counterpart, owned by
   `DockAttention` (a `DockAttentionPresenting` seam on `AppModel`, over a
   `DockAttentionBackend` seam on `NSApp`, so both the wiring and the latch are

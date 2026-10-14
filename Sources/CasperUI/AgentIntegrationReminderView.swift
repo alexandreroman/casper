@@ -3,7 +3,7 @@ import CasperCore
 import SwiftUI
 
 /// The pinned agent-integration reminders, sitting between the scrolling workspace
-/// list and the "Add Folder…" footer.
+/// list and the pinned footer buttons.
 ///
 /// Non-modal by design: Casper detects an agent's integration and nudges, it never
 /// repairs another tool's configuration (see the agent-integration policy). So these

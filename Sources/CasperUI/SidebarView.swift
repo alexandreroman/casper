@@ -6,7 +6,7 @@ struct SidebarView: View {
 
     var body: some View {
         // Resolve the display order once per body pass: each Space's `orderedWorkspaces`
-        // is a fresh sort, and the rows and the `Cmd+N` hints both need it. Deriving the
+        // is a fresh sort, and the rows and the ⌘1–⌘9 hints both need it. Deriving the
         // shortcut numbers from this very list — through the model's own numbering rule —
         // is what keeps the hints and `selectWorkspace(atShortcutNumber:)` in agreement.
         let ordered = model.spacesWithVisibleWorkspaces()

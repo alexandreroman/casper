@@ -1,6 +1,6 @@
 import AppKit
 
-/// Watches for Cmd being held ≥250ms to reveal the sidebar's `Cmd+N` shortcut
+/// Watches for Cmd being held ≥250ms to reveal the sidebar's ⌘1–⌘9 shortcut
 /// hints (see `WorkspaceRow`), handles `Cmd+1…9` itself so the workspace switch
 /// works even before the hint appears, and mirrors a bare Option press onto
 /// `AppModel.optionKeyHeld` (which turns the title bar's Merge chip into a
