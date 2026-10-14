@@ -79,7 +79,8 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `SocketTransportError` serves both channels; a refused connect — the stale
   socket file a crashed instance leaves — fails the client at once rather than
   at its timeout; a retriable verb gets up to 4 attempts but retries only a
-  failed connection, never an attempt that timed out waiting for the reply),
+  failed connection, never an attempt that timed out waiting for the reply — a
+  deliberate, bounded-cost retry, see [[socket-idempotent-retry]]),
   plus the pure CLI helpers
   `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`. Concurrency
   discipline for the socket classes is in [[swift6-network-concurrency]].

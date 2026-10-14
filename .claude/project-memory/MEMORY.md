@@ -71,6 +71,7 @@
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, not after
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_* vars so no live env leaks in
 - [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — the env override is dial-side only, never listen-side
+- [The idempotent-verb socket retry stays](references/socket-idempotent-retry.md) — deliberate, bounded cost; run the screenshot loop before deleting
 - [In-process GhosttySurfaceView e2e harness](references/ghostty-real-surface-e2e-harness.md) — the real-keyDown recipe; fixed settles, not polling
 - [SwiftUI owns the main menu](references/swiftui-mainmenu-miniaturize-resync.md) — menus are `.commands`; Services needs a delegate proxy
 - [HighlightSwift resource bundle placement](references/highlightswift-resource-bundle.md) — Bundle.module never checks Contents/Resources

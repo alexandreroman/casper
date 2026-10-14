@@ -463,13 +463,22 @@ public enum SocketClientEngine<
     ///
     /// Set `retriable` to true ONLY for idempotent verbs. A transport-level
     /// failure (`SocketTransportError`) then triggers a bounded retry over a fresh
-    /// connection, which papers over the intermittent cross-process
-    /// `ENETDOWN` seen when a slow handler blocks before any response byte
-    /// arrives. A decoded `Response` — even `ok: false` — is a real answer and
+    /// connection. A decoded `Response` — even `ok: false` — is a real answer and
     /// is returned immediately, never retried, so a mutating verb is never
     /// applied twice. Nor is an attempt that timed out waiting for the reply: it
     /// throws as soon as it expires, so the caller waits `timeout`, not a
     /// multiple of it.
+    ///
+    /// The retry is deliberate. Its original cause, an intermittent cross-process
+    /// `ENETDOWN` before any reply byte arrived while a slow handler such as
+    /// `screenshot` ran, may be gone since the server lingers until the client
+    /// closes, but that is unmeasured. It stays because its cost is bounded: it
+    /// fires only on a transport failure reported before the timeout, never after
+    /// one, so it adds at most three 50 ms backoffs and three fast-failing
+    /// attempts. Settle it by measurement, not by reading the code: disable it and
+    /// loop a few hundred `casper debug screenshot` and
+    /// `casper debug read-text --scrollback` calls against a `make dev` instance,
+    /// watching for transport errors.
     public static func send(
         _ command: Command, toSocketAt socketPath: String,
         timeout: TimeInterval = defaultTimeout, retriable: Bool = false

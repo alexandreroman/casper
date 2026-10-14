@@ -93,7 +93,14 @@ See [[debug-channel-gating]].
 - **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot`/`memory` are
   retriable; every injecting verb and `focus` are **not** (they mutate). What a
   retry covers is the shared client's rule, in `core.md` § Design → "Control
-  channel".
+  channel". The retry is deliberate even though its original cause — an
+  intermittent `ENETDOWN` before any reply byte while `screenshot` ran — may
+  be gone since the server lingers until the client closes: it fires only on a
+  transport failure before the timeout, never after one, so its cost is a few
+  50 ms backoffs. Whether that cause survives is settled by disabling the retry
+  and looping a few hundred `casper debug screenshot` and
+  `casper debug read-text --scrollback` calls against `make dev`, watching for
+  transport errors — see [[socket-idempotent-retry]].
 - Logging emits `debug server listening`, `debug command: <verb>` and
   `debug command failed: <verb> — <reason>`, where `<verb>` is the wire
   `DebugCommand.Verb` rawValue — camelCase (`dumpState`), not the CLI's
