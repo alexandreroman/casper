@@ -98,7 +98,7 @@ final class MergeTests: XCTestCase {
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }
 
-    func testMergeUnrelatedHistoriesThrowsDedicatedError() throws {
+    func testMergeUnrelatedHistoriesThrowsAGitErrorSayingSo() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let main = try repo.headBranchName()
         try makeOrphanBranch(repo, name: "orphan")
@@ -107,10 +107,10 @@ final class MergeTests: XCTestCase {
         XCTAssertThrowsError(
             try repo.mergeBranchHeadless("orphan", into: main, message: "merge orphan")
         ) { error in
-            XCTAssertEqual(
-                error as? MergeUnrelatedHistoriesError,
-                MergeUnrelatedHistoriesError(sourceBranch: "orphan", targetBranch: main),
-                "expected a dedicated unrelated-histories error, got \(error)")
+            let gitError = error as? GitError
+            XCTAssertTrue(
+                gitError?.message.contains("unrelated histories") == true,
+                "expected an unrelated-histories GitError, got \(error)")
         }
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }

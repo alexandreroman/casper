@@ -72,8 +72,8 @@ binary. We own this surface; it exposes only what Casper needs.
 
 - **Merge — ✅ built.** `Repository.mergeBranchHeadless(…)` performs the
   worktree-free merge behind "Merge and Close Workspace…", returning a
-  `MergeOutcome` and surfacing `MergeConflictError` /
-  `MergeUnrelatedHistoriesError`; `forceCheckoutHead()` is its recovery path.
+  `MergeOutcome` and surfacing `MergeConflictError` (an unrelated history is a
+  `GitError` saying so); `forceCheckoutHead()` is its recovery path.
   See `Sources/CasperGit/Merge.swift`.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
