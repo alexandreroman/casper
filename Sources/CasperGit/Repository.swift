@@ -349,7 +349,7 @@ public final class Repository {
                 // error is logged rather than lost.
                 guard let deltaPtr = git_diff_get_delta(diff, i) else { continue }
                 let file = Repository.unreadableFile(delta: deltaPtr)
-                log.error("""
+                gitLog.error("""
                     patch skipped for \(file.id, privacy: .public): \
                     \(String(describing: error), privacy: .public)
                     """)

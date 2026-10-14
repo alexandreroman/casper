@@ -51,7 +51,7 @@ extension Repository {
                 try gitCheck(git_diff_find_similar(diff, &options))
             }
         } catch {
-            log.error("rename detection skipped: \(String(describing: error), privacy: .public)")
+            gitLog.error("rename detection skipped: \(String(describing: error), privacy: .public)")
         }
     }
 
