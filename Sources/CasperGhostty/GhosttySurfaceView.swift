@@ -743,9 +743,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // refresh rate, or both. Two screens sharing a scale factor change no backing
         // property, and even a scale change does not always call
         // `viewDidChangeBackingProperties` (ghostty-org/ghostty#2731), so this is the one
-        // notification sure to report the move: re-push everything the window governs, as
-        // upstream's `windowDidChangeScreen` does, or libghostty keeps rendering for the
-        // screen the window just left.
+        // notification sure to report the move: re-push everything the window governs, or
+        // libghostty keeps rendering for the screen the window just left. Upstream's
+        // `windowDidChangeScreen` re-pushes the same values, but defers the backing-property
+        // pass to the next main-queue turn; Casper pushes them all at once.
         windowObservers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeScreenNotification, object: window, queue: .main
         ) { [weak self] _ in
@@ -879,7 +880,9 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // The flag is side-agnostic: releasing a right-hand key while its left twin is
         // held leaves it set. Only the device-dependent side bit tells that release apart
         // from a press, and a press reported there would leave libghostty with two presses
-        // and no release for the key.
+        // and no release for the key. Left-side keys carry no side check, exactly like
+        // upstream `SurfaceView_AppKit.swift`: releasing left Shift while right Shift is held
+        // still reports a press, as in Ghostty.
         let sideBit: Int32
         switch keyCode {
         case 0x3C: sideBit = NX_DEVICERSHIFTKEYMASK
