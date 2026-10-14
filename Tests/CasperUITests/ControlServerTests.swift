@@ -332,7 +332,8 @@ final class ControlServerTests: XCTestCase {
         XCTAssertTrue(click.ok)
         let afterClick = await handleAsync(
             server,
-            ControlCommand(verb: .browserEval, workspace: id.uuidString, script: "document.querySelector('#btn').textContent"))
+            ControlCommand(
+                verb: .browserEval, workspace: id.uuidString, script: "document.querySelector('#btn').textContent"))
         XCTAssertEqual(afterClick.text, "\"clicked\"")
 
         let type = await handleAsync(
@@ -341,7 +342,8 @@ final class ControlServerTests: XCTestCase {
         XCTAssertTrue(type.ok)
         let afterType = await handleAsync(
             server,
-            ControlCommand(verb: .browserEval, workspace: id.uuidString, script: "document.querySelector('#inp').value"))
+            ControlCommand(
+                verb: .browserEval, workspace: id.uuidString, script: "document.querySelector('#inp').value"))
         XCTAssertEqual(afterType.text, "\"hello\"")
     }
 

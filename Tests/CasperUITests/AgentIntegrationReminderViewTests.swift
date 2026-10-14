@@ -110,7 +110,8 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         ])
         XCTAssertEqual(model.agentIntegrationReminders.count, 3)
 
-        let size = layoutSize(for: AgentIntegrationReminderView(model: model), proposedWidth: Self.narrowestSidebarWidth)
+        let size = layoutSize(
+            for: AgentIntegrationReminderView(model: model), proposedWidth: Self.narrowestSidebarWidth)
 
         // The load-bearing half: an unbounded label would report its full single-line
         // width here and drag the whole sidebar column open with it.
@@ -136,13 +137,14 @@ final class AgentIntegrationReminderViewTests: XCTestCase {
         let saneWidth = layoutSize(for: AgentIntegrationReminderView(model: sane)).width
         XCTAssertGreaterThan(saneWidth, 0)
 
+        let absurdView = AgentIntegrationReminderView(model: absurd)
         // Uncapped, the same row reports its whole version on one line — a four-figure
         // width, which is what would drag the sidebar column open behind it. The slack
         // covers the few extra characters a capped version is allowed to add.
-        XCTAssertLessThan(layoutSize(for: AgentIntegrationReminderView(model: absurd)).width, saneWidth + 80)
+        XCTAssertLessThan(layoutSize(for: absurdView).width, saneWidth + 80)
         // And inside the column it still wraps rather than pushing it wider.
         XCTAssertEqual(
-            layoutSize(for: AgentIntegrationReminderView(model: absurd), proposedWidth: Self.narrowestSidebarWidth).width,
+            layoutSize(for: absurdView, proposedWidth: Self.narrowestSidebarWidth).width,
             Self.narrowestSidebarWidth,
             accuracy: 0.5)
     }
