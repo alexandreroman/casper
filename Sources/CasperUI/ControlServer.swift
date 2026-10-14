@@ -209,7 +209,7 @@ final class ControlServer {
             guard let (predicate, description) = Self.waitPredicate(for: command) else {
                 reply(.failure("wait needs a <selector> or --js <expr>")); return
             }
-            let timeout = command.waitTimeout ?? 5000
+            let timeout = command.waitTimeout ?? ControlCommand.defaultWaitTimeoutMs
             replyWhenReady(workspace: id, reply: reply) {
                 await model.browserAutomation.controlBrowserWait(
                     js: predicate, timeoutMs: timeout, description: description, in: id).map { _ in "" }
@@ -217,7 +217,7 @@ final class ControlServer {
             return
         case .browserReload:
             let waitReady = command.waitReady ?? false
-            let timeout = command.waitTimeout ?? 5000
+            let timeout = command.waitTimeout ?? ControlCommand.defaultWaitTimeoutMs
             replyWhenReady(workspace: id, reply: reply) {
                 await model.browserAutomation.controlBrowserReload(
                     waitReady: waitReady, timeoutMs: timeout, in: id).map { _ in "" }

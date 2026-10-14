@@ -280,7 +280,9 @@ struct BrowserCommand: ParsableCommand {
         // Give the socket read a margin beyond the app-side deadline (the same
         // `--timeout` the command carries) so the reply always arrives before the
         // client gives up.
-        var commandTimeout: TimeInterval { TimeInterval((timeout ?? 5000) / 1000 + 5) }
+        var commandTimeout: TimeInterval {
+            TimeInterval((timeout ?? ControlCommand.defaultWaitTimeoutMs) / 1000 + 5)
+        }
 
         func makeCommand() throws -> ControlCommand {
             let hasSelector = !(selector?.isEmpty ?? true)
@@ -294,7 +296,7 @@ struct BrowserCommand: ParsableCommand {
             if hasJS && (visible || gone) {
                 throw exitWithError("--visible and --gone apply to the selector form only, not --js")
             }
-            let ms = timeout ?? 5000
+            let ms = timeout ?? ControlCommand.defaultWaitTimeoutMs
             guard ms > 0 else { throw exitWithError("--timeout must be a positive number of milliseconds") }
             return ControlCommand(
                 verb: .browserWait, workspace: try requireSelector(target),

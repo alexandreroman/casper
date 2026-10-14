@@ -97,7 +97,7 @@ protocol WorkspaceRefCommand: ParsableCommand {
 }
 
 extension WorkspaceRefCommand {
-    var commandTimeout: TimeInterval { 5 }
+    var commandTimeout: TimeInterval { ControlSocketClient.defaultTimeout }
 
     func run() throws {
         let response = try sendControl(makeCommand(), retriable: false, timeout: commandTimeout)

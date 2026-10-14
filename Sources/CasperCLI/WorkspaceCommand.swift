@@ -9,6 +9,10 @@ struct WorkspaceCommand: ParsableCommand {
         abstract: "List, identify, create, and delete workspaces.",
         subcommands: [List.self, Current.self, New.self, Delete.self])
 
+    /// The client timeout for the verbs the app answers only after slow work:
+    /// `new` and `delete`, well beyond the default 5 s.
+    static let slowVerbTimeout: TimeInterval = 35
+
     struct List: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "List all workspaces.")
 
@@ -75,7 +79,7 @@ struct WorkspaceCommand: ParsableCommand {
             // can exceed the default 5s on a large repo or broad copyFiles.
             // Allow well beyond it — mirroring `workspace delete` — so a slow but
             // successful creation is not misreported as a client-side timeout.
-            let response = try sendControl(makeCommand(), retriable: false, timeout: 35)
+            let response = try sendControl(makeCommand(), retriable: false, timeout: WorkspaceCommand.slowVerbTimeout)
             let info = try requireFirst(response.workspaces, "workspace")
             emit(WorkspaceNewOut(
                 workspace: info.id, name: info.name,
@@ -92,7 +96,7 @@ struct WorkspaceCommand: ParsableCommand {
         // ScriptHookRunner.teardownTimeout) before replying, so allow well beyond the
         // default 5s or a slow teardown would be misreported as a client-side
         // timeout even though the deletion succeeds.
-        var commandTimeout: TimeInterval { 35 }
+        var commandTimeout: TimeInterval { WorkspaceCommand.slowVerbTimeout }
         func makeCommand() throws -> ControlCommand {
             ControlCommand(verb: .workspaceDelete, workspace: try requireSelector(target))
         }

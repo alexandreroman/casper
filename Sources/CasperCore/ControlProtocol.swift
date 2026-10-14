@@ -48,6 +48,11 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     /// limit well below that transport ceiling.
     public static let infoMessageMaxBytes = 256 * 1024
 
+    /// The app-side deadline of `browserWait` and `browserReload`, in
+    /// milliseconds, when the command carries no `waitTimeout`. `casper browser
+    /// wait` sizes its socket timeout from the same value.
+    public static let defaultWaitTimeoutMs = 5000
+
     public var verb: Verb
     public var workspace: String?   // target selector: workspace id or name (nil = app's selected)
     public var state: String?       // statusSet: AgentState raw value

@@ -244,7 +244,8 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// `BrowserCapture` instead.
     func snapshot() async throws -> Data {
         if webView.window == nil {
-            webView.frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
+            let viewport = BrowserCapture.defaultViewport
+            webView.frame = NSRect(x: 0, y: 0, width: viewport.width, height: viewport.height)
         }
         return try await BrowserCapture.snapshotPNG(of: webView)
     }

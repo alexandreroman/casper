@@ -9,6 +9,9 @@ import WebKit
 /// regardless of the panel's actual size (or whether it's even mounted).
 @MainActor
 enum BrowserCapture {
+    /// The viewport a capture renders at when the caller sets no size: the
+    /// off-screen capture's default, and the frame given to a detached live view.
+    static let defaultViewport = (width: 1280, height: 800)
     /// How long to wait for the page's navigation to finish before giving up. Kept
     /// under the 15 s automation socket timeout so the CLI still gets a reply.
     private static let loadTimeout: Duration = .seconds(10)

@@ -101,7 +101,10 @@ final class BrowserAutomationController {
         return await mapped {
             guard let ws = resolveWorkspace(workspaceID) else { throw Self.workspaceNotFound }
             let target = try resolveScreenshotURL(for: ws, override: url)
-            let png = try await BrowserCapture.snapshot(url: target, width: width ?? 1280, height: height ?? 800)
+            let png = try await BrowserCapture.snapshot(
+                url: target,
+                width: width ?? BrowserCapture.defaultViewport.width,
+                height: height ?? BrowserCapture.defaultViewport.height)
             try await Self.writeScreenshot(png, to: path)
             return path
         }
