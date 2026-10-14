@@ -29,6 +29,8 @@ CI, test, and documentation-only work is left out.
   "Casper <casper@localhost>"; when one of those variables is blank or
   malformed, it names that variable instead, and shows both remedies when your
   Git configuration is at fault too. Nothing is deleted.
+- Casper expects the casper-skills plugin 0.3.0 or later, and reminds you to
+  update an older one.
 
 ### Fixed
 
