@@ -1,4 +1,6 @@
 import AppKit
+import Foundation
+import WebKit
 import XCTest
 @testable import CasperUI
 
@@ -28,6 +30,21 @@ final class BrowserCaptureTests: XCTestCase {
 
     func testCapturesWideViewport() async throws {
         try await assertCapture(width: 1400, height: 900)
+    }
+
+    /// A page that navigates itself before its load event (a head script setting
+    /// `location.href`, an SPA root redirecting) cancels its first navigation. That
+    /// load was superseded, not failed: the capture waits for the successor's
+    /// `didFinish` instead of failing on the "cancelled" error.
+    func testASupersededNavigationDoesNotFailTheCapture() async throws {
+        let delegate = NavigationLoadDelegate(url: URL(string: "https://example.com/")!)
+        let webView = WKWebView(frame: .zero)
+        let superseded = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
+
+        delegate.webView(webView, didFail: nil, withError: superseded)
+        delegate.webView(webView, didFinish: nil)
+
+        try await delegate.waitForLoad()
     }
 
     /// Capture at `width`×`height` and assert the PNG is non-empty and its pixel

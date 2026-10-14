@@ -159,6 +159,14 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         return nil
     }
 
+    /// Whether a navigation error only reports a load superseded by a newer one
+    /// (WebKit cancels the old navigation): not a failure, as the newer load
+    /// reports its own outcome.
+    nonisolated static func isSupersededLoad(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
     #if DEBUG
     /// Test seam: the URL a reload would re-issue (nil ⇒ reload() falls through to
     /// the live page). Lets a unit test assert the failed-state reload path without
@@ -396,9 +404,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     }
 
     private func handleFailure(_ error: Error) {
-        // A load superseded by a newer one reports as cancelled — not a failure.
-        let nsError = error as NSError
-        guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
+        guard !Self.isSupersededLoad(error) else { return }
         failedURL = Self.failingURL(from: error)
         loadError = error.localizedDescription
         syncNav()

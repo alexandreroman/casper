@@ -172,11 +172,11 @@ enum BrowserCapture {
 
 /// Bridges a `WKWebView`'s navigation completion to an `async` waiter. Resumes its
 /// continuation exactly once — on `didFinish` (success), `didFail` /
-/// `didFailProvisionalNavigation` (a clear load error), or `fail(message:)` (the
-/// timeout). `WKNavigationDelegate` is already `@MainActor`, so the callbacks and
+/// `didFailProvisionalNavigation` (a clear load error; a superseded load is not
+/// one), or `fail(message:)` (the timeout). `WKNavigationDelegate` is already `@MainActor`, so the callbacks and
 /// the continuation are main-actor-isolated with no data race.
 @MainActor
-private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
+final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
     private let url: URL
     private var continuation: CheckedContinuation<Void, Error>?
     /// The outcome of the first `settle`, kept so a callback landing before
@@ -209,7 +209,11 @@ private final class NavigationLoadDelegate: NSObject, WKNavigationDelegate {
         continuation = nil
     }
 
+    /// Settle with a load failure, unless the load was only superseded (a page
+    /// redirecting itself before its load event): the successor's `didFinish`
+    /// settles the wait instead, still bounded by the timeout.
     private func loadFailure(_ error: Error) {
+        guard !BrowserCoordinator.isSupersededLoad(error) else { return }
         settle(.failure(OperationError(
             message: "failed to load \(url.absoluteString) for capture: \(error.localizedDescription)")))
     }

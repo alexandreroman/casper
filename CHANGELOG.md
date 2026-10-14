@@ -62,6 +62,8 @@ CI, test, and documentation-only work is left out.
   line, get syntax colours in the diff view.
 - `casper browser reload --wait` waits for the reloaded page to finish loading
   instead of returning before the reload has started.
+- `casper browser screenshot` with `--width`, `--height` or `--url` no longer
+  fails on a page that redirects itself while loading.
 
 ## [0.1.3] - 2026-10-13
 

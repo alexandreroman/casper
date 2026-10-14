@@ -46,8 +46,11 @@ unit-testable, but not a target of its own.
   capturer shares the `.default()` data store (cookies/localStorage carry),
   hosts the view in an off-screen `NSWindow` at `(-100000,-100000)`, waits for
   `didFinish`, and does a **fresh load** — so the live DOM's client-side state
-  (SPA route, unsaved input) is not reproduced, only the URL's page. Raw
-  dimensions only: no user-agent / devicePixelRatio emulation.
+  (SPA route, unsaved input) is not reproduced, only the URL's page. A load
+  superseded by the page redirecting itself reports as cancelled; the capturer
+  ignores it like the coordinator does (`BrowserCoordinator.isSupersededLoad`)
+  and waits for the successor. Raw dimensions only: no user-agent /
+  devicePixelRatio emulation.
 - **`load <url>` vs `open <url>`:** both point the single inspector browser
   surface at a URL and reuse its cached coordinator, but `open` also
   `setInspectorTab(.browser)` (selects the tab + expands the panel) while `load`
