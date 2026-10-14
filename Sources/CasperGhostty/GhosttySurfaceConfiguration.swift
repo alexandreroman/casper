@@ -21,20 +21,17 @@ public struct GhosttySurfaceConfiguration {
     /// actually launches, so it inherits the user's real `$SHELL`/PATH.
     public var initialInput: String?
     public var environment: [String: String]
-    public var scaleFactor: Double
     public var fontSize: Float
 
     public init(
         workingDirectory: String? = nil,
         initialInput: String? = nil,
         environment: [String: String] = [:],
-        scaleFactor: Double = 1.0,
         fontSize: Float = 0  // 0 → libghostty default
     ) {
         self.workingDirectory = workingDirectory
         self.initialInput = initialInput
         self.environment = environment
-        self.scaleFactor = scaleFactor
         self.fontSize = fontSize
     }
 
@@ -44,9 +41,11 @@ public struct GhosttySurfaceConfiguration {
     ///
     /// `userdata` is handed back verbatim to libghostty's clipboard/close
     /// callbacks, so the caller can recover the owning view from it.
-    public func withCValue<R>(
+    /// `scaleFactor` is the hosting window's backing scale, which the surface is born at.
+    func withCValue<R>(
         nsview: UnsafeMutableRawPointer,
         userdata: UnsafeMutableRawPointer?,
+        scaleFactor: Double,
         _ body: (inout ghostty_surface_config_s) -> R
     ) -> R {
         var c = ghostty_surface_config_new()

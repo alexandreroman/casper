@@ -240,22 +240,19 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     // retry a few times and only then surface a visible error. A later re-parent keeps
     // the existing surface (the `surface == nil` guard makes this a no-op then).
     private func createSurfaceIfNeeded() {
-        guard surface == nil, !invalidated, window != nil else { return }
+        guard surface == nil, !invalidated, let window else { return }
         #if DEBUG
         debugTotalSurfaceCreationAttempts += 1
         #endif
         let nsview = Unmanaged.passUnretained(self).toOpaque()
-        // The configuration's `scaleFactor` overwrites libghostty's own, so seed it
-        // from the hosting window: left at the `1.0` default, every surface is born at
-        // 1x on a Retina display and only corrected by the `pushContentScale()` below,
-        // after the first frame has already been rendered at the wrong scale.
-        var configuration = self.configuration
-        configuration.scaleFactor = Double(window?.backingScaleFactor ?? 1.0)
         do {
             // userdata == nsview: libghostty hands this pointer back verbatim to the
-            // clipboard callbacks, letting them recover this view.
+            // clipboard callbacks, letting them recover this view. The scale comes from the
+            // hosting window: born at 1x on a Retina display, the surface would render its
+            // first frame at the wrong scale before the `pushWindowGeometry()` below.
             surface = try GhosttySurface(
-                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview)
+                runtime: runtime, configuration: configuration, nsview: nsview, userdata: nsview,
+                scaleFactor: Double(window.backingScaleFactor))
             #if DEBUG
             // Censused here rather than from `GhosttySurface.init`: that init is
             // nonisolated (the class is main-thread affine only by contract) and the
@@ -266,9 +263,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
             #endif
             // The surface init typed the queued command into the new child (see the
             // ghostty-initial-input-utf8 note). Drop it now that it has run, so no later
-            // creation on this view can replay it. The local copy above is what was just
-            // used, so this cannot cancel the injection that already happened.
-            self.configuration.initialInput = nil
+            // creation on this view can replay it.
+            configuration.initialInput = nil
             surfaceRetry.cancel()
             surfaceCreationAttempts = 0
             removeErrorOverlay()

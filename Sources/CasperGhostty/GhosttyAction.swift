@@ -28,7 +28,7 @@ public enum GhosttyAction: Equatable {
     case other(tag: UInt32)
 
     /// Total decode: every tag maps to a case (`.other` for the unmodeled).
-    public static func decode(_ c: ghostty_action_s) -> GhosttyAction {
+    static func decode(_ c: ghostty_action_s) -> GhosttyAction {
         switch c.tag {
         case GHOSTTY_ACTION_RENDER:
             return .render

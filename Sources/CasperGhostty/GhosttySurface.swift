@@ -9,20 +9,21 @@ final class GhosttySurface {
     /// exists, since the surface belongs to that app and frees itself into it.
     private let runtime: GhosttyRuntime
 
-    /// Create a surface hosted in `nsview`. `userdata` is handed back verbatim to
-    /// libghostty's clipboard/close callbacks — pass the view pointer so those
-    /// callbacks can recover the owning `GhosttySurfaceView`. Throws if the
-    /// runtime has no app or libghostty returns null.
+    /// Create a surface hosted in `nsview`, at the hosting window's `scaleFactor`.
+    /// `userdata` is handed back verbatim to libghostty's clipboard/close callbacks —
+    /// pass the view pointer so those callbacks can recover the owning
+    /// `GhosttySurfaceView`. Throws if the runtime has no app or libghostty returns null.
     init(
         runtime: GhosttyRuntime,
         configuration: GhosttySurfaceConfiguration,
         nsview: UnsafeMutableRawPointer,
-        userdata: UnsafeMutableRawPointer?
+        userdata: UnsafeMutableRawPointer?,
+        scaleFactor: Double
     ) throws {
         guard let app = runtime.app else {
             throw GhosttyError(reason: "runtime has no app")
         }
-        let created = configuration.withCValue(nsview: nsview, userdata: userdata) { c in
+        let created = configuration.withCValue(nsview: nsview, userdata: userdata, scaleFactor: scaleFactor) { c in
             ghostty_surface_new(app, &c)
         }
         guard let created else {

@@ -7,13 +7,12 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         var config = GhosttySurfaceConfiguration()
         config.workingDirectory = "/tmp/wt"
         config.environment = ["CASPER_PORT": "40000"]
-        config.scaleFactor = 2.0
 
         // A throwaway non-null pointer stands in for the NSView.
         var sentinel = 0
         withUnsafeMutablePointer(to: &sentinel) { raw in
             let nsview = UnsafeMutableRawPointer(raw)
-            config.withCValue(nsview: nsview, userdata: nil) { c in
+            config.withCValue(nsview: nsview, userdata: nil, scaleFactor: 2.0) { c in
                 XCTAssertEqual(c.platform_tag, GHOSTTY_PLATFORM_MACOS)
                 XCTAssertEqual(c.platform.macos.nsview, nsview)
                 XCTAssertEqual(c.scale_factor, 2.0)
@@ -29,7 +28,7 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         let config = GhosttySurfaceConfiguration()
         var sentinel = 0
         withUnsafeMutablePointer(to: &sentinel) { raw in
-            config.withCValue(nsview: UnsafeMutableRawPointer(raw), userdata: nil) { c in
+            config.withCValue(nsview: UnsafeMutableRawPointer(raw), userdata: nil, scaleFactor: 1.0) { c in
                 XCTAssertNil(c.working_directory)
                 XCTAssertEqual(c.env_var_count, 0)
             }
@@ -47,7 +46,7 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
         var sentinel = 0
         withUnsafeMutablePointer(to: &sentinel) { raw in
             let nsview = UnsafeMutableRawPointer(raw)
-            config.withCValue(nsview: nsview, userdata: nil) { c in
+            config.withCValue(nsview: nsview, userdata: nil, scaleFactor: 1.0) { c in
                 XCTAssertNil(c.initial_input)
             }
         }
