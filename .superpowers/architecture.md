@@ -24,11 +24,9 @@ bundle identifier — a bare executable cannot post a notification at all (see
 1. **Native & performant** — macOS-native UI; GPU-accelerated terminal rendering
    via libghostty.
 2. **Prefer built-in macOS frameworks** over third-party code.
-3. **Minimum dependencies** — only five external deps (GhosttyKit,
-   swift-argument-parser, libgit2 behind the in-house `CasperGit`,
-   HighlightSwift for diff syntax highlighting, and Sparkle for auto-update);
-   everything else uses system frameworks. See [[dependency-policy]] for the
-   full rule, rationale, and the arm64 / `-Osize` build stance.
+3. **Minimum dependencies** — five sanctioned external deps; everything else
+   uses system frameworks. [[dependency-policy]] lists them and carries the
+   rule, the rationale and the arm64 / `-Osize` build stance.
 4. **No notarization.**
 
 ## Locked decisions

@@ -57,18 +57,5 @@ symlinks and counts the payload several times) — the one place where the
 smallest-binary rule is knowingly traded away, and thinning it to arm64 would
 reclaim 1.2 MB of that (see [[binary-size-budget]] for why it is not thinned).
 Casper stays ad-hoc signed, so the EdDSA appcast signature is the only trust
-anchor: see the plan [[sparkle-eddsa-key]].
+anchor: see the note [[sparkle-eddsa-key]].
 
-**Workspace info panel rendering:** the panel renders Markdown supplied by the
-`casper info` CLI without any external package. macOS parses Markdown natively
-(`AttributedString(markdown:)` with `interpretedSyntax: .full`), and
-`MarkdownAttributedString` (`Sources/CasperUI/MarkdownAttributedString.swift`)
-turns the resulting block-level `presentationIntent` into a styled
-`NSAttributedString` — headings, lists, code blocks, block quotes, and GFM
-tables (via `NSTextTable`) all come from that hand-rolled renderer, not a
-library. `MarkdownTextView` (`Sources/CasperUI/MarkdownTextView.swift`) hosts
-that attributed string in a read-only, selectable `NSTextView` (TextKit), which
-is also what gives the panel the native pointing-hand cursor over a link — a
-SwiftUI `Text` cannot do that (see the `nstextview-link-cursor-and-selection`
-project memory note). Images (`![alt](url)`) render as their alt text only, so
-the panel makes no network requests of its own.

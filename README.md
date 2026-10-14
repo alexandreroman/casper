@@ -314,7 +314,7 @@ Download the current intermediate from
 install it with
 `security add-certificates -k login.keychain-db AppleWWDRCAG3.cer`.
 
-See the plan
+See the note
 [`tcc-screen-recording-needs-a-bundle.md`](./.claude/project-memory/references/tcc-screen-recording-needs-a-bundle.md)
 for the full rationale.
 

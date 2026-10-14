@@ -6,30 +6,17 @@ type: feedback
 
 # Debug channel and logging gating
 
-The debug/observability control channel (the `casper debug` subcommand, its
-`DebugSocketServer`, and the GUI wiring that exposes surfaces to it) is gated
-**entirely by `#if DEBUG`** and must **never** be present in a distributed
-release. Enablement is 100 % compile-time — no runtime flag or environment
-variable may turn it on in a release binary. The `CASPER_DEBUG_SOCKET`
-environment variable only selects the socket *path*, never whether the channel
-exists.
+The debug channel (`casper debug`, its socket server and the GUI bridge) and
+the verbose `.debug`/`.info` logs are gated at compile time by `#if DEBUG`; the
+hard constraint and the logging floor are stated in
+`.superpowers/themes/debug.md` § Hard constraint. No runtime flag or environment
+variable may enable the channel in a release binary.
 
-Structured logging (`CasperLog` over `os.Logger`) follows the same rule with a
-diagnostic floor: `.notice`/`.error`/`.fault` stay compiled in for field
-diagnosis; `.debug`/`.info` verbose events are gated by `#if DEBUG`. `.notice`
-is the tier for a rare, user-visible outcome worth reading back from a shipped
-build — a diff refresh's shape, a Space built without an initial commit, a
-denied untrusted clipboard read or write — so its call sites are ungated by
-design and deliberately few.
-
-**Scope note:** this gating applies only to the `casper debug` /
-`DebugSocketServer` channel. The separate domain **control channel** (`status`/
-`progress`/`notify`/`terminal`/`browser`/`diff`/`workspace`, over
-`$CASPER_CONTROL_SOCKET`) ships in every release build by design — see
-[[domain-cli-control-channel]]. Do not conflate the two when reasoning about
-what is release-safe. The generic framing engine both channels build on,
-`Sources/CasperCore/SocketTransport.swift`, is ungated for that reason: the
-always-shipping control channel needs it.
+**Scope note:** the gating covers only the `casper debug` channel. The domain
+control channel ships in every release build by design — see
+[[domain-cli-control-channel]] — and so does the generic framing engine both
+channels build on, `Sources/CasperCore/SocketTransport.swift`. Do not conflate
+the two when reasoning about what is release-safe.
 
 **Why:** the debug channel is an injectable local control socket; leaving it in
 a shipped build is an attack surface, and it must never reach a distributed
@@ -42,10 +29,8 @@ way to diagnose a crash reported from the field.
 **How to apply:** wrap the whole `casper debug` code path and its subcommand
 registration in `#if DEBUG`, leaving the shared transport out of the guard. For
 logs, keep `.notice`/`.error`/`.fault` unconditional and wrap `.debug`/`.info`
-call sites in `#if DEBUG`. Prefer tying
-gating to the build configuration (`#if DEBUG`) over a custom compilation flag.
-See the [dependency policy](dependency-policy.md) note and the spec at
-`.superpowers/themes/debug.md`.
+call sites in `#if DEBUG`. Tie gating to the build configuration (`#if DEBUG`),
+never to a custom compilation flag.
 
 **Cross-module visibility gotcha:** `GhosttySurfaceView`'s `debug*` accessors
 (`debugHasSurface`, `debugReadText`, `debugSendText`, `debugSendKeys`,

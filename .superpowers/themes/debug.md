@@ -23,7 +23,11 @@ side (else `CASPER_SESSION` derives it, else the default) — a listener always
 binds the session-derived path (`DebugSocketPath.listenPath(for:)`), ignoring
 the env override outright, see [[socket-listen-vs-dial-path]]. Logging keeps a
 floor: `.notice`/`.error`/`.fault` (and `warning`, an `.error`-level alias)
-always compiled in, `.debug`/`.info` gated. See [[debug-channel-gating]].
+always compiled in, `.debug`/`.info` gated. `.notice` is the tier for a rare
+outcome worth reading back from a shipped build — a diff refresh's shape, a
+Space built without an initial commit, a reclaimed worktree directory, a denied
+untrusted clipboard read or write — so its call sites are ungated by design and
+deliberately few. See [[debug-channel-gating]].
 
 ## Design
 
