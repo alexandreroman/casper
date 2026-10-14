@@ -15,6 +15,11 @@ private let maxSocketFrameBytes = 8 * 1024 * 1024
 /// that never closes cannot leak the connection.
 private let socketReplyLingerTimeout: TimeInterval = 15
 
+/// How long `SocketServerEngine.start()` waits for its listener to bind before
+/// giving up. A local Unix-domain listener binds near-instantly; the bound only
+/// keeps a listener that never reaches `.ready`/`.failed` from hanging the app.
+private let socketBindTimeout: TimeInterval = 5
+
 /// A transport failure on either socket channel: the exchange never produced a
 /// decoded response (no socket, refused connect, timeout, truncated frame…).
 public struct SocketTransportError: Error, Equatable {
@@ -148,7 +153,6 @@ public final class SocketServerEngine<
     }
 
     private let socketPath: String
-    private let bindTimeout: TimeInterval
     private let queue: DispatchQueue
     private let state = OSAllocatedUnfairLock<State>(uncheckedState: State())
     /// Decoder for incoming command frames, built once per server rather than once
@@ -164,14 +168,12 @@ public final class SocketServerEngine<
     /// Invoked on the server queue if the listener fails.
     public var onFailure: ((Error) -> Void)?
 
-    /// `queueLabel` defaults to a per-channel label derived from the command type
-    /// (e.g. `casper.socket.server.ControlCommand`), so each channel's serial queue
-    /// stays individually identifiable in Instruments and crash reports.
-    public init(socketPath: String, bindTimeout: TimeInterval = 5,
-                queueLabel: String = "casper.socket.server.\(Command.self)") {
+    public init(socketPath: String) {
         self.socketPath = socketPath
-        self.bindTimeout = bindTimeout
-        self.queue = DispatchQueue(label: queueLabel)
+        // A per-channel label derived from the command type (e.g.
+        // `casper.socket.server.ControlCommand`), so each channel's serial queue
+        // stays individually identifiable in Instruments and crash reports.
+        self.queue = DispatchQueue(label: "casper.socket.server.\(Command.self)")
     }
 
     public func start() throws {
@@ -231,7 +233,7 @@ public final class SocketServerEngine<
 
         // Bound the wait so a listener that never reaches `.ready`/`.failed`
         // cannot hang the caller forever.
-        if bound.wait(timeout: .now() + bindTimeout) == .timedOut {
+        if bound.wait(timeout: .now() + socketBindTimeout) == .timedOut {
             abandonListener()
             throw SocketTransportError(reason: "timed out binding socket at \(socketPath)")
         }
@@ -469,20 +471,15 @@ public enum SocketClientEngine<
     /// applied twice. Nor is an attempt that timed out waiting for the reply: it
     /// throws as soon as it expires, so the caller waits `timeout`, not a
     /// multiple of it.
-    ///
-    /// `queueLabel` defaults to a per-channel label derived from the command type
-    /// (e.g. `casper.socket.client.ControlCommand`), so each channel's serial queue
-    /// stays individually identifiable in Instruments and crash reports.
     public static func send(
         _ command: Command, toSocketAt socketPath: String,
-        timeout: TimeInterval = defaultTimeout, retriable: Bool = false,
-        queueLabel: String = "casper.socket.client.\(Command.self)"
+        timeout: TimeInterval = defaultTimeout, retriable: Bool = false
     ) throws -> Response {
         let maxAttempts = retriable ? maxRetriableAttempts : 1
         var lastError: SocketTransportError?
         for attempt in 1...maxAttempts {
             do {
-                return try sendOnce(command, toSocketAt: socketPath, timeout: timeout, queueLabel: queueLabel)
+                return try sendOnce(command, toSocketAt: socketPath, timeout: timeout)
             } catch is SocketReplyTimeout {
                 throw SocketTransportError(reason: "timed out talking to \(socketPath)")
             } catch let error as SocketTransportError {
@@ -502,7 +499,7 @@ public enum SocketClientEngine<
     /// `SocketTransportError` on any other transport failure; returns whatever
     /// `Response` the server delivers, including an `ok: false` one.
     private static func sendOnce(
-        _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval, queueLabel: String
+        _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval
     ) throws -> Response {
         guard FileManager.default.fileExists(atPath: socketPath) else {
             throw SocketTransportError(reason: "no socket at \(socketPath) (is the GUI running?)")
@@ -518,7 +515,8 @@ public enum SocketClientEngine<
 
         let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
         let connection = NWConnection(to: NWEndpoint.unix(path: socketPath), using: params)
-        let queue = DispatchQueue(label: queueLabel)
+        // Per-channel label (e.g. `casper.socket.client.ControlCommand`), as on the server.
+        let queue = DispatchQueue(label: "casper.socket.client.\(Command.self)")
         let done = DispatchSemaphore(value: 0)
         let result = OSAllocatedUnfairLock<Result<Response, Error>?>(initialState: nil)
 

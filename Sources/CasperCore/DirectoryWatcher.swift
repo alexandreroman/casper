@@ -26,14 +26,15 @@ public final class DirectoryWatcher: @unchecked Sendable {
     /// per-instance (not static) so one watcher's queue never reads as another's.
     private let queueKey = DispatchSpecificKey<Bool>()
     private var stream: FSEventStreamRef?
+    /// The FSEvents coalescing window; the real smoothing is expected to happen
+    /// application-side.
+    private static let latency: TimeInterval = 0.05
 
     /// Start watching `path` (recursively). Returns nil if the FSEvents stream
-    /// cannot be created. `latency` is the FSEvents coalescing window; the real
-    /// smoothing is expected to happen application-side.
+    /// cannot be created.
     public init?(
         path: String,
         excluding exclusions: [String] = [],
-        latency: TimeInterval = 0.05,
         onChange: @escaping @Sendable () -> Void
     ) {
         self.onChange = onChange
@@ -72,7 +73,7 @@ public final class DirectoryWatcher: @unchecked Sendable {
             &context,
             [canonicalPath] as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            latency,
+            Self.latency,
             flags
         ) else { return nil }
         self.stream = stream

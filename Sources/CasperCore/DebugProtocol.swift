@@ -134,8 +134,8 @@ public struct DebugMemory: Codable, Equatable, Sendable {
     public var counters: [String: Int]
 
     public init(
-        footprintBytes: Int = 0, residentBytes: Int = 0, peakFootprintBytes: Int = 0,
-        liveObjects: [LiveObjectCensus.Entry] = [], counters: [String: Int] = [:]
+        footprintBytes: Int, residentBytes: Int, peakFootprintBytes: Int,
+        liveObjects: [LiveObjectCensus.Entry], counters: [String: Int]
     ) {
         self.footprintBytes = footprintBytes
         self.residentBytes = residentBytes

@@ -25,7 +25,7 @@ enum WorkspaceFileCopier {
     ///   worth seeding a new workspace with.
     @discardableResult
     static func copy(
-        patterns: [String] = defaultPatterns,
+        patterns: [String],
         from sourceRoot: String, to destinationRoot: String,
         skippingTopLevelDirectories: Set<String> = []
     ) throws -> [String] {
