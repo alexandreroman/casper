@@ -3,9 +3,9 @@ import Combine
 import WebKit
 
 /// Owns a browser surface's `WKWebView` and its navigation state, kept alive in
-/// `AppModel`'s cache so it survives layout restructuring. Reports focus and
-/// commits (URL, back/forward availability) back to the model/UI. One per
-/// browser `Surface.id`.
+/// `AppModel`'s cache so it survives the inspector collapsing and switching tabs.
+/// Reports focus and commits (URL, back/forward availability) back to the
+/// model/UI. One per browser `Surface.id`.
 @MainActor
 final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
@@ -61,12 +61,12 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
 
     init(url: URL) {
         // Build a configuration that captures the page's console output and uncaught
-        // errors: a document-start user script wraps `console.*`, `window.onerror`,
-        // and `unhandledrejection`, forwarding each entry to the `casperConsole`
-        // message handler. `WeakScriptMessageHandler` forwards weakly so the
-        // controller→handler→coordinator chain never forms a retain cycle: the
-        // controller strongly retains the handler, but the handler holds the
-        // coordinator weakly, so nothing points back to keep it alive.
+        // errors: a document-start user script wraps `console.*` and listens for
+        // `error` and `unhandledrejection`, forwarding each entry to the
+        // `casperConsole` message handler. `WeakScriptMessageHandler` forwards
+        // weakly so the controller→handler→coordinator chain never forms a retain
+        // cycle: the controller strongly retains the handler, but the handler holds
+        // the coordinator weakly, so nothing points back to keep it alive.
         let controller = WKUserContentController()
         controller.addUserScript(WKUserScript(
             source: Self.consoleCaptureScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))

@@ -72,9 +72,8 @@ final class BrowserAutomationController {
 
     /// Snapshot the browser page to a PNG at `path`. Returns the path on success.
     ///
-    /// With no `width`/`height`/`url` override this captures the live browser panel
-    /// exactly as before (panel size when mounted, the 1280x800 fallback when
-    /// detached). Any override switches to the dedicated off-screen `BrowserCapture`,
+    /// With no `width`/`height`/`url` override this captures the live browser web
+    /// view (panel size when mounted, 1280x800 when detached). Any override switches to the dedicated off-screen `BrowserCapture`,
     /// which renders the target URL at the requested viewport (default 1280x800)
     /// independent of the panel: the `url` override if given — honoured or the capture
     /// fails, never silently substituted — else the live browser's committed URL, else
