@@ -423,7 +423,7 @@ the space's base branch, and
 `--command <cmd>` seeds the workspace's first terminal with a command to run.
 `casper terminal new` takes the same `--command <cmd>` to seed the new split,
 plus `--working-dir <path>` to start it somewhere other than the workspace's
-worktree.
+worktree; a directory that does not exist is an error.
 
 A free-text value — `--label`, `--message`, `--command`, `browser wait --js` —
 is taken as is, even when it starts with a dash (`--label "-> wire the API"`).

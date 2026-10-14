@@ -43,6 +43,13 @@ to an interactive prompt after the command exits instead of closing, and a
 compound command (`a ; b ; c`) runs in full. A launch command is a one-shot
 instruction, not persisted — restoring a saved session never re-runs it.
 
+**`terminal new --working-dir` must name an existing directory.** libghostty
+ignores a failed `chdir` silently and starts the shell in the app's own
+directory (`/` for a Finder launch), so a typo would otherwise succeed and be
+echoed — and listed by `terminal list` — as a directory nothing runs in. The
+CLI checks the absolutized path before contacting the app and exits non-zero
+when it is missing or not a directory.
+
 **`browser open` has exactly one possible target.** `Surface.Kind.browser` is
 reached only through `Workspace.inspector.browser`, splits always create a
 terminal, and a `.browser` layout leaf cannot be created at all (see

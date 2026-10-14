@@ -1,5 +1,6 @@
 import ArgumentParser
 import CasperCore
+import Foundation
 
 /// `casper terminal new|list|close` — open, enumerate, and close terminals in a
 /// workspace.
@@ -22,9 +23,24 @@ struct TerminalCommand: ParsableCommand {
         var workingDir: String?
 
         func makeCommand() throws -> ControlCommand {
-            ControlCommand(
-                verb: .terminalNew, workspace: try requireSelector(target),
-                command: nonEmpty(command), cwd: nonEmpty(workingDir).map(absolutePath))
+            let selector = try requireSelector(target)
+            let cwd = try nonEmpty(workingDir).map { try Self.requireDirectory(absolutePath($0)) }
+            return ControlCommand(
+                verb: .terminalNew, workspace: selector, command: nonEmpty(command), cwd: cwd)
+        }
+
+        /// libghostty ignores a failed `chdir` and starts the shell in the app's
+        /// own directory, so a missing `--working-dir` must fail here or the verb
+        /// would succeed and report a directory the terminal is not in.
+        private static func requireDirectory(_ path: String) throws -> String {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
+                throw exitWithError("working directory '\(path)' does not exist")
+            }
+            guard isDirectory.boolValue else {
+                throw exitWithError("working directory '\(path)' is not a directory")
+            }
+            return path
         }
 
         func run() throws {

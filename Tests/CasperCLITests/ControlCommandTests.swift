@@ -1,5 +1,6 @@
 import XCTest
 import CasperCore
+import CasperTestSupport
 @testable import CasperCLI
 
 final class ControlCommandTests: XCTestCase {
@@ -114,28 +115,45 @@ final class ControlCommandTests: XCTestCase {
     }
 
     func testTerminalNewBuildsCommand() throws {
+        let dir = makeTemporaryDirectory(prefix: "casper-terminal").path
         let new = try TerminalCommand.New.parse(
-            ["--workspace", "feature", "--command", "npm test", "--working-dir", "/some/dir"])
-        XCTAssertEqual(new.workingDir, "/some/dir")
+            ["--workspace", "feature", "--command", "npm test", "--working-dir", dir])
+        XCTAssertEqual(new.workingDir, dir)
         let command = try new.makeCommand()
         XCTAssertEqual(command.verb, .terminalNew)
         XCTAssertEqual(command.workspace, "feature")
         XCTAssertEqual(command.command, "npm test")
-        XCTAssertEqual(command.cwd, "/some/dir")
+        XCTAssertEqual(command.cwd, dir)
     }
 
     func testTerminalNewAbsolutizesRelativeWorkingDir() throws {
         // The app resolves the path it receives against its own working directory
         // (`/` when launched from Finder), so a relative `--working-dir` has to be
         // made absolute here, against the shell the CLI was invoked from.
-        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "sub/dir"])
-        let expected = FileManager.default.currentDirectoryPath + "/sub/dir"
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "."])
+        let expected = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).standardizedFileURL.path
         XCTAssertEqual(try new.makeCommand().cwd, expected)
     }
 
     func testTerminalNewKeepsAbsoluteWorkingDirUnchanged() throws {
-        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", "/some/dir"])
-        XCTAssertEqual(try new.makeCommand().cwd, "/some/dir")
+        let dir = makeTemporaryDirectory(prefix: "casper-terminal").path
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", dir])
+        XCTAssertEqual(try new.makeCommand().cwd, dir)
+    }
+
+    func testTerminalNewRejectsMissingWorkingDir() throws {
+        // libghostty ignores a failed chdir and starts the shell elsewhere, so a
+        // typo would otherwise succeed and report a directory nothing runs in.
+        let missing = "/nonexistent-\(UUID().uuidString)"
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", missing])
+        XCTAssertThrowsError(try new.makeCommand())
+    }
+
+    func testTerminalNewRejectsFileAsWorkingDir() throws {
+        let file = makeTemporaryDirectory(prefix: "casper-terminal").appendingPathComponent("file.txt")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        let new = try TerminalCommand.New.parse(["--workspace", "feature", "--working-dir", file.path])
+        XCTAssertThrowsError(try new.makeCommand())
     }
 
     func testTerminalNewAcceptsCommandStartingWithDash() throws {

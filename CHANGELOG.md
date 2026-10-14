@@ -71,6 +71,8 @@ CI, test, and documentation-only work is left out.
   `--command` of `casper terminal new` and `casper workspace new`, and
   `casper browser wait --js` no longer reject "- waiting" or "--force flag" as
   a missing value.
+- `casper terminal new --working-dir` reports an error for a directory that
+  does not exist, or a file, instead of opening the terminal somewhere else.
 
 ## [0.1.3] - 2026-10-13
 
