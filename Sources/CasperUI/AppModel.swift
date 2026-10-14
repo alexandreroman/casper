@@ -407,23 +407,18 @@ final class AppModel {
     @ObservationIgnored var casperDirectory: String?
     @ObservationIgnored var controlSocketPath: String?
 
-    /// Live surface views, keyed by surface id. Holds terminal
-    /// (`GhosttySurfaceView`) and browser (`WKWebView`) views. Persisting these
-    /// across SwiftUI rebuilds keeps each PTY or web page alive when the layout
-    /// tree is restructured.
-    @ObservationIgnored private var surfaceViews: [UUID: NSView] = [:]
-
-    /// The live Ghostty view for a surface id, or nil for a browser/absent surface.
-    private func ghosttyView(_ surfaceID: UUID) -> GhosttySurfaceView? {
-        surfaceViews[surfaceID] as? GhosttySurfaceView
-    }
+    /// Live terminal views, keyed by surface id. Persisting these across SwiftUI
+    /// rebuilds keeps each PTY alive when the layout tree is restructured. A browser's
+    /// `WKWebView` is not here: its `BrowserCoordinator` owns it, cached in
+    /// `browserCoordinators`.
+    @ObservationIgnored private var surfaceViews: [UUID: GhosttySurfaceView] = [:]
 
     /// Forwards the app's appearance to libghostty: the app itself, and every
     /// terminal view alive — the background nursery's included, whose off-screen
     /// windows never see an appearance change of their own. No-op before the runtime
     /// exists.
     func applyColorScheme(dark: Bool) {
-        runtime?.setColorScheme(dark: dark, surfaces: surfaceViews.values.compactMap { $0 as? GhosttySurfaceView })
+        runtime?.setColorScheme(dark: dark, surfaces: Array(surfaceViews.values))
     }
 
     #if DEBUG
@@ -1310,8 +1305,8 @@ final class AppModel {
     /// workspace switch (or a new/closed surface) re-parents the newly active
     /// surface's view during the SwiftUI update that runs right after this state
     /// change.
-    /// A no-op for surfaces with no cached `NSView` (e.g. the diff surface),
-    /// which manage their own focus.
+    /// A no-op for a surface with no cached terminal view (the inspector browser),
+    /// which manages its own focus.
     ///
     /// The deferral goes through the run loop rather than the main queue so a modal
     /// panel standing over the app cannot hold the focus move back until it is
@@ -1338,7 +1333,7 @@ final class AppModel {
     /// early return, or it would keep libghostty's default (solid-caret) state.
     private func focusSurfaceViewIfActive(_ id: UUID) {
         guard id == focusedSurfaceID else {
-            ghosttyView(id)?.blurForLayoutChange()
+            surfaceViews[id]?.blurForLayoutChange()
             return
         }
         focusActiveSurfaceView()
@@ -1351,8 +1346,8 @@ final class AppModel {
     }
 
     /// Where the focused surface lives, but only when it is a TERMINAL pane: nil for a
-    /// focused non-layout surface (the Inspector browser), for a layout browser/diff
-    /// surface, and for "nothing focused". One walk answers both questions the Split
+    /// focused non-layout surface (the Inspector browser), for a `.browser` leaf from a
+    /// legacy session, and for "nothing focused". One walk answers both questions the Split
     /// action asks — is a terminal focused, and which workspace owns it — so a split
     /// does not scan every Space's layout twice. Gates `applyNewSplit`: Split only makes
     /// sense on a focused terminal.
@@ -1400,7 +1395,7 @@ final class AppModel {
             // view from the window (reparenting an ancestor container) before AppKit
             // fires `resignFirstResponder`, so libghostty would otherwise keep
             // rendering a solid caret on it even though the new surface holds focus.
-            ghosttyView(currentlyFocused)?.blurForLayoutChange()
+            surfaceViews[currentlyFocused]?.blurForLayoutChange()
         }
         let (layout, newFocus) = LayoutTree.split(
             workspace(at: at).layout,
@@ -1525,7 +1520,7 @@ final class AppModel {
         // libghostty would keep rendering a solid caret on it. `newFocus` is the moved
         // pane, which is not necessarily the one that had focus.
         if let currentlyFocused = focusedSurfaceID, currentlyFocused != newFocus {
-            ghosttyView(currentlyFocused)?.blurForLayoutChange()
+            surfaceViews[currentlyFocused]?.blurForLayoutChange()
         }
         updateWorkspace(at: at) { $0.layout = layout }
         focusedSurfaceID = newFocus
@@ -1544,7 +1539,7 @@ final class AppModel {
     /// observing a workspace's transient agent fields.
     func surfaceView(for surface: Surface, in workspaceID: UUID) -> GhosttySurfaceView? {
         guard let runtime, case .terminal = surface.kind else { return nil }
-        if let existing = ghosttyView(surface.id) {
+        if let existing = surfaceViews[surface.id] {
             return existing
         }
         guard let workspace = workspace(id: workspaceID) else { return nil }
@@ -1623,19 +1618,19 @@ final class AppModel {
     /// Visible viewport text of a live terminal surface, or nil if it has no
     /// live Ghostty view. Read-only; used by agent-state detection.
     func surfaceViewportText(_ surfaceID: UUID) -> String? {
-        ghosttyView(surfaceID)?.readViewportText()
+        surfaceViews[surfaceID]?.readViewportText()
     }
 
     /// OSC window title of a live terminal surface, or nil if it has no live
     /// Ghostty view. Read-only; used by agent-state detection.
     private func surfaceOSCTitle(_ surfaceID: UUID) -> String? {
-        ghosttyView(surfaceID)?.readOSCTitle()
+        surfaceViews[surfaceID]?.readOSCTitle()
     }
 
     /// Latest OSC 9;4 progress state of a live terminal surface, or nil if it has
     /// no live Ghostty view. Read-only; used by agent-state detection.
     private func surfaceProgressReport(_ surfaceID: UUID) -> AgentProgressState? {
-        ghosttyView(surfaceID)?.readProgressReport()
+        surfaceViews[surfaceID]?.readProgressReport()
     }
 
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
@@ -1916,7 +1911,7 @@ final class AppModel {
             // the reference alone frees the surface after `deinit`, when a libghostty
             // callback recovering the view from the per-surface userdata would resurrect
             // an object that is already deallocating.
-            ghosttyView(id)?.invalidate()
+            surfaceViews[id]?.invalidate()
             surfaceViews[id] = nil
             browserCoordinators[id] = nil
             pendingInitialInput[id] = nil

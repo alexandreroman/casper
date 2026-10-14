@@ -150,8 +150,8 @@ public enum InspectorTab: String, Codable, Sendable {
 /// Per-workspace state for the right inspector panel: whether it's collapsed,
 /// which tab is active, and the dedicated browser `Surface` (invariant: its
 /// `kind` is `.browser`). A full `Surface` — not just a URL — so the panel
-/// browser reuses `AppModel`'s surface-view and coordinator caches, keyed by a
-/// stable `Surface.id` that survives workspace switches and collapse/expand.
+/// browser reuses `AppModel`'s coordinator cache, keyed by a stable `Surface.id`
+/// that survives workspace switches and collapse/expand.
 public struct InspectorState: Codable, Equatable, Sendable {
     /// Bounds for the user-resizable panel width, in points. Single source of
     /// truth shared by `WorkspaceDetailView`'s divider-drag clamp (which narrows

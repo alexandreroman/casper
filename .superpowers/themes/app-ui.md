@@ -641,9 +641,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   normalization, back/forward/reload). It originally rendered `.browser` layout
   leaves created from the tab-bar "+" menu; the tmux-pane redesign removed that
   entry point, and the browser now lives in the inspector panel only. The web
-  view lives in the persistent surface-view cache keyed by `Surface.id`
-  (generalized from UI-3 to hold any `NSView`), so it survives layout
-  restructuring like terminals.
+  view is owned by its `BrowserCoordinator`, cached in
+  `AppModel.browserCoordinators` by `Surface.id`, so the page and its history
+  survive the inspector collapsing and switching tabs.
 
   Its URL is persisted from **both** ends. The address bar writes it, and so
   does the page: `BrowserCoordinator` reports every committed navigation through
