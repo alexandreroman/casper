@@ -9,19 +9,10 @@ import CasperCore
 /// whatever the message throws at it. Pixels still need human eyes.
 @MainActor
 final class WorkspaceInfoPanelTests: XCTestCase {
-    /// `NSHostingView.fittingSize` reflects the SwiftUI layout tree as of the
-    /// last layout pass, so `layoutSubtreeIfNeeded()` before reading it is
-    /// required — not optional the way it looked in the sibling
-    /// `WorkspaceCloseProgressViewTests` convention. Without it, `fittingSize`
-    /// would answer against a stale or unlaid-out tree, and the hug/cap
-    /// assertions below would pass whether or not the panel's sizing actually
-    /// works.
+    /// The size the panel lays out to when it shows `markdown`.
     private func layoutSize(for markdown: String) -> CGSize {
         let (model, workspace) = makeSeededModel()
-        let view = WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown)
-        let host = NSHostingView(rootView: view)
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
+        return layoutSize(for: WorkspaceInfoPanel(model: model, workspace: workspace, markdown: markdown))
     }
 
     /// A no-op hug/cap (contentHeight stuck at 0, `ScrollView` always at its

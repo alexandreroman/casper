@@ -34,9 +34,9 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// collapsed. See `WorkspaceInfoButton.collapsedWidth`'s doc.
     func testCollapsesToOnlyItsGapWithoutAMessage() {
         let (model, workspace) = seeded(markdown: nil)
-        let host = NSHostingView(rootView: WorkspaceInfoButton(model: model, workspace: workspace))
+        let size = layoutSize(for: WorkspaceInfoButton(model: model, workspace: workspace))
 
-        XCTAssertEqual(host.fittingSize.width, WorkspaceInfoButton.collapsedWidth, accuracy: 0.5)
+        XCTAssertEqual(size.width, WorkspaceInfoButton.collapsedWidth, accuracy: 0.5)
     }
 
     /// With a message the chip must report the full `iconSlotWidth`, not merely
@@ -44,10 +44,10 @@ final class WorkspaceInfoButtonTests: XCTestCase {
     /// slot collapsed to the `collapsedWidth` gap, clipping the glyph.
     func testLaysOutWithAMessage() {
         let (model, workspace) = seeded(markdown: "## Ready")
-        let host = NSHostingView(rootView: WorkspaceInfoButton(model: model, workspace: workspace))
+        let size = layoutSize(for: WorkspaceInfoButton(model: model, workspace: workspace))
 
-        XCTAssertEqual(host.fittingSize.width, WorkspaceInfoButton.iconSlotWidth, accuracy: 0.5)
-        XCTAssertGreaterThan(host.fittingSize.height, 0)
+        XCTAssertEqual(size.width, WorkspaceInfoButton.iconSlotWidth, accuracy: 0.5)
+        XCTAssertGreaterThan(size.height, 0)
     }
 
     /// NOT a test of `WorkspaceInfoButton` — it never constructs one. `reveal()`
