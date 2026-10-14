@@ -13,10 +13,6 @@ final class DiffFragmentGeometryTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func codeFile(named name: String, lines lineCount: Int) -> GitDiffFile {
-        diffFile(name, lines: additionLines(lineCount))
-    }
-
     /// A file whose whole rendering is a single `.note` paragraph. `DiffDocument`
     /// guarantees these exist — a binary file, or one the line budget emptied —
     /// and they lay out in `DiffTextAssembly.noteFont`, not the code font.
@@ -348,7 +344,7 @@ final class DiffFragmentGeometryTests: XCTestCase {
     /// `DiffDocument` guarantees.
     func testNoteOnlyFileOwnsItsBandLikeAnyOther() throws {
         let document = DiffDocument(diff: GitDiff(files: [
-            codeFile(named: "a.swift", lines: 4),
+            diffFile("a.swift", lines: additionLines(4)),
             binaryFile(named: "logo.png"),
         ]))
         let geometry = try makeGeometry(document)
