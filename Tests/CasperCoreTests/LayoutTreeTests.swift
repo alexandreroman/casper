@@ -5,15 +5,12 @@ final class LayoutTreeTests: XCTestCase {
     private func term() -> Surface {
         Surface(kind: .terminal(cwd: "/w"))
     }
-    private func leaf(_ surface: Surface) -> LayoutNode {
-        .leaf(surface)
-    }
 
     func testSurfaceIDsWalksDepthFirst() {
         let a = term(); let b = term(); let c = term()
         let root = LayoutNode.split(
             orientation: .horizontal,
-            children: [leaf(a), .split(orientation: .vertical, children: [leaf(b), leaf(c)],
+            children: [.leaf(a), .split(orientation: .vertical, children: [.leaf(b), .leaf(c)],
                                        ratios: [0.5, 0.5])],
             ratios: [0.5, 0.5])
         XCTAssertEqual(LayoutTree.surfaceIDs(root), [a.id, b.id, c.id])
@@ -22,7 +19,7 @@ final class LayoutTreeTests: XCTestCase {
     func testSurfacesReturnsSurfaceObjectsInOrder() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         let surfaces = LayoutTree.surfaces(root)
         XCTAssertEqual(surfaces, [a, b])  // ids and kinds, in order
         XCTAssertEqual(surfaces.map(\.id), LayoutTree.surfaceIDs(root))  // mirrors the id walk
@@ -34,7 +31,7 @@ final class LayoutTreeTests: XCTestCase {
         let a = term(); let b = term(); let c = term()
         let root = LayoutNode.split(
             orientation: .horizontal,
-            children: [leaf(a), .split(orientation: .vertical, children: [leaf(b), leaf(c)],
+            children: [.leaf(a), .split(orientation: .vertical, children: [.leaf(b), .leaf(c)],
                                        ratios: [0.5, 0.5])],
             ratios: [0.5, 0.5])
         for surface in [a, b, c] {
@@ -44,7 +41,7 @@ final class LayoutTreeTests: XCTestCase {
 
     func testContainsRejectsAnAbsentSurface() {
         let a = term()
-        XCTAssertFalse(LayoutTree.contains(leaf(a), id: term().id))
+        XCTAssertFalse(LayoutTree.contains(.leaf(a), id: term().id))
     }
 
     // MARK: - updateSurface
@@ -52,7 +49,7 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateSurfaceMutatesMatchingLeaf() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         let out = LayoutTree.updateSurface(root, id: a.id) { $0.fontSize = 18 }
         guard case .split(_, let children, _) = out else { return XCTFail() }
         guard case .leaf(let updated) = children[0], case .leaf(let untouched) = children[1] else {
@@ -65,7 +62,7 @@ final class LayoutTreeTests: XCTestCase {
 
     func testUpdateSurfaceUnknownIDIsNoOp() {
         let a = term()
-        let root = leaf(a)
+        let root = LayoutNode.leaf(a)
         let out = LayoutTree.updateSurface(root, id: UUID()) { $0.fontSize = 18 }
         XCTAssertEqual(out, root)
     }
@@ -73,9 +70,9 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateSurfaceRecursesIntoNestedSplits() {
         let a = term(); let b = term(); let c = term()
         let nested = LayoutNode.split(
-            orientation: .vertical, children: [leaf(b), leaf(c)], ratios: [0.5, 0.5])
+            orientation: .vertical, children: [.leaf(b), .leaf(c)], ratios: [0.5, 0.5])
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), nested], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), nested], ratios: [0.5, 0.5])
         let out = LayoutTree.updateSurface(root, id: c.id) { $0.fontSize = 22 }
         let surfaces = LayoutTree.surfaces(out)
         XCTAssertEqual(surfaces.first { $0.id == c.id }?.fontSize, 22)
@@ -87,7 +84,7 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateRatiosUpdatesChildSplitByPath() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         let out = LayoutTree.updateRatios(in: root, at: [], ratios: [0.3, 0.7])
         guard case .split(_, _, let ratios) = out else { return XCTFail() }
         XCTAssertEqual(ratios, [0.3, 0.7])
@@ -96,9 +93,9 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateRatiosUpdatesNestedSplitByDeepPath() {
         let a = term(); let b = term(); let c = term()
         let nested = LayoutNode.split(
-            orientation: .vertical, children: [leaf(b), leaf(c)], ratios: [0.5, 0.5])
+            orientation: .vertical, children: [.leaf(b), .leaf(c)], ratios: [0.5, 0.5])
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), nested], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), nested], ratios: [0.5, 0.5])
         // Child index 1 is the nested split.
         let out = LayoutTree.updateRatios(in: root, at: [1], ratios: [0.25, 0.75])
         guard case .split(_, let children, let rootRatios) = out else { return XCTFail() }
@@ -110,7 +107,7 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateRatiosMismatchedChildCountIsNoOp() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         // Three ratios for a two-child split: rejected, tree unchanged.
         let out = LayoutTree.updateRatios(in: root, at: [], ratios: [0.2, 0.3, 0.5])
         XCTAssertEqual(out, root)
@@ -119,7 +116,7 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateRatiosNonSplitTargetIsNoOp() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         // Path [0] resolves to a leaf, not a split: rejected, tree unchanged.
         let out = LayoutTree.updateRatios(in: root, at: [0], ratios: [0.3, 0.7])
         XCTAssertEqual(out, root)
@@ -128,7 +125,7 @@ final class LayoutTreeTests: XCTestCase {
     func testUpdateRatiosOutOfRangePathIsNoOp() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         // Child index 5 does not exist: stale/invalid path, tree unchanged.
         let out = LayoutTree.updateRatios(in: root, at: [5], ratios: [0.3, 0.7])
         XCTAssertEqual(out, root)
@@ -136,13 +133,13 @@ final class LayoutTreeTests: XCTestCase {
 
     func testUpdateRatiosEmptyPathOnLeafIsNoOp() {
         let a = term()
-        let root = leaf(a)
+        let root = LayoutNode.leaf(a)
         let out = LayoutTree.updateRatios(in: root, at: [], ratios: [0.3, 0.7])
         XCTAssertEqual(out, root)
     }
 
     func testSplitFromRootLeafWrapsInSplit() {
-        let a = term(); let root = leaf(a); let b = term()
+        let a = term(); let root = LayoutNode.leaf(a); let b = term()
         let (out, focus) = LayoutTree.split(
             root, focused: a.id, orientation: .horizontal, side: .after, surface: b)
         guard case .split(let o, let children, let ratios) = out else { return XCTFail() }
@@ -156,7 +153,7 @@ final class LayoutTreeTests: XCTestCase {
     func testSplitSameOrientationInsertsFlatSibling() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         let c = term()
         let (out, _) = LayoutTree.split(
             root, focused: a.id, orientation: .horizontal, side: .after, surface: c)
@@ -169,7 +166,7 @@ final class LayoutTreeTests: XCTestCase {
     func testSplitDifferentOrientationNests() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         let c = term()
         let (out, _) = LayoutTree.split(
             root, focused: a.id, orientation: .vertical, side: .after, surface: c)
@@ -182,7 +179,7 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testSplitUnknownFocusIsNoOp() {
-        let a = term(); let root = leaf(a); let b = term()
+        let a = term(); let root = LayoutNode.leaf(a); let b = term()
         let (out, focus) = LayoutTree.split(
             root, focused: UUID(), orientation: .horizontal, side: .after, surface: b)
         XCTAssertEqual(out, root)
@@ -192,7 +189,7 @@ final class LayoutTreeTests: XCTestCase {
     func testCloseSurfaceCollapsesSingleChildSplit() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         let (out, focus) = LayoutTree.closeSurface(root, surface: b.id)
         guard case .leaf(let s)? = out else { return XCTFail("expected collapse to leaf") }
         XCTAssertEqual(s.id, a.id)
@@ -202,7 +199,7 @@ final class LayoutTreeTests: XCTestCase {
     func testCloseSurfaceReEvensRatiosAndFocusesNeighbor() {
         let a = term(); let b = term(); let c = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b), leaf(c)],
+            orientation: .horizontal, children: [.leaf(a), .leaf(b), .leaf(c)],
             ratios: [0.2, 0.3, 0.5])
         let (out, focus) = LayoutTree.closeSurface(root, surface: b.id)  // middle
         guard case .split(_, let children, let ratios)? = out else { return XCTFail() }
@@ -213,7 +210,7 @@ final class LayoutTreeTests: XCTestCase {
     }
 
     func testCloseLastSurfaceReturnsNil() {
-        let a = term(); let root = leaf(a)
+        let a = term(); let root = LayoutNode.leaf(a)
         let (out, focus) = LayoutTree.closeSurface(root, surface: a.id)
         XCTAssertNil(out)
         XCTAssertNil(focus)
@@ -233,7 +230,7 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveRightBetweenTwoLeaves() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .vertical, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .vertical, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         // Move a beside b on its right: b's slot becomes a horizontal [b, a].
         guard let (out, focus) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: b.id, direction: .right) else { return XCTFail() }
@@ -247,7 +244,7 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveLeftBetweenTwoLeaves() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .vertical, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .vertical, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         guard let (out, focus) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: b.id, direction: .left) else { return XCTFail() }
         guard case .split(let o, _, _) = out else { return XCTFail() }
@@ -259,7 +256,7 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveDownBetweenTwoLeaves() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         guard let (out, focus) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: b.id, direction: .down) else { return XCTFail() }
         guard case .split(let o, _, _) = out else { return XCTFail() }
@@ -271,7 +268,7 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveUpBetweenTwoLeaves() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         guard let (out, focus) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: b.id, direction: .up) else { return XCTFail() }
         guard case .split(let o, _, _) = out else { return XCTFail() }
@@ -286,18 +283,11 @@ final class LayoutTreeTests: XCTestCase {
         let a = Surface(kind: .browser(url: URL(string: "http://example.com")!))
         let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         guard let (out, _) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: b.id, direction: .right) else { return XCTFail() }
-        var moved: Surface?
-        func find(_ node: LayoutNode) {
-            switch node {
-            case .leaf(let s): if s.id == a.id { moved = s }
-            case .split(_, let children, _): children.forEach(find)
-            }
-        }
-        find(out)
-        XCTAssertEqual(moved, a)  // id and kind both preserved verbatim
+        // id and kind both preserved verbatim
+        XCTAssertEqual(LayoutTree.surfaces(out).first { $0.id == a.id }, a)
     }
 
     func testMoveCollapsesNestedTwoChildSplitOnRemoval() {
@@ -305,9 +295,9 @@ final class LayoutTreeTests: XCTestCase {
         // collapse that split to just s, then a is reinserted beside target c.
         let a = term(); let s = term(); let c = term()
         let nested = LayoutNode.split(
-            orientation: .vertical, children: [leaf(a), leaf(s)], ratios: [0.5, 0.5])
+            orientation: .vertical, children: [.leaf(a), .leaf(s)], ratios: [0.5, 0.5])
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [nested, leaf(c)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [nested, .leaf(c)], ratios: [0.5, 0.5])
         guard let (out, focus) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: c.id, direction: .right) else { return XCTFail() }
         // Root stays horizontal; the nested split collapsed to leaf(s); c gained
@@ -322,7 +312,7 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveWithinNarySameOrientationInsertsFlat() {
         let a = term(); let b = term(); let c = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b), leaf(c)],
+            orientation: .horizontal, children: [.leaf(a), .leaf(b), .leaf(c)],
             ratios: [0.2, 0.3, 0.5])
         // Move a to c's right: a removed from front, reinserted flat after c.
         guard let (out, _) = LayoutTree.move(
@@ -336,7 +326,7 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveReEvensRatios() {
         let a = term(); let b = term(); let c = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b), leaf(c)],
+            orientation: .horizontal, children: [.leaf(a), .leaf(b), .leaf(c)],
             ratios: [0.2, 0.3, 0.5])
         guard let (out, _) = LayoutTree.move(
             root, surfaceID: a.id, toTarget: c.id, direction: .right) else { return XCTFail() }
@@ -347,21 +337,21 @@ final class LayoutTreeTests: XCTestCase {
     func testMoveSourceEqualsTargetIsNil() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         XCTAssertNil(LayoutTree.move(root, surfaceID: a.id, toTarget: a.id, direction: .right))
     }
 
     func testMoveUnknownSourceIsNil() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         XCTAssertNil(LayoutTree.move(root, surfaceID: UUID(), toTarget: b.id, direction: .right))
     }
 
     func testMoveUnknownTargetIsNil() {
         let a = term(); let b = term()
         let root = LayoutNode.split(
-            orientation: .horizontal, children: [leaf(a), leaf(b)], ratios: [0.5, 0.5])
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
         XCTAssertNil(LayoutTree.move(root, surfaceID: a.id, toTarget: UUID(), direction: .right))
     }
 

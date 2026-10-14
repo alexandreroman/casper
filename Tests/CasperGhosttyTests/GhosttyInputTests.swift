@@ -22,6 +22,13 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_ALT.rawValue, 0)
     }
 
+    // Caps Lock is a modifier in its own right: `flagsChanged` sends a press for
+    // keyCode 0x39, and a keystroke typed with it on must carry the bit too.
+    func testMapsCapsLockFromEventFlags() {
+        let mods = ghosttyMods(from: [.capsLock])
+        XCTAssertNotEqual(mods.rawValue & GHOSTTY_MODS_CAPS.rawValue, 0)
+    }
+
     func testControlCharactersDoNotRideOnKeyEvent() {
         XCTAssertFalse(ghosttyTextRidesOnKeyEvent("\u{03}"))  // Ctrl-C
         XCTAssertFalse(ghosttyTextRidesOnKeyEvent("\u{04}"))  // Ctrl-D
