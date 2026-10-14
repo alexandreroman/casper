@@ -17,14 +17,15 @@ skipping everything after the read.
 A modifier transition (Control, Shift, Option, Command, Caps Lock going down or
 up) arrives as a `.flagsChanged` event through
 `GhosttySurfaceView.flagsChanged(with:)`, which forwards it to
-`ghosttyKeyEvent(_:action:)` in `Sources/CasperGhostty/GhosttyInput.swift`. Both
-private helpers that build the event read `charactersIgnoringModifiers`
-(`ghosttyUnshiftedCodepoint(from:)` unconditionally,
-`ghosttyControlComboKeycode(for:)` whenever `.control` is set — which a Control
-press or release satisfies), so both guard on
-`event.type == .keyDown || event.type == .keyUp` first and fall back to `0` /
-`nil`. Without those guards no modifier press or release reaches libghostty at
-all, because the raise precedes `sendKey`.
+`ghosttyKeyEvent(_:action:)` in `Sources/CasperGhostty/GhosttyInput.swift`.
+`ghosttyKeyEvent` reads `charactersIgnoringModifiers` once, only for `.keyDown`
+/ `.keyUp`, and hands the result to both private helpers as `baseCharacters`
+(`ghosttyUnshiftedCodepoint(from:)` and
+`ghosttyControlComboKeycode(for:baseCharacters:)`), which never touch the
+event's characters themselves. For any other event type it hands them `nil`,
+and they fall back to `0` / the real keycode. Without that guard no modifier
+press or release reaches libghostty at all, because the raise precedes
+`sendKey`.
 
 The resulting encoding for a modifier transition — `keycode = event.keyCode`,
 `unshifted_codepoint = 0`, `text = nil` — matches what Ghostty's reference

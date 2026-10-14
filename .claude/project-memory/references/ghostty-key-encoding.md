@@ -40,9 +40,10 @@ Ctrl-A wipes the whole line instead of moving to its start, with
 `ghostty_surface_key_is_binding` returns `false`, so this is libghostty's own
 bare-control-character encoding path, not a keybinding collision.
 
-`ghosttyControlComboKeycode(for:)` (with `qwertyLetterKeyCodes`) substitutes the
-letter's QWERTY-position virtual keycode for any `.control` + ASCII-letter (a-z)
-combo; `unshifted_codepoint` stays derived from the real produced character.
+`ghosttyControlComboKeycode(for:baseCharacters:)` (with `qwertyLetterKeyCodes`)
+substitutes the letter's QWERTY-position virtual keycode for any `.control` +
+ASCII-letter (a-z) combo; `unshifted_codepoint` stays derived from the real
+produced character.
 Digits, punctuation, and non-letter Control combos (Ctrl-[, Ctrl-Space, arrows,
 function keys) keep their real `event.keyCode` — no evidence they are affected
 and no safe remap target.
