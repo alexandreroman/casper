@@ -2,8 +2,9 @@ import CasperCore
 import Foundation
 
 /// Pure builder turning an adopted folder into a `Space` with one primary
-/// `Workspace`. `probe` returns Git info when the folder is Git-backed and `nil`
-/// otherwise; the factory never touches disk itself, so it is fully testable.
+/// `Workspace`, or a worktree into a linked one. The caller probes the folder and
+/// hands in the `GitInfo` (nil for a folder that is not Git-backed); the factory
+/// never touches disk itself, so it is fully testable.
 enum WorkspaceFactory {
     struct GitInfo: Equatable {
         let canonicalPath: String

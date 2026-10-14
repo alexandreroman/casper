@@ -73,9 +73,8 @@ final class AppModel {
     /// the filesystem watcher.
     private(set) var scriptsRevision = 0
 
-    /// Editors detected as launchable at startup (CLI shim on `PATH` and app
-    /// bundle resolvable), in `EditorKind.allCases`. Never re-detected
-    /// while the app is running.
+    /// Editors detected as launchable at startup (app bundle resolvable), in
+    /// `EditorKind.allCases`. Never re-detected while the app is running.
     private(set) var availableEditors: [EditorKind] = []
 
     /// What the window's floor is built from, or `nil` when no workspace is on
@@ -381,10 +380,10 @@ final class AppModel {
 
     /// Delivers a local notification for a workspace. Injectable for tests; the
     /// default posts a best-effort `UserNotifications` request. Skipped entirely when
-    /// the process has no bundle identifier (a bare `swift run` executable): on macOS
-    /// 26 `UNUserNotificationCenter.current()` aborts rather than no-ops without a
-    /// bundle, so guarding here keeps `make dev` runs from crashing on the first hook
-    /// notification.
+    /// the process has no bundle identifier — a bare executable (`swift run`, a raw
+    /// `.build` binary): on macOS 26 `UNUserNotificationCenter.current()` aborts
+    /// rather than no-ops without a bundle, so guarding here keeps such runs from
+    /// crashing on the first hook notification.
     ///
     /// The request identifier is the workspace id (not a random UUID) so the
     /// `AppDelegate`'s `didReceive` can route a tap back to the right workspace. It
@@ -530,10 +529,11 @@ final class AppModel {
 
     /// Sub-cadence for scraping non-selected workspaces: the selected workspace
     /// stays at full cadence (~250ms) for a live sidebar/spinner, while background
-    /// workspaces are scraped only every 4th tick (~1s while visible). They feed
-    /// only the background `done` notification, which tolerates ~1s of extra
-    /// latency (and the resolver debounces in ticks anyway), so the reduced rate
-    /// trades imperceptible latency for a much cheaper hot path.
+    /// workspaces are scraped only every 4th tick (~1s while visible). They feed the
+    /// non-selected sidebar rows' state icons and the background notifications, both
+    /// of which tolerate ~1s of extra latency (and the resolver debounces in ticks
+    /// anyway), so the reduced rate trades imperceptible latency for a much cheaper
+    /// hot path.
     nonisolated static let backgroundDetectionStride = 4
 
     /// The one instance shared by the SwiftUI scene (`CasperApp`) and the
@@ -1230,13 +1230,13 @@ final class AppModel {
         reconfigureWorktreeWatcher()
     }
 
-    /// Determine every Space's Git backing at load time. `isGitRepo` is no longer
-    /// persisted, so each decoded Space arrives non-Git; probe its folder to set
+    /// Determine every Space's Git backing at load time. `isGitRepo` is runtime-only,
+    /// never persisted, so each decoded Space arrives non-Git; probe its folder to set
     /// the runtime flag and adopt HEAD's branch on the primary workspace. Runs
     /// ONCE at startup (not on a timer). Uses the injectable `gitReprobe`.
     ///
     /// A transient probe failure here shows a real repo as non-Git for the
-    /// session — acceptable now that the flag is computed rather than stored; the
+    /// session — acceptable because the flag is computed rather than stored; the
     /// live FSEvents path (promote/demote) still corrects it on the next change.
     private func resolveGitBacking() {
         for si in spaces.indices {
@@ -1253,7 +1253,7 @@ final class AppModel {
     /// Re-probe a not-yet-Git space and, if it now has a repository, promote it:
     /// mark it Git-backed, adopt HEAD's branch on its primary workspace, and
     /// persist. Returns whether a promotion happened. Reuses the injectable
-    /// `gitReprobe`. (Formerly driven by the heartbeat poll.)
+    /// `gitReprobe`.
     @discardableResult
     func promoteSpaceIfGitInitialized(spaceIndex si: Int) -> Bool {
         // A missing primary fails safe: no promotion.
@@ -1927,7 +1927,7 @@ final class AppModel {
     }
 
     // Reached from AppModel+Control.swift.
-    /// Debounced persistence for high-frequency agent-state changes.
+    /// Debounced persistence for high-frequency layout/inspector edits.
     func scheduleSave() {
         // Weakly, because this model owns the debouncer: a strong capture would let the
         // pending work item hold the model alive until it fires.
@@ -2125,8 +2125,8 @@ final class AppModel {
     /// Write a *detected* agent state. Distinct from the explicit
     /// `controlSetAgentState`: it must NOT grant authority. Writes only when the
     /// value actually changes, so a steady detection stream doesn't thrash the UI.
-    /// Internal, not private, because `scriptHooks`' `reportSetupFailure` closure calls
-    /// it from outside this file to flag a workspace whose `setup` hook failed.
+    /// Internal, not private, for the tests that drive a detected state directly
+    /// (`AgentDetectionTests`, `ControlHandlerTests`, `PaneTreeInputsTests`).
     func setDetectedAgentState(_ state: AgentState, for workspaceID: UUID) {
         guard let at = locate(workspaceID) else { return }
         setDetectedAgentState(state, at: at)
@@ -2168,7 +2168,8 @@ final class AppModel {
 
     // Reached from AppModel+Control.swift.
     /// The notification text for a detected state, or `nil` when the state needs
-    /// no attention. Only `blocked` and `done` alert the user; the rest are silent.
+    /// no attention. Only `blocked`, `done` and `error` alert the user; the rest are
+    /// silent.
     /// Exhaustive by design so a new `AgentState` case forces a decision here.
     static func notificationMessage(for state: AgentState) -> String? {
         switch state {

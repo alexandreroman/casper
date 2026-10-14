@@ -380,9 +380,9 @@ public extension Workspace {
     /// linked worktree that records one has anywhere to merge to.
     ///
     /// Lives on the model, not on each view that asks: this gate decides whether a
-    /// destructive action is offered at all, and the sidebar's context menu and the
-    /// title bar's Merge chip and `⋯` menu must all offer it on exactly the same
-    /// terms.
+    /// destructive action is offered at all, and the sidebar's context menu, the
+    /// title bar's Merge chip and `⋯` menu, and the menu bar's Merge and Close must all
+    /// offer it on exactly the same terms.
     var canMerge: Bool { kind == .linked && !(baseBranch?.isEmpty ?? true) }
 }
 

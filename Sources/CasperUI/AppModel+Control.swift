@@ -298,7 +298,7 @@ extension AppModel {
     }
 
     /// Open a new terminal in `workspaceID` by splitting its top-left surface.
-    /// Mirrors the toolbar's "new terminal" action, but targeted at an arbitrary
+    /// Mirrors the New Terminal split (`applyNewTerminal`), but targeted at an arbitrary
     /// (non-selected) workspace, and allows overriding the working directory
     /// (defaults to the workspace's worktree) and running a command.
     @discardableResult
