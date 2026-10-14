@@ -53,8 +53,8 @@ See the [dependency policy](dependency-policy.md) note and the spec at
 `CasperGhostty`. They must be `public`: an `internal` accessor compiles inside
 `CasperGhostty` itself but not from a `DebugSurfaceProvider` conformance written
 in a different target — which is where the conformance lives (`CasperUI`'s
-`DebugSurfaceBridge.swift`). `DebugSurfaceHandle`, `DebugSurfaceGeometry`,
-`DebugSurfaceProvider`, and `DebugServer` are already `public` in
-`Sources/CasperGhostty/DebugServer.swift`; `DebugSocketPath` is `public` in
-`Sources/CasperCore/DebugSocket.swift`. `#if DEBUG` still fully compiles these
-out of a release build regardless of access level.
+`DebugSurfaceBridge.swift`). `DebugSurfaceHandle`, `DebugSurfaceProvider`, and
+`DebugServer` are already `public` in `Sources/CasperGhostty/DebugServer.swift`;
+`DebugSocketPath` is `public` in `Sources/CasperCore/DebugSocket.swift`.
+`#if DEBUG` still fully compiles these out of a release build regardless of
+access level.

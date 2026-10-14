@@ -4,61 +4,6 @@ import CasperCore
 import CoreGraphics
 import ScreenCaptureKit
 
-/// Full geometry snapshot of one surface: libghostty's pixel readback plus the
-/// hosting view's AppKit metrics. Separate from `DebugState.Surface` (which
-/// `DebugServer.resolve` builds from it) because that type also carries identity
-/// fields — `id`, `title`, `workingDirectory`, `focused` — that the view cannot
-/// supply on its own.
-public struct DebugSurfaceGeometry: Sendable {
-    public let columns: Int
-    public let rows: Int
-    public let widthPixels: Int
-    public let heightPixels: Int
-    public let cellWidthPixels: Int
-    public let cellHeightPixels: Int
-    public let boundsWidth: Double
-    public let boundsHeight: Double
-    public let backingWidth: Double
-    public let backingHeight: Double
-    public let contentScaleX: Double
-    public let contentScaleY: Double
-    public let backingScaleFactor: Double
-
-    public init(
-        columns: Int, rows: Int,
-        widthPixels: Int, heightPixels: Int,
-        cellWidthPixels: Int, cellHeightPixels: Int,
-        boundsWidth: Double, boundsHeight: Double,
-        backingWidth: Double, backingHeight: Double,
-        contentScaleX: Double, contentScaleY: Double,
-        backingScaleFactor: Double
-    ) {
-        self.columns = columns
-        self.rows = rows
-        self.widthPixels = widthPixels
-        self.heightPixels = heightPixels
-        self.cellWidthPixels = cellWidthPixels
-        self.cellHeightPixels = cellHeightPixels
-        self.boundsWidth = boundsWidth
-        self.boundsHeight = boundsHeight
-        self.backingWidth = backingWidth
-        self.backingHeight = backingHeight
-        self.contentScaleX = contentScaleX
-        self.contentScaleY = contentScaleY
-        self.backingScaleFactor = backingScaleFactor
-    }
-
-    /// All-zero geometry, used when no live surface backs the view yet.
-    public static let zero = DebugSurfaceGeometry(
-        columns: 0, rows: 0,
-        widthPixels: 0, heightPixels: 0,
-        cellWidthPixels: 0, cellHeightPixels: 0,
-        boundsWidth: 0, boundsHeight: 0,
-        backingWidth: 0, backingHeight: 0,
-        contentScaleX: 0, contentScaleY: 0,
-        backingScaleFactor: 0)
-}
-
 /// A snapshot description of one live surface, decoupling `DebugServer` from the
 /// concrete AppKit view. The provider builds these on the main thread.
 @MainActor
@@ -73,7 +18,7 @@ public struct DebugSurfaceHandle {
     public let sendKey: (_ text: String, _ mods: [String]) -> Void
     public let sendAction: (_ name: String) -> Void
     public let mouseMove: (_ x: Double, _ y: Double) -> Void
-    public let geometry: () -> DebugSurfaceGeometry
+    public let geometry: () -> DebugState.Geometry
     public let focus: () -> Void
     public let window: NSWindow?
     // Agent-state detection, so `dumpState` can report what detection concluded and what it
@@ -92,7 +37,7 @@ public struct DebugSurfaceHandle {
         sendKey: @escaping (_ text: String, _ mods: [String]) -> Void,
         sendAction: @escaping (_ name: String) -> Void,
         mouseMove: @escaping (_ x: Double, _ y: Double) -> Void,
-        geometry: @escaping () -> DebugSurfaceGeometry,
+        geometry: @escaping () -> DebugState.Geometry,
         focus: @escaping () -> Void,
         window: NSWindow?,
         // Defaulted so construction sites that don't care about detection keep compiling.
@@ -188,17 +133,10 @@ public final class DebugServer {
 
         switch command.verb {
         case .dumpState:
-            let entries = surfaces.map { surface -> DebugState.Surface in
-                let g = surface.geometry()
-                return DebugState.Surface(
+            let entries = surfaces.map { surface in
+                DebugState.Surface(
                     id: surface.id, title: surface.title, workingDirectory: surface.workingDirectory,
-                    columns: g.columns, rows: g.rows, focused: surface.focused,
-                    widthPixels: g.widthPixels, heightPixels: g.heightPixels,
-                    cellWidthPixels: g.cellWidthPixels, cellHeightPixels: g.cellHeightPixels,
-                    boundsWidth: g.boundsWidth, boundsHeight: g.boundsHeight,
-                    backingWidth: g.backingWidth, backingHeight: g.backingHeight,
-                    contentScaleX: g.contentScaleX, contentScaleY: g.contentScaleY,
-                    backingScaleFactor: g.backingScaleFactor,
+                    focused: surface.focused, geometry: surface.geometry(),
                     agentState: surface.agentState, oscTitle: surface.oscTitle(),
                     progressReport: surface.progressReport())
             }
