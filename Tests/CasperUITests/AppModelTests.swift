@@ -1470,7 +1470,7 @@ final class AppModelTests: XCTestCase {
         let workspaceID = model.spaces[0].workspaces[0].id
 
         let info = try XCTUnwrap(
-            model.controlOpenTerminal(in: workspaceID, command: "echo COMMAND_RAN_$$"))
+            model.controlOpenTerminal(in: workspaceID, command: "echo COMMAND_RAN_$((40+2))"))
         let newID = try XCTUnwrap(UUID(uuidString: info.id))
         let workspace = model.spaces[0].workspaces[0]
         let surface = try XCTUnwrap(LayoutTree.surfaces(workspace.layout).first { $0.id == newID })
@@ -1479,11 +1479,13 @@ final class AppModelTests: XCTestCase {
         try await withHostedSurface(view) {
             // How long the shell takes to reach an interactive prompt and consume the
             // queued command varies with the user's login shell, so poll for the echo.
-            await waitUntil(timeout: 10) { model.surfaceViewportText(newID)?.contains("COMMAND_RAN_") == true }
+            // The marker is computed: the typed command reaches the viewport whether or
+            // not the shell runs it, but only a run prints `42`.
+            await waitUntil(timeout: 10) { model.surfaceViewportText(newID)?.contains("COMMAND_RAN_42") == true }
 
             let text = model.surfaceViewportText(newID) ?? ""
             XCTAssertTrue(
-                text.contains("COMMAND_RAN_"),
+                text.contains("COMMAND_RAN_42"),
                 "expected the opened terminal's command to have run; viewport was:\n\(text)")
         }
     }
