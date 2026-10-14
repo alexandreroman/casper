@@ -7,7 +7,7 @@ import Foundation
 /// libghostty re-reads the selected theme file every time the colour scheme
 /// changes, so a deleted file would leave the terminal without its colours at the
 /// next system switch. Rewritten on every launch, so an updated Casper ships its
-/// updated palette; concurrent sessions write identical bytes.
+/// updated palette and the current system background colour; concurrent sessions write identical bytes.
 enum GhosttyThemeFiles {
     struct Paths: Equatable {
         let light: URL
@@ -27,8 +27,10 @@ enum GhosttyThemeFiles {
         let paths = Paths(
             light: directory.appendingPathComponent("casper-light"),
             dark: directory.appendingPathComponent("casper-dark"))
-        try GhosttyDefaultConfig.lightTheme.write(to: paths.light, atomically: true, encoding: .utf8)
-        try GhosttyDefaultConfig.darkTheme.write(to: paths.dark, atomically: true, encoding: .utf8)
+        let light = GhosttyDefaultConfig.lightTheme(background: GhosttyDefaultConfig.appBackgroundHex(for: .aqua))
+        let dark = GhosttyDefaultConfig.darkTheme(background: GhosttyDefaultConfig.appBackgroundHex(for: .darkAqua))
+        try light.write(to: paths.light, atomically: true, encoding: .utf8)
+        try dark.write(to: paths.dark, atomically: true, encoding: .utf8)
         return paths
     }
 }

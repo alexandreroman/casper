@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GhosttyKit
 import XCTest
@@ -36,19 +37,61 @@ final class GhosttyDefaultConfigTests: XCTestCase {
         XCTAssertTrue(GhosttyDefaultConfig.text(themes: nil).contains("clipboard-write = ask"))
     }
 
-    /// Dark stays the Arthur theme Casper has always shipped.
-    func testDarkThemeIsArthur() {
-        XCTAssertTrue(GhosttyDefaultConfig.darkTheme.contains("background = #1c1c1c"))
-        XCTAssertTrue(GhosttyDefaultConfig.darkTheme.contains("palette = 0=#3d352a"))
-        XCTAssertTrue(GhosttyDefaultConfig.lightTheme.contains("background = #ffffff"))
+    /// Dark stays the Arthur palette and light the GitHub Light one; only the
+    /// background is taken from the app.
+    func testThemesKeepTheirPalettes() {
+        XCTAssertTrue(GhosttyDefaultConfig.darkTheme(background: "#123456").contains("palette = 0=#3d352a"))
+        XCTAssertTrue(GhosttyDefaultConfig.darkTheme(background: "#123456").contains("foreground = #ddeedd"))
+        XCTAssertTrue(GhosttyDefaultConfig.lightTheme(background: "#123456").contains("palette = 0=#24292f"))
+        XCTAssertTrue(GhosttyDefaultConfig.lightTheme(background: "#123456").contains("foreground = #1f2328"))
+    }
+
+    func testThemesUseTheGivenBackground() {
+        XCTAssertTrue(GhosttyDefaultConfig.darkTheme(background: "#123456").contains("background = #123456\n"))
+        XCTAssertTrue(GhosttyDefaultConfig.lightTheme(background: "#654321").contains("background = #654321\n"))
+    }
+
+    func testWrittenThemesCarryTheResolvedAppBackground() throws {
+        let paths = try GhosttyThemeFiles.write(to: directory)
+        let light = try String(contentsOf: paths.light, encoding: .utf8)
+        let dark = try String(contentsOf: paths.dark, encoding: .utf8)
+        XCTAssertTrue(light.contains("background = \(GhosttyDefaultConfig.appBackgroundHex(for: .aqua))\n"))
+        XCTAssertTrue(dark.contains("background = \(GhosttyDefaultConfig.appBackgroundHex(for: .darkAqua))\n"))
+    }
+
+    func testAppBackgroundHexIsLowercaseRGBAndDiffersPerAppearance() throws {
+        let light = GhosttyDefaultConfig.appBackgroundHex(for: .aqua)
+        let dark = GhosttyDefaultConfig.appBackgroundHex(for: .darkAqua)
+        for hex in [light, dark] {
+            XCTAssertNotNil(hex.wholeMatch(of: /#[0-9a-f]{6}/), hex)
+        }
+        XCTAssertNotEqual(light, dark)
+    }
+
+    /// Independent of the implementation's helper: the OS owns the colour and it
+    /// differs across macOS versions, so the expectation is computed here.
+    func testAppBackgroundHexMatchesWindowBackgroundColor() throws {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            var expected: String?
+            try XCTUnwrap(NSAppearance(named: name)).performAsCurrentDrawingAppearance {
+                let color = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)
+                expected = color.map { c in
+                    let bytes = [c.redComponent, c.greenComponent, c.blueComponent].map {
+                        min(max(Int(($0 * 255).rounded()), 0), 255)
+                    }
+                    return String(format: "#%02x%02x%02x", bytes[0], bytes[1], bytes[2])
+                }
+            }
+            XCTAssertEqual(GhosttyDefaultConfig.appBackgroundHex(for: name), try XCTUnwrap(expected))
+        }
     }
 
     func testWriteOverwritesAnExistingFile() throws {
         let first = try GhosttyThemeFiles.write(to: directory)
+        let original = try String(contentsOf: first.light, encoding: .utf8)
         try "stale".write(to: first.light, atomically: true, encoding: .utf8)
         let second = try GhosttyThemeFiles.write(to: directory)
-        XCTAssertEqual(try String(contentsOf: second.light, encoding: .utf8), GhosttyDefaultConfig.lightTheme)
-        XCTAssertEqual(try String(contentsOf: second.dark, encoding: .utf8), GhosttyDefaultConfig.darkTheme)
+        XCTAssertEqual(try String(contentsOf: second.light, encoding: .utf8), original)
     }
 
     func testWriteThrowsForAnUnwritableDirectory() throws {
@@ -67,7 +110,7 @@ final class GhosttyDefaultConfigTests: XCTestCase {
         let config = try loadConfig(user: nil)
         defer { ghostty_config_free(config) }
         XCTAssertEqual(ghostty_config_diagnostics_count(config), 0)
-        XCTAssertEqual(background(of: config), [0xff, 0xff, 0xff])
+        XCTAssertEqual(background(of: config), appBackgroundBytes(for: .aqua))
     }
 
     /// A user's single `theme` replaces Casper's outright.
@@ -102,6 +145,14 @@ final class GhosttyDefaultConfigTests: XCTestCase {
         }
         ghostty_config_finalize(config)
         return config
+    }
+
+    private func appBackgroundBytes(for name: NSAppearance.Name) -> [UInt8] {
+        let hex = GhosttyDefaultConfig.appBackgroundHex(for: name).dropFirst()
+        return stride(from: 0, to: 6, by: 2).map { offset in
+            let start = hex.index(hex.startIndex, offsetBy: offset)
+            return UInt8(hex[start..<hex.index(start, offsetBy: 2)], radix: 16)!
+        }
     }
 
     private func background(of config: ghostty_config_t) -> [UInt8] {

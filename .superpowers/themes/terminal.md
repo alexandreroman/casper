@@ -27,7 +27,9 @@ surfaces and PTYs (same model as the Ghostty app).
 - **`GhosttyDefaultConfig`** / **`GhosttyThemeFiles`** — two built-in themes
   (Arthur dark, GitHub Light). `GhosttyThemeFiles` writes them to
   `~/Library/Caches/<bundle id>/ghostty-themes/` and they are kept for the
-  app's lifetime; a conditional `theme = light:…,dark:…` line references them.
+  app's lifetime; their background is the app's `windowBackgroundColor`,
+  resolved per appearance when the files are written. A conditional
+  `theme = light:…,dark:…` line references them.
   The defaults load before the user's own Ghostty config, so user settings
   still win and a user `theme` that loads replaces Casper's (see
   [[ghostty-config-dir-bundle-id]]). One that cannot load (e.g. a named theme

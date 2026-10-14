@@ -1,3 +1,5 @@
+import AppKit
+
 /// Casper's built-in libghostty defaults, baked into the binary and loaded
 /// *before* the user's own Ghostty config so any user setting still overrides
 /// them: the terminal colours and the clipboard-write policy.
@@ -23,6 +25,12 @@
 /// gray instead of the theme the dev build shows. The theme bodies are inlined here
 /// (no `themes/` dir or `GHOSTTY_RESOURCES_DIR` needed), keeping them self-contained.
 ///
+/// Each theme's `background` is not a literal: it is the app's own
+/// `windowBackgroundColor`, resolved under the theme's appearance when the files are
+/// written (`appBackgroundHex(for:)`), so the terminal reads as part of the window.
+/// The OS owns that colour and it differs across macOS versions, so it cannot be
+/// hard-coded. A user's explicit `background` key still beats it, as it beats any theme.
+///
 /// `clipboard-write` is set to `ask` because libghostty's own default is `allow`,
 /// under which `write_clipboard_cb` is always flagged trusted and
 /// `GhosttyClipboardWrite.apply`'s untrusted branch is unreachable. `ask` makes
@@ -31,8 +39,9 @@
 /// decided rather than dead code. A user who prefers the upstream behaviour can
 /// override it with `clipboard-write = allow`.
 enum GhosttyDefaultConfig {
-    /// The "Arthur" theme, in Ghostty theme-file syntax.
-    static let darkTheme = """
+    /// The "Arthur" theme, in Ghostty theme-file syntax, on the given `#rrggbb` background.
+    static func darkTheme(background: String) -> String {
+        """
         palette = 0=#3d352a
         palette = 1=#cd5c5c
         palette = 2=#86af80
@@ -49,7 +58,7 @@ enum GhosttyDefaultConfig {
         palette = 13=#996600
         palette = 14=#b0c4de
         palette = 15=#ddccbb
-        background = #1c1c1c
+        background = \(background)
         foreground = #ddeedd
         cursor-color = #e2bbef
         cursor-text = #000000
@@ -57,9 +66,12 @@ enum GhosttyDefaultConfig {
         selection-foreground = #ffffff
 
         """
+    }
 
-    /// The "GitHub Light" theme, in Ghostty theme-file syntax.
-    static let lightTheme = """
+    /// The "GitHub Light" theme, in Ghostty theme-file syntax, on the given `#rrggbb`
+    /// background.
+    static func lightTheme(background: String) -> String {
+        """
         palette = 0=#24292f
         palette = 1=#cf222e
         palette = 2=#116329
@@ -76,7 +88,7 @@ enum GhosttyDefaultConfig {
         palette = 13=#a475f9
         palette = 14=#3192aa
         palette = 15=#8c959f
-        background = #ffffff
+        background = \(background)
         foreground = #1f2328
         cursor-color = #0969da
         cursor-text = #ffffff
@@ -84,6 +96,26 @@ enum GhosttyDefaultConfig {
         selection-foreground = #1f2328
 
         """
+    }
+
+    /// The app's background colour (`NSColor.windowBackgroundColor`) under the given
+    /// appearance, as lowercase `#rrggbb`. Resolved at runtime because the OS owns the
+    /// colour and it differs across macOS versions. Falls back to the colours Casper
+    /// shipped before the terminal followed the window (white, `#1c1c1c`) if the colour
+    /// has no sRGB form.
+    static func appBackgroundHex(for name: NSAppearance.Name) -> String {
+        let fallback = name == .darkAqua ? "#1c1c1c" : "#ffffff"
+        guard let appearance = NSAppearance(named: name) else { return fallback }
+        var hex = fallback
+        appearance.performAsCurrentDrawingAppearance {
+            guard let color = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) else { return }
+            let bytes = [color.redComponent, color.greenComponent, color.blueComponent].map { component in
+                min(max(Int((component * 255).rounded()), 0), 255)
+            }
+            hex = String(format: "#%02x%02x%02x", bytes[0], bytes[1], bytes[2])
+        }
+        return hex
+    }
 
     /// The conditional `theme` line selecting Casper's light or dark theme file.
     static func themeLine(_ themes: GhosttyThemeFiles.Paths) -> String {
