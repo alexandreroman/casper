@@ -317,6 +317,23 @@ longer does are recorded in `../status.md` § Superseded designs.
   undershoot of 40 pt, a narrowest declared row of 136 pt, and no rung climbing
   back up the ladder while the window narrowed.
 
+  What the anticipation cannot cover is left to the **heal**, which invalidates
+  the toolbar items' intrinsic size (the one thing that makes AppKit re-run its
+  fit check) and retries while the clipped-items indicator stays up. Beyond a
+  pass wider than the cap, two jumps need it: one with no previous pass to learn
+  from (a zoom, a display change), and **collapsing the sidebar**. The chrome
+  reserve is charged on `detailFrame.minX < 1`, so a collapse drops the declared
+  width by ~140 pt on a pass whose detail area *grows*: the shrink term computes
+  zero and AppKit judges the previous, wider row against a bar that has just
+  lost its leading 140 pt. Expanding is the safe mirror image. Deriving the
+  shrink from the chrome-adjusted widths would cover the collapse, but would
+  hold ~140 pt of undershoot for the whole settle delay and visibly fold the
+  chips on every collapse — worse than one frame of chevron that heals itself.
+  Pre-arming a budget on `willStartLiveResizeNotification` was rejected on the
+  same grounds: it cannot know the drag's direction, so it would fold the chips
+  at the start of every **grow** drag, where no artifact exists, to save one
+  frame at the start of a shrink that the heal already catches.
+
   **The row degrades along ONE ordered ladder**, widest first, and everything
   that yields is a rung of that same list:
 

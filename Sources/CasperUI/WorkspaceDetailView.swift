@@ -122,20 +122,12 @@ struct WorkspaceDetailView: View {
     /// Standing undershoot on the row's width, applied at every width including a
     /// settled one.
     ///
-    /// The two failures are wildly asymmetric. A row a few points narrower than the
-    /// bar leaves a sliver of empty space at the trailing edge that nobody will ever
-    /// notice. A row a few points wider overflows the ONE item that now holds every
-    /// title-bar control, emptying the whole title bar into AppKit's chevron — so
-    /// this is sized to lose that race on purpose, not calibrated to fit exactly.
-    ///
-    /// It covers a still window, not a moving one: AppKit's item viewer starts a few
-    /// points inside the detail area, so part of this is spent before the row even
-    /// begins. Measured on the running app — detail area at `minX = 228`, the item's
-    /// hosted view at `minX = 236`, a declared row of 1148 pt in a 1400 pt window
-    /// content — the inset is 8 pt and the row's trailing edge stops 16 pt short of the
-    /// window edge, so two thirds of this is real slack. A drag that narrows the window
-    /// by MORE than that slack per layout pass eats it whole, and that case is what
-    /// `resizeUndershoot` is for, on top of this.
+    /// Sized to lose the race on purpose: a row a few points narrower than the bar
+    /// leaves a sliver nobody notices at the trailing edge, while a row a few points
+    /// wider overflows the ONE item that holds every title-bar control. It covers a
+    /// still window only — AppKit's item viewer starts inside the detail area, which
+    /// leaves about 16 pt of this as real slack (measured: app-ui.md § Title bar) —
+    /// and `resizeUndershoot` covers a moving one, on top of this.
     static let safetyMargin: CGFloat = 24
 
     /// Narrowest row worth mounting. The `⋯` chip alone measures 38 pt, so below
@@ -149,17 +141,13 @@ struct WorkspaceDetailView: View {
 
     /// Ceiling on the resize undershoot, whatever the pass measured.
     ///
-    /// SwiftUI coalesces layout passes during a fast drag, so the measured shrink is
-    /// not a per-frame increment but the whole distance travelled since the last pass,
-    /// and it is unbounded: a traced hand-drag from 990 pt to 428 pt arrived as ONE
-    /// pass of 562 pt, which subtracted whole drove the row to `minimumRowWidth`.
-    ///
-    /// 40 pt is twice the fastest ordinary pass (measured: 5–20 pt) and just under one
-    /// `⋯` chip plus its gap (38 + `chipGap` = 46), so it absorbs every pass the
-    /// anticipation is meant for while never withholding more than about one chip's
-    /// worth of width. Past that the cure is worse than the disease: for a jump too
-    /// large to anticipate the right outcome is the single frame of chevron
-    /// `healToolbarOverflow` already recovers, not a collapsed row.
+    /// SwiftUI coalesces layout passes during a fast drag, so a measured shrink is the
+    /// whole distance travelled since the last pass, and unbounded: subtracted whole,
+    /// one coalesced pass drives the row to `minimumRowWidth` (measured: app-ui.md
+    /// § Title bar). 40 pt is twice the fastest ordinary pass (measured: 5–20 pt) and
+    /// just under one `⋯` chip plus its gap (38 + `chipGap` = 46). A larger jump is
+    /// left to the single frame of chevron `healToolbarOverflow` recovers, not to a
+    /// collapsed row.
     static let maximumResizeUndershoot: CGFloat = 40
 
     /// How long the window must stand still before the row gives its resize
@@ -245,19 +233,10 @@ struct WorkspaceDetailView: View {
         // is what is left after the panel takes its slice.
         .onChange(of: terminalHostMetrics) { _, metrics in publish(metrics) }
         .toolbar {
-            // EVERY title-bar control lives in this ONE item: title, info chip, diff
-            // badge, Merge, Run Script, Editor and the inspector selector.
-            //
-            // Not a stylistic grouping — it is the only structure that cannot end up
-            // in AppKit's overflow chevron, where these custom chips render without
-            // their capsule chrome and the segmented control clips to a lone glyph.
-            // A `ToolbarItem`'s hosted view is sized to its content's IDEAL width and
-            // AppKit will not shrink it below that: faced with a bar too narrow, it
-            // overflows the item whole rather than proposing it less. Measured on the
-            // running app at a 600 pt window, where the leading group alone reported
-            // 293 pt and went into the chevron with the title still one truncatable
-            // line. So the only reliable rule is to hand AppKit a single item that is
-            // never wider than the bar, and to do the degrading ourselves inside it.
+            // EVERY title-bar control lives in this ONE item, never wider than the bar:
+            // AppKit overflows a toolbar item whole rather than shrinking it, so the row
+            // does its own degrading inside it (see the
+            // `toolbar-overflows-before-squeezing` note and app-ui.md § Title bar).
             if rowWidth >= Self.minimumRowWidth {
                 ToolbarItem(placement: .navigation) {
                     WorkspaceTitleBarRow(
@@ -432,11 +411,16 @@ struct WorkspaceDetailView: View {
     /// Gets the row back out of AppKit's overflow chevron, and keeps checking until
     /// it is out.
     ///
-    /// One invalidation is enough for the common case, but not for every one: the
-    /// content can change again while AppKit is still settling, and a row that stays
-    /// in the chevron empties the whole title bar. So this re-checks, and re-checks
-    /// only while the clipped-items indicator is actually on screen.
+    /// AppKit judges the width the row declared for the PREVIOUS layout pass and never
+    /// re-runs that fit check on its own, so a row judged too wide stays in the
+    /// chevron after it has narrowed — and inside it the chips lose their capsule
+    /// chrome (see the `toolbar-overflows-before-squeezing` note). The resize
+    /// undershoot anticipates every pass up to its cap; this takes back what it cannot:
+    /// a wider pass, or a jump no previous pass could anticipate, such as collapsing the
+    /// sidebar (see app-ui.md § Title bar).
     ///
+    /// One invalidation is not always enough while AppKit is still settling, so this
+    /// re-checks, and only while the clipped-items indicator is actually on screen.
     /// The loop is broken three ways, which matters because the cure and the symptom
     /// share a mechanism: the retries stop the moment the indicator is gone, they are
     /// capped, and nothing here ever schedules itself from an invalidation — only an
@@ -451,47 +435,10 @@ struct WorkspaceDetailView: View {
         }
     }
 
-    /// Tells AppKit that the toolbar items' sizes have changed.
-    ///
-    /// The row's width is always one pass behind the window: AppKit lays the toolbar
-    /// out during the resize, while this row only learns its new width afterwards,
-    /// from the detail area's geometry. AppKit therefore runs its fit check against
-    /// the STALE row and never re-runs that check on its own, so a row judged too
-    /// wide stays in the chevron long after it has narrowed. That is not cosmetic:
-    /// inside the chevron the chips lose their capsule chrome entirely.
-    ///
-    /// What the lag itself costs is handled upstream, in
-    /// `rowWidth(detailFrame:undershoot:isFullScreen:)`: the stale value is deliberately narrowed by
-    /// the shrink just observed, capped and ratcheted (see `maximumResizeUndershoot`).
-    /// That covers every pass no wider than the cap — but a pass wider than it declares
-    /// a row the bar of the next pass cannot hold, and a hand-drag coalesces into passes
-    /// of hundreds of points, so those passes DO raise the chevron and this is what
-    /// takes them back (measured over one real drag: 8 chevron frames, all on passes of
-    /// 97–558 pt). It covers the same jumps from the other direction too — the ones no
-    /// previous pass could have anticipated at all: collapsing the sidebar, a zoom, a
-    /// display change, or the content growing while the window stands still.
-    ///
-    /// The sidebar toggle is the same one-pass staleness wearing a different hat.
-    /// `windowChromeReserve` is charged discontinuously, on `detailFrame.minX < 1`,
-    /// so collapsing the sidebar drops the declared width by ~140 pt while the
-    /// measured width barely moves — by width that pass is a GROW, so the shrink term
-    /// computes 0, and AppKit judges the previous, much wider value against a bar that
-    /// has just lost its leading 140 pt. Expanding is the mirror image and is safe:
-    /// the flip happens on the first pass and only makes the row wider. (In full
-    /// screen the same flip is `fullScreenChromeReserve`, 54 pt; entering and leaving
-    /// full screen moves the reserve by the 86 pt between the two, and `isFullScreen`
-    /// times that flip so it only ever narrows the row ahead of the bar.)
-    ///
-    /// The undershoot is deliberately NOT generalised to
-    /// `settled(previous) − settled(current)`, which would subsume that chrome flip:
-    /// it would also hold ~140 pt of undershoot for the whole settle delay, visibly
-    /// folding the chip row on every sidebar collapse — a worse artifact than one
-    /// frame of chevron that already heals itself.
-    ///
-    /// Measured on the running app at a 400 pt shrink jump: `validateVisibleItems()`
-    /// changes nothing and neither does forcing the titlebar to lay out again;
-    /// invalidating the item views' intrinsic size brings the row back immediately.
-    /// Cheap enough to do unconditionally — a Casper window carries four items.
+    /// Tells AppKit that the toolbar items' sizes have changed, which is the one lever
+    /// that re-runs its fit check: `validateVisibleItems()` and a forced titlebar
+    /// layout change nothing (measured; see the `toolbar-overflows-before-squeezing`
+    /// note). Cheap enough to do unconditionally — a Casper window carries four items.
     private static func invalidateToolbarItemSizes() {
         for window in NSApp.windows where window.isVisible {
             window.toolbar?.items.forEach { $0.view?.invalidateIntrinsicContentSize() }
@@ -721,7 +668,7 @@ struct WorkspaceDetailView: View {
     /// `undershoot` makes the declared width fall at least as fast as the bar for as
     /// long as the bar falls by no more than `maximumResizeUndershoot` per pass: within
     /// that bound the value AppKit judges — which is always the PREVIOUS pass's, see
-    /// `invalidateToolbarItemSizes` — is already narrow enough for the bar of the pass
+    /// `healToolbarOverflow` — is already narrow enough for the bar of the pass
     /// that follows. Past the cap it is not, and the frame of chevron that follows is
     /// what `healToolbarOverflow` takes back.
     ///
@@ -800,34 +747,14 @@ struct WorkspaceTitleBarRow: View {
         // Resolved once per body pass rather than per title: `model.space(for:)` scans
         // every Space's workspaces, and `ViewThatFits` builds all six rungs below.
         let space = model.space(for: workspace)
-        // ONE ordered list for everything that yields. Every element that can give
-        // way is a column of this table, and each rung gives up exactly one thing:
-        //
-        //   rung | title           | badge | actions
-        //   -----+-----------------+-------+-------------------
-        //    1   | Space / branch  |  yes  | full
-        //    2   | Space / branch  |   -   | full
-        //    3   | branch          |   -   | full
-        //    4   | branch          |   -   | ( ⤭ )( ⋯ )
-        //    5   | branch          |   -   | ( ⋯ )
-        //    6   | branch          |   -   | ( ⋯ ), selector in its menu
-        //
-        // The order is what the pieces are FOR: the badge is informational, the
-        // Space name is context, the chip labels are actions, and the branch is
-        // identity — so they yield in that order and the branch never goes.
-        //
+        // ONE ordered list for everything that yields, widest first, each rung giving
+        // up exactly one thing: the badge (informational), then the Space name
+        // (context), then the chip labels (actions). The branch (identity) never goes.
         // One list rather than one ladder per element, because two ladders cannot be
-        // ordered against each other: each sees only the room the other left it, so
-        // whatever one releases the other takes back, and narrowing the window hands
-        // an element its content RETURNED. Measured three times in this row before it
-        // was one list — a badge that reappeared at 260 pt beside a folded chip, a
-        // badge ranked by layout priority that came back the moment the chips folded,
-        // and a selector that returned at 279 pt because the title had just dropped
-        // its Space name and freed 90 pt.
-        //
-        // Within a rung the branch still middle-truncates. That is `Text` answering a
-        // proposal — it changes how a rung looks, never which rung is chosen — so it
-        // is not a second ladder.
+        // ordered against each other: whatever one releases, the other takes back
+        // (measured, and tabulated rung by rung, in app-ui.md § Title bar). Within a
+        // rung the branch still middle-truncates — `Text` answering a proposal, which
+        // changes how a rung looks, never which rung is chosen.
         ViewThatFits(in: .horizontal) {
             rung(title: .spaceAndBranch, badge: true, chips: .full, space: space)
             rung(title: .spaceAndBranch, badge: false, chips: .full, space: space)
@@ -836,55 +763,13 @@ struct WorkspaceTitleBarRow: View {
             rung(title: .branchOnly, badge: false, chips: .folded, space: space)
             rung(title: .branchOnly, badge: false, chips: .minimal, space: space)
         }
-        // Giving the row a definite width is also what drives the ladder: it hands it
-        // a real proposal, which a toolbar item on its own never does.
+        // Giving the row a definite width is what drives the ladder: it hands it a real
+        // proposal, which a toolbar item on its own never does.
         .frame(width: width, alignment: .leading)
-        // That definite width is also what makes this row the whole title bar right of
-        // the sidebar toggle, so nothing USABLE is left of `NSThemeFrame` to grab
-        // there — and dragging the window and double-clicking it are the theme frame's
-        // behaviours, which die the moment one toolbar item spans the bar. What the
-        // theme frame keeps is the bar LEFT of the row (traffic lights, sidebar
-        // toggle, the flexible space between them) and the few points `safetyMargin`
-        // leaves at the trailing edge; neither is anywhere a hand reaches for. So the
-        // row hands both behaviours back to itself, on the layer below.
-        //
-        // The layer sits BEHIND the row, never on it. A gesture on the row is a gesture
-        // on an ancestor of every chip, and SwiftUI holds a child button's press until
-        // its ancestors' gestures rule themselves out — the double-click above all,
-        // which has to wait out a second click that may never come — so every chip's
-        // pressed state lags the pointer while its action still lands on time. A
-        // background is a sibling of the chips instead: a click on a chip hits the chip
-        // alone, and only what no chip claims — the spacer between the groups, the gaps
-        // between chips, the info button's collapsed slot, the title (see `title(_:)`)
-        // — falls through to the layer. For the same reason the row carries no
-        // `contentShape` of its own: that would make the row itself the hit target over
-        // every inert point, and nothing it hits ever reaches a sibling behind it.
-        //
-        // The layer is `Color.clear` under a `contentShape`, because a clear colour
-        // claims no hits of its own any more than a `Spacer` does — and the spacer
-        // between the diff badge and the trailing chips is an inert stretch wide enough
-        // to be somewhere people aim.
-        //
-        // As a background, the layer takes the row's rect, and measured on the running
-        // app that is the hosted view's rect and NOT the toolbar item's full height:
-        // the item's `NSToolbarItemViewer` is `f=(232,0,492,52)`, the bar's full
-        // height, while the SwiftUI hosting view inside it is `f=(4,8,484,36)`. The
-        // 8 pt strips above and below therefore stay with the theme frame, which is
-        // what keeps the top-edge resize band alive — a layer spanning the item's whole
-        // height would take the drag and give up resizing the window from its top edge.
-        //
-        // Placement, not gesture priority, is what keeps the chips clicking normally:
-        // no modifier puts a gesture on their ancestor without it taking part in every
-        // chip's click. A plain one delays the press, a high-priority one steals the
-        // click, and a simultaneous one fires alongside it — for the double-click, a
-        // double-click landing on a chip would zoom the window out from under whoever
-        // hit it. Behind the row, both gestures stay plain.
-        //
-        // The double-click action is run by hand because `WindowDragGesture` carries
-        // the drag and nothing else, and it goes through `TitleBarDoubleClickAction`
-        // rather than calling `performZoom` unconditionally: the theme frame honours
-        // the choice made in System Settings, where Fill, Zoom, Minimize and Do
-        // Nothing are all real options and only the unset default means zoom.
+        // Spanning the bar takes `NSThemeFrame`'s window drag and title-bar double-click
+        // away, so a clear layer BEHIND the row carries both: a sibling of the chips,
+        // never a gesture on their ancestor, which would delay every chip's press. See
+        // the `titlebar-row-window-drag` note for the layer's shape and placement.
         .background {
             Color.clear
                 .contentShape(Rectangle())
