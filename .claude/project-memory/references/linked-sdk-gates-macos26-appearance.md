@@ -33,15 +33,11 @@ target. The linker accepts the explicit flag over the one SwiftPM supplies
 without a duplicate warning. The flags never reach `swift build
 --show-bin-path`: the bin dir it prints depends only on the configuration.
 
-The deployment target has two sources that move together: `Package.swift`'s
-`platforms:` and `LSMinimumSystemVersion` in `Packaging/Info.plist`. Every
-packaging step reads the plist — `MACOS_DEPLOYMENT_TARGET` in the Makefile, the
-`actool` pass in `Scripts/bundle-app.sh` and the appcast's
-`sparkle:minimumSystemVersion` in `Scripts/update-appcast.sh` — so a standalone
-run of either script reads it too. A manifest cannot read a plist, which leaves
-`Package.swift` as the one hand-kept copy. `Packaging/Info-dev.plist` carries no
-`LSMinimumSystemVersion`: the dev bundle runs only on the Mac that built it,
-where dyld enforces the binary's `minos` anyway.
+Where the deployment target lives, and the one hand-kept copy in
+`Package.swift`, is in the comment above `MACOS_DEPLOYMENT_TARGET` in the
+`Makefile`. `Packaging/Info-dev.plist` carries no `LSMinimumSystemVersion`: the
+dev bundle runs only on the Mac that built it, where dyld enforces the binary's
+`minos` anyway.
 
 **Why:** the deployment floor and the linked SDK are independent — Casper
 targets macOS 15 and must still be *built* against 26+ to get the current

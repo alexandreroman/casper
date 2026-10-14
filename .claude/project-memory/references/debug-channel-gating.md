@@ -28,9 +28,8 @@ way to diagnose a crash reported from the field.
 
 **How to apply:** wrap the whole `casper debug` code path and its subcommand
 registration in `#if DEBUG`, leaving the shared transport out of the guard. For
-logs, keep `.notice`/`.error`/`.fault` unconditional and wrap `.debug`/`.info`
-call sites in `#if DEBUG`. Tie gating to the build configuration (`#if DEBUG`),
-never to a custom compilation flag.
+logs, follow the floor the theme states. Tie gating to the build configuration
+(`#if DEBUG`), never to a custom compilation flag.
 
 **Cross-module visibility gotcha:** `GhosttySurfaceView`'s `debug*` accessors
 (`debugHasSurface`, `debugReadText`, `debugSendText`, `debugSendKeys`,

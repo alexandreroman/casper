@@ -13,7 +13,7 @@ forever, and the log shows
 `[ghostty] surface creation failed: GhosttyError(reason: "ghostty_surface_new
 returned null")` on every attempt. `NSApplication` still starts and
 `GhosttyRuntime()`/`ghostty_app_new` succeeds — only the per-surface
-`ghostty_surface_new` call fails. `GhosttySurfaceView` retries it up to 3
+`ghostty_surface_new` call fails. `GhosttySurfaceView` tries it up to 3
 times, 0.25 s apart, then shows a "Terminal failed to start. Close and reopen
 this pane to retry." overlay in the pane; re-entering a window restores the
 retry budget. The in-process test harness bounds its surface poll by that same

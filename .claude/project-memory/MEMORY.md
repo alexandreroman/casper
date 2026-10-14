@@ -139,7 +139,7 @@
 - [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick
 - [DEBUG memory observability](references/memory-observability.md) — weak-ref live-object census + `casper debug memory` + the churn script
 - [Only the layout may create a surface view](references/surface-view-layout-membership.md) — a stale `Surface` value must not refill the view cache
-- [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH and search it in Swift; never ask it to resolve a command
+- [Shell PATH resolution](references/shell-path-resolution.md) — probe the shell for PATH with every rung, against a monotonic deadline
 - [AppKit overflows a SwiftUI toolbar item rather than shrinking it](references/toolbar-overflows-before-squeezing.md) — it judges the previous pass
 - [A full-width toolbar item owns the title bar's drag and zoom](references/titlebar-row-window-drag.md) — a layer behind the row carries both
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward

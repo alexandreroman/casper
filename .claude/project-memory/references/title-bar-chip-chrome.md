@@ -27,10 +27,9 @@ rather than cross-fading. The selected glyph is `Color.primary`, the other
 `Color.secondary`. Hover belongs to the shell as a whole, matching the Run /
 Editor pills; a per-segment hover fill would fight the sliding indicator.
 
-Each segment reserves a fixed glyph slot (`TitleCapsuleMetrics.glyphSlotWidth`)
-inside its 10 pt horizontal insets, per [[sf-symbol-widths-need-a-slot]]: of
-the five symbols that sit in a title-bar glyph slot, `arrow.triangle.merge` and
-`plusminus` measure 12 pt, `ellipsis` 14, and `trash` and `globe` 15. The slot
-goes *inside* the padding — see [[fixed-frame-swallows-inner-padding]] — so the
-insets still widen the segment and the whole half stays clickable. The
+Each segment reserves a fixed glyph slot (`TitleCapsuleMetrics.glyphSlotWidth`,
+whose doc comment carries the measured symbol widths) inside its 10 pt
+horizontal insets, per [[sf-symbol-widths-need-a-slot]]. The slot goes *inside*
+the padding — see [[fixed-frame-swallows-inner-padding]] — so the insets still
+widen the segment and the whole half stays clickable. The
 resulting geometry is pinned by `InspectorTabSelectorTests`.

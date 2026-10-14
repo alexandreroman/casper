@@ -29,8 +29,7 @@ over libgit2 1.9.x).
   `git_strarray_dispose`.
 - **Test fixtures build real repos via libgit2 only** (no `git` binary, per
   dependency policy), in `GitFixture` of the shared `CasperTestSupport` target
-  (`Tests/CasperTestSupport/`). It uses public CasperGit API plus raw Clibgit2,
-  never `@testable import`: it is a regular target, and `swift build -c
-  release` compiles every target, where `@testable` fails to resolve.
+  (`Tests/CasperTestSupport/`), on public CasperGit API plus raw Clibgit2; the
+  target's no-`@testable` rule is in [[test-toolchain]].
 
 See [[dependency-policy]], [[test-toolchain]].

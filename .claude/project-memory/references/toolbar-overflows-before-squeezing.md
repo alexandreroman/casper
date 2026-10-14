@@ -43,7 +43,8 @@ Four AppKit behaviours the title bar is built around:
 
 How the row is built on top of these — the safety margin, the capped and
 ratcheted resize undershoot, the single ordered ladder, the sidebar-collapse
-case and the measured chevron rates — is the design in app-ui.md § Title bar.
+case and the measured chevron rates — is the design in
+`.superpowers/themes/app-ui.md` § Design → "Title bar".
 
 **How to access:** the row is `WorkspaceTitleBarRow` in
 `Sources/CasperUI/WorkspaceTitleBar.swift`; its width constants and the heal

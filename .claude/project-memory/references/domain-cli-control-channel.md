@@ -14,20 +14,15 @@ live in `Sources/CasperCLI/JSONOutput.swift`. This note keeps what none of them
 records. The control channel (`casper <domain> <verb>` over
 `$CASPER_CONTROL_SOCKET`) **ships in every release build**, unlike the
 `#if DEBUG`-only `casper debug` channel ([[debug-channel-gating]]) and the
-`#if DEBUG`-only `--session` flag ([[app-sessions]]). Usage errors exit 64;
-`--help` and `--version` exit 0.
+`#if DEBUG`-only `--session` flag ([[app-sessions]]).
 
 ## Behavior specifics
 
 - Every url argument must be **absolute** — scheme **and** host — and is
   validated CLI-side before the app is contacted.
-- `browser open` loads the URL into the workspace's **single inspector browser
-  surface** and selects the browser tab (mirroring how `diff open` selects the
-  diff tab) — there are no browser layout panels; layout panels are
-  **terminal-only**. `browser load` is the background form of the same thing: it
-  loads without opening or selecting the inspector. The browser-automation verbs
-  act on that same inspector browser surface, getting-or-creating its
-  `BrowserCoordinator` so they work even when the panel is collapsed or was
+- `browser open` selects the browser tab, as `diff open` selects the diff tab.
+  The browser-automation verbs get or create the inspector browser's
+  `BrowserCoordinator`, so they work even when the panel is collapsed or was
   never shown (see [[browser-automation-cli]]).
 - `diff open [<file>]` opens the diff view and scrolls to `<file>`, a path
   relative to the target workspace's worktree root (or absolute), resolved
@@ -45,12 +40,12 @@ records. The control channel (`casper <domain> <verb>` over
   It **refuses a primary workspace**, and git cleanup runs before the UI removal
   so a git failure leaves the workspace intact/retryable.
 - Session persistence does **not** store the transient fields
-  (`.superpowers/themes/core.md` § SessionStore) — they reset on load. A handler
-  that writes **only** transient fields therefore does not call `persist()`:
-  agents drive `status set` / `notify` on a hot path, and a save there costs a
-  main-actor session encode plus a disk write of a byte-identical file. Only a
-  handler's genuinely-persisted side effect (a Space expanding, an inspector tab
-  change) justifies the save.
+  (`.superpowers/themes/core.md` § Design → "`SessionStore`") — they reset on
+  load. A handler that writes **only** transient fields therefore does not call
+  `persist()`: agents drive `status set` / `notify` on a hot path, and a save
+  there costs a main-actor session encode plus a disk write of a byte-identical
+  file. Only a handler's genuinely-persisted side effect (a Space expanding, an
+  inspector tab change) justifies the save.
 - `workspace new` runs its libgit2 checkout off the main actor and replies from
   a `Task`, the same asynchronous shape as `workspace delete` and the
   browser-automation verbs — the GUI stays live while a large repo checks out.

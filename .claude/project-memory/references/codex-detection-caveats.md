@@ -37,12 +37,6 @@ Nor does it hold a Casper marker to look for: the `casper-skills` plugin never
 writes to it. Anyone reaching for this file as a Codex-presence or integration
 signal gets a confident false positive.
 
-**Plugin-id matching stays case-sensitive.** `AgentIntegration.pluginID`
-(`casper@casper`) and `legacyPluginID` (`casper@Casper`) differ by case alone,
-and both sides of every lookup (JSON object keys, Swift `==` on `String`) are
-case-sensitive, so any move to case-insensitive matching would collapse them
-and lose the only signal distinguishing the two.
-
 **Hook trust is readable from `config.toml`.** Codex hashes non-managed command
 hooks and refuses to run them until the user approves them through `/hooks` in
 its TUI, so an install can be complete on disk and still do nothing. That

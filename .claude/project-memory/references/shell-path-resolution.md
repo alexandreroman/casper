@@ -1,6 +1,6 @@
 ---
 name: "Shell PATH resolution"
-description: "Casper asks the shell for PATH and searches it itself; a shell must never be asked to resolve a command"
+description: "Casper probes the shell for PATH with every rung on each cold probe, against a monotonic deadline"
 type: project
 ---
 
@@ -10,13 +10,9 @@ type: project
 names against it in Swift. The mechanism — the unioned `-i -l -c` / `-i -c` /
 `-l -c` / `-c` rungs, the `/usr/bin/printenv PATH` body, stdin on `/dev/null`,
 the banner-safe ordering, the 5 s bound and the process-lifetime cache — is in
-`.superpowers/themes/cli-agents.md`, next to the agent-integration probe. Three
-rules sit outside it.
-
-**The shell is never asked to resolve a command.** `which` and `command -v` are
-off limits, whatever the flags: an interactive shell reports the user's aliases
-and functions, so the answer can be a function body or a bare word rather than
-a path. Only the filesystem decides what exists.
+`.superpowers/themes/cli-agents.md`, next to the agent-integration probe,
+together with why the shell is never asked to resolve a command. Two rules sit
+outside it.
 
 **No rung is ever trimmed.** All three rungs run on every cold probe. Dropping
 the `-i -c` rung takes the cold probe from ~0.5 s to ~0.3 s, and a login-only
