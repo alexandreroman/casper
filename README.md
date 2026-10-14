@@ -248,7 +248,7 @@ The first build downloads the pinned `GhosttyKit.xcframework` (~53 MB) from the
 ```bash
 git clone <repo-url> casper
 cd casper
-make build   # compile + assemble Casper-dev.app (first run downloads GhosttyKit)
+make build   # compile + assemble Casper-dev.app (1st run fetches GhosttyKit)
 make test    # run the test suite
 ```
 
@@ -264,7 +264,7 @@ make release  # size-optimized release build (arm64)
 make bundle   # assemble a self-contained Casper.app (release binary + dylibs)
 make dist     # package Casper.app into a downloadable .zip + .sha256 + dSYM
 make vendor   # re-sync the pinned libghostty header via Carvel vendir
-make icon     # rebuild AppIcon.icns + AppIconDev.icns from the SVGs (needs resvg)
+make icon     # rebuild both .icns from their SVGs (needs resvg)
 make memory   # DEBUG only — watch a running dev instance for memory growth
 make clean    # remove build artifacts
 ```

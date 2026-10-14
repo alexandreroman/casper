@@ -51,8 +51,12 @@ IFS= read -r -d '' ITEM <<EOF || true
       <sparkle:shortVersionString>${SHORT_VERSION}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>${MINIMUM_SYSTEM_VERSION}</sparkle:minimumSystemVersion>
       <pubDate>${PUBDATE}</pubDate>
-      <description><![CDATA[<h2>Casper ${SHORT_VERSION}</h2><p><a href="${RELEASE_URL}">Read the full release notes on GitHub</a>.</p>]]></description>
-      <enclosure url="${ZIP_URL}" length="${ZIP_LEN}" type="application/octet-stream" sparkle:edSignature="${ED_SIGNATURE}" />
+      <description><![CDATA[<h2>Casper ${SHORT_VERSION}</h2>
+        <p><a href="${RELEASE_URL}">Read the full release notes on GitHub</a>.</p>]]></description>
+      <enclosure url="${ZIP_URL}"
+                 length="${ZIP_LEN}"
+                 type="application/octet-stream"
+                 sparkle:edSignature="${ED_SIGNATURE}" />
     </item>
 EOF
 
