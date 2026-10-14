@@ -223,8 +223,10 @@ struct DiffTextSurface: NSViewRepresentable {
             // Laying out from here is also safe, which is what separates it from
             // the hook below: the pass in progress is this container's, and the
             // text view lays itself out afterwards, so `ensureLayout` re-enters
-            // nothing — the same holds for the forcing `top(ofFileAt:)` behind a
-            // waiting scroll.
+            // nothing. A waiting scroll pulls the text view's pass forward
+            // instead, but the text view is a descendant: its pass completes
+            // before the forcing `top(ofFileAt:)` and `ensureLayout` run, and the
+            // `didLayout` it fires only queues work.
             containerView.viewportDidChange = { [weak self] in self?.viewportDidChange() }
             // The third thing that invalidates the bars, and the only one the
             // surface does not do to itself: TextKit replacing the estimated
