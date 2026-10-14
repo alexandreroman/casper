@@ -1,5 +1,6 @@
 import AppKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 
@@ -70,12 +71,14 @@ extension XCTestCase {
     }
 
     /// A real `GhosttyRuntime` that reads none of the developer's own Ghostty config and
-    /// writes its theme files to a per-test temporary directory. A local
-    /// `clipboard-read = allow` or a rebound `super+n` would otherwise change what a test
-    /// observes; CI has no user config, so such a leak would only bite local runs.
-    func makeIsolatedRuntime() throws -> GhosttyRuntime {
+    /// writes its theme files to `themeDirectory`, a per-test temporary directory unless
+    /// the caller passes the one it inspects. A local `clipboard-read = allow` or a rebound
+    /// `super+n` would otherwise change what a test observes; CI has no user config, so
+    /// such a leak would only bite local runs.
+    func makeIsolatedRuntime(themeDirectory: URL? = nil) throws -> GhosttyRuntime {
         try GhosttyRuntime(
-            themeDirectory: makeTemporaryDirectory(prefix: "casper-ghostty-themes"), loadUserFiles: { _ in })
+            themeDirectory: themeDirectory ?? makeTemporaryDirectory(prefix: "casper-ghostty-themes"),
+            loadUserFiles: { _ in })
     }
 
     /// Pump the main run loop for a fixed duration so libghostty can drain PTY output and

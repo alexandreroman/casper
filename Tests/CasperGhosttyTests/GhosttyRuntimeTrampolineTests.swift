@@ -143,7 +143,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     func testSetColorSchemeRewritesPurgedThemeFiles() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
         let directory = makeTemporaryDirectory(prefix: "casper-runtime-themes")
-        let runtime = try GhosttyRuntime(themeDirectory: directory, loadUserFiles: { _ in })
+        let runtime = try makeIsolatedRuntime(themeDirectory: directory)
         let paths = GhosttyThemeFiles.Paths(
             light: directory.appendingPathComponent("casper-light"),
             dark: directory.appendingPathComponent("casper-dark"))

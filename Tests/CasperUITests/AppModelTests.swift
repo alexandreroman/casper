@@ -434,7 +434,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotEqual(linked.portBase, primaryPort)
         let expectedWorktree = repo.deletingLastPathComponent()
             .appendingPathComponent(repo.lastPathComponent + "-my-feature").path
-        addTeardownBlock { try? FileManager.default.removeItem(atPath: expectedWorktree) }
         XCTAssertTrue(FileManager.default.fileExists(atPath: expectedWorktree))
     }
 
@@ -453,12 +452,6 @@ final class AppModelTests: XCTestCase {
         try "mine\n".write(
             to: URL(fileURLWithPath: taken).appendingPathComponent("notes.txt"),
             atomically: true, encoding: .utf8)
-        let suffixed = repo.deletingLastPathComponent()
-            .appendingPathComponent(repo.lastPathComponent + "-my-feature-2").path
-        addTeardownBlock {
-            try? FileManager.default.removeItem(atPath: taken)
-            try? FileManager.default.removeItem(atPath: suffixed)
-        }
 
         _ = try await model.createLinkedWorkspace(spaceID: spaceID, name: "My Feature", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
@@ -483,7 +476,6 @@ final class AppModelTests: XCTestCase {
         try "<project/>\n".write(
             to: leftover.appendingPathComponent(".idea/workspace.xml"),
             atomically: true, encoding: .utf8)
-        addTeardownBlock { try? FileManager.default.removeItem(at: leftover) }
 
         _ = try await model.createLinkedWorkspace(spaceID: spaceID, name: "My Feature", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
@@ -548,9 +540,6 @@ final class AppModelTests: XCTestCase {
         let repo = try makeTempGitRepo()
         let model = makeModel()
         model.addSpace(folderURL: repo, probe: AppModel.gitProbe)
-        let worktree = repo.deletingLastPathComponent()
-            .appendingPathComponent(repo.lastPathComponent + "-feat").path
-        addTeardownBlock { try? FileManager.default.removeItem(atPath: worktree) }
 
         let message = await creationFailureMessage(model, spaceID: model.spaces[0].id, name: "feat")
 
@@ -604,7 +593,6 @@ final class AppModelTests: XCTestCase {
     private func makeWorktree(of repo: URL, named name: String) throws -> URL {
         let worktree = repo.deletingLastPathComponent()
             .appendingPathComponent(repo.lastPathComponent + "-" + name)
-        addTeardownBlock { try? FileManager.default.removeItem(at: worktree) }
         let handle = try Repository.open(atPath: repo.path)
         _ = try handle.addWorktree(name: name, atPath: worktree.path, basedOn: nil)
         return worktree
@@ -833,7 +821,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(handle.isBare)
         let worktree = bare.deletingLastPathComponent()
             .appendingPathComponent(seed.lastPathComponent + "-" + name)
-        addTeardownBlock { try? FileManager.default.removeItem(at: worktree) }
         _ = try handle.addWorktree(name: name, atPath: worktree.path, basedOn: nil)
         return (bare, worktree)
     }
@@ -962,7 +949,6 @@ final class AppModelTests: XCTestCase {
         // same Space rather than spawning a second Space for the same repo.
         _ = try await model.createLinkedWorkspace(spaceID: model.spaces[0].id, name: "feat", base: nil).get()
         let linked = model.spaces[0].workspaces[1]
-        addTeardownBlock { try? FileManager.default.removeItem(atPath: linked.worktreePath) }
         model.removeWorkspace(id: linked.id)
         XCTAssertEqual(model.spaces[0].workspaces.count, 1)
 
@@ -1487,20 +1473,19 @@ final class AppModelTests: XCTestCase {
         func modelFontSize() -> Float? {
             LayoutTree.surfaces(model.spaces[0].workspaces[0].layout).first { $0.id == surfaceID }?.fontSize
         }
+        var sizeBefore: Float = 0
         try await withHostedSurface(view) {
+            sizeBefore = try XCTUnwrap(view.surface).currentFontSize()
             // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
             // ANSI keyboard. A genuine NSEvent, built the same way a real keypress
             // arrives, so the whole capture path starts where the real one does.
-            let event = try XCTUnwrap(NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
-                windowNumber: 0, context: nil, characters: "=",
-                charactersIgnoringModifiers: "=", isARepeat: false, keyCode: 24))
-            _ = view.performKeyEquivalent(with: event)
+            _ = view.performKeyEquivalent(with: keyEvent("=", modifiers: [.command], keyCode: 24))
             await waitUntil { modelFontSize() != nil }
         }
 
         let updatedFontSize = try XCTUnwrap(modelFontSize())
-        XCTAssertGreaterThan(updatedFontSize, 0)
+        // Any first report clears a bare `> 0`, so compare against the size before the keypress.
+        XCTAssertGreaterThan(updatedFontSize, sizeBefore)
 
         // Debounced: wait for its own fire, since a flush would persist regardless.
         await waitUntil { saves == 1 }

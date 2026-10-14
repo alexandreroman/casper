@@ -69,18 +69,21 @@ final class ControlSocketTests: XCTestCase {
     func testRetriableSendDoesNotRetryATimedOutAttempt() throws {
         let path = tempSocketPath()
         let server = ControlSocketServer(socketPath: path)
-        server.onCommand = { _, _ in }  // accepts the request but never replies
+        let requests = Recorder<ControlCommand.Verb>()
+        // Accepts each request but never replies.
+        server.onCommand = { command, _ in requests.record(command.verb) }
         try server.start()
         defer { server.stop() }
 
-        let start = Date()
         XCTAssertThrowsError(
             try ControlSocketClient.send(
                 ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 0.3, retriable: true)
         ) { error in
             XCTAssertTrue(error is SocketTransportError)
         }
-        XCTAssertLessThan(Date().timeIntervalSince(start), 0.6)
+        // Every retry would run, and reach the server, before `send` returns, so counting the
+        // requests needs no timing bound.
+        XCTAssertEqual(requests.values, [.workspaceList])
     }
 
     /// The file a crashed app leaves behind: a socket bound and then closed

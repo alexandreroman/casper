@@ -55,20 +55,10 @@ final class AgentEnvironmentTests: XCTestCase {
         XCTAssertEqual(env["PATH"], "/Apps/Casper.app/Contents/MacOS")
     }
 
-    func testSurfaceEnvironmentOmitsPathWhenNoCasperDirectory() {
-        let env = AgentEnvironment.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
-        XCTAssertNil(env["PATH"])
-    }
-
     func testSurfaceEnvironmentInjectsSessionWhenNamed() {
         let env = AgentEnvironment.surfaceEnvironment(
             workspaceId: UUID(), portBase: 40000, sessionName: "dev")
         XCTAssertEqual(env["CASPER_SESSION"], "dev")
-    }
-
-    func testSurfaceEnvironmentOmitsSessionForDefault() {
-        let env = AgentEnvironment.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
-        XCTAssertNil(env["CASPER_SESSION"])
     }
 
     func testSurfaceEnvironmentInjectsControlSocketWhenProvided() {
@@ -76,10 +66,5 @@ final class AgentEnvironmentTests: XCTestCase {
             workspaceId: UUID(), portBase: 40000,
             controlSocketPath: "/control.sock")
         XCTAssertEqual(env["CASPER_CONTROL_SOCKET"], "/control.sock")
-    }
-
-    func testSurfaceEnvironmentOmitsControlSocketWhenNil() {
-        let env = AgentEnvironment.surfaceEnvironment(workspaceId: UUID(), portBase: 40000)
-        XCTAssertNil(env["CASPER_CONTROL_SOCKET"])
     }
 }

@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 

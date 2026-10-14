@@ -1,6 +1,7 @@
 import AppKit
 import GhosttyKit
 import XCTest
+import CasperTestSupport
 
 @testable import CasperGhostty
 

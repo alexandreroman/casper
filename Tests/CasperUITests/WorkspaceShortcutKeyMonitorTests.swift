@@ -1,6 +1,7 @@
 import AppKit
 import XCTest
 import CasperCore
+import CasperTestSupport
 import Observation
 @testable import CasperUI
 
@@ -11,18 +12,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     ) -> NSEvent {
         var flags = extraModifiers
         if command { flags.insert(.command) }
-        return NSEvent.keyEvent(
-            with: .flagsChanged,
-            location: .zero,
-            modifierFlags: flags,
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            characters: "",
-            charactersIgnoringModifiers: "",
-            isARepeat: false,
-            keyCode: 0
-        )!
+        return keyEvent("", modifiers: flags, keyCode: 0, type: .flagsChanged)
     }
 
     private func keyDownEvent(
@@ -31,18 +21,7 @@ final class WorkspaceShortcutKeyMonitorTests: XCTestCase {
     ) -> NSEvent {
         var flags = extraModifiers
         if command { flags.insert(.command) }
-        return NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: flags,
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            characters: characters,
-            charactersIgnoringModifiers: characters,
-            isARepeat: false,
-            keyCode: keyCode
-        )!
+        return keyEvent(characters, modifiers: flags, keyCode: keyCode)
     }
 
     func testCmdDigitSelectsWorkspaceAndConsumesEvent() {
