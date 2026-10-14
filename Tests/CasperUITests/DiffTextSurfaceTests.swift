@@ -278,6 +278,8 @@ final class DiffTextSurfaceTests: XCTestCase {
 
     /// A file id matches exactly or not at all: `casper diff open README.md` on an
     /// unchanged root `README.md` must not land on a changed `docs/README.md`.
+    /// This is the coordinator's half; `DiffScrollTargetTests` pins the model's,
+    /// where such a target settles without a scroll.
     func testAFileIDNeverMatchesANestedFileOfTheSameName() throws {
         let files = ["a.swift", "docs/README.md"].map { diffFile($0, lines: additionLines(40)) }
         let (controller, _) = makeHostedSurface(DiffDocument(diff: GitDiff(files: files)))
