@@ -299,8 +299,10 @@ final class DiffTests: XCTestCase {
 
     func testFailedRenamePassLeavesTheDeltasUnpaired() throws {
         // Rename detection is best-effort: a target it cannot read mid-pass costs the
-        // pairing, not the diff. Driven below `diffWorkdirToHead`, because a target
-        // unreadable from the start already fails patch generation on its own.
+        // pairing, not the diff. Drives the rename pass directly, so the target can
+        // turn unreadable between the listing and the hashing. A target unreadable from
+        // the start is another case: `diffWorkdirToHead` lists it as `unreadable`
+        // (`testUnreadableFileIsListedWithoutFailingTheDiff`).
         try FileManager.default.removeItem(at: url("README.md"))
         try writeReadmeLookalike(to: "unreadable.txt", size: 64)
 
