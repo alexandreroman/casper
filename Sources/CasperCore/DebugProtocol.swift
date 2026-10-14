@@ -125,8 +125,11 @@ public struct DebugState: Codable, Equatable, Sendable {
 /// they separate "the process grew" from "these objects were never released",
 /// which is what tells a real leak apart from allocator noise.
 public struct DebugMemory: Codable, Equatable, Sendable {
+    /// `phys_footprint` — the number Activity Monitor shows as "Memory".
     public var footprintBytes: Int
+    /// `resident_size` — physical pages currently mapped in.
     public var residentBytes: Int
+    /// `ledger_phys_footprint_peak`, or 0 when the kernel does not report it.
     public var peakFootprintBytes: Int
     public var liveObjects: [LiveObjectCensus.Entry]
     /// Named sizes of the app's per-id caches and collections, e.g. "surfaceViews": 3.
@@ -134,7 +137,7 @@ public struct DebugMemory: Codable, Equatable, Sendable {
 
     public init(
         footprintBytes: Int, residentBytes: Int, peakFootprintBytes: Int,
-        liveObjects: [LiveObjectCensus.Entry], counters: [String: Int]
+        liveObjects: [LiveObjectCensus.Entry] = [], counters: [String: Int] = [:]
     ) {
         self.footprintBytes = footprintBytes
         self.residentBytes = residentBytes

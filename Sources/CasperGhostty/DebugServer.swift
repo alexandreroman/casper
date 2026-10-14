@@ -270,15 +270,11 @@ public final class DebugServer {
     /// property of the process, not of the app model — so it is reported even when
     /// the provider does not implement `DebugMemoryProvider`.
     private func memoryResponse() -> DebugResponse {
-        guard let sample = ProcessMemory.sample() else { return .failure("task_info failed") }
-        var counters = (provider as? any DebugMemoryProvider)?.debugMemoryCounters() ?? [:]
-        counters["nsWindows"] = NSApp?.windows.count ?? 0
-        return .success(memory: DebugMemory(
-            footprintBytes: sample.footprintBytes,
-            residentBytes: sample.residentBytes,
-            peakFootprintBytes: sample.peakFootprintBytes,
-            liveObjects: LiveObjectCensus.snapshot(),
-            counters: counters))
+        guard var memory = ProcessMemory.sample() else { return .failure("task_info failed") }
+        memory.liveObjects = LiveObjectCensus.snapshot()
+        memory.counters = (provider as? any DebugMemoryProvider)?.debugMemoryCounters() ?? [:]
+        memory.counters["nsWindows"] = NSApp?.windows.count ?? 0
+        return .success(memory: memory)
     }
 
     /// The surface a verb acts on: the id-matched surface when `target` is set,
