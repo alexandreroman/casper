@@ -132,13 +132,17 @@ final class DiffSurfaceViewScrollTests: XCTestCase {
     ///
     /// Keeps turning a little after `condition` holds, so that a scroll the view
     /// reports as landed but that a later layout pass undoes is caught too.
-    private func settle(_ host: NSView, timeout: TimeInterval = 10, until condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() > deadline { return XCTFail("condition not met within \(timeout)s") }
-            host.layoutSubtreeIfNeeded()
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+    private func settle(
+        _ host: NSView, timeout: TimeInterval = 10, until condition: () -> Bool,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async {
+        await waitUntil(
+            timeout: timeout,
+            {
+                host.layoutSubtreeIfNeeded()
+                return condition()
+            },
+            file: file, line: line)
         for _ in 0..<10 {
             host.layoutSubtreeIfNeeded()
             try? await Task.sleep(for: .milliseconds(10))
