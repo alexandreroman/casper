@@ -28,9 +28,10 @@ import SwiftUI
 struct CasperCommands: Commands {
     /// Title of the first item of the standard File slot, and the marker
     /// `AppDelegate.renameFileMenu(in:)` matches that menu on — it is Casper's own
-    /// string, so unlike the standard File items macOS does not localize it. Keep
-    /// the `SpaceEntryCommand` items first in the `.newItem` group below.
-    static let newSpaceTitle = SpaceEntryCommand.create.title
+    /// string, so unlike the standard File items macOS does not localize it. Read
+    /// off `allCases`, which the `.newItem` group below lists first, so reordering
+    /// the cases cannot desync the marker; keep that `ForEach` first in the group.
+    static let newSpaceTitle = SpaceEntryCommand.allCases[0].title
 
     let model: AppModel
 

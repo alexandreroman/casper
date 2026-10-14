@@ -49,7 +49,8 @@ struct EmptyStateView: View {
                 }
                 // `fixedSize` keeps the hint on one line: it is a shortcut legend, and
                 // wrapped over two lines it reads as prose. It stays far narrower than
-                // the onboarding strip below, so it never widens the screen.
+                // the onboarding strip below, so it never widens the screen. The keys
+                // spelled here are `SpaceEntryCommand.keyEquivalent`'s; keep them in step.
                 Text("⌘N to create a Space · ⌘O to add a folder")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
