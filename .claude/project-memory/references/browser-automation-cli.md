@@ -134,8 +134,6 @@ The CLI dials `$CASPER_CONTROL_SOCKET`, whose path comes from
 control socket lands in the per-user Darwin temp dir (`$TMPDIR`, e.g.
 `/var/folders/.../T/casper-control-<session>.sock`), NOT `/tmp`. (The DEBUG
 debug socket is hard-coded to `/tmp`, so the two live in different directories
-under a named session.) A fresh `--session` starts with an empty layout; to
-bootstrap a workspace non-interactively, pre-seed
-`~/Library/Application Support/Casper/session-<name>.json` (a Space + Workspace
-with a real `worktreePath`) before launch — `addSpace` is otherwise GUI-only
-(`NSOpenPanel`).
+under a named session.) To bootstrap a workspace in a fresh session, pre-seed
+its layout file — see the `debug-casper` skill § Seed a space and
+[[app-sessions]].

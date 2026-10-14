@@ -18,15 +18,10 @@ title/info group and on every chip row, alongside the one in
 are single "words" that stack the same way.
 
 **Why:** width is handed out silently, and a `Text` given less than it wants
-answers by wrapping — no warning, no clipping, no compile-time signal. The one
-item is itself a consequence of that: AppKit sizes a `ToolbarItem`'s hosted view
-to its content's **ideal** width and will not shrink it below that, so a bar too
-narrow overflows the item whole into the chevron rather than proposing it less.
-Measured on the running app at a 600 pt window, where the navigation item alone
-reported 293 pt and went into the chevron with its title still one truncatable
-line — and in the chevron the custom chips lose their capsule chrome and the
-segmented control clips to a lone glyph. Hence one item that is never wider than
-the bar, degrading itself internally.
+answers by wrapping — no warning, no clipping, no compile-time signal. The
+one-item title bar is itself a consequence of how AppKit hands out that width:
+it overflows a toolbar item whole rather than proposing it less — see
+[[toolbar-overflows-before-squeezing]].
 
 **How to access:** the geometry is measurable headlessly —
 `Tests/CasperUITests/WorkspaceTitleLabelTests.swift` hosts the label at a sweep

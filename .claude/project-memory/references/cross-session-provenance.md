@@ -21,11 +21,10 @@ time it spoke.
 Any claim that shapes code must be verified against the files directly, not
 carried on a peer's report, however reliable that peer has proven.
 
-**Why:** conflating two senders produced a confident, wrong account of a
-repository's state, and the appearance of a contradiction where there was none —
-two truthful snapshots of two branches, one later merged into the other. The
-constants themselves were sound only because they had been read from the files
-independently.
+**Why:** conflating two senders yields a confident, wrong account of a
+repository's state, and the appearance of a contradiction where there is none —
+two truthful snapshots of two branches, one later merged into the other. Facts
+read from the files independently stay sound whichever peer reported them.
 
 **How to apply:** quote the sender when relaying a peer's claim. Ask "which
 worktree?" before acting on state. Re-read the file when a claim decides an

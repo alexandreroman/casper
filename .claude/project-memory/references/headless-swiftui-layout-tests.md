@@ -12,6 +12,11 @@ in `NSHostingView(rootView:)`, call `layoutSubtreeIfNeeded()`, and read
 measurement is synchronous and takes ~2ms. Put such tests in a `@MainActor`
 `XCTestCase`, matching the rest of the UI suite.
 
+One exception needs a window: a SwiftUI `ScrollView`'s document view lays out
+only inside an `NSWindow`, so a test reading geometry under a `ScrollView` hosts
+the `NSHostingView` in an off-screen window that is never ordered in (see
+[[offscreen-host-windows-unordered]] and [[nstextview-caller-sized-frame]]).
+
 **Why:** this does not contradict [[agent-visual-verification-limits]] — that
 note is about *pixels* (screenshots need a screen-recording TCC grant agents
 lack). Geometry is a different thing and needs no permission at all, so the

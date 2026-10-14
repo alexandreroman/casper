@@ -142,7 +142,8 @@ non-selected workspaces.
    `themes/git-worktrees.md` § Standing limitations. The terminal draws no
    marked text (preedit): IME candidates and dead-key previews are not shown
    inline, while committed text works — see `themes/terminal.md` § Keyboard &
-   clipboard. The unpinned libgit2 is filed as a risk in
+   clipboard. A multi-line ⌘V pastes with no `clipboard-paste-protection` prompt
+   — same section. The unpinned libgit2 is filed as a risk in
    [`architecture.md`](architecture.md) § Risks & mitigations.
 
 Two visual passes still need a human, since agents cannot screenshot the SwiftUI

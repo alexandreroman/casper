@@ -17,30 +17,20 @@ counters, the selector's primary and secondary glyphs).
 
 ## The inspector tabs are one segmented control
 
-Diff and Browser are mutually exclusive, so they share a single
-`titleCapsuleShell` enclosing two glyph-only `Button`s (`InspectorTabSelector`).
-Selection reads from a single indicator — a `Capsule` filled with
-`Color(nsColor: .controlColor)` plus a 0.12-alpha shadow — drawn in the
-`.background` of the selected segment only and carried across the two by
-`matchedGeometryEffect`, so it slides horizontally rather than cross-fading. The
-selected glyph is `Color.primary`, the other `Color.secondary`.
-
-Three states are visible, and the third is what makes the exclusivity legible:
-the panel open on Diff, open on Browser, or collapsed — collapsed draws no
-indicator at all, leaving a plain neutral capsule.
-
-Hover belongs to the shell as a whole (`titleCapsuleShell()`, matching the Run
-/ Editor pills); a per-segment hover fill would fight the sliding indicator.
-
-The segments are glyph-only (`Image(systemName:)`, no visible text); their one
-`help` string serves as both the tooltip and the `.accessibilityLabel`.
+Diff and Browser share a single `titleCapsuleShell` enclosing two glyph-only
+`Button`s (`InspectorTabSelector`, whose doc comment carries the three visible
+states and why the control is one capsule). Selection reads from a single
+indicator — a `Capsule` filled with `Color(nsColor: .controlColor)` plus a
+0.12-alpha shadow — drawn in the `.background` of the selected segment only and
+carried across the two by `matchedGeometryEffect`, so it slides horizontally
+rather than cross-fading. The selected glyph is `Color.primary`, the other
+`Color.secondary`. Hover belongs to the shell as a whole, matching the Run /
+Editor pills; a per-segment hover fill would fight the sliding indicator.
 
 Each segment reserves a fixed glyph slot (`TitleCapsuleMetrics.glyphSlotWidth`)
-inside its 10pt horizontal insets, so both halves are the same width by
-construction. SF Symbols carry different intrinsic widths — of the five that
-sit in a glyph slot, `arrow.triangle.merge` and `plusminus` measure 12 pt,
-`ellipsis` 14, and `trash` and `globe` 15 — and content-sized segments therefore
-come out lopsided and resize the sliding indicator as it moves. The slot goes
-*inside* the padding — see [[fixed-frame-swallows-inner-padding]] — so the
-insets still widen the segment and the whole half stays clickable. The resulting
-geometry is pinned by `InspectorTabSelectorTests`.
+inside its 10 pt horizontal insets, per [[sf-symbol-widths-need-a-slot]]: of
+the five symbols that sit in a title-bar glyph slot, `arrow.triangle.merge` and
+`plusminus` measure 12 pt, `ellipsis` 14, and `trash` and `globe` 15. The slot
+goes *inside* the padding — see [[fixed-frame-swallows-inner-padding]] — so the
+insets still widen the segment and the whole half stays clickable. The
+resulting geometry is pinned by `InspectorTabSelectorTests`.

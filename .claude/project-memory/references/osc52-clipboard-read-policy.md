@@ -51,9 +51,8 @@ because Casper sets `clipboard-write = ask` itself.
 
 **Only OSC 52 reads reach this policy.** `confirm_read_clipboard_cb` also serves
 `GHOSTTY_CLIPBOARD_REQUEST_PASTE`, which auto-confirms, so an ordinary ⌘V takes
-its own path — including the multi-line paste that trips Ghostty's
-`clipboard-paste-protection`. That protection is a separate, unimplemented
-feature.
+its own path and never reaches this policy — including the multi-line paste
+that trips Ghostty's `clipboard-paste-protection`.
 
 **A denied read still completes**, with an empty string, rather than being
 dropped as upstream Ghostty drops it — the path a substituted `approveUntrusted`

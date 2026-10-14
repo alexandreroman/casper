@@ -22,7 +22,7 @@
 - [Test toolchain](references/test-toolchain.md) — XCTest needs full Xcode; the suite builds in debug only; gotchas
 - [Swift toolchain floor](references/swift-toolchain-floor.md) — Swift 6.2 isolated conformances; the Xcode pin stays >= 26
 - [macOS 26 appearance needs a linked SDK >= 26](references/linked-sdk-gates-macos26-appearance.md) — SwiftPM records the deployment target
-- [Git workflow](references/git-workflow.md) — explicit authorization before git init/commit/push
+- [Git workflow](references/git-workflow.md) — explicit authorization before commit, remote or push; plan commits are fine
 - [SDD doc location](references/sdd-doc-location.md) — new design/plan docs go in the gitignored `.superpowers/sdd/`
 - [English only](references/english-only.md) — all generated text is English; commit subjects use verb + action
 - [Swift 6 Network concurrency](references/swift6-network-concurrency.md) — socket classes: `@unchecked Sendable` + serial-queue discipline

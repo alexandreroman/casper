@@ -78,7 +78,10 @@ surfaces and PTYs (same model as the Ghostty app).
   [[ghostty-clipboard-callbacks]]. Untrusted OSC 52 reads and writes go through
   the `approveUntrusted` gates of `GhosttyClipboardRead` and
   `GhosttyClipboardWrite`, which approve unconditionally — see
-  [[osc52-clipboard-write-policy]] and [[osc52-clipboard-read-policy]].
+  [[osc52-clipboard-write-policy]] and [[osc52-clipboard-read-policy]]. An
+  ordinary ⌘V confirms its paste request on sight: Ghostty's
+  `clipboard-paste-protection` prompt for a multi-line paste is not
+  implemented, a standing limitation (see `../status.md`).
 - **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
   in CasperUI (`MenuCommands.swift`), not an AppKit menu built here. Its Edit
   group's Copy/Paste/Select All reach the focused surface through the responder

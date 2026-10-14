@@ -22,28 +22,20 @@ hijacks their sockets.
 paths (`casper-control.sock`, `/tmp/casper-debug.sock`, `session.json`); the
 second one rewrites the real `session.json` on quit and unlinks the live socket.
 A named session removes that collision — a `--session dev` run leaves the real
-7 KB `session.json` untouched. `make dev` needs no argument of its own: it
+`session.json` untouched. `make dev` needs no argument of its own: it
 derives `DEV_SESSION` from the current branch name, sanitized to
 `SessionIdentity`'s charset, so two worktrees on different branches already get
 independent sessions. A hand-rolled launch is the case that has to name one.
 
 **How to apply:**
 
-- `SessionIdentity` (CasperCore) is the single source of the `-<name>` suffix.
-  Parsing `--session` is gated by `#if DEBUG`: a release build ignores the
-  argument entirely and always runs the default session. No `--session` (or any
-  `--session` in a release build) → default session = byte-for-byte the
-  historical paths (no `CASPER_SESSION` injected). Name rule: 1–32 chars from
-  `[A-Za-z0-9._-]`; an invalid name exits non-zero at launch in a debug build
-  (never a silent fallback).
-- **Domain CLI** (`status`/`notify`/…) needs no change per session: it reads the
-  per-session `CASPER_CONTROL_SOCKET` already injected into the terminal — it
-  does **not** read `CASPER_SESSION`. Keep the "only works inside a Casper
-  terminal" invariant.
-- **Debug CLI** (external) derives its socket from `CASPER_SESSION`
-  (`CASPER_DEBUG_SOCKET` full-path override still wins); there is no `--session`
-  CLI flag.
-- Ports: `PortAllocator` uses a randomized scan start (`randomStartBase`) to
-  reduce — not eliminate — cross-instance port-block collisions.
-- The per-surface env injection and the per-session control socket are in
-  `.superpowers/themes/cli-agents.md` § Agent state & progress.
+- `SessionIdentity` (CasperCore) is the single source of the `-<name>` suffix,
+  and only a debug build parses `--session` (`.superpowers/themes/core.md`
+  § SessionStore). Name rule: 1–32 chars from `[A-Za-z0-9._-]`; an invalid name
+  exits non-zero at launch in a debug build (never a silent fallback).
+- Neither CLI takes a `--session` flag: the domain CLI follows the
+  `CASPER_CONTROL_SOCKET` injected into the terminal, and the debug CLI derives
+  its socket from `CASPER_SESSION` — see `.superpowers/themes/cli-agents.md`
+  § Agent state & progress and `.superpowers/themes/debug.md`.
+- Two instances can still draw the same port block: the randomized scan start
+  only reduces that (`.superpowers/themes/core.md` § PortAllocator).
