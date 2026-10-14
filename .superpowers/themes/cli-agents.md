@@ -14,11 +14,12 @@ environment that lets an agent in a terminal report its state through the CLI.
 The bundle executable inspects its argv **by shape, not by vocabulary**
 (`LaunchMode.detect`). Empty argv → **GUI mode**. A first argument that does not
 start with `-` → **CLI mode**, whatever the word is: `casper bogus` enters the
-CLI and fails there with ArgumentParser's own "unknown subcommand" error, which
-is the intent — a typo should be reported, not silently launch a window. A first
-argument that *does* start with `-` is treated as an AppKit/system launch flag
-(`-NSDocumentRevisionsDebugMode`, `-psn_0_12345`, `-AppleLanguages`) and means
-GUI, with `-h`/`--help`/`--version` carved out as the exceptions that mean CLI.
+CLI and fails there with ArgumentParser's own usage error (`Unexpected argument
+'bogus'`, exit 64), which is the intent — a typo should be reported, not
+silently launch a window. A first argument that *does* start with `-` is treated
+as an AppKit/system launch flag (`-NSDocumentRevisionsDebugMode`,
+`-psn_0_12345`, `-AppleLanguages`) and means GUI, with `-h`/`--help`/`--version`
+carved out as the exceptions that mean CLI.
 Parsing uses swift-argument-parser; the fork happens before the
 `ParsableCommand` tree is ever built.
 
@@ -75,10 +76,12 @@ present in a release build. See [[debug-channel-gating]].
 ### JSON output
 
 `README.md` § CLI records the generic contract only — a JSON object on stdout,
-an array for the `list` verbs. The **per-verb shapes** are the 16 `Encodable`
-payload types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its
-literal shape in the type's own doc comment; that file is the reference. Two
-contracts behind them bind every new verb:
+an array for the `list` verbs. The **per-verb shapes** are the `Encodable`
+types in `Sources/CasperCLI/JSONOutput.swift`, each documented with its literal
+shape in the type's own doc comment, plus `jsonLine(key:…)` for the two verbs
+that embed app-serialized JSON (`browser eval` → `result`, `browser console` →
+`console`); that file is the reference. Two contracts behind them bind every new
+verb:
 
 - **A success payload always carries the affected `workspace` id**, even when
   the verb has no state of its own to report (`progress clear`, `notify`,
