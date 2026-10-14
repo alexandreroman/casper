@@ -27,11 +27,12 @@ CI, test, and documentation-only work is left out.
   the one in a workspace an agent opens with `casper workspace new --command`
   while you are away — now starts on its own once they wake, instead of
   waiting until you select the workspace.
-- Creating a workspace again under a name whose previous creation failed no
-  longer fails with "directory exists".
-- Creating a workspace whose name matches an existing Git worktree no longer
-  deletes that worktree's folder, and the error now says that another worktree
-  already uses the name instead of showing Git's "directory exists".
+- A failed workspace creation no longer leaves behind Git state that makes the
+  next attempt under the same name fail with "directory exists".
+- Creating a workspace under a name Git already has a worktree entry for no
+  longer deletes that worktree's folder. The error now says so, and suggests
+  `git worktree prune` when that worktree was deleted, instead of showing Git's
+  "directory exists".
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
   as unreadable.
 - `casper` commands fail at once instead of hanging for several seconds when

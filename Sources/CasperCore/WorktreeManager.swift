@@ -30,7 +30,8 @@ extension WorktreeError: LocalizedError {
         case .branchAlreadyCheckedOut:
             return "That branch is already checked out in another worktree."
         case .worktreeNameTaken:
-            return "Another Git worktree of this repository already uses that name."
+            return "Git already has a worktree entry by that name in this repository. Pick another name, "
+                + "or run 'git worktree prune' if that worktree was deleted."
         case .worktreePathExists:
             return "The worktree path already exists."
         case .mergeConflict:

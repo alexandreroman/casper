@@ -54,9 +54,12 @@ binary. We own this surface; it exposes only what Casper needs.
   rather than `GIT_EEXISTS`. An admin entry that predates the call belongs to
   another worktree registered under that name and is left untouched, folder
   included; `WorktreeManager.create` refuses such a name up front
-  (`WorktreeError.Reason.worktreeNameTaken`), so the user reads that another
-  worktree holds it rather than libgit2's "directory exists". Then a plain
-  Ghostty terminal opens in its folder.
+  (`WorktreeError.Reason.worktreeNameTaken`). The check fires on any entry —
+  a live worktree, one whose folder was deleted without a prune, or a partial
+  leftover — so the message says only that Git already has a worktree entry by
+  that name, and points at `git worktree prune` for a deleted one, rather than
+  showing libgit2's "directory exists". Then a plain Ghostty terminal opens in
+  its folder.
   Cleanliness is read through `git_status_list_new` (`isClean`), and a failure
   at any step is surfaced as a clear UI error, never a crash. There is no
   `git_worktree_validate` wrapper: libgit2 reports the failure directly from the

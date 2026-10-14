@@ -135,7 +135,8 @@ final class WorktreeManagerTests: XCTestCase {
             XCTAssertEqual((error as? WorktreeError)?.reason, .worktreeNameTaken)
             XCTAssertEqual(
                 error.localizedDescription,
-                "Another Git worktree of this repository already uses that name.")
+                "Git already has a worktree entry by that name in this repository. Pick another name, "
+                    + "or run 'git worktree prune' if that worktree was deleted.")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: wtPath))
         XCTAssertFalse(try Repository.open(atPath: repoDir.path).branchExists("taken"))
