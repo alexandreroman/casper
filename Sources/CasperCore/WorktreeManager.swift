@@ -107,9 +107,10 @@ public enum WorktreeManager {
             _ = try repo.addWorktree(name: name, atPath: worktreePath, basedOn: base)
         }
 
-        // Same Git-ignore source `DirectoryWatcher` prunes with: walking `.build` or
-        // `node_modules` costs a syscall per entry and can never yield a match worth
-        // seeding. A failure here only loses the pruning, so the copy still runs.
+        // The same Git-ignored top-level directories AppModel excludes from its
+        // `DirectoryWatcher`: walking `.build` or `node_modules` costs a syscall per
+        // entry and can never yield a match worth seeding. A failure here only loses
+        // the pruning, so the copy still runs.
         let ignoredTrees = Set(
             repo.ignoredTopLevelDirectories().map {
                 URL(fileURLWithPath: $0).lastPathComponent

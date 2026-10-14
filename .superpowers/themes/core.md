@@ -11,8 +11,9 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `Space`, `Workspace` (with `WorkspaceKind`, `InspectorState`/`InspectorTab`
   and `EditorKind`), `LayoutNode`, `Surface`, `Todo`/`TodoStatus`, `AgentState`.
 - **`LayoutTree`** — the pure engine behind the tmux-style pane layout:
-  `split`, `closeSurface`, `move`, `dropZone`, `updateRatios`, `contains`, plus
-  the read-only walks `forEachSurface`, `surfaceIDs` and `surfaces`. The
+  `split`, `closeSurface`, `move`, `dropZone`, `updateRatios`, `updateSurface`,
+  `orientationAndSide`, `contains`, plus the read-only walks `forEachSurface`,
+  `surfaceIDs` and `surfaces`. The
   detection tick runs on **`forEachSurface`** every pass, deliberately not on
   `surfaces(_:)`: the latter materializes a throwaway array of full `Surface`
   values — browser URLs and all — for every workspace, four times a second.
@@ -29,12 +30,17 @@ The pure-Swift, UI-free core. Fully unit-tested.
   detected value. Only the resolver is in this module: the tick itself and
   `setDetectedAgentState` live on CasperUI's `AppModel`, since landing a result
   means mutating the observable model. See `agent-state-detection.md`.
-- **`WorktreeManager`** — create/list/remove/deleteBranch/isClean/`merge` over
+- **`WorktreeManager`** — create/remove/deleteBranch/isClean/`merge` over
   `CasperGit`, plus `registeredName` (a worktree's admin entry resolved by path,
-  since an adopted worktree can carry any name), `resyncWorkingTree` and
-  `forceRemoveDirectory`, mapping failures to `WorktreeError` (see
-  `git-worktrees.md`). Its entry points are static and not actor-isolated, so
-  the close/delete paths can offload them to a detached task.
+  since an adopted worktree can carry any name), `resyncWorkingTree`,
+  `canonicalPath` and `claimWorktreePath`, mapping failures to `WorktreeError`
+  (see `git-worktrees.md`). `claimWorktreePath` reclaims a path an IDE
+  re-created after the worktree there was deleted: it deletes the directory
+  only when it is a real directory, the repository answers that no worktree
+  lives there, and every top-level entry is on an allow-list of editor metadata
+  (`.idea`, `.vscode`, …) — every doubt answers false. See
+  [[ide-recreates-worktree-directory]]. Its entry points are static and not
+  actor-isolated, so the close/delete paths can offload them to a detached task.
 - **`PortAllocator`** — assigns the first free contiguous **10-port block** from
   a configurable range. The default `40000–49990` bounds the block **base**, not
   the highest allocatable port: a block spans `base ... base + 9`, so the last
@@ -65,12 +71,13 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `ControlResponse` wire types) + `ControlSocket.swift` (the release Unix-domain
   server/client, declared as the `ControlSocketServer` / `ControlSocketClient`
   typealiases over the engine; neither file declares a type of its own name)
-  over the shared `SocketTransport` (symmetric 4-byte big-endian
-  length-prefixed framing with an 8 MB per-frame guard, applied in both
-  directions so a malformed peer cannot force an unbounded allocation; one
+  over the shared `SocketTransport` (symmetric 4-byte big-endian length-prefixed
+  framing with an 8 MB per-frame guard, applied in both directions so a
+  malformed peer cannot force an unbounded allocation; one
   `SocketTransportError` serves both channels; a refused connect — the stale
   socket file a crashed instance leaves — fails the client at once rather than
-  at its timeout), plus the pure CLI helpers
+  at its timeout; a retriable verb retries only a failed connection, never an
+  attempt that timed out waiting for the reply), plus the pure CLI helpers
   `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`. Concurrency
   discipline for the socket classes is in [[swift6-network-concurrency]].
 - **`SessionIdentity`** — the name that suffixes a session's layout file and
@@ -108,6 +115,13 @@ The pure-Swift, UI-free core. Fully unit-tested.
   - **`SpaceName`** / **`IdentifierFormatting`** — display-name derivation for a
     Space, and `UUID.casperID`, the lowercase canonical external form every id
     Casper emits uses.
+- **Debug channel wire** — **DEBUG-only**: `DebugProtocol.swift` (the
+  `DebugCommand` / `DebugResponse` wire types) and `DebugSocket.swift`
+  (`DebugSocketPath` and the server/client typealiases over the same
+  `SocketTransport`). See `debug.md` and [[debug-channel-gating]].
+- **`CasperLog`** — the `os.Logger` facade: one subsystem, the `debug-casper`
+  skill's filter key, split into categories. `.error`/`.fault` calls ship in
+  release; verbose `.debug`/`.info` call sites are wrapped in `#if DEBUG`.
 - **`LiveObjectCensus`** / **`ProcessMemory`** — **DEBUG-only**, the weak-ref
   live-object census and the process footprint behind `casper debug memory`
   (see `debug.md` and [[memory-observability]]).

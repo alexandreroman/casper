@@ -161,10 +161,12 @@ public struct InspectorState: Codable, Equatable, Sendable {
     ///
     /// `defaultWidth` is sized so the diff view (`DiffTextSurface` in CasperUI) can show ~80 columns of
     /// code content without wrapping. Budget, in points, of one diff line at its 14pt monospaced font
-    /// (SF Mono advance ≈ 8.65pt/char):
-    /// - code column: 80 content columns + 1 diff-marker prefix = 81 cells × 8.65 ≈ 701
+    /// (SF Mono advance ≈ 8.65pt/char), the first four terms being `DiffGutterRuler`'s columns:
+    /// - leading accent stripe: 3
     /// - gutter: budgeted for 4-digit line numbers (`maxDigits*9 + 12` = 48)
-    /// - leading accent stripe (3) + gutter↔code spacing (8) = 11
+    /// - `+`/`-` cue column: 4 gap + one glyph rounded up to 9 = 13
+    /// - code gap: 8, split between the ruler and the text container's 5pt `lineFragmentPadding`
+    /// - code column: 80 cells × 8.65 ≈ 692
     /// - ~16 slack for a legacy always-on vertical scroller
     /// Total ≈ 780, comfortably within min/max.
     public static let minWidth: Double = 240

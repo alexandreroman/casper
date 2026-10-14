@@ -90,8 +90,7 @@ public struct DebugState: Codable, Equatable, Sendable {
             backingWidth: Double, backingHeight: Double,
             contentScaleX: Double, contentScaleY: Double,
             backingScaleFactor: Double,
-            // Defaulted so existing call sites — and decoding of payloads written before these
-            // fields existed — stay valid.
+            // Defaulted so call sites that predate these fields stay valid.
             agentState: String? = nil, oscTitle: String? = nil, progressReport: String? = nil
         ) {
             self.id = id

@@ -111,8 +111,9 @@ browser. `LayoutNode.tabGroup` survives only as a legacy-decode migration path
 The **Space** layer and `kind`/`baseBranch` shipped with CasperUI UI-2
 (`themes/space-project.md`); the once-planned derived `diffStat` is **dropped**
 (decision 2026-07-06). Persistence: `SessionStore` serializes the whole tree to
-`~/Library/Application Support/Casper/session.json` (`Codable`, debounced);
-terminals restart cold, browser/diff surfaces reload their target, `portBase` is
+`~/Library/Application Support/Casper/session.json` (`Codable`; a few
+high-frequency edits are coalesced by `AppModel`); terminals restart cold,
+browser surfaces and the inspector browser reload their URL, `portBase` is
 restored as-is.
 
 ## Risks & mitigations

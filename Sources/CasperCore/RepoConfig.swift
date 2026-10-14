@@ -1,11 +1,12 @@
 import Foundation
 
-/// A repository's `.casper.json`, read from the repo root when a workspace is
-/// created. The file is grouped by domain so future sections have a home; the
-/// `workspace` section is the only one read today — its `copyFiles` patterns
-/// and its named `scripts` (the `setup`/`teardown` lifecycle hooks plus the
-/// user-invocable commands). Unknown keys are ignored, so a file that already
-/// carries other sections still decodes.
+/// A repository's `.casper.json`, read from a worktree's root: the repository's
+/// when a workspace is created, the workspace's own for its scripts. The file is
+/// grouped by domain so future sections have a home; the `workspace` section is
+/// the only one read today — its `copyFiles` patterns and its named `scripts`
+/// (the `setup`/`teardown` lifecycle hooks plus the user-invocable commands).
+/// Unknown keys are ignored, so a file that already carries other sections still
+/// decodes.
 public struct RepoConfig: Codable, Equatable, Sendable {
     /// Workspace-scoped preferences.
     public struct Workspace: Codable, Equatable, Sendable {

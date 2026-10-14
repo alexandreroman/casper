@@ -59,8 +59,8 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var total: Int?          // progressSet
     public var current: Int?        // progressSet
     public var label: String?       // progressSet
-    public var message: String?     // notify: optional macOS-notification body
-    public var url: String?         // browserOpen
+    public var message: String?     // notify: optional macOS-notification body; infoSet: the Markdown
+    public var url: String?         // browserOpen / browserLoad; browserScreenshot: optional page to render
     public var target: String?      // diffOpen: file path to scroll to; terminalClose: terminal id
     public var branch: String?      // workspaceNew
     public var base: String?        // workspaceNew
@@ -68,13 +68,13 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var cwd: String?         // terminalNew: optional working directory
     public var name: String?        // run: named command from .casper.json
     public var script: String?      // browserEval: JavaScript source to evaluate
-    public var selector: String?    // browserClick/Type/Key/Content: CSS selector target
+    public var selector: String?    // browserClick/Type/Key/Content/Wait: CSS selector target
     public var value: String?       // browserType: text to type into the element
     public var key: String?         // browserKey: key name (e.g. Enter, Escape)
     public var path: String?        // browserScreenshot: output PNG path
     public var level: String?       // browserConsole: severity threshold (ConsoleLevel raw value)
     public var predicate: String?   // browserWait: JavaScript predicate (--js form)
-    public var waitTimeout: Int?    // browserWait: deadline in milliseconds
+    public var waitTimeout: Int?    // browserWait / browserReload: deadline in milliseconds
     public var clear: Bool?         // browserConsole: drain the buffer after reading
     public var visible: Bool?       // browserWait: require the selector to be visible
     public var gone: Bool?          // browserWait: require the selector to be absent
