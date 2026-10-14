@@ -166,22 +166,23 @@ Then re-read to verify:
 
 The debug bridge — `AppModel`'s `DebugSurfaceProvider` conformance, in
 `Sources/CasperUI/DebugSurfaceBridge.swift` — exposes **at most one surface**:
-the *first* `GhosttySurfaceView` found in the key window's content
-hierarchy — i.e. the selected workspace's focused/first pane. Its reported `id`
+the *first* `GhosttySurfaceView` found in the content hierarchy of the key
+window (or, without one, the app's first window) — the first pane in the view
+hierarchy, not necessarily the focused one. Its reported `id`
 is the **selected workspace's UUID in Casper's canonical lowercase form**
 (`selectedWorkspaceID.casperID`, i.e. `uuidString.lowercased()` — Foundation's
 plain `uuidString` is uppercase and is never what the harness prints), not a
 per-pane id and not a numeric index. So `dump-state` returns a `surfaces` array
-of **at most one element** — it is empty when no key window, no surface view, or
-no selected workspace can be resolved. Consequently the harness **cannot reach**
-other panes in a split, or any unselected workspace's surface (including a
-background/off-screen one).
+of **at most one element** — it is empty when no window, no live surface view,
+or no selected workspace can be resolved. Consequently the harness **cannot
+reach** other panes in a split, or any unselected workspace's surface (including
+a background/off-screen one).
 
 Because there is never more than one surface, `--target` is essentially
 redundant —
 just omit it and verbs act on that surface. If you do pass it, `--target` /
-`focus` match the id **exactly** (`surfaces.first(where: { $0.id == target })`,
-in `DebugServer.resolve`); there is **no** numeric-index form, so `--target 0` /
+`focus` match the id **case-insensitively** (`DebugServer.surface(withID:in:)`);
+there is **no** numeric-index form, so `--target 0` /
 `focus 0` never match and fail with `no surface with id 0`. Pass the workspace
 UUID from `dump-state` instead:
 
