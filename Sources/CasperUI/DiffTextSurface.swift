@@ -160,19 +160,13 @@ struct DiffTextSurface: NSViewRepresentable {
         private nonisolated(unsafe) var boundsObserver: NSObjectProtocol?
 
         init() {
-            // The TextKit 2 chain, built by hand. `NSTextView` would make one
-            // itself, but merely *reading* `NSTextView.layoutManager` anywhere
-            // migrates the view to TextKit 1 and nils out `textLayoutManager`,
-            // silently taking every geometry call with it. Assembling the stack
-            // explicitly means TextKit 2 is guaranteed rather than incidental.
-            let contentStorage = NSTextContentStorage()
-            let layoutManager = NSTextLayoutManager()
-            let container = NSTextContainer(
-                size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
-            contentStorage.addTextLayoutManager(layoutManager)
-            layoutManager.textContainer = container
-
-            textView = DiffTextView(frame: .zero, textContainer: container)
+            // A stock TextKit 2 text view. It stays on TextKit 2 only for as long
+            // as nothing reads `NSTextView.layoutManager`: that read migrates the
+            // view to TextKit 1 and nils out `textLayoutManager`, silently taking
+            // every geometry call with it, however the view was built (see the
+            // `textkit2-layout-geometry` memory note).
+            textView = DiffTextView(usingTextLayoutManager: true)
+            textView.textContainer?.size = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
             // Selectable but not editable: character-level selection and copy are a
             // goal of this rewrite, and the numbers living in the ruler is what makes
             // a copy come out as clean code.
@@ -193,7 +187,6 @@ struct DiffTextSurface: NSViewRepresentable {
             // `paragraphSpacingBefore` on the document's very first paragraph, so the
             // band that file's bar draws into can only come from the inset.
             textView.textContainerInset = NSSize(width: 0, height: DiffTextAssembly.headerBandHeight)
-            container.widthTracksTextView = true
 
             scrollView = NSScrollView()
             scrollView.borderType = .noBorder

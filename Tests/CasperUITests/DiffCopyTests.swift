@@ -100,21 +100,15 @@ final class DiffCopyTests: XCTestCase {
 
     // MARK: - Selection and copy
 
-    /// A text view holding `document`, wired to a TextKit 2 stack the way the
-    /// surface wires its own.
+    /// A TextKit 2 text view holding `document`, built the way the surface builds
+    /// its own.
     private func makeTextView(_ document: DiffDocument) -> DiffTextView {
-        let contentStorage = NSTextContentStorage()
-        let layoutManager = NSTextLayoutManager()
-        let container = NSTextContainer(
-            size: CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
-        contentStorage.addTextLayoutManager(layoutManager)
-        layoutManager.textContainer = container
-
-        let textView = DiffTextView(frame: CGRect(x: 0, y: 0, width: 400, height: 400),
-                                    textContainer: container)
+        let textView = DiffTextView(usingTextLayoutManager: true)
+        textView.frame = CGRect(x: 0, y: 0, width: 400, height: 400)
+        textView.textContainer?.size = CGSize(width: 400, height: CGFloat.greatestFiniteMagnitude)
         textView.isEditable = false
         textView.isSelectable = true
-        contentStorage.textStorage?.setAttributedString(
+        textView.textContentStorage?.textStorage?.setAttributedString(
             DiffTextAssembly.makeAttributedText(for: document))
         textView.document = document
         return textView

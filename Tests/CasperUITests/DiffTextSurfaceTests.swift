@@ -181,7 +181,7 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(coordinator.gutter.document, document)
         XCTAssertEqual(coordinator.stickyHeader.document, document)
         XCTAssertEqual(coordinator.textView.string, document.text)
-        XCTAssertNotNil(coordinator.textView.textLayoutManager, "the TextKit 2 chain must be explicit")
+        XCTAssertNotNil(coordinator.textView.textLayoutManager, "the surface must stay on TextKit 2")
         // The first file's reserved band *is* this inset — nothing in the text
         // flow reserves it, since TextKit ignores `paragraphSpacingBefore` on the
         // document's first paragraph.
