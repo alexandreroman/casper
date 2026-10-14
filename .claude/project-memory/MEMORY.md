@@ -68,7 +68,7 @@
 - [A MainActor member as a default argument](references/mainactor-default-argument-isolation.md) — @MainActor on the parameter; the body drops it
 - [The working signal is the OSC 9;4 progress report](references/agent-state-working-signal.md) — title spinner secondary; version-coupled detection
 - [Measuring a TUI viewport affordance](references/viewport-affordance-measurement.md) — replay the PTY into a grid; raw greps miss split writes
-- [libghostty config dir is bundle-id scoped](references/ghostty-config-dir-bundle-id.md) — a bundle misses the user's config
+- [libghostty reads the user's Ghostty config](references/ghostty-user-config-dirs.md) — XDG + com.mitchellh.ghostty, whatever the bundle id
 - [Headless merge leaves the base worktree dirty](references/headless-merge-worktree-dirty.md) — read worktree cleanliness before merging, not after
 - [Test isolation from Casper socket env vars](references/test-env-socket-isolation.md) — `make test` strips CASPER_* vars so no live env leaks in
 - [Socket listen-path vs dial-path resolution](references/socket-listen-vs-dial-path.md) — the env override is dial-side only, never listen-side
