@@ -580,6 +580,11 @@ final class ControlCommandTests: XCTestCase {
         let shot = try DebugCLICommand.Screenshot.parse(["/tmp/shot.png"])
         XCTAssertEqual(shot.makeCommand().path, "/tmp/shot.png")
     }
+
+    func testDebugScreenshotCarriesTheSurfaceTarget() throws {
+        let shot = try DebugCLICommand.Screenshot.parse(["/tmp/shot.png", "--target", "surface-1"])
+        XCTAssertEqual(shot.makeCommand().target, "surface-1")
+    }
     #endif
 
     func testRunDefaultsToRunCommand() throws {
