@@ -37,23 +37,6 @@ public struct Surface: Codable, Equatable, Identifiable, Sendable {
         self.kind = kind
         self.fontSize = fontSize
     }
-
-    // Full case set is required once `init(from:)` is hand-rolled; case names
-    // match the property names so the synthesized `encode(to:)` keeps the same
-    // on-disk keys.
-    private enum CodingKeys: String, CodingKey { case id, kind, fontSize }
-
-    /// Decodes `fontSize` as optional so legacy `session.json` files (written
-    /// before font size was persisted) default it to nil, leaving that
-    /// terminal at libghostty's own default — unchanged from today's
-    /// behavior. `encode(to:)` stays synthesized, keeping the on-disk shape
-    /// stable and forward-writing the new field.
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decode(UUID.self, forKey: .id)
-        self.kind = try c.decode(Kind.self, forKey: .kind)
-        self.fontSize = try c.decodeIfPresent(Float.self, forKey: .fontSize)
-    }
 }
 
 extension Surface {

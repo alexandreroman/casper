@@ -199,6 +199,24 @@ final class ModelsTests: XCTestCase {
         XCTAssertNil(withoutSize.fontSize)
     }
 
+    func testSurfaceEncodesToStableSessionBytes() throws {
+        // Pins the exact `session.json` bytes of a surface, with the store's
+        // `.sortedKeys` encoder: an unset font size writes no key at all.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let id = try XCTUnwrap(UUID(uuidString: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"))
+
+        let plain = Surface(id: id, kind: .terminal(cwd: "/w"))
+        XCTAssertEqual(
+            String(decoding: try encoder.encode(plain), as: UTF8.self),
+            #"{"id":"0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D","kind":{"terminal":{"cwd":"\/w"}}}"#)
+
+        let sized = Surface(id: id, kind: .terminal(cwd: "/w"), fontSize: 18.5)
+        XCTAssertEqual(
+            String(decoding: try encoder.encode(sized), as: UTF8.self),
+            #"{"fontSize":18.5,"id":"0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D","kind":{"terminal":{"cwd":"\/w"}}}"#)
+    }
+
     func testSurfaceLegacyDecodeWithoutFontSizeDefaultsToNil() throws {
         // A `session.json` written before font-size persistence existed has no
         // `fontSize` key; decoding must default it to nil (libghostty's own
