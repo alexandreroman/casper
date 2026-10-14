@@ -47,12 +47,13 @@ through HEAD, and a repository with no commits leaves HEAD unborn — resolving
 to nothing, which `WorktreeError.Reason.repositoryHasNoCommits` reports in
 Casper's own words. A Space can still be rooted at a repository whose HEAD is
 unborn: one adopted before its first commit, or one whose initial commit was
-skipped because the machine configures no committer identity (Casper never
-invents one, for this commit or a merge — `git-worktrees.md` § Design →
-"Merge"). `Repository.headBranchName()` reads the branch from HEAD's
-symbolic target when there is no commit to resolve, so the primary workspace's
-row still shows the real branch (`main`, or whatever `init.defaultBranch` says)
-instead of falling back to a name. A row renders `Workspace.branchLabel`, which
+skipped because neither the Git configuration nor the environment names a
+committer (Casper never invents one, for this commit or a merge —
+`git-worktrees.md` § Design → "Commit identity").
+`Repository.headBranchName()` reads the branch from HEAD's symbolic target when
+there is no commit to resolve, so the primary workspace's row still shows the
+real branch (`main`, or whatever `init.defaultBranch` says) instead of falling
+back to a name. A row renders `Workspace.branchLabel`, which
 is the branch when there is one and the workspace's `name` only when there is
 not — and a primary workspace's `name` is the Space's own name, never its
 branch. Creation refuses any path that is already taken — Casper never deletes

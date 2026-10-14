@@ -15,7 +15,8 @@ the Command Line Tools' equivalent. libgit2 searches `/etc` alone instead
 every system-level setting a macOS user has. Two of them matter to Casper:
 `init.defaultBranch` (`git init` lands on `main` while a bare
 `git_repository_init` lands on `master`) and `user.name` / `user.email`, which
-decide whether `git_signature_default` resolves an identity at all.
+decide whether `git_signature_default_from_env` resolves an identity when no
+`GIT_AUTHOR_*` / `GIT_COMMITTER_*` variable supplies one.
 
 `Libgit2.ensureInit()` narrows the gap once per process, before any repository
 is opened: it reads libgit2's system-level config search path

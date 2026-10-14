@@ -80,20 +80,30 @@ binary. We own this surface; it exposes only what Casper needs.
   worktree-free merge behind "Merge and Close Workspace…", returning a
   `MergeOutcome` and surfacing `MergeConflictError` (an unrelated history is a
   `GitError` saying so); `forceCheckoutHead()` is its recovery path.
-  The merge commit is written under the user's own Git identity
-  (`git_signature_default`) and never an invented one: with no usable
-  `user.name`/`user.email` it throws `MissingCommitterIdentityError` before
-  writing anything. `WorktreeManager.merge` maps both refusals into
-  `WorktreeError` (`.mergeConflict`, `.missingCommitterIdentity`), as it does
-  every libgit2 failure, and "Merge and Close" shows the identity one's
-  message — libgit2's cause, then the two `git config` commands to set the
-  identity — with nothing deleted. The cause matters because a configuration
-  libgit2 cannot read fails the same way as a missing identity.
-  `git_signature_default` reads the configuration only: unlike `git`, it
-  ignores `GIT_COMMITTER_*` and `EMAIL` and never guesses a `user@host`
-  address, so a machine where `git commit` gets by on those is still refused.
-  An up-to-date merge writes no commit and needs no identity. See
-  `Sources/CasperGit/Merge.swift`.
+  The merge commit is written under the user's own Git identity and never an
+  invented one: with no usable identity it throws
+  `MissingCommitterIdentityError` before writing anything.
+  `WorktreeManager.merge` maps both refusals into `WorktreeError`
+  (`.mergeConflict`, `.missingCommitterIdentity`), as it does every libgit2
+  failure, and "Merge and Close" shows the identity one's message — libgit2's
+  cause, then the two `git config` commands to set the identity — with nothing
+  deleted. The cause matters because a configuration libgit2 cannot read fails
+  the same way as a missing identity. An up-to-date merge writes no commit and
+  needs no identity. See `Sources/CasperGit/Merge.swift`.
+
+- **Commit identity.** Both commits Casper writes — the merge above and a new
+  Space's initial commit (`space-project.md`) — take their author and committer
+  from `git_signature_default_from_env`. Each field is resolved on its own: the
+  author's name and email from `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`, the
+  committer's from `GIT_COMMITTER_NAME` / `GIT_COMMITTER_EMAIL`, falling back
+  to `user.name` / `user.email`, and to `EMAIL` when `user.email` is not set at
+  all; `GIT_AUTHOR_DATE` / `GIT_COMMITTER_DATE` replace the current time. A
+  blank value is refused, not skipped, and unlike `git` libgit2 never guesses a
+  `user@host` address. The environment reaches Casper only when it is launched
+  from a terminal (and in tests): launched from the Finder or the Dock, it
+  inherits launchd's environment, not the shell's. The configuration is the
+  one remedy that works however Casper was launched, which is why the refusal
+  message names the `git config` commands and not the variables.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.

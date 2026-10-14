@@ -447,6 +447,7 @@ final class WorktreeManagerTests: XCTestCase {
             repoPath: repoDir.path, name: "feature", worktreePath: wtPath, base: nil)
         try GitFixture.commit(atPath: wtPath, file: "feature.txt", contents: "new\n", message: "add feature")
         try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+        setGitIdentityEnvironment()
 
         XCTAssertThrowsError(
             try WorktreeManager.merge(

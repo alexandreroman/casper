@@ -77,8 +77,9 @@ depends on Ghostty layout composition (`terminal.md`).
   README and no `.gitignore`. It exists so the Space can host a workspace from
   its first frame — `git worktree add` checks the new worktree out at a commit
   resolved through HEAD, and `git init` alone leaves HEAD unborn, resolving to
-  nothing (`space-project.md`). Casper never invents a committer to get it: on a
-  machine with no `user.name`/`user.email` configured the commit is skipped, the
+  nothing (`space-project.md`). Casper never invents a committer to get it: when
+  neither `user.name`/`user.email` nor the environment names one
+  (`git-worktrees.md` § Design → "Commit identity") the commit is skipped, the
   Space is created anyway, and creating a workspace in it is what says so.
 
   **Casper never deletes or overwrites what it did not create.** A directory

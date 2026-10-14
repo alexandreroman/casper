@@ -19,10 +19,13 @@ CI, test, and documentation-only work is left out.
 
 ### Changed
 
-- "Merge and Close" refuses to write the merge commit when no Git identity
-  (`user.name` and `user.email`) can be read, says why, and shows the commands
-  that set one, instead of committing as "Casper <casper@localhost>". Nothing
-  is deleted.
+- The commits Casper writes — the merge commit of "Merge and Close" and a new
+  Space's first commit — take your Git identity from `user.name` and
+  `user.email`, or from the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` environment
+  variables when Casper is launched from a terminal. When neither names anyone,
+  "Merge and Close" refuses to write the merge commit, says why, and shows the
+  commands that set one, instead of committing as "Casper <casper@localhost>".
+  Nothing is deleted.
 
 ### Fixed
 

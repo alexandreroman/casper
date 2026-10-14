@@ -130,6 +130,21 @@ public enum GitFixture {
         }
     }
 
+    /// The author and committer of the commit HEAD resolves to in the repository at
+    /// `repoPath`, each as `Name <email>`.
+    public static func headCommitIdentities(atPath repoPath: String) throws -> (author: String, committer: String) {
+        var identities = (author: "", committer: "")
+        try withRepository(atPath: repoPath) { repo in
+            var commit: OpaquePointer?
+            defer { git_object_free(commit) }
+            try check(git_revparse_single(&commit, repo, "HEAD^{commit}"))
+            identities = (
+                author: formatted(git_commit_author(commit)),
+                committer: formatted(git_commit_committer(commit)))
+        }
+        return identities
+    }
+
     /// Register a worktree `name` at `path`, checked out on a new branch `branch` cut
     /// from HEAD — a worktree whose name and branch differ, which CasperGit's
     /// `addWorktree` never makes but `git worktree add <path> -b <branch>` does.
@@ -151,6 +166,10 @@ public enum GitFixture {
             defer { git_worktree_free(worktree) }
             try check(git_worktree_add(&worktree, repo, name, path, &options))
         }
+    }
+
+    private static func formatted(_ signature: UnsafePointer<git_signature>) -> String {
+        "\(String(cString: signature.pointee.name)) <\(String(cString: signature.pointee.email))>"
     }
 
     private static func write(_ contents: Data, to file: String, inRepoAt repoPath: String) throws {

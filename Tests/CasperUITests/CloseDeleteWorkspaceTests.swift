@@ -79,6 +79,7 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         let created = try await createFeature(in: model, space: spaceID)
         try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
         try GitFixture.configureIdentity(atPath: repoPath, name: "", email: "")
+        setGitIdentityEnvironment()
 
         guard case .mergeFailed(let message) = await model.closeWorkspace(id: created.id) else {
             return XCTFail("expected a merge failure")

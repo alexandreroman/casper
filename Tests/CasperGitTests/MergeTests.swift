@@ -48,6 +48,7 @@ final class MergeTests: XCTestCase {
         try GitFixture.commit(
             atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
         try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+        setGitIdentityEnvironment()
         let beforeOID = try tipOID(repo, branch: main)
 
         XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
@@ -58,12 +59,35 @@ final class MergeTests: XCTestCase {
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }
 
+    /// The environment names an identity the configuration lacks: the author comes from
+    /// `GIT_AUTHOR_*` and the committer from `GIT_COMMITTER_*`, each on its own.
+    func testMergeTakesItsIdentityFromTheEnvironmentWhenTheConfigHasNone() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let main = try repo.headBranchName()
+        let wtInfo = try repo.addWorktree(
+            name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
+        try GitFixture.commit(
+            atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+        setGitIdentityEnvironment([
+            .authorName: "Env Author", .authorEmail: "author@env.example",
+            .committerName: "Env Committer", .committerEmail: "committer@env.example",
+        ])
+
+        XCTAssertEqual(try repo.mergeBranchHeadless("feature", into: main, message: "merge"), .merged)
+
+        let identities = try GitFixture.headCommitIdentities(atPath: repoDir.path)
+        XCTAssertEqual(identities.author, "Env Author <author@env.example>")
+        XCTAssertEqual(identities.committer, "Env Committer <committer@env.example>")
+    }
+
     /// An up-to-date merge commits nothing, so it needs no identity.
     func testMergeAlreadyUpToDateNeedsNoCommitterIdentity() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let main = try repo.headBranchName()
         _ = try repo.addWorktree(name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
         try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+        setGitIdentityEnvironment()
 
         XCTAssertEqual(try repo.mergeBranchHeadless("feature", into: main, message: "merge"), .upToDate)
     }

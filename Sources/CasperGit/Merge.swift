@@ -10,12 +10,13 @@ public enum MergeOutcome: Equatable, Sendable {
 /// written to the repository when this is thrown.
 public struct MergeConflictError: Error, Equatable, Sendable {}
 
-/// Thrown when the user's Git configuration yields no committer identity:
-/// `user.name` or `user.email` unset or blank, or a configuration libgit2 cannot
-/// read (an `includeIf` condition it does not support, say). `detail` is libgit2's
-/// own message, the only thing telling those apart. Casper never invents an
-/// identity: a name the user never chose would sit in their history forever.
-/// Nothing is written to the repository when this is thrown.
+/// Thrown when neither the environment (`GIT_AUTHOR_*`, `GIT_COMMITTER_*`) nor the
+/// user's Git configuration yields a commit identity: no name or email set, a blank
+/// one, or a configuration libgit2 cannot read (an `includeIf` condition it does not
+/// support, say). `detail` is libgit2's own message, the only thing telling those
+/// apart. Casper never invents an identity: a name the user never chose would sit
+/// in their history forever. Nothing is written to the repository when this is
+/// thrown.
 public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
     public let detail: String
 }
@@ -28,10 +29,14 @@ extension Repository {
     /// out in another worktree, which simply becomes "behind" until it is
     /// re-checked-out there, exactly as if a teammate had pushed to it.
     ///
+    /// The merge commit's author and committer are the user's own, as
+    /// `git_signature_default_from_env` derives them: `GIT_AUTHOR_*` and
+    /// `GIT_COMMITTER_*` first, then `user.name` / `user.email`.
+    ///
     /// Throws `MergeConflictError` when the merge can't be resolved automatically,
-    /// and `MissingCommitterIdentityError` when there is a commit to write but the
-    /// user's Git configuration names no one to write it as. Nothing is written in
-    /// either case.
+    /// and `MissingCommitterIdentityError` when there is a commit to write but
+    /// neither the environment nor the user's Git configuration names anyone to write
+    /// it as. Nothing is written in either case.
     public func mergeBranchHeadless(
         _ branchName: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -58,8 +63,16 @@ extension Repository {
             return .upToDate
         }
         // Before the merge writes its tree: a refusal leaves no object behind.
-        let signature = try mergeSignature()
-        defer { git_signature_free(signature) }
+        var author: UnsafeMutablePointer<git_signature>?
+        var committer: UnsafeMutablePointer<git_signature>?
+        defer {  // before the call: free on the throw path too
+            git_signature_free(author)
+            git_signature_free(committer)
+        }
+        let signatureCode = git_signature_default_from_env(&author, &committer, pointer)
+        guard signatureCode == 0 else {
+            throw MissingCommitterIdentityError(detail: lastErrorMessage(code: signatureCode))
+        }
 
         var mergeOptions = git_merge_options()
         try gitCheck(git_merge_options_init(&mergeOptions, UInt32(GIT_MERGE_OPTIONS_VERSION)))
@@ -85,7 +98,7 @@ extension Repository {
         try gitCheck(parents.withUnsafeMutableBufferPointer { buf in
             git_commit_create(
                 &newCommitOid, pointer, refName,
-                signature, signature, "UTF-8", message,
+                author, committer, "UTF-8", message,
                 mergeTree, buf.count, buf.baseAddress)
         })
 
@@ -117,17 +130,5 @@ extension Repository {
         var commit: OpaquePointer?
         try gitCheck(git_reference_peel(&commit, ref, GIT_OBJECT_COMMIT))
         return try requireNonNull(commit, "commit")
-    }
-
-    /// The merge commit's author and committer: the user's configured identity.
-    /// Any failure to derive one throws `MissingCommitterIdentityError`, as
-    /// `createInitialCommit` declines.
-    private func mergeSignature() throws -> UnsafeMutablePointer<git_signature> {
-        var signature: UnsafeMutablePointer<git_signature>?
-        let code = git_signature_default(&signature, pointer)
-        guard code == 0, let signature else {
-            throw MissingCommitterIdentityError(detail: lastErrorMessage(code: code))
-        }
-        return signature
     }
 }

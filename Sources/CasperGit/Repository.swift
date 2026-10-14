@@ -39,19 +39,23 @@ public final class Repository {
     /// root commit and orphan everything behind it — and it commits the repository
     /// index, which on such a repository need not be the empty tree this promises.
     ///
-    /// Returns **false**, having written nothing, when libgit2 cannot derive a
-    /// committer from the user's configuration (no `user.name` / `user.email`). Casper
-    /// does not invent an identity to commit under: a name the user never chose would
-    /// be in their history forever, which is worse than the unborn HEAD it avoids. The
-    /// caller decides what to say about it.
+    /// The author and committer are the user's own, as `git_signature_default_from_env`
+    /// derives them: `GIT_AUTHOR_*` and `GIT_COMMITTER_*` first, then `user.name` /
+    /// `user.email`. Returns **false**, having written nothing, when neither names
+    /// anyone. Casper does not invent an identity to commit under: a name the user
+    /// never chose would be in their history forever, which is worse than the unborn
+    /// HEAD it avoids. The caller decides what to say about it.
     public func createInitialCommit() throws -> Bool {
         guard isHeadUnborn else { return false }
 
-        var signature: UnsafeMutablePointer<git_signature>?
-        defer { git_signature_free(signature) }  // before the call: free on the throw path too
+        var author: UnsafeMutablePointer<git_signature>?
+        var committer: UnsafeMutablePointer<git_signature>?
+        defer {  // before the call: free on the throw path too
+            git_signature_free(author)
+            git_signature_free(committer)
+        }
         // The one deliberately non-fatal libgit2 failure here, hence no `gitCheck`.
-        guard git_signature_default(&signature, pointer) == 0,
-              let author = signature else { return false }
+        guard git_signature_default_from_env(&author, &committer, pointer) == 0 else { return false }
 
         // The empty tree, written from the index of a repository with nothing staged.
         var index: OpaquePointer?
@@ -69,7 +73,7 @@ public final class Repository {
         // array-based `git_commit_create` with a parent count of 0 — a root commit.
         var commitOid = git_oid()
         try gitCheck(git_commit_create(
-            &commitOid, pointer, "HEAD", author, author, nil,
+            &commitOid, pointer, "HEAD", author, committer, nil,
             Self.initialCommitMessage, treeHandle, 0, nil))
         return true
     }

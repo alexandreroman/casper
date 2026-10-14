@@ -47,9 +47,9 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(branch.isEmpty)
     }
 
-    /// Record a committer in the repository's **local** config, so
-    /// `git_signature_default` resolves whatever the machine running the suite has (or
-    /// does not have) configured globally.
+    /// Record a committer in the repository's **local** config, so the commit does not
+    /// depend on whatever the machine running the suite has (or does not have)
+    /// configured globally.
     private func configureIdentity(in repo: Repository) throws {
         var config: OpaquePointer?
         defer { git_config_free(config) }  // before the call: free on the throw path too
@@ -79,6 +79,35 @@ final class RepositoryTests: XCTestCase {
         defer { git_tree_free(tree) }
         try gitCheck(git_commit_tree(&tree, commit))
         XCTAssertEqual(git_tree_entrycount(tree), 0)
+    }
+
+    /// The environment names an identity the configuration lacks: the author comes from
+    /// `GIT_AUTHOR_*` and the committer from `GIT_COMMITTER_*`, each on its own.
+    func testCreateInitialCommitTakesItsIdentityFromTheEnvironmentWhenTheConfigHasNone() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try GitFixture.configureIdentity(atPath: tempDir.path, name: "", email: "")
+        setGitIdentityEnvironment([
+            .authorName: "Env Author", .authorEmail: "author@env.example",
+            .committerName: "Env Committer", .committerEmail: "committer@env.example",
+        ])
+
+        XCTAssertTrue(try repo.createInitialCommit())
+
+        let identities = try GitFixture.headCommitIdentities(atPath: tempDir.path)
+        XCTAssertEqual(identities.author, "Env Author <author@env.example>")
+        XCTAssertEqual(identities.committer, "Env Committer <committer@env.example>")
+    }
+
+    /// Neither the configuration nor the environment names anyone, and Casper does not
+    /// invent an identity: nothing is written and HEAD stays unborn.
+    func testCreateInitialCommitWritesNothingWithoutAnIdentity() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        try GitFixture.configureIdentity(atPath: tempDir.path, name: "", email: "")
+        setGitIdentityEnvironment()
+
+        XCTAssertFalse(try repo.createInitialCommit())
+
+        XCTAssertTrue(repo.isHeadUnborn)
     }
 
     /// The commit is parentless, so writing it onto a branch that already points

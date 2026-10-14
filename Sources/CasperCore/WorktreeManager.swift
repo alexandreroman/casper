@@ -319,9 +319,9 @@ public enum WorktreeManager {
     /// Merge `branch` into `targetBranch` in the repository at `repoPath`,
     /// writing a merge commit and advancing `targetBranch`. Throws
     /// `WorktreeError(.mergeConflict)` when the merge can't be resolved
-    /// automatically, and `WorktreeError(.missingCommitterIdentity)` when the user's
-    /// Git configuration names no one to commit as — nothing is written to the
-    /// repository in either case.
+    /// automatically, and `WorktreeError(.missingCommitterIdentity)` when neither the
+    /// environment nor the user's Git configuration names anyone to commit as —
+    /// nothing is written to the repository in either case.
     public static func merge(
         repoPath: String, branch: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
