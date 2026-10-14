@@ -86,8 +86,10 @@ func absolutePath(_ path: String) -> String {
 /// the default `run()` below is the send-and-emit body they would otherwise all
 /// repeat verbatim.
 ///
-/// None of these verbs is idempotent, hence the uniform `retriable: false`: a
-/// transport-level resend could apply the same mutation twice.
+/// The family mixes idempotent verbs with ones that are not (`notify`, `click`,
+/// `type`, `key`, `scroll-up`/`scroll-down`, `reload`, `workspace delete`), so it
+/// uses the safe uniform `retriable: false`: a transport-level resend could apply
+/// a non-idempotent mutation twice.
 protocol WorkspaceRefCommand: ParsableCommand {
     func makeCommand() throws -> ControlCommand
 

@@ -136,7 +136,7 @@ extension DebugCLICommand {
         static let configuration = CommandConfiguration(
             abstract: "Inject a key with modifiers as a real key event (press + release).")
         @OptionGroup var socket: SocketOption
-        @Argument(help: "Character to send, e.g. c") var text: String
+        @Argument(help: ArgumentHelp("Character to send, e.g. c", valueName: "key")) var text: String
         @Option(name: .long, parsing: .upToNextOption,
                 help: "Modifiers: ctrl, cmd, opt, shift (repeatable).") var mods: [String] = []
         @OptionGroup var surface: SurfaceTargetOption
@@ -152,7 +152,7 @@ extension DebugCLICommand {
         static let configuration = CommandConfiguration(
             abstract: "Trigger a libghostty keybinding action by name (e.g. copy_to_clipboard).")
         @OptionGroup var socket: SocketOption
-        @Argument(help: "Action name, e.g. copy_to_clipboard") var text: String
+        @Argument(help: ArgumentHelp("Action name, e.g. copy_to_clipboard", valueName: "name")) var text: String
         @OptionGroup var surface: SurfaceTargetOption
 
         func run() throws {

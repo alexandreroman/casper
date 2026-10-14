@@ -30,7 +30,7 @@ struct WorkspaceCommand: ParsableCommand {
 
     struct Current: ParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Print the current workspace id ($CASPER_WORKSPACE_ID).")
+            abstract: "Print the current workspace ($CASPER_WORKSPACE_ID): id, name, branch and path.")
 
         /// The workspace this terminal belongs to. A blank or whitespace-only value
         /// counts as absent — matching `WorkspaceTargetOption.resolvedSelector` — so
@@ -59,7 +59,8 @@ struct WorkspaceCommand: ParsableCommand {
     struct New: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Create a new Git worktree workspace.")
-        @Argument(help: "New branch name for the worktree.") var branch: String
+        @Argument(help: "New branch name (sanitized into a valid Git ref; the reply echoes it).")
+        var branch: String
         @Option(name: .long, help: "Base ref to fork from (defaults to the space's base branch).")
         var base: String?
         @Option(name: .long, help: "Command to run in the workspace's initial terminal.") var command: String?

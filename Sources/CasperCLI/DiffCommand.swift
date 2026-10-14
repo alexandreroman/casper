@@ -12,7 +12,7 @@ struct DiffCommand: ParsableCommand {
     struct Open: WorkspaceRefCommand {
         static let configuration = CommandConfiguration(abstract: "Open the diff view.")
 
-        @Argument(help: "File path to scroll the diff view to (optional).")
+        @Argument(help: "File to scroll to, relative to the workspace's worktree root (or absolute).")
         var file: String?
         @OptionGroup var target: WorkspaceTargetOption
 
