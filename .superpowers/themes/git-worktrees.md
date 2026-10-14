@@ -10,8 +10,8 @@ binary. We own this surface; it exposes only what Casper needs.
 ## Design
 
 - **`Clibgit2`** — a `.systemLibrary` binding libgit2 via Homebrew + pkg-config
-  (dynamic link; static vendoring deferred to packaging). Build host needs
-  `brew install libgit2 pkgconf`.
+  (dynamic link; `make bundle` embeds the dylib chain with dylibbundler). Build
+  host needs `brew install libgit2 pkgconf`.
 - **`CSigbusGuard`** — a small C target wrapping the three libgit2 calls that
   read memory-mapped working-directory files in a `SIGBUS` guard: the
   working-tree diff and the status walk behind `isClean`
@@ -67,8 +67,6 @@ binary. We own this surface; it exposes only what Casper needs.
   lives in `Sources/CasperGit/RenameDetection.swift`. A file the diff lists but
   cannot open (a mode-000 file) has no patch: it is listed with the
   `unreadable` status and no hunks, and the rest of the diff is unaffected.
-  (Branch-vs-merge-base line counts were designed for the workspace diff
-  summary, now **dropped** — see `space-project.md`.)
 
 - **Merge — ✅ built.** `Repository.mergeBranchHeadless(…)` performs the
   worktree-free merge behind "Merge and Close Workspace…", returning a
@@ -81,7 +79,7 @@ captured in the [[libgit2-swift-interop]] project-memory note.
 
 ## Standing limitations
 
-- `WorktreeManager.remove` prunes a worktree without deleting its branch. Its
-  one production caller deletes the branch on the next line, so recreating a
-  same-named workspace works; a second caller that forgets would meet an opaque
+- `WorktreeManager.remove` prunes a worktree without deleting its branch. Both
+  production callers delete the branch on the next line, so recreating a
+  same-named workspace works; a caller that forgets would meet an opaque
   `.gitFailure`.
