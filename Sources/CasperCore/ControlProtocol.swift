@@ -202,6 +202,14 @@ public struct ControlWorkspaceInfo: Codable, Equatable, Sendable {
         self.branch = branch
         self.path = path
     }
+
+    /// The reply entry for `workspace`: its lowercase id, its name and branch, and its
+    /// worktree as the path.
+    public init(_ workspace: Workspace) {
+        self.init(
+            id: workspace.id.casperID, name: workspace.name, branch: workspace.branch,
+            path: workspace.worktreePath)
+    }
 }
 
 /// The progress bar a workspace is currently showing, returned by

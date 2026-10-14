@@ -55,6 +55,19 @@ final class ControlProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.workspaces, [info])
     }
 
+    func testWorkspaceInfoFromAWorkspaceUsesItsCasperIDAndWorktree() throws {
+        let id = try XCTUnwrap(UUID(uuidString: "ABCDEF01-ABCD-4BCD-8BCD-ABCDEF012345"))
+        let workspace = Workspace(
+            id: id, name: "feat", worktreePath: "/repo-feat", branch: "feat", portBase: 40010,
+            layout: .leaf(Surface.terminal(cwd: "/repo-feat")))
+
+        XCTAssertEqual(
+            ControlWorkspaceInfo(workspace),
+            ControlWorkspaceInfo(
+                id: "abcdef01-abcd-4bcd-8bcd-abcdef012345", name: "feat", branch: "feat",
+                path: "/repo-feat"))
+    }
+
     func testAbsoluteURLRequiresSchemeAndHost() {
         XCTAssertEqual(ControlCommand.absoluteURL("https://example.com/a")?.host, "example.com")
         XCTAssertEqual(ControlCommand.absoluteURL("http://localhost:5173")?.port, 5173)

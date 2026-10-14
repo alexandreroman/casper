@@ -275,9 +275,7 @@ extension AppModel {
     }
 
     func controlListWorkspaces() -> [ControlWorkspaceInfo] {
-        allWorkspaces.map {
-            ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath)
-        }
+        allWorkspaces.map(ControlWorkspaceInfo.init)
     }
 
     /// Create a linked workspace in the Space that owns `workspaceID` (the control
@@ -296,7 +294,7 @@ extension AppModel {
         }
         return await createLinkedWorkspace(
             spaceID: space.id, name: branch, base: base, command: command, select: false)
-            .map { ControlWorkspaceInfo(id: $0.id.casperID, name: $0.name, branch: $0.branch, path: $0.worktreePath) }
+            .map(ControlWorkspaceInfo.init)
     }
 
     /// Open a new terminal in `workspaceID` by splitting its top-left surface.
@@ -329,9 +327,8 @@ extension AppModel {
     /// here, once, for both callers. The workspace is re-fetched because the one resolved
     /// above predates the split and does not carry the new surface.
     func insertTerminal(_ surface: Surface, in workspaceID: UUID, command: String?) -> Bool {
-        guard let ws = workspace(id: workspaceID),
-              let anchor = LayoutTree.surfaceIDs(ws.layout).first,
-              let at = locateSurface(anchor) else { return false }
+        guard let at = locate(workspaceID),
+              let anchor = LayoutTree.surfaceIDs(workspace(at: at).layout).first else { return false }
         if let command { pendingInitialInput[surface.id] = command }
         insertSurfaceBySplitting(
             at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
