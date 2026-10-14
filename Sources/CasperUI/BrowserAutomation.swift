@@ -136,11 +136,6 @@ enum BrowserAutomation {
         "document.querySelector(\(jsLiteral(selector))) === null"
     }
 
-    /// True once the document has finished loading (`readyState === "complete"`).
-    static func readyStateCompleteJS() -> String {
-        "document.readyState === \"complete\""
-    }
-
     // MARK: - JS source helpers
 
     /// The JS expression that resolves the target element for a `key` dispatch.

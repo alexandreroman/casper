@@ -75,8 +75,14 @@ unit-testable, but not a target of its own.
   deadline. A throwing predicate counts as not-yet-true, so a malformed
   predicate surfaces as a timeout. The CLI sends `selector`+`--visible`/`--gone`
   or `--js`; the app builds the predicate
-  (`BrowserAutomation.presenceJS`/`visibleJS`/`goneJS`/ `readyStateCompleteJS`).
-  CLI socket timeout is `waitTimeout/1000 + 5` to outlive the app deadline.
+  (`BrowserAutomation.presenceJS`/`visibleJS`/`goneJS`). CLI socket timeout is
+  `waitTimeout/1000 + 5` to outlive the app deadline.
+- **`reload --wait`** waits on the reload's navigation, not on a poll:
+  `BrowserCoordinator.reload(waitingUpTo:)` parks a waiter that the next
+  `didFinish` or non-cancelled failure resumes. The old document stays
+  committed, and `complete`, until the new one replaces it, so a `readyState`
+  poll would be answered by the old page. A failed reload settles the wait as
+  done.
 - **Output:** `eval` → `{"result":<json>,…}`; `content` →
   `{"content":"<html>",…}`; `url` → `{"url":"<href>",…}`
   (`window.location.href`); `screenshot` → `{"screenshot":"<path>",…}`; action

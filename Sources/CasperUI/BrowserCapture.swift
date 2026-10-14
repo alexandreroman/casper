@@ -155,44 +155,18 @@ enum BrowserCapture {
         // release the `webView` it captures. Whichever fires first wins; the other
         // resume is a no-op. Best-effort — a thrown JS error or the timeout both
         // simply proceed to the snapshot.
-        let waiter = RenderWaiter()
+        let waiter = OneShotWaiter<Void>()
         Task { @MainActor in
             _ = try? await webView.callAsyncJavaScript(
                 js, arguments: [:], in: nil, contentWorld: .page)
-            waiter.resume()
+            waiter.resume(returning: ())
         }
         let timeout = Task { @MainActor in
             try? await Task.sleep(for: renderSettleTimeout)
-            waiter.resume()
+            waiter.resume(returning: ())
         }
         await waiter.wait()
         timeout.cancel()
-    }
-}
-
-/// A one-shot main-actor waiter: `wait()` suspends until the first `resume()`.
-/// Handles `resume()` arriving before `wait()`. Used to race the render-readiness
-/// JavaScript against its timeout in `BrowserCapture.waitForFullRender`.
-@MainActor
-private final class RenderWaiter {
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var resumed = false
-
-    func wait() async {
-        await withCheckedContinuation { continuation in
-            if resumed {
-                continuation.resume()
-            } else {
-                self.continuation = continuation
-            }
-        }
-    }
-
-    func resume() {
-        guard !resumed else { return }
-        resumed = true
-        continuation?.resume()
-        continuation = nil
     }
 }
 

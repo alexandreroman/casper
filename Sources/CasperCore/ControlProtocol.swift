@@ -88,7 +88,7 @@ public struct ControlCommand: Codable, Equatable, Sendable {
     public var clear: Bool?         // browserConsole: drain the buffer after reading
     public var visible: Bool?       // browserWait: require the selector to be visible
     public var gone: Bool?          // browserWait: require the selector to be absent
-    public var waitReady: Bool?     // browserReload: also wait for readyState === "complete"
+    public var waitReady: Bool?     // browserReload: also wait for the reload to finish loading
     public var width: Int?          // browserScreenshot: off-screen render viewport width
     public var height: Int?         // browserScreenshot: off-screen render viewport height
 

@@ -60,6 +60,8 @@ CI, test, and documentation-only work is left out.
   file that only changes later.
 - Files with Windows (CRLF) line endings, or that start or end with a blank
   line, get syntax colours in the diff view.
+- `casper browser reload --wait` waits for the reloaded page to finish loading
+  instead of returning before the reload has started.
 
 ## [0.1.3] - 2026-10-13
 

@@ -238,15 +238,17 @@ final class BrowserAutomationController {
         }
     }
 
-    /// Reload the browser page. When `waitReady`, also block until the document's
-    /// `readyState` is `complete` (or the timeout expires).
+    /// Reload the browser page. When `waitReady`, also wait until the reload
+    /// finishes loading or fails (or the timeout expires).
     func controlBrowserReload(
         waitReady: Bool, timeoutMs: Int, in workspaceID: UUID
     ) async -> Result<Void, OperationError> {
         await withBrowserCoordinator(workspaceID) { coordinator in
-            coordinator.reload()
-            guard waitReady else { return }
-            guard await coordinator.waitFor(js: BrowserAutomation.readyStateCompleteJS(), timeoutMs: timeoutMs) else {
+            guard waitReady else {
+                coordinator.reload()
+                return
+            }
+            guard await coordinator.reload(waitingUpTo: timeoutMs) else {
                 throw OperationError(message: "timed out after \(timeoutMs)ms waiting for the page to reload")
             }
         }

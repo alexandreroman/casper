@@ -48,6 +48,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// the first sync.
     private var lastSyncedNav: NavigationState?
 
+    /// Callers of `reload(waitingUpTo:)` still waiting for the reload to settle;
+    /// the next finished or failed navigation resumes them all with `true`.
+    private var loadWaiters: [OneShotWaiter<Bool>] = []
+
     /// The three KVO-observed web-view properties `syncNav` reacts to.
     private struct NavigationState: Equatable {
         let url: URL?
@@ -101,16 +105,48 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     func goBack() { webView.goBack() }
     func goForward() { webView.goForward() }
 
-    func reload() {
+    /// Reload the page; returns the started navigation, nil when there is nothing
+    /// to reload.
+    @discardableResult
+    func reload() -> WKNavigation? {
         // WKWebView.reload() reloads the *committed* page. After a failed provisional
         // navigation nothing committed (webView.url is nil, back/forward list empty),
         // so reload() is a silent no-op — re-issue the failed request instead so a
         // now-reachable server actually loads. The address-bar Return path already
         // works because it always issues a fresh load().
         if let failedURL {
-            webView.load(URLRequest(url: failedURL))
+            return webView.load(URLRequest(url: failedURL))
         } else {
-            webView.reload()
+            return webView.reload()
+        }
+    }
+
+    /// Reload the page and wait until that load finishes or fails; returns false
+    /// when `timeoutMs` elapses first. Waits on the navigation itself, because the
+    /// old document stays committed (and `complete`) until the new one replaces
+    /// it, so a poll of the page would be answered by the old document. A reload
+    /// superseded by a newer navigation (a page redirecting itself) settles on that
+    /// one instead, as `handleFailure` ignores the superseded load.
+    func reload(waitingUpTo timeoutMs: Int) async -> Bool {
+        guard reload() != nil else { return true }
+        let waiter = OneShotWaiter<Bool>()
+        loadWaiters.append(waiter)
+        let timeout = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(timeoutMs))
+            waiter.resume(returning: false)
+        }
+        let settled = await waiter.wait()
+        timeout.cancel()
+        loadWaiters.removeAll { $0 === waiter }
+        return settled
+    }
+
+    /// Resume every `reload(waitingUpTo:)` caller: the current load has settled.
+    private func settleLoadWaiters() {
+        let waiters = loadWaiters
+        loadWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume(returning: true)
         }
     }
 
@@ -366,6 +402,7 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         failedURL = Self.failingURL(from: error)
         loadError = error.localizedDescription
         syncNav()
+        settleLoadWaiters()
     }
 
     // MARK: - WKUIDelegate
@@ -404,7 +441,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
         failedURL = nil
     }
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { syncNav() }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { syncNav() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        syncNav()
+        settleLoadWaiters()
+    }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         handleFailure(error)
     }
