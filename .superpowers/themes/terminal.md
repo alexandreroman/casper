@@ -75,7 +75,10 @@ surfaces and PTYs (same model as the Ghostty app).
   by `NSPasteboard`, resolved to the surface via the per-surface `userdata` (the
   view pointer); paste completes through
   `ghostty_surface_complete_clipboard_request` — see
-  [[ghostty-clipboard-callbacks]].
+  [[ghostty-clipboard-callbacks]]. Untrusted OSC 52 reads and writes go through
+  the `approveUntrusted` gates of `GhosttyClipboardRead` and
+  `GhosttyClipboardWrite`, which approve unconditionally — see
+  [[osc52-clipboard-write-policy]] and [[osc52-clipboard-read-policy]].
 - **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
   in CasperUI (`MenuCommands.swift`), not an AppKit menu built here. Its Edit
   group's Copy/Paste/Select All reach the focused surface through the responder

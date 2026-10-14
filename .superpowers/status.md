@@ -55,8 +55,9 @@ notification bubble, non-destructive removal, and live Git promotion/demotion.
 Session persistence with legacy-decode self-healing.
 
 **Terminal & layout.** libghostty embedding end-to-end — keyboard, clipboard
-(including untrusted-write confirmation), mouse and cmd+click URL opening,
-`flagsChanged` press/release, scroll precision and momentum. A tmux-style
+(OSC 52 reads and writes answered unprompted by decision; the confirmation
+prompt is kept dormant), mouse and cmd+click URL opening, `flagsChanged`
+press/release, scroll precision and momentum. A tmux-style
 `LayoutNode` tree of splits and one-surface panes, with a pane context menu,
 draggable dividers whose ratios persist, pane drag-and-drop, close-on-process
 exit, and a re-seeded terminal when the last pane closes. Per-surface font size
