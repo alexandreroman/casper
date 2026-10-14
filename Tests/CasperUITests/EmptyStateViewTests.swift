@@ -28,7 +28,7 @@ final class EmptyStateViewTests: XCTestCase {
     /// element, so nothing above it — the `.fixedSize()` hint in particular — may
     /// widen the screen beyond it.
     func testTheStripStaysTheWidestElement() {
-        let size = layoutSize(for: EmptyStateView(onNewSpace: {}, onAddFolder: {}))
+        let size = layoutSize(for: EmptyStateView(model: makeModel()))
 
         XCTAssertLessThanOrEqual(size.width, Self.onboardingStripWidth + 0.5)
         XCTAssertGreaterThan(size.height, 0)

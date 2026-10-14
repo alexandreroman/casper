@@ -22,7 +22,7 @@ import XCTest
 @MainActor
 final class SidebarIconSlotTests: XCTestCase {
     /// The symbols leading the pinned footer buttons.
-    private static let footerSymbols = ["folder.badge.plus", "plus"]
+    private static let footerSymbols = SpaceEntryCommand.allCases.map(\.systemImage)
 
     /// The reminder kinds, one per glyph. Read back through the production function so
     /// a change there reaches this test rather than being duplicated.

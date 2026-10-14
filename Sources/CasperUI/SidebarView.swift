@@ -31,9 +31,7 @@ struct SidebarView: View {
             }
             AgentIntegrationReminderView(model: model)
             Divider()
-            SidebarFooter(
-                onNewSpace: { model.presentCreateSpacePanel() },
-                onAdd: { model.presentAddFolderPanel() })
+            SidebarFooter(model: model)
         }
         .navigationTitle("Casper")
     }
@@ -105,14 +103,15 @@ struct SidebarView: View {
 /// the Space menu opens with, in the same order — always reachable (unlike the
 /// empty-state affordances) and never scrolling away.
 private struct SidebarFooter: View {
-    let onNewSpace: () -> Void
-    let onAdd: () -> Void
+    let model: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
-            SidebarFooterButton(
-                title: "New Space…", systemImage: "folder.badge.plus", action: onNewSpace)
-            SidebarFooterButton(title: "Add Folder…", systemImage: "plus", action: onAdd)
+            ForEach(SpaceEntryCommand.allCases, id: \.self) { command in
+                SidebarFooterButton(title: command.title, systemImage: command.systemImage) {
+                    command.perform(model: model)
+                }
+            }
         }
     }
 }

@@ -49,7 +49,9 @@ longer does are recorded in `../status.md` § Superseded designs.
   the empty state's two buttons, create prominent and adopt merely bordered,
   since a user with nothing open is likelier to be starting something than to be
   hunting for a repo they forgot to add; and they are the two rows pinned below
-  the sidebar's scrolling list, create above adopt.
+  the sidebar's scrolling list, create above adopt. All three sites render one
+  `SpaceEntryCommand` description and list its `allCases`, so titles, symbols,
+  actions and order cannot drift apart.
 
   **New Space…** asks for a name *and* a location in **one** `NSSavePanel`
   (`AppModel.presentCreateSpacePanel`), rather than a name prompt followed by a
