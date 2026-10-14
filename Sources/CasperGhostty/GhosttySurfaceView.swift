@@ -72,9 +72,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     private var invalidated = false
 
     // Latest OSC window title libghostty decoded for this surface (the
-    // GHOSTTY_ACTION_SET_TITLE payload), captured per-surface so agent-state
-    // detection can read it. Current Claude Code signals "working" only through
-    // this title (a Braille spinner glyph prefix), no longer via the viewport text.
+    // GHOSTTY_ACTION_SET_TITLE payload), captured per surface for agent-state
+    // detection: a secondary "working" signal (see the agent-state-working-signal note).
     private var latestOSCTitle: String?
 
     // Latest OSC 9;4 progress state libghostty decoded for this surface (the
@@ -545,7 +544,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
 
     /// Inject a mouse position (libghostty top-left coordinates) straight into the
     /// surface, bypassing AppKit event delivery. Used by the `mouse-move` debug
-    /// verb to exercise libghostty's mouse-shape emission in headless tests.
+    /// verb to exercise libghostty's mouse-shape emission.
     public func debugMouseMove(x: Double, y: Double) {
         surface?.sendMousePos(x: x, y: y, mods: ghosttyMods(from: []))
     }
@@ -1033,7 +1032,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // `cursorUpdate` is AppKit's own cursor-management hook, invoked as the pointer
         // moves over this tracking area. Setting the cursor here wins over AppKit's
         // default cursor-rect reset (which forces the arrow) that was clobbering the
-        // async `.set()` from `setCursorShape`, so libghostty's I-beam finally sticks.
+        // async `.set()` from `setCursorShape`, so the I-beam finally sticks.
         lastCursor.set()
     }
 

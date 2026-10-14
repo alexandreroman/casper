@@ -204,10 +204,12 @@ public final class GhosttyRuntime {
 
 // MARK: - C trampolines
 //
-// C function pointers cannot capture Swift context. libghostty passes our
-// `userdata` (the unretained runtime pointer set in the runtime config) to most
-// callbacks; `action_cb` is the exception — its v1.3.1 typedef carries no
-// userdata, so the trampoline recovers the runtime via `ghostty_app_userdata`.
+// C function pointers cannot capture Swift context, so each trampoline recovers it
+// from a pointer libghostty hands back. Only `wakeup_cb` receives the runtime
+// config's `userdata` (the unretained runtime pointer). The clipboard callbacks and
+// `close_surface_cb` receive the per-surface `userdata` (the hosting view, see
+// `clipboardView(from:)`). `action_cb` receives none — its v1.3.1 typedef carries
+// no userdata — so its trampoline recovers the runtime via `ghostty_app_userdata`.
 
 /// `wakeup_cb`: `void (*)(void*)`. May fire off the main thread, so it only
 /// marshals to main before touching the runtime. It captures the opaque pointer

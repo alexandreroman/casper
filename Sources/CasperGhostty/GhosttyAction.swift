@@ -7,9 +7,11 @@ import GhosttyKit
 /// layout handler, plus `.openURL`, `.quit` and `.closeWindow` handled by the
 /// AppDelegate's `onAction`. `.render` is decoded but not acted on.
 ///
-/// Surface-scoped actions never reach here: the OSC title, the child exit status,
-/// and mouse shape/visibility are intercepted by `casperGhosttyAction` and
-/// delivered straight to the target view, which is their only consumer.
+/// Surface-scoped actions never reach here: the OSC title, the OSC 9;4 progress
+/// report, the child exit status, and mouse shape/visibility are intercepted by
+/// `casperGhosttyAction` and delivered straight to the target view, which is their
+/// only consumer. `RELOAD_CONFIG` is intercepted there too and answered by the
+/// runtime itself (`GhosttyRuntime.handleReloadConfig`).
 ///
 /// Decoding is total — `decode` maps every remaining tag, unmodeled ones to
 /// `.other`.

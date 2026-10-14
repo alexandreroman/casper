@@ -1,8 +1,9 @@
 import CasperCore
 
 /// The extension seam for libghostty app-level actions (new tab/window/split, close).
-/// A handler claims an action by returning true; unclaimed actions fall back to
-/// libghostty's own handling.
+/// A handler claims an action by returning true; an unclaimed action falls through
+/// to `GhosttyRuntime.onAction`. Either way the runtime reports it consumed to
+/// libghostty.
 public protocol GhosttyActionHandler {
     func handle(_ action: GhosttyAction) -> Bool
 }
