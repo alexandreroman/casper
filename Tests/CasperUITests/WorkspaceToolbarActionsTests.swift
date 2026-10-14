@@ -281,8 +281,9 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
     /// The order of sacrifice has teeth: there is a width where the badge is ALREADY
     /// gone while the chips still carry their text. Without it, "the badge goes
     /// first" would be satisfied by a row that simply dropped everything at once —
-    /// and a layout-priority mistake (an equal-priority `Spacer` swallowing the
-    /// badge's room, say) reads entirely plausible until measured.
+    /// and a ladder-order mistake (a rung list that drops the chip labels before the
+    /// badge, the `.mergeGlyph` rung placed ahead of rung 2, say) reads entirely
+    /// plausible until measured.
     func testTheBadgeGoesBeforeTheChipsLoseTheirText() {
         let titleAndBadge = layoutRow(width: 2000)
         let badgeIdeal = titleAndBadge.badge

@@ -11,22 +11,23 @@ import CasperCore
 /// content come out lopsided and the sliding selection indicator changes size as
 /// it moves. `TitleCapsuleMetrics.glyphSlotWidth` is what makes the two halves
 /// identical by construction, and the test below pins the assembled control at
-/// exactly two equal segments. That the slot clears both symbols, and that they
-/// really do measure differently, is pinned with the other glyph-chip symbols by
+/// its declared `intrinsicWidth` — exactly two equal segments — and checks that
+/// the two symbols really do measure differently. That the slot clears both is
+/// pinned with the other glyph-chip symbols by
 /// `WorkspaceToolbarActionsTests.testGlyphSlotClearsEverySymbolThatGoesInIt`.
 @MainActor
 final class InspectorTabSelectorTests: XCTestCase {
-    /// A segment is one glyph chip, from the metrics every title-bar chip shares.
-    private static var expectedSegmentWidth: CGFloat { TitleCapsuleMetrics.glyphChipWidth }
-
-    /// The whole control measures exactly two segments of the declared width — so
+    /// The whole control measures its declared width of two glyph chips — so
     /// neither symbol widened its own half. Checked in all three visible states
     /// because the selection indicator is a `.background`, which must never
     /// contribute to the layout.
     func testBothSegmentsMeasureTheSameWidthInEveryState() {
+        XCTAssertNotEqual(
+            symbolWidth("plusminus"), symbolWidth("globe"), accuracy: 0.5,
+            "the two symbols measure alike, so equal halves prove nothing")
         for tab in [nil, InspectorTab.diff, InspectorTab.browser] as [InspectorTab?] {
             XCTAssertEqual(
-                selectorWidth(selecting: tab), 2 * Self.expectedSegmentWidth, accuracy: 0.5,
+                selectorWidth(selecting: tab), InspectorTabSelector.intrinsicWidth, accuracy: 0.5,
                 "selection \(String(describing: tab))")
         }
     }

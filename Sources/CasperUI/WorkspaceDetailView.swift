@@ -421,6 +421,7 @@ struct WorkspaceDetailView: View {
     ///
     /// One invalidation is not always enough while AppKit is still settling, so this
     /// re-checks, and only while the clipped-items indicator is actually on screen.
+    ///
     /// The loop is broken three ways, which matters because the cure and the symptom
     /// share a mechanism: the retries stop the moment the indicator is gone, they are
     /// capped, and nothing here ever schedules itself from an invalidation — only an
