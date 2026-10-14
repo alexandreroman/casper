@@ -63,7 +63,9 @@ final class GhosttyFontSizeTests: XCTestCase {
                 onFontSizeChange: { id, size in reported = (id, size) })
         }
 
-        try withRealSurface(makeView: makeView) { view, _ in
+        var sizeBefore: Float = 0
+        try withRealSurface(makeView: makeView) { view, surface in
+            sizeBefore = surface.currentFontSize()
             // Cmd+Equal: the "=" key (unshifted "+") is keyCode 24 on a standard US
             // ANSI keyboard. This is a genuine NSEvent built the same way a real
             // keypress arrives, not a synthetic debug-only path.
@@ -77,6 +79,7 @@ final class GhosttyFontSizeTests: XCTestCase {
 
         let (reportedID, reportedSize) = try XCTUnwrap(reported)
         XCTAssertEqual(reportedID, surfaceID)
-        XCTAssertGreaterThan(reportedSize, 0)
+        // Any first report clears a bare `> 0`, so compare against the size before the keypress.
+        XCTAssertGreaterThan(reportedSize, sizeBefore)
     }
 }
