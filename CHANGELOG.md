@@ -34,8 +34,7 @@ CI, test, and documentation-only work is left out.
   `git worktree prune` when that worktree was deleted, instead of showing Git's
   "directory exists".
 - "Create Workspace…" now says why a workspace could not be created — for
-  example a repository with no commits yet, or a name Git already has a
-  worktree entry for — instead of a generic guess.
+  example a repository with no commits yet — instead of a generic guess.
 - A file Casper cannot read no longer blanks the whole diff view; it is listed
   as unreadable.
 - `casper` commands fail at once instead of hanging for several seconds when
@@ -46,10 +45,13 @@ CI, test, and documentation-only work is left out.
 - The opencode integration reminder no longer claims the plugin is missing
   when `opencode.json` uses Windows line endings and contains a comment.
 - A mouse's Back and Forward buttons reach terminal programs as buttons 8 and
-  9, as in Ghostty, instead of scrolling them.
+  9, as in Ghostty, instead of scrolling them. A mouse's other extra buttons
+  reach terminal programs too, numbered as in Ghostty.
 - Releasing a right-hand modifier key (Shift, Control, Option or Command) while
   the left one is still held now reaches terminal programs as a release, so a
   program tracking key presses no longer sees that modifier stuck down.
+- Moving the window to a display with a different scale no longer leaves the
+  terminal sized for the previous display until the window is resized.
 - `casper workspace new --base ""` falls back to the space's base branch, as
   if `--base` were omitted, instead of creating a workspace that cannot be
   closed.
