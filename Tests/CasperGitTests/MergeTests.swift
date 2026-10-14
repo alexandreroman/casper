@@ -104,6 +104,23 @@ final class MergeTests: XCTestCase {
         }
     }
 
+    /// With no `user.email` anywhere, libgit2 falls back on `EMAIL` but leaves its "not
+    /// found" error recorded, so a date that then fails to parse records an error that is
+    /// not its own. The date is still the one to blame.
+    func testMergeRefusalBlamesAnUnparsableDateAfterTheEmailFallback() throws {
+        let (_, main) = try repositoryWithAFeatureCommit()
+        isolateFromTheMachineGitConfiguration()
+        let repo = try Repository.open(atPath: repoDir.path)
+        try removeConfiguredEmail(repo)
+        setGitIdentityEnvironment([.email: "fallback@env.example", .committerDate: "zzz"])
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            let identityError = error as? MissingCommitterIdentityError
+            XCTAssertEqual(identityError?.environmentVariables, ["GIT_COMMITTER_DATE"], "got: \(error)")
+            XCTAssertEqual(identityError?.detail, "unparsable date")
+        }
+    }
+
     /// Valid variables set beside a broken configuration take none of the blame: there,
     /// `git config` is the fix.
     func testMergeRefusalBlamesNoValidIdentityVariable() throws {
@@ -131,6 +148,37 @@ final class MergeTests: XCTestCase {
         try GitFixture.commit(
             atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
         return (repo, main)
+    }
+
+    /// Point libgit2's machine-wide configuration levels at an empty directory for the
+    /// rest of the test, so that a setting the repository lacks is missing outright rather
+    /// than read from the developer's own Git configuration. Only a repository opened
+    /// afterwards sees the change: an open one has already loaded its configuration.
+    private func isolateFromTheMachineGitConfiguration() {
+        let emptyDirectory = root.appendingPathComponent("no-git-config")
+        XCTAssertNoThrow(try FileManager.default.createDirectory(at: emptyDirectory, withIntermediateDirectories: true))
+        let levels = [
+            GIT_CONFIG_LEVEL_PROGRAMDATA, GIT_CONFIG_LEVEL_SYSTEM, GIT_CONFIG_LEVEL_XDG, GIT_CONFIG_LEVEL_GLOBAL,
+        ]
+        for level in levels.map(\.rawValue) {
+            var buffer = git_buf()
+            defer { git_buf_dispose(&buffer) }
+            guard casper_git_get_config_search_path(level, &buffer) == 0, let contents = buffer.ptr else {
+                XCTFail("cannot read libgit2's config search path for level \(level)")
+                continue
+            }
+            let saved = String(cString: contents)
+            addTeardownBlock { _ = casper_git_set_config_search_path(level, saved) }
+            XCTAssertEqual(casper_git_set_config_search_path(level, emptyDirectory.path), 0)
+        }
+    }
+
+    /// Delete `user.email` from `repo`'s own configuration.
+    private func removeConfiguredEmail(_ repo: Repository) throws {
+        var config: OpaquePointer?
+        try gitCheck(git_repository_config(&config, repo.pointer))
+        defer { git_config_free(config) }
+        try gitCheck(git_config_delete_entry(config, "user.email"))
     }
 
     /// The environment names an identity the configuration lacks: the author comes from

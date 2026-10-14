@@ -32,8 +32,9 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
     ///
     /// A name or email variable is to blame when `git_signature_new` rejects it on its
     /// own: blank, or holding an angle bracket. A date variable is to blame when its own
-    /// side fails with no error recorded, which only an unparsable date does; libgit2
-    /// exposes no parser to check a date with directly.
+    /// side fails on the date, which libgit2 records no error for; libgit2 exposes no
+    /// parser to check a date with directly. See `failure(of:in:)` for the one stale
+    /// error that can still be recorded then.
     init(diagnosing repository: OpaquePointer) {
         var failures: [SideFailure] = []
         for side in Side.allCases {
@@ -95,8 +96,17 @@ public struct MissingCommitterIdentityError: Error, Equatable, Sendable {
         }
         guard code != 0 else { return nil }
 
-        let recordedNoError = git_error_last()?.pointee.klass == Int32(GIT_ERROR_NONE.rawValue)
-        if recordedNoError {
+        // An unparsable date fails with -1 and records no error. Not quite always, though:
+        // when `user.email` is missing, libgit2 takes `EMAIL` instead but leaves that miss
+        // recorded, so a date failing after it shows the miss. A genuine miss returns
+        // GIT_ENOTFOUND, never -1, which is what tells the two apart.
+        let lastError = git_error_last()?.pointee
+        let recordedNoError = lastError?.klass == Int32(GIT_ERROR_NONE.rawValue)
+        let recordedOnlyTheEmailFallback = code == GIT_ERROR.rawValue
+            && lastError?.klass == Int32(GIT_ERROR_CONFIG.rawValue)
+            && lastError?.message.map { String(cString: $0) } == "config value 'user.email' was not found"
+        let dateIsSet = environmentValue(side.dateVariable) != nil
+        if dateIsSet && (recordedNoError || recordedOnlyTheEmailFallback) {
             return SideFailure(side: side, detail: "unparsable date", unparsableDate: true)
         }
         return SideFailure(side: side, detail: lastErrorMessage(code: code), unparsableDate: false)
