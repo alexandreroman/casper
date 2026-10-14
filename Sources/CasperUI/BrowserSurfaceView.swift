@@ -31,12 +31,19 @@ struct BrowserSurfaceView: View {
     static func normalize(_ raw: String) -> URL? {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
-        if let components = URLComponents(string: trimmed), let rawScheme = components.scheme, components.host != nil {
-            let scheme = rawScheme.lowercased()
-            guard scheme == "http" || scheme == "https" else { return nil }
+        if let components = URLComponents(string: trimmed), components.scheme != nil, components.host != nil {
+            guard isWebScheme(components.scheme) else { return nil }
             return URL(string: trimmed)
         }
         return URL(string: "http://" + trimmed)
+    }
+
+    /// The browser's scheme policy: only `http`/`https`, case-insensitively. The
+    /// address bar, popup adoption and info-panel links all apply it, so a
+    /// `file:` or custom-scheme URL never gets a full-privilege load in the panel.
+    nonisolated static func isWebScheme(_ scheme: String?) -> Bool {
+        guard let scheme = scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
     }
 
     /// The URL to hand off to the system default browser: the page actually

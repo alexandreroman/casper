@@ -139,7 +139,7 @@ struct WorkspaceInfoPanel: View {
     /// either way — those already open outside the app, so the modifier has
     /// nothing to switch between.
     static func destination(for url: URL, modifiers: NSEvent.ModifierFlags) -> LinkDestination {
-        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+        guard BrowserSurfaceView.isWebScheme(url.scheme) else {
             return .system
         }
         return modifiers.contains(systemBrowserModifier) ? .systemBrowser : .workspaceBrowser

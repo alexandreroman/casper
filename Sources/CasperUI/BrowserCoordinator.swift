@@ -391,12 +391,10 @@ final class BrowserCoordinator: NSObject, ObservableObject, WKNavigationDelegate
     /// Whether a popup navigation should be loaded in place. `hasTargetFrame` is
     /// false when WebKit has no frame to load into, i.e. it really is asking for a
     /// new window; anything else already has a home and must not be hijacked. Only
-    /// `http`/`https` are adopted, mirroring the address bar's scheme policy
-    /// (`BrowserSurfaceView.normalize`), so a `file:` or custom-scheme popup is
-    /// ignored rather than handed a full-privilege load.
+    /// `http`/`https` are adopted (`BrowserSurfaceView.isWebScheme`), so a `file:`
+    /// or custom-scheme popup is ignored rather than handed a full-privilege load.
     nonisolated static func shouldAdoptPopup(url: URL?, hasTargetFrame: Bool) -> Bool {
-        guard !hasTargetFrame, let scheme = url?.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
+        !hasTargetFrame && BrowserSurfaceView.isWebScheme(url?.scheme)
     }
 
     // MARK: - WKNavigationDelegate
