@@ -93,15 +93,45 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
         XCTAssertTrue(runtime.handleReloadConfig(target: target))
     }
 
-    /// It is never forwarded to `onAction`: it is plumbing, not an app action.
-    func testReloadConfigDoesNotReachOnAction() {
-        let runtime = GhosttyRuntime.forTesting()
-        var received: GhosttyAction?
-        runtime.onAction = { received = $0 }
+    private let reloadConfig = GhosttyAction.other(tag: GHOSTTY_ACTION_RELOAD_CONFIG.rawValue)
+    private let configChange = GhosttyAction.other(tag: GHOSTTY_ACTION_CONFIG_CHANGE.rawValue)
+
+    /// With a live app the trampoline must claim `RELOAD_CONFIG` itself (the nil-app
+    /// fallthrough would return false) and never forward it to `onAction`: it is
+    /// plumbing, not an app action. Pushing the stored config must not crash.
+    func testReloadConfigTrampolineClaimsWithoutReachingOnAction() throws {
+        try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
+        let runtime = try GhosttyRuntime()
+        var received: [GhosttyAction] = []
+        runtime.onAction = { received.append($0) }
         var target = ghostty_target_s()
         target.tag = GHOSTTY_TARGET_APP
-        _ = runtime.handleReloadConfig(target: target)
-        XCTAssertNil(received)
+        var action = ghostty_action_s()
+        action.tag = GHOSTTY_ACTION_RELOAD_CONFIG
+
+        XCTAssertTrue(casperGhosttyAction(runtime.app, target, action))
+        runtime.tick()
+        XCTAssertFalse(received.contains(reloadConfig), "unexpected actions: \(received)")
+        // Pushing the stored config is what makes libghostty announce CONFIG_CHANGE.
+        XCTAssertTrue(received.contains(configChange), "config was not pushed: \(received)")
+    }
+
+    /// Drives libghostty's own app-targeted `RELOAD_CONFIG` (raised by the scheme
+    /// change) through the trampoline into `ghostty_app_update_config`, both ways.
+    @MainActor
+    func testSetColorSchemeOnLiveAppAnswersReloadsWithoutReachingOnAction() throws {
+        try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
+        let runtime = try GhosttyRuntime()
+        var received: [GhosttyAction] = []
+        runtime.onAction = { received.append($0) }
+
+        runtime.setColorScheme(dark: true, surfaces: [])
+        runtime.tick()
+        runtime.setColorScheme(dark: false, surfaces: [])
+        runtime.tick()
+
+        XCTAssertFalse(received.contains(reloadConfig), "unexpected actions: \(received)")
+        XCTAssertTrue(received.contains(configChange), "config was not pushed: \(received)")
     }
 
     @MainActor
