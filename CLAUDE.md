@@ -36,7 +36,6 @@ in [README.md](README.md) § Building from source. The targets in daily use:
 make build   # compile, then assemble + sign Casper-dev.app
 make dev     # rebuild + launch Casper-dev.app under a per-branch dev session
 make test    # run the test suite
-casper       # (no args) launch the Casper app (SwiftUI GUI)
 ```
 
 The app icon ships in two forms: the legacy `Packaging/AppIcon/AppIcon.icns`
