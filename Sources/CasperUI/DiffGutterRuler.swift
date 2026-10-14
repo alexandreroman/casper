@@ -98,8 +98,8 @@ final class DiffGutterRuler: NSRulerView {
     /// empty state instead of the surface — so the column collapses to its stripe
     /// plus the gap.
     private func reflowWidth() {
-        let widestGutter = document?.files.map(\.gutterWidth).max() ?? 0
-        ruleThickness = Self.stripeWidth + widestGutter + Self.cueColumnWidth + codeLeadingGap
+        let numberColumnWidth = document?.gutterWidth ?? 0
+        ruleThickness = Self.stripeWidth + numberColumnWidth + Self.cueColumnWidth + codeLeadingGap
     }
 
     /// The cue's column, gap included. Part of the ruler's thickness rather than
@@ -234,14 +234,13 @@ final class DiffGutterRuler: NSRulerView {
     /// Draws one line number right-aligned in its row's band, clear of the stripe
     /// on the leading side and of the code column on the trailing side.
     ///
-    /// The column is the band minus the stripe and the gap, which by
-    /// `reflowWidth()`'s arithmetic leaves exactly the document's widest
-    /// `FileSpan.gutterWidth`, at exactly the offset `DiffLineRow` put it: no digit
-    /// can clip, and the column has not moved.
+    /// The column is the band minus the stripe, the cue column and the gap, which
+    /// by `reflowWidth()`'s arithmetic leaves exactly `DiffDocument.gutterWidth`,
+    /// sized for the document's widest number: no digit can clip.
     ///
     /// Aligned to the top of the band rather than to the code's baseline: the two
-    /// faces differ in size, so matching baselines would take ascent arithmetic
-    /// that the row-based renderer's `HStack(alignment: .top)` did not do either.
+    /// faces differ in size, and the top edge puts the number beside the row's
+    /// first display line with no ascent arithmetic.
     private func draw(number: Int, in band: NSRect, kind: GitDiffLine.Kind) {
         let column = NSRect(
             x: band.minX + Self.stripeWidth, y: band.minY,

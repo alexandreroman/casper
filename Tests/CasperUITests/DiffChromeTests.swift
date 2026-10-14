@@ -113,9 +113,9 @@ final class DiffChromeTests: XCTestCase {
     /// most.
     func testGutterWidthPlacesTheNumberAndCodeColumnsWhereTheRowRendererDid() throws {
         let surface = makeSurface(document: makeDocument())
-        // Five digits: `FileSpan.gutterWidth` budgets 5 * 9 + 12. Spelled out rather
-        // than read back from `files.map(\.gutterWidth).max()`, which would let the
-        // test agree with the implementation by restating it.
+        // Five digits: `DiffDocument.gutterWidth` budgets 5 * 9 + 12. Spelled out
+        // rather than read back from the document, which would let the test agree
+        // with the implementation by restating it.
         let gutterWidth: CGFloat = 5 * 9 + 12
         // The text view begins where the ruler ends and insets its glyphs by the
         // container's padding, so this sum is where the code's first glyph lands.

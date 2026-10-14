@@ -149,18 +149,20 @@ final class DiffDocumentTests: XCTestCase {
         XCTAssertEqual(document.files[0].deletions, 1)
     }
 
-    /// The gutter must be wide enough for the file's widest line number, with a
-    /// floor so short files don't get a cramped column.
+    /// The gutter must be wide enough for the widest line number of any file,
+    /// with a floor so short diffs don't get a cramped column.
     func testGutterWidthGrowsWithTheWidestLineNumber() {
         let narrow = DiffDocument(diff: GitDiff(files: [
             file([hunk([line(.context, "x", old: 1, new: 1)])]),
         ]))
         let wide = DiffDocument(diff: GitDiff(files: [
-            file([hunk([line(.context, "x", old: 12345, new: 12345)])]),
+            file([hunk([line(.context, "x", old: 1, new: 1)])]),
+            file(old: "b.swift", new: "b.swift", [hunk([line(.context, "x", old: 12345, new: 12345)])]),
         ]))
 
-        XCTAssertEqual(narrow.files[0].gutterWidth, 36)
-        XCTAssertEqual(wide.files[0].gutterWidth, CGFloat(5 * 9 + 12))
+        XCTAssertEqual(narrow.gutterWidth, 36)
+        XCTAssertEqual(wide.gutterWidth, CGFloat(5 * 9 + 12))
+        XCTAssertEqual(DiffDocument(diff: GitDiff(files: [])).gutterWidth, 0)
     }
 
     // MARK: - Binary files

@@ -37,7 +37,6 @@ struct DiffDocument: Sendable, Equatable {
         let status: GitDiffFile.Status
         let insertions: Int
         let deletions: Int
-        let gutterWidth: CGFloat
         /// Covers the file's paragraphs including their terminators.
         let range: NSRange
         let firstLineIndex: Int
@@ -124,6 +123,10 @@ struct DiffDocument: Sendable, Equatable {
     let files: [FileSpan]
     let lines: [LineSpan]
     let shape: Shape
+    /// The gutter's number column width: one column for the whole document,
+    /// sized for the widest line number any file carries — lines the budgets hide
+    /// included — so no number is ever truncated. 0 for a document with no files.
+    let gutterWidth: CGFloat
 
     init(diff: GitDiff) {
         var text = ""
@@ -134,6 +137,7 @@ struct DiffDocument: Sendable, Equatable {
         var files: [FileSpan] = []
         var lines: [LineSpan] = []
         var shape = Shape()
+        var widestLineNumber = 0
         var remainingTotal = Self.maxTotalLines
 
         /// Appends one paragraph and records its span. `suffixLength` is the
@@ -219,10 +223,10 @@ struct DiffDocument: Sendable, Equatable {
             shape.totalLines += metrics.sourceLines
             shape.maxFileLines = max(shape.maxFileLines, metrics.sourceLines)
             shape.maxLineLen = max(shape.maxLineLen, metrics.longestLine)
+            widestLineNumber = max(widestLineNumber, metrics.widestLineNumber)
             files.append(FileSpan(
                 id: file.id, title: Self.title(of: file), status: file.status,
                 insertions: metrics.insertions, deletions: metrics.deletions,
-                gutterWidth: metrics.gutterWidth,
                 range: NSRange(location: fileStart, length: offset - fileStart),
                 firstLineIndex: firstLineIndex, lineCount: lines.count - firstLineIndex))
         }
@@ -232,6 +236,7 @@ struct DiffDocument: Sendable, Equatable {
         self.files = files
         self.lines = lines
         self.shape = shape
+        self.gutterWidth = files.isEmpty ? 0 : Self.gutterWidth(forWidestLineNumber: widestLineNumber)
     }
 
     /// The line whose paragraph contains `offset`, or `nil` past the end of the
@@ -328,13 +333,12 @@ struct DiffDocument: Sendable, Equatable {
         return String(flattened)
     }
 
-    /// Header stats, gutter width and the file's share of the diff's `Shape`,
-    /// computed over **all** of a file's lines including any the budgets hide: the
-    /// header describes the change, not what got rendered. Same arithmetic as the
-    /// previous row-based renderer, so the gutter keeps its width.
+    /// Header stats, widest line number and the file's share of the diff's
+    /// `Shape`, computed over **all** of a file's lines including any the budgets
+    /// hide: the header describes the change, not what got rendered.
     private static func metrics(
         of file: GitDiffFile
-    ) -> (insertions: Int, deletions: Int, gutterWidth: CGFloat, sourceLines: Int, longestLine: Int) {
+    ) -> (insertions: Int, deletions: Int, widestLineNumber: Int, sourceLines: Int, longestLine: Int) {
         var insertions = 0
         var deletions = 0
         var widestLineNumber = 0
@@ -353,11 +357,14 @@ struct DiffDocument: Sendable, Equatable {
                 longestLine = max(longestLine, line.content.count)
             }
         }
-        // The widest number sets the width so the column never truncates (e.g.
-        // 5-digit numbers in a large file): one number plus trailing padding,
-        // with a floor so short files don't get a cramped column.
-        let maxDigits = max(String(widestLineNumber).count, 1)
-        return (insertions, deletions, max(CGFloat(maxDigits * 9 + 12), 36), sourceLines, longestLine)
+        return (insertions, deletions, widestLineNumber, sourceLines, longestLine)
+    }
+
+    /// One number of `number`'s digit count plus trailing padding, with a floor
+    /// so a short diff doesn't get a cramped column.
+    private static func gutterWidth(forWidestLineNumber number: Int) -> CGFloat {
+        let digits = max(String(number).count, 1)
+        return max(CGFloat(digits * 9 + 12), 36)
     }
 
     /// The path as the header bar shows it: both sides joined for a rename,
