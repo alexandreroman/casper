@@ -25,7 +25,8 @@ non-obvious constraints, each verified the hard way:
   before teardown returns, closing the use-after-free window. Off-queue callers
   — the main actor, through the owner's reconfigure path — get that full
   barrier, and the owner's `onChange` hop is a non-blocking
-  `DispatchQueue.main.async`, so it never blocks the queue against it. Same
+  `MainRunLoop.perform` (`CFRunLoopPerformBlock`), so it never blocks the queue
+  against it. Same
   discipline as [[swift6-network-concurrency]]. A caller already *on* the
   callback queue would self-deadlock on that barrier, and `deinit` calls
   `stop()` unconditionally, so releasing the watcher's last reference from

@@ -110,9 +110,9 @@ public final class DirectoryWatcher: @unchecked Sendable {
     /// the main actor via the owner's reconfigure path or `deinit`). The trailing
     /// `queue.sync {}` barrier lets any in-flight or queued callback drain on the
     /// serial queue before teardown returns, closing the use-after-free window
-    /// against the unretained context. The owner's `onChange` hop uses
-    /// `DispatchQueue.main.async` (non-blocking), so it never blocks the queue and
-    /// cannot deadlock with this barrier.
+    /// against the unretained context. The owner's `onChange` hop is a non-blocking
+    /// `MainRunLoop.perform` (`CFRunLoopPerformBlock`), so it never blocks the queue
+    /// and cannot deadlock with this barrier.
     ///
     /// Calling it *from* `queue` would self-deadlock on that barrier, and `deinit`
     /// can legitimately land there — releasing the last reference inside the
