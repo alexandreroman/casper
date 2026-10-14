@@ -29,7 +29,6 @@ over libgit2 1.9.x). Relevant to any future CasperGit work (e.g. adding
   `gitStringArray`). `git_buf` → `git_buf_dispose`; `git_strarray` →
   `git_strarray_dispose`.
 - **Test fixtures build real repos via libgit2 only** (no `git` binary, per
-  dependency policy). CasperGit's internal `gitCheck` is not visible from
-  `CasperCoreTests`, so that target's commit helper uses a local check instead.
+  dependency policy).
 
 See [[dependency-policy]], [[test-toolchain]].
