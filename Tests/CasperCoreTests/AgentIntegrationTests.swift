@@ -455,6 +455,13 @@ final class AgentIntegrationTests: XCTestCase {
         XCTAssertEqual(AgentIntegration.opencodePluginEntries(config), [])
     }
 
+    func testOpencodePluginEntriesReadsACRLFConfigWithComments() {
+        // A CRLF "\r\n" is a single Swift Character, unequal to "\n", so a line
+        // comment must end at any newline or it swallows the rest of the file.
+        let config = "{\r\n// c\r\n\"plugin\": [\"casper-skills\"]\r\n}"
+        XCTAssertEqual(AgentIntegration.opencodePluginEntries(config), ["casper-skills"])
+    }
+
     func testOpencodePluginEntriesFallsBackWhenUnparseable() {
         // Truncated mid-write: not JSON even after stripping, but the entry is
         // plainly there, so claiming "missing" would be wrong.

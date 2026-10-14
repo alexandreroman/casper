@@ -38,6 +38,8 @@ CI, test, and documentation-only work is left out.
 - A `casper` command that times out, such as a `casper browser` command on a
   page that does not answer, now fails after its timeout instead of retrying
   for up to a minute.
+- The opencode integration reminder no longer claims the plugin is missing
+  when `opencode.json` uses Windows line endings and contains a comment.
 
 ## [0.1.3] - 2026-10-13
 

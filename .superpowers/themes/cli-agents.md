@@ -396,7 +396,8 @@ is the direction to fail in, since a fork carries the integration and a false
 Despite the `.json` name the config format is **JSONC**, and real files carry
 comments, so comments are stripped before parsing — never inside a string
 literal, since opencode's own default config holds
-`"$schema": "https://opencode.ai/config.json"`.
+`"$schema": "https://opencode.ai/config.json"`. A `//` comment ends at any line
+break, a CRLF or a lone CR included.
 
 Most install shapes carry a version. A plugin file declares it as
 `export const CASPER_PLUGIN_VERSION = "…"`. A config entry is resolved to where

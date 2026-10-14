@@ -622,7 +622,8 @@ enum AgentIntegration {
 
             let next: Character? = index + 1 < characters.count ? characters[index + 1] : nil
             if character == "/", next == "/" {
-                while index < characters.count, characters[index] != "\n" { index += 1 }
+                // `isNewline`, not `== "\n"`: a CRLF is one `Character`, unequal to "\n".
+                while index < characters.count, !characters[index].isNewline { index += 1 }
                 continue
             }
             if character == "/", next == "*" {
