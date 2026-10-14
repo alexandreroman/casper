@@ -292,6 +292,25 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(coordinator.clipView.bounds.origin.y, before, accuracy: 0.5)
     }
 
+    /// A file id matches exactly or not at all: `casper diff open README.md` on an
+    /// unchanged root `README.md` must not land on a changed `docs/README.md`.
+    func testAFileIDNeverMatchesANestedFileOfTheSameName() throws {
+        let files = ["a.swift", "docs/README.md"].map { path in
+            let lines = (1...40).map {
+                GitDiffLine(kind: .addition, content: "line \($0)", oldLineNumber: nil, newLineNumber: $0)
+            }
+            return GitDiffFile(oldPath: path, newPath: path, status: .modified, isBinary: false,
+                               hunks: [GitDiffHunk(header: "@@ -1,40 +1,40 @@", lines: lines)])
+        }
+        let (controller, _) = makeHostedSurface(DiffDocument(diff: GitDiff(files: files)))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+        let before = coordinator.clipView.bounds.origin.y
+
+        XCTAssertFalse(coordinator.scroll(toFileID: "README.md"))
+
+        XCTAssertEqual(coordinator.clipView.bounds.origin.y, before, accuracy: 0.5)
+    }
+
     // MARK: - The pinned bar
 
     /// The bar's drawn height is what the blank band in the text flow is sized

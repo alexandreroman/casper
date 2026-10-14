@@ -211,9 +211,8 @@ struct DiffSurfaceView: View {
               let target = model.diffScrollTarget,
               target.workspaceID == workspace.id,
               target.nonce != appliedScrollNonce,
-              let files = diff?.files,
-              let matchID = DiffFileMatch.match(target.file, in: files) else { return }
-        guard coordinator.scroll(toFileID: matchID) else { return }
+              diff?.files.contains(where: { $0.id == target.file }) == true else { return }
+        guard coordinator.scroll(toFileID: target.file) else { return }
         appliedScrollNonce = target.nonce
     }
 

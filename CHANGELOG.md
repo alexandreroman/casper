@@ -53,6 +53,8 @@ CI, test, and documentation-only work is left out.
 - `casper workspace new --base ""` falls back to the space's base branch, as
   if `--base` were omitted, instead of creating a workspace that cannot be
   closed.
+- `casper diff open <file>` no longer scrolls to a different changed file that
+  shares the name of an unchanged one.
 
 ## [0.1.3] - 2026-10-13
 
