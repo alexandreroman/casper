@@ -30,9 +30,11 @@ records. The control channel (`casper <domain> <verb>` over
   by its exact worktree-relative path. The file must be inside the worktree
   (`WorkspaceFilePath` containment) **and** either exist on disk or be listed
   by a fresh diff — a file deleted from the worktree — else an error. Only a
-  path missing from disk pays for that diff read, so the reply waits on it
-  (the handler is `async`). A valid but unchanged file opens the diff without
-  scrolling.
+  path missing from disk that HEAD tracks pays for that diff read; HEAD alone
+  cannot answer, since rename detection lists a moved file under its new path
+  only. The reply waits on the read (the handler is `async`), so the CLI
+  allows `diff open` the slow verbs' 35 s. A valid but unchanged file opens the
+  diff without scrolling.
 - `workspace new` takes the new branch name as a **required positional**, never
   an option; `--base` and `--command` are its only verb-specific options.
   `workspace delete` takes no positional at all — it names its target through

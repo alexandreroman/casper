@@ -521,6 +521,13 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertNil(command.target)
     }
 
+    /// A deleted file costs the app a full diff read before it replies, so the
+    /// default 5 s would misreport a slow but successful open as a timeout.
+    func testDiffOpenWaitsLikeTheSlowVerbs() throws {
+        let open = try DiffCommand.Open.parse(["Sources/Foo.swift", "--workspace", "feature"])
+        XCTAssertEqual(open.commandTimeout, WorkspaceCommand.slowVerbTimeout)
+    }
+
     func testDiffOpenCarriesFileArgument() throws {
         let open = try DiffCommand.Open.parse(["Sources/Foo.swift", "--workspace", "feature"])
         let command = try open.makeCommand()

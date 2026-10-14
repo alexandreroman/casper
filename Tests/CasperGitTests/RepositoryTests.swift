@@ -151,6 +151,34 @@ final class RepositoryTests: XCTestCase {
         XCTAssertFalse(try repo.isClean())
     }
 
+    func testIsTrackedAtHeadFindsACommittedFileEvenOnceDeletedFromDisk() throws {
+        let repo = try repositoryWithASourcesDirectory()
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("README.md"))
+
+        XCTAssertTrue(try repo.isTrackedAtHead(path: "README.md"))
+        XCTAssertTrue(try repo.isTrackedAtHead(path: "Sources/main.swift"))
+    }
+
+    func testIsTrackedAtHeadRefusesAnAbsentPathAndADirectory() throws {
+        let repo = try repositoryWithASourcesDirectory()
+
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "does-not-exist.swift"))
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "Sources/missing.swift"))
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "Sources"))
+    }
+
+    /// A fixture repository whose HEAD also tracks `Sources/main.swift`.
+    private func repositoryWithASourcesDirectory() throws -> Repository {
+        try FileManager.default.createDirectory(
+            at: tempDir.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        return try GitFixture.repository(at: tempDir.path, files: ["Sources/main.swift": "print()\n"])
+    }
+
+    func testIsTrackedAtHeadOnUnbornHeadIsFalse() throws {
+        let repo = try Repository.initialize(atPath: tempDir.path)
+        XCTAssertFalse(try repo.isTrackedAtHead(path: "README.md"))
+    }
+
     func testRemoteURL() throws {
         let repo = try GitFixture.repository(at: tempDir.path)
 

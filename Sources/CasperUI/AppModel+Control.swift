@@ -510,7 +510,7 @@ extension AppModel {
     }
 
     /// Whether `diff open` can scroll to `resolvedPath`: a file on disk, or a file
-    /// deleted from the worktree that a fresh diff lists. A directory is refused:
+    /// deleted from the worktree that the diff lists. A directory is refused:
     /// `WorkspaceFilePath` resolves the worktree root itself, whose relative path
     /// is "", which matches no `GitDiffFile.id` and would scroll nowhere while
     /// reporting success.
@@ -520,8 +520,7 @@ extension AppModel {
         if FileManager.default.fileExists(atPath: resolvedPath) {
             return !Self.directoryExists(atPath: resolvedPath)
         }
-        let diff = await diffService.freshDiff(for: workspace)
-        return diff?.files.contains { $0.id == relativePath } ?? false
+        return await diffService.listsMissingFile(relativePath, in: workspace)
     }
 
     /// Collapse the inspector if `workspaceID`'s active tab is `.browser`.

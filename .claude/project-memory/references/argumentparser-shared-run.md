@@ -29,9 +29,9 @@ env -u CASPER_WORKSPACE_ID -u CASPER_CONTROL_SOCKET \
 Per-command variation rides on a protocol requirement with a default (e.g.
 `var commandTimeout: TimeInterval { get }`, defaulting to `sendControl`'s 5 s).
 It varies two ways. A single conformer overrides it directly — `workspace
-delete` to 35 s, `browser wait` to a value computed from its own `--timeout`. A
-whole family instead conforms to a **further** refining protocol carrying the
-shared value: `BrowserAutomationRefCommand: WorkspaceRefCommand` in
+delete` and `diff open` to 35 s, `browser wait` to a value computed from its own
+`--timeout`. A whole family instead conforms to a **further** refining protocol
+carrying the shared value: `BrowserAutomationRefCommand: WorkspaceRefCommand` in
 `Sources/CasperCLI/BrowserCommand.swift` gives the eight automation verbs their
 15 s in one place. The same most-refined-wins resolution applies, so the chain
 `ParsableCommand` -> `WorkspaceRefCommand` -> `BrowserAutomationRefCommand`

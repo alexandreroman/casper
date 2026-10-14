@@ -10,7 +10,7 @@ struct WorkspaceCommand: ParsableCommand {
         subcommands: [List.self, Current.self, New.self, Delete.self])
 
     /// The client timeout for the verbs the app answers only after slow work:
-    /// `new` and `delete`, well beyond the default 5 s.
+    /// `new` and `delete`, and `diff open`, well beyond the default 5 s.
     static let slowVerbTimeout: TimeInterval = 35
 
     struct List: ParsableCommand {

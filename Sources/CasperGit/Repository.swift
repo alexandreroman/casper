@@ -402,6 +402,21 @@ public final class Repository {
         return String(bytes: raw, encoding: .utf8)
     }
 
+    /// Whether the HEAD commit's tree holds `path` as anything but a directory — a
+    /// file, a symlink or a submodule — whatever the working tree now holds there.
+    /// A cheap tree lookup: no file content is read. False when HEAD is unborn.
+    public func isTrackedAtHead(path: String) throws -> Bool {
+        guard let tree = try headTree() else { return false }  // HEAD is unborn
+        defer { git_tree_free(tree) }
+
+        var entry: OpaquePointer?
+        let rc = git_tree_entry_bypath(&entry, tree, path)
+        if rc == GIT_ENOTFOUND.rawValue { return false }
+        try gitCheck(rc)
+        defer { git_tree_entry_free(entry) }
+        return git_tree_entry_type(entry) != GIT_OBJECT_TREE
+    }
+
     /// The HEAD commit's tree, or nil when HEAD is unborn / not found.
     private func headTree() throws -> OpaquePointer? {
         var head: OpaquePointer?

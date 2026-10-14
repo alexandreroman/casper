@@ -312,6 +312,19 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(model.workspace(id: id)?.inspector.tab, .diff)
     }
 
+    /// A renamed file's old path is gone from disk and tracked by HEAD, yet the diff
+    /// lists the file under its new path only — so the old one is no scroll target.
+    func testOpenDiffWithRenamedFilesOldPathFails() async throws {
+        let (model, id, repoPath) = try seededGitModel()
+        try FileManager.default.moveItem(atPath: repoPath + "/README.md", toPath: repoPath + "/NOTES.md")
+
+        guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "README.md") else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertTrue(error.message.contains("does not exist"), "got: \(error.message)")
+        XCTAssertNil(model.diffScrollTarget)
+    }
+
     func testOpenDiffWithMissingFileFails() async throws {
         let (model, id, _) = try seededGitModel()
         guard case .failure(let error) = await model.controlOpenDiff(in: id, file: "does-not-exist.swift") else {
