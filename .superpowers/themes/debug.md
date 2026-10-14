@@ -81,7 +81,9 @@ floor: `.error`/`.fault` always compiled in, `.debug`/`.info` gated. See
   MB length guard bounds each read.
 - **Idempotent-verb retry:** `dump-state`/`read-text`/`screenshot`/`memory` are
   retriable (up to 4 attempts); every injecting verb and `focus` are **not**
-  (they mutate).
+  (they mutate). Only a failed connection is retried: an attempt that times out
+  waiting for the reply is final, so a stuck handler costs one timeout, not
+  four.
 - Logging emits `debug server listening`, `debug command: <verb>` and
   `debug command failed: <verb> — <reason>`, where `<verb>` is the wire
   `DebugCommand.Verb` rawValue — camelCase (`dumpState`), not the CLI's

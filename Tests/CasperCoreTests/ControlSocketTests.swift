@@ -62,6 +62,23 @@ final class ControlSocketTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
 
+    func testRetriableSendDoesNotRetryATimedOutAttempt() throws {
+        let path = tempSocketPath()
+        let server = ControlSocketServer(socketPath: path)
+        server.onCommand = { _, _ in }  // accepts the request but never replies
+        try server.start()
+        defer { server.stop() }
+
+        let start = Date()
+        XCTAssertThrowsError(
+            try ControlSocketClient.send(
+                ControlCommand(verb: .workspaceList), toSocketAt: path, timeout: 0.3, retriable: true)
+        ) { error in
+            XCTAssertTrue(error is ControlSocketError)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 0.6)
+    }
+
     /// The file a crashed app leaves behind: a socket bound and then closed
     /// without `unlink`, so the path exists but nothing listens on it.
     private func staleSocketPath() throws -> String {

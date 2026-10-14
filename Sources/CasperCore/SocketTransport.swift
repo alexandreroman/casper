@@ -28,6 +28,13 @@ public protocol SocketFailureResponse {
     static func failure(_ message: String) -> Self
 }
 
+/// Thrown by `SocketClientEngine.sendOnce` when no reply arrived within the
+/// timeout — typically a server that took the request but has not answered yet.
+/// Kept apart from the channel's transport error so `send` never retries it: the
+/// server may still be working on the request, and a resend would queue it a
+/// second time and multiply the caller's wait.
+private struct SocketReplyTimeout: Error {}
+
 /// Accumulator for one framed read, passed by reference through the chain of
 /// `@Sendable` receive callbacks so each arriving chunk appends in place instead
 /// of copying everything read so far.
@@ -455,7 +462,9 @@ public enum SocketClientEngine<
     /// `ENETDOWN` seen when a slow handler blocks before any response byte
     /// arrives. A decoded `Response` — even `ok: false` — is a real answer and
     /// is returned immediately, never retried, so a mutating verb is never
-    /// applied twice.
+    /// applied twice. Nor is an attempt that timed out waiting for the reply: it
+    /// throws as soon as it expires, so the caller waits `timeout`, not a
+    /// multiple of it.
     ///
     /// `queueLabel` defaults to a per-channel label derived from the command type
     /// (e.g. `casper.socket.client.ControlCommand`), so each channel's serial queue
@@ -470,6 +479,8 @@ public enum SocketClientEngine<
         for attempt in 1...maxAttempts {
             do {
                 return try sendOnce(command, toSocketAt: socketPath, timeout: timeout, queueLabel: queueLabel)
+            } catch is SocketReplyTimeout {
+                throw TransportError(reason: "timed out talking to \(socketPath)")
             } catch let error as TransportError {
                 lastError = error
                 if attempt < maxAttempts {
@@ -482,9 +493,10 @@ public enum SocketClientEngine<
         throw lastError!
     }
 
-    /// One request/response exchange over a single fresh connection. Throws a
-    /// `TransportError` on any transport failure; returns whatever `Response`
-    /// the server delivers, including an `ok: false` one.
+    /// One request/response exchange over a single fresh connection. Throws
+    /// `SocketReplyTimeout` when no reply arrives within `timeout`, a
+    /// `TransportError` on any other transport failure; returns whatever
+    /// `Response` the server delivers, including an `ok: false` one.
     private static func sendOnce(
         _ command: Command, toSocketAt socketPath: String, timeout: TimeInterval, queueLabel: String
     ) throws -> Response {
@@ -580,7 +592,7 @@ public enum SocketClientEngine<
 
         if done.wait(timeout: .now() + timeout) == .timedOut {
             connection.cancel()
-            throw TransportError(reason: "timed out talking to \(socketPath)")
+            throw SocketReplyTimeout()
         }
         switch result.withLock({ $0 }) {
         case .success(let response): return response

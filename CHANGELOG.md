@@ -33,6 +33,9 @@ CI, test, and documentation-only work is left out.
   as unreadable.
 - `casper` commands fail at once instead of hanging for several seconds when
   Casper quit uncleanly and left its socket behind.
+- A `casper` command that times out, such as a `casper browser` command on a
+  page that does not answer, now fails after its timeout instead of retrying
+  for up to a minute.
 
 ## [0.1.3] - 2026-10-13
 
