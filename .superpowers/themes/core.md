@@ -78,8 +78,9 @@ The pure-Swift, UI-free core. Fully unit-tested.
   malformed peer cannot force an unbounded allocation; one
   `SocketTransportError` serves both channels; a refused connect — the stale
   socket file a crashed instance leaves — fails the client at once rather than
-  at its timeout; a retriable verb retries only a failed connection, never an
-  attempt that timed out waiting for the reply), plus the pure CLI helpers
+  at its timeout; a retriable verb gets up to 4 attempts but retries only a
+  failed connection, never an attempt that timed out waiting for the reply),
+  plus the pure CLI helpers
   `ProgressSynthesis`, `ControlTargeting`, and `GitBranchName`. Concurrency
   discipline for the socket classes is in [[swift6-network-concurrency]].
 - **`SessionIdentity`** — the name that suffixes a session's layout file and
@@ -125,10 +126,10 @@ The pure-Swift, UI-free core. Fully unit-tested.
   `DebugCommand` / `DebugResponse` wire types) and `DebugSocket.swift`
   (`DebugSocketPath` and the server/client typealiases over the same
   `SocketTransport`). See `debug.md` and [[debug-channel-gating]].
-- **`CasperLog`** — the `os.Logger` facade: one subsystem, the `debug-casper`
-  skill's filter key, split into categories. `.notice`/`.error`/`.fault` calls
-  ship in release; verbose `.debug`/`.info` call sites are wrapped in
-  `#if DEBUG`.
+- **`CasperLog`** — the `os.Logger` facade: one subsystem
+  (`com.github.alexandreroman.casper`, the `debug-casper` skill's filter key),
+  split into three categories, `app`, `ghostty` and `debug`. Which levels ship
+  in release is the logging floor in `debug.md` § Hard constraint.
 - **`LiveObjectCensus`** / **`ProcessMemory`** — **DEBUG-only**, the weak-ref
   live-object census and the process footprint behind `casper debug memory`
   (see `debug.md` and [[memory-observability]]).

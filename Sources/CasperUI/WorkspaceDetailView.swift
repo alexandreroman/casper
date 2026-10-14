@@ -126,8 +126,8 @@ struct WorkspaceDetailView: View {
     /// leaves a sliver nobody notices at the trailing edge, while a row a few points
     /// wider overflows the ONE item that holds every title-bar control. It covers a
     /// still window only — AppKit's item viewer starts inside the detail area, which
-    /// leaves about 16 pt of this as real slack (measured: app-ui.md § Title bar) —
-    /// and `resizeUndershoot` covers a moving one, on top of this.
+    /// leaves about 16 pt of this as real slack (measured: app-ui.md § Design →
+    /// "Title bar") — and `resizeUndershoot` covers a moving one, on top of this.
     static let safetyMargin: CGFloat = 24
 
     /// Narrowest row worth mounting. The `⋯` chip alone measures 38 pt, so below
@@ -144,10 +144,10 @@ struct WorkspaceDetailView: View {
     /// SwiftUI coalesces layout passes during a fast drag, so a measured shrink is the
     /// whole distance travelled since the last pass, and unbounded: subtracted whole,
     /// one coalesced pass drives the row to `minimumRowWidth` (measured: app-ui.md
-    /// § Title bar). 40 pt is twice the fastest ordinary pass (measured: 5–20 pt) and
-    /// just under one `⋯` chip plus its gap (38 + `chipGap` = 46). A larger jump is
-    /// left to the single frame of chevron `healToolbarOverflow` recovers, not to a
-    /// collapsed row.
+    /// § Design → "Title bar"). 40 pt is twice the fastest ordinary pass (measured:
+    /// 5–20 pt) and just under one `⋯` chip plus its gap (38 + `chipGap` = 46). A
+    /// larger jump is left to the single frame of chevron `healToolbarOverflow`
+    /// recovers, not to a collapsed row.
     static let maximumResizeUndershoot: CGFloat = 40
 
     /// How long the window must stand still before the row gives its resize
@@ -236,7 +236,7 @@ struct WorkspaceDetailView: View {
             // EVERY title-bar control lives in this ONE item, never wider than the bar:
             // AppKit overflows a toolbar item whole rather than shrinking it, so the row
             // does its own degrading inside it (see the
-            // `toolbar-overflows-before-squeezing` note and app-ui.md § Title bar).
+            // `toolbar-overflows-before-squeezing` note and app-ui.md § Design → "Title bar").
             if rowWidth >= Self.minimumRowWidth {
                 ToolbarItem(placement: .navigation) {
                     WorkspaceTitleBarRow(
@@ -417,7 +417,7 @@ struct WorkspaceDetailView: View {
     /// chrome (see the `toolbar-overflows-before-squeezing` note). The resize
     /// undershoot anticipates every pass up to its cap; this takes back what it cannot:
     /// a wider pass, or a jump no previous pass could anticipate, such as collapsing the
-    /// sidebar (see app-ui.md § Title bar).
+    /// sidebar (see app-ui.md § Design → "Title bar").
     ///
     /// One invalidation is not always enough while AppKit is still settling, so this
     /// re-checks, and only while the clipped-items indicator is actually on screen.

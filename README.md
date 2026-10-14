@@ -446,7 +446,8 @@ casper browser scroll-down                   # or scroll-up/-top/-bottom
 `browser console` reports uncaught errors alongside the console output.
 `browser wait` takes `--js <expr>` in place of a selector, plus
 `--visible`/`--gone` and `--timeout <ms>` (default 5000).
-`browser reload --wait` returns once the reloaded page finishes loading.
+`browser reload --wait` returns once the reloaded page finishes loading (or
+fails to load).
 
 Every workspace-scoped command accepts `--workspace <id-or-name>` to target a
 workspace other than the current one. The exceptions are the two that aren't

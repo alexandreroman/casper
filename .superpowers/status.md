@@ -26,7 +26,7 @@ current answer.
 | CasperGit (+ Clibgit2, CSigbusGuard) | ✅     |
 | CasperCLI + CasperAgents             | ✅     |
 | CasperGhostty                        | ✅     |
-| CasperUI (UI-1…UI-5)                 | ✅     |
+| CasperUI                             | ✅     |
 | Space (project)                      | ◐      |
 | Agent-state detection                | ◐      |
 | Agent integration detection          | ✅     |
@@ -122,8 +122,8 @@ non-selected workspaces.
 ## Remaining work
 
 1. **Space rename** — the only outstanding feature. The Space model and sidebar
-   grouping shipped with UI-2; nothing renames a Space (its sidebar menu offers
-   "Remove Space" only). See `themes/space-project.md`.
+   grouping are built; nothing renames a Space (its sidebar menu offers "Remove
+   Space" only). See `themes/space-project.md`.
 2. **Agent-state detection deferrals** — a `.render`-driven trigger in place of
    the timer poll, option-B timeout authority release, per-surface status, and a
    real `error` signal alongside the agent-as-command `done`/`error` path. Those

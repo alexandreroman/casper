@@ -7,7 +7,7 @@ import SwiftUI
 /// It is one view because it is one `ToolbarItem` (see the `.toolbar` comment in
 /// `WorkspaceDetailView`). As that width shrinks, the row degrades along ONE ordered
 /// ladder — the diff badge first, then the Space name, then the chip labels, and
-/// never the branch — spelled out in `body` and in app-ui.md § Title bar.
+/// never the branch — spelled out in `body` and in app-ui.md § Design → "Title bar".
 struct WorkspaceTitleBarRow: View {
     let model: AppModel
     let workspace: Workspace
@@ -41,7 +41,7 @@ struct WorkspaceTitleBarRow: View {
         // (context), then the chip labels (actions). The branch (identity) never goes.
         // One list rather than one ladder per element, because two ladders cannot be
         // ordered against each other: whatever one releases, the other takes back
-        // (measured, and tabulated rung by rung, in app-ui.md § Title bar). Within a
+        // (measured, and tabulated rung by rung, in app-ui.md § Design → "Title bar"). Within a
         // rung the branch still middle-truncates — `Text` answering a proposal, which
         // changes how a rung looks, never which rung is chosen.
         ViewThatFits(in: .horizontal) {

@@ -76,7 +76,7 @@ environment.
 ```text
 Session
  ├─ selectedWorkspaceID: UUID?
- ├─ dismissedAgentReminders: Set<String>  // encoded sorted
+ ├─ dismissedAgentReminders: Set<String>
  ├─ lastNewSpaceLocation: String?
  └─ [Space]                               // a folder, Git or not
      ├─ id, name, folderPath
@@ -122,7 +122,7 @@ The **Space** layer and `kind`/`baseBranch` are detailed in
 persisted fields to `~/Library/Application Support/Casper/session.json`;
 terminals restart cold, the inspector browser reloads its URL, `portBase` is
 restored as-is — save coalescing and the transient fields are in
-`themes/core.md` § SessionStore.
+`themes/core.md` § Design → "`SessionStore`".
 
 ## Risks & mitigations
 

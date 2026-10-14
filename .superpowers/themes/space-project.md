@@ -4,8 +4,7 @@
 model, sidebar, worktrees, persistence).
 
 Promotes the sidebar's implicit "group by repository" into a first-class
-**Space**. The Space grouping shipped with the CasperUI sidebar in UI-2
-(`app-ui.md`).
+**Space**. The Space grouping ships with the CasperUI sidebar (`app-ui.md`).
 
 ## Design
 
@@ -119,4 +118,4 @@ anything — it is a passive act with no claim on the user's attention.
 
 Ports stay **per workspace** (`CASPER_PORT`, injected in `linked` workspaces
 only), not per Space, and there is no `CASPER_PROJECT`. Persistence: see
-`core.md` § SessionStore.
+`core.md` § Design → "`SessionStore`".

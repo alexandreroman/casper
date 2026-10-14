@@ -281,11 +281,9 @@ depends on Ghostty layout composition (`terminal.md`).
   their capsule chrome and the segmented control clips to a lone glyph. AppKit
   sizes a toolbar item to its content's **ideal** width and will not propose it
   less: too little room and it overflows the item **whole**, the truncatable
-  ones included (measured: a leading group of `Text` under `.lineLimit(1)`
-  reporting 293 pt went into the chevron with its title still on one line). Any
-  item AppKit can single out is an item it can overflow, so the row hands it a
-  single item that is never wider than the bar and does the degrading itself
-  ([[toolbar-overflows-before-squeezing]]).
+  ones included (measured in [[toolbar-overflows-before-squeezing]]). Any item
+  AppKit can single out is an item it can overflow, so the row hands it a single
+  item that is never wider than the bar and does the degrading itself.
 
   Spanning the bar costs the row two `NSThemeFrame` behaviours, so the row hands
   both back to itself, on a clear layer **behind** it (a `.background`) rather
