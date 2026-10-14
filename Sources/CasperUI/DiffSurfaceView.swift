@@ -231,7 +231,10 @@ struct DiffSurfaceView: View {
     /// file changes later.
     private func applyPendingScroll() {
         guard let target = model.diffScrollTarget, target.workspaceID == workspace.id else { return }
-        if controller.coordinator?.scroll(toFileID: target.file) == true {
+        // The coordinator may still hold the previous document, or outlive a
+        // surface torn down with it; only a file `diff` lists may land the scroll.
+        let fileIsInDiff = diff?.files.contains { $0.id == target.file } ?? false
+        if fileIsInDiff, controller.coordinator?.scroll(toFileID: target.file) == true {
             model.consumeDiffScrollTarget(target)
         } else if let loadedDiffRevision,
                   target.isUnreachable(inDiffListing: diff?.files, computedAt: loadedDiffRevision) {
