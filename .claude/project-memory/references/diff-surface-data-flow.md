@@ -55,11 +55,12 @@ feedback path the whole TextKit rewrite exists to remove.
   `casper diff open` that expands a collapsed panel or leaves the Browser tab
   mounts a surface, and its target reaches the realized coordinator before the
   first sizing pass, when the clip view clamps any scroll to the top. The
-  coordinator holds the file and the same hook lands it — after laying the text
-  view out, because the text view grows to the document's height only in its
-  own layout, which runs after the container's. The same lag clamps a scroll
-  right after a document swap on a sized surface, so `scroll(toViewY:)` lays
-  the text view out first whenever the target lies past its current height.
+  coordinator holds the file and the same hook lands it. The text view grows
+  to the document's height only in its own layout pass, which runs after the
+  container's and, on a sized surface, after a document swap, so the clip view
+  would clamp either scroll short. `scroll(toViewY:)` is the one place that
+  handles it: it lays the text view out first whenever the target lies past
+  the text view's current height.
 
 `Tests/CasperUITests/DiffTextSurfaceTests.swift` pins the scenario: a document
 that exists *before* the surface is realized must render on

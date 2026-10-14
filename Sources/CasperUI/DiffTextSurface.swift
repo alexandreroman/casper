@@ -223,10 +223,10 @@ struct DiffTextSurface: NSViewRepresentable {
             // Laying out from here is also safe, which is what separates it from
             // the hook below: the pass in progress is this container's, and the
             // text view lays itself out afterwards, so `ensureLayout` re-enters
-            // nothing. A waiting scroll pulls the text view's pass forward
-            // instead, but the text view is a descendant: its pass completes
-            // before the forcing `top(ofFileAt:)` and `ensureLayout` run, and the
-            // `didLayout` it fires only queues work.
+            // nothing. A waiting scroll can pull the text view's pass forward
+            // from here, in `scroll(toViewY:)`, but the text view is a
+            // descendant: its pass completes before the bars are resolved, and
+            // the `didLayout` it fires only queues work.
             containerView.viewportDidChange = { [weak self] in self?.viewportDidChange() }
             // The third thing that invalidates the bars, and the only one the
             // surface does not do to itself: TextKit replacing the estimated
@@ -416,15 +416,9 @@ struct DiffTextSurface: NSViewRepresentable {
         /// The container has re-tiled the viewport: lands a scroll that was
         /// waiting for it to have a size, then re-resolves the pinned bars over
         /// it. The scroll goes first, so the bars are resolved where it lands.
-        ///
-        /// The text view is laid out ahead of its turn for that scroll. It grows
-        /// to the document's height only in its own layout, which runs after
-        /// this container's, so until then it is no taller than the viewport it
-        /// was just tiled into — and the clip view clamps a scroll to the top.
         private func viewportDidChange() {
             if let fileID = fileAwaitingViewport, !clipView.bounds.isEmpty {
                 fileAwaitingViewport = nil
-                textView.layoutSubtreeIfNeeded()
                 scroll(toFileID: fileID)
             }
             resolveBarsOverTheViewport()
@@ -470,10 +464,12 @@ struct DiffTextSurface: NSViewRepresentable {
         ///
         /// It clamps against the text view's frame, which grows to a freshly
         /// swapped document's height only in the text view's own layout pass. A
-        /// target past the height the frame has so far — an anchor or a requested
-        /// file the swap pushed below the previous document's end — pulls that
-        /// pass forward, or the scroll would stop at that end. Only then: on a
-        /// large diff the pass lays out the whole document.
+        /// target past the height the frame has so far pulls that pass forward,
+        /// or the scroll would stop at that height: an anchor or a requested file
+        /// the swap pushed below the previous document's end, or a file waiting
+        /// for the viewport's first sizing, when the text view has not yet grown
+        /// past the viewport it was just tiled into. Only then: on a large diff
+        /// the pass lays out the whole document.
         private func scroll(toViewY viewY: CGFloat) {
             let clipView = self.clipView
             if !clipView.bounds.isEmpty, viewY + clipView.bounds.height > textView.frame.height {
