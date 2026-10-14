@@ -2020,7 +2020,7 @@ final class AppModel {
             branch: branch, remoteURL: remote,
             // Canonicalized (not just standardized) because it is compared across
             // folders reached by different spellings — see `spacesSharingRepository`.
-            commonDirPath: canonicalPath(repo.commonDirPath),
+            commonDirPath: WorktreeManager.canonicalPath(repo.commonDirPath),
             isLinkedWorktree: repo.isLinkedWorktree,
             // Standardized like `canonicalPath` and for the same reason: on the main
             // working tree the two name that one folder, so they must normalize alike.

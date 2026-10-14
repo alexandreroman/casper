@@ -87,7 +87,7 @@ extension AppModel {
     @discardableResult
     func addSpace(folderURL: URL, probe: (URL) -> WorkspaceFactory.GitInfo?) -> AddSpaceOutcome {
         let folderPath = folderURL.path
-        let candidate = Self.canonicalPath(folderPath)
+        let candidate = WorktreeManager.canonicalPath(folderPath)
         if let known = trackedWorkspace(atCanonicalPath: candidate) {
             CasperLog.app.error("folder already open: \(folderPath, privacy: .public)")
             selectWorkspace(known.workspaceID)
@@ -182,7 +182,7 @@ extension AppModel {
         // folder, each with a `.primary` on the same working tree, which is exactly what
         // `linkedWorkspaces(absorbing:baseBranch:excluding:)` guards against on the
         // reunify side. Adopt into the Space already tracking that folder instead.
-        if let tracked = trackedWorkspace(atCanonicalPath: Self.canonicalPath(mainPath)) {
+        if let tracked = trackedWorkspace(atCanonicalPath: WorktreeManager.canonicalPath(mainPath)) {
             return adoptWorktree(at: folderURL, info: info, into: tracked.spaceIndex)
         }
         // Two workspaces, so two port blocks: the repository's primary and the worktree.
@@ -401,13 +401,6 @@ extension AppModel {
         return exists && isDirectory.boolValue
     }
 
-    // Reached from AppModel.swift.
-    /// `path` with symlinks resolved, so two spellings of the same folder compare
-    /// equal (on macOS `/tmp/x` and `/private/tmp/x` are the same directory).
-    static func canonicalPath(_ path: String) -> String {
-        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-    }
-
     /// The workspace Casper already tracks at `canonical` — either a Space rooted
     /// there (answering with its primary workspace) or any workspace whose worktree is
     /// that folder — together with the index of the Space holding it, for the callers
@@ -416,11 +409,11 @@ extension AppModel {
         atCanonicalPath canonical: String
     ) -> (spaceIndex: Int, workspaceID: UUID)? {
         for (si, space) in spaces.enumerated() {
-            if Self.canonicalPath(space.folderPath) == canonical {
+            if WorktreeManager.canonicalPath(space.folderPath) == canonical {
                 return space.firstOrderedWorkspaceID.map { (si, $0) }
             }
             if let match = space.workspaces.first(where: {
-                Self.canonicalPath($0.worktreePath) == canonical
+                WorktreeManager.canonicalPath($0.worktreePath) == canonical
             }) {
                 return (si, match.id)
             }
@@ -484,7 +477,7 @@ extension AppModel {
         guard !absorbed.isEmpty, let primary = space.primaryWorkspace else { return }
         space.workspaces.append(contentsOf: Self.linkedWorkspaces(
             absorbing: absorbed, baseBranch: primary.branch,
-            excluding: Self.canonicalPath(primary.worktreePath)))
+            excluding: WorktreeManager.canonicalPath(primary.worktreePath)))
         let moved = Set(space.workspaces.map(\.id))
         for workspace in absorbed.flatMap(\.workspaces) where !moved.contains(workspace.id) {
             retire(workspace)
@@ -508,7 +501,7 @@ extension AppModel {
         absorbing absorbed: [Space], baseBranch: String, excluding primaryPath: String
     ) -> [Workspace] {
         absorbed.flatMap(\.orderedWorkspaces)
-            .filter { canonicalPath($0.worktreePath) != primaryPath }
+            .filter { WorktreeManager.canonicalPath($0.worktreePath) != primaryPath }
             .map { workspace in
                 var workspace = workspace
                 if workspace.kind == .primary {

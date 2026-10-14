@@ -147,9 +147,10 @@ public enum WorktreeManager {
             .first(where: { canonicalPath($0.path) == target })?.name
     }
 
-    /// `path` with symlinks resolved, so paths reported by libgit2 and paths held by
-    /// the model compare equal whichever spelling each came from.
-    private static func canonicalPath(_ path: String) -> String {
+    /// `path` with symlinks resolved, so two spellings of the same folder compare
+    /// equal — paths reported by libgit2 and paths held by the model alike (on
+    /// macOS `/tmp/x` and `/private/tmp/x` are the same directory).
+    public static func canonicalPath(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
