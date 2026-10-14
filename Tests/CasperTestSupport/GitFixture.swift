@@ -15,6 +15,11 @@ public struct GitFixtureError: Error {
 /// reaches only CasperGit's public API, and does its index and commit work on a raw
 /// libgit2 handle of its own.
 public enum GitFixture {
+    /// The identity every fixture commit is made under, and every fixture
+    /// repository's local `user.name` / `user.email`.
+    private static let identityName = "Casper Test"
+    private static let identityEmail = "test@casper.local"
+
     /// Initialize a repo at `path`, write a README plus `files` (relative path →
     /// contents; an entry for `README.md` replaces the default one), and commit
     /// them all as the first commit on the repository's default branch. Returns the
@@ -24,6 +29,7 @@ public enum GitFixture {
         // `Repository.initialize` runs CasperGit's one-time libgit2 setup, which picks
         // the default branch name the way Casper itself does.
         let repo = try Repository.initialize(atPath: path)
+        try configureIdentity(atPath: path, name: identityName, email: identityEmail)
         let committed = ["README.md": "casper fixture\n"].merging(files) { _, new in new }
         for (file, contents) in committed {
             try write(Data(contents.utf8), to: file, inRepoAt: path)
@@ -31,6 +37,20 @@ public enum GitFixture {
         try stage(atPath: path, adding: Array(committed.keys))
         try commitIndex(atPath: path, message: "Initial commit")
         return repo
+    }
+
+    /// Set the repository-local Git identity of the repository at `repoPath`.
+    /// `repository(at:)` gives every fixture one, so a commit Casper itself writes
+    /// (a headless merge) never depends on the machine's Git configuration; blank
+    /// values stand for a machine with no usable identity.
+    public static func configureIdentity(atPath repoPath: String, name: String, email: String) throws {
+        try withRepository(atPath: repoPath) { repo in
+            var config: OpaquePointer?
+            try check(git_repository_config(&config, repo))
+            defer { git_config_free(config) }
+            try check(git_config_set_string(config, "user.name", name))
+            try check(git_config_set_string(config, "user.email", email))
+        }
     }
 
     /// Write `contents` to `file` (relative to the working tree at `repoPath`), stage
@@ -94,7 +114,7 @@ public enum GitFixture {
 
             // Author/committer signature.
             var signature: UnsafeMutablePointer<git_signature>?
-            try check(git_signature_now(&signature, "Casper Test", "test@casper.local"))
+            try check(git_signature_now(&signature, identityName, identityEmail))
             defer { git_signature_free(signature) }
 
             // Commit onto HEAD (creating the default branch ref on the first commit).

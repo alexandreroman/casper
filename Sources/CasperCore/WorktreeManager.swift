@@ -314,7 +314,9 @@ public enum WorktreeManager {
     /// Merge `branch` into `targetBranch` in the repository at `repoPath`,
     /// writing a merge commit and advancing `targetBranch`. Throws
     /// `WorktreeError(.mergeConflict)` when the merge can't be resolved
-    /// automatically — nothing is written to the repository in that case.
+    /// automatically, and lets CasperGit's `MissingCommitterIdentityError` through
+    /// as is, for the caller to tell apart — nothing is written to the repository
+    /// in either case.
     public static func merge(
         repoPath: String, branch: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {

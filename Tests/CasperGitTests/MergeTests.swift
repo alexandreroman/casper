@@ -40,6 +40,32 @@ final class MergeTests: XCTestCase {
         XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
     }
 
+    func testMergeWithoutCommitterIdentityThrowsAndWritesNothing() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let main = try repo.headBranchName()
+        let wtInfo = try repo.addWorktree(
+            name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
+        try GitFixture.commit(
+            atPath: wtInfo.path, file: "feature.txt", contents: "new\n", message: "add feature")
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+        let beforeOID = try tipOID(repo, branch: main)
+
+        XCTAssertThrowsError(try repo.mergeBranchHeadless("feature", into: main, message: "merge")) { error in
+            XCTAssertTrue(error is MissingCommitterIdentityError, "got: \(error)")
+        }
+        XCTAssertEqual(try tipOID(repo, branch: main), beforeOID)
+    }
+
+    /// An up-to-date merge commits nothing, so it needs no identity.
+    func testMergeAlreadyUpToDateNeedsNoCommitterIdentity() throws {
+        let repo = try GitFixture.repository(at: repoDir.path)
+        let main = try repo.headBranchName()
+        _ = try repo.addWorktree(name: "feature", atPath: root.appendingPathComponent("feature").path, basedOn: nil)
+        try GitFixture.configureIdentity(atPath: repoDir.path, name: "", email: "")
+
+        XCTAssertEqual(try repo.mergeBranchHeadless("feature", into: main, message: "merge"), .upToDate)
+    }
+
     func testMergeFastForwardableHistoryCreatesMergeCommit() throws {
         let repo = try GitFixture.repository(at: repoDir.path)
         let main = try repo.headBranchName()

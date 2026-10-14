@@ -74,6 +74,22 @@ final class CloseDeleteWorkspaceTests: XCTestCase {
         XCTAssertTrue(try Repository.open(atPath: repoPath).branchExists(created.branch))
     }
 
+    func testCloseWorkspaceRefusesToMergeWithoutGitIdentity() async throws {
+        let (model, _, spaceID, repoPath) = try seededGitModel()
+        let created = try await createFeature(in: model, space: spaceID)
+        try GitFixture.commit(atPath: created.worktreePath, file: "feature.txt", contents: "new\n")
+        try GitFixture.configureIdentity(atPath: repoPath, name: "", email: "")
+
+        guard case .mergeFailed(let message) = await model.closeWorkspace(id: created.id) else {
+            return XCTFail("expected a merge failure")
+        }
+
+        XCTAssertTrue(message.contains("user.name"), "got: \(message)")
+        XCTAssertNotNil(model.workspace(id: created.id))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: created.worktreePath))
+        XCTAssertNil(try Repository.open(atPath: repoPath).fileTextAtHead(path: "feature.txt"))
+    }
+
     func testDeleteWorkspaceSkipsMergeAndDeletesFromDisk() async throws {
         let (model, _, spaceID, repoPath) = try seededGitModel()
         let created = try await createFeature(in: model, space: spaceID)

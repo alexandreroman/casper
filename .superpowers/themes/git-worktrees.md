@@ -80,7 +80,12 @@ binary. We own this surface; it exposes only what Casper needs.
   worktree-free merge behind "Merge and Close Workspace…", returning a
   `MergeOutcome` and surfacing `MergeConflictError` (an unrelated history is a
   `GitError` saying so); `forceCheckoutHead()` is its recovery path.
-  See `Sources/CasperGit/Merge.swift`.
+  The merge commit is written under the user's own Git identity
+  (`git_signature_default`) and never an invented one: with no usable
+  `user.name`/`user.email` it throws `MissingCommitterIdentityError` before
+  writing anything, and "Merge and Close" shows its message — set the
+  identity, then try again — with nothing deleted. An up-to-date merge writes
+  no commit and needs no identity. See `Sources/CasperGit/Merge.swift`.
 
 Interop gotchas (variadic `_v` functions, pointer lifecycle, error codes) are
 captured in the [[libgit2-swift-interop]] project-memory note.

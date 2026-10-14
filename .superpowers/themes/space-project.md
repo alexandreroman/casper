@@ -48,7 +48,8 @@ to nothing, which `WorktreeError.Reason.repositoryHasNoCommits` reports in
 Casper's own words. A Space can still be rooted at a repository whose HEAD is
 unborn: one adopted before its first commit, or one whose initial commit was
 skipped because the machine configures no committer identity (Casper never
-invents one). `Repository.headBranchName()` reads the branch from HEAD's
+invents one, for this commit or a merge — `git-worktrees.md` § Design →
+"Merge"). `Repository.headBranchName()` reads the branch from HEAD's
 symbolic target when there is no commit to resolve, so the primary workspace's
 row still shows the real branch (`main`, or whatever `init.defaultBranch` says)
 instead of falling back to a name. A row renders `Workspace.branchLabel`, which

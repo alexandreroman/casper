@@ -1,4 +1,5 @@
 import Clibgit2
+import Foundation
 
 /// The result of `Repository.mergeBranchHeadless`.
 public enum MergeOutcome: Equatable, Sendable {
@@ -10,6 +11,19 @@ public enum MergeOutcome: Equatable, Sendable {
 /// written to the repository when this is thrown.
 public struct MergeConflictError: Error, Equatable, Sendable {}
 
+/// Thrown when the user's Git configuration yields no committer identity
+/// (`user.name` / `user.email`). Casper never invents one: a name the user never
+/// chose would sit in their history forever. Nothing is written to the
+/// repository when this is thrown.
+public struct MissingCommitterIdentityError: Error, Equatable, Sendable {}
+
+extension MissingCommitterIdentityError: LocalizedError {
+    public var errorDescription: String? {
+        "No Git identity is configured. Set user.name and user.email "
+            + "(git config --global user.name \"Your Name\"), then try again."
+    }
+}
+
 extension Repository {
     /// Merge local branch `branchName` into local branch `targetBranch`,
     /// advancing `targetBranch`'s ref. Always writes a 2-parent merge commit
@@ -17,6 +31,11 @@ extension Repository {
     /// runs `git_checkout` — safe to call even when `targetBranch` is checked
     /// out in another worktree, which simply becomes "behind" until it is
     /// re-checked-out there, exactly as if a teammate had pushed to it.
+    ///
+    /// Throws `MergeConflictError` when the merge can't be resolved automatically,
+    /// and `MissingCommitterIdentityError` when there is a commit to write but the
+    /// user's Git configuration names no one to write it as. Nothing is written in
+    /// either case.
     public func mergeBranchHeadless(
         _ branchName: String, into targetBranch: String, message: String
     ) throws -> MergeOutcome {
@@ -42,6 +61,9 @@ extension Repository {
         if git_oid_equal(&baseOid, sourceOid) != 0 {
             return .upToDate
         }
+        // Before the merge writes its tree: a refusal leaves no object behind.
+        let signature = try mergeSignature()
+        defer { git_signature_free(signature) }
 
         var mergeOptions = git_merge_options()
         try gitCheck(git_merge_options_init(&mergeOptions, UInt32(GIT_MERGE_OPTIONS_VERSION)))
@@ -60,9 +82,6 @@ extension Repository {
         try gitCheck(git_tree_lookup(&tree, pointer, &treeOid))
         defer { git_tree_free(tree) }
         let mergeTree = try requireNonNull(tree, "merge tree")
-
-        let signature = try mergeSignature()
-        defer { git_signature_free(signature) }
 
         var newCommitOid = git_oid()
         let refName = "refs/heads/\(targetBranch)"
@@ -104,15 +123,14 @@ extension Repository {
         return try requireNonNull(commit, "commit")
     }
 
-    /// A signature for the merge commit: the repo's configured user if set,
-    /// else a fixed fallback (a headless merge has no interactive user).
+    /// The merge commit's author and committer: the user's configured identity.
+    /// Any failure to derive one — `user.name` or `user.email` unset or blank —
+    /// throws `MissingCommitterIdentityError`, as `createInitialCommit` declines.
     private func mergeSignature() throws -> UnsafeMutablePointer<git_signature> {
         var signature: UnsafeMutablePointer<git_signature>?
-        if git_signature_default(&signature, pointer) == 0, let signature {
-            return signature
+        guard git_signature_default(&signature, pointer) == 0, let signature else {
+            throw MissingCommitterIdentityError()
         }
-        var fallback: UnsafeMutablePointer<git_signature>?
-        try gitCheck(git_signature_now(&fallback, "Casper", "casper@localhost"))
-        return try requireNonNull(fallback, "signature")
+        return signature
     }
 }

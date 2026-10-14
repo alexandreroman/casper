@@ -17,6 +17,12 @@ CI, test, and documentation-only work is left out.
   `foreground` in your Ghostty configuration applies in both appearances; use
   `theme = light:…,dark:…` for per-appearance colours.
 
+### Changed
+
+- "Merge and Close" refuses to write the merge commit when no Git identity
+  (`user.name` and `user.email`) is configured, and says how to set one,
+  instead of committing as "Casper <casper@localhost>". Nothing is deleted.
+
 ### Fixed
 
 - A `theme` set in your own Ghostty configuration now applies to Casper's

@@ -1,4 +1,5 @@
 import CasperCore
+import CasperGit
 import Foundation
 
 /// The workspace close/delete lifecycle: the off-main-actor git hop, the progress
@@ -149,8 +150,9 @@ extension AppModel {
     /// branch instead — that stacked case is NOT covered here by design; a
     /// merge into a stacked, non-primary base is not blocked even if that
     /// base's worktree is dirty. If the merge can't be resolved
-    /// automatically (conflicts, or the base branch no longer exists),
-    /// returns `.mergeFailed` before touching anything — no disk cleanup, no
+    /// automatically (conflicts, or the base branch no longer exists), or no
+    /// Git identity is configured to commit it under, returns `.mergeFailed`
+    /// before touching anything — no disk cleanup, no
     /// UI removal. Never presents UI itself: the confirmation presenter owns
     /// showing any failure alert, which keeps this safe to call from tests
     /// without spawning a real `NSAlert`.
@@ -208,6 +210,8 @@ extension AppModel {
                     repoPath: repoPath, branch: branch, into: baseBranch,
                     message: "Merge branch '\(branch)' into \(baseBranch)")
             }
+        } catch let error as MissingCommitterIdentityError {
+            return .mergeFailed(message: "\(error.localizedDescription) Nothing was deleted.")
         } catch {
             CasperLog.app.failure("close workspace: merge failed", error)
             return .mergeFailed(
