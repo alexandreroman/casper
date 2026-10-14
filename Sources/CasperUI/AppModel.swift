@@ -924,9 +924,7 @@ final class AppModel {
         let basePath = folderURL.deletingLastPathComponent()
             .appendingPathComponent(folderURL.lastPathComponent + "-" + branch).path
 
-        let portBase: Int
-        do { portBase = try portAllocator.allocate() } catch {
-            CasperLog.app.failure("cannot add workspace: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "add workspace") else {
             return .failure(OperationError(message: "no free port block"))
         }
         // The editor carries over from the currently-active workspace (nil is fine — it

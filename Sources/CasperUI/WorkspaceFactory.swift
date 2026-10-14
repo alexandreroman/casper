@@ -86,4 +86,17 @@ enum WorkspaceFactory {
             kind: .linked,
             baseBranch: baseBranch)
     }
+
+    /// A linked workspace for a worktree that already exists on disk, adopted rather
+    /// than created: the same shape as a Casper-created one, named after its branch
+    /// and merging back into `baseBranch` — the Space's primary branch. A worktree
+    /// with no branch name of its own (a detached HEAD) falls back to its folder name.
+    static func makeAdoptedWorkspace(
+        folderURL: URL, info: GitInfo, baseBranch: String, portBase: Int
+    ) -> Workspace {
+        makeLinkedWorkspace(
+            name: info.branch.isEmpty ? folderURL.lastPathComponent : info.branch,
+            worktreePath: info.canonicalPath, branch: info.branch,
+            baseBranch: baseBranch, portBase: portBase)
+    }
 }

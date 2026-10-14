@@ -100,11 +100,7 @@ extension AppModel {
             }
             return addSpacePullingInRepository(ofWorktreeAt: folderURL, info: info, probe: probe)
         }
-        let portBase: Int
-        do {
-            portBase = try portAllocator.allocate()
-        } catch {
-            CasperLog.app.failure("cannot add space: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "add space") else {
             return .failed(reason: .noFreePortBlock)
         }
         var space = WorkspaceFactory.makeSpace(
@@ -186,30 +182,19 @@ extension AppModel {
             return adoptWorktree(at: folderURL, info: info, into: tracked.spaceIndex)
         }
         // Two workspaces, so two port blocks: the repository's primary and the worktree.
-        let portBase: Int
-        let worktreePortBase: Int
-        do {
-            portBase = try portAllocator.allocate()
-        } catch {
-            CasperLog.app.failure("cannot add space: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "add space") else {
             return .failed(reason: .noFreePortBlock)
         }
-        do {
-            worktreePortBase = try portAllocator.allocate()
-        } catch {
+        guard let worktreePortBase = allocatePortBase(toAction: "adopt worktree") else {
             // Nothing is added, so nothing may stay reserved.
             portAllocator.release(portBase)
-            CasperLog.app.failure("cannot adopt worktree: no free port block", error)
             return .failed(reason: .noFreePortBlock)
         }
         var space = WorkspaceFactory.makeSpace(
             folderURL: mainURL, info: mainInfo, portBase: portBase)
-        let branch = info.branch
-        let baseBranch = space.primaryWorkspace?.branch ?? ""
-        var adopted = WorkspaceFactory.makeLinkedWorkspace(
-            name: branch.isEmpty ? folderURL.lastPathComponent : branch,
-            worktreePath: info.canonicalPath, branch: branch,
-            baseBranch: baseBranch, portBase: worktreePortBase)
+        var adopted = WorkspaceFactory.makeAdoptedWorkspace(
+            folderURL: folderURL, info: info,
+            baseBranch: space.primaryWorkspace?.branch ?? "", portBase: worktreePortBase)
         // Read before the selection moves below, exactly as `adoptWorktree` does.
         adopted.lastUsedEditor = inheritedEditor
         space.workspaces.append(adopted)
@@ -523,26 +508,30 @@ extension AppModel {
     private func adoptWorktree(
         at folderURL: URL, info: WorkspaceFactory.GitInfo, into si: Int
     ) -> AddSpaceOutcome {
-        let portBase: Int
-        do { portBase = try portAllocator.allocate() } catch {
-            CasperLog.app.failure("cannot adopt worktree: no free port block", error)
+        guard let portBase = allocatePortBase(toAction: "adopt worktree") else {
             return .failed(reason: .noFreePortBlock)
         }
-        // Same shape as a Casper-created linked workspace: named after its branch,
-        // with the Space's primary branch as the base it merges back into. A worktree
-        // with no branch name of its own falls back to its folder name.
-        let branch = info.branch
-        let baseBranch = spaces[si].primaryWorkspace?.branch ?? ""
-        var ws = WorkspaceFactory.makeLinkedWorkspace(
-            name: branch.isEmpty ? folderURL.lastPathComponent : branch,
-            worktreePath: info.canonicalPath, branch: branch,
-            baseBranch: baseBranch, portBase: portBase)
+        var ws = WorkspaceFactory.makeAdoptedWorkspace(
+            folderURL: folderURL, info: info,
+            baseBranch: spaces[si].primaryWorkspace?.branch ?? "", portBase: portBase)
         // Read before the selection moves below, exactly as `createLinkedWorkspace` does.
         ws.lastUsedEditor = inheritedEditor
         mutateSpaces { $0[si].workspaces.append(ws) }
         // The selection always changes here, so `selectWorkspace` is also the save.
         selectWorkspace(ws.id)
         return .added
+    }
+
+    // Reached from AppModel.swift.
+    /// Reserve a port block for a new workspace, or nil — logged as "cannot `action`"
+    /// — when the range holds no free block. Each caller maps nil to its own failure.
+    func allocatePortBase(toAction action: String) -> Int? {
+        do {
+            return try portAllocator.allocate()
+        } catch {
+            CasperLog.app.failure("cannot \(action): no free port block", error)
+            return nil
+        }
     }
 
     // Reached from AppModel.swift.
