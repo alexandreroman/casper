@@ -7,22 +7,20 @@ import CasperGit
 ///
 /// A ruler view rather than a second text column, because the numbers **and the
 /// cue** must stay *outside* the text storage: selecting twenty lines then copies
-/// twenty lines of code and nothing else — no numbers, no cues, no gutter padding
-/// — which the row-based renderer could not offer at all. Keeping the cue out of
-/// the text is also what lets a wrapped line's display rows share one leading
-/// edge; prepended to the text it indented only the first of them.
+/// twenty lines of code and nothing else — no numbers, no cues, no gutter
+/// padding. Keeping the cue out of the text is also what lets a wrapped line's
+/// display rows share one leading edge; prepended to the text it would indent only
+/// the first of them.
 ///
 /// Rows are placed by `DiffFragmentGeometry`, the same reader `DiffTextView` uses
 /// for its tints, so the stripe and the code it belongs to cannot drift apart.
 final class DiffGutterRuler: NSRulerView {
-    /// Width of the accent stripe hugging the leading edge, as in the row-based
-    /// renderer.
+    /// Width of the accent stripe hugging the leading edge.
     static let stripeWidth: CGFloat = 3
 
     /// Distance from the line number's right edge to where the code's glyphs
-    /// start. The row-based renderer spaced its two columns by exactly this (an
-    /// `HStack(spacing: 8)`), and this rewrite has to be visually equivalent to
-    /// it, so the number of points is part of the contract rather than taste.
+    /// start. `DiffChromeTests` pins the column positions it produces, so a
+    /// change here is a change to the diff view's layout, not a tweak.
     static let numberToCodeGap: CGFloat = 8
 
     /// Air between the line number and the cue, so the two read as separate marks
@@ -114,9 +112,8 @@ final class DiffGutterRuler: NSRulerView {
     /// own leading edge by `lineFragmentPadding` (5 pt by default), that edge is
     /// where the ruler ends, and so that inset falls *inside* the gap. Reserving
     /// the full 8 pt here would put the code a padding's width further right than
-    /// the row-based renderer had it — a small drift, but visual equivalence is the one
-    /// hard requirement of this rewrite. Read off the container rather than
-    /// assumed, so changing the padding keeps the columns where they are.
+    /// `numberToCodeGap` says. Read off the container rather than assumed, so
+    /// changing the padding keeps the columns where they are.
     private var codeLeadingGap: CGFloat {
         max(Self.numberToCodeGap - (textView.textContainer?.lineFragmentPadding ?? 0), 0)
     }
@@ -177,8 +174,7 @@ final class DiffGutterRuler: NSRulerView {
 
         for row in geometry.fragments(in: containerRect(from: column)) {
             let line = document.lines[row.lineIndex]
-            // Hunk headers and notes are chrome: no tint, no stripe, no number —
-            // they had none in the row-based renderer either.
+            // Hunk headers and notes are chrome: no tint, no stripe, no number.
             guard let kind = line.diffKind else { continue }
             let band = rulerBand(ofRow: row.rect)
 
@@ -330,8 +326,7 @@ final class DiffGutterRuler: NSRulerView {
     }
 
     /// The attributes one row's number is drawn with: context rows keep the
-    /// neutral gray, changed rows pick up the same accent as their stripe —
-    /// `DiffLineRow.numberColor`'s rule, unchanged.
+    /// neutral gray, changed rows pick up the same accent as their stripe.
     ///
     /// Three prebuilt dictionaries instead of one composed per row. This runs for
     /// every numbered row on screen on every scroll frame, and the only thing that
@@ -354,9 +349,8 @@ final class DiffGutterRuler: NSRulerView {
     private static let additionCueAttributes = makeCueAttributes(color: DiffLineStyle.insertionTint)
     private static let deletionCueAttributes = makeCueAttributes(color: DiffLineStyle.deletionTint)
 
-    /// The cue keeps the **code** face, at the code's size: it used to be the
-    /// line's first character and reads as the same mark it always did, only in a
-    /// column of its own now.
+    /// The cue takes the **code** face, at the code's size, so `+` and `-` read
+    /// as marks set beside the code they announce rather than as gutter chrome.
     private static func makeCueAttributes(color: NSColor) -> [NSAttributedString.Key: Any] {
         [.font: cueFont, .foregroundColor: color, .paragraphStyle: leftAlignedNoWrap]
     }
@@ -383,9 +377,7 @@ final class DiffGutterRuler: NSRulerView {
     /// code (`DiffTextAssembly.codeFont`), 10 pt for the chrome lines that are
     /// commentary rather than code (`DiffTextAssembly.chromeFontSize`), and 12 pt
     /// here. A number is a reference mark beside the code — quieter than the code,
-    /// but not as quiet as a hunk header, which it would be at 10. 12 pt is also
-    /// what the row-based renderer's gutter used, and this rewrite has to be
-    /// visually equivalent to it.
+    /// but not as quiet as a hunk header, which it would be at 10.
     private static let numberFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
     /// A number never wraps: the column is sized for the widest one in the

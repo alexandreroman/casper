@@ -67,11 +67,11 @@ enum DiffHighlighter {
     static let maxHighlightBytes = 512 * 1024
 
     /// One reused HighlightSwift instance (it keeps a single warm JavaScriptCore
-    /// context). Constructing a fresh `Highlight()` per call — as this did before —
-    /// spun up a new `JSContext` each time; under rapid diff refreshes those piled
-    /// up and JavaScriptCore never returned the VM-heap memory to the OS, so RSS
-    /// grew into the gigabytes and never receded. Reusing one instance serialises
-    /// highlighting through its `HLJS` actor and bounds memory (measured ~7.5× less).
+    /// context). A fresh `Highlight()` per call spins up a new `JSContext` each
+    /// time; under rapid diff refreshes those pile up and JavaScriptCore never
+    /// returns the VM-heap memory to the OS, so RSS grows into the gigabytes and
+    /// never recedes. Reusing one instance serialises highlighting through its
+    /// `HLJS` actor and bounds memory (measured ~7.5× less).
     private static let highlighter = Highlight()
 
     /// The highlight palette for `colorScheme`. Its colours are baked into the

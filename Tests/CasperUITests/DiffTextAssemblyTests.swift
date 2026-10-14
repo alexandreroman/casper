@@ -73,8 +73,8 @@ final class DiffTextAssemblyTests: XCTestCase {
         XCTAssertEqual(DiffTextAssembly.codeFont.pointSize, 14)
     }
 
-    /// Chrome mirrors the row-based renderer exactly: `.caption` for both, but
-    /// monospaced for the positional hunk header and proportional for the notes.
+    /// Both chrome lines are `.caption`-sized, monospaced for the positional hunk
+    /// header and proportional for the notes.
     func testChromeLinesCarryTheCaptionSizedFontsAndTheDimColor() {
         let doc = DiffDocument(diff: GitDiff(files: [
             diffFile("a.swift", lines: [diffLine(.context, "x", old: 1, new: 1)]),

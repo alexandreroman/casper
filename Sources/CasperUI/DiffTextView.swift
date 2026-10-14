@@ -6,8 +6,8 @@ import CasperGit
 ///
 /// The tint is drawn here rather than set as a `.backgroundColor` text attribute
 /// because an attribute only colors the glyphs' own extent — it would stop where
-/// a line's text stops and leave the rest of the row untinted, where the
-/// row-based renderer's `.background()` modifier covered the whole row. Same
+/// a line's text stops and leave the rest of the row untinted, while the design
+/// tints the whole row. Same
 /// reason the fill spans the view's width and not the fragment's: a row's
 /// typographic width varies with its text, and `lineFragmentPadding` means it
 /// does not even start at zero.
