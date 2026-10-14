@@ -13,7 +13,9 @@ CI, test, and documentation-only work is left out.
 - A light theme. Casper now follows the system's Light or Dark appearance,
   switching live — sidebar, title bar, diff view and terminals included. The
   terminal's light palette is GitHub Light, and the terminal background matches
-  the window background in both appearances.
+  the app's content background in both appearances. An explicit `background` or
+  `foreground` in your Ghostty configuration applies in both appearances; use
+  `theme = light:…,dark:…` for per-appearance colours.
 
 ### Fixed
 

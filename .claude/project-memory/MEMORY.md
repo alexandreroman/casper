@@ -34,6 +34,7 @@
 - [App sessions (--session)](references/app-sessions.md) — DEBUG-only `--session <name>` isolates layout, sockets and env
 - [CLI availability](references/cli-availability.md) — no global install; PATH injection only, and it can be outranked
 - [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — pinned exact; GhosttyKit product only; the 1.2.8 tag names another revision
+- [Ghostty conditional themes](references/ghostty-conditional-themes.md) — explicit keys beat themes; files re-read per switch; answer RELOAD_CONFIG
 - [libghostty initial_input mojibakes non-ASCII](references/ghostty-initial-input-utf8.md) — inject queued input via `ghostty_surface_text`
 - [Debug channel and logging gating](references/debug-channel-gating.md) — `#if DEBUG` only, never in release; verbose logs gated
 - [Ghostty Metal layer contentsScale](references/ghostty-layer-contents-scale.md) — sync contentsScale to the backing scale or it upscales ×2

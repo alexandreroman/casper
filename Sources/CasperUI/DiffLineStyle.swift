@@ -19,7 +19,7 @@ enum DiffLineStyle {
     /// follow a live system switch without being rebuilt.
     private static func adaptive(dark: NSColor, light: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            appearance.isDark ? dark : light
         })
     }
 

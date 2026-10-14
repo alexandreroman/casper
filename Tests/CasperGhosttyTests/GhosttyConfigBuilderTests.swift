@@ -25,7 +25,7 @@ final class GhosttyConfigBuilderTests: XCTestCase {
     func testUnresolvableNamedThemeFallsBackToCasperLight() throws {
         let config = try build(user: "theme = NoSuchCasperTestTheme\n")
         defer { ghostty_config_free(config) }
-        XCTAssertEqual(background(of: config), [0xff, 0xff, 0xff])
+        XCTAssertEqual(background(of: config), contentBackgroundBytes(for: .aqua))
     }
 
     func testLoadableUserThemeStillReplacesOurs() throws {
@@ -45,7 +45,7 @@ final class GhosttyConfigBuilderTests: XCTestCase {
     func testWithoutUserThemeCasperLightApplies() throws {
         let config = try build(user: nil)
         defer { ghostty_config_free(config) }
-        XCTAssertEqual(background(of: config), [0xff, 0xff, 0xff])
+        XCTAssertEqual(background(of: config), contentBackgroundBytes(for: .aqua))
     }
 
     func testExplicitKeyStillWinsAfterTheFallback() throws {

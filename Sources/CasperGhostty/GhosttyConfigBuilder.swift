@@ -30,7 +30,7 @@ enum GhosttyConfigBuilder {
         guard let themes, let failure = firstThemeLoadFailure(in: config) else { return config }
 
         CasperLog.ghostty.warning("""
-            the Ghostty theme from your configuration could not be loaded; \
+            a Ghostty theme could not be loaded; \
             using Casper's built-in light and dark themes (\(failure))
             """)
         ghostty_config_free(config)

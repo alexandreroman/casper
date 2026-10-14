@@ -17,19 +17,24 @@ import AppKit
 /// terminal on libghostty's vanilla colours, so `GhosttyConfigBuilder` detects it
 /// (`isThemeLoadFailure`) and re-applies `themeLine` after the user's files.
 ///
-/// The defaults are embedded because, on macOS, libghostty resolves the user's
-/// config directory from the running app's bundle identifier
-/// (`~/Library/Application Support/<CFBundleIdentifier>/`). A bundled `Casper.app`
-/// is keyed on `com.github.alexandreroman.casper`, whose config dir is empty, so without
-/// these embedded defaults the bundle would render libghostty's vanilla `#282c34`
-/// gray instead of the theme the dev build shows. The theme bodies are inlined here
-/// (no `themes/` dir or `GHOSTTY_RESOURCES_DIR` needed), keeping them self-contained.
+/// The defaults are embedded, rather than shipped as a file for libghostty to find, for
+/// three reasons: Casper's own light and dark themes, the clipboard-write policy below, and
+/// a sane look for a user with no Ghostty config at all (who would otherwise get
+/// libghostty's vanilla `#282c34` gray). libghostty does read a Ghostty.app user's config
+/// (`~/Library/Application Support/com.mitchellh.ghostty/config.ghostty`, plus the XDG
+/// `~/.config/ghostty/config`), so that config reaches Casper and overrides these defaults.
+/// The theme bodies are inlined here (no `themes/` dir or `GHOSTTY_RESOURCES_DIR` needed),
+/// keeping them self-contained.
 ///
-/// Each theme's `background` is not a literal: it is the app's own
-/// `windowBackgroundColor`, resolved under the theme's appearance when the files are
-/// written (`appBackgroundHex(for:)`), so the terminal reads as part of the window.
-/// The OS owns that colour and it differs across macOS versions, so it cannot be
-/// hard-coded. A user's explicit `background` key still beats it, as it beats any theme.
+/// Each theme's `background` is not a literal: it is the app's content background,
+/// `NSColor.textBackgroundColor`, resolved under the theme's appearance when the files are
+/// written (`contentBackgroundHex(for:)`). That is the background of the content panes
+/// beside the terminal (the diff view, the browser and `SurfaceHostView`'s fallback), on
+/// every macOS version, so the terminal reads as part of the same surface; on macOS 26 it
+/// equals the window background. The OS owns that colour and it differs across macOS
+/// versions, so it cannot be hard-coded. A user's explicit `background` or `foreground` key
+/// still beats it, as it beats any theme, and applies in both appearances: per-appearance
+/// colours take a conditional `theme = light:…,dark:…` instead.
 ///
 /// `clipboard-write` is set to `ask` because libghostty's own default is `allow`,
 /// under which `write_clipboard_cb` is always flagged trusted and
@@ -98,17 +103,18 @@ enum GhosttyDefaultConfig {
         """
     }
 
-    /// The app's background colour (`NSColor.windowBackgroundColor`) under the given
-    /// appearance, as lowercase `#rrggbb`. Resolved at runtime because the OS owns the
-    /// colour and it differs across macOS versions. Falls back to the colours Casper
-    /// shipped before the terminal followed the window (white, `#1c1c1c`) if the colour
-    /// has no sRGB form.
-    static func appBackgroundHex(for name: NSAppearance.Name) -> String {
+    /// The app's content background (`NSColor.textBackgroundColor`) under the given
+    /// appearance, as lowercase `#rrggbb`. It is what the panes beside the terminal paint
+    /// on every macOS version (on macOS 26 it equals the window background), whereas
+    /// `windowBackgroundColor` differs from it on macOS 15. Resolved at runtime because the
+    /// OS owns the colour. Falls back to the colours Casper shipped before the terminal
+    /// followed the appearance (white, `#1c1c1c`) if the colour has no sRGB form.
+    static func contentBackgroundHex(for name: NSAppearance.Name) -> String {
         let fallback = name == .darkAqua ? "#1c1c1c" : "#ffffff"
         guard let appearance = NSAppearance(named: name) else { return fallback }
         var hex = fallback
         appearance.performAsCurrentDrawingAppearance {
-            guard let color = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) else { return }
+            guard let color = NSColor.textBackgroundColor.usingColorSpace(.sRGB) else { return }
             let bytes = [color.redComponent, color.greenComponent, color.blueComponent].map { component in
                 min(max(Int((component * 255).rounded()), 0), 255)
             }

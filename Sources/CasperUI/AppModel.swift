@@ -1562,7 +1562,7 @@ final class AppModel {
         // silently refill the slot for a surface that no longer exists, and nothing
         // prunes it afterwards: every closed terminal would leak a `GhosttySurfaceView`
         // (with its process-wide key-up monitor) for the life of the process. The
-        // departing pane renders `Color.black` for the nil and then disappears.
+        // departing pane renders the text background colour for the nil and then disappears.
         // Deliberately below the cache-hit return above, so a live pane's every-render
         // call never pays for this walk — only genuine creation does.
         guard LayoutTree.contains(workspace.layout, id: surface.id) else { return nil }

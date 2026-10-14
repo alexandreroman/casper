@@ -1,3 +1,4 @@
+import Foundation
 import GhosttyKit
 import XCTest
 @testable import CasperGhostty
@@ -132,6 +133,28 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
 
         XCTAssertFalse(received.contains(reloadConfig), "unexpected actions: \(received)")
         XCTAssertTrue(received.contains(configChange), "config was not pushed: \(received)")
+    }
+
+    /// The theme files live in `~/Library/Caches`, which a cleaner may empty while the app
+    /// runs; libghostty re-reads the selected file on every scheme switch, so each switch
+    /// must put them back.
+    @MainActor
+    func testSetColorSchemeRewritesPurgedThemeFiles() throws {
+        try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("casper-runtime-themes-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let runtime = try GhosttyRuntime(themeDirectory: directory)
+        let paths = GhosttyThemeFiles.Paths(
+            light: directory.appendingPathComponent("casper-light"),
+            dark: directory.appendingPathComponent("casper-dark"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.light.path))
+        try FileManager.default.removeItem(at: directory)
+
+        runtime.setColorScheme(dark: true, surfaces: [])
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.light.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: paths.dark.path))
     }
 
     @MainActor

@@ -61,7 +61,9 @@ Session persistence with legacy-decode self-healing.
 draggable dividers whose ratios persist, pane drag-and-drop, close-on-process
 exit, and a re-seeded terminal when the last pane closes. Per-surface font size
 persists. ⌘1–⌘9 select workspaces by physical key code (so AZERTY works), with
-the numbers revealed in the sidebar after a ⌘ hold.
+the numbers revealed in the sidebar after a ⌘ hold. The whole app, terminals
+included, follows the system Light/Dark appearance live (GitHub Light and Arthur
+palettes on the app's content background).
 
 **Inspector panel.** A per-workspace, resizable, persisted right panel holding
 the WKWebView browser and the read-only diff, opened and switched from the title
