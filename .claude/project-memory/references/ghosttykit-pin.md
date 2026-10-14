@@ -52,8 +52,16 @@ version `1.2.8`, while the fork's `refs/tags/1.2.8` resolves to
 `2ef85df0292dc864a857d30963b943e5d5b8dc87` — the tag is mutable upstream and has
 been moved. SwiftPM checks the pin against the tag it fetches, so **dependency
 resolution fails before anything compiles** in any checkout without a populated
-`.build`: a fresh clone, a fresh worktree, CI, or anything that clears
+`.build`: a fresh clone, a fresh worktree, or anything that clears
 `.build/{repositories,checkouts,artifacts}`.
+
+CI and release resolve **only through `actions/cache`**: the "Cache SwiftPM
+dependencies" step of `ci.yml` and `release.yml` restores
+`~/Library/Caches/org.swift.swiftpm`, a SwiftPM repository mirror that still
+holds the old `1.2.8` tag. GitHub evicts a cache entry left unused for 7 days,
+so a week without a workflow run deletes that mirror, and the next CI run — or
+release tag — fails at resolve exactly like a fresh clone. A cold cache cannot
+rebuild the mirror: it fetches the moved tag.
 
 The pin is the thing to keep, not the tag: the checksum and the vendored header
 above both describe `839f269…`, and accepting the re-tagged commit would swap
