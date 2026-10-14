@@ -16,3 +16,11 @@ public extension UUID {
     /// `Codable` UUID encoding.
     var casperID: String { uuidString.lowercased() }
 }
+
+public extension String {
+    /// Whether this id string and `other` name the same id. Ids compare
+    /// case-insensitively, per the rule on `UUID.casperID`.
+    func matchesCasperID(_ other: String) -> Bool {
+        caseInsensitiveCompare(other) == .orderedSame
+    }
+}

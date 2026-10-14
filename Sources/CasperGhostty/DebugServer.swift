@@ -295,7 +295,7 @@ public final class DebugServer {
     /// same stale-uppercase ids the control channel does — see `ControlTargeting`
     /// for the rationale.
     static func surface(withID id: String, in surfaces: [DebugSurfaceHandle]) -> DebugSurfaceHandle? {
-        surfaces.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
+        surfaces.first { $0.id.matchesCasperID(id) }
     }
 
     /// The failure for an unresolved target: id-specific when a target was

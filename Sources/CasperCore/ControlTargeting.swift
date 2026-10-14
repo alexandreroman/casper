@@ -9,7 +9,7 @@ import Foundation
 /// from an older build. The name comparison stays exact.
 public enum ControlTargeting {
     public static func match(selector: String, candidates: [ControlWorkspaceInfo]) -> String? {
-        if let byID = candidates.first(where: { $0.id.caseInsensitiveCompare(selector) == .orderedSame }) {
+        if let byID = candidates.first(where: { $0.id.matchesCasperID(selector) }) {
             return byID.id
         }
         return candidates.first(where: { $0.name == selector })?.id

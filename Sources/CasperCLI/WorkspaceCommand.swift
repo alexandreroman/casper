@@ -49,7 +49,7 @@ struct WorkspaceCommand: ParsableCommand {
             // the app running, so the standard "Casper is not running" error is fine
             // if the socket is unset/unreachable.
             let response = try sendControl(makeCommand(), retriable: true)
-            let match = response.workspaces?.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
+            let match = response.workspaces?.first { $0.id.matchesCasperID(id) }
             emit(CurrentOut(
                 workspace: match?.id ?? id, name: match?.name,
                 branch: nonEmpty(match?.branch), path: match?.path))
