@@ -43,6 +43,9 @@ CI, test, and documentation-only work is left out.
   when `opencode.json` uses Windows line endings and contains a comment.
 - A mouse's Back and Forward buttons reach terminal programs as buttons 8 and
   9, as in Ghostty, instead of scrolling them.
+- Releasing a right-hand modifier key (Shift, Control, Option or Command) while
+  the left one is still held now reaches terminal programs as a release, so a
+  program tracking key presses no longer sees that modifier stuck down.
 
 ## [0.1.3] - 2026-10-13
 

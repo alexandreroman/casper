@@ -854,23 +854,40 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     }
 
     public override func flagsChanged(with event: NSEvent) {
-        guard let surface else { return }
-        // Mirror Ghostty's reference `SurfaceView_AppKit.flagsChanged`: a modifier
-        // transition is a press only while that modifier is still held, and a release
-        // once it is let go. Map the physical key that toggled to its NSEvent modifier,
-        // then read whether that flag is still set in the event's flags (Ghostty is the
-        // reference).
+        guard let surface,
+              let action = Self.flagsChangedAction(keyCode: event.keyCode, flags: event.modifierFlags)
+        else { return }
+        surface.sendKey(ghosttyKeyEvent(event, action: action))
+    }
+
+    /// Whether the modifier key `keyCode` just went down or came up, given the event's
+    /// `flags`; nil for a key that is not a modifier. Mirrors Ghostty's reference
+    /// `SurfaceView_AppKit.flagsChanged` (Ghostty is the reference). Pure and static so
+    /// it is unit-testable without a running app.
+    static func flagsChangedAction(keyCode: UInt16, flags: NSEvent.ModifierFlags) -> ghostty_input_action_e? {
         let modifier: NSEvent.ModifierFlags
-        switch event.keyCode {
+        switch keyCode {
         case 0x39: modifier = .capsLock       // Caps Lock
         case 0x38, 0x3C: modifier = .shift     // Shift (left/right)
         case 0x3B, 0x3E: modifier = .control   // Control (left/right)
         case 0x3A, 0x3D: modifier = .option    // Option (left/right)
         case 0x37, 0x36: modifier = .command   // Command (left/right)
-        default: return
+        default: return nil
         }
-        let action = event.modifierFlags.contains(modifier) ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
-        surface.sendKey(ghosttyKeyEvent(event, action: action))
+        guard flags.contains(modifier) else { return GHOSTTY_ACTION_RELEASE }
+        // The flag is side-agnostic: releasing a right-hand key while its left twin is
+        // held leaves it set. Only the device-dependent side bit tells that release apart
+        // from a press, and a press reported there would leave libghostty with two presses
+        // and no release for the key.
+        let sideBit: Int32
+        switch keyCode {
+        case 0x3C: sideBit = NX_DEVICERSHIFTKEYMASK
+        case 0x3E: sideBit = NX_DEVICERCTLKEYMASK
+        case 0x3D: sideBit = NX_DEVICERALTKEYMASK
+        case 0x36: sideBit = NX_DEVICERCMDKEYMASK
+        default: return GHOSTTY_ACTION_PRESS
+        }
+        return flags.rawValue & UInt(sideBit) != 0 ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {

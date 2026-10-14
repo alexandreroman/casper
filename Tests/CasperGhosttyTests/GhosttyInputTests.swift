@@ -161,6 +161,42 @@ final class GhosttyInputTests: XCTestCase {
         XCTAssertEqual(key.mods.rawValue, GHOSTTY_MODS_NONE.rawValue)
     }
 
+    /// A modifier key going down is a press and coming up a release, read off the event's flags.
+    @MainActor
+    func testFlagsChangedReportsAModifierPressAndRelease() {
+        let leftShiftDown = NSEvent.ModifierFlags(
+            rawValue: NSEvent.ModifierFlags.shift.rawValue | UInt(NX_DEVICELSHIFTKEYMASK))
+        XCTAssertEqual(
+            GhosttySurfaceView.flagsChangedAction(keyCode: 0x38, flags: leftShiftDown), GHOSTTY_ACTION_PRESS)
+        XCTAssertEqual(GhosttySurfaceView.flagsChangedAction(keyCode: 0x38, flags: []), GHOSTTY_ACTION_RELEASE)
+        XCTAssertEqual(
+            GhosttySurfaceView.flagsChangedAction(keyCode: 0x3B, flags: [.control]), GHOSTTY_ACTION_PRESS)
+        XCTAssertNil(GhosttySurfaceView.flagsChangedAction(keyCode: 0x00, flags: [.shift]), "not a modifier key")
+    }
+
+    /// Releasing a right-hand modifier while its left twin is still held leaves the side-agnostic
+    /// flag set, so only the device-dependent side bit tells the release apart from a press. Each
+    /// case holds the left key only, which must read as the right key's release.
+    @MainActor
+    func testReleasingARightModifierWhileTheLeftOneIsHeldIsARelease() {
+        let cases: [(keyCode: UInt16, modifier: NSEvent.ModifierFlags, leftSideBit: Int32, rightSideBit: Int32)] = [
+            (0x3C, .shift, NX_DEVICELSHIFTKEYMASK, NX_DEVICERSHIFTKEYMASK),
+            (0x3E, .control, NX_DEVICELCTLKEYMASK, NX_DEVICERCTLKEYMASK),
+            (0x3D, .option, NX_DEVICELALTKEYMASK, NX_DEVICERALTKEYMASK),
+            (0x36, .command, NX_DEVICELCMDKEYMASK, NX_DEVICERCMDKEYMASK),
+        ]
+        for (keyCode, modifier, leftSideBit, rightSideBit) in cases {
+            let leftHeld = NSEvent.ModifierFlags(rawValue: modifier.rawValue | UInt(leftSideBit))
+            XCTAssertEqual(
+                GhosttySurfaceView.flagsChangedAction(keyCode: keyCode, flags: leftHeld), GHOSTTY_ACTION_RELEASE,
+                "keyCode \(keyCode)")
+            let rightHeld = NSEvent.ModifierFlags(rawValue: modifier.rawValue | UInt(rightSideBit))
+            XCTAssertEqual(
+                GhosttySurfaceView.flagsChangedAction(keyCode: keyCode, flags: rightHeld), GHOSTTY_ACTION_PRESS,
+                "keyCode \(keyCode)")
+        }
+    }
+
     #if DEBUG
     /// The debug `send-keys` resolver is fed arbitrary CLI text, so an unsupported character must
     /// come back as nil. Guards the fix where the base key was derived by rebuilding a `Character`
