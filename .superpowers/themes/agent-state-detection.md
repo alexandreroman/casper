@@ -404,8 +404,9 @@ state lives only at the workspace level.
   viewport, OSC title **and** OSC 9;4 progress state, evaluates the two text
   sources against **every** rule set in `AgentDetectionRuleSet.all`
   (`claudeCode`, `codex`, `opencode` — read once per surface and replayed
-  across the rule sets, since nothing there knows which agent runs in the
-  surface), aggregates all the signals, runs the resolver, and writes
+  across the rule sets by `AgentDetectionRuleSet.signal(fromViewport:title:)`,
+  since nothing there knows which agent runs in the surface), aggregates all the
+  signals, runs the resolver, and writes
   `agentState` via `setDetectedAgentState` unless the workspace is under
   explicit authority. `controlSetAgentState` latches `working`, `blocked`,
   `done`, and `error`; only `idle` and `unknown` release the latch. The sidebar

@@ -2138,18 +2138,11 @@ final class AppModel {
                 }
                 let signals = terminalIDs.compactMap { id -> AgentSignal? in
                     guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
-                    let oscTitle = surfaceOSCTitle(id)
                     // Every rule set is applied, because nothing here knows which agent runs
-                    // in this surface. The two text sources are read once above and replayed
+                    // in this surface. The two text sources are read once here and replayed
                     // across the rule sets — re-fetching them per rule set would triple the
                     // cost of the pass for no gain.
-                    var textual = AgentSignal.absent
-                    for rules in AgentDetectionRuleSet.all {
-                        textual = max(textual, rules.signal(fromViewport: text))
-                        if let oscTitle {
-                            textual = max(textual, rules.signal(fromTitle: oscTitle))
-                        }
-                    }
+                    let textual = AgentDetectionRuleSet.signal(fromViewport: text, title: surfaceOSCTitle(id))
                     let progress = surfaceProgressReport(id).map(AgentSignal.init(progress:)) ?? .absent
                     // Roll the sources together. The OSC 9;4 progress report is the primary
                     // "working" signal — Claude Code brackets a turn with `ESC]9;4;3` …

@@ -197,6 +197,23 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     /// quiet on another agent's screen, and the union is what makes the Codex and
     /// opencode rules reachable at runtime at all.
     public static let all: [AgentDetectionRuleSet] = [.claudeCode, .codex, .opencode]
+
+    /// The most urgent signal any rule set in `all` reads from one viewport
+    /// snapshot and, when there is one, the surface's OSC title.
+    ///
+    /// Both text sources arrive as strings the caller fetched once: a detection
+    /// pass replays them across the rule sets rather than re-reading the surface
+    /// for each one.
+    public static func signal(fromViewport text: String, title: String?) -> AgentSignal {
+        var strongest = AgentSignal.absent
+        for rules in all {
+            strongest = max(strongest, rules.signal(fromViewport: text))
+            if let title {
+                strongest = max(strongest, rules.signal(fromTitle: title))
+            }
+        }
+        return strongest
+    }
 }
 
 extension String {
