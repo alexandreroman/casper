@@ -1023,7 +1023,7 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // core clears its hover state.
         guard NSEvent.pressedMouseButtons == 0 else { return }
         // Restore the default arrow: the terminal's I-beam must not leak onto sibling
-        // chrome that defines no cursor rect of its own (matches upstream Ghostty).
+        // chrome that defines no cursor rect of its own.
         NSCursor.arrow.set()
         surface?.sendMousePos(x: -1, y: -1, mods: ghosttyMods(from: event.modifierFlags))
     }
@@ -1032,7 +1032,10 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // `cursorUpdate` is AppKit's own cursor-management hook, invoked as the pointer
         // moves over this tracking area. Setting the cursor here wins over AppKit's
         // default cursor-rect reset (which forces the arrow) that was clobbering the
-        // async `.set()` from `setCursorShape`, so the I-beam finally sticks.
+        // async `.set()` from `setCursorShape`, so the I-beam finally sticks. Casper's own
+        // mechanism, with `mouseEntered` and the arrow on exit: upstream sets the cursor
+        // through its scroll view's `documentCursor`, and this view is hosted bare (see the
+        // terminal-overlay-cursor note).
         lastCursor.set()
     }
 
@@ -1046,9 +1049,8 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
         // We must set the precision bit for trackpad deltas — otherwise libghostty reads
         // precise pixel deltas as line counts and scrolling runs far too fast.
         var mods: Int32 = 0
-        // Precise (trackpad / high-resolution) deltas arrive in points at roughly half
-        // the magnitude of line-based wheel deltas; double them so trackpad and wheel
-        // scrolling feel consistent, matching upstream Ghostty.
+        // Precise (trackpad / high-resolution) deltas are doubled, matching upstream
+        // Ghostty's 2x multiplier, which its source calls subjective: it "feels" better.
         if event.hasPreciseScrollingDeltas {
             deltaX *= 2
             deltaY *= 2

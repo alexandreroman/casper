@@ -59,7 +59,7 @@
 - [Agents cannot self-verify SwiftUI visual changes](references/agent-visual-verification-limits.md) — subagents lack screen-recording TCC
 - [glassEffect renders invisible with a nested Menu](references/glasseffect-nested-menu-invisible.md) — a nested Menu breaks glassEffect compositing
 - [Ghostty is the reference implementation](references/ghostty-is-the-reference.md) — match Ghostty's macOS Swift source rather than improvising
-- [Cursor for chrome over the terminal](references/terminal-overlay-cursor.md) — set the cursor from cursorUpdate AND mouseEntered; reset on exit
+- [Cursor management for chrome over the terminal](references/terminal-overlay-cursor.md) — cursorUpdate AND mouseEntered set it; arrow on exit
 - [Driving the Casper GUI with synthetic mouse input](references/gui-synthetic-input.md) — debug channel never clicks; use CGEvent on a key window
 - [Browser address bar select-all](references/browser-address-bar-select-all.md) — select-all in mouseDown after super, if the selection is empty
 - [UNUserNotificationCenter aborts unbundled](references/unusernotificationcenter-unbundled-abort.md) — it aborts with no bundle id; the guard stays

@@ -35,8 +35,9 @@ and upstream's macOS sources at the same tag while bringing
   undocumented packed bit layout; `scrollWheel` sets both the precision bit and
   the momentum phase. See [[ghostty-scroll-mods-layout]] for the layout and why
   the precision bit is mandatory. Alongside it, `scrollingDeltaX/Y` is doubled
-  when `event.hasPreciseScrollingDeltas` (trackpad deltas arrive at ~half the
-  magnitude of wheel deltas).
+  when `event.hasPreciseScrollingDeltas`: upstream's own 2× multiplier, which
+  its source (`SurfaceView_AppKit.scrollWheel`) calls subjective — it "feels"
+  better. No measurement backs it.
 
 - **The resting I-beam is the app's default, NOT a libghostty action.**
   libghostty emits `GHOSTTY_ACTION_MOUSE_SHAPE` only to *change* the shape
@@ -51,7 +52,8 @@ and upstream's macOS sources at the same tag while bringing
   `.cursorUpdate` tracking-area option) plus a re-apply on `mouseEntered` —
   because `MOUSE_SHAPE` is delivered asynchronously (wakeup→tick→`action_cb`)
   and a bare `NSCursor.set()` gets clobbered by AppKit's cursor-rect reset on
-  the next move.
+  the next move. That `cursorUpdate`/`mouseEntered`/arrow-on-exit trio is
+  Casper's own mechanism, not upstream's — see [[terminal-overlay-cursor]].
 
 - **Mouse-shape and mouse-visibility are surface-scoped actions**, delivered
   through `action_cb`'s `ghostty_target_s` (tag `GHOSTTY_TARGET_SURFACE`), NOT

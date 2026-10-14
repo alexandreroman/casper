@@ -12,12 +12,14 @@ Swift source** (`github.com/ghostty-org/ghostty`, `macos/Sources/…`) as the
 reference implementation instead of inventing a mechanism.
 
 **Why:** improvised approaches in this project caused repeated regressions (the
-pane-grip cursor alone went through cursor rects, `push`/`pop`, `set`, and back
-before landing on Ghostty's `cursorUpdate` pattern). Ghostty's proven choices
-resolved each one: `cursorUpdate` for terminal-overlay cursors (the pane grip
-and the split divider alike), and an AppKit `NSView` drag source with edge-based
-`DropZone`s. It is the authoritative model because it solves the same problems
-against the same embedded-libghostty constraints.
+pane-grip cursor alone went through cursor rects, `push`/`pop` and `set`).
+Ghostty's proven choices resolve that class of problem — for example the AppKit
+`NSView` drag source with edge-based `DropZone`s. It is the authoritative model
+because it solves the same problems against the same embedded-libghostty
+constraints. Cursor handling is the documented deviation: upstream's
+`documentCursor`, `addCursorRect` and `.pointerStyle` do not fit a surface
+hosted bare, so the terminal and its overlays use Casper's own `cursorUpdate` +
+`mouseEntered` + arrow-on-exit trio ([[terminal-overlay-cursor]]).
 
 **How to apply:** before implementing such a feature, read the matching file
 under Ghostty's `macos/Sources/` and adopt its mechanism. Deviate only for a
