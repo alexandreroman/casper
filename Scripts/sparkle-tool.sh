@@ -21,10 +21,8 @@ try:
         resolved = json.load(f)
 except OSError:
     sys.exit("error: Package.resolved not found — run 'swift build' first")
-pins = resolved.get("pins", resolved.get("object", {}).get("pins", []))
-for pin in pins:
-    identity = pin.get("identity") or pin.get("package", "")
-    if identity.lower() == "sparkle":
+for pin in resolved["pins"]:
+    if pin["identity"].lower() == "sparkle":
         state = pin.get("state", {})
         version = state.get("version")
         if not version:
