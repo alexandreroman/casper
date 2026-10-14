@@ -107,6 +107,40 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(try equals.makeCommand().message, "-x")
     }
 
+    /// A free-text option takes its next argument whatever it is, yet `--help` or
+    /// `-h` there still asks for the command's help rather than becoming the text.
+    func testHelpFlagAfterAFreeTextOptionShowsHelp() {
+        assertShowsHelp(["progress", "set", "--total", "2", "--current", "1", "--label"], usage: "casper progress set")
+        assertShowsHelp(["notify", "--message"], usage: "casper notify")
+        assertShowsHelp(["info", "set", "--message"], usage: "casper info set")
+        assertShowsHelp(["terminal", "new", "--command"], usage: "casper terminal new")
+        assertShowsHelp(["workspace", "new", "feature-x", "--command"], usage: "casper workspace new")
+        assertShowsHelp(["browser", "wait", "--js"], usage: "casper browser wait")
+    }
+
+    /// The documented cost of taking the next argument verbatim: any other option
+    /// placed right after a free-text option becomes its value.
+    func testOtherFlagAfterAFreeTextOptionBecomesItsValue() throws {
+        let wait = try BrowserCommand.Wait.parse(["--js", "--visible", "--workspace", "f"])
+        XCTAssertEqual(try wait.makeCommand().predicate, "--visible")
+    }
+
+    /// Parse `arguments` followed by each help flag from the root command, and
+    /// assert it ends in the help of the command `usage` names, exiting 0.
+    private func assertShowsHelp(
+        _ arguments: [String], usage: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        for flag in ["--help", "-h"] {
+            XCTAssertThrowsError(
+                try CasperCommand.parseAsRoot(arguments + [flag, "--workspace", "f"]), file: file, line: line
+            ) { error in
+                XCTAssertTrue(CasperCommand.exitCode(for: error).isSuccess, "\(flag): \(error)", file: file, line: line)
+                let message = CasperCommand.fullMessage(for: error)
+                XCTAssertTrue(message.contains("USAGE: \(usage)"), "\(flag): \(message)", file: file, line: line)
+            }
+        }
+    }
+
     func testNotifyWithoutMessage() throws {
         let notify = try NotifyCommand.parse(["--workspace", "feature"])
         let command = try notify.makeCommand()

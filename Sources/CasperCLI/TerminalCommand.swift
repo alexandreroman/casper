@@ -22,6 +22,10 @@ struct TerminalCommand: ParsableCommand {
             help: "Working directory for the new terminal (defaults to the workspace's worktree).")
         var workingDir: String?
 
+        func validate() throws {
+            try requestHelpIfHelpFlag(command, of: self)
+        }
+
         func makeCommand() throws -> ControlCommand {
             let selector = try requireSelector(target)
             let cwd = try nonEmpty(workingDir).map { try Self.requireDirectory(absolutePath($0)) }

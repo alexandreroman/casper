@@ -85,11 +85,17 @@ is meaningless (`--selector`, `--url`, `--level`) is rejected instead, by
 X", a Markdown list) is accepted rather than refused as a missing value: agents
 and the plugin pass such text as a separate argv element, and a usage error
 there is lost. The accepted cost is that a forgotten value swallows the next
-option (`--message --workspace x` sends `--workspace` as the text). An option
-whose value is never free text — an id, a ref, a path, a URL, a selector, a
-number — keeps the default parsing, so a forgotten value there stays a usage
-error. A free-text positional (`browser eval`, `browser type`) follows the
-POSIX convention instead: `--` ends the options before it.
+argument. `--message --workspace x` takes `--workspace` as the text (the stray
+`x` then usually ends in a usage error), and a flag placed right after a
+free-text option silently becomes its value: `browser wait --js --visible`
+waits on the predicate `--visible`. `--help` and `-h` are the exception:
+ArgumentParser looks for them only among the arguments left over, so each such
+command's `validate()` turns them back into a help request
+(`requestHelpIfHelpFlag`), and those two exact strings can never be sent as
+text. An option whose value is never free text — an id, a ref, a path, a URL, a
+selector, a number — keeps the default parsing, so a forgotten value there
+stays a usage error. A free-text positional (`browser eval`, `browser type`)
+follows the POSIX convention instead: `--` ends the options before it.
 
 **Transport.** Each command sends a `ControlCommand` over the Unix domain socket
 named by `$CASPER_CONTROL_SOCKET` and reads back a `ControlResponse`. With that

@@ -76,7 +76,8 @@ CI, test, and documentation-only work is left out.
   --label`, `casper notify --message`, `casper info set --message`, the
   `--command` of `casper terminal new` and `casper workspace new`, and
   `casper browser wait --js` no longer reject "- waiting" or "--force flag" as
-  a missing value.
+  a missing value. `--help` or `-h` in place of the value shows the command's
+  help.
 - `casper terminal new --working-dir` reports an error for a directory that
   does not exist, or a file, instead of opening the terminal somewhere else.
 - `casper terminal close` prints the terminal id in lowercase, like every

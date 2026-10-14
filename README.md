@@ -430,7 +430,9 @@ plus `--working-dir <path>` to start it somewhere other than the workspace's
 worktree; a directory that does not exist is an error.
 
 A free-text value — `--label`, `--message`, `--command`, `browser wait --js` —
-is taken as is, even when it starts with a dash (`--label "-> wire the API"`).
+is taken as is, even when it starts with a dash (`--label "-> wire the API"`),
+so always give the value: a forgotten one takes the next argument, except
+`--help` or `-h`, which show the command's help.
 A free-text positional that starts with a dash goes after `--`:
 `casper browser eval --workspace feature -- "-1"`.
 

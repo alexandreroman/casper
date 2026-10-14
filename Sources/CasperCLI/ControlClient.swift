@@ -31,6 +31,18 @@ func nonEmpty(_ value: String?) -> String? {
     value.flatMap { $0.isEmpty ? nil : $0 }
 }
 
+/// Ask for `command`'s help when a free-text option's value is `--help` or `-h`.
+/// Called from the `validate()` of every command with such an option.
+///
+/// A free-text option is declared `parsing: .unconditional`, so it takes its next
+/// argument whatever that is, and ArgumentParser only looks for its help flags among
+/// the arguments left over: `--message --help` would send "--help" as the text. Those
+/// two exact values are a help request instead, as anywhere else on the command line.
+func requestHelpIfHelpFlag(_ value: String?, of command: ParsableCommand) throws {
+    guard value == "--help" || value == "-h" else { return }
+    throw CleanExit.helpRequest(command)
+}
+
 /// Reject an empty required argument with a uniform message, returning the value
 /// so callers bind the validated string.
 func requireNonEmpty(_ value: String, _ what: String) throws -> String {

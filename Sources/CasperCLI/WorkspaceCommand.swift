@@ -67,6 +67,10 @@ struct WorkspaceCommand: ParsableCommand {
         var command: String?
         @OptionGroup var target: WorkspaceTargetOption
 
+        func validate() throws {
+            try requestHelpIfHelpFlag(command, of: self)
+        }
+
         func makeCommand() throws -> ControlCommand {
             let branch = try requireNonEmpty(self.branch, "branch name")
             let selector = try requireSelector(target)

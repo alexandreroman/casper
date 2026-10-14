@@ -21,6 +21,10 @@ struct ProgressCommand: ParsableCommand {
         var label: String
         @OptionGroup var target: WorkspaceTargetOption
 
+        func validate() throws {
+            try requestHelpIfHelpFlag(label, of: self)
+        }
+
         func makeCommand() throws -> ControlCommand {
             guard total <= ProgressSynthesis.maxSynthesizedTotal else {
                 throw exitWithError(

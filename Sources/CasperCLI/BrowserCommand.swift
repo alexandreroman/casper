@@ -284,6 +284,10 @@ struct BrowserCommand: ParsableCommand {
             TimeInterval((timeout ?? ControlCommand.defaultWaitTimeoutMs) / 1000 + 5)
         }
 
+        func validate() throws {
+            try requestHelpIfHelpFlag(js, of: self)
+        }
+
         func makeCommand() throws -> ControlCommand {
             let hasSelector = !(selector?.isEmpty ?? true)
             let hasJS = !(js?.isEmpty ?? true)

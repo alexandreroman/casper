@@ -12,6 +12,10 @@ struct NotifyCommand: WorkspaceRefCommand {
     var message: String?
     @OptionGroup var target: WorkspaceTargetOption
 
+    func validate() throws {
+        try requestHelpIfHelpFlag(message, of: self)
+    }
+
     func makeCommand() throws -> ControlCommand {
         ControlCommand(
             verb: .notify, workspace: try requireSelector(target),
