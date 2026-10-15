@@ -10,19 +10,19 @@ import SwiftUI
 /// menu through `.commands` removes that race: SwiftUI re-applies these same
 /// definitions on every resync, so there is nothing left to clobber.
 ///
-/// Menus are positioned by *replacing the standard command-group placements*
-/// rather than adding `CommandMenu`s, so each menu lands in its native slot and a
-/// group left empty makes its menu disappear entirely. The list below names the
-/// *placement* on the right and the *visible title* on the left; the two differ for
-/// one menu: Casper's items go in the standard File slot but the menu reads "Space",
-/// retitled in AppKit by `AppDelegate.renameFileMenu(in:)` because `.commands` can
-/// position a group into a standard menu but not rename one.
+/// Menus are positioned through the *standard command-group placements* — mostly by
+/// replacing them — rather than adding `CommandMenu`s, so each menu lands in its
+/// native slot and a group left empty makes its menu disappear entirely. The list
+/// below names the *placement* on the right and the *visible title* on the left; the
+/// two differ for one menu: Casper's items go in the standard File slot but the menu
+/// reads "Space", retitled in AppKit by `AppDelegate.renameFileMenu(in:)` because
+/// `.commands` can position a group into a standard menu but not rename one.
 /// - Space  ← `.newItem`   (other File groups emptied)
 /// - Edit   ← `.pasteboard` (other Edit groups emptied)
-/// - View   ← `.sidebar`   (`.toolbar` emptied)
+/// - View   ← `SidebarCommands` in `.sidebar`, splits after it (`.toolbar` emptied)
 /// - Format ← `.textFormatting` emptied (menu removed)
 /// - Help   ← `.help` emptied (menu removed)
-/// - App    ← `.appInfo` (the one *additive* group: "Check for Updates…"),
+/// - App    ← `.appInfo` (an *additive* group: "Check for Updates…"),
 ///            everything else SwiftUI defaults
 /// - Window ← SwiftUI defaults
 struct CasperCommands: Commands {
@@ -62,11 +62,11 @@ struct CasperCommands: Commands {
                     guard let space = model.targetSpaceForNewWorkspace() else { return }
                     model.presentAddLinkedWorkspacePanel(spaceID: space.id)
                 } label: {
-                    Label("Create Workspace…", systemImage: "plus")
+                    Label("New Workspace…", systemImage: "plus")
                 }
                 .disabled(!model.menuCanCreateWorkspace)
                 Divider()
-                workspaceButton(.openInFinder, isEnabled: model.menuHasSelectedWorkspace)
+                workspaceButton(.showInFinder, isEnabled: model.menuHasSelectedWorkspace)
                 Divider()
                 workspaceButton(.mergeAndClose, isEnabled: model.menuCanCloseSelectedWorkspace)
                 workspaceButton(.delete, isEnabled: model.menuCanDeleteSelectedWorkspace)
@@ -76,15 +76,13 @@ struct CasperCommands: Commands {
             CommandGroup(replacing: .printItem) {}
         }
 
-        // Edit menu. Copy/Paste/Select All carry no target: NSApp.sendAction walks
-        // the responder chain to the focused GhosttySurfaceView, exactly like the
-        // AppKit pane context menu in PaneContextMenu.swift.
+        // Edit menu: the standard Copy/Paste/Select All first, then the two copies of
+        // the selected workspace's details. The standard items carry no target:
+        // NSApp.sendAction walks the responder chain to the focused GhosttySurfaceView,
+        // exactly like the AppKit pane context menu in PaneContextMenu.swift.
         Group {
             CommandGroup(replacing: .undoRedo) {}
             CommandGroup(replacing: .pasteboard) {
-                workspaceButton(.copyWorkspacePath, isEnabled: model.menuHasSelectedWorkspace)
-                workspaceButton(.copyBranchName, isEnabled: model.menuHasSelectedWorkspace)
-                Divider()
                 Button { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
@@ -97,6 +95,9 @@ struct CasperCommands: Commands {
                     Label("Select All", systemImage: "square.dashed")
                 }
                 .keyboardShortcut("a", modifiers: .command)
+                Divider()
+                workspaceButton(.copyWorkspacePath, isEnabled: model.menuHasSelectedWorkspace)
+                workspaceButton(.copyBranchName, isEnabled: model.menuHasSelectedWorkspace)
             }
             CommandGroup(replacing: .textEditing) {}
             // Format menu removed: emptying `.textFormatting` drops its items; the
@@ -104,13 +105,20 @@ struct CasperCommands: Commands {
             CommandGroup(replacing: .textFormatting) {}
         }
 
-        // View menu: the four pane splits. These items are ALWAYS enabled — the
-        // action itself no-ops when no terminal is focused. The enable-state was
-        // intentionally dropped: gating it on the focused surface made the SwiftUI
-        // `.commands` body observe `focusedSurfaceID`, so SwiftUI re-asserted the
-        // whole native menu on every focus change (momentarily recreating the empty
-        // Format/Help stubs) — a visible menu-bar flicker. Zero flash beats greying.
-        CommandGroup(replacing: .sidebar) {
+        // View menu: SwiftUI's standard Show/Hide Sidebar (⌃⌘S), which drives the
+        // `NavigationSplitView` column, then the four pane splits. The splits go
+        // *after* `.sidebar` rather than replacing it, since replacing the group would
+        // drop the toggle `SidebarCommands` places there.
+        //
+        // The splits are ALWAYS enabled — the action itself no-ops when no terminal is
+        // focused. The enable-state was intentionally dropped: gating it on the focused
+        // surface made the SwiftUI `.commands` body observe `focusedSurfaceID`, so
+        // SwiftUI re-asserted the whole native menu on every focus change (momentarily
+        // recreating the empty Format/Help stubs) — a visible menu-bar flicker. Zero
+        // flash beats greying.
+        SidebarCommands()
+        CommandGroup(after: .sidebar) {
+            Divider()
             Button { model.applyNewSplit(.up) } label: {
                 Label("Split Up", systemImage: "rectangle.tophalf.filled")
             }
@@ -149,7 +157,7 @@ struct CasperCommands: Commands {
 }
 
 extension AppModel {
-    /// Enable-state for the Space menu's "Create Workspace…": a space to create into.
+    /// Enable-state for the Space menu's "New Workspace…": a space to create into.
     var canCreateWorkspace: Bool { targetSpaceForNewWorkspace() != nil }
 
     /// Enable-state for "Delete Workspace…": only a linked worktree can be deleted.

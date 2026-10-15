@@ -44,7 +44,7 @@ final class WorkspaceToolbarActionsTests: XCTestCase {
 
     /// The Diff / Browser control is reachable at every tier and duplicated at none:
     /// it rides on the bar until the last rung, where it folds into the `⋯` menu as
-    /// `Sidebar`. Both sides read `showsInspectorSelector(at:)`, so this pins the
+    /// `Inspector`. Both sides read `showsInspectorSelector(at:)`, so this pins the
     /// predicate against what the row actually renders — the menu entry is that same
     /// predicate negated, and SwiftUI menu contents cannot be measured headlessly, so
     /// the shared predicate is what keeps the two from drifting apart.

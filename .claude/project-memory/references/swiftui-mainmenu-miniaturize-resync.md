@@ -9,7 +9,9 @@ type: reference
 Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands`
 in `Sources/CasperUI/MenuCommands.swift`, wired via `CasperApp.body`'s
 `.commands { CasperCommands(model: model) }`). File ← `.newItem`, Edit ←
-`.pasteboard`, View ← `.sidebar`; App ← SwiftUI defaults plus the additive
+`.pasteboard`, View ← `SidebarCommands()` in `.sidebar` plus the splits in
+`CommandGroup(after: .sidebar)` (replacing `.sidebar` would drop the standard
+Show/Hide Sidebar toggle); App ← SwiftUI defaults plus the additive
 Check for Updates… group after `.appInfo`; Window uses SwiftUI defaults. The
 File slot's menu is titled **"Space"** on the bar — see "Renaming the File
 menu" below; every other placement's visible title is the standard one. Edit

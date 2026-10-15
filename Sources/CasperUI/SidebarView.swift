@@ -56,13 +56,13 @@ struct SidebarView: View {
 
     /// The row's action menu: the shared `WorkspaceMenuItem` groups — the same
     /// description the File and Edit menus render — plus the sidebar-only "Run
-    /// Script" submenu, which sits beside "Open in Finder" above the first separator.
+    /// Script" submenu, which sits beside "Show in Finder" above the first separator.
     @ViewBuilder
     private func contextMenu(for workspace: Workspace) -> some View {
         let isLinked = workspace.kind == .linked
         let groups = WorkspaceMenuItem.groups(model: model, workspaceID: workspace.id) { command in
             switch command {
-            case .openInFinder, .copyWorkspacePath, .copyBranchName: return true
+            case .showInFinder, .copyWorkspacePath, .copyBranchName: return true
             case .mergeAndClose: return workspace.canMerge
             case .delete: return isLinked
             }

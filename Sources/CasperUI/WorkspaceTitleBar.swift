@@ -204,7 +204,7 @@ struct WorkspaceTitleBarRow: View {
                     .titleCapsule()
             }
             .buttonStyle(TitleChipButtonStyle())
-            .help("Toggle diff")
+            .help("Show or hide the diff")
         }
     }
 
@@ -339,7 +339,7 @@ struct WorkspaceToolbarActions: View {
 
     /// Whether the Diff / Browser control rides on the bar at `density`.
     ///
-    /// The single source for that fact: the `⋯` menu's `Sidebar` entry is exactly its
+    /// The single source for that fact: the `⋯` menu's `Inspector` entry is exactly its
     /// complement, so the control is reachable at every tier and duplicated at none.
     /// Read by the row and by the menu, which is what keeps the two from drifting —
     /// a menu listing what is already on the bar is the one thing the `⋯` chip must
@@ -431,7 +431,7 @@ struct WorkspaceToolbarActions: View {
     ///
     /// Its contents therefore vary by tier, and never duplicate a chip that is still
     /// on the bar: at `.mergeGlyph` the Merge chip is right beside it, so the menu
-    /// opens on Run Script, and `Sidebar` appears only once the segmented control has
+    /// opens on Run Script, and `Inspector` appears only once the segmented control has
     /// folded in here too.
     @ViewBuilder
     private func foldedMenuContent(_ density: Density) -> some View {
@@ -474,10 +474,11 @@ struct WorkspaceToolbarActions: View {
                 }
             }
         }
-        // Named for the panel it drives — the inspector panel on the right, not the
-        // workspace column on the left that the toolbar's own sidebar toggle opens.
+        // Named after the panel it drives, the inspector on the right: macOS reserves
+        // "Sidebar" for the workspace column on the left, which the toolbar's own
+        // sidebar toggle opens.
         if !Self.showsInspectorSelector(at: density) {
-            Menu("Sidebar") {
+            Menu("Inspector") {
                 inspectorTabItems
             }
         }
@@ -491,8 +492,8 @@ struct WorkspaceToolbarActions: View {
     @ViewBuilder
     private var inspectorTabItems: some View {
         let showing: InspectorTab? = workspace.inspector.collapsed ? nil : workspace.inspector.tab
-        inspectorTabItem(.diff, title: "Toggle Diff", showing: showing)
-        inspectorTabItem(.browser, title: "Toggle Browser", showing: showing)
+        inspectorTabItem(.diff, title: "Diff", showing: showing)
+        inspectorTabItem(.browser, title: "Browser", showing: showing)
     }
 
     @ViewBuilder
@@ -553,8 +554,8 @@ struct InspectorTabSelector: View {
         // `nil` while the panel is collapsed — the "neither is on" state.
         let selection: InspectorTab? = workspace.inspector.collapsed ? nil : workspace.inspector.tab
         return HStack(spacing: 0) {
-            segment(.diff, systemImage: "plusminus", help: "Toggle diff", selection: selection)
-            segment(.browser, systemImage: "globe", help: "Toggle browser", selection: selection)
+            segment(.diff, systemImage: "plusminus", help: "Show or hide the diff", selection: selection)
+            segment(.browser, systemImage: "globe", help: "Show or hide the browser", selection: selection)
         }
         .titleCapsuleShell()
         // One value covering both which tab is selected and whether the panel is

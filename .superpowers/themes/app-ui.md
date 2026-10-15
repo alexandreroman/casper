@@ -13,10 +13,11 @@ depends on Ghostty layout composition (`terminal.md`).
   bridge to the other modules; the window is a `NavigationSplitView` with an
   empty state. Casper owns the menu bar through SwiftUI `.commands`
   (`terminal.md` § Design → "Main menu"), **replacing** the standard command
-  groups, with one additive group, "Check for Updates…" (see "Software
-  update"); the Window menu and the rest of the App menu are SwiftUI's
-  defaults. The only `NSMenu` built in AppKit is the pane context menu
-  (`PaneContextMenu`).
+  groups, with two additive groups — "Check for Updates…" (see "Software
+  update") and the View menu's pane splits, placed after SwiftUI's standard
+  Show/Hide Sidebar (`SidebarCommands`); the Window menu and the rest of the
+  App menu are SwiftUI's defaults. The only `NSMenu` built in AppKit is the
+  pane context menu (`PaneContextMenu`).
 - **Appearance** — the app follows the system Light/Dark appearance; nothing
   forces one. `AppDelegate` observes `NSApp.effectiveAppearance` and forwards it
   through `AppModel.applyColorScheme(dark:)` to libghostty (the app and every
@@ -421,15 +422,16 @@ depends on Ghostty layout composition (`terminal.md`).
   into the `⋯` menu. Only Merge and the selector have a glyph form on the bar.
 
   The **`⋯` menu** lists exactly what is not on the bar, without exception, so
-  its contents vary by rung and never duplicate a visible chip — `Sidebar`
+  its contents vary by rung and never duplicate a visible chip — `Inspector`
   appears only at the last rung, where the selector itself has folded into the
   menu. Its order mirrors the chips' order on the bar
-  (Merge/Delete, `Run Script` ▸, `Open in Editor` ▸, `Sidebar` ▸) so the folded
-  menu reads like the row it replaces; the two orders are coupled and change
-  together. `Sidebar` names the **inspector panel on the right**, not the left
-  workspace column. Its items route through the same `toggleInspectorTab`
-  mutator as the segments, checkmarked against the tab showing, so bar and menu
-  cannot disagree.
+  (Merge/Delete, `Run Script` ▸, `Open in Editor` ▸, `Inspector` ▸) so the
+  folded menu reads like the row it replaces; the two orders are coupled and
+  change together. The submenu is named `Inspector` after the **panel on the
+  right**: macOS reserves "Sidebar" for the left workspace column. Its items,
+  `Diff` and `Browser`, route through the same `toggleInspectorTab` mutator as
+  the segments, checkmarked against the tab showing, so bar and menu cannot
+  disagree.
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
   and a hairline border, plus a hover highlight and a pressed state past it —

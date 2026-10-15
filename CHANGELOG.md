@@ -8,6 +8,19 @@ CI, test, and documentation-only work is left out.
 
 ## [Unreleased]
 
+### Added
+
+- The View menu offers the standard Show Sidebar / Hide Sidebar item (⌃⌘S).
+
+### Changed
+
+- Menu wording follows macOS conventions. "Show in Finder" opens the enclosing
+  folder with the worktree selected, "Create Workspace…" reads "New
+  Workspace…", and the title bar's `⋯` menu folds the Diff / Browser control
+  into an "Inspector" submenu whose items read "Diff" and "Browser".
+- The Edit menu lists Copy, Paste and Select All first, then Copy Workspace
+  Path and Copy Branch Name.
+
 ### Fixed
 
 - The sidebar progress bar fills up to the step in progress, so step 3 of 3

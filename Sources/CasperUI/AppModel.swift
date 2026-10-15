@@ -741,14 +741,15 @@ final class AppModel {
         pasteboard.setString(string, forType: .string)
     }
 
-    /// Reveal a workspace's worktree folder in Finder. Backs the "Open in
-    /// Finder" items in the sidebar context menu and the Space menu.
-    func openInFinder(id: UUID) {
+    /// Reveal a workspace's worktree in Finder: the enclosing folder opens with the
+    /// worktree selected, as Xcode's and Safari's "Show in Finder" do. Backs the
+    /// "Show in Finder" items in the sidebar context menu and the Space menu.
+    func showInFinder(id: UUID) {
         guard let workspace = workspace(id: id) else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: workspace.worktreePath))
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: workspace.worktreePath)])
     }
 
-    /// The Space a menu-bar "Create Workspace" action targets: the selected
+    /// The Space a menu-bar "New Workspace" action targets: the selected
     /// workspace's Space when it is a Git repo, otherwise the first Git Space.
     /// nil when no Git Space exists (the menu item is then disabled).
     func targetSpaceForNewWorkspace() -> Space? {
@@ -881,7 +882,7 @@ final class AppModel {
     /// defaults to true for UI creation and is set to false for the control-channel
     /// (CLI) path so a workspace created remotely does not steal the user's current
     /// selection. Returns the new workspace or a human-readable error, which both the
-    /// CLI and the "Create Workspace…" alert show as is.
+    /// CLI and the "New Workspace…" alert show as is.
     ///
     /// `async` because the checkout in the middle runs off the main actor, like every
     /// other libgit2 call on a workspace's lifecycle (`AppModel+WorkspaceLifecycle`):

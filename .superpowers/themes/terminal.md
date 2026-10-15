@@ -89,9 +89,10 @@ surfaces and PTYs (same model as the Ghostty app).
   (`copy_to_clipboard`, `paste_from_clipboard`, `select_all`). The same group
   also holds two items that are **workspace**-scoped rather than
   surface-scoped — Copy Workspace Path and Copy Branch Name — which act on the
-  selected workspace and never touch a surface. The View group holds the four
-  pane splits and nothing else: font size is changed by libghostty's own
-  keybindings inside the surface and reported back to the model through
+  selected workspace and never touch a surface; they follow the standard items,
+  after a separator. The View menu holds SwiftUI's standard Show/Hide Sidebar
+  and the four pane splits, nothing else: font size is changed by libghostty's
+  own keybindings inside the surface and reported back to the model through
   `onFontSizeChange`, so no menu item drives it. See
   [[swiftui-mainmenu-miniaturize-resync]].
 - **No marked text (preedit)** — IME candidates and dead-key previews are not

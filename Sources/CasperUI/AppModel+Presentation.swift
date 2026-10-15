@@ -193,7 +193,7 @@ extension AppModel {
     /// sheet that belongs to this operation.
     ///
     /// The hop goes through `MainRunLoop`, not the main queue: a close that fails while
-    /// any other panel is up (Add Folder…, Create Workspace…, a Sparkle update check)
+    /// any other panel is up (Add Folder…, New Workspace…, a Sparkle update check)
     /// would otherwise hold this alert back for that panel's whole lifetime.
     private func presentWorkspaceOperationFailureAlert(
         for workspaceID: UUID, title: String, message: String
@@ -260,7 +260,7 @@ private enum WorkspaceAlerts {
     /// Name prompt for a new linked workspace. Nil on cancel or empty input.
     static func askWorkspaceName() -> String? {
         let alert = NSAlert()
-        alert.messageText = "Create Workspace"
+        alert.messageText = "New Workspace"
         alert.informativeText = "Name for the new branch and worktree:"
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
