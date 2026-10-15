@@ -92,7 +92,7 @@ struct WorkspaceRow: View {
 
 /// Everything a row renders and animates on, derived from a workspace in a single
 /// pass over its todos. `Equatable` so it can drive `.animation(value:)` directly.
-private struct RowDisplayState: Equatable {
+struct RowDisplayState: Equatable {
     let agentState: AgentState
     let showsProgress: Bool
     let progressFraction: Double
@@ -107,20 +107,28 @@ private struct RowDisplayState: Equatable {
 
     init(workspace: Workspace) {
         var completed = 0
+        var inProgress = 0
         var currentTask: String?
         for todo in workspace.todos {
             switch todo.status {
-            case .completed: completed += 1
-            case .inProgress: if currentTask == nil { currentTask = todo.content }
-            case .pending: break
+            case .completed:
+                completed += 1
+            case .inProgress:
+                inProgress += 1
+                if currentTask == nil { currentTask = todo.content }
+            case .pending:
+                break
             }
         }
         let total = workspace.todos.count
         let isComplete = total > 0 && completed == total
+        // The bar fills through the step being worked on, so "step 3 of 3" reads
+        // as a full bar; only `isComplete` (every todo completed) turns it green.
+        let filled = completed + inProgress
 
         agentState = workspace.agentState
         showsProgress = total > 0
-        progressFraction = total > 0 ? Double(completed) / Double(total) : 0
+        progressFraction = total > 0 ? Double(filled) / Double(total) : 0
         self.isComplete = isComplete
         caption = workspace.pendingNotificationMessage ?? currentTask ?? (isComplete ? "Done" : nil)
     }

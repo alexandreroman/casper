@@ -36,15 +36,17 @@ depends on Ghostty layout composition (`terminal.md`).
   held.
 
   Below that, and only when there are todos or something to say, a `ProgressBar`
-  (completed ÷ total) and **one** caption line. `RowDisplayState` composes that
-  caption, preferring the pending-notification message over the current
-  `in_progress` todo label — the more urgent signal wins, and stays up until the
-  notification clears — and falling back to `"Done"` once every todo is
-  complete. There is no numeric `completed/total` text. Nothing in the row
-  carries a hue of its own: selection tints every glyph and label white on the
-  accent pill. The `AgentStatusIcon` glyphs and the caption stay monochrome
-  throughout — but the row is not: the notification dot is blue (white while
-  selected), and the `ProgressBar` turns green once every todo is complete.
+  and **one** caption line. The bar fills through the step in progress —
+  (completed + in-progress) ÷ total — so the last step at work shows a full
+  bar. `RowDisplayState` composes that caption, preferring the
+  pending-notification message over the current `in_progress` todo label — the
+  more urgent signal wins, and stays up until the notification clears — and
+  falling back to `"Done"` once every todo is complete. There is no numeric
+  `completed/total` text. Nothing in the row carries a hue of its own: selection
+  tints every glyph and label white on the accent pill. The `AgentStatusIcon`
+  glyphs and the caption stay monochrome throughout — but the row is not: the
+  notification dot is blue (white while selected), and the `ProgressBar` turns
+  green once every todo is complete.
 - **Ways into a Space** — two of them, offered in the same order wherever they
   appear: **New Space…** (⌘N) creates a project from nothing, **Add Folder…**
   (⌘O) adopts one that already exists. They open the **Space** menu; they are
