@@ -190,6 +190,11 @@ public struct InspectorState: Codable, Equatable, Sendable {
         self.width = width
     }
 
+    /// The tab on screen, or nil while the panel is collapsed. `tab` alone keeps its
+    /// value across a collapse, so every Diff / Browser control that marks the tab
+    /// showing reads this instead.
+    public var visibleTab: InspectorTab? { collapsed ? nil : tab }
+
     // Full case set is required once `init(from:)` is hand-rolled; case names
     // match the property names so the synthesized `encode(to:)` keeps the same
     // on-disk keys.

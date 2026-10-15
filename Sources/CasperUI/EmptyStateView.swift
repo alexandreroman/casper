@@ -50,14 +50,14 @@ struct EmptyStateView: View {
                 // `fixedSize` keeps the hint on one line: it is a shortcut legend, and
                 // wrapped over two lines it reads as prose. It stays far narrower than
                 // the onboarding strip below, so it never widens the screen. The keys
-                // spelled here are `SpaceEntryCommand.keyEquivalent`'s; keep them in step.
-                Text("⌘N to create a Space · ⌘O to add a folder")
+                // spelled here are `SpaceEntryCommand.keyboardShortcut`'s; keep them in step.
+                Text("⇧⌘N to create a Space · ⌘O to add a folder")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .fixedSize()
                     // VoiceOver reads the ⌘ glyph itself, which announces as nothing
                     // useful, so the shortcuts are spelled out for it.
-                    .accessibilityLabel("Command N to create a Space, Command O to add a folder")
+                    .accessibilityLabel("Shift Command N to create a Space, Command O to add a folder")
             }
 
             HStack(alignment: .top, spacing: Self.cardSpacing) {

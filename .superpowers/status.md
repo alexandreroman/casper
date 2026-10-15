@@ -76,9 +76,9 @@ live-refreshed by two FSEvents watchers, and syntax-coloured progressively.
 button, the info-panel button, and Merge, Run Script and Editor chips (Merge
 becomes Delete while Option is held). The Editor chip launches the worktree in
 VS Code, IntelliJ IDEA or Xcode. Casper defines its whole menu bar through
-SwiftUI `.commands` (with an AppKit resync for the File → Space retitle),
-sharing one description of the workspace commands between the Space menu, the
-Edit menu and the sidebar row menu.
+SwiftUI `.commands` (with an AppKit resync for the File → Space retitle), one
+menu per object level — Space, Workspace, View — sharing one description of the
+workspace commands between the Workspace menu and the sidebar row menu.
 
 **Scripts & lifecycle.** `.casper.json` `workspace.copyFiles`, on-demand named
 commands (CLI, title-bar chip, sidebar submenu), and reserved `setup`/`teardown`

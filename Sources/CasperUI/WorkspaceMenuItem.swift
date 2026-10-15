@@ -2,8 +2,8 @@ import CasperCore
 import SwiftUI
 
 /// One item of a workspace's action menu. The menu is offered in two forms — the
-/// sidebar row's SwiftUI `.contextMenu` (`SidebarView`) and the Space/Edit menu-bar
-/// groups (`CasperCommands`) — and both render this one description, so their
+/// sidebar row's SwiftUI `.contextMenu` (`SidebarView`) and the menu bar's Workspace
+/// menu (`CasperCommands`) — and both render this one description, so their
 /// titles, symbols and actions cannot drift apart.
 ///
 /// Enable-state is supplied by the caller rather than derived here, because the two
@@ -15,7 +15,7 @@ struct WorkspaceMenuItem {
     /// The actions a workspace offers, each carrying the title and symbol both
     /// menus render.
     enum Command {
-        case openInFinder
+        case showInFinder
         case copyWorkspacePath
         case copyBranchName
         case mergeAndClose
@@ -23,7 +23,7 @@ struct WorkspaceMenuItem {
 
         var title: String {
             switch self {
-            case .openInFinder: return "Open in Finder"
+            case .showInFinder: return "Show in Finder"
             case .copyWorkspacePath: return "Copy Workspace Path"
             case .copyBranchName: return "Copy Branch Name"
             case .mergeAndClose: return "Merge and Close Workspace…"
@@ -33,7 +33,7 @@ struct WorkspaceMenuItem {
 
         var systemImage: String {
             switch self {
-            case .openInFinder: return "folder"
+            case .showInFinder: return "folder"
             case .copyWorkspacePath, .copyBranchName: return "doc.on.doc"
             case .mergeAndClose: return "arrow.triangle.merge"
             case .delete: return "trash"
@@ -49,7 +49,7 @@ struct WorkspaceMenuItem {
         @MainActor
         func perform(model: AppModel, workspaceID: UUID) {
             switch self {
-            case .openInFinder: model.openInFinder(id: workspaceID)
+            case .showInFinder: model.showInFinder(id: workspaceID)
             case .copyWorkspacePath: model.copyWorkspacePath(id: workspaceID)
             case .copyBranchName: model.copyBranchName(id: workspaceID)
             case .mergeAndClose: model.presentCloseWorkspaceConfirmation(id: workspaceID)
@@ -105,7 +105,7 @@ struct WorkspaceMenuItem {
             item(command, model: model, workspaceID: workspaceID, isEnabled: isEnabled(command))
         }
         return [
-            [make(.openInFinder)],
+            [make(.showInFinder)],
             [make(.copyWorkspacePath), make(.copyBranchName)],
             [make(.mergeAndClose)],
             [make(.delete)],

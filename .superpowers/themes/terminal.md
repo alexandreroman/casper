@@ -82,18 +82,20 @@ surfaces and PTYs (same model as the Ghostty app).
   ordinary ⌘V confirms its paste request on sight: Ghostty's
   `clipboard-paste-protection` prompt for a multi-line paste is not
   implemented, a standing limitation (see `../status.md`).
-- **Main menu** — the App/Space/Edit/View/Window menu bar is SwiftUI `.commands`
-  in CasperUI (`MenuCommands.swift`), not an AppKit menu built here. Its Edit
-  group's Copy/Paste/Select All reach the focused surface through the responder
-  chain, where `GhosttySurfaceView` turns them into libghostty binding actions
-  (`copy_to_clipboard`, `paste_from_clipboard`, `select_all`). The same group
-  also holds two items that are **workspace**-scoped rather than
-  surface-scoped — Copy Workspace Path and Copy Branch Name — which act on the
-  selected workspace and never touch a surface. The View group holds the four
-  pane splits and nothing else: font size is changed by libghostty's own
-  keybindings inside the surface and reported back to the model through
-  `onFontSizeChange`, so no menu item drives it. See
-  [[swiftui-mainmenu-miniaturize-resync]].
+- **Main menu** — the App/Space/Workspace/Edit/View/Window menu bar is
+  SwiftUI `.commands` in CasperUI (`MenuCommands.swift`), not an AppKit menu
+  built here (`app-ui.md` § Design → "Menu bar"). Its Edit group holds the
+  standard Copy/Paste/Select All only, which reach the focused surface through
+  the responder chain, where `GhosttySurfaceView` turns them into libghostty
+  binding actions (`copy_to_clipboard`, `paste_from_clipboard`,
+  `select_all`). The View menu holds SwiftUI's standard Show/Hide Sidebar, the
+  inspector's Diff / Browser toggles and the four pane splits: font size is
+  changed by libghostty's own keybindings inside the surface and reported back
+  to the model through `onFontSizeChange`, so no menu item drives it. A menu
+  shortcut libghostty also binds is consumed by a focused surface before the
+  menu sees it (see "Composition by CasperUI"). See
+  [[swiftui-mainmenu-miniaturize-resync]] and
+  [[ghostty-keybinds-shadow-the-main-menu]].
 - **No marked text (preedit)** — IME candidates and dead-key previews are not
   drawn inline; committed text works. `GhosttySurfaceView`'s marked-text
   `NSTextInputClient` methods are deliberate no-ops, where upstream feeds
@@ -114,9 +116,15 @@ CasperUI's `LayoutActionHandler`, installed on `GhosttyRuntime.actionHandler`,
 claims four of the seam's five actions. Three of them — `newSplit`, `newTab`,
 `closeTab` — are composed into a recursive `LayoutNode` tree. The fourth,
 `newWindow`, has no layout meaning in a single-window app, so it is remapped
-onto the nearest honest equivalent and opens the New Space panel; it is the one
-case deferred to the next main-loop turn rather than run inline, because its
-modal `NSSavePanel` must not hold libghostty's tick open. `LayoutNode` is
+onto the nearest honest equivalent, the Workspace menu's **New Workspace…** —
+which carries ⌘N in the menu bar too, so the keystroke does the same thing
+whether or not a terminal is focused, including nothing when there is no Git
+Space to create in. It is the one case deferred rather than run inline, in two
+hops: a main-queue hop leaves libghostty's tick, then a run-loop block
+(`MainRunLoop.perform`) presents the modal name prompt outside the main-queue
+drain, so the prompt neither holds libghostty's tick open nor starves the main
+queue while it is up. New Space…'s ⇧⌘N needs no claim: libghostty binds
+nothing to it, so it reaches the menu. `LayoutNode` is
 `split | leaf`, rendered by CasperUI's own `SplitContainerView`, and `newTab`
 maps to a right split. `close_surface_cb` is wired, so Ctrl-D or `exit` closes
 the pane via `GhosttySurfaceView.onClose`. See `app-ui.md` § Design → "Layout

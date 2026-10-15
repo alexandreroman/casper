@@ -23,11 +23,13 @@ enum SpaceEntryCommand: CaseIterable {
         }
     }
 
-    /// The Space menu's key equivalent, pressed with ⌘.
-    var keyEquivalent: KeyEquivalent {
+    /// The Space menu's shortcut. New Space… takes ⇧⌘N because plain ⌘N belongs to
+    /// New Workspace…, the action reached for most — and the one libghostty's own ⌘N
+    /// binding is routed to while a terminal is focused (`LayoutActionHandler`).
+    var keyboardShortcut: KeyboardShortcut {
         switch self {
-        case .create: return "n"
-        case .adopt: return "o"
+        case .create: return KeyboardShortcut("n", modifiers: [.command, .shift])
+        case .adopt: return KeyboardShortcut("o", modifiers: .command)
         }
     }
 

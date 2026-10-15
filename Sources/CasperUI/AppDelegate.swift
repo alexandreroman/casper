@@ -10,7 +10,7 @@ import UserNotifications
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotificationCenterDelegate {
     /// Visible title of the standard File menu — see `renameFileMenu(in:)`.
-    private static let spaceMenuTitle = "Space"
+    static let spaceMenuTitle = "Space"
 
     private var controlServer: ControlServer?
     private var appearanceObservation: NSKeyValueObservation?
@@ -240,47 +240,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
             // being opened; the delegate proxy is what strips it in time.
             stripServicesItems(fromAppMenu: appMenu)
         }
-        stripEmptyTopLevelMenus(in: mainMenu)
-        renameFileMenu(in: mainMenu)
+        Self.stripEmptyTopLevelMenus(in: mainMenu)
+        Self.renameFileMenu(in: mainMenu)
+        Self.placeWorkspaceMenuAfterSpaceMenu(in: mainMenu)
     }
 
-    /// Retitle the standard File menu to "Space": its items adopt folders and act on
-    /// spaces and workspaces — Casper has no notion of a file to offer there.
-    ///
-    /// SwiftUI cannot express this. `.commands` can *position* a group into the
-    /// standard File slot (`CommandGroup(replacing: .newItem)`, see `CasperCommands`),
-    /// but it offers no way to retitle a standard menu — only an additive
-    /// `CommandMenu` carries a title of its own, and that lands the menu after Window
-    /// instead of in the File slot. So the rename happens in AppKit, and like every
-    /// other fixup here it has to be re-applied on every pass rather than once at
-    /// launch: each SwiftUI resync re-asserts `NSApp.mainMenu` with the standard
-    /// localized title back in place.
+    /// The index of the standard File slot's top-level item — the Space menu — or nil
+    /// when the bar does not carry it (yet).
     ///
     /// The menu is matched structurally, never by title — macOS localizes "File", and
     /// from the second pass on the title is Casper's own anyway. The marker is
     /// `CasperCommands.newSpaceTitle`, an unlocalized string of Casper's own: the
     /// `.newItem` group is the only one Casper leaves populated in that menu, so its
-    /// first button is the submenu's first item.
+    /// first button is the submenu's first item. An empty submenu is skipped before it
+    /// is asked for an item, since `item(at:)` raises on an out-of-range index.
+    static func spaceMenuIndex(in mainMenu: NSMenu) -> Int? {
+        for index in 0..<mainMenu.numberOfItems {
+            guard let submenu = mainMenu.item(at: index)?.submenu, submenu.numberOfItems > 0,
+                  submenu.item(at: 0)?.title == CasperCommands.newSpaceTitle
+            else { continue }
+            return index
+        }
+        return nil
+    }
+
+    /// Move the Workspace menu right after the Space menu, so the bar reads App,
+    /// Space, Workspace, Edit, View, Window — the project's menu, then the selected
+    /// worktree's.
+    ///
+    /// SwiftUI cannot express this either: `CasperCommands` declares Workspace as a
+    /// `CommandMenu`, the only construct that adds a top-level menu, and SwiftUI always
+    /// lands one between View and Window. Every SwiftUI re-assert of the main menu —
+    /// a scene-lifecycle resync, or the `Commands` body's output changing — puts it
+    /// back there, so like the rename this runs on every update pass. Moving the
+    /// `NSMenuItem` is safe against those re-asserts: they reposition the same item
+    /// rather than duplicating it, and its submenu keeps its items, actions and
+    /// enable-state.
+    ///
+    /// The Workspace menu is matched by `CasperCommands.workspaceMenuTitle`, Casper's
+    /// own unlocalized title, which also finds it while its lazily filled submenu is
+    /// empty (see `stripEmptyTopLevelMenus(in:)`); the move carries the submenu and
+    /// its delegate along, so opening the moved menu still fills it. Cheap and
+    /// idempotent: it moves nothing unless the item is out of place, so a pass over a
+    /// bar already in order mutates nothing.
+    static func placeWorkspaceMenuAfterSpaceMenu(in mainMenu: NSMenu) {
+        guard let spaceIndex = spaceMenuIndex(in: mainMenu) else { return }
+        let workspaceIndex = mainMenu.indexOfItem(withTitle: CasperCommands.workspaceMenuTitle)
+        guard workspaceIndex >= 0, workspaceIndex != spaceIndex + 1,
+              let workspaceItem = mainMenu.item(at: workspaceIndex)
+        else { return }
+        mainMenu.removeItem(at: workspaceIndex)
+        // Removing an item ahead of the Space menu shifts the Space menu left by one.
+        let target = workspaceIndex < spaceIndex ? spaceIndex : spaceIndex + 1
+        mainMenu.insertItem(workspaceItem, at: target)
+    }
+
+    /// Retitle the standard File menu to "Space": its items create, adopt and remove
+    /// Spaces — Casper has no notion of a file to offer there.
+    ///
+    /// SwiftUI cannot express this. `.commands` can *position* a group into the
+    /// standard File slot (`CommandGroup(replacing: .newItem)`, see `CasperCommands`),
+    /// but it offers no way to retitle a standard menu — only an additive
+    /// `CommandMenu` carries a title of its own, and that lands the menu between View
+    /// and Window instead of in the File slot. So the rename happens in AppKit, and
+    /// like every other fixup here it has to be re-applied on every pass rather than
+    /// once at launch: each SwiftUI resync re-asserts `NSApp.mainMenu` with the
+    /// standard localized title back in place. The menu is found by
+    /// `spaceMenuIndex(in:)`.
     ///
     /// This cannot interfere with `stripEmptyTopLevelMenus(in:)`, which keys on an
     /// empty submenu: the menu matched here always carries items.
-    private func renameFileMenu(in mainMenu: NSMenu) {
-        for index in 0..<mainMenu.numberOfItems {
-            guard let item = mainMenu.item(at: index), let submenu = item.submenu,
-                  submenu.item(at: 0)?.title == CasperCommands.newSpaceTitle
-            else { continue }
-            // AppKit draws the *submenu's* title in the bar, not the item's, so both
-            // are set — and only when one of them actually differs, since this runs on
-            // every update pass.
-            if item.title != Self.spaceMenuTitle || submenu.title != Self.spaceMenuTitle {
-                item.title = Self.spaceMenuTitle
-                submenu.title = Self.spaceMenuTitle
-            }
-            return
+    static func renameFileMenu(in mainMenu: NSMenu) {
+        guard let index = Self.spaceMenuIndex(in: mainMenu), let item = mainMenu.item(at: index),
+              let submenu = item.submenu
+        else { return }
+        // AppKit draws the *submenu's* title in the bar, not the item's, so both are
+        // set — and only when one of them actually differs, since this runs on every
+        // update pass.
+        if item.title != Self.spaceMenuTitle || submenu.title != Self.spaceMenuTitle {
+            item.title = Self.spaceMenuTitle
+            submenu.title = Self.spaceMenuTitle
         }
     }
 
-    /// Strip every empty top-level menu from the main menu.
+    /// Strip SwiftUI's empty top-level stubs from the main menu.
     ///
     /// SwiftUI's `.commands` cannot remove an entire top-level menu — an emptied
     /// `CommandGroup` (Casper empties `.textFormatting` and `.help`) leaves the
@@ -289,15 +332,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, @MainActor UNUserNotif
     /// will- and did-update passes minimizes the window in which the stubs are
     /// visible, which is what produced the intermittent menu-bar flicker.
     ///
-    /// This is safe and terminating: it never touches App/Space/Edit/View/Window
-    /// (always populated), so it cannot make a real menu disappear, and once the
+    /// The one exception is the Workspace `CommandMenu`, which is legitimately empty
+    /// much of the time: SwiftUI fills a `CommandMenu`'s submenu lazily, through the
+    /// submenu's delegate when it is opened, and a re-assert of the main menu can hand
+    /// it back empty. Stripped then, it would be gone for good — SwiftUI does not put
+    /// back an item it no longer finds. Nothing structural tells it apart
+    /// from the Format/Help stubs (all three are empty, with the same SwiftUI
+    /// delegate), so it is skipped by `CasperCommands.workspaceMenuTitle`, Casper's
+    /// own unlocalized title.
+    ///
+    /// This is safe and terminating: App/Space/Edit/View/Window are always populated
+    /// and Workspace is skipped, so it cannot make a real menu disappear, and once the
     /// stubs are removed a subsequent pass finds nothing to strip. Matching empty
-    /// submenus (rather than titles) keeps it locale-independent.
-    private func stripEmptyTopLevelMenus(in mainMenu: NSMenu) {
+    /// submenus (rather than the stubs' titles) keeps it locale-independent.
+    static func stripEmptyTopLevelMenus(in mainMenu: NSMenu) {
         // Walked backwards by index so removals don't disturb the positions still to be
         // visited — the price of not snapshotting `items` on every pass.
-        for index in stride(from: mainMenu.numberOfItems - 1, through: 0, by: -1)
-        where mainMenu.item(at: index)?.submenu?.numberOfItems == 0 {
+        for index in stride(from: mainMenu.numberOfItems - 1, through: 0, by: -1) {
+            guard let item = mainMenu.item(at: index), item.submenu?.numberOfItems == 0,
+                  item.title != CasperCommands.workspaceMenuTitle
+            else { continue }
             mainMenu.removeItem(at: index)
         }
     }

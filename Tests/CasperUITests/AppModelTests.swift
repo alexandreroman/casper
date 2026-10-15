@@ -496,7 +496,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.spaces[0].workspaces.count, 1)
     }
 
-    /// What the "Create Workspace…" alert says when creation fails, captured through
+    /// What the "New Workspace…" alert says when creation fails, captured through
     /// the `reportWorkspaceCreationFailure` seam; nil when nothing was reported.
     private func creationFailureMessage(
         _ model: AppModel, spaceID: UUID, name: String

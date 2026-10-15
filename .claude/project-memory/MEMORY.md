@@ -146,3 +146,4 @@
 - [A toolbar item ignores `.frame(maxWidth:)`](references/toolbar-item-ignores-max-width.md) — only a definite width proposes downward
 - [WindowFloor resizes the window](references/window-floor-resizes-the-window.md) — `apply` can `setFrame`; per-frame publishes chase the drag
 - [SF Symbols need a shared width slot](references/sf-symbol-widths-need-a-slot.md) — no common intrinsic width; one measured slot per icon column
+- [Throwaway GUI probe cleanup](references/throwaway-gui-probe-cleanup.md) — capture the PID, kill it in a trap, confirm with pgrep

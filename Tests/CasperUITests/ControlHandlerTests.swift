@@ -1063,6 +1063,19 @@ final class ControlHandlerTests: XCTestCase {
         }
     }
 
+    /// The Workspace menu's "Run Script" waits for the setup hook like the Run chip
+    /// does. The setup-running set lives outside `spaces`, so its own writes have to
+    /// flip the edge-triggered flag.
+    func testRunScriptMenuFlagIsOffWhileSetupRuns() async throws {
+        let (model, workspaceID, setupSplit) = try await createWorkspaceRunningSetup()
+        model.selectWorkspace(workspaceID)
+        XCTAssertFalse(model.menuCanRunSelectedWorkspaceScript, "setup is still running")
+
+        model.handleScriptSurfaceExit(setupSplit, code: 0)
+
+        XCTAssertTrue(model.menuCanRunSelectedWorkspaceScript, "the `run` command is runnable once setup is over")
+    }
+
     /// A failed setup keeps its split open with the error, but the hook is over: it must
     /// not leave the workspace's commands locked.
     func testControlRunIsAllowedOnceSetupFails() async throws {

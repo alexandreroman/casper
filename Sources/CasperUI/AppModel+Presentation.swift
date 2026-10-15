@@ -23,7 +23,7 @@ extension AppModel {
     /// cancels. Production runs the save panel; tests substitute a closure.
     ///
     /// The seam exists for the reason `GhosttyClipboardRead.approveUntrusted` exists:
-    /// a modal panel cannot run under XCTest, and what the ⌘N path rests on is the
+    /// a modal panel cannot run under XCTest, and what New Space… rests on is the
     /// decision the panel returns, not its presentation.
     static var chooseNewSpaceLocation: @MainActor (_ startingAt: String?) -> URL? =
         WorkspaceAlerts.chooseNewSpaceLocation(startingAt:)
@@ -53,6 +53,20 @@ extension AppModel {
         }
     }
 
+    /// "New Workspace…" from the Workspace menu or ⌘N: the name prompt for a workspace
+    /// in `targetSpaceForNewWorkspace()`. No-op without a Git Space to create it in —
+    /// the state in which the menu item is disabled, so the keystroke a focused
+    /// terminal claims (`LayoutActionHandler`) does exactly what the menu item would.
+    func presentNewWorkspacePanel() {
+        guard let space = targetSpaceForNewWorkspace() else { return }
+        presentAddLinkedWorkspacePanel(spaceID: space.id)
+    }
+
+    /// The name for a new linked workspace, or nil when the user cancels or leaves it
+    /// empty. Production runs an alert; tests substitute a closure, for the reason
+    /// `chooseNewSpaceLocation` is a seam.
+    static var askNewWorkspaceName: @MainActor () -> String? = WorkspaceAlerts.askWorkspaceName
+
     /// Prompt for a linked-workspace name and create it. AppKit alert with a text
     /// field; no-op on cancel or empty input.
     ///
@@ -60,7 +74,7 @@ extension AppModel {
     /// worktree checkout runs off the main actor), so the sidebar's call site keeps its
     /// plain signature.
     func presentAddLinkedWorkspacePanel(spaceID: UUID) {
-        guard let name = WorkspaceAlerts.askWorkspaceName() else { return }
+        guard let name = Self.askNewWorkspaceName() else { return }
         Task { @MainActor in
             await self.createLinkedWorkspaceReportingFailure(spaceID: spaceID, name: name)
         }
@@ -81,6 +95,21 @@ extension AppModel {
     /// alert cannot run under XCTest, and what matters is the message it is given.
     static var reportWorkspaceCreationFailure: @MainActor (_ message: String) -> Void = { message in
         WorkspaceAlerts.reportFailure(title: "Could not create workspace", message: message)
+    }
+
+    /// Whether the user confirms removing the Space named `name`. Production runs an
+    /// alert; tests substitute a closure, for the reason `chooseNewSpaceLocation` is a
+    /// seam.
+    static var confirmRemoveSpace: @MainActor (_ name: String) -> Bool = WorkspaceAlerts.confirmRemoveSpace(name:)
+
+    /// A confirmation, then `removeSpace(id:)` on confirm — for the Space menu's
+    /// "Remove Space…" and the sidebar header's. `removeSpace` itself asks nothing,
+    /// since it is also driven headlessly. Nothing on disk is touched either way, but
+    /// every terminal of the Space's workspaces closes, which is worth a question.
+    func presentRemoveSpaceConfirmation(id spaceID: UUID) {
+        guard let space = spaces.first(where: { $0.id == spaceID }) else { return }
+        guard Self.confirmRemoveSpace(space.name) else { return }
+        removeSpace(id: spaceID)
     }
 
     /// A confirmation, then `closeWorkspace(id:)` on confirm. No-op if the
@@ -193,7 +222,7 @@ extension AppModel {
     /// sheet that belongs to this operation.
     ///
     /// The hop goes through `MainRunLoop`, not the main queue: a close that fails while
-    /// any other panel is up (Add Folder…, Create Workspace…, a Sparkle update check)
+    /// any other panel is up (Add Folder…, New Workspace…, a Sparkle update check)
     /// would otherwise hold this alert back for that panel's whole lifetime.
     private func presentWorkspaceOperationFailureAlert(
         for workspaceID: UUID, title: String, message: String
@@ -260,12 +289,22 @@ private enum WorkspaceAlerts {
     /// Name prompt for a new linked workspace. Nil on cancel or empty input.
     static func askWorkspaceName() -> String? {
         let alert = NSAlert()
-        alert.messageText = "Create Workspace"
+        alert.messageText = "New Workspace"
         alert.informativeText = "Name for the new branch and worktree:"
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         alert.accessoryView = field
+        // Focus the field ourselves, before the alert is shown. Left to itself, AppKit
+        // moves focus onto the accessory field from a block it queues on the main
+        // dispatch queue once the alert is up, and that block never runs if the prompt
+        // is opened from inside a main-queue block: libdispatch does not re-enter the
+        // main queue while one of its blocks is still running `runModal()`. Callers
+        // avoid that context (see `LayoutActionHandler`), but the prompt stays correct
+        // whatever context it is opened from. `layout()` comes first because it is what
+        // puts the accessory view in the alert's window.
+        alert.layout()
+        alert.window.makeFirstResponder(field)
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }
@@ -317,6 +356,14 @@ private enum WorkspaceAlerts {
         case .noFreePortBlock:
             return "Casper has no free port block left to give a new workspace."
         }
+    }
+
+    /// True when the user confirms removing a Space.
+    static func confirmRemoveSpace(name: String) -> Bool {
+        confirmDestructive(
+            message: "Remove \u{201c}\(name)\u{201d}?",
+            informative: "This closes the terminals of all its workspaces. Nothing is deleted from disk.",
+            button: "Remove")
     }
 
     /// True when the user confirms the merge-and-close.

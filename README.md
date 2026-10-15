@@ -210,20 +210,21 @@ update, not only the first install.
 
 ## Keyboard shortcuts
 
-| Shortcut  | Action                                       |
-| --------- | -------------------------------------------- |
-| `⌘N`      | New Space… — create a repository and open it |
-| `⌘O`      | Add Folder… — open a repository or worktree  |
-| `⌘D`      | Split Right                                  |
-| `⌘⇧D`     | Split Down                                   |
-| `⌘T`      | Split Right                                  |
-| `⌘W`      | Close the focused pane                       |
-| `⌘1`–`⌘9` | Switch to the sidebar's 1st–9th workspace    |
-| `⌘C`      | Copy the terminal selection                  |
-| `⌘V`      | Paste into the terminal                      |
-| `⌘A`      | Select all in the terminal                   |
-| `⌘+`/`⌘-` | Grow / shrink the focused terminal's font    |
-| `⌘0`      | Reset the focused terminal's font size       |
+| Shortcut  | Action                                           |
+| --------- | ------------------------------------------------ |
+| `⌘N`      | New Workspace… — a new branch and its worktree   |
+| `⇧⌘N`     | New Space… — create a repository and open it     |
+| `⌘O`      | Add Folder… — open a repository or worktree      |
+| `⌘D`      | Split Right                                      |
+| `⇧⌘D`     | Split Down                                       |
+| `⌘T`      | Split Right                                      |
+| `⌘W`      | Close the focused pane                           |
+| `⌘1`–`⌘9` | Switch to the sidebar's 1st–9th workspace        |
+| `⌘C`      | Copy the terminal selection                      |
+| `⌘V`      | Paste into the terminal                          |
+| `⌘A`      | Select all in the terminal                       |
+| `⌘+`/`⌘-` | Grow / shrink the focused terminal's font        |
+| `⌘0`      | Reset the focused terminal's font size           |
 
 Holding ⌘ for a moment reveals the `⌘1`–`⌘9` number hints in the sidebar.
 

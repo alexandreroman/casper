@@ -8,6 +8,26 @@ CI, test, and documentation-only work is left out.
 
 ## [Unreleased]
 
+### Added
+
+- A Workspace menu, right after the Space menu, gathers everything that acts on
+  the selected workspace: New Workspace…, Show in Finder, Open in Editor, Run
+  Script, Copy Workspace Path, Copy Branch Name, Merge and Close Workspace… and
+  Delete Workspace….
+- The View menu offers the standard Show Sidebar / Hide Sidebar item (⌃⌘S),
+  and Diff and Browser items that show or hide the inspector panel.
+- The Space menu offers Remove Space… for the selected workspace's Space.
+
+### Changed
+
+- Menu wording follows macOS conventions. "Show in Finder" opens the enclosing
+  folder with the worktree selected, "Create Workspace…" reads "New
+  Workspace…", and the title bar's `⋯` menu folds the Diff / Browser control
+  into an "Inspector" submenu whose items read "Diff" and "Browser".
+- ⌘N creates a workspace, also in a focused terminal; New Space… moves to ⇧⌘N.
+- The Edit menu holds only the standard Copy, Paste and Select All.
+- Removing a Space, from the Space menu or the sidebar, asks for confirmation.
+
 ### Fixed
 
 - The sidebar progress bar fills up to the step in progress, so step 3 of 3

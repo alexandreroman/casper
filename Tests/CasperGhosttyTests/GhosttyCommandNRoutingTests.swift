@@ -11,8 +11,10 @@ import CasperTestSupport
 /// bind ⌘N to `new_window`. So the app never gets to choose between the terminal and
 /// the menu item: the keystroke is claimed here or it is lost, and the only way to
 /// make it act is to handle the `.newWindow` action it decodes to (CasperUI maps it
-/// onto "New Space…"). This pins the delivery half of that: a genuine ⌘N `NSEvent`,
-/// through the method AppKit calls for a real keypress, on a live surface.
+/// onto "New Workspace…"). This pins the delivery half of that: a genuine ⌘N
+/// `NSEvent`, through the method AppKit calls for a real keypress, on a live surface.
+/// The other half is ⇧⌘N, New Space…'s shortcut, which libghostty leaves unbound and
+/// so must reach the menu untouched.
 ///
 /// Runs on the shared `withRealSurface` harness — the `.forTesting()` runtime never
 /// creates a surface, and without one `performKeyEquivalent` returns before it
@@ -38,6 +40,26 @@ final class GhosttyCommandNRoutingTests: XCTestCase {
                 consumed,
                 "the surface must report ⌘N consumed — a handled shortcut that also falls " +
                 "through to the menu would run twice")
+        }
+    }
+
+    @MainActor
+    func testShiftCommandNFallsThroughToTheMainMenu() throws {
+        let handler = RecordingActionHandler()
+        let makeView = { (runtime: GhosttyRuntime) in
+            runtime.actionHandler = handler
+            return GhosttySurfaceView(runtime: runtime, configuration: GhosttySurfaceConfiguration())
+        }
+
+        try withRealSurface(makeView: makeView) { view, _ in
+            let event = keyEvent("N", modifiers: [.command, .shift], keyCode: 45)
+            let consumed = view.performKeyEquivalent(with: event)
+            settle(0.4)
+
+            XCTAssertEqual(handler.actions, [], "libghostty must bind nothing to ⇧⌘N")
+            XCTAssertFalse(
+                consumed,
+                "a consumed ⇧⌘N never reaches New Space… while a terminal is focused")
         }
     }
 }
