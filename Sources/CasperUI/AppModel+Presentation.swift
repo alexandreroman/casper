@@ -295,6 +295,16 @@ private enum WorkspaceAlerts {
         alert.addButton(withTitle: "Cancel")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         alert.accessoryView = field
+        // Focus the field ourselves, before the alert is shown. Left to itself, AppKit
+        // moves focus onto the accessory field from a block it queues on the main
+        // dispatch queue once the alert is up, and that block never runs if the prompt
+        // is opened from inside a main-queue block: libdispatch does not re-enter the
+        // main queue while one of its blocks is still running `runModal()`. Callers
+        // avoid that context (see `LayoutActionHandler`), but the prompt stays correct
+        // whatever context it is opened from. `layout()` comes first because it is what
+        // puts the accessory view in the alert's window.
+        alert.layout()
+        alert.window.makeFirstResponder(field)
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }

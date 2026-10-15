@@ -25,8 +25,10 @@ literals: `RunLoop.Mode.modalPanel` / `.eventTracking` are declared by
 
 **`DispatchQueue.main.async` is not a substitute.** A nested modal run loop —
 `NSAlert`/`NSOpenPanel` `runModal`, a Sparkle update check, menu or drag
-tracking — starves the main dispatch queue for its whole duration, while it
-does drain run-loop blocks.
+tracking — entered from inside a main-queue block starves the main dispatch
+queue for its whole duration, while it does drain run-loop blocks. One visible
+casualty: AppKit's FocusEngine focuses an `NSAlert` accessory text field from a
+main-queue block, so a prompt run from a main-queue block opens unfocused.
 
 **Use it for** any main-thread hop that must run while a panel or alert is up:
 a workspace close awaiting a lifecycle hook, a watcher-driven refresh, a

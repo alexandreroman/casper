@@ -119,9 +119,11 @@ claims four of the seam's five actions. Three of them — `newSplit`, `newTab`,
 onto the nearest honest equivalent, the Workspace menu's **New Workspace…** —
 which carries ⌘N in the menu bar too, so the keystroke does the same thing
 whether or not a terminal is focused, including nothing when there is no Git
-Space to create in. It is the one case deferred to the next main-loop turn
-rather than run inline, because its modal name prompt must not hold
-libghostty's tick open. New Space…'s ⇧⌘N needs no claim: libghostty binds
+Space to create in. It is the one case deferred rather than run inline, in two
+hops: a main-queue hop leaves libghostty's tick, then a run-loop block
+(`MainRunLoop.perform`) presents the modal name prompt outside the main-queue
+drain, so the prompt neither holds libghostty's tick open nor starves the main
+queue while it is up. New Space…'s ⇧⌘N needs no claim: libghostty binds
 nothing to it, so it reaches the menu. `LayoutNode` is
 `split | leaf`, rendered by CasperUI's own `SplitContainerView`, and `newTab`
 maps to a right split. `close_surface_cb` is wired, so Ctrl-D or `exit` closes
