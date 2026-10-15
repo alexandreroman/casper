@@ -13,11 +13,67 @@ depends on Ghostty layout composition (`terminal.md`).
   bridge to the other modules; the window is a `NavigationSplitView` with an
   empty state. Casper owns the menu bar through SwiftUI `.commands`
   (`terminal.md` § Design → "Main menu"), **replacing** the standard command
-  groups, with two additive groups — "Check for Updates…" (see "Software
-  update") and the View menu's pane splits, placed after SwiftUI's standard
-  Show/Hide Sidebar (`SidebarCommands`); the Window menu and the rest of the
-  App menu are SwiftUI's defaults. The only `NSMenu` built in AppKit is the
-  pane context menu (`PaneContextMenu`).
+  groups; the Window menu and the rest of the App menu are SwiftUI's defaults.
+  The only `NSMenu` built in AppKit is the pane context menu
+  (`PaneContextMenu`). See "Menu bar" below.
+- **Menu bar** — one menu per object level, each acting on the selection, in
+  the order App, Space, Workspace, Edit, View, Window:
+
+  ```text
+  Space                Workspace                       View
+  New Space…    ⇧⌘N    New Workspace…    ⌘N            Show Sidebar  ⌃⌘S
+  Add Folder…    ⌘O    ───                             ───
+  ───                  Show in Finder                  Diff     (checkmark)
+  Remove Space…        Open in Editor                  Browser  (checkmark)
+                       Run Script                      ───
+                       ───                             Split Up / Down / …
+                       Copy Workspace Path
+                       Copy Branch Name
+                       ───
+                       Merge and Close Workspace…
+                       Delete Workspace…
+  ```
+
+  **Space** is the standard File slot retitled (see "Ways into a Space");
+  **Remove Space…** acts on the selected workspace's Space. **Workspace** acts
+  on the selected workspace, and sits right after Space so the two object menus
+  read project, then worktree; its shared items render the same
+  `WorkspaceMenuItem` description as the sidebar row's context menu. It is the
+  one additive `CommandMenu`, which SwiftUI always lands between View and Window
+  — `.commands` offers no way to place it elsewhere — so the AppKit resync that
+  retitles File → Space also moves it after Space on every update pass
+  (`AppDelegate.placeWorkspaceMenuAfterSpaceMenu(in:)`,
+  [[swiftui-mainmenu-miniaturize-resync]]). The same resync's strip of empty
+  Format/Help stubs exempts it, since SwiftUI fills a `CommandMenu` only when it
+  is opened. **Edit** holds the standard Copy, Paste and Select All only.
+  **View** adds the inspector's Diff / Browser toggles and the pane splits after
+  SwiftUI's standard Show/Hide Sidebar (`SidebarCommands`); "Check for Updates…"
+  is the App menu's one addition (see "Software update").
+
+  The menu body observes **no volatile state** — no selection, no focus, no
+  per-workspace data — because SwiftUI re-asserts the whole native menu each
+  time that body is invalidated, which flickers the bar
+  ([[swiftui-mainmenu-miniaturize-resync]]). Every enable-state and the Diff /
+  Browser checkmark read an edge-triggered `menu…` flag on `AppModel`, written
+  only when its value flips, and every action resolves the selected workspace
+  when it fires. That is why **Open in Editor** and **Run Script** are plain
+  items rather than the title bar's submenus — a submenu listing the selected
+  workspace's editors or scripts would observe the selection. Each runs what
+  the matching title-bar chip's primary action runs: the resolved editor
+  (`openInEditor(nil, for:)`) and the resolved script (`runResolvedScript`),
+  the latter disabled while the workspace's `setup` hook runs. The Diff /
+  Browser checkmark is the selected workspace's `InspectorState.visibleTab`;
+  it moves only on a user toggle or a selection change, the same discrete
+  edges the enable-state flags flip on.
+
+  **Remove Space…** — in this menu and in the sidebar's Space header context
+  menu — asks first (`presentRemoveSpaceConfirmation`): removing a Space
+  closes every terminal of its workspaces, though nothing on disk is touched.
+  `removeSpace(id:)` itself asks nothing, since it is also driven headlessly.
+  The menu-bar item is disabled while any workspace of that Space is being
+  closed or deleted: the operation's progress sheet blocks the sidebar but not
+  the menu bar, and a Space removed mid-merge would leave the worktree and
+  branch on disk and the primary worktree un-resynced.
 - **Appearance** — the app follows the system Light/Dark appearance; nothing
   forces one. `AppDelegate` observes `NSApp.effectiveAppearance` and forwards it
   through `AppModel.applyColorScheme(dark:)` to libghostty (the app and every
@@ -49,12 +105,13 @@ depends on Ghostty layout composition (`terminal.md`).
   notification dot is blue (white while selected), and the `ProgressBar` turns
   green once every todo is complete.
 - **Ways into a Space** — two of them, offered in the same order wherever they
-  appear: **New Space…** (⌘N) creates a project from nothing, **Add Folder…**
-  (⌘O) adopts one that already exists. They open the **Space** menu; they are
-  the empty state's two buttons, create prominent and adopt merely bordered,
-  since a user with nothing open is likelier to be starting something than to be
-  hunting for a repo they forgot to add; and they are the two rows pinned below
-  the sidebar's scrolling list, create above adopt. All three sites render one
+  appear: **New Space…** (⇧⌘N) creates a project from nothing, **Add Folder…**
+  (⌘O) adopts one that already exists; plain ⌘N belongs to **New Workspace…**,
+  the thing created most often. They open the **Space** menu; they are the empty
+  state's two buttons, create prominent and adopt merely bordered, since a user
+  with nothing open is likelier to be starting something than to be hunting for
+  a repo they forgot to add; and they are the two rows pinned below the
+  sidebar's scrolling list, create above adopt. All three sites render one
   `SpaceEntryCommand` description and list its `allCases`, so titles, symbols,
   actions and order cannot drift apart.
 
@@ -431,7 +488,8 @@ depends on Ghostty layout composition (`terminal.md`).
   right**: macOS reserves "Sidebar" for the left workspace column. Its items,
   `Diff` and `Browser`, route through the same `toggleInspectorTab` mutator as
   the segments, checkmarked against the tab showing, so bar and menu cannot
-  disagree.
+  disagree. The View menu's Diff / Browser toggles are the same pair, offered
+  at every rung for the selected workspace (see "Menu bar").
 
   All chrome comes from one shell: a fixed-height capsule with an explicit fill
   and a hairline border, plus a hover highlight and a pressed state past it —
@@ -616,13 +674,12 @@ depends on Ghostty layout composition (`terminal.md`).
 - **Wiring** — starts the release control server (`casper` CLI → `AppModel`),
   injects the bundle exec dir + per-surface env into each terminal, and runs the
   `#if DEBUG` debug bridge (all detailed in `cli-agents.md`).
-- **Software update** — `SoftwareUpdater` wraps **Sparkle**, and is the one
-  thing that *adds* to the menu bar: a "Check for Updates…" group after
-  `.appInfo` in the App menu. It stays inert unless the running bundle declares
-  both an appcast feed URL and the EdDSA public key that authenticates it —
-  Casper ships ad-hoc-signed, so that key, not code-signing continuity, is the
-  whole of the trust chain — and the menu item is offered only when it does, a
-  dead entry being worse than none. Only the release bundle carries the pair, so
-  a dev build and an unbundled binary are quiet by construction. The
-  operational side (the feed, the release job, key custody) belongs to
-  `README.md` and [[sparkle-eddsa-key]].
+- **Software update** — `SoftwareUpdater` wraps **Sparkle**, and adds one group
+  to the App menu: "Check for Updates…" after `.appInfo`. It stays inert unless
+  the running bundle declares both an appcast feed URL and the EdDSA public key
+  that authenticates it — Casper ships ad-hoc-signed, so that key, not
+  code-signing continuity, is the whole of the trust chain — and the menu item
+  is offered only when it does, a dead entry being worse than none. Only the
+  release bundle carries the pair, so a dev build and an unbundled binary are
+  quiet by construction. The operational side (the feed, the release job, key
+  custody) belongs to `README.md` and [[sparkle-eddsa-key]].

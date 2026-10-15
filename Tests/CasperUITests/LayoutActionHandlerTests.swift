@@ -21,21 +21,25 @@ final class LayoutActionHandlerTests: XCTestCase {
 
     /// ⌘N is a libghostty keybind, so `.newWindow` is the only thing the keystroke can
     /// arrive as — `GhosttyCommandNRoutingTests` pins that half. This is the other
-    /// half: the action has to reach "New Space…", or the shortcut is claimed from the
-    /// main menu and then does nothing at all.
+    /// half: the action has to reach "New Workspace…", or the shortcut is claimed from
+    /// the main menu and then does nothing at all.
     ///
-    /// The panel itself is substituted, the way `GhosttyClipboardRead.approveUntrusted`
-    /// is: an `NSSavePanel` cannot run under XCTest. Cancelling is what the stand-in
-    /// reports, so nothing is created and nothing is written.
-    func testNewWindowOpensTheNewSpacePanelExactlyOnceAndClaimsTheAction() {
-        let model = makeModel()
-        var presentations = 0
-        let presented = expectation(description: "the new-Space location panel is asked for")
-        let original = AppModel.chooseNewSpaceLocation
-        defer { AppModel.chooseNewSpaceLocation = original }
-        AppModel.chooseNewSpaceLocation = { _ in
-            presentations += 1
-            presented.fulfill()
+    /// The name prompt itself is substituted, the way `GhosttyClipboardRead.approveUntrusted`
+    /// is: an `NSAlert` cannot run under XCTest. Cancelling is what the stand-in
+    /// reports, so nothing is created.
+    func testNewWindowOpensTheNewWorkspacePromptExactlyOnceAndClaimsTheAction() {
+        let primary = Workspace(
+            name: "main", worktreePath: "/tmp/primary", branch: "main",
+            portBase: 42000, layout: .leaf(Surface.terminal(cwd: "/tmp/primary")))
+        let space = Space(name: "repo", folderPath: "/tmp", isGitRepo: true, workspaces: [primary])
+        let model = makeModel(spaces: [space], selecting: primary.id)
+        var prompts = 0
+        let prompted = expectation(description: "the new-workspace name is asked for")
+        let original = AppModel.askNewWorkspaceName
+        defer { AppModel.askNewWorkspaceName = original }
+        AppModel.askNewWorkspaceName = {
+            prompts += 1
+            prompted.fulfill()
             return nil  // the user cancels
         }
 
@@ -44,10 +48,30 @@ final class LayoutActionHandlerTests: XCTestCase {
             handler.handle(.newWindow),
             "an unclaimed .newWindow takes ⌘N away from the menu item without replacing it")
 
-        // The presentation is deliberately deferred off libghostty's key-processing
-        // tick, so it lands on a later turn of the main run loop rather than inline.
-        wait(for: [presented], timeout: 2)
-        XCTAssertEqual(presentations, 1)
-        XCTAssertTrue(model.spaces.isEmpty)
+        // The prompt is deliberately deferred off libghostty's key-processing tick, so
+        // it lands on a later turn of the main run loop rather than inline.
+        wait(for: [prompted], timeout: 2)
+        XCTAssertEqual(prompts, 1)
+        XCTAssertEqual(model.spaces[0].workspaces.count, 1)
+    }
+
+    /// With no Git Space there is nowhere to create a workspace — the menu item is
+    /// disabled — so ⌘N in a terminal asks nothing either, yet stays claimed: falling
+    /// through would hand the keystroke to libghostty's own "new window".
+    func testNewWindowWithoutAGitSpaceAsksNothingButStillClaimsTheAction() {
+        let dir = makeTemporaryDirectory(prefix: "casper-lah")
+        let model = makeModel()
+        model.addSpace(folderURL: dir, probe: { _ in nil })  // non-Git degenerate Space
+        let prompted = expectation(description: "no name prompt")
+        prompted.isInverted = true
+        let original = AppModel.askNewWorkspaceName
+        defer { AppModel.askNewWorkspaceName = original }
+        AppModel.askNewWorkspaceName = {
+            prompted.fulfill()
+            return nil
+        }
+
+        XCTAssertTrue(LayoutActionHandler(model: model).handle(.newWindow))
+        wait(for: [prompted], timeout: 0.5)
     }
 }

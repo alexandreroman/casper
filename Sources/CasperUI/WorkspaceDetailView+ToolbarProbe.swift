@@ -258,7 +258,7 @@ extension WorkspaceDetailView {
     private func setInspector(_ tab: InspectorTab?) async {
         for _ in 0..<3 {
             guard let current = model.workspace(id: workspace.id) else { return }
-            let showing: InspectorTab? = current.inspector.collapsed ? nil : current.inspector.tab
+            let showing = current.inspector.visibleTab
             if showing == tab { return }
             model.toggleInspectorTab(tab ?? current.inspector.tab, for: workspace.id)
             try? await Task.sleep(for: .milliseconds(500))

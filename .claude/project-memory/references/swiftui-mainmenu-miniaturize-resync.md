@@ -8,31 +8,26 @@ type: reference
 
 Casper's menu bar is defined entirely in SwiftUI `.commands` (`CasperCommands`
 in `Sources/CasperUI/MenuCommands.swift`, wired via `CasperApp.body`'s
-`.commands { CasperCommands(model: model) }`). File ← `.newItem`, Edit ←
-`.pasteboard`, View ← `SidebarCommands()` in `.sidebar` plus the splits in
-`CommandGroup(after: .sidebar)` (replacing `.sidebar` would drop the standard
-Show/Hide Sidebar toggle); App ← SwiftUI defaults plus the additive
-Check for Updates… group after `.appInfo`; Window uses SwiftUI defaults. The
-File slot's menu is titled **"Space"** on the bar — see "Renaming the File
-menu" below; every other placement's visible title is the standard one. Edit
-Copy/Paste/Select All carry no target —
-`NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)` routes
-through the responder chain to the focused `GhosttySurfaceView` (and to text
-fields), so they stay always-enabled by design.
+`.commands { CasperCommands(model: model) }`). The menus, their placements and
+every enable-state flag are inventoried in `.superpowers/themes/app-ui.md`
+§ Design → "Menu bar". The bar reads App, Space, Workspace, Edit, View,
+Window, and two of those placements are AppKit fixups `.commands` cannot
+express: the standard File slot is retitled "Space", and the Workspace
+`CommandMenu`, which SwiftUI always lands between View and Window, is moved
+right after Space (see "Renaming the File menu" and "Moving the Workspace
+menu" below).
 
-Menu enable-state does NOT read raw `@Observable` state directly (that flickers
-— see below). It reads **edge-triggered stored flags** on `AppModel`
-(`menuHasSelectedWorkspace`, `menuCanCreateWorkspace`,
-`menuCanDeleteSelectedWorkspace`, `menuCanCloseSelectedWorkspace`) bound via
-`.disabled(...)`. `refreshMenuFlags()` recomputes each flag from the underlying
-computed props and writes it back **only when it flips** (the `!=` guard is
-essential — an unconditional write to an `@Observable` var notifies observers
-even when unchanged). It is driven by `didSet` on `spaces` and
-`selectedWorkspaceID` **only**. `focusedSurfaceID` deliberately has **no**
-`didSet`: the menu must not react to focus changes. The View menu's **Split**
-items are **always enabled** (no focus-dependent `.disabled`); `applyNewSplit`
-gates itself on `locateFocusedTerminal()`, one walk that answers both questions
-the action asks — is a terminal focused, and which workspace owns it. Covered by
+The `CasperCommands` body observes **no volatile state** — no selection, no
+focus, no per-workspace data. SwiftUI re-asserts the whole native menu whenever
+that body's observed output changes, and each re-assert flickers the bar (the
+mechanism is below). Enable-state and checkmarks therefore read
+**edge-triggered stored flags** on `AppModel` (`menu…`), and actions resolve
+the selected workspace when they fire. Each flag is written back **only when it
+flips**: the `!=` guard is essential, since an unconditional write to an
+`@Observable` var notifies observers even when the value is unchanged.
+`focusedSurfaceID` has **no** `didSet`, so a focus change never touches a flag;
+the View menu's Split items are always enabled and `applyNewSplit` gates itself
+on `locateFocusedTerminal()`. Covered by
 `Tests/CasperUITests/MenuStateTests.swift`.
 
 **Why:** building the whole bar imperatively in AppKit
@@ -78,6 +73,16 @@ targets *exactly* Format+Help without matching titles (important — the system
 localizes "Help" to e.g. "Aide"). The strip is safe (never touches the
 always-populated menus) and cannot loop.
 
+**An empty `CommandMenu` is not a stub.** SwiftUI fills a `CommandMenu`'s
+submenu lazily, through the submenu's delegate (`menuNeedsUpdate(_:)`) when it
+is opened, and a re-assert of the main menu hands it back with zero items. An
+emptiness-only strip removes it then, and SwiftUI never re-adds it — the menu
+is simply gone from the bar. Nothing structural tells it apart from the
+Format/Help stubs (same emptiness, same SwiftUI delegate class,
+`AppKitMainMenuItem`), so `AppDelegate.stripEmptyTopLevelMenus(in:)` skips it
+by `CasperCommands.workspaceMenuTitle`. Any further `CommandMenu` needs the same
+exemption.
+
 **Services is stripped in AppKit too, from the App menu's `NSMenuDelegate`
 rather than from the update hooks.** `AppMenuDelegateProxy` and
 `installAppMenuDelegateProxy` in `Sources/CasperUI/AppDelegate.swift` carry the
@@ -88,11 +93,11 @@ that rules the update hooks out as the only strip point.
 
 The menu occupying the standard File slot reads **"Space"** on the bar, applied
 by `AppDelegate.renameFileMenu(in:)` from `resyncMainMenu()`. SwiftUI cannot do
-it: `.commands` positions a group into a standard menu
-(`CommandGroup(replacing: .newItem)`) but exposes no title for it, and the only
-titled construct — an additive `CommandMenu` — lands after Window instead of in
-the File slot. Like the strips, the rename runs on **every** update pass, since
-each resync re-asserts `NSApp.mainMenu` with the standard localized title.
+it: `.commands` positions a group into a standard menu (`CommandGroup(replacing:
+.newItem)`) but exposes no title for it, and the only titled construct — an
+additive `CommandMenu` — lands between View and Window instead of in the File
+slot. Like the strips, the rename runs on **every** update pass, since each
+resync re-asserts `NSApp.mainMenu` with the standard localized title.
 
 Both `NSMenuItem.title` and `submenu.title` are set (AppKit draws the
 *submenu's* title in the bar), and only when one of them differs. The menu is
@@ -103,7 +108,31 @@ first pass the title is Casper's own): the marker is
 `.newItem` is the only group Casper leaves populated there. That string is
 load-bearing for the rename; the shared `static let` is what keeps the two
 sites from drifting. The rename cannot disturb `stripEmptyTopLevelMenus(in:)`,
-which keys on an empty submenu.
+which keys on an empty submenu. The lookup (`AppDelegate.spaceMenuIndex(in:)`)
+checks a submenu is non-empty before asking for its first item:
+`NSMenu.item(at:)` raises on an out-of-range index rather than returning nil,
+and SwiftUI's empty Format/Help stubs can be on the bar mid-resync.
+
+## Moving the Workspace menu
+
+`AppDelegate.placeWorkspaceMenuAfterSpaceMenu(in:)` moves the Workspace
+top-level `NSMenuItem` to the index right after the Space menu, from
+`resyncMainMenu()`, on every update pass. It finds the item by
+`CasperCommands.workspaceMenuTitle` (the `CommandMenu`'s own unlocalized title)
+and moves nothing when the order is already right, so a settled bar is never
+mutated. Covered headlessly by
+`Tests/CasperUITests/MainMenuPlacementTests.swift`.
+
+Every SwiftUI re-assert of the menu puts Workspace back between View and Window
+— observed after a `Commands` body output change, miniaturize, hide/unhide and a
+key-equivalent dispatch — and the next update pass moves it again, the same race
+the Format/Help strips run. The move does not fight SwiftUI otherwise (checked
+in a throwaway SwiftUI app): SwiftUI repositions the same item rather than
+duplicating it, and the moved submenu keeps its items, actions, enable-state and
+checkmarks; opening the moved menu still fills it, since the submenu travels
+with its delegate. Because of the lazy fill (see above), a probe that reads a
+`CommandMenu` submenu without opening it or calling its delegate sees it empty,
+and a probe that omits the strip cannot reproduce what the strip does to it.
 
 ## The resync pass runs unconditionally — do not add an early-out cache
 

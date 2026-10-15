@@ -491,7 +491,7 @@ struct WorkspaceToolbarActions: View {
     /// while the panel is collapsed.
     @ViewBuilder
     private var inspectorTabItems: some View {
-        let showing: InspectorTab? = workspace.inspector.collapsed ? nil : workspace.inspector.tab
+        let showing = workspace.inspector.visibleTab
         inspectorTabItem(.diff, title: "Diff", showing: showing)
         inspectorTabItem(.browser, title: "Browser", showing: showing)
     }
@@ -552,7 +552,7 @@ struct InspectorTabSelector: View {
 
     var body: some View {
         // `nil` while the panel is collapsed — the "neither is on" state.
-        let selection: InspectorTab? = workspace.inspector.collapsed ? nil : workspace.inspector.tab
+        let selection = workspace.inspector.visibleTab
         return HStack(spacing: 0) {
             segment(.diff, systemImage: "plusminus", help: "Show or hide the diff", selection: selection)
             segment(.browser, systemImage: "globe", help: "Show or hide the browser", selection: selection)
@@ -657,7 +657,7 @@ private struct ScriptToolbarButton: View {
         // Running waits for the workspace's setup hook; choosing the script does not, so
         // only the primary action is disabled meanwhile.
         return TitleSplitButton(isActionEnabled: !model.isSetupRunning(in: workspace.id)) {
-            if let current { model.runScript(current.name, for: workspace.id) }
+            model.runResolvedScript(for: workspace.id)
         } primaryLabel: {
             // Pinned explicitly: the toolbar environment resolves a `Label` icon-only
             // on its own and would drop the title (see the `toolbar-label-style`

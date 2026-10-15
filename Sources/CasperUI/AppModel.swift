@@ -77,7 +77,13 @@ final class AppModel {
 
     /// Editors detected as launchable at startup (app bundle resolvable), in
     /// `EditorKind.allCases`. Never re-detected while the app is running.
-    private(set) var availableEditors: [EditorKind] = []
+    private(set) var availableEditors: [EditorKind] = [] { didSet { refreshMenuFlagsForOutsideInputs() } }
+
+    #if DEBUG
+    /// Test seam: the detected list is machine-dependent, so a test that has to see
+    /// both "no editor" and "some editor" sets it instead.
+    func debugSetAvailableEditors(_ editors: [EditorKind]) { availableEditors = editors }
+    #endif
 
     /// What the window's floor is built from, or `nil` when no workspace is on
     /// screen. Published by `WorkspaceDetailView`, which is the only place that can
@@ -100,7 +106,7 @@ final class AppModel {
     /// disable themselves — which is why it lives here, observed, rather than in the
     /// `@ObservationIgnored` `scriptHooks` runner that reports every change to it.
     /// Transient, never persisted: setup runs at creation only.
-    private(set) var setupRunningWorkspaces: Set<UUID> = []
+    private(set) var setupRunningWorkspaces: Set<UUID> = [] { didSet { refreshMenuFlagsForOutsideInputs() } }
 
     /// Live progress of a workspace close/delete while its modal sheet is up; nil
     /// when no operation is visible. Publishing is deliberately lagged: the
@@ -204,29 +210,44 @@ final class AppModel {
     // These flags change only when an enable-state actually flips, so the menu body
     // stays stable across `spaces` churn. `refreshMenuFlags()` keeps them in sync
     // from those two raw inputs' `didSet`, writing each flag only when its value
-    // differs so an unchanged recompute never notifies observers. The Split items
+    // differs so an unchanged recompute never notifies observers. Three flags also
+    // read inputs that live outside `spaces` — the detected editors, the
+    // named-commands cache, the setup-running set and the workspaces being closed —
+    // so those inputs' own `didSet` drive `refreshMenuFlagsForOutsideInputs()`
+    // directly. The Split items
     // are deliberately NOT backed by a flag: they are always enabled (see
     // `CasperCommands`), so nothing here observes `focusedSurfaceID`.
     private(set) var menuHasSelectedWorkspace = false
     private(set) var menuCanCreateWorkspace = false
     private(set) var menuCanDeleteSelectedWorkspace = false
     private(set) var menuCanCloseSelectedWorkspace = false
+    private(set) var menuCanOpenSelectedWorkspaceInEditor = false
+    private(set) var menuCanRunSelectedWorkspaceScript = false
+    private(set) var menuCanRemoveSelectedSpace = false
+    /// The View menu's Diff / Browser checkmark: the selected workspace's
+    /// `InspectorState.visibleTab`. It moves only when the user toggles the panel or
+    /// changes the selection, the same discrete edges the flags above flip on.
+    private(set) var menuInspectorTab: InspectorTab?
 
-    /// A snapshot of EXACTLY the inputs the four menu enable-state flags read, used
-    /// to skip the recompute when none of them could have changed. The flags depend
-    /// only on selection and workspace membership/kind/Git-backing — never on
-    /// `layout`/`agentState`/`todos`/`inspector` — yet `spaces.didSet` fires on
-    /// every one of those high-frequency mutations (notably each agent-detection
-    /// `agentState` flip). Comparing this fingerprint lets those churny mutations
-    /// early-out of `refreshMenuFlags()`.
+    /// A snapshot of EXACTLY the `spaces` / selection inputs the menu flags read,
+    /// used to skip the recompute when none of them could have changed. The flags
+    /// depend only on selection, workspace membership/kind/Git-backing and the
+    /// selected workspace's visible inspector tab — never on
+    /// `layout`/`agentState`/`todos` — yet `spaces.didSet` fires on every one of
+    /// those high-frequency mutations (notably each agent-detection `agentState`
+    /// flip). Comparing this fingerprint lets those churny mutations early-out of
+    /// `refreshMenuFlags()`.
     ///
-    /// Inputs captured (a deliberate superset of the four properties' reads —
+    /// Inputs captured (a deliberate superset of the properties' reads —
     /// `hasSelectedWorkspace`, `canCreateWorkspace` via `targetSpaceForNewWorkspace`,
-    /// `canDeleteSelectedWorkspace`, `canCloseSelectedWorkspace`): the selection,
-    /// and per Space its `isGitRepo` plus each workspace's `id → kind`.
-    /// `canCloseSelectedWorkspace` also reads the selected workspace's `baseBranch`,
-    /// but a workspace's `baseBranch` is fixed at creation and never mutated after,
-    /// so membership + kind already capture every way it can flip.
+    /// `canDeleteSelectedWorkspace`, `canCloseSelectedWorkspace`,
+    /// `selectedInspectorTab`): the selection, the selected workspace's visible
+    /// inspector tab, and per Space its `isGitRepo` plus each workspace's
+    /// `id → kind`. `canCloseSelectedWorkspace` also reads the selected workspace's
+    /// `baseBranch`, but a workspace's `baseBranch` is fixed at creation and never
+    /// mutated after, so membership + kind already capture every way it can flip.
+    /// The flags' other inputs live outside `spaces` and refresh on their own
+    /// (`refreshMenuFlagsForOutsideInputs()`).
     private struct MenuFlagsFingerprint {
         struct WorkspaceFingerprint {
             let id: UUID
@@ -238,6 +259,7 @@ final class AppModel {
             let workspaces: [WorkspaceFingerprint]
         }
         let selectedWorkspaceID: UUID?
+        let selectedInspectorTab: InspectorTab?
         let spaces: [SpaceFingerprint]
     }
 
@@ -256,7 +278,8 @@ final class AppModel {
                 })
         }
         return MenuFlagsFingerprint(
-            selectedWorkspaceID: selectedWorkspaceID, spaces: spaceFingerprints)
+            selectedWorkspaceID: selectedWorkspaceID, selectedInspectorTab: selectedInspectorTab,
+            spaces: spaceFingerprints)
     }
 
     /// Whether the current state still matches `fingerprint`, compared by walking both
@@ -279,6 +302,10 @@ final class AppModel {
                   recordedSpace.workspaces.count == space.workspaces.count else { return false }
             for (recorded, workspace) in zip(recordedSpace.workspaces, space.workspaces) {
                 guard recorded.id == workspace.id, recorded.kind == workspace.kind else { return false }
+                if workspace.id == selectedWorkspaceID,
+                   workspace.inspector.visibleTab != fingerprint.selectedInspectorTab {
+                    return false
+                }
             }
         }
         return true
@@ -292,10 +319,11 @@ final class AppModel {
     /// A fingerprint guard fronts the recompute: `spaces.didSet` fires on every
     /// `spaces` mutation (including the frequent agent-detection `agentState`
     /// flips), but the flags depend only on the inputs in `MenuFlagsFingerprint`.
-    /// When the fingerprint is unchanged, none of the four flags can have changed,
-    /// so return immediately and skip the four linear scans and their guarded
-    /// writes. Correctness hinges on the fingerprint changing whenever any flag
-    /// input changes (see `MenuFlagsFingerprint`), or a menu item could get stuck.
+    /// When the fingerprint is unchanged, none of the flags can have changed, so
+    /// return immediately and skip the linear scans and their guarded writes.
+    /// Correctness hinges on the fingerprint changing whenever any flag input in
+    /// `spaces` or the selection changes (see `MenuFlagsFingerprint`), or a menu item
+    /// could get stuck.
     private func refreshMenuFlags() {
         if let lastMenuFlagsFingerprint, matchesMenuFlagsFingerprint(lastMenuFlagsFingerprint) { return }
         lastMenuFlagsFingerprint = menuFlagsFingerprint()
@@ -307,6 +335,27 @@ final class AppModel {
         }
         if menuCanCloseSelectedWorkspace != canCloseSelectedWorkspace {
             menuCanCloseSelectedWorkspace = canCloseSelectedWorkspace
+        }
+        if menuInspectorTab != selectedInspectorTab { menuInspectorTab = selectedInspectorTab }
+        // The selection and the Space membership are these flags' inputs too.
+        refreshMenuFlagsForOutsideInputs()
+    }
+
+    /// Recompute the flags that also read inputs outside `spaces` — Open in Editor,
+    /// Run Script and Remove Space… — writing only on a real change (see
+    /// `refreshMenuFlags()`). No fingerprint here: those inputs call this from their
+    /// own `didSet`, which a `spaces` fingerprint could not see anyway, and they change
+    /// on discrete events (launch, a `.casper.json` load, a hook or a close starting or
+    /// ending), never on the high-frequency `spaces` churn.
+    private func refreshMenuFlagsForOutsideInputs() {
+        if menuCanOpenSelectedWorkspaceInEditor != canOpenSelectedWorkspaceInEditor {
+            menuCanOpenSelectedWorkspaceInEditor = canOpenSelectedWorkspaceInEditor
+        }
+        if menuCanRunSelectedWorkspaceScript != canRunSelectedWorkspaceScript {
+            menuCanRunSelectedWorkspaceScript = canRunSelectedWorkspaceScript
+        }
+        if menuCanRemoveSelectedSpace != canRemoveSelectedSpace {
+            menuCanRemoveSelectedSpace = canRemoveSelectedSpace
         }
     }
 
@@ -490,7 +539,9 @@ final class AppModel {
     /// selection for the selected workspace, and from a sidebar row's `.onAppear`
     /// for the rest, so SwiftUI never reads the file during `body` —
     /// `namedCommands(for:)` only ever reads this cache.
-    @ObservationIgnored var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:]
+    @ObservationIgnored var namedCommandsCache: [UUID: [RepoNamedCommand]] = [:] {
+        didSet { refreshMenuFlagsForOutsideInputs() }
+    }
 
     // Reached from AppModel+Spaces.swift.
     /// The `.casper.json` modification date each cache entry above was built from, so a
@@ -511,7 +562,9 @@ final class AppModel {
     /// strand the first one's continuation and run two libgit2 writers against the same
     /// repository. Claimed and released on the main actor with no `await` in between, so
     /// the check-and-insert is atomic. Transient, never persisted.
-    @ObservationIgnored var closingWorkspaces: Set<UUID> = []
+    @ObservationIgnored var closingWorkspaces: Set<UUID> = [] {
+        didSet { refreshMenuFlagsForOutsideInputs() }
+    }
 
     // Reached from AppModel+Spaces.swift.
     /// Per-workspace debounce/`done`-derivation state for the terminal-scraping
@@ -721,14 +774,14 @@ final class AppModel {
     }
 
     /// Copy a workspace's worktree path to the general pasteboard. Backs the
-    /// "Copy Workspace Path" items in the sidebar context menu and the Edit menu.
+    /// "Copy Workspace Path" items in the sidebar context menu and the Workspace menu.
     func copyWorkspacePath(id: UUID) {
         guard let workspace = workspace(id: id) else { return }
         copyToPasteboard(workspace.worktreePath)
     }
 
     /// Copy a workspace's branch name to the general pasteboard. Backs the
-    /// "Copy Branch Name" items in the sidebar context menu and the Edit menu.
+    /// "Copy Branch Name" items in the sidebar context menu and the Workspace menu.
     func copyBranchName(id: UUID) {
         guard let workspace = workspace(id: id) else { return }
         copyToPasteboard(workspace.branch)
@@ -743,7 +796,7 @@ final class AppModel {
 
     /// Reveal a workspace's worktree in Finder: the enclosing folder opens with the
     /// worktree selected, as Xcode's and Safari's "Show in Finder" do. Backs the
-    /// "Show in Finder" items in the sidebar context menu and the Space menu.
+    /// "Show in Finder" items in the sidebar context menu and the Workspace menu.
     func showInFinder(id: UUID) {
         guard let workspace = workspace(id: id) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: workspace.worktreePath)])
@@ -804,13 +857,13 @@ final class AppModel {
     /// still run, and `spaces.didSet` fires exactly once *per call*.
     ///
     /// "Per call" is load-bearing: grouping several field writes into one block
-    /// deliberately collapses what used to be several `didSet` fires into one. That
-    /// collapsing is only sound while none of the grouped fields is an input to
-    /// `MenuFlagsFingerprint` (which captures only `selectedWorkspaceID`, each Space's
-    /// `isGitRepo`, and each workspace's `id → kind`) — a future grouping that touches
-    /// a fingerprint input must not be collapsed. The seven sites that group writes
-    /// today touch only `inspector.*`, `pendingNotification*`, and `infoMarkdown` /
-    /// `infoUnread`, none of which is a fingerprint input.
+    /// deliberately collapses what used to be several `didSet` fires into one, so
+    /// `refreshMenuFlags()` sees only the block's final state. For an input to
+    /// `MenuFlagsFingerprint` (`selectedWorkspaceID`, each Space's `isGitRepo`, each
+    /// workspace's `id → kind`, and the selected workspace's `inspector.collapsed` /
+    /// `inspector.tab`) that is what the menu wants: one edge per user action, never
+    /// a transient one. The sites that group writes today touch only `inspector.*`,
+    /// `pendingNotification*`, and `infoMarkdown` / `infoUnread`.
     func updateWorkspace(at index: WorkspaceIndex, _ body: (inout Workspace) -> Void) {
         body(&spaces[index.space].workspaces[index.workspace])
     }
@@ -1846,6 +1899,14 @@ final class AppModel {
         case .failure(let error):
             scriptRunError = error.message
         }
+    }
+
+    /// Run the workspace's `resolvedScript(for:)` — the Run chip's primary action and
+    /// the Workspace menu's "Run Script". No-op when it defines no named command.
+    func runResolvedScript(for workspaceID: UUID) {
+        guard let workspace = workspace(id: workspaceID), let script = resolvedScript(for: workspace)
+        else { return }
+        runScript(script.name, for: workspaceID)
     }
 
     /// Publishes what the window's floor is built from, or `nil` once no workspace is

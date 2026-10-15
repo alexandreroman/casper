@@ -8,13 +8,15 @@ import Dispatch
 ///
 /// Two of libghostty's default keybinds are remapped onto the nearest thing Casper
 /// has, because Casper's window model is not Ghostty's: ⌘T ("new tab") makes a
-/// split, since Casper has no tabs, and ⌘N ("new window") opens the New Space
-/// panel, since Casper has a single window and the honest meaning of "new" at that
-/// level is a new project. Claiming them here is also what lets the keystroke work
-/// at all while a terminal is focused: `GhosttySurfaceView.performKeyEquivalent`
-/// runs ahead of the main menu and reports the combo as consumed, so an action left
-/// unclaimed here would take the shortcut away from the menu item without doing
-/// anything in its place.
+/// split, since Casper has no tabs, and ⌘N ("new window") runs the Workspace menu's
+/// New Workspace…, which carries ⌘N in the menu bar too — Casper has a single
+/// window, and the new thing a user reaches for most is a workspace. Claiming them
+/// here is also what lets the keystroke work at all while a terminal is focused:
+/// `GhosttySurfaceView.performKeyEquivalent` runs ahead of the main menu and reports
+/// the combo as consumed, so an action left unclaimed here would take the shortcut
+/// away from the menu item without doing anything in its place. New Space…'s ⇧⌘N
+/// needs no such claim: libghostty binds nothing to it, so it falls through to the
+/// menu.
 struct LayoutActionHandler: GhosttyActionHandler {
     weak var model: AppModel?
 
@@ -30,17 +32,20 @@ struct LayoutActionHandler: GhosttyActionHandler {
         case .newWindow:
             // The one case that is deferred rather than run inline. This action is
             // dispatched from inside `ghostty_surface_key`, i.e. the middle of
-            // libghostty's own key processing, and "New Space…" opens an `NSSavePanel`
+            // libghostty's own key processing, and "New Workspace…" opens a name prompt
             // whose `runModal()` does not return until the user is done with it. Running
-            // it here would hold libghostty's tick open for that whole time — and the
-            // repository creation that follows the panel with it. `DispatchQueue.main`
-            // is the hop that *guarantees* the block cannot run inside the current tick,
-            // which is the rule `casperGhosttyConfirmReadClipboard` follows for the same
-            // hazard (`MainRunLoop.perform` is explicitly not a substitute here: it runs
-            // under modal run loops by design). The cases around this one stay inline
-            // because they are bounded model mutations that spin no nested run loop.
+            // it here would hold libghostty's tick open for that whole time.
+            // `DispatchQueue.main` is the hop that *guarantees* the block cannot run
+            // inside the current tick, which is the rule
+            // `casperGhosttyConfirmReadClipboard` follows for the same hazard
+            // (`MainRunLoop.perform` is explicitly not a substitute here: it runs under
+            // modal run loops by design). The cases around this one stay inline because
+            // they are bounded model mutations that spin no nested run loop.
+            //
+            // Claimed even when there is no Git Space to create in: the presenter then
+            // no-ops, exactly like the disabled menu item.
             DispatchQueue.main.async { [weak model] in
-                MainActor.assumeIsolated { model?.presentCreateSpacePanel() }
+                MainActor.assumeIsolated { model?.presentNewWorkspacePanel() }
             }
             return true
         case .closeTab:
