@@ -32,6 +32,7 @@ CI, test, and documentation-only work is left out.
 
 - The sidebar progress bar fills up to the step in progress, so step 3 of 3
   shows a full bar.
+- The diff view's scroll bar stays visible over the pinned file headers.
 
 ## [0.2.0] - 2026-10-15
 

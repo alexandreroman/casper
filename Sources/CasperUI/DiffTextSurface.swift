@@ -511,13 +511,18 @@ struct DiffTextSurface: NSViewRepresentable {
     }
 }
 
-/// Holds the scroll view with the pinned-header overlay above it.
+/// Holds the scroll view, and places the pinned-header overlay inside it: above
+/// the text and the gutter, below the vertical scroller.
 ///
-/// A container with hand-computed frames rather than Auto Layout against the clip
-/// view: `NSScrollView` positions its clip view and its rulers itself, in
-/// `tile()`, so constraints onto them would fight that arrangement every time the
-/// gutter's thickness changes — and the overlay's whole contract is to constrain
-/// nothing.
+/// Below the scroller because, under the overlay scroller style — the macOS
+/// default — the clip view spans the scroll view's whole width and the scroll bar
+/// floats over its trailing edge. An overlay covering the clip view from above
+/// the scroll view would hide the scroller's knob under every bar.
+///
+/// Hand-computed frames rather than Auto Layout against the clip view:
+/// `NSScrollView` positions its clip view and its rulers itself, in `tile()`, so
+/// constraints onto them would fight that arrangement every time the gutter's
+/// thickness changes — and the overlay's whole contract is to constrain nothing.
 final class DiffSurfaceContainerView: NSView {
     /// Called once the viewport has been re-tiled, for the owner to re-resolve
     /// whatever it derived from the viewport's previous size.
@@ -541,14 +546,16 @@ final class DiffSurfaceContainerView: NSView {
         LiveObjectCensus.track(self)
         #endif
         addSubview(scrollView)
-        // Added last, so it draws over the text without taking part in its layout.
-        addSubview(stickyHeader)
+        // A sibling of the clip view and the ruler, so it draws over the text and the
+        // gutter without taking part in their layout, and ordered under the scroller
+        // so the scroll bar stays visible over the bars.
+        placeStickyHeaderBelowTheScroller()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    /// Top-down coordinates, matching the overlay's own: `y = 0` is the viewport's
-    /// top edge, which is where the pinned bar sits.
+    /// Top-down coordinates, like the scroll view it hosts and the overlay inside
+    /// that.
     override var isFlipped: Bool { true }
 
     override func layout() {
@@ -557,18 +564,40 @@ final class DiffSurfaceContainerView: NSView {
         // Tiled before its viewport is read, so the bar is placed against the clip
         // view's *current* frame rather than one layout pass behind it.
         scrollView.tile()
-        // The clip view, not this view: under the legacy scroller style the scroll
-        // bar takes a strip of its own out of the clip view's width, and a bar drawn
-        // across it would sit permanently on top of the scroll bar. The gutter needs
-        // no such allowance — the ruler overlays the clip view rather than narrowing
-        // it — and the bar does run over the gutter, as it did when it was a section
-        // header.
-        let viewport = convert(scrollView.contentView.frame, from: scrollView)
+        // Subview order survives `tile()`, scroller-style switches and the gutter's
+        // thickness changes, but toggling `rulersVisible` re-adds the scroll view's
+        // subviews and leaves the overlay above the scroller.
+        if !stickyHeaderSitsBelowTheScroller {
+            placeStickyHeaderBelowTheScroller()
+        }
+        // The clip view's frame, already in the overlay's superview's coordinates:
+        // the bar runs over the gutter, as it did when it was a section header,
+        // since the ruler overlays the clip view rather than narrowing it. Under the
+        // overlay scroller style the clip view also runs under the scroll bar, which
+        // is why the overlay has to be ordered below it.
+        //
         // The whole viewport, because a bar is drawn in every band the reader can
         // see: one rides up inside its own band while the current file's rests at
         // the top edge. Covering the viewport is safe precisely because the overlay
         // is inert — it hit-tests through to the text and constrains no layout.
-        stickyHeader.frame = viewport
+        stickyHeader.frame = scrollView.contentView.frame
         viewportDidChange?()
+    }
+
+    /// Whether the overlay is the scroll view's subview directly under the vertical
+    /// scroller.
+    private var stickyHeaderSitsBelowTheScroller: Bool {
+        let subviews = scrollView.subviews
+        guard let scroller = scrollView.verticalScroller,
+              let scrollerIndex = subviews.firstIndex(of: scroller), scrollerIndex > 0
+        else { return false }
+        return subviews[scrollerIndex - 1] === stickyHeader
+    }
+
+    /// Relies on the scroll view having a vertical scroller, which the coordinator
+    /// always gives it: `.below` relative to `nil` would bury the overlay under the
+    /// text instead.
+    private func placeStickyHeaderBelowTheScroller() {
+        scrollView.addSubview(stickyHeader, positioned: .below, relativeTo: scrollView.verticalScroller)
     }
 }
