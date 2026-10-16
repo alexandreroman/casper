@@ -682,6 +682,51 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertEqual(coordinator.stickyHeader.resolutionCount, before + 2)
     }
 
+    /// The overlay spans the clip view, and under the overlay scroller style — the
+    /// macOS default — the clip view spans the scroll view's whole width, with the
+    /// scroll bar floating over its trailing edge. A bar drawn above the scroller
+    /// therefore hides its knob, so the overlay has to sit *inside* the scroll view:
+    /// above the text and the gutter it runs across, below the scroller.
+    ///
+    /// Toggling `rulersVisible` re-adds the scroll view's subviews and leaves the
+    /// overlay above the scroller, so the container's layout has to put it back.
+    func testThePinnedBarsSitBelowTheVerticalScroller() throws {
+        let (controller, _) = makeHostedSurface(additionsDocument(fileCount: 3, linesPerFile: 40))
+        let coordinator = try XCTUnwrap(controller.coordinator)
+
+        try assertOverlaySitsBetweenTheTextAndTheScroller(coordinator, "after the first layout")
+
+        coordinator.scrollView.rulersVisible = false
+        coordinator.scrollView.rulersVisible = true
+        coordinator.containerView.needsLayout = true
+        coordinator.containerView.layoutSubtreeIfNeeded()
+
+        try assertOverlaySitsBetweenTheTextAndTheScroller(coordinator, "after the rulers were toggled")
+    }
+
+    private func assertOverlaySitsBetweenTheTextAndTheScroller(
+        _ coordinator: DiffTextSurface.Coordinator, _ moment: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let scrollView = coordinator.scrollView
+        XCTAssertTrue(coordinator.stickyHeader.superview === scrollView,
+                      "the overlay is a subview of the scroll view, \(moment)", file: file, line: line)
+
+        let subviews = scrollView.subviews
+        let overlayIndex = try XCTUnwrap(
+            subviews.firstIndex { $0 === coordinator.stickyHeader }, file: file, line: line)
+        let clipIndex = try XCTUnwrap(
+            subviews.firstIndex { $0 === scrollView.contentView }, file: file, line: line)
+        let rulerIndex = try XCTUnwrap(
+            subviews.firstIndex { $0 === scrollView.verticalRulerView }, file: file, line: line)
+        let scrollerIndex = try XCTUnwrap(
+            subviews.firstIndex { $0 === scrollView.verticalScroller }, file: file, line: line)
+
+        XCTAssertGreaterThan(overlayIndex, clipIndex, "above the text, \(moment)", file: file, line: line)
+        XCTAssertGreaterThan(overlayIndex, rulerIndex, "above the gutter, \(moment)", file: file, line: line)
+        XCTAssertLessThan(overlayIndex, scrollerIndex, "below the scroller, \(moment)", file: file, line: line)
+    }
+
     /// Turns the main run loop until it has nothing left to do, which is where the
     /// surface's coalesced bar update runs — nothing turns that loop in a test.
     ///
