@@ -27,6 +27,8 @@ CI, test, and documentation-only work is left out.
 - ⌘N creates a workspace, also in a focused terminal; New Space… moves to ⇧⌘N.
 - The Edit menu holds only the standard Copy, Paste and Select All.
 - Removing a Space, from the Space menu or the sidebar, asks for confirmation.
+- Automatic updates run on Sparkle 2.10.1, which no longer installs an update
+  prematurely when Casper sits in an NFC-encoded Unicode path.
 
 ### Fixed
 
