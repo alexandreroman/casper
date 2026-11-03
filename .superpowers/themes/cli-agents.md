@@ -165,7 +165,9 @@ branch.
 automatically by `ScriptHookRunner`, never invocable by hand —
 `resolveRunCommand` denies them and the spawn entry points are private to the
 runner. Every other key is a *named command*, run on demand from the toolbar or
-`casper run <name>`.
+`casper run <name>`. Both kinds open their terminal as a full-width strip along
+the bottom of the workspace, a fifth of its height (see `app-ui.md` § Layout
+composition).
 
 The two kinds are wrapped in **deliberately opposite** ways, because they want
 opposite outcomes from the same shell:

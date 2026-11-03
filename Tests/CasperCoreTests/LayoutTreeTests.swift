@@ -399,6 +399,79 @@ final class LayoutTreeTests: XCTestCase {
         children.map { LayoutTree.surfaceIDs($0) }
     }
 
+    // MARK: - appendBottomStrip
+
+    /// The children and ratios of a `.vertical` root split, or nil for any other shape.
+    private func verticalRoot(_ node: LayoutNode) -> (children: [LayoutNode], ratios: [Double])? {
+        guard case .split(.vertical, let children, let ratios) = node else { return nil }
+        return (children, ratios)
+    }
+
+    private func assertRatios(
+        _ actual: [Double], _ expected: [Double], file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.count, expected.count, "ratios were \(actual)", file: file, line: line)
+        for (a, e) in zip(actual, expected) {
+            XCTAssertEqual(a, e, accuracy: 1e-9, "ratios were \(actual)", file: file, line: line)
+        }
+        XCTAssertEqual(actual.reduce(0, +), 1, accuracy: 1e-9, "ratios must sum to 1", file: file, line: line)
+    }
+
+    func testAppendBottomStripWrapsALeafRoot() throws {
+        let a = term(); let new = term()
+        let (out, focus) = LayoutTree.appendBottomStrip(.leaf(a), surface: new, fraction: 0.2)
+        let (children, ratios) = try XCTUnwrap(verticalRoot(out))
+        XCTAssertEqual(children, [.leaf(a), .leaf(new)])
+        assertRatios(ratios, [0.8, 0.2])
+        XCTAssertEqual(focus, new.id)
+    }
+
+    func testAppendBottomStripWrapsAHorizontalRootIntact() throws {
+        let a = term(); let b = term(); let new = term()
+        let horizontal = LayoutNode.split(
+            orientation: .horizontal, children: [.leaf(a), .leaf(b)], ratios: [0.3, 0.7])
+        let (out, focus) = LayoutTree.appendBottomStrip(horizontal, surface: new, fraction: 0.2)
+        let (children, ratios) = try XCTUnwrap(verticalRoot(out))
+        XCTAssertEqual(children, [horizontal, .leaf(new)])  // the old root, ratios and all
+        assertRatios(ratios, [0.8, 0.2])
+        XCTAssertEqual(focus, new.id)
+    }
+
+    func testAppendBottomStripJoinsAVerticalRootAsAFlatSibling() throws {
+        let a = term(); let b = term(); let new = term()
+        let vertical = LayoutNode.split(
+            orientation: .vertical, children: [.leaf(a), .leaf(b)], ratios: [0.5, 0.5])
+        let (out, focus) = LayoutTree.appendBottomStrip(vertical, surface: new, fraction: 0.2)
+        let (children, ratios) = try XCTUnwrap(verticalRoot(out))
+        XCTAssertEqual(children, [.leaf(a), .leaf(b), .leaf(new)])
+        assertRatios(ratios, [0.4, 0.4, 0.2])
+        XCTAssertEqual(focus, new.id)
+    }
+
+    func testAppendBottomStripTwiceScalesTheFirstStrip() throws {
+        let a = term(); let first = term(); let second = term()
+        let (once, _) = LayoutTree.appendBottomStrip(.leaf(a), surface: first, fraction: 0.2)
+        let (twice, focus) = LayoutTree.appendBottomStrip(once, surface: second, fraction: 0.2)
+        let (children, ratios) = try XCTUnwrap(verticalRoot(twice))
+        XCTAssertEqual(children, [.leaf(a), .leaf(first), .leaf(second)])
+        assertRatios(ratios, [0.64, 0.16, 0.2])
+        XCTAssertEqual(focus, second.id)
+    }
+
+    func testAppendBottomStripTreatsUnusableRatiosAsEven() throws {
+        let a = term(); let b = term()
+        let unusable: [[Double]] = [[1.0], [0, 0], [.nan, 0.5], [.infinity, 0.5], [-0.5, 1.5]]
+        for ratios in unusable {
+            let vertical = LayoutNode.split(
+                orientation: .vertical, children: [.leaf(a), .leaf(b)], ratios: ratios)
+            let new = term()
+            let (out, _) = LayoutTree.appendBottomStrip(vertical, surface: new, fraction: 0.2)
+            let (children, scaled) = try XCTUnwrap(verticalRoot(out))
+            XCTAssertEqual(children, [.leaf(a), .leaf(b), .leaf(new)])
+            assertRatios(scaled, [0.4, 0.4, 0.2])
+        }
+    }
+
     // MARK: - dropZone
 
     func testDropZoneNearestEdge() {

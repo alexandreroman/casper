@@ -151,6 +151,43 @@ public enum LayoutTree {
         return nil
     }
 
+    /// Append `surface` as a full-width strip along the bottom of the whole tree,
+    /// taking `fraction` of its height while the existing panes share the rest.
+    ///
+    /// A leaf or `.horizontal` root is wrapped, intact, as the first child of a new
+    /// `.vertical` split. A root that is already `.vertical` takes the new leaf as a
+    /// flat last sibling instead — the same no-nested-same-orientation rule `split`
+    /// follows — with its existing ratios scaled to share `1 - fraction`. Ratios that
+    /// cannot be scaled (wrong count, negative or non-finite, or a non-positive sum)
+    /// are treated as even first. Focus goes to the new surface.
+    public static func appendBottomStrip(
+        _ node: LayoutNode, surface: Surface, fraction: Double
+    ) -> (LayoutNode, focus: UUID) {
+        precondition(fraction > 0 && fraction < 1, "a bottom strip's fraction must lie strictly between 0 and 1")
+        let newLeaf = LayoutNode.leaf(surface)
+        let remaining = 1 - fraction
+
+        guard case .split(.vertical, let children, let ratios) = node else {
+            let wrapped = LayoutNode.split(
+                orientation: .vertical, children: [node, newLeaf], ratios: [remaining, fraction])
+            return (wrapped, surface.id)
+        }
+        let existing = isScalable(ratios, count: children.count) ? ratios : LayoutNode.evenRatios(children.count)
+        let total = existing.reduce(0, +)
+        let scaled = existing.map { $0 / total * remaining }
+        let appended = LayoutNode.split(
+            orientation: .vertical, children: children + [newLeaf], ratios: scaled + [fraction])
+        return (appended, surface.id)
+    }
+
+    /// Whether `ratios` can be scaled proportionally across `count` children: one
+    /// finite, non-negative ratio per child, with a positive, finite sum.
+    private static func isScalable(_ ratios: [Double], count: Int) -> Bool {
+        guard ratios.count == count, ratios.allSatisfy({ $0.isFinite && $0 >= 0 }) else { return false }
+        let total = ratios.reduce(0, +)
+        return total > 0 && total.isFinite
+    }
+
     /// Remove the leaf holding `surface`, re-evening the ratios of the surviving
     /// siblings and replacing a single-child split by its surviving child.
     /// Returns `nil` when the tree becomes empty (the caller re-seeds the

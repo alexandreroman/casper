@@ -47,6 +47,27 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertEqual(info.cwd, ws.worktreePath)
     }
 
+    /// `casper terminal new` splits the workspace's first (top-left) surface and stacks
+    /// the new terminal evenly below it — unlike a script, which opens along the bottom.
+    func testOpenTerminalSplitsTheFirstSurface() throws {
+        let (model, id) = seededModel()
+        let first = try XCTUnwrap(model.workspace(id: id).flatMap { LayoutTree.surfaceIDs($0.layout).first })
+        model.applySplit(from: first, direction: .right)
+        let right = try XCTUnwrap(model.workspace(id: id).flatMap { LayoutTree.surfaceIDs($0.layout).last })
+
+        let info = try XCTUnwrap(model.controlOpenTerminal(in: id))
+        let newID = try XCTUnwrap(UUID(uuidString: info.id))
+
+        let layout = try XCTUnwrap(model.workspace(id: id)?.layout)
+        guard case .split(.horizontal, let columns, _) = layout,
+              case .split(.vertical, let stacked, let ratios) = columns[0] else {
+            return XCTFail("expected the first column to be split vertically, got \(layout)")
+        }
+        XCTAssertEqual(stacked.map(LayoutTree.surfaceIDs), [[first], [newID]])
+        XCTAssertEqual(ratios, LayoutNode.evenRatios(2))
+        XCTAssertEqual(LayoutTree.surfaceIDs(columns[1]), [right])
+    }
+
     func testOpenTerminalHonorsCwd() throws {
         let (model, id) = seededModel()
         let info = try XCTUnwrap(model.controlOpenTerminal(in: id, command: "npm test", cwd: "/some/dir"))
@@ -928,6 +949,31 @@ final class ControlHandlerTests: XCTestCase {
         XCTAssertFalse(info.id.isEmpty)
     }
 
+    /// A named command opens a full-width strip along the bottom of the workspace,
+    /// a fifth of its height, rather than splitting the top-left pane.
+    func testControlRunOpensABottomStrip() throws {
+        let (model, wsID) = try modelWithWorktree(
+            configJSON: #"{"workspace":{"scripts":{"test":"npm test"}}}"#)
+        let first = try XCTUnwrap(model.workspace(id: wsID).flatMap { LayoutTree.surfaceIDs($0.layout).first })
+        model.applySplit(from: first, direction: .right)
+        let columns = try XCTUnwrap(model.workspace(id: wsID)?.layout)
+
+        guard case .success(let info) = model.controlRun(name: "test", in: wsID) else {
+            return XCTFail("expected success")
+        }
+        let newID = try XCTUnwrap(UUID(uuidString: info.id))
+
+        let layout = try XCTUnwrap(model.workspace(id: wsID)?.layout)
+        guard case .split(.vertical, let children, let ratios) = layout else {
+            return XCTFail("expected a vertical root split, got \(layout)")
+        }
+        XCTAssertEqual(children.count, 2)
+        XCTAssertEqual(children.first, columns, "the existing panes must stay intact above the strip")
+        XCTAssertEqual(children.last.map(LayoutTree.surfaceIDs), [newID])
+        XCTAssertEqual(ratios.last ?? 0, 0.2, accuracy: 1e-9)
+        XCTAssertEqual(model.focusedSurfaceID, newID)
+    }
+
     func testControlRunDefaultsToRun() throws {
         let (model, wsID) = try modelWithWorktree(
             configJSON: #"{"workspace":{"scripts":{"run":"npm run dev"}}}"#)
@@ -1061,6 +1107,20 @@ final class ControlHandlerTests: XCTestCase {
         guard case .success = model.controlRun(name: "run", in: workspaceID) else {
             return XCTFail("a named command must run once the setup hook has succeeded")
         }
+    }
+
+    /// The `setup` hook's split opens as a strip along the bottom of the new workspace,
+    /// like a named command's.
+    func testSetupHookSplitOpensAsABottomStrip() async throws {
+        let (model, workspaceID, setupSplit) = try await createWorkspaceRunningSetup()
+        let layout = try XCTUnwrap(model.workspace(id: workspaceID)?.layout)
+        guard case .split(.vertical, let children, let ratios) = layout else {
+            return XCTFail("expected a vertical root split, got \(layout)")
+        }
+        XCTAssertEqual(children.count, 2)
+        XCTAssertEqual(children.last.map(LayoutTree.surfaceIDs), [setupSplit])
+        XCTAssertEqual(ratios.first ?? 0, 0.8, accuracy: 1e-9)
+        XCTAssertEqual(ratios.last ?? 0, 0.2, accuracy: 1e-9)
     }
 
     /// The Workspace menu's "Run Script" waits for the setup hook like the Run chip
