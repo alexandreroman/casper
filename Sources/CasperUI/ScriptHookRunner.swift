@@ -98,9 +98,9 @@ final class ScriptHookRunner {
     private var lastTeardownGeneration: UInt64 = 0
 
     /// - Parameters:
-    ///   - insertSurface: Insert the given surface into a workspace as a split-down
-    ///     terminal running the given (already hook-wrapped) command; false when the
-    ///     workspace or its anchor can't be resolved.
+    ///   - insertSurface: Insert the given surface into a workspace as a terminal strip
+    ///     along its bottom, running the given (already hook-wrapped) command; false
+    ///     when the workspace can't be resolved.
     ///   - worktreePath: A workspace's worktree path, used as the hook split's working
     ///     directory; nil when the workspace no longer exists.
     ///   - reportSetupFailure: Flag a workspace whose `setup` hook exited non-zero.
@@ -136,10 +136,10 @@ final class ScriptHookRunner {
         }
     }
 
-    /// Spawn a visible split-down (top/bottom stack) in `workspaceID` running a
+    /// Spawn a visible split along the bottom of `workspaceID` running a
     /// lifecycle hook, tagged in `scriptSurfaces` so its child-exit is correlated.
     /// Hook-wraps the command and registers the tag BEFORE splitting. Returns the
-    /// new surface id, or nil if the workspace/anchor can't be resolved.
+    /// new surface id, or nil if the workspace can't be resolved.
     private func spawnScriptSurface(
         kind: ScriptHookKind, in workspaceID: UUID, command: String,
         onExit: ((Int32) -> Void)?

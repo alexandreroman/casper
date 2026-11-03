@@ -1439,19 +1439,28 @@ final class AppModel {
         return nil
     }
 
-    // Reached from AppModel+Control.swift.
-    /// Shared tail of every split-based surface addition: split the leaf holding
-    /// `focused` in workspace `at` to insert `surface` along `orientation`/`side`,
-    /// then persist. When the split targets the currently-visible workspace it also
-    /// moves focus to the new surface and re-anchors the AppKit first responder;
-    /// when it targets a background workspace (e.g. `casper terminal new
-    /// --workspace <other>`) the layout still changes but focus is left untouched.
-    /// Callers resolve their own target and surface, then delegate here.
-    func insertSurfaceBySplitting(
+    /// Split the leaf holding `focused` in workspace `at` to insert `surface` along
+    /// `orientation`/`side` — the split-based surface addition behind the pane split
+    /// actions. Callers resolve their own target and surface, then delegate here.
+    private func insertSurfaceBySplitting(
         at: WorkspaceIndex, focused: UUID,
         orientation: LayoutNode.Orientation, side: LayoutTree.InsertSide, surface: Surface
     ) {
-        // A split into a background workspace must not disturb the visible terminal:
+        let (layout, newFocus) = LayoutTree.split(
+            workspace(at: at).layout,
+            focused: focused, orientation: orientation, side: side, surface: surface)
+        applyInsertedSurfaceLayout(layout, focus: newFocus, at: at)
+    }
+
+    // Reached from AppModel+Control.swift.
+    /// Shared tail of every surface addition: install `layout` — the workspace's
+    /// layout with a new surface already inserted — in workspace `at`, then persist.
+    /// When it targets the currently-visible workspace it also moves focus to
+    /// `newFocus` and re-anchors the AppKit first responder; when it targets a
+    /// background workspace (e.g. `casper terminal new --workspace <other>`) the
+    /// layout still changes but focus is left untouched.
+    func applyInsertedSurfaceLayout(_ layout: LayoutNode, focus newFocus: UUID, at: WorkspaceIndex) {
+        // An insertion into a background workspace must not disturb the visible terminal:
         // reassigning focus (or blurring) here would hollow the caret of the pane the
         // user is actually typing into and strand `focusedSurfaceID` on an off-screen
         // surface. `selectWorkspace` assigns focus to the new workspace's top-left
@@ -1459,17 +1468,15 @@ final class AppModel {
         let targetsVisibleWorkspace = workspace(at: at).id == selectedWorkspaceID
         if targetsVisibleWorkspace, let currentlyFocused = focusedSurfaceID {
             // Blur the surface that actually currently holds focus before the layout
-            // restructure. Note this is `focusedSurfaceID`, NOT the `focused` split
-            // anchor — a context-menu split can target a pane other than the focused
-            // one. The SwiftUI re-render this triggers can silently detach the focused
-            // view from the window (reparenting an ancestor container) before AppKit
-            // fires `resignFirstResponder`, so libghostty would otherwise keep
-            // rendering a solid caret on it even though the new surface holds focus.
+            // restructure. Note this is `focusedSurfaceID`, NOT whatever pane the
+            // insertion was anchored on — a context-menu split can target a pane other
+            // than the focused one. The SwiftUI re-render this triggers can silently
+            // detach the focused view from the window (reparenting an ancestor
+            // container) before AppKit fires `resignFirstResponder`, so libghostty would
+            // otherwise keep rendering a solid caret on it even though the new surface
+            // holds focus.
             surfaceViews[currentlyFocused]?.blurForLayoutChange()
         }
-        let (layout, newFocus) = LayoutTree.split(
-            workspace(at: at).layout,
-            focused: focused, orientation: orientation, side: side, surface: surface)
         updateWorkspace(at: at) { $0.layout = layout }
         persist()
         if targetsVisibleWorkspace {
@@ -1570,8 +1577,8 @@ final class AppModel {
     }
 
     /// Relocate an existing surface to sit beside `targetID` on the side implied
-    /// by `zone` (the drag-and-drop drop). Mirrors `insertSurfaceBySplitting`'s
-    /// tail, but reuses the SAME `Surface` value (same id), so the cached
+    /// by `zone` (the drag-and-drop drop). Mirrors `applyInsertedSurfaceLayout`,
+    /// but reuses the SAME `Surface` value (same id), so the cached
     /// `GhosttySurfaceView`/PTY survives untouched — no view is discarded or
     /// recreated. Both surfaces must live in the same (space, workspace); a
     /// cross-workspace move (or any degenerate move) is a no-op.
@@ -1584,7 +1591,7 @@ final class AppModel {
             surfaceID: surfaceID, toTarget: targetID, direction: zone.direction)
         else { return }
         // Blur the pane that currently holds focus before the restructure, for the same
-        // reason `insertSurfaceBySplitting` does: dropping a pane collapses the split it
+        // reason `applyInsertedSurfaceLayout` does: dropping a pane collapses the split it
         // left and re-nests the one it joined, and the SwiftUI re-render can detach the
         // focused view from the window before AppKit fires `resignFirstResponder` — so
         // libghostty would keep rendering a solid caret on it. `newFocus` is the moved
@@ -2327,10 +2334,11 @@ final class AppModel {
     /// can capture a fully-initialized `self`; all four capture it WEAKLY, because
     /// this model owns the runner and a strong capture would close the retain cycle.
     @ObservationIgnored lazy var scriptHooks = ScriptHookRunner(
-        // Hook splits are plain terminal splits stacked below the anchor; the hook
-        // policy stays in the runner, which owns the surface's identity.
+        // Hook splits are plain terminals in a strip along the bottom of the workspace,
+        // like a named command's; the hook policy stays in the runner, which owns the
+        // surface's identity.
         insertSurface: { [weak self] workspaceID, surface, command in
-            self?.insertTerminal(surface, in: workspaceID, command: command) ?? false
+            self?.insertTerminal(surface, in: workspaceID, command: command, placement: .bottomStrip) ?? false
         },
         worktreePath: { [weak self] id in self?.workspace(id: id)?.worktreePath },
         reportSetupFailure: { [weak self] id in self?.setDetectedAgentState(.error, for: id) },

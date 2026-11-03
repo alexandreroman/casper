@@ -524,7 +524,8 @@ treats its workspaces. Every key lives under `workspace`:
   before any Git mutation; a pattern that matches nothing is not an error, and a
   copy that fails once the worktree exists rolls it back.
 - `scripts` — shell commands bound to a workspace, each run in a visible
-  terminal split. Two reserved keys are lifecycle hooks, run automatically and
+  terminal split that opens along the bottom of the workspace, taking a fifth
+  of its height. Two reserved keys are lifecycle hooks, run automatically and
   never invocable by hand:
   - `setup` runs once, when the workspace is created (never on restart). A
     non-zero exit keeps its split open with the output and flags the workspace.

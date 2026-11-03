@@ -20,6 +20,9 @@ CI, test, and documentation-only work is left out.
 
 ### Changed
 
+- A `.casper.json` script — a named command or the `setup` / `teardown` hook —
+  opens its terminal as a full-width strip along the bottom of the workspace,
+  taking a fifth of its height, instead of splitting the top-left pane in half.
 - Menu wording follows macOS conventions. "Show in Finder" opens the enclosing
   folder with the worktree selected, "Create Workspace…" reads "New
   Workspace…", and the title bar's `⋯` menu folds the Diff / Browser control

@@ -297,23 +297,25 @@ extension AppModel {
             .map(ControlWorkspaceInfo.init)
     }
 
-    /// Open a new terminal in any workspace, selected or not, by splitting its top-left
-    /// surface and stacking the new terminal below it. The working directory defaults to
-    /// the workspace's worktree, and `command` runs in the new terminal.
+    /// Open a new terminal in any workspace, selected or not, at `placement` — by default
+    /// splitting its top-left surface and stacking the new terminal below it, as
+    /// `casper terminal new` does. The working directory defaults to the workspace's
+    /// worktree, and `command` runs in the new terminal.
     @discardableResult
     func controlOpenTerminal(
-        in workspaceID: UUID, command: String? = nil, cwd: String? = nil
+        in workspaceID: UUID, command: String? = nil, cwd: String? = nil,
+        placement: TerminalPlacement = .belowFirstSurface
     ) -> ControlTerminalInfo? {
         guard let resolvedCwd = cwd ?? workspace(id: workspaceID)?.worktreePath else { return nil }
         let surface = Surface.terminal(cwd: resolvedCwd)
-        guard insertTerminal(surface, in: workspaceID, command: command) else { return nil }
+        guard insertTerminal(surface, in: workspaceID, command: command, placement: placement) else { return nil }
         return ControlTerminalInfo(id: surface.id.casperID, cwd: resolvedCwd)
     }
 
     // Reached from AppModel.swift.
-    /// Insert `surface` into `workspaceID` by splitting its top-left surface, stacked
-    /// below it, with `command` queued as the surface's initial input. Returns false
-    /// when the workspace or its split anchor can't be resolved.
+    /// Insert `surface` into `workspaceID` at `placement`, with `command` queued as the
+    /// surface's initial input. Returns false when the workspace or the placement's
+    /// anchor can't be resolved.
     ///
     /// The surface comes from the caller because `ScriptHookRunner` mints and tags its
     /// hook splits by id *before* the split runs, which is what lets it correlate their
@@ -325,12 +327,14 @@ extension AppModel {
     /// every delete of an unselected workspace. Bring the pending surfaces up off-screen
     /// here, once, for both callers. The workspace is read after the split so it carries
     /// the new surface.
-    func insertTerminal(_ surface: Surface, in workspaceID: UUID, command: String?) -> Bool {
+    func insertTerminal(
+        _ surface: Surface, in workspaceID: UUID, command: String?, placement: TerminalPlacement
+    ) -> Bool {
         guard let at = locate(workspaceID),
-              let anchor = LayoutTree.surfaceIDs(workspace(at: at).layout).first else { return false }
+              let (layout, newFocus) = placement.layout(inserting: surface, into: workspace(at: at).layout)
+        else { return false }
         if let command { pendingInitialInput[surface.id] = command }
-        insertSurfaceBySplitting(
-            at: at, focused: anchor, orientation: .vertical, side: .after, surface: surface)
+        applyInsertedSurfaceLayout(layout, focus: newFocus, at: at)
         if command != nil, selectedWorkspaceID != workspaceID {
             materializePendingSurfacesOffscreen(in: workspace(at: at))
         }
@@ -396,7 +400,8 @@ extension AppModel {
             return .failure(OperationError(message: message))
         case .command(let command):
             let wrappedCommand = ScriptHookRunner.subshellWrappedScriptCommand(command)
-            guard let info = controlOpenTerminal(in: workspaceID, command: wrappedCommand) else {
+            guard let info = controlOpenTerminal(
+                in: workspaceID, command: wrappedCommand, placement: .bottomStrip) else {
                 return .failure(OperationError(message: "cannot open terminal"))
             }
             return .success(info)

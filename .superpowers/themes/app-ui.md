@@ -211,6 +211,16 @@ depends on Ghostty layout composition (`terminal.md`).
   and the drop overlay, surfaced by `SurfaceHostView`/`SplitContainerView`; see
   [[intra-app-drag-pasteboard-type]].
 
+  A `.casper.json` script terminal — a named command, or the `setup` /
+  `teardown` hook — opens through `appendBottomStrip` instead: a full-width
+  strip along the bottom of the workspace taking
+  `TerminalPlacement.bottomStripFraction` (20%) of its height, the existing
+  panes sharing the other 80%. A leaf or horizontal root is wrapped in a new
+  vertical split; a root that is already vertical takes the strip as a flat
+  last sibling, its ratios scaled to the remaining 80% (unusable ratios count
+  as even first). `casper terminal new` keeps splitting the top-left surface,
+  stacking the new terminal evenly below it.
+
   Splits render through the custom `SplitContainerView`, which lays panes out by
   fraction along the axis. A separator is a drawn 1 pt hairline with a wider
   **transparent** grab strip over it, carrying the resize cursor and the drag
