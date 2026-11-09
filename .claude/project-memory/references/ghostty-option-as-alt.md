@@ -24,7 +24,8 @@ since it calls `ghostty_surface_key` directly) show
 plain Option+letter combo, identically under the default config and a scratch
 config with `macos-option-as-alt = true`. Option composes a special character in
 both cases; the config's effect on this API's answer is not observable for the
-pinned libghostty binary (Lakr233/libghostty-spm 1.2.8 = Ghostty v1.3.1).
+libghostty binary it was measured against (Lakr233/libghostty-spm 1.2.8 =
+Ghostty v1.3.1).
 
 Independently: when a key event sent to `ghostty_surface_key` carries non-nil
 `text`, libghostty inserts it verbatim regardless of `mods`/`consumed_mods` —

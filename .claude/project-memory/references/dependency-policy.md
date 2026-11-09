@@ -42,7 +42,7 @@ Declared as `from: "1.1.0"` — an up-to-next-major range, like every dependency
 here except GhosttyKit, pinned to one revision (see [[ghosttykit-pin]]).
 
 `Package.resolved` lists more entries than this policy sanctions, because it
-records the whole manifest graph rather than what is linked: `MSDisplayLink`
+records the whole manifest graph rather than what is linked: `DisplayLink`
 arrives that way through the libghostty-spm package and reaches no Casper
 target. Count linked products, not resolved pins, when checking the policy.
 

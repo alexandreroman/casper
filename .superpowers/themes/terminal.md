@@ -73,10 +73,12 @@ surfaces and PTYs (same model as the Ghostty app).
   [[ghostty-key-encoding]].
 - **Clipboard** — the libghostty `read`/`write`/`confirm` callbacks are backed
   by `NSPasteboard`, resolved to the surface via the per-surface `userdata` (the
-  view pointer); paste completes through
-  `ghostty_surface_complete_clipboard_request` — see
-  [[ghostty-clipboard-callbacks]]. Untrusted OSC 52 reads and writes go through
-  the `approveUntrusted` gates of `GhosttyClipboardRead` and
+  view pointer); every read request is settled through
+  `ghostty_surface_complete_clipboard_request` or
+  `ghostty_surface_deny_clipboard_request` — see
+  [[ghostty-clipboard-callbacks]]. Casper serves and writes plain text only.
+  Untrusted OSC 52 and kitty clipboard-protocol (OSC 5522) reads and writes go
+  through the `approveUntrusted` gates of `GhosttyClipboardRead` and
   `GhosttyClipboardWrite`, which approve unconditionally — see
   [[osc52-clipboard-write-policy]] and [[osc52-clipboard-read-policy]]. An
   ordinary ⌘V confirms its paste request on sight: Ghostty's

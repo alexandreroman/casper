@@ -5,10 +5,11 @@ import CasperCore
 ///
 /// libghostty routes an OSC 52 read — an escape sequence in the terminal's own output that
 /// asks for the clipboard and gets the answer written back to the program's stdin — through
-/// `confirm_read_clipboard_cb`. Anything a Casper terminal prints can emit that sequence: a
-/// `cat`ed file, an agent's output, a dependency's build script. The answer goes straight
-/// to whoever asked, so an untrusted read hands over whatever the user is carrying: a
-/// password, a token, a private key.
+/// `confirm_read_clipboard_cb`, and a kitty clipboard-protocol read (OSC 5522) the same way.
+/// Anything a Casper terminal prints can emit either sequence: a `cat`ed file, an agent's
+/// output, a dependency's build script. The answer goes straight to whoever asked, so an
+/// untrusted read hands over whatever the user is carrying: a password, a token, a private
+/// key.
 ///
 /// Casper answers it all the same: `approveUntrusted` approves unconditionally, so no
 /// clipboard dialog is ever presented. That is the project's standing policy, not an
@@ -34,17 +35,18 @@ enum GhosttyClipboardRead {
     /// instead — again so tests do not touch the developer's clipboard.
     static var systemPasteboard: NSPasteboard = .general
 
-    /// The text to answer an untrusted read of `text` with: `text` itself once the user
-    /// approves, an empty string when they deny.
+    /// Whether an untrusted read that would hand over `text` may be answered with it, logging
+    /// a denial. A denied read is refused rather than abandoned: core still answers the asking
+    /// program — empty contents for OSC 52, `EPERM` for kitty — so it is never left waiting.
     ///
     /// The clipboard text is a parameter rather than read from `NSPasteboard` here, so tests
     /// exercise the gate without touching the developer's clipboard.
-    static func resolveUntrusted(_ text: String) -> String {
+    static func approves(_ text: String) -> Bool {
         guard approveUntrusted(text) else {
             CasperLog.ghostty.notice("denied an untrusted clipboard read of \(text.count, privacy: .public) characters")
-            return ""
+            return false
         }
-        return text
+        return true
     }
 
     /// The confirmation prompt: Ghostty's own OSC 52 read prompt

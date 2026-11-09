@@ -1,3 +1,4 @@
+import Foundation
 import GhosttyKit
 
 /// Owns a libghostty `ghostty_surface_t` and frees it on deinit (same ownership
@@ -65,7 +66,7 @@ final class GhosttySurface {
     /// Tell libghostty whether this surface is occluded (off-screen). Note:
     /// libghostty's `ghostty_surface_set_occlusion` parameter is **`visible`**
     /// (true = on-screen → render; false = occluded → pause) — the INVERSE of our
-    /// `occluded`, so we pass the negation. Confirmed against Ghostty v1.3.1
+    /// `occluded`, so we pass the negation. Confirmed against the pinned revision's
     /// `src/apprt/embedded.zig`: `ghostty_surface_set_occlusion(surface, visible)`.
     /// When occluded, libghostty pauses the surface's render thread; clearing it
     /// resumes rendering. Balances `set_display_id`, which arms the render loop.
@@ -129,15 +130,70 @@ final class GhosttySurface {
     /// active). When true, right-clicks belong to the app, not an AppKit menu.
     func mouseCaptured() -> Bool { ghostty_surface_mouse_captured(surface) }
 
-    /// Deliver clipboard text back to libghostty for a pending read (paste)
-    /// request. `state` is the opaque token libghostty handed to the read
+    /// Answer a pending clipboard request with `contents` (the representations served) and
+    /// `available` (the MIME types the clipboard offers, for a request that asked for a
+    /// listing). `state` is the opaque token libghostty handed to the read or confirm
     /// callback; it must be passed back unchanged.
+    ///
+    /// `confirmed` means "the user has already approved this".
+    ///
+    /// libghostty borrows every pointer in `ghostty_clipboard_complete_s` for the duration of
+    /// the call only — including a confirmation callback it may fire synchronously from
+    /// inside it — so the C copies are owned here and freed once the call returns, as
+    /// upstream Ghostty does.
     func completeClipboardRequest(
-        _ text: String, state: UnsafeMutableRawPointer?, confirmed: Bool
+        _ contents: [GhosttyClipboardContent],
+        available: [String],
+        state: UnsafeMutableRawPointer?,
+        confirmed: Bool
     ) {
-        text.withCString { ptr in
-            ghostty_surface_complete_clipboard_request(surface, ptr, state, confirmed)
+        var cStrings: [UnsafeMutablePointer<CChar>] = []
+        var cBuffers: [UnsafeMutableRawPointer] = []
+        defer {
+            cStrings.forEach { free($0) }
+            cBuffers.forEach { $0.deallocate() }
         }
+
+        var cContents: [ghostty_clipboard_content_s] = []
+        for content in contents {
+            guard let mime = strdup(content.mime) else { continue }
+            cStrings.append(mime)
+            // Never a zero-byte allocation, so `data` is a valid pointer even for empty text.
+            let buffer = UnsafeMutableRawPointer.allocate(byteCount: max(content.data.count, 1), alignment: 1)
+            cBuffers.append(buffer)
+            content.data.copyBytes(to: UnsafeMutableRawBufferPointer(start: buffer, count: content.data.count))
+            cContents.append(ghostty_clipboard_content_s(
+                mime: mime, data: buffer.assumingMemoryBound(to: CChar.self), len: content.data.count))
+        }
+
+        var cAvailable: [UnsafePointer<CChar>?] = []
+        for mime in available {
+            guard let copy = strdup(mime) else { continue }
+            cStrings.append(copy)
+            cAvailable.append(UnsafePointer(copy))
+        }
+
+        cContents.withUnsafeBufferPointer { contentsBuffer in
+            cAvailable.withUnsafeBufferPointer { availableBuffer in
+                var complete = ghostty_clipboard_complete_s(
+                    contents: contentsBuffer.baseAddress,
+                    contents_len: contentsBuffer.count,
+                    available: availableBuffer.baseAddress,
+                    available_len: availableBuffer.count,
+                    confirmed: confirmed,
+                    // Casper's gate offers no "remember this" choice, so no kitty session
+                    // grant is ever recorded.
+                    remember: false)
+                ghostty_surface_complete_clipboard_request(surface, &complete, state)
+            }
+        }
+    }
+
+    /// Refuse a pending clipboard request. Core answers the asking program itself where its
+    /// protocol expects an answer: empty contents for an OSC 52 read, `EPERM` for a kitty
+    /// request; a denied paste simply does not happen.
+    func denyClipboardRequest(state: UnsafeMutableRawPointer?) {
+        ghostty_surface_deny_clipboard_request(surface, state)
     }
 
     /// Point the surface at the display it is shown on, so libghostty drives its

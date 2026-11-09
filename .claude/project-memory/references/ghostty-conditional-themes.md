@@ -1,15 +1,16 @@
 ---
 name: "Ghostty conditional themes"
-description: "How libghostty v1.3.1 resolves theme = light:…,dark:…, what the embedder must do on a scheme switch, and its precedence traps"
+description: "How libghostty resolves theme = light:…,dark:…, what the embedder must do on a scheme switch, and its precedence traps"
 type: reference
 ---
 
 # Ghostty conditional themes
 
-Facts about the pinned libghostty v1.3.1 that Casper's light/dark terminal
-rests on (`GhosttyDefaultConfig`, `GhosttyThemeFiles`, `GhosttyConfigBuilder`,
-`GhosttyRuntime.setColorScheme`). Source of truth: upstream Ghostty at tag
-`v1.3.1`, `src/config/Config.zig` (`loadTheme`, `finalize`,
+Facts about libghostty that Casper's light/dark terminal rests on
+(`GhosttyDefaultConfig`, `GhosttyThemeFiles`, `GhosttyConfigBuilder`,
+`GhosttyRuntime.setColorScheme`), established at Ghostty `v1.3.1`. Source of
+truth: upstream Ghostty at the commit the pinned build wraps (see
+[[ghosttykit-pin]]), `src/config/Config.zig` (`loadTheme`, `finalize`,
 `changeConditionalState`), `src/config/theme.zig`, `src/App.zig`,
 `src/Surface.zig`, and the macOS app's `AppDelegate.swift` /
 `Ghostty.App.swift`.
@@ -47,6 +48,6 @@ rests on (`GhosttyDefaultConfig`, `GhosttyThemeFiles`, `GhosttyConfigBuilder`,
 fails silently — a masked user theme, a terminal that never switches, or a
 vanilla gray after a theme file disappears.
 
-**How to access:** read the upstream files above at tag `v1.3.1` (the fork's
-header is `Vendor/ghostty/ghostty.h`). Related: [[ghosttykit-pin]],
+**How to access:** read the upstream files above at the wrapped commit (the
+fork's header is `Vendor/ghostty/ghostty.h`). Related: [[ghosttykit-pin]],
 [[ghostty-is-the-reference]].

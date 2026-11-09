@@ -5,19 +5,101 @@ import XCTest
 @testable import CasperGhostty
 
 final class GhosttyClipboardTests: XCTestCase {
-    func testReadsDataFromFirstContent() {
-        "hello".withCString { data in
-            "text/plain".withCString { mime in
-                var content = ghostty_clipboard_content_s(mime: mime, data: data)
-                withUnsafePointer(to: &content) { ptr in
-                    XCTAssertEqual(clipboardString(from: ptr, count: 1), "hello")
+    // MARK: - Decoding libghostty's clipboard contents
+
+    /// `data` is binary-safe with an explicit `len` and need not be NUL-terminated, so exactly
+    /// `len` bytes are read — never up to a terminator that may not exist. The buffer here has
+    /// none, and carries trailing bytes past `len` that must not leak into the text; the
+    /// multi-byte characters prove the bytes are decoded as UTF-8 rather than one per byte.
+    func testContentDecodesExactlyLenBytesOfAnUnterminatedBuffer() throws {
+        let text = "héllo — 世界"
+        let bytes = Array(text.utf8) + Array("TRAILING-GARBAGE".utf8)
+        let content = try bytes.withUnsafeBufferPointer { buffer in
+            try buffer.withMemoryRebound(to: CChar.self) { chars in
+                try "text/plain".withCString { mime in
+                    try XCTUnwrap(GhosttyClipboardContent(
+                        ghostty_clipboard_content_s(mime: mime, data: chars.baseAddress, len: text.utf8.count)))
+                }
+            }
+        }
+
+        XCTAssertEqual(content.mime, "text/plain")
+        XCTAssertEqual(content.data.count, text.utf8.count)
+        XCTAssertEqual(content.text, text)
+    }
+
+    /// An entry with no data reads as empty text rather than as a missing one.
+    func testContentWithNoDataIsEmpty() throws {
+        let content = try "text/plain".withCString { mime in
+            try XCTUnwrap(GhosttyClipboardContent(ghostty_clipboard_content_s(mime: mime, data: nil, len: 0)))
+        }
+
+        XCTAssertEqual(content.text, "")
+    }
+
+    /// An entry with no MIME type names no representation, so copying a C array skips it and
+    /// keeps the entries around it.
+    func testContentWithoutAMimeTypeIsSkipped() {
+        "text/plain".withCString { mime in
+            "kept".withCString { data in
+                let entries = [
+                    ghostty_clipboard_content_s(mime: nil, data: data, len: 4),
+                    ghostty_clipboard_content_s(mime: mime, data: data, len: 4),
+                ]
+                entries.withUnsafeBufferPointer { buffer in
+                    XCTAssertEqual(
+                        GhosttyClipboardContent.array(from: buffer.baseAddress, count: buffer.count),
+                        [GhosttyClipboardContent(plainText: "kept")])
                 }
             }
         }
     }
 
-    func testNilContentIsNil() {
-        XCTAssertNil(clipboardString(from: nil, count: 0))
+    func testNilContentArrayIsEmpty() {
+        XCTAssertEqual(GhosttyClipboardContent.array(from: nil, count: 0), [])
+    }
+
+    /// A ⌘C write can carry several representations, and the plain text need not come first:
+    /// the text entry is picked by its MIME type, not by its position.
+    func testPlainTextEntryIsPickedFromAMultiEntryArray() {
+        let html = GhosttyClipboardContent(mime: "text/html", data: Data("<b>bold</b>".utf8))
+        let plain = GhosttyClipboardContent(plainText: "bold")
+        let contents = [html, plain]
+
+        XCTAssertEqual(contents.plainTextEntry, plain)
+        XCTAssertEqual(contents.confirmationPreview, "bold")
+    }
+
+    /// The charset-qualified spelling is plain text too.
+    func testCharsetQualifiedPlainTextIsPlainText() {
+        let entry = GhosttyClipboardContent(mime: "text/plain;charset=utf-8", data: Data("hi".utf8))
+
+        XCTAssertEqual([entry].plainTextEntry?.text, "hi")
+    }
+
+    /// With no text to show, the prompt summarises each representation instead, so the user
+    /// still sees what would be handed over.
+    func testPreviewWithoutPlainTextSummarisesEachRepresentation() {
+        let contents = [
+            GhosttyClipboardContent(mime: "image/png", data: Data(count: 42)),
+            GhosttyClipboardContent(mime: "text/html", data: Data("<p></p>".utf8)),
+        ]
+
+        XCTAssertNil(contents.plainTextEntry)
+        XCTAssertEqual(contents.confirmationPreview, "image/png (42 bytes)\ntext/html (7 bytes)")
+    }
+
+    /// The C MIME list is copied entry by entry, skipping the null ones.
+    func testMimeListIsCopiedSkippingNullEntries() {
+        "text/plain".withCString { plain in
+            "image/png".withCString { png in
+                let mimes: [UnsafePointer<CChar>?] = [plain, nil, png]
+                mimes.withUnsafeBufferPointer { buffer in
+                    XCTAssertEqual(
+                        clipboardMIMEs(from: buffer.baseAddress, count: buffer.count), ["text/plain", "image/png"])
+                }
+            }
+        }
     }
 
     // MARK: - What libghostty is configured to ask about
@@ -79,18 +161,38 @@ final class GhosttyClipboardTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), "the user's own text")
     }
 
-    // MARK: - The OSC 52 read gate
-
-    /// The point of the gate: a denied OSC 52 read tells the terminal nothing about the
-    /// clipboard, and still answers — an unanswered read leaves the asking program waiting.
+    /// The kitty-write gate: the write policy decides, and logs, through `approves`.
     @MainActor
-    func testDeniedUntrustedReadHandsBackNothing() {
-        var answer = "not an answer yet"
+    func testWriteGateDecisionFollowsThePolicy() {
+        var shown: String?
+        var approved = false
+        withApproval({ text in
+            shown = text
+            return true
+        }, {
+            approved = GhosttyClipboardWrite.approves("kitty write")
+        })
+        XCTAssertEqual(shown, "kitty write")
+        XCTAssertTrue(approved)
+
+        withApproval({ _ in false }, {
+            approved = GhosttyClipboardWrite.approves("kitty write")
+        })
+        XCTAssertFalse(approved)
+    }
+
+    // MARK: - The untrusted read gate
+
+    /// The point of the gate: a denied untrusted read is refused, so the caller denies the
+    /// request and the clipboard never reaches the asking program.
+    @MainActor
+    func testDeniedUntrustedReadIsRefused() {
+        var approved = true
         withReadApproval({ _ in false }, {
-            answer = GhosttyClipboardRead.resolveUntrusted("TOP-SECRET-clipboard-contents")
+            approved = GhosttyClipboardRead.approves("TOP-SECRET-clipboard-contents")
         })
 
-        XCTAssertEqual(answer, "")
+        XCTAssertFalse(approved)
     }
 
     /// What the prompt shows is what approving it gives away, so the user judges the actual
@@ -98,16 +200,16 @@ final class GhosttyClipboardTests: XCTestCase {
     @MainActor
     func testTheReadPromptShowsTheTextItWouldHandOver() {
         var shown: String?
-        var answer = ""
+        var approved = false
         withReadApproval({ text in
             shown = text
             return true
         }, {
-            answer = GhosttyClipboardRead.resolveUntrusted("s3cret-token")
+            approved = GhosttyClipboardRead.approves("s3cret-token")
         })
 
         XCTAssertEqual(shown, "s3cret-token")
-        XCTAssertEqual(answer, shown)
+        XCTAssertTrue(approved)
     }
 
     /// A pasteboard of the test's own, so no test ever touches the developer's clipboard.

@@ -9,7 +9,7 @@ import CasperTestSupport
 /// End-to-end guard that an OSC 52 clipboard read emitted by the terminal's own output
 /// actually reaches `GhosttyClipboardRead`'s confirmation gate.
 ///
-/// The unit tests in `GhosttyClipboardTests` drive `resolveUntrusted` directly, so they stay
+/// The unit tests in `GhosttyClipboardTests` drive `approves` directly, so they stay
 /// green even when nothing in production ever calls it. That is not hypothetical: completing
 /// the read request with `confirmed: true` tells libghostty "the user already approved this",
 /// which short-circuits its `clipboard-read` policy so `confirm_read_clipboard_cb` never
@@ -34,10 +34,16 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
         "\(answerOpen)\(text)\(answerClose)"
     }
 
+    /// The line the probe prints when an OSC 52 reply actually arrived. An empty decoded
+    /// answer alone cannot tell an empty reply from none at all — the probe gives up after a
+    /// timeout either way — so this is what proves the program was answered.
+    private static let replied = "CASPER52-REPLIED"
+
     /// A denied OSC 52 read pins the whole gate: the confirmation is consulted (proving the
     /// policy was not short-circuited by a `confirmed: true` completion), the clipboard never
-    /// reaches the terminal grid, and the asking program still gets an answer — an empty one —
-    /// instead of blocking forever on a request nobody resolved.
+    /// reaches the terminal grid, and the asking program still gets an answer — an empty one,
+    /// which core writes itself for a denied request — instead of blocking forever on a
+    /// request nobody resolved.
     @MainActor
     func testDeniedOSC52ReadConsultsTheGateAndHandsBackNothing() throws {
         let outcome = try runOSC52ReadProbe(approving: false)
@@ -54,7 +60,10 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             "a denied OSC 52 read leaked the clipboard to the terminal; grid was:\n\(outcome.grid)")
         XCTAssertTrue(
             outcome.grid.contains(Self.framedAnswer("")),
-            "the denied read never came back, leaving the program waiting; grid was:\n\(outcome.grid)")
+            "the denied read did not come back empty; grid was:\n\(outcome.grid)")
+        XCTAssertTrue(
+            outcome.grid.contains(Self.replied),
+            "the denied read was never answered, leaving the program waiting; grid was:\n\(outcome.grid)")
     }
 
     /// An approved OSC 52 read hands the clipboard to the terminal. This is the counterweight
@@ -76,6 +85,26 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             "an approved OSC 52 read did not reach the terminal; grid was:\n\(outcome.grid)")
     }
 
+    /// An OSC 52 read of an empty clipboard is still answered, with empty contents. This pins
+    /// a deliberate deviation from upstream Ghostty, whose read callback reports `UNAVAILABLE`
+    /// when it has nothing to serve: for an OSC 52 read core then never replies, and the
+    /// asking program waits forever.
+    @MainActor
+    func testOSC52ReadOfAnEmptyClipboardIsStillAnswered() throws {
+        let outcome = try runOSC52ReadProbe(approving: true, clipboard: nil)
+
+        XCTAssertTrue(
+            outcome.grid.contains(Self.framedAnswer("")),
+            "an OSC 52 read of an empty clipboard did not come back empty; grid was:\n\(outcome.grid)")
+        XCTAssertTrue(
+            outcome.grid.contains(Self.replied),
+            """
+            an OSC 52 read of an empty clipboard was never answered, leaving the program \
+            waiting; grid was:
+            \(outcome.grid)
+            """)
+    }
+
     // MARK: - The probe
 
     /// What one run of the probe observed.
@@ -87,11 +116,11 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
         let grid: String
     }
 
-    /// Put the marker on a pasteboard of the test's own, make a real shell emit an OSC 52
-    /// read, answer it with `approving`, and report what the gate saw and what the terminal
-    /// ended up showing.
+    /// Put `clipboard` on a pasteboard of the test's own (leaving it empty for nil), make a
+    /// real shell emit an OSC 52 read, answer it with `approving`, and report what the gate
+    /// saw and what the terminal ended up showing.
     @MainActor
-    private func runOSC52ReadProbe(approving: Bool) throws -> ReadOutcome {
+    private func runOSC52ReadProbe(approving: Bool, clipboard: String? = marker) throws -> ReadOutcome {
         var consulted: [String] = []
         let productionApproval = GhosttyClipboardRead.approveUntrusted
         let productionPasteboard = GhosttyClipboardRead.systemPasteboard
@@ -105,7 +134,7 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             consulted.append(text)
             return approving
         }
-        let pasteboard = Self.pasteboardHoldingTheMarker()
+        let pasteboard = Self.testPasteboard(holding: clipboard)
         // A named pasteboard outlives the process on the pasteboard server unless released.
         defer { pasteboard.releaseGlobally() }
         GhosttyClipboardRead.systemPasteboard = pasteboard
@@ -131,13 +160,15 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
         return ReadOutcome(consulted: consulted, grid: grid)
     }
 
-    /// A pasteboard of the test's own, so the probe never reads — nor disturbs — the
-    /// developer's clipboard.
+    /// A pasteboard of the test's own holding `text` (no string at all for nil), so the probe
+    /// never reads — nor disturbs — the developer's clipboard.
     @MainActor
-    private static func pasteboardHoldingTheMarker() -> NSPasteboard {
+    private static func testPasteboard(holding text: String?) -> NSPasteboard {
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("casper.tests.clipboard-read.\(UUID().uuidString)"))
         pasteboard.clearContents()
-        pasteboard.setString(marker, forType: .string)
+        if let text {
+            pasteboard.setString(text, forType: .string)
+        }
         return pasteboard
     }
 
@@ -163,6 +194,8 @@ final class GhosttyClipboardReadE2ETests: XCTestCase {
             # Strip the `ESC ] 52 ; c ;` prefix and the `ESC \` (ST) terminator, then un-base64.
             answer=$(printf '%s' "${reply#*;c;}" | tr -d '\033\\' | base64 -D 2>/dev/null)
             printf '\n\#(answerOpen)%s\#(answerClose)\n' "$answer"
+            # Whether a reply arrived at all, which an empty answer cannot tell apart from none.
+            case "$reply" in *"]52;c;"*) printf '\#(replied)\n' ;; esac
             """#
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("casper-osc52-probe-\(UUID().uuidString).sh")

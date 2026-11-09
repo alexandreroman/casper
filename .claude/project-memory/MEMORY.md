@@ -33,7 +33,7 @@
 - [ArgumentParser shared run()](references/argumentparser-shared-run.md) — a refining protocol carries the common `run()` and wins
 - [App sessions (--session)](references/app-sessions.md) — DEBUG-only `--session <name>` isolates layout, sockets and env
 - [CLI availability](references/cli-availability.md) — no global install; PATH injection only, and it can be outranked
-- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — pinned by revision (the 1.2.8 tag is mutable); GhosttyKit product only
+- [GhosttyKit / libghostty pin](references/ghosttykit-pin.md) — pinned by revision (fork tags are mutable); GhosttyKit product only
 - [Ghostty conditional themes](references/ghostty-conditional-themes.md) — explicit keys beat themes; files re-read per switch; answer RELOAD_CONFIG
 - [libghostty initial_input mojibakes non-ASCII](references/ghostty-initial-input-utf8.md) — inject queued input via `ghostty_surface_text`
 - [Debug channel and logging gating](references/debug-channel-gating.md) — `#if DEBUG` only, never in release; verbose logs gated
@@ -43,7 +43,7 @@
 - [libghostty keybinds shadow the main menu](references/ghostty-keybinds-shadow-the-main-menu.md) — a bound ⌘ combo never reaches the menu item
 - [Implementation workflow](references/implementation-workflow.md) — one code-writer per task, review between, commit per task
 - [e2e surface creation flakiness](references/e2e-surface-creation-flakiness.md) — null surfaces with displays asleep; wake and poll
-- [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — per-surface userdata, main-thread callbacks, action names
+- [libghostty clipboard callbacks](references/ghostty-clipboard-callbacks.md) — userdata, length-delimited data, complete-or-deny, action names
 - [OSC 52 clipboard writes](references/osc52-clipboard-write-policy.md) — untrusted writes land unprompted; the dormant prompt, the accepted risk
 - [OSC 52 clipboard reads](references/osc52-clipboard-read-policy.md) — untrusted reads answered unprompted; `confirmed: true` skips the callback
 - [Ghostty option-as-alt](references/ghostty-option-as-alt.md) — translation-mods wiring; the pinned binary's effect is unconfirmed
