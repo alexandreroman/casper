@@ -18,6 +18,15 @@ CI, test, and documentation-only work is left out.
 - The embedded Ghostty terminal engine is updated to a build past Ghostty
   1.4.0, bringing that release's terminal fixes and improvements to every
   Casper terminal.
+- The sidebar's agent status recognizes which agent runs in each terminal —
+  Claude Code, Codex or opencode — and reads its screen with that agent's rules
+  only, so one agent's on-screen cues no longer pass for another's.
+
+### Fixed
+
+- A workspace no longer stays on "working" after its agent is killed or exits
+  without reporting it: once every terminal is back at its shell prompt, the
+  status settles, showing "done" if you were looking elsewhere.
 
 ## [0.3.0] - 2026-11-04
 

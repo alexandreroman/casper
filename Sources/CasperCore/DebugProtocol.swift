@@ -111,8 +111,9 @@ public struct DebugState: Codable, Equatable, Sendable {
         public var geometry: Geometry
         // Agent-state detection, reported so a detection change can be verified against the
         // running app rather than by reading the sidebar by eye. `agentState` is detection's
-        // output; `oscTitle` and `progressReport` are two of its three inputs — the third, the
-        // viewport text, is already reachable through the `readText` verb.
+        // output; `oscTitle` and `progressReport` are two of its three textual inputs — the
+        // third, the viewport text, is already reachable through the `readText` verb — and
+        // `foregroundProcess` is what picks the rule set they are read with.
 
         /// The workspace's current `AgentState.rawValue` — exactly what the sidebar status icon
         /// renders, i.e. what detection concluded.
@@ -123,11 +124,16 @@ public struct DebugState: Codable, Equatable, Sendable {
         /// The surface's latest OSC 9;4 progress state as `AgentProgressState.rawValue`, another
         /// of detection's inputs. Nil until a progress report has arrived.
         public var progressReport: String?
+        /// What detection last saw in the surface's foreground: `agent:<CodingAgent>`
+        /// (`agent:claudeCode`), `shell`, `other:<process name>` or `unidentified`. Nil
+        /// until a detection pass has observed the surface.
+        public var foregroundProcess: String?
 
         public init(
             id: String, title: String, workingDirectory: String?, focused: Bool,
             geometry: Geometry,
-            agentState: String? = nil, oscTitle: String? = nil, progressReport: String? = nil
+            agentState: String? = nil, oscTitle: String? = nil, progressReport: String? = nil,
+            foregroundProcess: String? = nil
         ) {
             self.id = id
             self.title = title
@@ -137,12 +143,13 @@ public struct DebugState: Codable, Equatable, Sendable {
             self.agentState = agentState
             self.oscTitle = oscTitle
             self.progressReport = progressReport
+            self.foregroundProcess = foregroundProcess
         }
 
         // The keys this type writes itself; `Geometry` writes its own into the same
         // keyed container, which is what keeps the wire form flat.
         private enum CodingKeys: String, CodingKey {
-            case id, title, workingDirectory, focused, agentState, oscTitle, progressReport
+            case id, title, workingDirectory, focused, agentState, oscTitle, progressReport, foregroundProcess
         }
 
         public init(from decoder: any Decoder) throws {
@@ -155,6 +162,7 @@ public struct DebugState: Codable, Equatable, Sendable {
             agentState = try container.decodeIfPresent(String.self, forKey: .agentState)
             oscTitle = try container.decodeIfPresent(String.self, forKey: .oscTitle)
             progressReport = try container.decodeIfPresent(String.self, forKey: .progressReport)
+            foregroundProcess = try container.decodeIfPresent(String.self, forKey: .foregroundProcess)
         }
 
         public func encode(to encoder: any Encoder) throws {
@@ -167,6 +175,7 @@ public struct DebugState: Codable, Equatable, Sendable {
             try container.encodeIfPresent(agentState, forKey: .agentState)
             try container.encodeIfPresent(oscTitle, forKey: .oscTitle)
             try container.encodeIfPresent(progressReport, forKey: .progressReport)
+            try container.encodeIfPresent(foregroundProcess, forKey: .foregroundProcess)
         }
     }
 
