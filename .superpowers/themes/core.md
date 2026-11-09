@@ -103,9 +103,16 @@ The pure-Swift, UI-free core. Fully unit-tested.
   config".
 - **Agent detection** — `AgentDetection.swift` (the pure matcher/resolver, whose
   types are `AgentSignal`, `AgentProgressState`, `AgentDetectionRuleSet` and
-  `AgentStateResolver` — there is no `AgentDetection` type) and
-  `AgentIntegration`/`AgentIntegrationProbe` (is each agent's Casper plugin
-  installed). Design in `agent-state-detection.md` and `cli-agents.md`.
+  `AgentStateResolver` — there is no `AgentDetection` type),
+  `ForegroundProcess.swift` (what runs in a terminal's foreground:
+  `ForegroundProcess`, `ProcessSnapshot`, `ProcessKey`, the `ProcessInspector`
+  seam and `LibprocProcessInspector`, the module's one reader of the kernel's
+  process table through libproc and `sysctl`; the pure
+  `ForegroundProcessClassifier`; and `ForegroundTracker`, which caches each
+  surface's classification and reports an agent's exit as a
+  `ForegroundObservation`) and `AgentIntegration`/`AgentIntegrationProbe` (is
+  each agent's Casper plugin installed). Design in `agent-state-detection.md`
+  and `cli-agents.md`.
 - **Filesystem & timing utilities**, all deliberately model-free:
   - **`DirectoryWatcher`** — a native FSEvents wrapper over a path subtree with
     exclusions, delivering coalesced changes on a private serial queue; hopping

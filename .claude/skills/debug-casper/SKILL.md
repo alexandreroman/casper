@@ -132,10 +132,14 @@ App state as JSON:
 Besides geometry, each surface reports `agentState` — what agent-state detection
 concluded, the same value the sidebar status icon renders — plus `oscTitle` and
 `progressReport`, two of the three inputs detection drew it from (the third is
-the viewport text, which `read-text` below returns). Together they make it
-possible to verify a detection change against the live app instead of reading
-the sidebar by eye or adding temporary logging. Both OSC fields are absent until
-the surface has actually received such a sequence.
+the viewport text, which `read-text` below returns), and `foregroundProcess`,
+which picked the rule set they are read with: `agent:<CodingAgent>`
+(`agent:claudeCode`), `shell` (no agent; the viewport is not read),
+`other:<comm>` (`other:vim`, read with every rule set) or `unidentified`.
+Together they make it possible to verify a detection change against the live
+app instead of reading the sidebar by eye or adding temporary logging. Both OSC
+fields are absent until the surface has actually received such a sequence, and
+`foregroundProcess` until a detection pass has observed the surface.
 
 The terminal's live text (viewport, or `--scrollback` for the full screen):
 

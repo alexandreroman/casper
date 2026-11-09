@@ -53,7 +53,11 @@ See [[debug-channel-gating]].
 - **Verbs** — ten, in three groups. All ten also take `--socket <path>`, which
   overrides the resolution above, so it is not repeated per verb below:
   - *Observe* — `dump-state` (per surface: id, title, cwd, cols/rows, focus,
-    the raw geometry readback and the agent-detection fields),
+    the raw geometry readback and the agent-detection fields — `agentState`,
+    `oscTitle`, `progressReport`, and `foregroundProcess`, the kind detection
+    last saw in the foreground: `agent:<CodingAgent>` (`agent:claudeCode`),
+    `shell`, `other:<comm>` (`other:vim`) or `unidentified`, absent until a
+    detection pass has observed the surface),
     `read-text [--scrollback]`, `screenshot <path>`, and `memory` (process
     footprint, the live-object census, and the app's collection sizes).
   - *Inject* — `send-text <str> [--enter]` (writes the text straight into the
