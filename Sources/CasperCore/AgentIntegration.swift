@@ -66,6 +66,13 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         }
     }
 
+    /// The names a running agent process answers to, lower-case. Foreground
+    /// identification matches them exactly against argv[0], the executable's
+    /// basename and the kernel's process name (`ForegroundProcessClassifier`).
+    public var executableNames: Set<String> {
+        [executableName]
+    }
+
     /// Where to send the user to install or fix this agent's integration.
     public var documentationURL: URL {
         // Force-unwrapped: both operands are literals, so this cannot fail.
