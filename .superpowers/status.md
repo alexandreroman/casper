@@ -128,7 +128,8 @@ non-selected workspaces.
    Space" only). See `themes/space-project.md`.
 2. **Agent-state detection deferrals** — a `.render`-driven trigger in place of
    the timer poll, option-B timeout authority release (a stale `working` still
-   outlives an agent killed inside ssh or tmux; one whose panes return to their
+   outlives an agent killed inside ssh or tmux, launched through a wrapper,
+   `npx` or `sudo`, or whose pane is closed; one whose panes return to their
    shell releases on its exit), per-surface explicit status through
    `ghostty_surface_tty_name`, a per-surface status field, and a real `error`
    signal alongside the agent-as-command `done`/`error` path. Those five, and

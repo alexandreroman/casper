@@ -116,15 +116,15 @@ of four kinds, and the kind chooses what the signal pipeline does
 | `.unidentified`       | union of every rule set ⊕ OSC 9;4                  | yes           |
 
 `.other` is readable but neither a known agent nor a lone shell (`vim`, `ssh`,
-`tmux`, `sudo claude`, `npx …`, a wrapper script) and carries the kernel name
-(`comm`) for diagnostics; `.unidentified` means no PID, or a leader that could
-not be read (gone, another user's). The two behave alike: the **union is the
-fallback**, so an agent inside ssh or tmux is still matched by its text, and
-an `npm install` emitting OSC 9;4 still reads `working`. OSC 9;4 joins every
-case but `.shell`: it is agent-neutral, and one agent's rule set must not hide
-another's progress protocol. A shell at its prompt reads `absent` whatever the
-screen still shows, so a progress bar left up by an agent that died without
-`ESC]9;4;0` does not pin the workspace to `working`.
+`tmux`, `npx …`, a wrapper script) and carries the kernel name (`comm`) for
+diagnostics; `.unidentified` means no PID, or a leader that could not be read
+(gone, or another user's, such as `sudo claude`). The two behave alike: the
+**union is the fallback**, so an agent inside ssh or tmux is still matched by
+its text, and an `npm install` emitting OSC 9;4 still reads `working`. OSC 9;4
+joins every case but `.shell`: it is agent-neutral, and one agent's rule set
+must not hide another's progress protocol. A shell at its prompt reads
+`absent` whatever the screen still shows, so a progress bar left up by an
+agent that died without `ESC]9;4;0` does not pin the workspace to `working`.
 
 **How a process is named.** `LibprocProcessInspector` reads `pbi_comm`
 (`proc_pidinfo`), the resolved image path (`proc_pidpath`), the exec path as
@@ -340,7 +340,7 @@ The raw signal becomes the reported state through `AgentStateResolver` — the
 only place with policy, and the only state machine involved: the model's
 `agentState` stays a plain field (`core.md`).
 
-1. **No foreground agent → `unknown`.** The tick feeds `absent` for a terminal
+1. **A shell foreground → `unknown`.** The tick feeds `absent` for a terminal
    whose foreground is a shell at its prompt, so a workspace whose every
    terminal is at its shell aggregates to `absent`. `absent` joins `idle`'s
    at-rest path (`resolveAtRest`) and differs only in the rest state: a
@@ -407,11 +407,13 @@ not detected there — a hook-driven session reports blocked through its
 notification hook instead, which is the path that already carries it. A stale
 `working` heals from the terminal only through the exit release below: an agent
 killed between its `UserPromptSubmit` hook and the matching `Stop` inside ssh
-or tmux, or beside a pane that never returns to its shell, leaves the workspace
-`working`. What ends it there is the session boundary — the plugin's SessionEnd
-hook reports `done`, its SessionStart reports `idle` (a release), and the latch
-never survives an app reload — plus the plugin's own rule that a turn ending
-with no progress bar up reports `done`.
+or tmux, launched through a wrapper, `npx` or `sudo` (never identified, so its
+exit is no edge), in a pane that is closed, or beside a pane that never returns
+to its shell, leaves the workspace `working`. What ends it there is the session
+boundary — the plugin's SessionEnd hook reports `done`, its SessionStart
+reports `idle` (a release), and the latch never survives an app reload — plus
+the plugin's own rule that a turn ending with no progress bar up reports
+`done`.
 
 ### Release on an observed agent exit
 

@@ -21,6 +21,8 @@ CI, test, and documentation-only work is left out.
 - The sidebar's agent status recognizes which agent runs in each terminal —
   Claude Code, Codex or opencode — and reads its screen with that agent's rules
   only, so one agent's on-screen cues no longer pass for another's.
+- `casper status get` reports `unknown` for a workspace whose terminals all sit
+  at their shell prompt with no agent running.
 
 ### Fixed
 

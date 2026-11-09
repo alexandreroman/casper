@@ -127,7 +127,7 @@
 - [Agent integration policy](references/agent-integration-policy.md) — detect and remind only; never write another tool's config
 - [Plugin version coupling](references/plugin-version-coupling.md) — two repos; `installed < required`, so upward drift is benign
 - [Codex detection caveats](references/codex-detection-caveats.md) — confirmed cache path, hook trust in config.toml, hooks.json false positive
-- [Foreground-process identification facts](references/foreground-process-identification.md) — argv names native Claude; login leads the PTY
+- [Foreground-process identification facts](references/foreground-process-identification.md) — re-measuring agents; real-PTY test traps
 - [session.json byte-stable encoding](references/session-json-stable-encoding.md) — `.sortedKeys`; a persisted `Set` encodes sorted
 - [Unused-import greps give false positives on extension members](references/unused-import-grep-false-positives.md) — a green build proves nothing
 - [Swift text-parsing gotchas](references/swift-text-parsing-gotchas.md) — CRLF is one Character; Swift Regex has no lookbehind
