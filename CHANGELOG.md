@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog][keepachangelog], and this project
 adheres to [Semantic Versioning][semver]. Entries describe user-visible changes;
 CI, test, and documentation-only work is left out.
 
+## [Unreleased]
+
+### Added
+
+- Programs that use the kitty clipboard protocol (OSC 5522) can read and write
+  the clipboard as plain text, under the same rules as OSC 52.
+
+### Changed
+
+- The embedded Ghostty terminal engine is updated to a build past Ghostty
+  1.4.0, bringing that release's terminal fixes and improvements to every
+  Casper terminal.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added
@@ -201,6 +214,7 @@ Initial release.
 
 [keepachangelog]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/spec/v2.0.0.html
+[Unreleased]: https://github.com/alexandreroman/casper/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/alexandreroman/casper/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/alexandreroman/casper/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/alexandreroman/casper/compare/v0.1.2...v0.1.3

@@ -6,8 +6,8 @@ type: reference
 
 # libghostty mouse handling parity
 
-Confirmed against the pinned header (`Vendor/ghostty/ghostty.h`, Ghostty v1.3.1)
-and upstream's macOS sources at the same tag while bringing
+Confirmed against the libghostty header (`Vendor/ghostty/ghostty.h`) and
+upstream's macOS sources at Ghostty v1.3.1 while bringing
 `GhosttySurfaceView` to upstream mouse parity.
 
 - **Multi-click is entirely core-side.** `ghostty_surface_mouse_button(surface,

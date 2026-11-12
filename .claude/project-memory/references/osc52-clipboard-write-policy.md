@@ -70,7 +70,15 @@ starvation is a benign cost here specifically because nothing in libghostty
 blocks on `write_clipboard_cb` — it returns `void` with no completion.
 
 **Scope:** reads have a policy of their own, of the same shape —
-[[osc52-clipboard-read-policy]].
+[[osc52-clipboard-read-policy]]. A kitty clipboard-protocol write (OSC 5522)
+consults this same `approveUntrusted`, but from `confirm_read_clipboard_cb`
+(`GHOSTTY_CLIPBOARD_REQUEST_KITTY_WRITE`) rather than `write_clipboard_cb`:
+core asks before writing, and once the request completes confirmed it hands
+the write to `write_clipboard_cb` as trusted, so it is gated exactly once. A
+denial is a `ghostty_surface_deny_clipboard_request`, which core answers with
+`EPERM`. Unlike an OSC 52 write, that request holds pending state until it is
+settled. Casper writes the plain-text representation only, so an approved
+kitty write that carries no text reports success and writes nothing.
 
 **How to apply:** keep `approveUntrusted` approving unconditionally, keep the
 prompt code and the config line intact, and keep the seam test-only. Callback

@@ -18,6 +18,10 @@ import CasperCore
 /// The prompt itself (`presentConfirmation`) stays intact and complete: assigning it to
 /// `approveUntrusted` is the whole of what asking the user would take.
 ///
+/// A kitty clipboard-protocol write (OSC 5522) is gated before it gets here: libghostty asks
+/// for it through `confirm_read_clipboard_cb`, where `approves` decides it, and once approved
+/// delivers it to `write_clipboard_cb` as a trusted write.
+///
 /// `clipboard-write = ask` belongs in `GhosttyDefaultConfig` even so: it is what makes
 /// libghostty flag an untrusted write at all (see `GhosttyDefaultConfig.text`).
 @MainActor
@@ -35,13 +39,21 @@ enum GhosttyClipboardWrite {
     /// `pasteboard` is a parameter so tests write to a pasteboard of their own rather than
     /// to the developer's clipboard.
     static func apply(_ text: String, confirm: Bool, to pasteboard: NSPasteboard = .general) {
-        if confirm, !approveUntrusted(text) {
-            CasperLog.ghostty.notice(
-                "denied an untrusted clipboard write of \(text.count, privacy: .public) characters")
+        if confirm, !approves(text) {
             return
         }
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    /// Whether an untrusted write of `text` may proceed, logging a denial.
+    static func approves(_ text: String) -> Bool {
+        guard approveUntrusted(text) else {
+            CasperLog.ghostty.notice(
+                "denied an untrusted clipboard write of \(text.count, privacy: .public) characters")
+            return false
+        }
+        return true
     }
 
     /// The confirmation prompt: Ghostty's own OSC 52 write prompt

@@ -10,7 +10,8 @@ type: reference
 **`visible`** flag: `true` = the surface is on screen → keep rendering; `false`
 = occluded → libghostty pauses the surface's render thread. The vendored header
 carries no doc comment, so the polarity is only discoverable from the source.
-Authoritative definition, Ghostty v1.3.1 `src/apprt/embedded.zig`:
+Authoritative definition, `src/apprt/embedded.zig` (identical at Ghostty v1.3.1
+and at `042b16b`, the commit the pinned build wraps):
 
 ```zig
 export fn ghostty_surface_set_occlusion(surface, visible: bool) {
@@ -30,8 +31,9 @@ libghostty's real rendering) and `read-text`; only a screenshot or a human eye
 catches it — which is why the render-level behaviour needs manual/on-device
 verification, not just green tests.
 
-**How to access:** the pinned reference lives at
-`https://raw.githubusercontent.com/ghostty-org/ghostty/v1.3.1/src/apprt/embedded.zig`
+**How to access:** the reference lives at
+`https://raw.githubusercontent.com/ghostty-org/ghostty/<commit>/src/apprt/embedded.zig`,
+with `<commit>` the upstream commit named in [[ghosttykit-pin]]
 — grep the `ghostty_surface_*` / `ghostty_app_*` C exports for the real
 parameter names before assuming a bool's polarity. When embedding, compute
 surface visibility as
