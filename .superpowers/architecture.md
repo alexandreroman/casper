@@ -47,23 +47,24 @@ bundle identifier — a bare executable cannot post a notification at all (see
   word fails with ArgumentParser's own error rather than silently opening a
   window.
 - **v1 agents:** Claude Code, OpenAI Codex CLI, and opencode, all through the
-  same agent-agnostic `casper` CLI. Each has its own terminal-scraping rule set,
-  and all of them are applied to every surface — detection cannot tell which
-  agent occupies a terminal, so it aggregates rather than choosing.
+  same agent-agnostic `casper` CLI. Each has its own terminal-scraping rule set;
+  the terminal's foreground process selects the one to apply, and a surface
+  whose agent it cannot name (ssh, tmux, a wrapper) gets all of them,
+  aggregated.
 
 ## Module boundaries
 
-| Module            | Responsibility                                                                                                                                                     | Theme                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
-| **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                                                                          | `themes/git-worktrees.md` |
-| **CasperCore**    | Models + `LayoutTree`, `SessionStore`, `WorktreeManager`, `PortAllocator`, `RepoConfig`, agent detection + integration probing, control channel. Pure Swift, no UI | `themes/core.md`          |
-| **CasperGhostty** | `GhosttyRuntime` + surface views: wraps GhosttyKit, owns surface lifecycle (splits are `CasperCore.LayoutTree`). The only module touching the unstable API         | `themes/terminal.md`      |
-| **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT`, `CASPER_SESSION`, `PATH`, `LANG`) for Casper terminals           | `themes/cli-agents.md`    |
-| **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                                                                               | `themes/cli-agents.md`    |
-| **CasperUI**      | SwiftUI sidebar, chrome and browser, the AppKit diff renderer and Ghostty bridges; owns the window, the app lifecycle and all startup wiring                       | `themes/app-ui.md`        |
-| **Clibgit2**      | `.systemLibrary` target binding libgit2 via Homebrew + pkg-config; no Swift code of its own                                                                        | `themes/git-worktrees.md` |
-| **CSigbusGuard**  | A C shim installing a `SIGBUS` handler around libgit2 diff, turning an mmap-truncation fault into a thrown error                                                   | `themes/git-worktrees.md` |
-| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is a handful of lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()`                          | all                       |
+| Module            | Responsibility                                                                                                                                                                                                           | Theme                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| **CasperGit**     | Thin wrapper over the libgit2 C API: worktrees, diff, status, branch/base                                                                                                                                                | `themes/git-worktrees.md` |
+| **CasperCore**    | Models + `LayoutTree`, `SessionStore`, `WorktreeManager`, `PortAllocator`, `RepoConfig`, agent detection (incl. foreground-process identification via libproc) + integration probing, control channel. Pure Swift, no UI | `themes/core.md`          |
+| **CasperGhostty** | `GhosttyRuntime` + surface views: wraps GhosttyKit, owns surface lifecycle (splits are `CasperCore.LayoutTree`). The only module touching the unstable API                                                               | `themes/terminal.md`      |
+| **CasperAgents**  | Per-surface environment injection (`CASPER_WORKSPACE_ID`, `CASPER_CONTROL_SOCKET`, `CASPER_PORT`, `CASPER_SESSION`, `PATH`, `LANG`) for Casper terminals                                                                 | `themes/cli-agents.md`    |
+| **CasperCLI**     | `casper` subcommand dispatch (swift-argument-parser)                                                                                                                                                                     | `themes/cli-agents.md`    |
+| **CasperUI**      | SwiftUI sidebar, chrome and browser, the AppKit diff renderer and Ghostty bridges; owns the window, the app lifecycle and all startup wiring                                                                             | `themes/app-ui.md`        |
+| **Clibgit2**      | `.systemLibrary` target binding libgit2 via Homebrew + pkg-config; no Swift code of its own                                                                                                                              | `themes/git-worktrees.md` |
+| **CSigbusGuard**  | A C shim installing a `SIGBUS` handler around libgit2 diff, turning an mmap-truncation fault into a thrown error                                                                                                         | `themes/git-worktrees.md` |
+| **casper** (exe)  | The single binary. `Sources/casper/main.swift` is a handful of lines: `LaunchMode.detect` → `CasperUI.runApp()` or `CasperCommand.main()`                                                                                | all                       |
 
 Rationale: instability (libghostty) and Git specifics (libgit2) are each
 confined to one module, so churn stays local. Agent specifics are split on

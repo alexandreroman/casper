@@ -23,11 +23,12 @@ public struct DebugSurfaceHandle {
     public let window: NSWindow?
     // Agent-state detection, so `dumpState` can report what detection concluded and what it
     // concluded it from. `agentState` is a plain value read once when the handle is built (like
-    // `title`); the other two are closures because they read live per-surface state off the view,
-    // the same way `readText` does.
+    // `title`); the others are closures because they read live per-surface state, the same way
+    // `readText` does.
     public let agentState: String?
     public let oscTitle: () -> String?
     public let progressReport: () -> String?
+    public let foregroundProcess: () -> String?
 
     public init(
         id: String, title: String, workingDirectory: String?, focused: Bool,
@@ -42,7 +43,8 @@ public struct DebugSurfaceHandle {
         window: NSWindow?,
         agentState: String?,
         oscTitle: @escaping () -> String?,
-        progressReport: @escaping () -> String?
+        progressReport: @escaping () -> String?,
+        foregroundProcess: @escaping () -> String?
     ) {
         self.id = id
         self.title = title
@@ -60,6 +62,7 @@ public struct DebugSurfaceHandle {
         self.agentState = agentState
         self.oscTitle = oscTitle
         self.progressReport = progressReport
+        self.foregroundProcess = foregroundProcess
     }
 }
 
@@ -137,7 +140,7 @@ public final class DebugServer {
                     id: surface.id, title: surface.title, workingDirectory: surface.workingDirectory,
                     focused: surface.focused, geometry: surface.geometry(),
                     agentState: surface.agentState, oscTitle: surface.oscTitle(),
-                    progressReport: surface.progressReport())
+                    progressReport: surface.progressReport(), foregroundProcess: surface.foregroundProcess())
             }
             return .success(state: DebugState(surfaces: entries))
 

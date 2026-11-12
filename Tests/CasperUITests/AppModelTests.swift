@@ -1513,9 +1513,9 @@ final class AppModelTests: XCTestCase {
             // queued command varies with the user's login shell, so poll for the echo.
             // The marker is computed: the typed command reaches the viewport whether or
             // not the shell runs it, but only a run prints `42`.
-            await waitUntil(timeout: 10) { model.surfaceViewportText(newID)?.contains("COMMAND_RAN_42") == true }
+            await waitUntil(timeout: 10) { view.readViewportText()?.contains("COMMAND_RAN_42") == true }
 
-            let text = model.surfaceViewportText(newID) ?? ""
+            let text = view.readViewportText() ?? ""
             XCTAssertTrue(
                 text.contains("COMMAND_RAN_42"),
                 "expected the opened terminal's command to have run; viewport was:\n\(text)")

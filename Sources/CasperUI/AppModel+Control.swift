@@ -37,7 +37,12 @@ extension AppModel {
         // not strand the workspace. That guarantee now comes from the session
         // boundary instead — the plugin's SessionEnd hook reports `done` and its
         // SessionStart reports `idle`, which releases the latch outright — plus
-        // the app reload the latch never survives.
+        // the app reload the latch never survives, and the detection tick, which
+        // releases it once it sees the agent exit and every terminal back at its
+        // shell (`runAgentDetectionTick`).
+        // The agent spoke again, so an exit seen before this report no longer
+        // proves it is gone (see `agentExitedUnderAuthority`).
+        agentExitedUnderAuthority.remove(workspaceID)
         switch state {
         case .working, .blocked, .done, .error:
             explicitAuthority.insert(workspaceID)
@@ -45,8 +50,8 @@ extension AppModel {
             explicitAuthority.remove(workspaceID)
         }
         // `done` is the one explicit state detection can never produce for a
-        // hook-driven workspace (it's already under explicit authority by the
-        // time a Stop hook fires — see
+        // hook-driven workspace while the latch holds (it's already under
+        // explicit authority by the time a Stop hook fires — see
         // `.superpowers/themes/agent-state-detection.md` § Authority), so this
         // is the only place that can raise its attention bubble/notification.
         // `blocked`/`error` are deliberately excluded: both already get an

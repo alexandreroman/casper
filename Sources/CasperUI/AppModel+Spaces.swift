@@ -560,6 +560,7 @@ extension AppModel {
         portAllocator.release(ws.portBase)
         discardSurfaceViews(LayoutTree.surfaceIDs(ws.layout) + [ws.inspector.browser.id])
         explicitAuthority.remove(ws.id)
+        agentExitedUnderAuthority.remove(ws.id)
         agentResolvers[ws.id] = nil
         namedCommandsCache[ws.id] = nil
         namedCommandsStamps[ws.id] = nil

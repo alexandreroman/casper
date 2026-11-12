@@ -31,14 +31,30 @@ extension AppModel: DebugSurfaceProvider {
                 geometry: { [weak view] in view?.debugGeometry() ?? .zero },
                 focus: { [weak window, weak view] in window?.makeFirstResponder(view) },
                 window: window,
-                // Detection's conclusion, plus two of the three inputs it drew it from (the
-                // third, the viewport text, is what `readText` above returns). Reported as
-                // their own fields rather than by redefining `title`, which stays the workspace
-                // name so nothing already reading it changes meaning.
+                // Detection's conclusion, plus two of the three textual inputs it drew it from
+                // (the third, the viewport text, is what `readText` above returns) and the
+                // foreground that picked their rule set. Reported as their own fields rather
+                // than by redefining `title`, which stays the workspace name so nothing already
+                // reading it changes meaning.
                 agentState: workspace.agentState.rawValue,
                 oscTitle: { [weak view] in view?.readOSCTitle() },
-                progressReport: { [weak view] in view?.readProgressReport()?.rawValue }),
+                progressReport: { [weak view] in view?.readProgressReport()?.rawValue },
+                foregroundProcess: { [weak self, weak view] in
+                    guard let self, let view, let surfaceID = debugSurfaceID(of: view) else { return nil }
+                    return foregroundTracker.process(for: surfaceID).map(Self.dumpStateName(of:))
+                }),
         ]
+    }
+
+    /// `foregroundProcess` as `dump-state` spells it: `agent:claudeCode`, `shell`,
+    /// `other:vim`, `unidentified`.
+    static func dumpStateName(of process: ForegroundProcess) -> String {
+        switch process {
+        case .agent(let agent): return "agent:\(agent.rawValue)"
+        case .shell: return "shell"
+        case .other(let name): return "other:\(name)"
+        case .unidentified: return "unidentified"
+        }
     }
 
     private static func findSurfaceView(in view: NSView?) -> GhosttySurfaceView? {

@@ -92,8 +92,10 @@ at a time, with a failing hook surfaced but never blocking the destroy.
 installs no hooks into any agent. The browser verbs drive the inspector
 WKWebView for automation and debugging; sized and `--url` screenshots render in
 a dedicated off-screen web view instead. Agent-state detection covers Claude
-Code, Codex and opencode from three signal sources, behind a `casper status`
-authority latch. Agent *integration* detection reports, per agent, whether its
+Code, Codex and opencode from three signal sources, read with the rule set of
+the agent each terminal's foreground process names, behind a `casper status`
+authority latch that an observed agent exit releases once every terminal is
+back at its shell. Agent *integration* detection reports, per agent, whether its
 CLI and the Casper plugin are present, current and approved, and reminds in the
 sidebar — detect-and-link only, never writing another tool's configuration.
 
@@ -125,10 +127,14 @@ non-selected workspaces.
    grouping are built; nothing renames a Space (its sidebar menu offers "Remove
    Space" only). See `themes/space-project.md`.
 2. **Agent-state detection deferrals** — a `.render`-driven trigger in place of
-   the timer poll, option-B timeout authority release, per-surface status, and a
-   real `error` signal alongside the agent-as-command `done`/`error` path. Those
-   four, and three open questions — starting with whether current Codex still
-   prints an interrupt affordance at all — are specified in
+   the timer poll, option-B timeout authority release (a stale `working` still
+   outlives an agent killed inside ssh or tmux, launched through a wrapper,
+   `npx` or `sudo`, or whose pane is closed; one whose panes return to their
+   shell releases on its exit), per-surface explicit status through
+   `ghostty_surface_tty_name`, a per-surface status field, and a real `error`
+   signal alongside the agent-as-command `done`/`error` path. Those five, and
+   three open questions — starting with whether current Codex still prints an
+   interrupt affordance at all — are specified in
    `themes/agent-state-detection.md` § Deferred / out of scope and
    § Open questions.
 3. **Diff highlight repaint** — the repaint is one synchronous main-thread burst
@@ -157,9 +163,11 @@ hover, pulse, link-cursor and link-routing behaviour. See
   badge designed for the Space sidebar row (decision 2026-07-06). The title
   bar's working-tree-vs-HEAD summary covers the need, so this is the intended
   behaviour rather than a stopgap.
-- **A process-exit (`childExited`) `done`/`error` producer** and the authority
-  release built on it. `onChildExit` is wired, but only to the script-hook
-  runner, so `error` has no terminal-scraping producer — it is raised by a
+- **A process-exit (`childExited`) `done`/`error` producer.** `onChildExit` is
+  wired, but only to the script-hook runner: it fires for the login shell, not
+  for a job inside it. An agent's exit edge comes from the terminal's
+  foreground process instead, which yields `done` and the authority release but
+  no exit code, so `error` has no terminal-scraping producer — it is raised by a
   `setup` hook exiting non-zero, or explicitly by `casper status set error`. The
   *agent-as-command* surface this would need is technically reopened — the
   vendored libghostty does exec `command` — but has not been re-evaluated, and

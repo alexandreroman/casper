@@ -508,6 +508,12 @@ final class AppModel {
     /// rather than widened visibility, so the cache itself stays private — see the
     /// appmodel-extension-encapsulation project-memory note.
     var debugSurfaceViewCount: Int { surfaceViews.count }
+
+    /// The surface id `view` is cached under, so `dump-state` can report that surface's
+    /// detection inputs. A linear scan, run only when the debug channel asks.
+    func debugSurfaceID(of view: GhosttySurfaceView) -> UUID? {
+        surfaceViews.first { $0.value === view }?.key
+    }
     #endif
 
     // Reached from AppModel+Control.swift.
@@ -576,9 +582,33 @@ final class AppModel {
     /// Workspaces whose terminal-independent, explicit state took over: native
     /// terminal detection is suppressed for `working`, `blocked`, `done` and `error`,
     /// and only `idle`/`unknown` hand the workspace back to the scraper (see
-    /// `controlSetAgentState`). Transient — an in-memory set, never persisted, so it
-    /// naturally resets to "detection" on relaunch.
+    /// `controlSetAgentState`) — or an agent seen exiting with every terminal back at
+    /// its shell (see `runAgentDetectionTick`). Transient — an in-memory set, never
+    /// persisted, so it naturally resets to "detection" on relaunch.
     @ObservationIgnored var explicitAuthority: Set<UUID> = []
+
+    /// Latched workspaces in which an agent was seen exiting since the last explicit
+    /// report. The exit edge lasts a single tick, and another terminal may not be at
+    /// its shell on that tick (a dev server, a prompt's `$(…)`), so the exit is kept
+    /// until every terminal is and the latch releases. Cleared by any explicit report,
+    /// since the agent spoke again. Transient, never persisted.
+    @ObservationIgnored var agentExitedUnderAuthority: Set<UUID> = []
+
+    /// What runs in each terminal's foreground, as of its last detection pass: it picks
+    /// the agent's rule set, reads a shell prompt as "no agent", and sees an agent exit.
+    /// Keyed by surface id. Runtime-only; never persisted.
+    @ObservationIgnored var foregroundTracker = ForegroundTracker()
+
+    /// Reads the process behind a foreground PID. Injectable so tests never read the
+    /// real process table; lazy so a model that never runs detection (the unit tests,
+    /// mostly) never allocates the live inspector's `KERN_ARGMAX` buffer.
+    @ObservationIgnored lazy var processInspector: any ProcessInspector = LibprocProcessInspector()
+
+    /// The foreground process group of a terminal surface, nil without a live view.
+    /// Injectable so tests drive the tick without a real PTY.
+    @ObservationIgnored lazy var foregroundPIDProvider: (UUID) -> pid_t? = { [weak self] surfaceID in
+        self?.surfaceViews[surfaceID]?.readForegroundPID()
+    }
 
     /// When each workspace last delivered a macOS notification. Drives a short
     /// per-workspace de-dup cooldown (`notificationCooldown`) so a single real-world
@@ -1686,23 +1716,11 @@ final class AppModel {
         return window
     }
 
-    // Internal for AppModelTests.
-    /// Visible viewport text of a live terminal surface, or nil if it has no
-    /// live Ghostty view. Read-only; used by agent-state detection.
-    func surfaceViewportText(_ surfaceID: UUID) -> String? {
-        surfaceViews[surfaceID]?.readViewportText()
-    }
-
-    /// OSC window title of a live terminal surface, or nil if it has no live
-    /// Ghostty view. Read-only; used by agent-state detection.
-    private func surfaceOSCTitle(_ surfaceID: UUID) -> String? {
-        surfaceViews[surfaceID]?.readOSCTitle()
-    }
-
-    /// Latest OSC 9;4 progress state of a live terminal surface, or nil if it has
-    /// no live Ghostty view. Read-only; used by agent-state detection.
-    private func surfaceProgressReport(_ surfaceID: UUID) -> AgentProgressState? {
-        surfaceViews[surfaceID]?.readProgressReport()
+    /// What agent-state detection reads off one terminal surface, or nil if it has no
+    /// live Ghostty view. Injectable so tests drive the tick without a real surface.
+    @ObservationIgnored lazy var agentSurfaceReader: (UUID) -> AgentSurfaceReading? = { [weak self] surfaceID in
+        guard let view = self?.surfaceViews[surfaceID], let viewport = view.readViewportText() else { return nil }
+        return AgentSurfaceReading(viewport: viewport, title: view.readOSCTitle(), progress: view.readProgressReport())
     }
 
     /// The persistent coordinator (and its `WKWebView`) for a browser surface,
@@ -2110,9 +2128,11 @@ final class AppModel {
     // The implicit producer of `agentState`: Casper owns each terminal's PTY, so
     // it scrapes the visible viewport and infers what the agent is doing. The pure
     // policy lives in CasperCore (`AgentDetectionRuleSet`, `AgentSignal`,
-    // `AgentStateResolver`); this is only the wiring. It complements — and always
-    // yields to — the explicit `casper status set` path (see the authority latch
-    // in `controlSetAgentState`). See `.superpowers/themes/agent-state-detection.md`.
+    // `AgentStateResolver`, `ForegroundTracker`, `ProcessInspector`); this is only the
+    // wiring. It complements the explicit `casper status set` path, and yields to it
+    // while the latch holds (see the authority latch in `controlSetAgentState`) — taking
+    // it back on an observed agent exit (`releasesAuthorityOnAgentExit`). See
+    // `.superpowers/themes/agent-state-detection.md`.
 
     /// Detection cadence while the window is visible — fast enough to keep the
     /// sidebar's live state and spinners responsive.
@@ -2149,16 +2169,18 @@ final class AppModel {
         agentDetectionTask = nil
     }
 
-    /// One detection pass over every workspace. For each workspace not under
-    /// explicit authority, scrape its live terminal viewports, aggregate the raw
-    /// signals, run the resolver, and write the result. A workspace with nothing
-    /// readable this tick (no live surface view) is left untouched rather than
-    /// forced to `unknown`, so switching a workspace off-screen doesn't wipe its
-    /// last known state. The selected workspace is scraped at full cadence;
-    /// non-selected workspaces are scraped only every `backgroundDetectionStride`
-    /// ticks to keep this main-actor pass cheap. The pass also re-probes the agent
-    /// integrations once their last result has gone stale — see
-    /// `refreshAgentIntegrationsIfStale`.
+    /// One detection pass over every workspace. For each workspace, classify what runs
+    /// in each terminal's foreground, read the live terminals not at a shell prompt,
+    /// aggregate the raw signals, run the resolver, and write the result. A workspace
+    /// under explicit authority is only observed, unless its agent was just seen leaving
+    /// (`releasesAuthorityOnAgentExit`), which hands it back to detection in the same
+    /// pass. A workspace with nothing readable this tick (no live surface view) is left
+    /// untouched rather than forced to `unknown`, so switching a workspace off-screen
+    /// doesn't wipe its last known state. The selected workspace is scraped at full
+    /// cadence; non-selected workspaces are scraped only every
+    /// `backgroundDetectionStride` ticks to keep this main-actor pass cheap. The pass
+    /// also re-probes the agent integrations once their last result has gone stale —
+    /// see `refreshAgentIntegrationsIfStale`.
     func runAgentDetectionTick() {
         detectionTickCount &+= 1
         // Piggybacked on this loop rather than given a timer of its own. The reminder has
@@ -2167,39 +2189,45 @@ final class AppModel {
         // this costs one `Date` comparison until the result actually goes stale.
         refreshAgentIntegrationsIfStale()
         let scrapeBackground = detectionTickCount % Self.backgroundDetectionStride == 0
+        // Only a tick that visits every workspace can tell a closed pane's foreground
+        // entry from a background pane this tick merely skipped, so only it prunes them.
+        var observedTerminals: Set<UUID>? = scrapeBackground ? [] : nil
         // Indexed so a detected change can be written straight at its workspace instead
         // of re-scanning every Space to find it again. Safe to hold across the body: a
         // detection pass only ever writes a workspace's transient state and expands a
         // collapsed Space — it never adds or removes one.
         for (si, space) in spaces.enumerated() {
             for (wi, ws) in space.workspaces.enumerated() {
-                if explicitAuthority.contains(ws.id) { continue }  // detection stopped for W
                 let isSelected = (ws.id == selectedWorkspaceID)
                 if !isSelected && !scrapeBackground { continue }  // background: reduced sub-cadence
 
-                // Collect the ids through `forEachSurface`: `surfaces(_:)` would build a
-                // throwaway array of full `Surface` values, for every workspace, 4× a second.
-                var terminalIDs: [UUID] = []
+                // Collect through `forEachSurface`: `surfaces(_:)` would build a throwaway
+                // array of full `Surface` values, for every workspace, 4× a second.
+                var terminals: [(id: UUID, foreground: ForegroundObservation)] = []
                 LayoutTree.forEachSurface(ws.layout) { surface in
                     guard case .terminal = surface.kind else { return }
-                    terminalIDs.append(surface.id)
+                    terminals.append((surface.id, observeForeground(of: surface.id)))
+                    observedTerminals?.insert(surface.id)
                 }
-                let signals = terminalIDs.compactMap { id -> AgentSignal? in
-                    guard let text = surfaceViewportText(id) else { return nil }  // no live view ⇒ skip
-                    // Every rule set is applied, because nothing here knows which agent runs
-                    // in this surface.
-                    let textual = AgentDetectionRuleSet.signal(fromViewport: text, title: surfaceOSCTitle(id))
-                    let progress = surfaceProgressReport(id).map(AgentSignal.init(progress:)) ?? .absent
-                    // Roll the sources together. The OSC 9;4 progress report is the primary
-                    // "working" signal — Claude Code brackets a turn with `ESC]9;4;3` …
-                    // `ESC]9;4;0`. The title spinner is a secondary one: still emitted, but its
-                    // glyph set moved between releases, and only Claude Code has a title
-                    // convention at all. The viewport carries "blocked", and is the only
-                    // "working" source for an agent that reports no progress (Codex, opencode).
-                    // The existing blocked > working > idle > absent precedence handles them
-                    // all correctly, so the resolver needs no change.
-                    return max(textual, progress)
+
+                if explicitAuthority.contains(ws.id) {
+                    // Detection stays stopped for W, unless its agent was seen leaving.
+                    if terminals.contains(where: { $0.foreground.agentExited }) {
+                        agentExitedUnderAuthority.insert(ws.id)
+                    }
+                    let releases = Self.releasesAuthorityOnAgentExit(
+                        state: ws.agentState,
+                        agentExited: agentExitedUnderAuthority.contains(ws.id),
+                        foregrounds: terminals.lazy.map(\.foreground.process))
+                    guard releases else { continue }
+                    explicitAuthority.remove(ws.id)
+                    agentExitedUnderAuthority.remove(ws.id)
+                    // Carry on from the claim the latch held, so a run the agent never got to
+                    // close completes like a detected one: `working` → `done` while unseen.
+                    agentResolvers[ws.id] = AgentStateResolver(resumingFrom: ws.agentState)
                 }
+
+                let signals = terminals.compactMap { agentSignal(of: $0.id, foreground: $0.foreground.process) }
                 if signals.isEmpty { continue }  // nothing readable ⇒ leave W's state untouched
 
                 let aggregated = AgentSignal.aggregate(signals)
@@ -2210,6 +2238,46 @@ final class AppModel {
                 setDetectedAgentState(state, at: (space: si, workspace: wi))
             }
         }
+        if let observedTerminals {
+            foregroundTracker.retain(surfaces: observedTerminals)
+        }
+    }
+
+    /// Classifies what runs in a terminal's foreground this tick.
+    private func observeForeground(of surfaceID: UUID) -> ForegroundObservation {
+        let pid = foregroundPIDProvider(surfaceID)
+        return foregroundTracker.observe(surface: surfaceID, foregroundPID: pid, inspector: processInspector)
+    }
+
+    /// One terminal's raw signal this tick, or nil when it has no live view.
+    private func agentSignal(of surfaceID: UUID, foreground: ForegroundProcess) -> AgentSignal? {
+        // A shell at its prompt runs no agent: its viewport, the costliest read of the
+        // pass, is not read at all.
+        if foreground == .shell { return .absent }
+        guard let reading = agentSurfaceReader(surfaceID) else { return nil }  // no live view ⇒ skip
+        // The foreground picks the rule set: an identified agent's own, or every one when
+        // nothing tells which agent may run there (`ssh`, `tmux`, a wrapper script). The
+        // OSC 9;4 progress report joins in either way: it is the primary "working" signal
+        // for Claude Code, which brackets a turn with `ESC]9;4;3` … `ESC]9;4;0`. The title
+        // spinner is a secondary one, and the viewport carries "blocked" and is the only
+        // "working" source for an agent that reports no progress (Codex, opencode).
+        return AgentDetectionRuleSet.signal(
+            foreground: foreground, viewport: reading.viewport, title: reading.title, progress: reading.progress)
+    }
+
+    /// Whether a workspace under explicit authority goes back to detection: an agent was
+    /// seen leaving since the last explicit report (`agentExited`), and every terminal
+    /// is back at its shell.
+    ///
+    /// The explicit claim names no pane, so "every pane at a shell" is the only proof no
+    /// agent is left to have made it: a pane running anything else, or one that cannot
+    /// be read, may hold that agent, and blocks the release. `error` is a verdict only
+    /// the agent could reach, so it stays until the next explicit report.
+    private static func releasesAuthorityOnAgentExit(
+        state: AgentState, agentExited: Bool, foregrounds: some Sequence<ForegroundProcess>
+    ) -> Bool {
+        guard state != .error, agentExited else { return false }
+        return foregrounds.allSatisfy { $0 == .shell }
     }
 
     /// Write a *detected* agent state. Distinct from the explicit
@@ -2373,4 +2441,12 @@ final class AppModel {
     @ObservationIgnored private(set) lazy var browserAutomation = BrowserAutomationController(
         resolveWorkspace: { [weak self] id in self?.workspace(id: id) },
         coordinator: { [weak self] surface in self?.browserCoordinator(for: surface) })
+}
+
+/// What agent-state detection reads off one live terminal: the visible viewport, the
+/// OSC window title and the latest OSC 9;4 progress state.
+struct AgentSurfaceReading {
+    var viewport: String
+    var title: String?
+    var progress: AgentProgressState?
 }

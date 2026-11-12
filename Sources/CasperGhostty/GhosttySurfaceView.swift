@@ -404,6 +404,11 @@ public final class GhosttySurfaceView: NSView, @MainActor NSTextInputClient {
     /// `.superpowers/themes/agent-state-detection.md`.
     public func readViewportText() -> String? { surface?.readText(scrollback: false) }
 
+    /// The PID leading the terminal's foreground process group, or nil if the surface
+    /// isn't live or libghostty cannot tell. Agent detection classifies it to pick the
+    /// agent's rule set; like `readProgressReport()`, it ships in release builds.
+    public func readForegroundPID() -> pid_t? { surface?.foregroundPID() }
+
     /// The latest OSC window title libghostty decoded for this surface, or nil if
     /// none has arrived yet. Used by agent-state detection alongside
     /// `readViewportText()` — see `.superpowers/themes/agent-state-detection.md`.

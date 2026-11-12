@@ -50,11 +50,13 @@ final class AgentDetectionTests: XCTestCase {
 
         XCTAssertTrue(model.controlSetAgentState(.done, for: linked.id))
         XCTAssertTrue(model.explicitAuthority.contains(linked.id))
+        model.agentExitedUnderAuthority.insert(linked.id)  // an exit seen, not yet released
 
         model.removeWorkspace(id: linked.id)
 
         XCTAssertNil(model.workspace(id: linked.id), "workspace is gone")
         XCTAssertFalse(model.explicitAuthority.contains(linked.id), "authority pruned on removal")
+        XCTAssertFalse(model.agentExitedUnderAuthority.contains(linked.id), "remembered exit pruned on removal")
     }
 
     /// A detected transition into `blocked` fires a real macOS notification (via

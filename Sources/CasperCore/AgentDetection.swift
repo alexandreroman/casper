@@ -4,6 +4,7 @@ import Foundation
 //
 // This file owns only the *policy*: turning what a terminal reports — viewport
 // text, the OSC title, and the OSC 9;4 progress state — into a raw signal,
+// with the rule set its foreground process selects (`ForegroundProcess.swift`),
 // rolling several surfaces' signals up to one workspace signal, and debouncing
 // that signal into a reported `AgentState`. It performs no I/O and reads no
 // real terminals — the caller supplies the viewport text and the "seen" flag.
@@ -13,8 +14,9 @@ import Foundation
 
 /// A raw, per-tick observation about what an agent surface is doing.
 ///
-/// `absent` means there is no live/readable agent (the matcher never produces
-/// it — only the caller does, when no agent surface exists).
+/// `absent` means there is no live/readable agent. The viewport matcher never
+/// produces it; a shell in a surface's foreground does
+/// (`AgentDetectionRuleSet.signal(foreground:viewport:title:progress:)`).
 ///
 /// Ordered by urgency through the declaration order, `absent < idle < working <
 /// blocked`, so rolling several surfaces' signals up to the most urgent one is
@@ -188,15 +190,45 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
         titleWorkingScalars: [],
         titleIdleScalar: nil)
 
-    /// Every known rule set, evaluated together on each detection pass.
+    /// Every known rule set, evaluated together when a surface's foreground is
+    /// neither an identified agent nor a shell (`.other`, `.unidentified`).
     ///
-    /// Casper owns the PTY but has no way to know *which* agent occupies a given
-    /// surface, so rather than pick one rule set it applies them all to the same
-    /// snapshot and aggregates the signals (`AgentSignal.aggregate`), letting the
-    /// most urgent one win. Each rule set's needles are specific enough to stay
-    /// quiet on another agent's screen, and the union is what makes the Codex and
-    /// opencode rules reachable at runtime at all.
+    /// A surface running `ssh`, `tmux` or a wrapper script may still host an
+    /// agent Casper cannot see, so rather than pick one rule set it applies them
+    /// all to the same snapshot and lets the most urgent signal win. Each rule
+    /// set's needles are specific enough to stay quiet on another agent's screen.
     public static let all: [AgentDetectionRuleSet] = [.claudeCode, .codex, .opencode]
+
+    /// The rule set describing `agent`'s affordances.
+    public static func ruleSet(for agent: CodingAgent) -> AgentDetectionRuleSet {
+        switch agent {
+        case .claudeCode: return .claudeCode
+        case .codex: return .codex
+        case .opencode: return .opencode
+        }
+    }
+
+    /// One surface's raw signal, given what runs in its foreground.
+    ///
+    /// - A shell at its prompt is `absent`, whatever the screen still shows.
+    /// - An identified agent is read with its own rule set only.
+    /// - Anything else falls back to the union of every rule set.
+    ///
+    /// The OSC 9;4 `progress` report joins the textual signal in the last two
+    /// cases: it is agent-neutral, so one agent's rule set must not hide it.
+    public static func signal(
+        foreground: ForegroundProcess, viewport: String, title: String?, progress: AgentProgressState?
+    ) -> AgentSignal {
+        let progressSignal = progress.map(AgentSignal.init(progress:)) ?? .absent
+        switch foreground {
+        case .shell:
+            return .absent
+        case .agent(let agent):
+            return max(ruleSet(for: agent).textSignal(viewport: viewport, title: title), progressSignal)
+        case .other, .unidentified:
+            return max(signal(fromViewport: viewport, title: title), progressSignal)
+        }
+    }
 
     /// The most urgent signal any rule set in `all` reads from one viewport
     /// snapshot and, when there is one, the surface's OSC title.
@@ -207,12 +239,16 @@ public struct AgentDetectionRuleSet: Equatable, Sendable {
     public static func signal(fromViewport text: String, title: String?) -> AgentSignal {
         var strongest = AgentSignal.absent
         for rules in all {
-            strongest = max(strongest, rules.signal(fromViewport: text))
-            if let title {
-                strongest = max(strongest, rules.signal(fromTitle: title))
-            }
+            strongest = max(strongest, rules.textSignal(viewport: text, title: title))
         }
         return strongest
+    }
+
+    /// The more urgent of this rule set's viewport and title signals.
+    private func textSignal(viewport: String, title: String?) -> AgentSignal {
+        let viewportSignal = signal(fromViewport: viewport)
+        guard let title else { return viewportSignal }
+        return max(viewportSignal, signal(fromTitle: title))
     }
 }
 
@@ -236,14 +272,25 @@ public struct AgentStateResolver: Sendable {
     /// Distinguishes a real `working → idle` completion (which can become
     /// `done`) from a workspace that was idle from the start.
     private var observedWorking = false
-    /// Consecutive idle ticks accumulated since work stopped, compared against
-    /// the debounce threshold before a completion is accepted.
+    /// Consecutive at-rest (`idle` or `absent`) ticks since work stopped,
+    /// compared against the debounce threshold before a completion is accepted.
     private var idleStreak = 0
     /// Latches once a completion is reported unseen, so `done` persists across
     /// ticks until the workspace is finally seen.
     private var doneLatched = false
 
     public init() {}
+
+    /// A resolver that carries on from `state`, as though it had resolved it
+    /// itself: `working` is a run in progress, `done` a completion not yet seen.
+    /// Any other state starts fresh.
+    public init(resumingFrom state: AgentState) {
+        switch state {
+        case .working: observedWorking = true
+        case .done: doneLatched = true
+        case .blocked, .idle, .unknown, .error: break
+        }
+    }
 
     /// Resolves this tick's raw `signal` into the state to report.
     ///
@@ -267,28 +314,28 @@ public struct AgentStateResolver: Sendable {
             doneLatched = false
             return .blocked
 
-        case .absent:
-            // No readable agent: nothing to debounce or attend to.
-            observedWorking = false
-            idleStreak = 0
-            doneLatched = false
-            return .unknown
-
         case .idle:
-            return resolveIdle(seen: seen, debounce: debounce)
+            return resolveAtRest(seen: seen, debounce: debounce, rest: .idle)
+
+        case .absent:
+            // No agent left (the shell is back): an agent that just exited
+            // completes exactly like one that went quiet, but settles to `unknown`.
+            return resolveAtRest(seen: seen, debounce: debounce, rest: .unknown)
         }
     }
 
-    private mutating func resolveIdle(seen: Bool, debounce: Int) -> AgentState {
+    /// The path out of a run: `working` through the debounce, then `done` while
+    /// unseen, then `rest`.
+    private mutating func resolveAtRest(seen: Bool, debounce: Int, rest: AgentState) -> AgentState {
         // A completion already reported unseen holds as `done` until seen.
         if doneLatched {
             guard seen else { return .done }
             doneLatched = false
-            return .idle
+            return rest
         }
 
-        // Never worked ⇒ plainly idle, no debounce, never `done`.
-        guard observedWorking else { return .idle }
+        // Never worked ⇒ plainly at rest, no debounce, never `done`.
+        guard observedWorking else { return rest }
 
         idleStreak += 1
         if idleStreak < debounce {
@@ -300,7 +347,7 @@ public struct AgentStateResolver: Sendable {
         idleStreak = 0
         observedWorking = false
         if seen {
-            return .idle
+            return rest
         }
         // Completed while the user was looking elsewhere ⇒ attention state.
         doneLatched = true

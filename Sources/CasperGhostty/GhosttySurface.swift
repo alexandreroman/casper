@@ -236,6 +236,19 @@ final class GhosttySurface {
                       as: UTF8.self)
     }
 
+    /// The terminal's foreground process group (`tcgetpgrp` on the PTY), or nil when
+    /// libghostty cannot tell. Mirrors upstream's `Ghostty.Surface.foregroundPID`.
+    func foregroundPID() -> pid_t? {
+        Self.processID(fromForegroundPID: ghostty_surface_foreground_pid(surface))
+    }
+
+    /// libghostty reports an unknown foreground as `0`; a value no `pid_t` can hold
+    /// is no process either.
+    static func processID(fromForegroundPID raw: UInt64) -> pid_t? {
+        guard raw != 0 else { return nil }
+        return pid_t(exactly: raw)
+    }
+
     /// The surface's current live font size, read via libghostty's
     /// inherited-config mechanism (the same path it uses to propagate the
     /// current, possibly runtime-adjusted, font size to a new child split).

@@ -334,4 +334,153 @@ final class AgentDetectionTests: XCTestCase {
         // A single idle tick now is only the first of a fresh streak ⇒ still working.
         XCTAssertEqual(resolver.resolve(signal: .idle, seen: false, debounce: 3), .working)
     }
+
+    // MARK: - Resolver: absent (the shell is back in the foreground)
+
+    func testAbsentAfterWorkUnseenDebouncesToDoneThenUnknownOnceSeen() {
+        var resolver = AgentStateResolver()
+        _ = resolver.resolve(signal: .working, seen: false)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .working)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .done)
+        // The done latch holds while unseen…
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .done)
+        // …and collapses to the rest state, `unknown`, once seen.
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .unknown)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .unknown)
+    }
+
+    func testAbsentAfterWorkSeenSettlesToUnknown() {
+        var resolver = AgentStateResolver()
+        _ = resolver.resolve(signal: .working, seen: true)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .working)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .unknown)
+    }
+
+    func testIdleDoneLatchHoldsAcrossAbsent() {
+        // An agent that went quiet, then exited, while unseen.
+        var resolver = AgentStateResolver()
+        _ = resolver.resolve(signal: .working, seen: false)
+        _ = resolver.resolve(signal: .idle, seen: false)
+        XCTAssertEqual(resolver.resolve(signal: .idle, seen: false), .done)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .done)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .unknown)
+    }
+
+    // MARK: - Resolver: resuming from a released explicit state
+
+    func testResumingFromWorkingRunsOneMoreTickThenDone() {
+        var resolver = AgentStateResolver(resumingFrom: .working)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .working)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .done)
+    }
+
+    func testResumingFromWorkingSeenSettlesToUnknown() {
+        var resolver = AgentStateResolver(resumingFrom: .working)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .working)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .unknown)
+    }
+
+    func testResumingFromDoneHoldsUntilSeen() {
+        var resolver = AgentStateResolver(resumingFrom: .done)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .done)
+        XCTAssertEqual(resolver.resolve(signal: .absent, seen: true), .unknown)
+    }
+
+    func testResumingFromAnyOtherStateStartsFresh() {
+        for state in [AgentState.blocked, .idle, .unknown, .error] {
+            var resolver = AgentStateResolver(resumingFrom: state)
+            XCTAssertEqual(resolver.resolve(signal: .absent, seen: false), .unknown, "\(state)")
+        }
+    }
+
+    // MARK: - Per-surface signal
+
+    func testRuleSetForEachAgent() {
+        XCTAssertEqual(AgentDetectionRuleSet.ruleSet(for: .claudeCode), .claudeCode)
+        XCTAssertEqual(AgentDetectionRuleSet.ruleSet(for: .codex), .codex)
+        XCTAssertEqual(AgentDetectionRuleSet.ruleSet(for: .opencode), .opencode)
+    }
+
+    func testShellForegroundIsAbsentWhateverTheTerminalSays() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .shell, viewport: "Do you want to proceed? (esc to cancel)",
+                title: "\u{25D0} Claude Code", progress: .indeterminate),
+            .absent)
+    }
+
+    func testCodexForegroundIgnoresTheOtherAgentsAffordances() {
+        // Claude Code's title spinner and opencode's footer mean nothing in a Codex pane.
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.codex), viewport: opencodeWorkingFooter,
+                title: "\u{25D0} Claude Code", progress: nil),
+            .idle)
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.codex), viewport: "Running tools…", title: nil, progress: nil),
+            .working)
+    }
+
+    func testAgentForegroundUsesItsOwnRuleSet() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.claudeCode), viewport: "alex@host ~/project % ",
+                title: "\u{25D0} Claude Code", progress: nil),
+            .working)
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.opencode), viewport: opencodePermissionPrompt, title: nil, progress: nil),
+            .blocked)
+    }
+
+    func testAgentForegroundIgnoresAffordancesTheUnionWouldMatch() {
+        // Each viewport reads `working` under the union, but not under this agent's rules.
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.claudeCode), viewport: opencodeWorkingFooter, title: nil, progress: nil),
+            .idle)
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.opencode), viewport: "… esc to interrupt", title: nil, progress: nil),
+            .idle)
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.opencode), viewport: "alex@host ~/project % ",
+                title: "\u{25D0} Claude Code", progress: nil),
+            .idle)
+    }
+
+    func testProgressStaysAgentNeutral() {
+        XCTAssertEqual(
+            AgentDetectionRuleSet.signal(
+                foreground: .agent(.opencode), viewport: opencodeIdleFooter, title: nil, progress: .indeterminate),
+            .working)
+    }
+
+    func testUnresolvedForegroundsMatchTheUnion() {
+        let viewports = [
+            opencodeWorkingFooter, opencodePermissionPrompt, opencodeIdleFooter,
+            "… esc to interrupt", "Running tools…", "Do you want to proceed?\n❯ Yes  (esc to cancel)",
+            "alex@host ~/project % ", "",
+        ]
+        let titles: [String?] = [nil, "\u{2802} Doing something", "\u{2733} Claude Code", "OpenCode"]
+        let progresses: [AgentProgressState?] = [nil, .removed, .set, .error, .indeterminate, .paused]
+        for foreground in [ForegroundProcess.unidentified, .other(name: "vim")] {
+            for viewport in viewports {
+                for title in titles {
+                    for progress in progresses {
+                        let union = max(
+                            AgentDetectionRuleSet.signal(fromViewport: viewport, title: title),
+                            progress.map(AgentSignal.init(progress:)) ?? .absent)
+                        XCTAssertEqual(
+                            AgentDetectionRuleSet.signal(
+                                foreground: foreground, viewport: viewport, title: title, progress: progress),
+                            union,
+                            "\(foreground) \(viewport) \(String(describing: title)) \(String(describing: progress))")
+                    }
+                }
+            }
+        }
+    }
 }

@@ -53,16 +53,18 @@ final class DebugProtocolTests: XCTestCase {
     func testSurfaceRoundTripCarriesAgentDetectionFields() throws {
         let surface = DebugState.Surface(
             id: "0", title: "casper", workingDirectory: "/tmp", focused: true, geometry: retinaGeometry,
-            agentState: "working", oscTitle: "\u{2807} casper", progressReport: "indeterminate")
+            agentState: "working", oscTitle: "\u{2807} casper", progressReport: "indeterminate",
+            foregroundProcess: "agent:claudeCode")
         let data = try JSONEncoder().encode(surface)
         let decoded = try JSONDecoder().decode(DebugState.Surface.self, from: data)
         XCTAssertEqual(decoded, surface)
         XCTAssertEqual(decoded.agentState, "working")
         XCTAssertEqual(decoded.oscTitle, "\u{2807} casper")
         XCTAssertEqual(decoded.progressReport, "indeterminate")
+        XCTAssertEqual(decoded.foregroundProcess, "agent:claudeCode")
     }
 
-    /// The three detection fields default to nil, so a surface built without them — and a payload
+    /// The detection fields default to nil, so a surface built without them — and a payload
     /// encoded before they existed — still decodes.
     func testSurfaceRoundTripWithoutAgentDetectionFields() throws {
         let surface = DebugState.Surface(
@@ -73,6 +75,7 @@ final class DebugProtocolTests: XCTestCase {
         XCTAssertNil(decoded.agentState)
         XCTAssertNil(decoded.oscTitle)
         XCTAssertNil(decoded.progressReport)
+        XCTAssertNil(decoded.foregroundProcess)
     }
 
     /// `dump-state` prints a surface as flat JSON, and the `debug-casper` skill reads
@@ -80,12 +83,13 @@ final class DebugProtocolTests: XCTestCase {
     func testSurfaceEncodesTheFlatDumpStateKeys() throws {
         let surface = DebugState.Surface(
             id: "0", title: "casper", workingDirectory: "/tmp", focused: true, geometry: retinaGeometry,
-            agentState: "working", oscTitle: "casper", progressReport: "indeterminate")
+            agentState: "working", oscTitle: "casper", progressReport: "indeterminate",
+            foregroundProcess: "shell")
         XCTAssertEqual(try encodedKeys(of: surface), [
             "agentState", "backingHeight", "backingScaleFactor", "backingWidth", "boundsHeight",
             "boundsWidth", "cellHeightPixels", "cellWidthPixels", "columns", "contentScaleX",
-            "contentScaleY", "focused", "heightPixels", "id", "oscTitle", "progressReport", "rows",
-            "title", "widthPixels", "workingDirectory",
+            "contentScaleY", "focused", "foregroundProcess", "heightPixels", "id", "oscTitle",
+            "progressReport", "rows", "title", "widthPixels", "workingDirectory",
         ])
     }
 

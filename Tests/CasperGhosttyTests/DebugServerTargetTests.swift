@@ -41,7 +41,8 @@ final class DebugServerTargetTests: XCTestCase {
             window: nil,
             agentState: nil,
             oscTitle: { nil },
-            progressReport: { nil })
+            progressReport: { nil },
+            foregroundProcess: { nil })
     }
 }
 #endif
