@@ -59,7 +59,9 @@ confined to the `CasperGhostty` module. Mid-enum insertions renumber
 `ghostty_action_tag_e`, so Casper matches action tags by symbolic name only.
 The compiler does not catch every semantic change: a struct field that turns
 a NUL-terminated buffer into a pointer-plus-length compiles unchanged around a
-`String(cString:)` that then over-reads. See [[dependency-policy]].
+`String(cString:)` that then over-reads. See [[dependency-policy]]. A bump
+also settles [[libghostty-stale-prompt-on-resize]] once the new build carries
+upstream Ghostty `8ad3f607f`.
 
 ## Why a revision and not the tag
 
