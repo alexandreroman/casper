@@ -58,7 +58,7 @@ enum GhosttyConfigBuilder {
     private static func firstThemeLoadFailure(in config: ghostty_config_t) -> String? {
         for index in 0..<ghostty_config_diagnostics_count(config) {
             let diagnostic = ghostty_config_get_diagnostic(config, index)
-            guard let message = diagnostic.message.map({ String(cString: $0) }) else { continue }
+            let message = String(cString: diagnostic.message)
             if GhosttyDefaultConfig.isThemeLoadFailure(message) { return message }
         }
         return nil

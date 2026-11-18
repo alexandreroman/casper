@@ -55,8 +55,7 @@ public enum GhosttyAction: Equatable {
 
     /// Decodes a field (like `open_url.url`) that is NOT null-terminated: reads
     /// exactly `len` bytes and decodes them as UTF-8.
-    private static func string(_ ptr: UnsafePointer<CChar>?, len: UInt) -> String {
-        guard let ptr else { return "" }
+    private static func string(_ ptr: UnsafePointer<CChar>, len: UInt) -> String {
         let bytes = UnsafeBufferPointer(start: ptr, count: Int(len))
         return bytes.withMemoryRebound(to: UInt8.self) { String(decoding: $0, as: UTF8.self) }
     }

@@ -20,12 +20,6 @@ final class GhosttyActionTests: XCTestCase {
         }
     }
 
-    func testDecodesOpenURLWithNilPointerAsEmptyString() {
-        var action = ghostty_action_s()
-        action.tag = GHOSTTY_ACTION_OPEN_URL
-        XCTAssertEqual(GhosttyAction.decode(action), .openURL(""))
-    }
-
     func testDecodesNewSplitRight() {
         var action = ghostty_action_s()
         action.tag = GHOSTTY_ACTION_NEW_SPLIT

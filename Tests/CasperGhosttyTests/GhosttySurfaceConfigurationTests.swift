@@ -16,10 +16,10 @@ final class GhosttySurfaceConfigurationTests: XCTestCase {
                 XCTAssertEqual(c.platform_tag, GHOSTTY_PLATFORM_MACOS)
                 XCTAssertEqual(c.platform.macos.nsview, nsview)
                 XCTAssertEqual(c.scale_factor, 2.0)
-                XCTAssertEqual(String(cString: c.working_directory), "/tmp/wt")
+                XCTAssertEqual(c.working_directory.map { String(cString: $0) }, "/tmp/wt")
                 XCTAssertEqual(c.env_var_count, 1)
-                XCTAssertEqual(String(cString: c.env_vars.pointee.key), "CASPER_PORT")
-                XCTAssertEqual(String(cString: c.env_vars.pointee.value), "40000")
+                XCTAssertEqual(c.env_vars.map { String(cString: $0.pointee.key) }, "CASPER_PORT")
+                XCTAssertEqual(c.env_vars.map { String(cString: $0.pointee.value) }, "40000")
             }
         }
     }

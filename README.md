@@ -242,7 +242,7 @@ The rest of this document is for contributors who want to build Casper locally.
 - **libgit2** and **pkgconf** — `brew install libgit2 pkgconf`. CasperGit links
   libgit2 via pkg-config.
 
-The first build downloads the pinned `GhosttyKit.xcframework` (~53 MB) from the
+The first build downloads the pinned `GhosttyKit.xcframework` (~82 MB) from the
 `libghostty-spm` release; subsequent builds reuse the extracted artifact.
 
 ### Build & test

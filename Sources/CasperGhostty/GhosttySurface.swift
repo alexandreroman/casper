@@ -144,7 +144,7 @@ final class GhosttySurface {
     func completeClipboardRequest(
         _ contents: [GhosttyClipboardContent],
         available: [String],
-        state: UnsafeMutableRawPointer?,
+        state: UnsafeMutableRawPointer,
         confirmed: Bool
     ) {
         var cStrings: [UnsafeMutablePointer<CChar>] = []
@@ -166,7 +166,7 @@ final class GhosttySurface {
                 mime: mime, data: buffer.assumingMemoryBound(to: CChar.self), len: content.data.count))
         }
 
-        var cAvailable: [UnsafePointer<CChar>?] = []
+        var cAvailable: [UnsafePointer<CChar>] = []
         for mime in available {
             guard let copy = strdup(mime) else { continue }
             cStrings.append(copy)
@@ -192,7 +192,7 @@ final class GhosttySurface {
     /// Refuse a pending clipboard request. Core answers the asking program itself where its
     /// protocol expects an answer: empty contents for an OSC 52 read, `EPERM` for a kitty
     /// request; a denied paste simply does not happen.
-    func denyClipboardRequest(state: UnsafeMutableRawPointer?) {
+    func denyClipboardRequest(state: UnsafeMutableRawPointer) {
         ghostty_surface_deny_clipboard_request(surface, state)
     }
 

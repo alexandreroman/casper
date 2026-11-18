@@ -71,9 +71,14 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     /// payload gets decoded a second time on the action hot path (OSC titles fire on
     /// every shell prompt). Driving a real surface-tagged target needs a live surface,
     /// which is flaky headless, so this pins the branch from its app-tagged side: with
-    /// no recoverable view *and* no app to fall back to, the tags must still report
-    /// consumed, which only holds if the trampoline returns before the runtime handoff.
-    func testSurfaceScopedActionsAreConsumedInsideTheTrampoline() {
+    /// no recoverable view, the tags must still report consumed without ever reaching
+    /// `onAction`, which only holds if the trampoline returns before the runtime handoff.
+    func testSurfaceScopedActionsAreConsumedInsideTheTrampoline() throws {
+        try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
+        let runtime = try makeIsolatedRuntime()
+        let app = try XCTUnwrap(runtime.app)
+        var received: [GhosttyAction] = []
+        runtime.onAction = { received.append($0) }
         var target = ghostty_target_s()
         target.tag = GHOSTTY_TARGET_APP
 
@@ -81,8 +86,9 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
             var action = ghostty_action_s()
             action.tag = tag
 
-            XCTAssertTrue(casperGhosttyAction(nil, target, action), "tag \(tag.rawValue) must be consumed")
+            XCTAssertTrue(casperGhosttyAction(app, target, action), "tag \(tag.rawValue) must be consumed")
         }
+        XCTAssertEqual(received, [], "surface-scoped actions reached onAction")
     }
 
     /// libghostty answers a colour-scheme change with a soft `RELOAD_CONFIG` and
@@ -98,9 +104,9 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
     private let reloadConfig = GhosttyAction.other(tag: GHOSTTY_ACTION_RELOAD_CONFIG.rawValue)
     private let configChange = GhosttyAction.other(tag: GHOSTTY_ACTION_CONFIG_CHANGE.rawValue)
 
-    /// With a live app the trampoline must claim `RELOAD_CONFIG` itself (the nil-app
-    /// fallthrough would return false) and never forward it to `onAction`: it is
-    /// plumbing, not an app action. Pushing the stored config must not crash.
+    /// With a live app the trampoline must claim `RELOAD_CONFIG` itself and never
+    /// forward it to `onAction`: it is plumbing, not an app action. Pushing the stored
+    /// config must not crash.
     func testReloadConfigTrampolineClaimsWithoutReachingOnAction() throws {
         try XCTSkipUnless(ghosttyInitialized, "ghostty_init failed")
         let runtime = try makeIsolatedRuntime()
@@ -111,7 +117,7 @@ final class GhosttyRuntimeTrampolineTests: XCTestCase {
         var action = ghostty_action_s()
         action.tag = GHOSTTY_ACTION_RELOAD_CONFIG
 
-        XCTAssertTrue(casperGhosttyAction(runtime.app, target, action))
+        XCTAssertTrue(casperGhosttyAction(try XCTUnwrap(runtime.app), target, action))
         runtime.tick()
         XCTAssertFalse(received.contains(reloadConfig), "unexpected actions: \(received)")
         // Pushing the stored config is what makes libghostty announce CONFIG_CHANGE.

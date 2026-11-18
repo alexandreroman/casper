@@ -30,16 +30,10 @@ struct GhosttyClipboardContent: Equatable {
         self.init(mime: Self.plainTextMIME, data: Data(text.utf8))
     }
 
-    /// Copy `content` out of libghostty's memory: exactly `len` bytes of `data`. Nil for an
-    /// entry with no MIME type, which names no representation at all.
-    init?(_ content: ghostty_clipboard_content_s) {
-        guard let mime = content.mime else { return nil }
-        self.mime = String(cString: mime)
-        if let bytes = content.data, content.len > 0 {
-            self.data = Data(bytes: bytes, count: content.len)
-        } else {
-            self.data = Data()
-        }
+    /// Copy `content` out of libghostty's memory: exactly `len` bytes of `data`.
+    init(_ content: ghostty_clipboard_content_s) {
+        self.mime = String(cString: content.mime)
+        self.data = Data(bytes: content.data, count: content.len)
     }
 
     /// Copy every entry of a C array of `count` representations.
@@ -47,7 +41,7 @@ struct GhosttyClipboardContent: Equatable {
         from pointer: UnsafePointer<ghostty_clipboard_content_s>?, count: Int
     ) -> [GhosttyClipboardContent] {
         guard let pointer, count > 0 else { return [] }
-        return UnsafeBufferPointer(start: pointer, count: count).compactMap { GhosttyClipboardContent($0) }
+        return UnsafeBufferPointer(start: pointer, count: count).map { GhosttyClipboardContent($0) }
     }
 
     /// The data decoded as UTF-8. Invalid sequences are repaired with U+FFFD, so a malformed
@@ -79,8 +73,8 @@ extension [GhosttyClipboardContent] {
     }
 }
 
-/// Copy a C array of `count` NUL-terminated MIME strings, skipping null entries.
-func clipboardMIMEs(from pointer: UnsafePointer<UnsafePointer<CChar>?>?, count: Int) -> [String] {
+/// Copy a C array of `count` NUL-terminated MIME strings.
+func clipboardMIMEs(from pointer: UnsafePointer<UnsafePointer<CChar>>?, count: Int) -> [String] {
     guard let pointer, count > 0 else { return [] }
-    return UnsafeBufferPointer(start: pointer, count: count).compactMap { $0.map { String(cString: $0) } }
+    return UnsafeBufferPointer(start: pointer, count: count).map { String(cString: $0) }
 }

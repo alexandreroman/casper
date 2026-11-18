@@ -16,9 +16,9 @@ final class GhosttyClipboardTests: XCTestCase {
         let bytes = Array(text.utf8) + Array("TRAILING-GARBAGE".utf8)
         let content = try bytes.withUnsafeBufferPointer { buffer in
             try buffer.withMemoryRebound(to: CChar.self) { chars in
-                try "text/plain".withCString { mime in
-                    try XCTUnwrap(GhosttyClipboardContent(
-                        ghostty_clipboard_content_s(mime: mime, data: chars.baseAddress, len: text.utf8.count)))
+                let data = try XCTUnwrap(chars.baseAddress)
+                return "text/plain".withCString { mime in
+                    GhosttyClipboardContent(ghostty_clipboard_content_s(mime: mime, data: data, len: text.utf8.count))
                 }
             }
         }
@@ -28,31 +28,17 @@ final class GhosttyClipboardTests: XCTestCase {
         XCTAssertEqual(content.text, text)
     }
 
-    /// An entry with no data reads as empty text rather than as a missing one.
-    func testContentWithNoDataIsEmpty() throws {
-        let content = try "text/plain".withCString { mime in
-            try XCTUnwrap(GhosttyClipboardContent(ghostty_clipboard_content_s(mime: mime, data: nil, len: 0)))
-        }
-
-        XCTAssertEqual(content.text, "")
-    }
-
-    /// An entry with no MIME type names no representation, so copying a C array skips it and
-    /// keeps the entries around it.
-    func testContentWithoutAMimeTypeIsSkipped() {
-        "text/plain".withCString { mime in
-            "kept".withCString { data in
-                let entries = [
-                    ghostty_clipboard_content_s(mime: nil, data: data, len: 4),
-                    ghostty_clipboard_content_s(mime: mime, data: data, len: 4),
-                ]
-                entries.withUnsafeBufferPointer { buffer in
-                    XCTAssertEqual(
-                        GhosttyClipboardContent.array(from: buffer.baseAddress, count: buffer.count),
-                        [GhosttyClipboardContent(plainText: "kept")])
-                }
+    /// `len`, not a NUL terminator, decides how many bytes are read: a zero `len` decodes as
+    /// empty data even when `data` points at a non-empty NUL-terminated string.
+    func testContentWithNoDataIsEmpty() {
+        let content = "text/plain".withCString { mime in
+            "ignored".withCString { data in
+                GhosttyClipboardContent(ghostty_clipboard_content_s(mime: mime, data: data, len: 0))
             }
         }
+
+        XCTAssertEqual(content.data, Data())
+        XCTAssertEqual(content.text, "")
     }
 
     func testNilContentArrayIsEmpty() {
@@ -89,11 +75,11 @@ final class GhosttyClipboardTests: XCTestCase {
         XCTAssertEqual(contents.confirmationPreview, "image/png (42 bytes)\ntext/html (7 bytes)")
     }
 
-    /// The C MIME list is copied entry by entry, skipping the null ones.
-    func testMimeListIsCopiedSkippingNullEntries() {
+    /// The C MIME list is copied entry by entry.
+    func testMimeListIsCopied() {
         "text/plain".withCString { plain in
             "image/png".withCString { png in
-                let mimes: [UnsafePointer<CChar>?] = [plain, nil, png]
+                let mimes: [UnsafePointer<CChar>] = [plain, png]
                 mimes.withUnsafeBufferPointer { buffer in
                     XCTAssertEqual(
                         clipboardMIMEs(from: buffer.baseAddress, count: buffer.count), ["text/plain", "image/png"])
