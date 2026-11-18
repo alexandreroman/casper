@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog][keepachangelog], and this project
 adheres to [Semantic Versioning][semver]. Entries describe user-visible changes;
 CI, test, and documentation-only work is left out.
 
+## [Unreleased]
+
+### Fixed
+
+- Resizing a terminal, such as by dragging a split divider, no longer leaves
+  stale copies of a multi-line shell prompt (Powerlevel10k and the like)
+  stacked on screen: the embedded Ghostty terminal engine is updated to a
+  build that clears the old prompt before the shell redraws it.
+
 ## [0.4.0] - 2026-11-13
 
 ### Added
@@ -225,6 +234,7 @@ Initial release.
 
 [keepachangelog]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/spec/v2.0.0.html
+[Unreleased]: https://github.com/alexandreroman/casper/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/alexandreroman/casper/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/alexandreroman/casper/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/alexandreroman/casper/compare/v0.1.3...v0.2.0

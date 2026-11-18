@@ -11,7 +11,7 @@ type: reference
 = occluded → libghostty pauses the surface's render thread. The vendored header
 carries no doc comment, so the polarity is only discoverable from the source.
 Authoritative definition, `src/apprt/embedded.zig` (identical at Ghostty v1.3.1
-and at `042b16b`, the commit the pinned build wraps):
+and at the upstream commit named in [[ghosttykit-pin]]):
 
 ```zig
 export fn ghostty_surface_set_occlusion(surface, visible: bool) {

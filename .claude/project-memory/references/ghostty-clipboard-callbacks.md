@@ -57,14 +57,14 @@ one step moves a default-configuration cell from 17×37 px to 18×40 px. Verify 
 font-size action by watching `cellWidthPixels`/`cellHeightPixels` in
 `casper debug dump-state` change around each `send-action`.
 
-**Swift 6 strict-concurrency gotcha:** passing a raw `UnsafeMutableRawPointer?`
+**Swift 6 strict-concurrency gotcha:** passing a raw `UnsafeMutableRawPointer`
 function parameter directly into a `MainActor.assumeIsolated { ... }` closure
 from a nonisolated function fails with
 `sending 'state' risks causing data races [#SendingRisksDataRace]`, even though
 the closure runs synchronously. Fix (the same pattern `casperGhosttyWakeup` uses
 to cross into `DispatchQueue.main.async`): convert the pointer to a trivial
-`UInt` bit-pattern *before* entering the closure, then reconstruct
-`UnsafeMutableRawPointer(bitPattern:)` inside it. See
+`UInt` bit-pattern *before* entering the closure, then rebuild the pointer
+inside it with `clipboardRequestState(at:)`. See
 `casperGhosttyReadClipboard`/`casperGhosttyConfirmReadClipboard` in
 `Sources/CasperGhostty/GhosttyRuntime.swift`.
 

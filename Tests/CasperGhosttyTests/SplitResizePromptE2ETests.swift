@@ -5,23 +5,19 @@ import XCTest
 
 @testable import CasperGhostty
 
-/// Regression tests for prompts piling up when a split divider is dragged.
+/// Regression tests guarding that exactly one prompt survives a split divider drag or a
+/// single resize.
 ///
 /// A Powerlevel10k-style zsh prompt — OSC 133 semantic-prompt marks around a two-line
 /// prompt whose first line spans the full terminal width — is redrawn by zsh on every
-/// SIGWINCH. libghostty must clear the old prompt before that redraw, so exactly one
-/// prompt stays on screen however many resizes happen.
+/// SIGWINCH. libghostty must clear the old prompt before that redraw; otherwise every
+/// resize leaves a stale copy of the prompt's first line behind, and a divider drag,
+/// which resizes dozens of times, piles them up across the pane.
 ///
-/// Root cause of the current failure (upstream Ghostty, not Casper): `Screen.resize`
-/// clears the prompt for the SIGWINCH redraw after the column reflow, and the reflow
-/// copies the row's prompt mark onto every row it splits the line into, so the clear
-/// starts from the wrong row and leaves one stale copy of the prompt's first line per
-/// resize. Upstream Ghostty commit 8ad3f607f (#15199) fixes it.
-///
-/// The prompt-count assertion is therefore an expected failure until libghostty is
-/// bumped to a build that includes 8ad3f607f; the expectation is strict, so these tests
-/// fail as soon as a bump fixes the bug — then remove the `XCTExpectFailure` wrapper.
-/// The status is tracked in the `libghostty-stale-prompt-on-resize` project-memory note.
+/// The clear happens in upstream Ghostty's `Screen.resize`, after the column reflow. The
+/// reflow copies the row's prompt mark onto every row it splits the line into, so the
+/// clear must start from the prompt's first row, not from a copied mark. Upstream Ghostty
+/// commit 8ad3f607f (#15199) is the fix these tests guard.
 ///
 /// The drag test mimics a divider drag (many small width changes with a tiny run-loop
 /// pump between them); the single-resize test resizes once to the same final width, so
@@ -30,11 +26,6 @@ final class SplitResizePromptE2ETests: XCTestCase {
     private static let startWidth: CGFloat = 800
     private static let endWidth: CGFloat = 450
     private static let height: CGFloat = 600
-
-    private static let upstreamBugReason = """
-        libghostty leaves a stale prompt line per resize (upstream Ghostty bug fixed by 8ad3f607f, #15199); \
-        remove this expectation once the libghostty pin includes that fix
-        """
 
     @MainActor
     func testDividerDragLeavesOnePrompt() throws {
@@ -89,9 +80,7 @@ final class SplitResizePromptE2ETests: XCTestCase {
             // Count occurrences, not lines: the read-back joins soft-wrapped rows into one
             // logical line, so stale prompt copies can share a single "line".
             let promptCount = occurrences(of: "PROMPTTOP", in: screen)
-            XCTExpectFailure(Self.upstreamBugReason) {
-                XCTAssertEqual(promptCount, 1, "expected exactly one prompt on screen; screen was:\n\(screen)")
-            }
+            XCTAssertEqual(promptCount, 1, "expected exactly one prompt on screen; screen was:\n\(screen)")
         }
     }
 

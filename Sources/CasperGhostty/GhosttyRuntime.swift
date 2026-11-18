@@ -70,15 +70,15 @@ public final class GhosttyRuntime {
             throw GhosttyError(reason: "ghostty_config_new returned null")
         }
 
-        var runtimeConfig = ghostty_runtime_config_s()
-        runtimeConfig.userdata = Unmanaged.passUnretained(self).toOpaque()
-        runtimeConfig.supports_selection_clipboard = false
-        runtimeConfig.wakeup_cb = casperGhosttyWakeup
-        runtimeConfig.action_cb = casperGhosttyAction
-        runtimeConfig.read_clipboard_cb = casperGhosttyReadClipboard
-        runtimeConfig.confirm_read_clipboard_cb = casperGhosttyConfirmReadClipboard
-        runtimeConfig.write_clipboard_cb = casperGhosttyWriteClipboard
-        runtimeConfig.close_surface_cb = casperGhosttyCloseSurface
+        var runtimeConfig = ghostty_runtime_config_s(
+            userdata: Unmanaged.passUnretained(self).toOpaque(),
+            supports_selection_clipboard: false,
+            wakeup_cb: casperGhosttyWakeup,
+            action_cb: casperGhosttyAction,
+            read_clipboard_cb: casperGhosttyReadClipboard,
+            confirm_read_clipboard_cb: casperGhosttyConfirmReadClipboard,
+            write_clipboard_cb: casperGhosttyWriteClipboard,
+            close_surface_cb: casperGhosttyCloseSurface)
 
         guard let app = ghostty_app_new(&runtimeConfig, config) else {
             ghostty_config_free(config)
@@ -235,7 +235,7 @@ func casperGhosttyWakeup(_ userdata: UnsafeMutableRawPointer?) {
 /// also arrives synchronously and re-entrantly from `ghostty_app_set_color_scheme` and
 /// `ghostty_surface_set_color_scheme`, i.e. from inside `GhosttyRuntime.setColorScheme`.
 func casperGhosttyAction(
-    _ app: ghostty_app_t?,
+    _ app: ghostty_app_t,
     _ target: ghostty_target_s,
     _ action: ghostty_action_s
 ) -> Bool {
@@ -268,7 +268,7 @@ func casperGhosttyAction(
         // hot path. Reported as consumed even when no view is recoverable, matching the
         // app-level `handleAction`, which claims every action it is given.
         if let view = surfaceView(from: target) {
-            let title = action.action.set_title.title.map { String(cString: $0) } ?? ""
+            let title = String(cString: action.action.set_title.title)
             MainActor.assumeIsolated {
                 view.updateOSCTitle(title)
             }
@@ -303,14 +303,14 @@ func casperGhosttyAction(
     case GHOSTTY_ACTION_RELOAD_CONFIG:
         // Plumbing, not an app action: answered by pushing the stored config back to
         // the target, so it never reaches `handleAction` / `onAction`.
-        guard let app, let userdata = ghostty_app_userdata(app) else { return false }
+        guard let userdata = ghostty_app_userdata(app) else { return false }
         let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(userdata).takeUnretainedValue()
         return runtime.handleReloadConfig(target: target)
     default:
         break
     }
 
-    guard let app, let userdata = ghostty_app_userdata(app) else { return false }
+    guard let userdata = ghostty_app_userdata(app) else { return false }
     let runtime = Unmanaged<GhosttyRuntime>.fromOpaque(userdata).takeUnretainedValue()
     return runtime.handleAction(action)
 }
@@ -386,8 +386,8 @@ private func clipboardView(from userdata: UnsafeMutableRawPointer?) -> GhosttySu
 func casperGhosttyReadClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
-    _ state: UnsafeMutableRawPointer?,
-    _ mimes: UnsafePointer<UnsafePointer<CChar>?>?,
+    _ state: UnsafeMutableRawPointer,
+    _ mimes: UnsafePointer<UnsafePointer<CChar>>,
     _ mimeCount: Int,
     _ list: Bool
 ) -> ghostty_clipboard_read_result_e {
@@ -417,7 +417,7 @@ func casperGhosttyReadClipboard(
         }
 
         surface.completeClipboardRequest(
-            contents, available: available, state: UnsafeMutableRawPointer(bitPattern: stateAddress),
+            contents, available: available, state: clipboardRequestState(at: stateAddress),
             confirmed: false)
         return GHOSTTY_CLIPBOARD_READ_STARTED
     }
@@ -454,12 +454,11 @@ func casperGhosttyReadClipboard(
 /// which is exactly what a request the user has not answered yet should be.
 func casperGhosttyConfirmReadClipboard(
     _ userdata: UnsafeMutableRawPointer?,
-    _ confirm: UnsafePointer<ghostty_clipboard_confirm_s>?,
-    _ state: UnsafeMutableRawPointer?,
+    _ confirm: UnsafePointer<ghostty_clipboard_confirm_s>,
+    _ state: UnsafeMutableRawPointer,
     _ request: ghostty_clipboard_request_e
 ) {
-    // The view guard and the nil-confirm check below "should never happen"; they exist
-    // defensively.
+    // The view guard below "should never happen"; it exists defensively.
     guard let view = clipboardView(from: userdata) else {
         // No view means nothing to complete the request against — the one case
         // that leaves libghostty's request unresolved.
@@ -469,13 +468,6 @@ func casperGhosttyConfirmReadClipboard(
     // Cross the actor boundary as a trivial address (Sendable); see
     // `casperGhosttyReadClipboard`.
     let stateAddress = UInt(bitPattern: state)
-    guard let confirm else {
-        CasperLog.ghostty.warning("confirm-read callback fired without a payload; denying")
-        MainActor.assumeIsolated {
-            view.surface?.denyClipboardRequest(state: UnsafeMutableRawPointer(bitPattern: stateAddress))
-        }
-        return
-    }
     let contents = GhosttyClipboardContent.array(from: confirm.pointee.contents, count: confirm.pointee.contents_len)
     let available = clipboardMIMEs(from: confirm.pointee.available, count: confirm.pointee.available_len)
 
@@ -483,7 +475,7 @@ func casperGhosttyConfirmReadClipboard(
     case GHOSTTY_CLIPBOARD_REQUEST_PASTE:
         MainActor.assumeIsolated {
             view.surface?.completeClipboardRequest(
-                contents, available: available, state: UnsafeMutableRawPointer(bitPattern: stateAddress),
+                contents, available: available, state: clipboardRequestState(at: stateAddress),
                 confirmed: true)
         }
     case GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ, GHOSTTY_CLIPBOARD_REQUEST_KITTY_READ,
@@ -504,7 +496,7 @@ func casperGhosttyConfirmReadClipboard(
         }
     default:
         MainActor.assumeIsolated {
-            view.surface?.denyClipboardRequest(state: UnsafeMutableRawPointer(bitPattern: stateAddress))
+            view.surface?.denyClipboardRequest(state: clipboardRequestState(at: stateAddress))
         }
     }
 }
@@ -519,12 +511,22 @@ private func settleUntrustedClipboardRequest(
     available: [String],
     stateAddress: UInt
 ) {
-    let state = UnsafeMutableRawPointer(bitPattern: stateAddress)
+    let state = clipboardRequestState(at: stateAddress)
     if approved {
         view?.surface?.completeClipboardRequest(contents, available: available, state: state, confirmed: true)
     } else {
         view?.surface?.denyClipboardRequest(state: state)
     }
+}
+
+/// Rebuild a clipboard request's `state` from the address it crossed the main-actor boundary as
+/// (see `casperGhosttyReadClipboard`). libghostty hands the callbacks a non-null `state`, so the
+/// address is never zero.
+private func clipboardRequestState(at address: UInt) -> UnsafeMutableRawPointer {
+    guard let state = UnsafeMutableRawPointer(bitPattern: address) else {
+        preconditionFailure("a clipboard request state crossed the actor boundary as a null address")
+    }
+    return state
 }
 
 /// `write_clipboard_cb`:
@@ -551,7 +553,7 @@ private func settleUntrustedClipboardRequest(
 func casperGhosttyWriteClipboard(
     _ userdata: UnsafeMutableRawPointer?,
     _ location: ghostty_clipboard_e,
-    _ content: UnsafePointer<ghostty_clipboard_content_s>?,
+    _ content: UnsafePointer<ghostty_clipboard_content_s>,
     _ count: Int,
     _ confirm: Bool
 ) {

@@ -10,11 +10,11 @@ let package = Package(
             from: "1.5.0"
         ),
         // Pinned by revision, not by tag: upstream tags are mutable. This
-        // revision is the fork's 2.2.2026110702 release, so the binary
+        // revision is the fork's 2.2.2026111701 release, so the binary
         // checksum and vendored header hold.
         .package(
             url: "https://github.com/Lakr233/libghostty-spm.git",
-            revision: "1d84cf66fe29abd1f24f10b88dcfc25882cf68ee"
+            revision: "b9694b5014bcf783882328a04da37569422aebef"
         ),
         .package(
             url: "https://github.com/appstefan/HighlightSwift.git",
