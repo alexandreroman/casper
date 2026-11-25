@@ -152,6 +152,14 @@ final class DiffSurfaceViewScrollTests: XCTestCase {
     /// The id of the file whose band holds the viewport's top edge, read off the
     /// surface's own text view; nil while no surface shows a document.
     ///
+    /// The read measures where the clip view sits in the fully laid-out
+    /// document, so it forces layout over the whole document first. The point
+    /// probe alone resolves against whatever TextKit holds, and after a width
+    /// change discards layout that is estimated heights, which can name the
+    /// wrong file — e.g. on a runner with no trackpad, which settles the scroller
+    /// style to legacy only after the first scroll view exists, narrowing the
+    /// text container under a scroll that has already landed.
+    ///
     /// Answers nil rather than failing, so `settle` can poll it.
     private func fileAtViewportTop(in host: NSView) -> String? {
         guard let textView = firstDescendant(DiffTextView.self, in: host),
@@ -159,6 +167,7 @@ final class DiffSurfaceViewScrollTests: XCTestCase {
               let layoutManager = textView.textLayoutManager,
               let clipView = textView.enclosingScrollView?.contentView
         else { return nil }
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
         let geometry = DiffFragmentGeometry(layoutManager: layoutManager, document: document)
         let visibleTop = clipView.bounds.origin.y - textView.textContainerOrigin.y
         guard let fileIndex = geometry.fileIndex(atY: visibleTop) else { return nil }

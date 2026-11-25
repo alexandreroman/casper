@@ -208,7 +208,11 @@ struct DiffTextSurface: NSViewRepresentable {
             // — including the very first one, which lands after SwiftUI has already
             // pushed a document in — has to re-resolve the bars. That first resize
             // is also what lands a scroll target that reached the surface before
-            // it had a viewport.
+            // it had a viewport, once the text view is laid out and the scroll
+            // view re-tiled: the tile this fires from runs before the text view
+            // grows to the document's height, so it hides the auto-hiding
+            // scroller, and a legacy scroller that the grown document then calls
+            // for narrows the text and rewraps it — see `viewportDidChange()`.
             //
             // `viewportDidChange()` resolves the bars with the forcing variant,
             // and it has to. This fires from the
@@ -223,8 +227,8 @@ struct DiffTextSurface: NSViewRepresentable {
             // Laying out from here is also safe, which is what separates it from
             // the hook below: the pass in progress is this container's, and the
             // text view lays itself out afterwards, so `ensureLayout` re-enters
-            // nothing. A waiting scroll can pull the text view's pass forward
-            // from here, in `scroll(toViewY:)`, but the text view is a
+            // nothing. A waiting scroll pulls the text view's pass forward from
+            // here and re-tiles the scroll view, but the text view is a
             // descendant: its pass completes before the bars are resolved, and
             // the `didLayout` it fires only queues work.
             containerView.viewportDidChange = { [weak self] in self?.viewportDidChange() }
@@ -395,7 +399,9 @@ struct DiffTextSurface: NSViewRepresentable {
         /// but is still zero-sized: the case of a surface the request has just
         /// mounted. The clip view would clamp that scroll to nothing, and the
         /// text has not wrapped to the panel's width yet, so the file is held and
-        /// scrolled to by the layout that sizes the viewport.
+        /// scrolled to by the layout that sizes the viewport — once that layout
+        /// has settled the text's final width, which a legacy scroller appearing
+        /// can still narrow (see `viewportDidChange()`).
         @discardableResult
         func scroll(toFileID fileID: String) -> Bool {
             guard let document, let fileIndex = document.fileIndex(withID: fileID) else { return false }
@@ -416,9 +422,20 @@ struct DiffTextSurface: NSViewRepresentable {
         /// The container has re-tiled the viewport: lands a scroll that was
         /// waiting for it to have a size, then re-resolves the pinned bars over
         /// it. The scroll goes first, so the bars are resolved where it lands.
+        ///
+        /// The waiting scroll lays the text view out and re-tiles before it
+        /// resolves the file's top. The container tiles before the text view has
+        /// grown to the document's height, so that tile hides the auto-hiding
+        /// scroller; under the legacy scroller style, the grown document calls
+        /// for it, and the tile that shows it narrows the clip view, the text
+        /// view and the text container by its width. That rewraps the text and
+        /// invalidates its layout, so a top resolved before it would land the
+        /// reader off the file, and leave the viewport over estimated geometry.
         private func viewportDidChange() {
             if let fileID = fileAwaitingViewport, !clipView.bounds.isEmpty {
                 fileAwaitingViewport = nil
+                textView.layoutSubtreeIfNeeded()
+                scrollView.tile()
                 scroll(toFileID: fileID)
             }
             resolveBarsOverTheViewport()
@@ -466,10 +483,10 @@ struct DiffTextSurface: NSViewRepresentable {
         /// swapped document's height only in the text view's own layout pass. A
         /// target past the height the frame has so far pulls that pass forward,
         /// or the scroll would stop at that height: an anchor or a requested file
-        /// the swap pushed below the previous document's end, or a file waiting
-        /// for the viewport's first sizing, when the text view has not yet grown
-        /// past the viewport it was just tiled into. Only then: on a large diff
-        /// the pass lays out the whole document.
+        /// the swap pushed below the previous document's end. Only then: on a
+        /// large diff the pass lays out the whole document. A file that waited
+        /// for the viewport's first sizing arrives with that pass already run, by
+        /// `viewportDidChange()`.
         private func scroll(toViewY viewY: CGFloat) {
             let clipView = self.clipView
             if !clipView.bounds.isEmpty, viewY + clipView.bounds.height > textView.frame.height {

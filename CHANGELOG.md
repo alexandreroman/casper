@@ -21,6 +21,9 @@ CI, test, and documentation-only work is left out.
 - The diff view colors a file's first and last lines even when they start or
   end with whitespace, such as an indented first line, instead of leaving them
   uncolored.
+- Opening the diff view on a file, as `casper diff open <file>` does, scrolls
+  to that file when scroll bars are set to always show (or on a Mac with a
+  mouse and no trackpad), instead of stopping above it when long lines wrap.
 
 ## [0.4.1] - 2026-11-18
 
