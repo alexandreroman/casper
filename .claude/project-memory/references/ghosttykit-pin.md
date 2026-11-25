@@ -8,16 +8,16 @@ type: reference
 
 CasperGhostty links libghostty through the third-party binary Swift package
 **`Lakr233/libghostty-spm`, pinned by `revision:
-"b9694b5014bcf783882328a04da37569422aebef"`** in `Package.swift` — the fork's
-`2.2.2026111701` release. That release ships `GhosttyKit.xcframework` built
-from upstream Ghostty commit **`5ebe501a63425b13d9952e8c54682c046386e5af`**,
-395 commits past tag `v1.4.0` (`83fb956…`), plus Lakr233's own patches. No
+"df874b7f276f03e6341199af49a8c040fc045251"`** in `Package.swift` — the fork's
+`2.2.2026112401` release. That release ships `GhosttyKit.xcframework` built
+from upstream Ghostty commit **`56de3f0f6786a3ff4f971d075a28f73409212983`**,
+437 commits past tag `v1.4.0` (`83fb956…`), plus Lakr233's own patches. No
 fork build wraps `v1.4.0` exactly; Casper tracks the newest fork build rather
 than an exact release wrap. Fork releases built on upstream `cf5519b`
 (`2.2.2026111302` … `2.2.2026111601`) lack the resize fix below.
 
-- binaryTarget asset: `https://github.com/Lakr233/libghostty-spm/releases/download/upstream.5ebe501a6342/GhosttyKit.xcframework.zip`
-  checksum `219749b57f4677c8a6bc6b18f3a9684a92fb7a35a0509dd32e6caff4b9e78450`
+- binaryTarget asset: `https://github.com/Lakr233/libghostty-spm/releases/download/upstream.56de3f0f6786/GhosttyKit.xcframework.zip`
+  checksum `d3082a602e5e7ef908f7665ab5cf804f9cedf97e8898e49777554bdb59a157dc`
   (SwiftPM verifies this on resolve).
 - Consume **only** the `GhosttyKit` product: a Swift target that
   `@_exported import libghostty`, over the binary target `libghostty` whose C
@@ -28,8 +28,8 @@ than an exact release wrap. Fork releases built on upstream `cf5519b`
   [[dependency-policy]]).
 - Required linker settings on the CasperGhostty target: `.linkedLibrary("c++")`.
 - The API source of truth is the vendored header `Vendor/ghostty/ghostty.h`
-  (sha256 `2b58e40253362e17b7d85c708f8695e97ddc5dd94eb5f6d8c31219744f50a849`,
-  1363 lines), synced by Carvel `vendir` (`vendir.yml`, `make vendor`). It is
+  (sha256 `9a1583c50df4c9b0048b801e877d74d24f841e816d39de02deb107bee67468ba`,
+  1368 lines), synced by Carvel `vendir` (`vendir.yml`, `make vendor`). It is
   copied out of the **extracted xcframework's own
   `Headers/libghostty/ghostty.h`** (next to its `module.modulemap`), so it
   mirrors the fork Casper actually links — not upstream Ghostty, whose struct
@@ -45,7 +45,10 @@ than an exact release wrap. Fork releases built on upstream `cf5519b`
 - The fork's opt-in pixel smooth scrolling
   (`ghostty_surface_set_smooth_scroll`, patch `0022`) is off unless a host
   enables it; Casper does not call it, so scrolling follows upstream's
-  whole-row behavior.
+  whole-row behavior. The same holds for patch `0023`'s numbered variant
+  (`ghostty_surface_smooth_scroll_by_tracked`, with
+  `ghostty_surface_smooth_scroll_presented` reporting whether that scroll's
+  frame reached the layer).
 - The header calls itself **"libghostty-internal"**: an API tailored to
   Ghostty's own macOS app and not designed for external embedders, with most
   functions undocumented. Read the matching upstream Zig source
@@ -77,8 +80,8 @@ prompt copies left by a column resize), or `SplitResizePromptE2ETests` fails.
 ## Why a revision and not the tag
 
 The fork's tags are mutable (`immutable: false` on its releases), so a tag pin
-can shift under Casper without any change on this side. The pinned `b9694b5…`
-is the commit `refs/tags/2.2.2026111701` names, and it sits on the fork's
+can shift under Casper without any change on this side. The pinned `df874b7…`
+is the commit `refs/tags/2.2.2026112401` names, and it sits on the fork's
 `main`.
 
 An `exact:` version requirement also makes SwiftPM check the revision recorded
