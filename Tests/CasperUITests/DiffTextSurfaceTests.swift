@@ -226,6 +226,82 @@ final class DiffTextSurfaceTests: XCTestCase {
         XCTAssertGreaterThan(coordinator.clipView.bounds.origin.y, 0)
     }
 
+    /// The same held scroll under the legacy scroller style — "Show scroll bars:
+    /// Always", any Mac without a trackpad, and every CI runner — where the
+    /// scroller takes width away from the clip view instead of floating over it.
+    ///
+    /// The container tiles the viewport before the text view has grown to the
+    /// document's height, so that tile hides the auto-hiding scroller. Once the
+    /// document is laid out it calls for one, and the next tile narrows the clip
+    /// view, the text view and the text container by the scroller's width. Every
+    /// line here is sized to fit the wider text width but not the narrower one, so
+    /// that narrowing rewraps each of them onto a second row: a file top resolved
+    /// before the scroller appears is hundreds of points off the one the text
+    /// settles on, and the rewrap leaves TextKit's layout invalidated.
+    ///
+    /// Two reads, because they fail apart. The forced read is where the file's
+    /// band really is, which is what the reader sees. The non-forcing one is what
+    /// the pinned bar and `currentAnchor()` see — and what
+    /// `DiffSurfaceViewScrollTests` asserts on — and it answers from estimated
+    /// heights while the layout is invalidated.
+    func testAHeldScrollLandsOnItsFileWhenTheDocumentCallsForALegacyScroller() throws {
+        let fileCount = 6
+        let linesPerFile = 40
+        let narrowTextWidth = try textWidthUnderALegacyScroller(fileCount: fileCount, linesPerFile: linesPerFile)
+        let wideTextWidth = narrowTextWidth + NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+        let characterWidth = DiffTextAssembly.codeFont.maximumAdvancement.width
+        // The longest line fitting the wide width, less half a point for rounding.
+        // The scroller is wider than a monospaced character and a half, so that
+        // line still overflows the narrow width.
+        let characterCount = Int(((wideTextWidth - 0.5) / characterWidth).rounded(.down))
+        XCTAssertGreaterThan(CGFloat(characterCount) * characterWidth, narrowTextWidth,
+                             "the fixture's lines must wrap at the narrow width")
+        let document = additionsDocument(fileCount: fileCount, linesPerFile: linesPerFile) { _ in
+            String(repeating: "x", count: characterCount)
+        }
+
+        let coordinator = DiffTextSurface.Coordinator()
+        coordinator.scrollView.scrollerStyle = .legacy
+        coordinator.render(DiffRendering(revision: 1, document: document, highlights: [:]))
+        XCTAssertTrue(coordinator.scroll(toFileID: "f3.swift"))
+        coordinator.containerView.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
+        coordinator.containerView.layoutSubtreeIfNeeded()
+
+        // The vacuity guard: without a visible legacy scroller nothing narrows.
+        XCTAssertEqual(coordinator.scrollView.verticalScroller?.isHidden, false,
+                       "the document must call for the legacy scroller")
+        let viewportTop = visibleTop(of: coordinator)
+        // Read before anything forces layout, as the sticky header reads it.
+        XCTAssertEqual(try XCTUnwrap(coordinator.geometry).fileIndex(atY: viewportTop), 3,
+                       "the viewport's top edge must resolve to the target file")
+        let layoutManager = try XCTUnwrap(coordinator.textView.textLayoutManager)
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
+        let bandTop = try XCTUnwrap(try XCTUnwrap(coordinator.geometry).top(ofFileAt: 3))
+        XCTAssertEqual(viewportTop, bandTop, accuracy: 0.5,
+                       "the viewport must sit on the target file's band once the text has settled")
+    }
+
+    /// The text width a surface leaves the code once the legacy scroller is
+    /// showing: measured on a surface like the one under test rather than derived
+    /// from the gutter's and the scroller's widths, so the fixture follows either.
+    /// Short lines, so the document's height alone is what calls for the scroller.
+    private func textWidthUnderALegacyScroller(fileCount: Int, linesPerFile: Int) throws -> CGFloat {
+        let coordinator = DiffTextSurface.Coordinator()
+        coordinator.scrollView.scrollerStyle = .legacy
+        coordinator.render(DiffRendering(
+            revision: 1, document: additionsDocument(fileCount: fileCount, linesPerFile: linesPerFile),
+            highlights: [:]))
+        coordinator.containerView.frame = CGRect(x: 0, y: 0, width: 480, height: 600)
+        coordinator.containerView.layoutSubtreeIfNeeded()
+        // Laid out again, so the tile that follows the text view's growth runs.
+        coordinator.textView.layoutSubtreeIfNeeded()
+        coordinator.scrollView.tile()
+        XCTAssertEqual(coordinator.scrollView.verticalScroller?.isHidden, false,
+                       "the measuring surface must show the legacy scroller")
+        let container = try XCTUnwrap(coordinator.textView.textContainer)
+        return container.size.width - 2 * container.lineFragmentPadding
+    }
+
     /// A target naming a file only the next diff holds is retried as soon as
     /// that document reaches a surface that is already sized, before the text
     /// view's own layout pass has grown it to the new document's height. The
