@@ -4,9 +4,10 @@ import SwiftUI
 /// Pure syntax-highlighting helper for the diff view. It turns a full file's
 /// text into one colored `AttributedString` per source line; the diff view reads
 /// nothing but their foreground colors (`DiffTextAssembly.applyHighlight`), so its
-/// own monospaced font applies uniformly. Highlighting runs off the main actor
-/// and never propagates errors — callers fall back to neutral text when this
-/// returns `nil`.
+/// own monospaced font applies uniformly. Callers need not be on the main actor:
+/// highlight.js runs on HighlightSwift's own actor, and only the library's HTML
+/// import of the result hops to the main actor. Errors never propagate — callers
+/// fall back to neutral text when this returns `nil`.
 enum DiffHighlighter {
     /// Maps a file path's extension to a highlight.js language alias, or `nil`
     /// when the extension is unknown (the caller then renders neutral text; no
@@ -116,10 +117,11 @@ enum DiffHighlighter {
     /// The diff's own lines arrive with a CRLF's CR already stripped
     /// (`Repository.mapLine`), and Git cuts lines at LF alone, so `DiffDocument`
     /// shows any other separator as a space on the line it sits in
-    /// (`DiffDocument.paragraphSeparators`). The library's HTML import would
-    /// instead turn a lone CR into a line break of its own, shifting every later
-    /// line. Doing both up front keeps the lines the library returns the diff's
-    /// lines, at the diff's lengths.
+    /// (`DiffDocument.paragraphSeparators`). Highlighting the text the diff shows
+    /// keeps the lines the library returns the diff's lines, at the diff's
+    /// lengths. It also keeps those separators away from the library's HTML
+    /// import, which may not reproduce them — and whenever that import does not
+    /// reproduce the text exactly, the library hands back an uncolored copy.
     static func normalizingLineEndings(_ text: String) -> String {
         let withBareLineFeeds = text.replacingOccurrences(of: "\r\n", with: "\n")
         // Scalar by scalar: the separators are scalars, and a `Character` can
@@ -138,46 +140,24 @@ enum DiffHighlighter {
     /// two cannot be lined up — the caller then falls back to neutral text rather
     /// than misaligning colors.
     ///
-    /// The library trims whitespace and newlines off both ends of highlight.js's
-    /// HTML, not of the text, so its output starts at the first line with visible
-    /// text and usually stops at the last; whitespace a grammar wrapped in an edge
-    /// span is out of the trim's reach and survives. The blank lines trimmed off
-    /// the start come back as empty elements ahead of the output, and the end is
-    /// padded with empty elements up to the source's line count. A first or last
-    /// line that lost edge spaces then fails `DiffTextAssembly.applyHighlight`'s
-    /// per-line length check and stays neutral on its own.
+    /// HighlightSwift returns the source's own characters, colored, so the
+    /// output's text must equal `source` exactly before it is split. Any change at
+    /// all — a dropped character, a CR turned into a line break — can move a line
+    /// break, and a line count that still agrees would paint colors on the wrong
+    /// lines.
     ///
-    /// That trim is the only change the output may carry: its text must be the
-    /// trimmed source followed by, at most, the start of the source's trailing
-    /// whitespace. Whitespace kept at the trailing edge sits exactly where the
-    /// source has it, so its line breaks only stand in for some of the padding.
-    /// Any other change — a CR the HTML import turned into a line break, a dropped
-    /// NUL, leading newlines kept in a span and then counted again as trimmed —
-    /// can move a line break, and a line count that still agrees would paint
-    /// colors on the wrong lines.
-    ///
-    /// Line feeds are counted over **scalars**, matching how `splitLines` cuts: a
-    /// CRLF pair is a single `Character`, which a `"\n"` literal never equals.
+    /// The comparison runs **scalar by scalar**: `String`'s `==` uses canonical
+    /// equivalence, which would let a changed scalar through.
     ///
     /// Not `private`, for the same reason as `splitLines`: `DiffHighlighterTests`
     /// drives it with the shape the library produces.
     static func lines(
         fromLibraryOutput highlighted: AttributedString, alignedTo source: String
     ) -> [AttributedString]? {
-        let output = String(highlighted.characters)
-        let leadingWhitespace = source.unicodeScalars.prefix { CharacterSet.whitespacesAndNewlines.contains($0) }
-        let sourceAfterLeadingWhitespace = String(source.unicodeScalars[leadingWhitespace.endIndex...])
-        let trimmedSource = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard sourceAfterLeadingWhitespace.hasPrefix(output), output.hasPrefix(trimmedSource) else {
+        guard highlighted.unicodeScalars.elementsEqual(source.unicodeScalars) else {
             return nil
         }
-        let sourceLineCount = 1 + source.unicodeScalars.lazy.filter { $0 == "\n" }.count
-        let trimmedLeadingLineCount = leadingWhitespace.lazy.filter { $0 == "\n" }.count
-
-        var lines = Array(repeating: AttributedString(), count: trimmedLeadingLineCount)
-        lines += splitLines(highlighted)
-        lines += Array(repeating: AttributedString(), count: sourceLineCount - lines.count)
-        return lines
+        return splitLines(highlighted)
     }
 
     /// Splits an attributed string into one element per "\n"-delimited line,
@@ -199,7 +179,7 @@ enum DiffHighlighter {
         var lineStart = attributed.startIndex
 
         // Scalar by scalar, so a "\r\n" — one `Character`, two scalars — cuts at
-        // its LF the way the source text's own line count does.
+        // its LF the way Git cuts the diff's lines.
         for index in attributed.unicodeScalars.indices where attributed.unicodeScalars[index] == "\n" {
             lines.append(AttributedString(attributed[lineStart..<index]))
             lineStart = attributed.unicodeScalars.index(after: index)
