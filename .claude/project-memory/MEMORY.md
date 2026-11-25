@@ -137,6 +137,7 @@
 - [UUID fixtures must carry hex letters](references/uuid-fixture-case-vacuity.md) — a digit-only id makes a case assertion vacuous
 - [An empty array casts to any array type](references/empty-array-casts-to-anything.md) — so a `Mirror` absence assertion goes vacuous
 - [ScrollView padding and height](references/scrollview-viewport-vs-document.md) — outer padding pads the viewport; pinned height overflows the host
+- [CI runners use the legacy scroller style, settled late](references/ci-legacy-scroller-style.md) — clip narrows a turn late; TextKit re-estimates
 - [An NSTextTable drops a view back to TextKit 1](references/textkit1-fallback-on-nstexttable.md) — the two engines size the same string differently
 - [Pane views are threaded by workspace id and layout](references/pane-tree-inputs.md) — a stored `Workspace` re-renders panes on every agent tick
 - [DEBUG memory observability](references/memory-observability.md) — weak-ref live-object census + `casper debug memory` + the churn script
