@@ -69,7 +69,7 @@ main thread:
    the whole duration of a turn, `ESC]9;4;0` again when the turn ends. Claude
    Code gates the emission on the terminal advertising support — a Casper
    terminal sets `TERM_PROGRAM=ghostty` and `TERM_PROGRAM_VERSION` to the
-   linked libghostty's version, `1.4.1-HEAD+5ebe501a6` on the current pin (the
+   linked libghostty's version, `1.4.1-HEAD+56de3f0f6` on the current pin (the
    2.1.239 capture ran under the earlier `1.3.1`); both clear its `>= 1.2.0`
    bar — and on the `terminalProgressBarEnabled` setting, which defaults on.
 2. **The OSC title** — `GhosttySurfaceView.readOSCTitle()`. libghostty delivers
@@ -265,7 +265,7 @@ Detection is version-coupled to each agent's terminal UI, so the table below
 records what was **measured**, not what was assumed — captured by running the
 agent under `script -q` with `TERM_PROGRAM=ghostty` and
 `TERM_PROGRAM_VERSION=1.3.1` (what a Casper terminal set on the libghostty pin
-of the time; the current pin sets `1.4.1-HEAD+5ebe501a6`, and both clear Claude
+of the time; the current pin sets `1.4.1-HEAD+56de3f0f6`, and both clear Claude
 Code's `>= 1.2.0` bar) and grepping the raw file for `ESC]9;4;` and `ESC]0;`.
 Re-run that capture before trusting any row after an agent upgrade. Against the
 live app, `casper debug dump-state` reports `agentState` (what detection

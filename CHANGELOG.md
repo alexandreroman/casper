@@ -12,6 +12,9 @@ CI, test, and documentation-only work is left out.
 
 - The diff view's syntax highlighting uses highlight.js 11.12.0, with its
   updated language grammars.
+- The embedded Ghostty terminal engine is updated to a newer build, bringing
+  upstream fixes to text shaping and kitty image placeholders, plus refreshed
+  built-in color themes.
 
 ### Fixed
 

@@ -1288,6 +1288,11 @@ GHOSTTY_API void ghostty_surface_set_smooth_scroll(ghostty_surface_t, bool);
 GHOSTTY_API void ghostty_surface_smooth_scroll(ghostty_surface_t,
                                                ghostty_surface_smooth_scroll_s*);
 GHOSTTY_API void ghostty_surface_smooth_scroll_by(ghostty_surface_t, double);
+// libghostty-spm (0023): ghostty_surface_smooth_scroll_by, numbered; and
+// whether a frame holding the last numbered scroll has been handed to the
+// layer (lock-free; call from the thread that scrolls).
+GHOSTTY_API void ghostty_surface_smooth_scroll_by_tracked(ghostty_surface_t, double);
+GHOSTTY_API bool ghostty_surface_smooth_scroll_presented(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_ime_point(ghostty_surface_t, double*, double*, double*, double*);
 GHOSTTY_API void ghostty_surface_request_close(ghostty_surface_t);
 GHOSTTY_API void ghostty_surface_split(ghostty_surface_t, ghostty_action_split_direction_e);
