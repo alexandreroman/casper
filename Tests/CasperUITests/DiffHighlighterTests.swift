@@ -8,9 +8,9 @@ import XCTest
 /// `DiffHighlighter` hands the diff view one `AttributedString` per source line,
 /// indexed by line number, and `DiffTextAssembly` colors a line only when that
 /// entry's length matches the line's. So the split and its alignment with the
-/// source are the contract: cut a line ending wrong, or lose a line the library
-/// trimmed, and every line after it is either miscolored or, once the alignment
-/// fails, silently rendered neutral with no error and no log.
+/// source are the contract: cut a line ending wrong, or accept output whose text
+/// is not exactly the source, and every line after it is either miscolored or,
+/// once the alignment fails, silently rendered neutral with no error and no log.
 ///
 /// `highlightedLines(of:forPath:)` itself cannot run here — it needs
 /// HighlightSwift's resource bundle next to `Bundle.main`, which under
@@ -55,18 +55,24 @@ final class DiffHighlighterTests: XCTestCase {
 
     /// What HighlightSwift hands back for `source`, built the way its
     /// `Highlight.request` builds it, minus the JavaScript pass whose spans only
-    /// add colors. See `libraryOutput(forHighlightedHTML:)`.
+    /// add colors: the source stands in for highlight.js's markup (none of these
+    /// sources holds a character HTML would need escaped). See
+    /// `libraryOutput(forHighlightedHTML:source:)`.
     private func libraryOutput(for source: String) throws -> AttributedString {
-        try libraryOutput(forHighlightedHTML: source)
+        try libraryOutput(forHighlightedHTML: source, source: source)
     }
 
-    /// What HighlightSwift hands back for `html`, the markup highlight.js made of
-    /// a file: that markup trimmed of edge whitespace and newlines — the spans
-    /// keep whatever whitespace sits inside them — wrapped in `<pre><code>`,
-    /// imported as HTML — which turns a CRLF into a bare LF — and stripped of the
-    /// newline the import appends.
-    private func libraryOutput(forHighlightedHTML highlightedHTML: String) throws -> AttributedString {
-        let html = "<pre><code>" + highlightedHTML.trimmingCharacters(in: .whitespacesAndNewlines) + "</code></pre>"
+    /// What HighlightSwift hands back for `source`, given `highlightedHTML`, the
+    /// markup highlight.js made of it: that markup, untrimmed and with every CR
+    /// escaped as `&#13;`, wrapped in `<pre><code class="hljs">` and imported as
+    /// HTML. When the imported text starts with the source, exactly the source's
+    /// length is taken — dropping the newline the import appends — and converted
+    /// with the AppKit scope; otherwise the library falls back to the uncolored
+    /// source. The palette's `<style>` and the font removal are left out: they
+    /// change no character.
+    private func libraryOutput(forHighlightedHTML highlightedHTML: String, source: String) throws -> AttributedString {
+        let code = highlightedHTML.replacingOccurrences(of: "\r", with: "&#13;")
+        let html = "<pre><code class=\"hljs\">" + code + "</code></pre>"
         let imported = try NSAttributedString(
             data: Data(html.utf8),
             options: [
@@ -74,14 +80,66 @@ final class DiffHighlighterTests: XCTestCase {
                 .characterEncoding: String.Encoding.utf8.rawValue,
             ],
             documentAttributes: nil)
-        let withoutFinalNewline = imported.attributedSubstring(
-            from: NSRange(location: 0, length: imported.length - 1))
-        return try AttributedString(withoutFinalNewline, including: \.appKit)
+        guard imported.string.utf8.starts(with: source.utf8) else {
+            return AttributedString(source)
+        }
+        let sourceRange = NSRange(location: 0, length: source.utf16.count)
+        return try AttributedString(imported.attributedSubstring(from: sourceRange), including: \.appKit)
     }
 
-    /// A CRLF file is highlighted with bare LFs, and the library's trim drops its
-    /// final line break: the trailing empty line comes back as padding, and every
-    /// line keeps its source index.
+    /// Markup coloring `text` red with an inline style, standing in for a
+    /// highlight.js span whose color would come from the palette's CSS.
+    private func red(_ text: String) -> String {
+        #"<span style="color: #ff0000">"# + text + "</span>"
+    }
+
+    /// The text of `line`'s runs painted red, to tell a colored line from the
+    /// uncolored fallback and to check the color landed on the right characters.
+    private func redText(_ line: AttributedString) -> String {
+        var text = ""
+        for run in line.runs where isRed(run.attributes.appKit.foregroundColor) {
+            text += String(line[run.range].characters)
+        }
+        return text
+    }
+
+    private func isRed(_ color: NSColor?) -> Bool {
+        guard let rgb = color?.usingColorSpace(.sRGB) else {
+            return false
+        }
+        return rgb.redComponent > 0.9 && rgb.greenComponent < 0.1 && rgb.blueComponent < 0.1
+    }
+
+    /// Blank lines at both ends of the file come back in place, so the code
+    /// between them stays colored at its source line numbers.
+    func testBlankLinesAtBothEndsComeBackInPlace() throws {
+        let source = "\n\nlet a = 1\nlet b = 2\n\n"
+        let html = "\n\n" + red("let") + " a = 1\nlet b = 2\n\n"
+
+        let lines = try XCTUnwrap(
+            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(forHighlightedHTML: html, source: source),
+                                  alignedTo: source))
+
+        XCTAssertEqual(lines.map(text), ["", "", "let a = 1", "let b = 2", "", ""])
+        XCTAssertEqual(lines.map(redText), ["", "", "let", "", "", ""])
+    }
+
+    /// A file whose first line is indented keeps that indentation, and its colors:
+    /// output that starts with whitespace is the source itself, not a mismatch.
+    func testAFirstLinesIndentationIsKept() throws {
+        let source = "    let a = 1\nlet b = 2\n"
+        let html = "    " + red("let") + " a = 1\nlet b = 2\n"
+
+        let lines = try XCTUnwrap(
+            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(forHighlightedHTML: html, source: source),
+                                  alignedTo: source))
+
+        XCTAssertEqual(lines.map(text), ["    let a = 1", "let b = 2", ""])
+        XCTAssertEqual(lines.map(redText), ["let", "", ""])
+    }
+
+    /// A CRLF file is highlighted with bare LFs, and every line, down to the
+    /// trailing empty one, keeps its source index.
     func testCRLFLinesLineUpWithTheirSource() throws {
         let source = DiffHighlighter.normalizingLineEndings("let a = 1\r\nlet b = 2\r\n")
         XCTAssertEqual(source, "let a = 1\nlet b = 2\n")
@@ -92,60 +150,8 @@ final class DiffHighlighterTests: XCTestCase {
         XCTAssertEqual(lines.map(text), ["let a = 1", "let b = 2", ""])
     }
 
-    /// The library trims blank lines off both ends of the file; they come back as
-    /// empty lines, so the code between them stays at its source line numbers.
-    func testBlankLinesTrimmedOffBothEndsComeBackEmpty() throws {
-        let source = "\n\nlet a = 1\nlet b = 2\n\n"
-
-        let lines = try XCTUnwrap(
-            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(for: source), alignedTo: source))
-
-        XCTAssertEqual(lines.map(text), ["", "", "let a = 1", "let b = 2", "", ""])
-    }
-
-    /// A comment running to the end of the file takes the line's trailing spaces
-    /// into its span, where the library's trim cannot reach them: the last line
-    /// keeps them, and still lines up.
-    func testTrailingSpacesKeptInASpanLineUp() throws {
-        let source = "let a = 1 // c  "
-        let html = #"let a = <span class="hljs-number">1</span> <span class="hljs-comment">// c  </span>"#
-
-        let lines = try XCTUnwrap(
-            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(forHighlightedHTML: html), alignedTo: source))
-
-        XCTAssertEqual(lines.map(text), ["let a = 1 // c  "])
-    }
-
-    /// A construct left open to the end of the file takes trailing newlines into its
-    /// span, where the trim cannot reach them: the output keeps some of the source's
-    /// trailing newlines, and still lines up.
-    func testTrailingNewlinesKeptInASpanLineUp() throws {
-        let source = "/* open\n\n"
-        let html = "<span class=\"hljs-comment\">/* open\n\n</span>"
-
-        let lines = try XCTUnwrap(
-            DiffHighlighter.lines(fromLibraryOutput: libraryOutput(forHighlightedHTML: html), alignedTo: source))
-
-        XCTAssertEqual(lines.map(text), ["/* open", "", ""])
-    }
-
-    /// More lines than the source has cannot be lined up with it, so the file
-    /// falls back to neutral rather than miscoloring.
-    func testOutputLongerThanTheSourceIsRejected() throws {
-        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: try attributed([("a\nb\nc", nil)]), alignedTo: "a\nb"))
-    }
-
-    /// The HTML import turns a lone CR into a line break of its own, which the
-    /// diff does not have: output whose text is anything but the trimmed source
-    /// cannot be lined up with it, even when the line counts happen to agree.
-    func testOutputThatIsNotTheTrimmedSourceIsRejected() throws {
-        let source = "let a = 1\rlet b = 2\nlet c = 3\n"
-
-        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: try libraryOutput(for: source), alignedTo: source))
-    }
-
     /// The diff shows a lone CR as a space on the line it sits in, so the text to
-    /// highlight does the same, and every line keeps its colors and its index.
+    /// highlight does the same, and every line keeps its index.
     func testALoneCRLinesUpAsASpace() throws {
         let source = DiffHighlighter.normalizingLineEndings("let a = 1\rlet b = 2\nlet c = 3\n")
         XCTAssertEqual(source, "let a = 1 let b = 2\nlet c = 3\n")
@@ -154,6 +160,41 @@ final class DiffHighlighterTests: XCTestCase {
             DiffHighlighter.lines(fromLibraryOutput: libraryOutput(for: source), alignedTo: source))
 
         XCTAssertEqual(lines.map(text), ["let a = 1 let b = 2", "let c = 3", ""])
+    }
+
+    /// More lines than the source has cannot be lined up with it, so the file
+    /// falls back to neutral rather than miscoloring.
+    func testOutputLongerThanTheSourceIsRejected() throws {
+        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: try attributed([("a\nb\nc", nil)]), alignedTo: "a\nb"))
+    }
+
+    /// Output trimmed of the source's leading newline and padded at the end has as
+    /// many lines as the source, but every line is shifted: it is rejected.
+    func testTrimmedOutputIsRejectedEvenWhenTheLineCountsAgree() throws {
+        let source = "\nlet a = 1"
+        let output = try attributed([("let a = 1\n", nil)])
+
+        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: output, alignedTo: source))
+    }
+
+    /// Output that turned a CR into a line break, and dropped the final one, has
+    /// as many lines as the source, but they break in other places: it is rejected.
+    func testOutputWithACRTurnedIntoALineBreakIsRejectedEvenWhenTheLineCountsAgree() throws {
+        let source = "let a = 1\rlet b = 2\n"
+        let output = try attributed([("let a = 1\nlet b = 2", nil)])
+
+        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: output, alignedTo: source))
+    }
+
+    /// A precomposed "é" and an "e" followed by a combining accent are equal
+    /// `String`s but not the same scalars: output that matches the source only
+    /// canonically is still a changed text, and is rejected.
+    func testOutputThatOnlyMatchesTheSourceCanonicallyIsRejected() throws {
+        let source = "let caf\u{E9} = 1"
+        let output = try attributed([("let cafe\u{301} = 1", nil)])
+        XCTAssertEqual(String(output.characters), source)
+
+        XCTAssertNil(DiffHighlighter.lines(fromLibraryOutput: output, alignedTo: source))
     }
 
     /// A run's color survives the cut, read from the AppKit scope the library

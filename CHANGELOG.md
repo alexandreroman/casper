@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog][keepachangelog], and this project
 adheres to [Semantic Versioning][semver]. Entries describe user-visible changes;
 CI, test, and documentation-only work is left out.
 
+## [Unreleased]
+
+### Changed
+
+- The diff view's syntax highlighting uses highlight.js 11.12.0, with its
+  updated language grammars.
+
+### Fixed
+
+- The diff view colors a file's first and last lines even when they start or
+  end with whitespace, such as an indented first line, instead of leaving them
+  uncolored.
+
 ## [0.4.1] - 2026-11-18
 
 ### Fixed
@@ -234,6 +247,7 @@ Initial release.
 
 [keepachangelog]: https://keepachangelog.com/en/1.1.0/
 [semver]: https://semver.org/spec/v2.0.0.html
+[Unreleased]: https://github.com/alexandreroman/casper/compare/v0.4.1...HEAD
 [0.4.1]: https://github.com/alexandreroman/casper/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/alexandreroman/casper/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/alexandreroman/casper/compare/v0.2.0...v0.3.0

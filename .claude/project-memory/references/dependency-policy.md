@@ -38,7 +38,7 @@ targets, Neon pre-1.0, AppKit/TextKit-oriented) because it is a single
 dependency, Swift 6 strict-concurrency clean, SwiftUI-native, and produces an
 `AttributedString` directly. It wraps highlight.js via **JavaScriptCore** (a
 system framework), so only the JS text asset is bundled — no extra binary.
-Declared as `from: "1.1.0"` — an up-to-next-major range, like every dependency
+Declared as `from: "1.2.0"` — an up-to-next-major range, like every dependency
 here except GhosttyKit, pinned to one revision (see [[ghosttykit-pin]]).
 
 `Package.resolved` lists more entries than this policy sanctions, because it
